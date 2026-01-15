@@ -391,7 +391,8 @@ def api_client_push():
     evaluations = new_evaluations if new_evaluations else existing_data.get("evaluations", [])
     
     # Debug logging
-    app.logger.info(f"Push for {client_id}: {len(mt5_deals)} deals, account={bool(mt5_account)}, {len(evaluations)} evaluations")
+    acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
+    app.logger.info(f"Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
     
     # ALWAYS recalculate statistics when we have evaluations
     # This ensures discrepancy is only calculated when we have actual MT5 data
@@ -406,7 +407,7 @@ def api_client_push():
             
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
-            app.logger.info(f"Stats calculated: actual_hedging={hr.get('actual_hedging_results')}, discrepancy={hr.get('discrepancy')}, deposits={hr.get('total_deposits')}")
+            app.logger.info(f"Stats calculated: balance={hr.get('current_balance')}, deposits={hr.get('total_deposits')}, withdrawals={hr.get('total_withdrawals')}, actual_hedging={hr.get('actual_hedging_results')}")
         except Exception as e:
             app.logger.error(f"Error recalculating stats: {e}")
             import traceback

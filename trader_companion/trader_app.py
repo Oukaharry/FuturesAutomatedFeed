@@ -573,7 +573,14 @@ class TraderCompanionApp:
             messagebox.showwarning("Warning", "No deals found in MT5 history. Make sure you're connected to the correct account.")
             return
         
-        self.log(f"   Found {len(deals)} deals, account balance: ${account.get('balance', 0):.2f}")
+        # Count balance operations (deposits/withdrawals)
+        balance_deals = [d for d in deals if str(d.get('type', '')).upper() == 'BALANCE']
+        deposits = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) > 0)
+        withdrawals = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) < 0)
+        
+        self.log(f"   Found {len(deals)} deals, {len(balance_deals)} balance operations")
+        self.log(f"   Account balance: ${account.get('balance', 0):.2f}")
+        self.log(f"   Deposits: ${deposits:.2f}, Withdrawals: ${withdrawals:.2f}")
         
         payload = {
             "email": email,
@@ -596,8 +603,8 @@ class TraderCompanionApp:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("status") == "success":
-                    self.log(f"✅ MT5 data pushed - hedging review will be updated!")
-                    self.log(f"   Pushed: {len(deals)} deals, balance ${account.get('balance', 0):.2f}")
+                    self.log(f"✅ MT5 data pushed successfully!")
+                    self.log(f"   Balance: ${account.get('balance', 0):.2f} | Deposits: ${deposits:.2f} | Withdrawals: ${withdrawals:.2f}")
                     self.status_var.set("MT5 data pushed successfully!")
                 else:
                     self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
