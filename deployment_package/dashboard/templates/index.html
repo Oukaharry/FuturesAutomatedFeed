@@ -149,11 +149,11 @@
                         <th>Symbol</th>
                         <th>Type</th>
                         <th>Volume</th>
-                        <th>Open Time</th>
-                        <th>Open Price</th>
-                        <th>Close Time</th>
-                        <th>Close Price</th>
-                        <th>Net Profit</th>
+                        <th>Time</th>
+                        <th>Price</th>
+                        <th>Entry</th>
+                        <th>Swap</th>
+                        <th>Profit</th>
                     </tr>
                 </thead>
                 <tbody id="history-body"></tbody>
@@ -677,19 +677,25 @@
                 noHistMsg.style.display = 'none';
                 histTable.style.display = 'table';
                 data.deals.forEach((deal, index) => {
-                    const row = document.createElement('tr');
-                    const profitClass = parseFloat(deal.net_profit) >= 0 ? 'profit-positive' : 'profit-negative';
+                    // Handle different field names from MT5
+                    const profit = deal.profit || deal.net_profit || 0;
+                    const profitClass = parseFloat(profit) >= 0 ? 'profit-positive' : 'profit-negative';
+                    const displayTime = deal.time || deal.open_time || '-';
+                    const displayPrice = deal.price || deal.open_price || '-';
+                    const ticketId = deal.ticket || deal.position_id || '-';
+                    
+                    row = document.createElement('tr');
                     row.innerHTML = `
                         <td>${index + 1}</td>
-                        <td>${deal.position_id}</td>
-                        <td>${deal.symbol}</td>
-                        <td>${deal.type}</td>
-                        <td>${deal.volume}</td>
-                        <td>${deal.open_time}</td>
-                        <td>${deal.open_price}</td>
-                        <td>${deal.close_time}</td>
-                        <td>${deal.close_price}</td>
-                        <td class="${profitClass}">${deal.net_profit}</td>
+                        <td>${ticketId}</td>
+                        <td>${deal.symbol || '-'}</td>
+                        <td>${deal.type || '-'}</td>
+                        <td>${deal.volume || '-'}</td>
+                        <td>${displayTime}</td>
+                        <td>${displayPrice}</td>
+                        <td>${deal.entry || '-'}</td>
+                        <td>${deal.swap || 0}</td>
+                        <td class="${profitClass}">${formatMoney(profit)}</td>
                     `;
                     histBody.appendChild(row);
                 });

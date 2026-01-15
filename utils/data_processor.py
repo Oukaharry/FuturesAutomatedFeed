@@ -479,15 +479,16 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     if mt5_account:
         # Handle both dict (serialized) and object
         if isinstance(mt5_account, dict):
-            stats["hedging_review"]["current_balance"] = float(mt5_account.get('balance', 0.0))
+            stats["hedging_review"]["current_balance"] = float(mt5_account.get('balance', 0.0) or 0.0)
         else:
-            stats["hedging_review"]["current_balance"] = getattr(mt5_account, 'balance', 0.0)
+            stats["hedging_review"]["current_balance"] = float(getattr(mt5_account, 'balance', 0.0) or 0.0)
 
     has_mt5_data = False  # Track if we actually have MT5 data
-    if mt5_deals:
+    if mt5_deals and len(mt5_deals) > 0:
         deposits = 0.0
         withdrawals = 0.0
         actual_profit = 0.0
+        deal_types_seen = set()
         
         for deal in mt5_deals:
             # Handle both dict (serialized) and object
@@ -502,8 +503,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
                 d_swap = float(getattr(deal, 'swap', 0.0) or 0.0)
                 d_comm = float(getattr(deal, 'commission', 0.0) or 0.0)
             
+            deal_types_seen.add(str(d_type))
+            
             # DEAL_TYPE_BALANCE = 2 or "BALANCE" (serialized from trader app)
-            is_balance = d_type == 2 or d_type == "BALANCE"
+            is_balance = d_type == 2 or str(d_type).upper() == "BALANCE"
             if is_balance:
                 if d_profit > 0:
                     deposits += d_profit
@@ -517,6 +520,9 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         stats["hedging_review"]["total_withdrawals"] = withdrawals
         stats["hedging_review"]["actual_hedging_results"] = actual_profit
         stats["hedging_review"]["discrepancy"] = actual_profit - sheet_hedge_total
+        # Debug: store deal types seen for troubleshooting
+        stats["hedging_review"]["_debug_deal_count"] = len(mt5_deals)
+        stats["hedging_review"]["_debug_deal_types"] = list(deal_types_seen)
 
     # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
     # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy
