@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - MT5 Hedging Engine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; align-items: center;">
+                <h1>{{ admin_name }}</h1>
+                <span class="role-badge">Admin</span>
+            </div>
+            <a href="/logout" class="logout-btn">Logout</a>
+        </header>
+
+        <div id="content">
+            <!-- Traders will be injected here -->
+        </div>
+    </div>
+
+    <script>
+        const adminName = "{{ admin_name }}";
+        
+        fetch('/api/hierarchy')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('content');
+                const adminData = data.admins[adminName];
+                
+                if (!adminData) {
+                    container.innerHTML = '<div style="text-align:center; padding:40px;">Admin not found.</div>';
+                    return;
+                }
+
+                const traders = adminData.traders;
+                if (Object.keys(traders).length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding:40px; color:#999;">No traders assigned.</div>';
+                    return;
+                }
+
+                for (const [trader, traderData] of Object.entries(traders)) {
+                    // Handle new structure where traderData is an object with a 'clients' array
+                    const clientsList = traderData.clients || (Array.isArray(traderData) ? traderData : []);
+
+                    let clientsHtml = clientsList.map(clientObj => {
+                        const clientName = (typeof clientObj === 'object' && clientObj !== null) ? clientObj.name : clientObj;
+                        return `
+                        <a href="/dashboard/${clientName}" class="client-card">
+                            <div class="client-name">${clientName}</div>
+                            <div class="client-status">View Dashboard →</div>
+                        </a>
+                    `}).join('');
+
+                    if (!clientsHtml) clientsHtml = '<div style="color:#999; font-size:0.9rem; font-style:italic;">No clients assigned</div>';
+
+                    const card = document.createElement('div');
+                    card.className = 'trader-card';
+                    card.innerHTML = `
+                        <div class="trader-header">
+                            ${trader} <span class="trader-badge">Trader</span>
+                        </div>
+                        <div class="client-grid">
+                            ${clientsHtml}
+                        </div>
+                    `;
+                    container.appendChild(card);
+                }
+            });
+    </script>
+</body>
+</html>

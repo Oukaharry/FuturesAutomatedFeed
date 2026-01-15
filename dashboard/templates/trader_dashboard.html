@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trader Dashboard - MT5 Hedging Engine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; align-items: center;">
+                <h1>{{ trader_name }}</h1>
+                <span class="role-badge">Trader</span>
+            </div>
+            <a href="/logout" class="logout-btn">Logout</a>
+        </header>
+
+        <div id="content" class="client-list">
+            <!-- Clients will be injected here -->
+        </div>
+    </div>
+
+    <script>
+        const traderName = "{{ trader_name }}";
+        
+        fetch('/api/hierarchy')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('content');
+                
+                // Find the trader in the hierarchy
+                let clients = [];
+                for (const adminData of Object.values(data.admins)) {
+                    if (adminData.traders[traderName]) {
+                        // New structure: trader is an object with a 'clients' array
+                        const traderData = adminData.traders[traderName];
+                        clients = traderData.clients || []; 
+                        // Handle legacy case where it might be just an array (though we updated it)
+                        if (Array.isArray(traderData)) clients = traderData;
+                        break;
+                    }
+                }
+
+                if (clients.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding:40px; color:#999;">No clients assigned or trader not found.</div>';
+                    return;
+                }
+
+                clients.forEach(clientObj => {
+                    // Handle both object and string formats for robustness
+                    const clientName = (typeof clientObj === 'object' && clientObj !== null) ? clientObj.name : clientObj;
+                    
+                    const card = document.createElement('a');
+                    card.href = `/dashboard/${clientName}`;
+                    card.className = 'client-card';
+                    card.innerHTML = `
+                        <div class="client-name">${clientName}</div>
+                        <div class="arrow">View Dashboard →</div>
+                    `;
+                    container.appendChild(card);
+                });
+            });
+    </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+MetaTrader5
+customtkinter
+pandas
+flask
+flask-limiter
+requests
+python-dotenv

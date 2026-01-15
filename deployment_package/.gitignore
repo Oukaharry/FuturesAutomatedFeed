@@ -1,0 +1,7 @@
+# Deployment .gitignore
+api_keys.json
+dashboard_data.json
+*.pyc
+__pycache__/
+.env
+*.log

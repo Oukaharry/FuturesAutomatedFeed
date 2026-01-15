@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Admin - MT5 Hedging Engine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Super Admin Dashboard</h1>
+            <div style="display: flex; align-items: center;">
+                <a href="/super_admin/clients" style="margin-right: 15px; color: var(--primary-color); text-decoration: none; font-weight: bold;">Manage Clients</a>
+                <a href="/logout" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <div class="grid">
+            <!-- Management Panel -->
+            <div class="panel">
+                <h2>User Management</h2>
+                
+                <div class="stats-container" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <div class="stat-box-admin" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
+                        <div class="stat-label" style="font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">Admins</div>
+                        <div id="total-admins" style="font-size: 1.5rem; font-weight: bold;">0</div>
+                    </div>
+                    <div class="stat-box-trader" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
+                        <div class="stat-label" style="font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">Traders</div>
+                        <div id="total-traders" style="font-size: 1.5rem; font-weight: bold;">0</div>
+                    </div>
+                    <div class="stat-box-client" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
+                        <div class="stat-label" style="font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">Clients</div>
+                        <div id="total-clients" style="font-size: 1.5rem; font-weight: bold;">0</div>
+                    </div>
+                </div>
+                
+                <!-- Add Admin -->
+                <div class="form-group">
+                    <label>Add New Admin</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="new-admin-name" placeholder="Admin Name">
+                        <button onclick="addAdmin()" style="width: auto;">+</button>
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                <!-- Add Trader -->
+                <div class="form-group">
+                    <label>Add New Trader</label>
+                    <select id="admin-select-trader"></select>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <input type="text" id="new-trader-name" placeholder="Trader Name">
+                        <button onclick="addTrader()" style="width: auto;">+</button>
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                <!-- Add Client -->
+                <div class="form-group">
+                    <label>Add New Client</label>
+                    <select id="admin-select-client" onchange="updateTraderSelect()"></select>
+                    <select id="trader-select-client" style="margin-top: 8px;"></select>
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <input type="text" id="new-client-name" placeholder="Client Name">
+                        <button onclick="addClient()" style="width: auto;">+</button>
+                    </div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                <!-- Password Management -->
+                <div class="form-group">
+                    <label>🔐 Password Management</label>
+                    <select id="password-user-type" onchange="loadUsersForPassword()">
+                        <option value="">Select User Type</option>
+                        <option value="admin">Admin</option>
+                        <option value="trader">Trader</option>
+                        <option value="client">Client</option>
+                    </select>
+                    <select id="password-user-select" style="margin-top: 8px;">
+                        <option value="">Select User</option>
+                    </select>
+                    <input type="email" id="password-user-email" placeholder="User Email (for notification)" style="margin-top: 8px;">
+                    <div style="display: flex; gap: 8px; margin-top: 8px;">
+                        <button onclick="resetUserPassword()" style="width: auto; background-color: #f59e0b;">Reset Password</button>
+                    </div>
+                    <div id="password-result" style="margin-top: 10px; padding: 10px; border-radius: 6px; display: none;"></div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+                <!-- Change Own Password -->
+                <div class="form-group">
+                    <label>🔑 Change Your Password</label>
+                    <a href="/change-password" class="btn" style="display: inline-block; text-decoration: none; text-align: center; padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px;">
+                        Change Password
+                    </a>
+                </div>
+            </div>
+
+            <!-- Hierarchy View -->
+            <div class="panel">
+                <h2>System Hierarchy</h2>
+                <div id="hierarchy-tree">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let hierarchyData = {};
+
+        // Password Management Functions
+        function loadUsersForPassword() {
+            const userType = document.getElementById('password-user-type').value;
+            const userSelect = document.getElementById('password-user-select');
+            userSelect.innerHTML = '<option value="">Select User</option>';
+            
+            if (!userType || !hierarchyData.admins) return;
+            
+            if (userType === 'admin') {
+                Object.keys(hierarchyData.admins).forEach(admin => {
+                    const email = hierarchyData.admins[admin].email || '';
+                    userSelect.innerHTML += `<option value="${admin}" data-email="${email}">${admin}</option>`;
+                });
+            } else if (userType === 'trader') {
+                Object.entries(hierarchyData.admins).forEach(([admin, data]) => {
+                    Object.entries(data.traders || {}).forEach(([trader, traderData]) => {
+                        const email = traderData.email || '';
+                        userSelect.innerHTML += `<option value="${trader}" data-email="${email}">${trader} (${admin})</option>`;
+                    });
+                });
+            } else if (userType === 'client') {
+                Object.entries(hierarchyData.admins).forEach(([admin, data]) => {
+                    Object.entries(data.traders || {}).forEach(([trader, traderData]) => {
+                        (traderData.clients || []).forEach(client => {
+                            const email = client.email || '';
+                            userSelect.innerHTML += `<option value="${client.name}" data-email="${email}">${client.name} (${trader})</option>`;
+                        });
+                    });
+                });
+            }
+        }
+        
+        document.getElementById('password-user-select').addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const email = selectedOption.getAttribute('data-email') || '';
+            document.getElementById('password-user-email').value = email;
+        });
+        
+        function resetUserPassword() {
+            const userType = document.getElementById('password-user-type').value;
+            const username = document.getElementById('password-user-select').value;
+            const email = document.getElementById('password-user-email').value;
+            const resultDiv = document.getElementById('password-result');
+            
+            if (!userType || !username) {
+                resultDiv.style.display = 'block';
+                resultDiv.style.backgroundColor = '#fee2e2';
+                resultDiv.style.color = '#dc2626';
+                resultDiv.textContent = 'Please select user type and user';
+                return;
+            }
+            
+            if (!confirm(`Reset password for ${username}?`)) return;
+            
+            fetch('/api/user/reset_password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: username,
+                    user_type: userType,
+                    email: email
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                resultDiv.style.display = 'block';
+                if (data.status === 'success') {
+                    resultDiv.style.backgroundColor = '#d1fae5';
+                    resultDiv.style.color = '#059669';
+                    let msg = `Password reset! Temporary password: ${data.temporary_password}`;
+                    if (data.email_sent) {
+                        msg += ' (Email sent)';
+                    }
+                    resultDiv.innerHTML = `<strong>${msg}</strong><br><small>Please share this password securely with the user.</small>`;
+                } else {
+                    resultDiv.style.backgroundColor = '#fee2e2';
+                    resultDiv.style.color = '#dc2626';
+                    resultDiv.textContent = data.message || 'Failed to reset password';
+                }
+            })
+            .catch(err => {
+                resultDiv.style.display = 'block';
+                resultDiv.style.backgroundColor = '#fee2e2';
+                resultDiv.style.color = '#dc2626';
+                resultDiv.textContent = 'Error: ' + err.message;
+            });
+        }
+
+        function loadData() {
+            fetch('/api/hierarchy')
+                .then(res => res.json())
+                .then(data => {
+                    hierarchyData = data;
+                    renderTree();
+                    updateSelects();
+                    updateStats();
+                });
+        }
+
+        function updateStats() {
+            let adminCount = 0;
+            let traderCount = 0;
+            let clientCount = 0;
+
+            if (hierarchyData.admins) {
+                adminCount = Object.keys(hierarchyData.admins).length;
+                Object.values(hierarchyData.admins).forEach(admin => {
+                    if (admin.traders) {
+                        traderCount += Object.keys(admin.traders).length;
+                        Object.values(admin.traders).forEach(trader => {
+                            if (trader.clients) {
+                                clientCount += trader.clients.length;
+                            }
+                        });
+                    }
+                });
+            }
+
+            document.getElementById('total-admins').textContent = adminCount;
+            document.getElementById('total-traders').textContent = traderCount;
+            document.getElementById('total-clients').textContent = clientCount;
+        }
+
+        function renderTree() {
+            const container = document.getElementById('hierarchy-tree');
+            container.innerHTML = '';
+            container.className = 'hierarchy-container';
+            
+            if (!hierarchyData.admins || Object.keys(hierarchyData.admins).length === 0) {
+                container.innerHTML = '<div style="color:#999; font-style:italic; padding: 20px; text-align: center;">No users found.</div>';
+                return;
+            }
+
+            for (const [admin, data] of Object.entries(hierarchyData.admins)) {
+                const adminCard = document.createElement('div');
+                adminCard.className = 'admin-card';
+                adminCard.ondragover = allowDrop;
+                adminCard.ondrop = (ev) => dropOnAdmin(ev, admin);
+                
+                // Admin Header
+                const adminHeader = document.createElement('div');
+                adminHeader.className = 'admin-header';
+                adminHeader.innerHTML = `
+                    <div style="flex-grow: 1; display: flex; align-items: center; gap: 12px;">
+                        <span class="badge badge-admin">Admin</span> 
+                        <span>${admin}</span>
+                        <span style="font-size: 0.8em; color: #666; font-weight: normal;">${data.email || ''}</span>
+                    </div>
+                    <div>
+                        <button onclick="editAdmin('${admin}', '${data.email || ''}')" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">Edit</button>
+                        <button onclick="removeAdmin('${admin}')" style="width: auto; padding: 4px 8px; font-size: 0.8rem; background-color: #dc3545; margin-left: 5px;">Remove</button>
+                    </div>
+                `;
+                adminCard.appendChild(adminHeader);
+
+                // Trader List Container
+                const traderList = document.createElement('div');
+                traderList.className = 'trader-list';
+
+                const traders = data.traders || {};
+                if (Object.keys(traders).length === 0) {
+                    traderList.innerHTML = '<div style="color:#999; font-style:italic; grid-column: 1/-1;">No traders assigned.</div>';
+                }
+
+                for (const [trader, traderData] of Object.entries(traders)) {
+                    const traderItem = document.createElement('div');
+                    traderItem.className = 'trader-item';
+                    traderItem.draggable = true;
+                    traderItem.ondragstart = (ev) => dragTrader(ev, trader, admin);
+                    traderItem.ondragover = allowDrop;
+                    traderItem.ondrop = (ev) => dropOnTrader(ev, admin, trader);
+                    
+                    // Trader Header
+                    traderItem.innerHTML = `
+                        <div class="trader-header">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="badge badge-trader">Trader</span> ${trader}
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                                <span style="font-size: 0.8em; color: #666; font-weight: normal;">${traderData.email || ''}</span>
+                                <button onclick="removeTrader('${admin}', '${trader}')" style="padding: 2px 6px; font-size: 0.7rem; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">X</button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Client List
+                    const clientList = document.createElement('div');
+                    clientList.className = 'client-list';
+                    
+                    const clients = traderData.clients || [];
+                    
+                    if (clients && clients.length > 0) {
+                        clients.forEach(clientObj => {
+                            const clientName = clientObj.name;
+                            const clientEmail = clientObj.email || '';
+                            
+                            const clientWrapper = document.createElement('div');
+                            clientWrapper.className = 'client-tag'; // Use the class for styling
+                            clientWrapper.draggable = true;
+                            clientWrapper.ondragstart = (ev) => dragClient(ev, clientName, admin, trader);
+                            
+                            clientWrapper.innerHTML = `
+                                <a href="/dashboard/${clientName}" title="${clientEmail}" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 5px; flex-grow: 1;">
+                                    <span class="client-icon"></span>${clientName}
+                                </a>
+                                <span onclick="removeClient('${admin}', '${trader}', '${clientName}')" style="cursor: pointer; margin-left: 8px; font-weight: bold; opacity: 0.6;">&times;</span>
+                            `;
+                            clientList.appendChild(clientWrapper);
+                        });
+                    } else {
+                        clientList.innerHTML = '<div style="font-size:0.8rem; color:#ccc; font-style:italic;">No clients</div>';
+                    }
+
+                    traderItem.appendChild(clientList);
+                    traderList.appendChild(traderItem);
+                }
+
+                adminCard.appendChild(traderList);
+                container.appendChild(adminCard);
+            }
+        }
+
+        function editAdmin(name, currentEmail) {
+            const newEmail = prompt(`Update email for Admin ${name}:`, currentEmail);
+            if (newEmail !== null && newEmail !== currentEmail) {
+                apiCall('/api/update_admin', {name: name, email: newEmail});
+            }
+        }
+
+        function removeAdmin(name) {
+            if (confirm(`Are you sure you want to remove Admin "${name}"? This will also remove all their traders and clients.`)) {
+                apiCall('/api/remove_admin', {name: name});
+            }
+        }
+
+        function removeTrader(admin, name) {
+            if (confirm(`Are you sure you want to remove Trader "${name}" from Admin "${admin}"? This will also remove all their clients.`)) {
+                apiCall('/api/remove_trader', {admin: admin, name: name});
+            }
+        }
+
+        function removeClient(admin, trader, name) {
+            if (confirm(`Are you sure you want to remove Client "${name}"?`)) {
+                apiCall('/api/remove_client', {admin: admin, trader: trader, name: name});
+            }
+        }
+
+        function updateSelects() {
+            const adminSelectT = document.getElementById('admin-select-trader');
+            const adminSelectC = document.getElementById('admin-select-client');
+            
+            // Save current selection
+            const currentValT = adminSelectT.value;
+            const currentValC = adminSelectC.value;
+
+            adminSelectT.innerHTML = '<option value="">Select Admin...</option>';
+            adminSelectC.innerHTML = '<option value="">Select Admin...</option>';
+
+            Object.keys(hierarchyData.admins).forEach(admin => {
+                adminSelectT.add(new Option(admin, admin));
+                adminSelectC.add(new Option(admin, admin));
+            });
+
+            // Restore selection if possible
+            if (currentValT) adminSelectT.value = currentValT;
+            if (currentValC) {
+                adminSelectC.value = currentValC;
+                updateTraderSelect(); // Trigger trader update
+            }
+        }
+
+        // Drag and Drop Functions
+        function dragClient(ev, clientName, oldAdmin, oldTrader) {
+            ev.dataTransfer.setData("type", "client");
+            ev.dataTransfer.setData("clientName", clientName);
+            ev.dataTransfer.setData("oldAdmin", oldAdmin);
+            ev.dataTransfer.setData("oldTrader", oldTrader);
+            ev.stopPropagation();
+        }
+
+        function dragTrader(ev, traderName, oldAdmin) {
+            ev.dataTransfer.setData("type", "trader");
+            ev.dataTransfer.setData("traderName", traderName);
+            ev.dataTransfer.setData("oldAdmin", oldAdmin);
+            ev.stopPropagation();
+        }
+
+        function allowDrop(ev) {
+            ev.preventDefault();
+        }
+
+        function dropOnTrader(ev, newAdmin, newTrader) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const type = ev.dataTransfer.getData("type");
+            
+            if (type === "client") {
+                const clientName = ev.dataTransfer.getData("clientName");
+                const oldAdmin = ev.dataTransfer.getData("oldAdmin");
+                const oldTrader = ev.dataTransfer.getData("oldTrader");
+                
+                if (oldAdmin === newAdmin && oldTrader === newTrader) return;
+                
+                if (confirm(`Are you sure you want to move client "${clientName}" from "${oldTrader}" to "${newTrader}"?`)) {
+                    apiCall('/api/move_client', {
+                        client_name: clientName,
+                        old_admin: oldAdmin,
+                        old_trader: oldTrader,
+                        new_admin: newAdmin,
+                        new_trader: newTrader
+                    });
+                }
+            }
+        }
+
+        function dropOnAdmin(ev, newAdmin) {
+            ev.preventDefault();
+            const type = ev.dataTransfer.getData("type");
+            
+            if (type === "trader") {
+                const traderName = ev.dataTransfer.getData("traderName");
+                const oldAdmin = ev.dataTransfer.getData("oldAdmin");
+                
+                if (oldAdmin === newAdmin) return;
+                
+                if (confirm(`Are you sure you want to move trader "${traderName}" from "${oldAdmin}" to "${newAdmin}"?`)) {
+                    apiCall('/api/move_trader', {
+                        trader_name: traderName,
+                        old_admin: oldAdmin,
+                        new_admin: newAdmin
+                    });
+                }
+            }
+        }
+
+        function updateTraderSelect() {
+            const adminName = document.getElementById('admin-select-client').value;
+            const traderSelect = document.getElementById('trader-select-client');
+            traderSelect.innerHTML = '<option value="">Select Trader...</option>';
+            
+            if (adminName && hierarchyData.admins[adminName]) {
+                Object.keys(hierarchyData.admins[adminName].traders).forEach(trader => {
+                    traderSelect.add(new Option(trader, trader));
+                });
+            }
+        }
+
+        async function apiCall(endpoint, body) {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                loadData(); // Refresh UI
+                // Clear inputs
+                document.getElementById('new-admin-name').value = '';
+                document.getElementById('new-trader-name').value = '';
+                document.getElementById('new-client-name').value = '';
+            } else {
+                alert('Error: ' + data.message);
+            }
+        }
+
+        function addAdmin() {
+            const name = document.getElementById('new-admin-name').value;
+            if(name) apiCall('/api/add_admin', {name});
+        }
+
+        function addTrader() {
+            const admin = document.getElementById('admin-select-trader').value;
+            const name = document.getElementById('new-trader-name').value;
+            if(admin && name) apiCall('/api/add_trader', {admin, name});
+        }
+
+        function addClient() {
+            const admin = document.getElementById('admin-select-client').value;
+            const trader = document.getElementById('trader-select-client').value;
+            const name = document.getElementById('new-client-name').value;
+            if(admin && trader && name) apiCall('/api/add_client', {admin, trader, name});
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

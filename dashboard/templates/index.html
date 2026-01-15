@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Dashboard - MT5 Hedging Engine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <a href="javascript:history.back()" class="back-link">←</a>
+                <h1>Trading Performance Dashboard</h1>
+                <span class="version-badge">v3.0 USA</span>
+                {% if client_id %}
+                <span class="client-badge">{{ client_id }}</span>
+                {% endif %}
+            </div>
+            <div class="status">Last Updated: <span id="last-updated" class="last-updated-text">Never</span></div>
+        </header>
+        
+        <div class="tabs">
+            <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
+            <button class="tab-btn" onclick="openTab('stats')">Stats</button>
+            <button class="tab-btn" onclick="openTab('hedge')">Hedge Accounts</button>
+            <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
+            <button class="tab-btn" onclick="openTab('vps')">VPS</button>
+        </div>
+
+        <!-- Evaluations Tab -->
+        <div id="evaluations" class="tab-content active">
+            <div class="controls" style="display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
+                <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
+                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()" checked>
+                    Show Active Only
+                </label>
+            </div>
+            <div class="table-container">
+                <table id="evaluations-table" class="wide-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">#</th>
+                            <th colspan="4" class="group-header group-header-blue">EVALUATION INFO</th>
+                            <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
+                            <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
+                            <th colspan="31" class="group-header group-header-purple">FARMING PHASE</th>
+                        </tr>
+                        <tr>
+                            <!-- EVALUATION INFO (0-3) -->
+                            <th>Prop Firm</th>
+                            <th>Account Size</th>
+                            <th>Date Purchased</th>
+                            <th>Fee</th>
+                            
+                            <!-- EVALUATION PHASE (4-13) -->
+                            <th>Date Started</th>
+                            <th>Date Ended</th>
+                            <th>Status P1</th>
+                            <th>Account #</th>
+                            <th>Hedge Result 1</th>
+                            <th>Hedge Result 2</th>
+                            <th>Hedge Result 3</th>
+                            <th>Hedge Result 4</th>
+                            <th>Hedge Result 5</th>
+                            <th>Hedge Net</th>
+
+                            <!-- FUNDED PHASE (14-34) -->
+                            <th>Account #</th>
+                            <th>Activation Fee</th>
+                            <th>Date Started</th>
+                            <th>Date Ended</th>
+                            <th>Status</th>
+                            <th>Hedge Result 1</th>
+                            <th>Hedge Result 2</th>
+                            <th>Hedge Result 3</th>
+                            <th>Hedge Result 4</th>
+                            <th>Hedge Result 5</th>
+                            <th>Hedge Result 6</th>
+                            <th>Hedge Result 7</th>
+                            <th>Hedge Net</th>
+                            <th>Payout 1</th>
+                            <th>Date 1</th>
+                            <th>Payout 2</th>
+                            <th>Date 2</th>
+                            <th>Payout 3</th>
+                            <th>Date 3</th>
+                            <th>Payout 4</th>
+                            <th>Date 4</th>
+
+                            <!-- FARMING PHASE (35-65) -->
+                            <th>Farming Net</th>
+                            <th>Prop Day 1</th>
+                            <th>Hedge Day 1</th>
+                            <th>Prop Day 2</th>
+                            <th>Hedge Day 2</th>
+                            <th>Prop Day 3</th>
+                            <th>Hedge Day 3</th>
+                            <th>Prop Day 4</th>
+                            <th>Hedge Day 4</th>
+                            <th>Prop Day 5</th>
+                            <th>Hedge Day 5</th>
+                            <th>Prop Day 6</th>
+                            <th>Hedge Day 6</th>
+                            <th>Prop Day 7</th>
+                            <th>Hedge Day 7</th>
+                            <th>Prop Day 8</th>
+                            <th>Hedge Day 8</th>
+                            <th>Prop Day 9</th>
+                            <th>Hedge Day 9</th>
+                            <th>Prop Day 10</th>
+                            <th>Hedge Day 10</th>
+                            <th>Prop Day 11</th>
+                            <th>Hedge Day 11</th>
+                            <th>Prop Day 12</th>
+                            <th>Hedge Day 12</th>
+                            <th>Prop Day 13</th>
+                            <th>Hedge Day 13</th>
+                            <th>Prop Day 14</th>
+                            <th>Hedge Day 14</th>
+                            <th>Prop Day 15</th>
+                            <th>Hedge Day 15</th>
+                        </tr>
+                    </thead>
+                    <tbody id="evaluations-body">
+                        <!-- Rows will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="no-evaluations-msg" class="no-data no-data-hidden">No evaluations found</div>
+            <div class="controls" style="margin-top: 20px;">
+                <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
+            </div>
+        </div>
+
+        <!-- Stats Tab -->
+        <div id="stats" class="tab-content">
+            <div id="stats-summary">
+                <!-- Cards will be injected here -->
+            </div>
+
+            <h3>Trade History</h3>
+            <table id="history-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Ticket</th>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Volume</th>
+                        <th>Open Time</th>
+                        <th>Open Price</th>
+                        <th>Close Time</th>
+                        <th>Close Price</th>
+                        <th>Net Profit</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body"></tbody>
+            </table>
+            <div id="no-history-msg" class="no-data">Waiting for data...</div>
+        </div>
+
+        <!-- Hedge Accounts Tab (Using previous Open Positions here) -->
+        <div id="hedge" class="tab-content">
+            <h3>Open Positions</h3>
+            <table id="positions-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Ticket</th>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Volume</th>
+                        <th>Open Price</th>
+                        <th>Current Price</th>
+                        <th>S/L</th>
+                        <th>T/P</th>
+                        <th>Swap</th>
+                        <th>Profit</th>
+                    </tr>
+                </thead>
+                <tbody id="positions-body"></tbody>
+            </table>
+            <div id="no-positions-msg" class="no-data">No open positions</div>
+        </div>
+
+        <!-- Prop Firm Accounts Tab -->
+        <div id="prop" class="tab-content">
+            <div class="no-data">Prop Firm Accounts Module - Coming Soon</div>
+        </div>
+
+        <!-- VPS Tab -->
+        <div id="vps" class="tab-content">
+            <div class="no-data">VPS Management Module - Coming Soon</div>
+        </div>
+    </div>
+
+    <div id="note-editor" class="note-editor">
+        <h4>Edit Note</h4>
+        <textarea id="note-text" placeholder="Enter note..."></textarea>
+        <div class="note-editor-buttons">
+            <button class="btn-xs btn-delete" onclick="deleteNote()">Delete</button>
+            <button class="btn-xs btn-cancel" onclick="closeNoteEditor()">Cancel</button>
+            <button class="btn-xs btn-save" onclick="saveNote()">Save</button>
+        </div>
+    </div>
+
+    <script>
+        const CLIENT_ID = "{{ client_id }}";
+        let currentData = {};
+        let isEditing = false;
+        let currentNoteTarget = null; // { index, key }
+
+        function openTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.getAttribute('onclick').includes(tabName)) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        function updateDashboard() {
+            // Prevent update if user is interacting
+            if (document.querySelector('.cell-input:focus')) return;
+            if (document.querySelector('.dropdown-menu.show')) return;
+            if (isEditing) return;
+
+            const url = CLIENT_ID ? `/api/data?client_id=${CLIENT_ID}` : '/api/data';
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    currentData = data;
+                    document.getElementById('last-updated').textContent = data.last_updated;
+                    
+                    renderEvaluationsTable();
+                    renderStats(data);
+                    renderPositions(data);
+                    renderHistory(data);
+                    
+                    // Update Dropdown Options if available
+                    if (data.dropdown_options) {
+                        Object.assign(dropdownOptions, data.dropdown_options);
+                    }
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        function renderEvaluationsTable() {
+            const evalBody = document.getElementById('evaluations-body');
+            const noEvalMsg = document.getElementById('no-evaluations-msg');
+            const showActiveOnly = document.getElementById('activeFilter').checked;
+            
+            evalBody.innerHTML = '';
+            
+            if (currentData.evaluations && currentData.evaluations.length > 0) {
+                let visibleCount = 0;
+                currentData.evaluations.forEach((ev, index) => {
+                    // Filter Logic
+                    if (showActiveOnly) {
+                        const statusP1 = (ev['Status P1'] || '').toLowerCase();
+                        const statusFunded = (ev['Status'] || '').toLowerCase();
+                        
+                        // Check P1 (Evaluation) Inactivity
+                        // Hide if Failed or Deleted
+                        const p1Inactive = 
+                            statusP1.includes('fail') || 
+                            statusP1.includes('deleted');
+
+                        // Check Funded Inactivity
+                        // Hide if Failed, Deleted, Completed, Breached, Closed, or Payout
+                        const fundedInactive = 
+                            statusFunded.includes('fail') || 
+                            statusFunded.includes('breach') || 
+                            statusFunded.includes('closed') || 
+                            statusFunded.includes('completed') || 
+                            statusFunded.includes('payout') ||
+                            statusFunded.includes('deleted');
+                            
+                        if (p1Inactive || fundedInactive) return;
+                    }
+                    visibleCount++;
+
+                    const row = document.createElement('tr');
+                    const getVal = (key) => ev[key] || '';
+                    
+                    // Helper to add note attributes
+                    const addNoteAttrs = (key) => {
+                        const note = ev._notes && ev._notes[key];
+                        const noteClass = note ? 'has-note' : '';
+                        const noteTitle = note ? `title="${note}"` : '';
+                        const contextMenu = `oncontextmenu="openNoteEditor(event, ${index}, '${key}')"`;
+                        return { cls: noteClass, title: noteTitle, ctx: contextMenu };
+                    };
+
+                    // Wrapper for cell content
+                    const cell = (content, key) => {
+                        const { cls, title, ctx } = addNoteAttrs(key);
+                        return `<td class="${cls}" ${title} ${ctx}>${content}</td>`;
+                    };
+
+                    // Date Purchased Logic: 
+                    // If Account # exists, it's an extracted/imported row -> Read-only Text.
+                    // If no Account #, it's a manual entry -> Editable Input.
+                    const isExtractedRow = !!getVal('Account #');
+                    const datePurchased = getVal('Date Purchased');
+                    const datePurchasedContent = isExtractedRow ? datePurchased : getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased');
+
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm'), 'Prop Firm')}
+                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size'), 'Account Size')}
+                        ${cell(datePurchasedContent, 'Date Purchased')}
+                        ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee'), 'Fee')}
+                        
+                        <!-- Evaluation Phase -->
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started'), 'Date Started')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended'), 'Date Ended')}
+                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status', index, 'Status P1', false), 'Status P1')}
+                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #'), 'Account #')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1'), 'Hedge Result 1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2'), 'Hedge Result 2')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3'), 'Hedge Result 3')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4'), 'Hedge Result 4')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5'), 'Hedge Result 5')}
+                        ${cell(getInputHtml(getVal('Hedge Net'), 'text', index, 'Hedge Net'), 'Hedge Net')}
+
+                        <!-- Funded Phase -->
+                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1'), 'Account #.1')}
+                        ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee'), 'Activation Fee')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1'), 'Date Started.1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1'), 'Date Ended.1')}
+                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', false), 'Status')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1'), 'Hedge Result 1.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1'), 'Hedge Result 2.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1'), 'Hedge Result 3.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4.1'), 'text', index, 'Hedge Result 4.1'), 'Hedge Result 4.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1'), 'Hedge Result 5.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6'), 'Hedge Result 6')}
+                        ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7'), 'Hedge Result 7')}
+                        ${cell(getInputHtml(getVal('Hedge Net.1'), 'text', index, 'Hedge Net.1'), 'Hedge Net.1')}
+                        ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1'), 'Payout 1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1'), 'Date 1')}
+                        ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2'), 'Payout 2')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2'), 'Date 2')}
+                        ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3'), 'Payout 3')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3'), 'Date 3')}
+                        ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4'), 'Payout 4')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4'), 'Date 4')}
+
+                        <!-- Farming Phase -->
+                        ${cell(getInputHtml(getVal('Farming Net'), 'text', index, 'Farming Net'), 'Farming Net')}
+                        ${generateDayColumns(ev, cell, index)}
+                    `;
+                    evalBody.appendChild(row);
+                });
+                
+                noEvalMsg.style.display = visibleCount > 0 ? 'none' : 'block';
+                if (visibleCount === 0 && currentData.evaluations.length > 0) {
+                    noEvalMsg.textContent = "No active accounts found.";
+                } else {
+                    noEvalMsg.textContent = "No evaluations found";
+                }
+            } else {
+                noEvalMsg.style.display = 'block';
+            }
+        }
+
+        function openNoteEditor(e, index, key) {
+            e.preventDefault();
+            currentNoteTarget = { index, key };
+            
+            const editor = document.getElementById('note-editor');
+            const textarea = document.getElementById('note-text');
+            
+            // Load existing note
+            const note = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key] || '';
+            textarea.value = note;
+            
+            // Position editor
+            editor.style.display = 'block';
+            editor.style.left = `${e.pageX}px`;
+            editor.style.top = `${e.pageY}px`;
+            
+            // Adjust if off screen
+            const rect = editor.getBoundingClientRect();
+            if (rect.right > window.innerWidth) {
+                editor.style.left = `${window.innerWidth - rect.width - 20}px`;
+            }
+            
+            textarea.focus();
+            isEditing = true;
+        }
+
+        function closeNoteEditor() {
+            document.getElementById('note-editor').style.display = 'none';
+            currentNoteTarget = null;
+            isEditing = false;
+        }
+
+        function saveNote() {
+            if (!currentNoteTarget) return;
+            const { index, key } = currentNoteTarget;
+            const note = document.getElementById('note-text').value;
+            
+            if (!currentData.evaluations[index]._notes) {
+                currentData.evaluations[index]._notes = {};
+            }
+            
+            if (note.trim()) {
+                currentData.evaluations[index]._notes[key] = note;
+            } else {
+                delete currentData.evaluations[index]._notes[key];
+            }
+            
+            saveData();
+            renderEvaluationsTable();
+            closeNoteEditor();
+        }
+
+        function deleteNote() {
+            document.getElementById('note-text').value = '';
+            saveNote();
+        }
+
+        // Close editor when clicking outside
+        document.addEventListener('click', function(e) {
+            const editor = document.getElementById('note-editor');
+            if (editor.style.display === 'block' && !editor.contains(e.target) && !e.target.closest('td')) {
+                closeNoteEditor();
+            }
+        });
+
+        function formatDateForInput(dateStr) {
+            if (!dateStr) return '';
+            
+            // Ensure string and trim whitespace
+            dateStr = String(dateStr).trim();
+            
+            // Check if already in YYYY-MM-DD
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+            
+            // Handle MM/DD/YY or MM/DD/YYYY
+            if (dateStr.includes('/')) {
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    let [m, d, y] = parts;
+                    m = m.padStart(2, '0');
+                    d = d.padStart(2, '0');
+                    if (y.length === 2) y = '20' + y; // Assume 20xx
+                    return `${y}-${m}-${d}`;
+                }
+            }
+            
+            // Handle MM-DD-YY or MM-DD-YYYY
+            if (dateStr.includes('-')) {
+                 const parts = dateStr.split('-');
+                 if (parts.length === 3) {
+                     // If first part is 4 digits, assume YYYY-MM-DD
+                     if (parts[0].length === 4) return dateStr;
+                     
+                     let [m, d, y] = parts;
+                     m = m.padStart(2, '0');
+                     d = d.padStart(2, '0');
+                     if (y.length === 2) y = '20' + y;
+                     return `${y}-${m}-${d}`;
+                 }
+            }
+            
+            // Fallback: Try Date object
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+                return date.toISOString().split('T')[0];
+            }
+            
+            console.warn('Failed to format date:', dateStr);
+            return '';
+        }
+
+        function generateDayColumns(ev, cell, index) {
+            let html = '';
+            for (let i = 1; i <= 15; i++) {
+                html += cell(getInputHtml(ev[`Prop Day ${i}`] || '', 'text', index, `Prop Day ${i}`), `Prop Day ${i}`);
+                html += cell(getInputHtml(ev[`Hedge Day ${i}`] || '', 'text', index, `Hedge Day ${i}`), `Hedge Day ${i}`);
+            }
+            return html;
+        }
+
+        function renderStats(data) {
+            const statsContainer = document.getElementById('stats-summary');
+            if (data.statistics) {
+                const s = data.statistics;
+                statsContainer.innerHTML = `
+                            <div class="stats-grid">
+                                <!-- Profitability - Completed -->
+                                <div class="card">
+                                    <div class="card-header">Profitability - Completed</div>
+                                    <table class="summary-table">
+                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(s.profitability_completed.challenge_fees)}</td></tr>
+                                        <tr><td>Hedging Results</td><td class="text-right">${formatMoney(s.profitability_completed.hedging_results)}</td></tr>
+                                        <tr><td>Farming Results</td><td class="text-right">${formatMoney(s.profitability_completed.farming_results)}</td></tr>
+                                        <tr><td>Payouts</td><td class="text-right">${formatMoney(s.profitability_completed.payouts)}</td></tr>
+                                        <tr><td>Net Profit</td><td class="text-right">${formatMoney(s.profitability_completed.net_profit)}</td></tr>
+                                    </table>
+                                </div>
+
+                                <!-- Expected Value -->
+                                <div class="card">
+                                    <div class="card-header">Expected Value - Completed</div>
+                                    <table class="summary-table">
+                                        <tr><td>EV</td><td class="text-right">${formatMoney(s.expected_value)}</td></tr>
+                                    </table>
+                                </div>
+
+                                <!-- Weekly Hedging Review -->
+                                <div class="card">
+                                    <div class="card-header">Weekly Hedging Review</div>
+                                    <table class="summary-table">
+                                        <tr><td>Total Deposits</td><td class="text-right">${formatMoney(s.hedging_review.total_deposits)}</td></tr>
+                                        <tr><td>Total Withdrawals</td><td class="text-right">${formatMoney(s.hedging_review.total_withdrawals)}</td></tr>
+                                        <tr><td>Current Balance</td><td class="text-right">${formatMoney(s.hedging_review.current_balance)}</td></tr>
+                                        <tr><td>Actual Hedging Results</td><td class="text-right">${formatMoney(s.hedging_review.actual_hedging_results)}</td></tr>
+                                        <tr><td>Sheet Hedging Results</td><td class="text-right">${formatMoney(s.hedging_review.sheet_hedging_results)}</td></tr>
+                                        <tr><td>Discrepancy</td><td class="text-right">${formatMoney(s.hedging_review.discrepancy)}</td></tr>
+                                    </table>
+                                </div>
+
+                                <!-- Current Cashflow - In Progress -->
+                                <div class="card">
+                                    <div class="card-header">Current Cashflow - In Progress</div>
+                                    <table class="summary-table">
+                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(s.cashflow_inprogress.challenge_fees)}</td></tr>
+                                        <tr><td>Hedging Results</td><td class="text-right">${formatMoney(s.cashflow_inprogress.hedging_results)}</td></tr>
+                                        <tr><td>Farming Results</td><td class="text-right">${formatMoney(s.cashflow_inprogress.farming_results)}</td></tr>
+                                        <tr><td>Payouts</td><td class="text-right">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
+                                        <tr><td>Net Profit</td><td class="text-right">${formatMoney(s.cashflow_inprogress.net_profit)}</td></tr>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Evaluation Data Table -->
+                            <div class="table-container">
+                                <div class="card-header success">EVALUATION DATA</div>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Prop Firm</th>
+                                            <th>Total Running</th>
+                                            <th>Not Started</th>
+                                            <th>Ongoing</th>
+                                            <th>Total Passed</th>
+                                            <th>Total Failed</th>
+                                            <th>Avg Net Failed</th>
+                                            <th>Funded Rate</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${Object.keys(s.evaluation_data).map(firm => {
+                                            const d = s.evaluation_data[firm];
+                                            return `
+                                            <tr>
+                                                <td>${firm}</td>
+                                                <td>${d.total_running}</td>
+                                                <td>${d.not_started}</td>
+                                                <td>${d.ongoing}</td>
+                                                <td>${d.total_passed}</td>
+                                                <td>${d.total_failed}</td>
+                                                <td>${formatMoney(d.avg_net_failed)}</td>
+                                                <td>${d.funded_rate.toFixed(0)}%</td>
+                                            </tr>`;
+                                        }).join('')}
+                                        <tr class="font-bold" style="background:#f0f0f0;">
+                                            <td>Totals</td>
+                                            <td>${s.eval_totals.total_running}</td>
+                                            <td>${s.eval_totals.not_started}</td>
+                                            <td>${s.eval_totals.ongoing}</td>
+                                            <td>${s.eval_totals.total_passed}</td>
+                                            <td>${s.eval_totals.total_failed}</td>
+                                            <td>${formatMoney(s.eval_totals.avg_net_failed)}</td>
+                                            <td>${s.eval_totals.funded_rate.toFixed(0)}%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Funded Data Table -->
+                            <div class="table-container">
+                                <div class="card-header danger">FUNDED DATA</div>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Prop Firm</th>
+                                            <th>Not Started</th>
+                                            <th>Ongoing</th>
+                                            <th>Failed</th>
+                                            <th>Completed</th>
+                                            <th>Avg Net Failed</th>
+                                            <th>Avg Net Completed</th>
+                                            <th>Total Funding</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${Object.keys(s.funded_data).map(firm => {
+                                            const d = s.funded_data[firm];
+                                            return `
+                                            <tr>
+                                                <td>${firm}</td>
+                                                <td>${d.not_started}</td>
+                                                <td>${d.ongoing}</td>
+                                                <td>${d.failed}</td>
+                                                <td>${d.completed}</td>
+                                                <td>${formatMoney(d.avg_net_failed)}</td>
+                                                <td>${formatMoney(d.avg_net_completed)}</td>
+                                                <td>${formatMoney(d.total_funding)}</td>
+                                            </tr>`;
+                                        }).join('')}
+                                        <tr class="font-bold" style="background:#f0f0f0;">
+                                            <td>Totals</td>
+                                            <td>${s.funded_totals.not_started}</td>
+                                            <td>${s.funded_totals.ongoing}</td>
+                                            <td>${s.funded_totals.failed}</td>
+                                            <td>${s.funded_totals.completed}</td>
+                                            <td>${formatMoney(s.funded_totals.avg_net_failed)}</td>
+                                            <td>${formatMoney(s.funded_totals.avg_net_completed)}</td>
+                                            <td>${formatMoney(s.funded_totals.total_funding)}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+            }
+        }
+
+        function renderPositions(data) {
+            const posBody = document.getElementById('positions-body');
+            const noPosMsg = document.getElementById('no-positions-msg');
+            const posTable = document.getElementById('positions-table');
+            
+            posBody.innerHTML = '';
+            if (data.positions && data.positions.length > 0) {
+                noPosMsg.style.display = 'none';
+                posTable.style.display = 'table';
+                data.positions.forEach((pos, index) => {
+                    const row = document.createElement('tr');
+                    const profitClass = parseFloat(pos.profit) >= 0 ? 'profit-positive' : 'profit-negative';
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${pos.ticket}</td>
+                        <td>${pos.symbol}</td>
+                        <td>${pos.type}</td>
+                        <td>${pos.volume}</td>
+                        <td>${pos.open_price}</td>
+                        <td>${pos.current_price}</td>
+                        <td>${pos.sl}</td>
+                        <td>${pos.tp}</td>
+                        <td>${pos.swap}</td>
+                        <td class="${profitClass}">${pos.profit}</td>
+                    `;
+                    posBody.appendChild(row);
+                });
+            } else {
+                noPosMsg.style.display = 'block';
+                posTable.style.display = 'none';
+            }
+        }
+
+        function renderHistory(data) {
+            const histBody = document.getElementById('history-body');
+            const noHistMsg = document.getElementById('no-history-msg');
+            const histTable = document.getElementById('history-table');
+            
+            histBody.innerHTML = '';
+            if (data.deals && data.deals.length > 0) {
+                noHistMsg.style.display = 'none';
+                histTable.style.display = 'table';
+                data.deals.forEach((deal, index) => {
+                    const row = document.createElement('tr');
+                    const profitClass = parseFloat(deal.net_profit) >= 0 ? 'profit-positive' : 'profit-negative';
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${deal.position_id}</td>
+                        <td>${deal.symbol}</td>
+                        <td>${deal.type}</td>
+                        <td>${deal.volume}</td>
+                        <td>${deal.open_time}</td>
+                        <td>${deal.open_price}</td>
+                        <td>${deal.close_time}</td>
+                        <td>${deal.close_price}</td>
+                        <td class="${profitClass}">${deal.net_profit}</td>
+                    `;
+                    histBody.appendChild(row);
+                });
+            } else {
+                noHistMsg.style.display = 'block';
+                histTable.style.display = 'none';
+            }
+        }
+
+        function formatMoney(value) {
+            if (value === undefined || value === null) return '---';
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+        }
+
+        const dropdownOptions = {
+            'Prop Firm': ['Nova', 'Next Step', 'Maven', 'Quantec', 'Glow Node', 'Other'],
+            'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
+            'Status': ['Not Started', 'In Progress', 'TP', 'FAIL', 'PASS', 'COMPLETE', 'PAYOUT']
+        };
+
+        function getDropdownHtml(value, type, index, key, readOnly = false) {
+            if (readOnly) {
+                let colorStyle = "";
+                if (type === 'Status') {
+                    const v = (value || '').toLowerCase();
+                    if (v.includes('active') || v.includes('progress') || v.includes('pass')) colorStyle = "color: #27ae60;"; // Greenish
+                    else if (v.includes('fail') || v.includes('breach')) colorStyle = "color: #c0392b;"; // Red
+                    else if (v.includes('tp') || v.includes('payout')) colorStyle = "color: #f39c12;"; // Orange
+                    else if (v.includes('complete')) colorStyle = "color: #8e44ad;"; // Purple
+                }
+                return `<span style="${colorStyle}">${value}</span>`;
+            }
+
+            const options = dropdownOptions[type] || [];
+            const items = options.map(opt => `<div class="dropdown-item" onclick="selectItem(event, this, ${index}, '${key}')">${opt}</div>`).join('');
+            
+            let colorStyle = "";
+            if (type === 'Status') {
+                const v = (value || '').toLowerCase();
+                if (v.includes('active') || v.includes('progress') || v.includes('pass')) colorStyle = "color: #27ae60;";
+                else if (v.includes('fail') || v.includes('breach')) colorStyle = "color: #c0392b;";
+                else if (v.includes('tp') || v.includes('payout')) colorStyle = "color: #f39c12;";
+                else if (v.includes('complete')) colorStyle = "color: #8e44ad;";
+            }
+
+            return `
+                <div class="cell-dropdown" onclick="toggleMenu(event, this)" style="${colorStyle}">
+                    <span class="selected-value">${value || 'Select'}</span>
+                    <div class="dropdown-menu">
+                        ${items}
+                    </div>
+                </div>
+            `;
+        }
+
+        function getInputHtml(value, type, index, key, readOnly = false) {
+            const readOnlyAttr = readOnly ? 'readonly' : '';
+            const style = readOnly ? 'background-color: #f9f9f9; cursor: not-allowed;' : '';
+            return `<input type="${type}" class="cell-input" value="${value}" onchange="handleInputChange(${index}, '${key}', this.value)" ${readOnlyAttr} style="${style}">`;
+        }
+
+        function toggleMenu(e, dropdown) {
+            e.stopPropagation();
+            document.querySelectorAll('.dropdown-menu.show').forEach(m => {
+                if (m.parentElement !== dropdown) m.classList.remove('show');
+            });
+            const menu = dropdown.querySelector('.dropdown-menu');
+            if (menu) menu.classList.toggle('show');
+        }
+
+        function selectItem(e, item, index, key) {
+            e.stopPropagation();
+            const dropdown = item.parentElement.parentElement;
+            const valueSpan = dropdown.querySelector('.selected-value');
+            const newValue = item.innerText;
+            
+            valueSpan.innerText = newValue;
+            item.parentElement.classList.remove('show');
+            
+            handleInputChange(index, key, newValue);
+        }
+
+        function handleInputChange(index, key, value) {
+            if (!currentData.evaluations[index]) return;
+            currentData.evaluations[index][key] = value;
+            saveData();
+        }
+
+        function addAccount() {
+            if (!currentData.evaluations) currentData.evaluations = [];
+            currentData.evaluations.push({
+                "Prop Firm": "Nova",
+                "Account Size": "$100,000",
+                "Date Purchased": "",
+                "Fee": "0"
+            });
+            renderEvaluationsTable();
+            saveData();
+        }
+
+        function saveData() {
+            if (!currentData.identity) {
+                currentData.identity = {};
+            }
+            if (CLIENT_ID) {
+                currentData.identity.client = CLIENT_ID;
+            }
+
+            fetch('/api/update_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(currentData),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Data saved');
+            })
+            .catch((error) => {
+                console.error('Error saving data:', error);
+            });
+        }
+
+        document.addEventListener('click', function() {
+            document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
+        });
+
+        setInterval(updateDashboard, 2000);
+        updateDashboard();
+    </script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+{
+    "super_admin": {
+        "name": "baller",
+        "email": "ballerquotesvpf@gmail.com"
+    },
+    "admins": {
+        "Philip": {
+            "email": "tangsphilip@gmail.com",
+            "traders": {
+                "Philip": {
+                    "email": "tangsphilip@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Chris",
+                            "email": "chris@blueedgefinancial.com",
+                            "category": "BEF"
+                        },
+                        {
+                            "name": "Joe",
+                            "email": "joehickenfpf@gmail.com",
+                            "category": "Private"
+                        },
+                        {
+                            "name": "Davy",
+                            "email": "davyhickenfpf@gmail.com",
+                            "category": "Private"
+                        },
+                        {
+                            "name": "Soklay",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Tyler",
+                            "email": "tyler.arthur.turner@gmail.com",
+                            "category": "Private"
+                        }
+                    ]
+                }
+            }
+        },
+        "Max": {
+            "email": "odhiambovincentmax@gmail.com",
+            "traders": {
+                "Max": {
+                    "email": "odhiambovincentmax@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Tsubasa",
+                            "email": "tsubasa.mnb@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Watkins",
+                            "email": "jpw.northstar77@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Rob",
+                            "email": "berobsfundsok@gmail.com",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Carol": {
+                    "email": "carolmisoy@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Ariel",
+                            "email": "ariel@blueedgefinancial.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Josh B.",
+                            "email": "josh.blackman.investing@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Merrison (Josh\u2019s KYC)",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Jake Lloyd",
+                            "email": "jacoblloyd1214@gmail.com",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Dennis": {
+                    "email": "dennismuthee.dm@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Bec",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Nitin",
+                            "email": "Nitinmalhotra20@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Brian S.",
+                            "email": "bshore17@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Jason",
+                            "email": "jasontracy724@gmail.com",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Hillary": {
+                    "email": "litalihillary@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Ian",
+                            "email": "vpfianh@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Kevin W.",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Marcus",
+                            "email": "turnermarcus60@gmail.com",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Marion": {
+                    "email": "marionnyika00@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Grzegorz",
+                            "email": "fxglobaltrust@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Andrew",
+                            "email": "mackayfutures@gmail.com",
+                            "category": ""
+                        }
+                    ]
+                }
+            }
+        },
+        "Samuel": {
+            "email": "tangarasamuel18@gmail.com",
+            "traders": {
+                "Samuel": {
+                    "email": "tangarasamuel18@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Nikki",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Jon",
+                            "email": "jonathon_rylatt@yahoo.com",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Kelvin": {
+                    "email": "ocharokevinraul17@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Cole",
+                            "email": "goodwin.icon@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Ed",
+                            "email": "302shmed@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Thak",
+                            "email": "thakmano2@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Steven",
+                            "email": "stevefishbach@gmail.com",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Fred": {
+                    "email": "Leexfredleex@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Sagen",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Aaron",
+                            "email": "millearron1231@icloud.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Jono",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Alex M.",
+                            "email": "mostertalex8@gmail.com",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Oscar": {
+                    "email": "odhiambooscar438@gmail.com",
+                    "clients": [
+                        {
+                            "name": "J-mark",
+                            "email": "traderjmark@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Barry",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Daniel P.",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Halli",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Amber ",
+                            "email": "",
+                            "category": ""
+                        }
+                    ]
+                },
+                "Hesbon": {
+                    "email": "hezimstingofficial@gmail.com",
+                    "clients": [
+                        {
+                            "name": "Taras",
+                            "email": "taras@anatsko.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "Nate",
+                            "email": "natetrade123456@gmail.com",
+                            "category": ""
+                        },
+                        {
+                            "name": "David S.",
+                            "email": "",
+                            "category": ""
+                        },
+                        {
+                            "name": "Reece",
+                            "email": "reecewebb758@outlook.com",
+                            "category": ""
+                        }
+                    ]
+                }
+            }
+        }
+    }
+}

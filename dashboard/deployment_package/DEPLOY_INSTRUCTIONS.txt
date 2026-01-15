@@ -1,0 +1,61 @@
+
+DEPLOYMENT INSTRUCTIONS
+=======================
+
+1. CREATE PYTHONANYWHERE ACCOUNT
+   - Go to https://www.pythonanywhere.com
+   - Sign up for FREE account
+   - Remember your username (e.g., "harrytrader")
+
+2. UPLOAD FILES
+   - Go to "Files" tab
+   - Create directory: /home/yourusername/MT5Dashboard
+   - Upload ALL files from this deployment_package folder
+
+3. INSTALL DEPENDENCIES
+   - Go to "Consoles" tab
+   - Start a "Bash" console
+   - Run:
+     cd MT5Dashboard
+     pip3.10 install --user -r requirements.txt
+
+4. SET ADMIN PASSWORD
+   - In the Bash console:
+     echo 'export ADMIN_PASSWORD="YourSecurePassword123"' >> ~/.bashrc
+     source ~/.bashrc
+
+5. CREATE WEB APP
+   - Go to "Web" tab
+   - Click "Add a new web app"
+   - Choose "Flask" -> Python 3.10
+   - Set source code: /home/yourusername/MT5Dashboard
+
+6. CONFIGURE WSGI
+   - Click "WSGI configuration file" link
+   - Replace contents with:
+
+import sys
+import os
+
+# Add project directory
+project_home = '/home/yourusername/MT5Dashboard'
+if project_home not in sys.path:
+    sys.path = [project_home] + sys.path
+
+# Set admin password
+os.environ['ADMIN_PASSWORD'] = 'YourSecurePassword123'
+
+# Import Flask app
+from dashboard.app import app as application
+
+7. RELOAD WEB APP
+   - Click green "Reload" button
+   - Visit: https://yourusername.pythonanywhere.com
+
+8. GENERATE API KEYS (from your local machine)
+   - Run: python dashboard/manage_api_keys.py
+   - URL: https://yourusername.pythonanywhere.com
+   - Password: YourSecurePassword123
+   - Generate keys for each trader
+
+DONE! Your dashboard is now live.

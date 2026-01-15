@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Database
+*.db
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets & Config
+.env
+*.env
+api_keys.json
+
+# Logs & Output
+*.log
+output*.txt
+checkfees.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment artifacts
+*.zip

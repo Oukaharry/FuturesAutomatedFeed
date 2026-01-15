@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Overview - MT5 Hedging Engine</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --bg-color: #f1f5f9;
+            --card-bg: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --accent-color: #2563eb;
+            --border-color: #e2e8f0;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 40px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+        }
+
+        .admin-section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        .admin-header {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .admin-badge {
+            background: #eff6ff;
+            color: #1d4ed8;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .trader-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .trader-card {
+            background: #f8fafc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .trader-name {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .trader-badge {
+            background: #ecfdf5;
+            color: #047857;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+        }
+
+        .client-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .client-item {
+            margin-bottom: 8px;
+        }
+
+        .client-link {
+            display: block;
+            padding: 8px 12px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .client-link:hover {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+            transform: translateX(4px);
+        }
+
+        .arrow {
+            font-size: 1.2em;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>System Hierarchy</h1>
+        <div class="subtitle">Overview of Admins, Traders, and Clients</div>
+        
+        <div id="hierarchy-content">
+            <div class="empty-state">Loading hierarchy...</div>
+        </div>
+    </div>
+
+    <script>
+        function renderHierarchy() {
+            fetch('/api/hierarchy')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('hierarchy-content');
+                    container.innerHTML = '';
+
+                    const admins = data.admins;
+                    if (Object.keys(admins).length === 0) {
+                        container.innerHTML = '<div class="empty-state">No data available yet. Please start the main application to publish data.</div>';
+                        return;
+                    }
+
+                    for (const [adminId, adminData] of Object.entries(admins)) {
+                        const adminSection = document.createElement('div');
+                        adminSection.className = 'admin-section';
+                        
+                        let tradersHtml = '';
+                        for (const [traderId, clients] of Object.entries(adminData.traders)) {
+                            let clientsHtml = clients.map(clientId => `
+                                <li class="client-item">
+                                    <a href="/dashboard/${clientId}" class="client-link">
+                                        <span>${clientId}</span>
+                                        <span class="arrow">→</span>
+                                    </a>
+                                </li>
+                            `).join('');
+
+                            tradersHtml += `
+                                <div class="trader-card">
+                                    <div class="trader-name">
+                                        ${traderId}
+                                        <span class="trader-badge">Trader</span>
+                                    </div>
+                                    <ul class="client-list">
+                                        ${clientsHtml || '<li style="color:#999; font-size:0.8em;">No clients</li>'}
+                                    </ul>
+                                </div>
+                            `;
+                        }
+
+                        adminSection.innerHTML = `
+                            <div class="admin-header">
+                                ${adminId}
+                                <span class="admin-badge">Admin</span>
+                            </div>
+                            <div class="trader-grid">
+                                ${tradersHtml || '<div style="grid-column: 1/-1; color:#999;">No traders assigned</div>'}
+                            </div>
+                        `;
+                        container.appendChild(adminSection);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('hierarchy-content').innerHTML = '<div class="empty-state" style="color:red">Error loading hierarchy</div>';
+                });
+        }
+
+        // Refresh every 5 seconds
+        renderHierarchy();
+        setInterval(renderHierarchy, 5000);
+    </script>
+</body>
+</html>
