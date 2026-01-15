@@ -515,16 +515,16 @@
                                     </table>
                                 </div>
 
-                                <!-- Weekly Hedging Review -->
+                                <!-- Live Hedging Review -->
                                 <div class="card">
-                                    <div class="card-header">Weekly Hedging Review</div>
+                                    <div class="card-header">Live Hedging Review</div>
                                     <table class="summary-table">
                                         <tr><td>Total Deposits</td><td class="text-right">${formatMoney(s.hedging_review.total_deposits)}</td></tr>
                                         <tr><td>Total Withdrawals</td><td class="text-right">${formatMoney(s.hedging_review.total_withdrawals)}</td></tr>
                                         <tr><td>Current Balance</td><td class="text-right">${formatMoney(s.hedging_review.current_balance)}</td></tr>
-                                        <tr><td>Actual Hedging Results</td><td class="text-right">${formatMoney(s.hedging_review.actual_hedging_results)}</td></tr>
+                                        <tr><td>Actual Hedging Results</td><td class="text-right">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
                                         <tr><td>Sheet Hedging Results</td><td class="text-right">${formatMoney(s.hedging_review.sheet_hedging_results)}</td></tr>
-                                        <tr><td>Discrepancy</td><td class="text-right">${formatMoney(s.hedging_review.discrepancy)}</td></tr>
+                                        <tr><td>Discrepancy</td><td class="text-right">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.discrepancy) : '<span style="color:#888">N/A</span>'}</td></tr>
                                     </table>
                                 </div>
 

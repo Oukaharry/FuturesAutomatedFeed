@@ -390,15 +390,27 @@ def api_client_push():
     existing_data = get_client_data(client_id) or {}
     evaluations = new_evaluations if new_evaluations else existing_data.get("evaluations", [])
     
-    # Recalculate statistics with MT5 data if we have evaluations
+    # Debug logging
+    app.logger.info(f"Push for {client_id}: {len(mt5_deals)} deals, account={bool(mt5_account)}, {len(evaluations)} evaluations")
+    
+    # ALWAYS recalculate statistics when we have evaluations
+    # This ensures discrepancy is only calculated when we have actual MT5 data
     statistics = data.get("statistics", {})
-    if evaluations and (mt5_deals or mt5_account):
+    if evaluations:
         try:
             from utils.data_processor import calculate_statistics
-            statistics = calculate_statistics(evaluations, mt5_account, mt5_deals)
-            app.logger.info(f"Recalculated stats for {client_id} with MT5 data: deals={len(mt5_deals)}, account={bool(mt5_account)}")
+            # Pass MT5 data - if empty, discrepancy will be 0
+            mt5_acc_param = mt5_account if mt5_account else None
+            mt5_deals_param = mt5_deals if mt5_deals else None
+            statistics = calculate_statistics(evaluations, mt5_acc_param, mt5_deals_param)
+            
+            # Log the hedging review results
+            hr = statistics.get('hedging_review', {})
+            app.logger.info(f"Stats calculated: actual_hedging={hr.get('actual_hedging_results')}, discrepancy={hr.get('discrepancy')}, deposits={hr.get('total_deposits')}")
         except Exception as e:
             app.logger.error(f"Error recalculating stats: {e}")
+            import traceback
+            app.logger.error(traceback.format_exc())
             # Keep the provided statistics if recalc fails
     
     # Prepare client data
@@ -472,7 +484,8 @@ def api_migrate_sheet():
         if not evaluations:
             return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public."}), 400
         
-        statistics = calculate_statistics(evaluations)
+        # Calculate statistics without MT5 data (discrepancy will be 0)
+        statistics = calculate_statistics(evaluations, None, None)
         
         # Prepare client data
         client_data = {
