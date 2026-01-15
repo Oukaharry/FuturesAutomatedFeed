@@ -354,6 +354,9 @@ class TraderCompanionApp:
         self.push_btn = ttk.Button(btn_frame, text="📤 Push Data Now", command=self.push_data)
         self.push_btn.pack(side=tk.LEFT, padx=5)
         
+        self.mt5_push_btn = ttk.Button(btn_frame, text="📊 Push MT5 Only", command=self.push_mt5_only)
+        self.mt5_push_btn.pack(side=tk.LEFT, padx=5)
+        
         self.auto_btn = ttk.Button(btn_frame, text="🔄 Start Auto-Push (5min)", command=self.toggle_auto_push)
         self.auto_btn.pack(side=tk.LEFT, padx=5)
         
@@ -526,6 +529,76 @@ class TraderCompanionApp:
                 if data.get("status") == "success":
                     self.log(f"✅ {data.get('message', 'Data pushed successfully')}")
                     self.status_var.set("Ready - Data pushed!")
+                else:
+                    self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
+                    self.status_var.set("Push failed")
+            else:
+                error_msg = f"HTTP {response.status_code}"
+                try:
+                    error_msg = response.json().get("message", error_msg)
+                except:
+                    pass
+                self.log(f"❌ Push failed: {error_msg}", "ERROR")
+                self.status_var.set("Push failed")
+                
+        except Exception as e:
+            self.log(f"❌ Push error: {e}", "ERROR")
+            self.status_var.set("Push failed")
+    
+    def push_mt5_only(self):
+        """Push ONLY MT5 data (deals, positions, account) to recalculate hedging review."""
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        email = self.client_email_entry.get().strip()
+        
+        if not self.client_info:
+            messagebox.showerror("Error", "Please lookup the client first by entering email and clicking 'Lookup'")
+            return
+        
+        if not self.pusher.connected:
+            messagebox.showerror("Error", "Please connect to MT5 first to push MT5 data")
+            return
+        
+        client_name = self.client_info.get('client', '')
+        
+        self.log(f"Pushing MT5 data only for {client_name}...")
+        self.status_var.set("Pushing MT5 data...")
+        
+        # Get MT5 data
+        account = self.pusher.get_account_info() or {}
+        positions = self.pusher.get_positions()
+        deals = self.pusher.get_deals(days=90)  # Get 90 days of deals
+        
+        if not deals:
+            self.log("⚠️ No deals found in MT5 history", "ERROR")
+            messagebox.showwarning("Warning", "No deals found in MT5 history. Make sure you're connected to the correct account.")
+            return
+        
+        self.log(f"   Found {len(deals)} deals, account balance: ${account.get('balance', 0):.2f}")
+        
+        payload = {
+            "email": email,
+            "account": account,
+            "positions": positions,
+            "deals": deals,
+            "statistics": {},  # Let server recalculate with MT5 data
+            "evaluations": [],  # Don't overwrite evaluations
+            "dropdown_options": {}
+        }
+        
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/client/push",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "success":
+                    self.log(f"✅ MT5 data pushed - hedging review will be updated!")
+                    self.log(f"   Pushed: {len(deals)} deals, balance ${account.get('balance', 0):.2f}")
+                    self.status_var.set("MT5 data pushed successfully!")
                 else:
                     self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
                     self.status_var.set("Push failed")

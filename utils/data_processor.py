@@ -483,6 +483,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         else:
             stats["hedging_review"]["current_balance"] = getattr(mt5_account, 'balance', 0.0)
 
+    has_mt5_data = False  # Track if we actually have MT5 data
     if mt5_deals:
         deposits = 0.0
         withdrawals = 0.0
@@ -492,24 +493,26 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             # Handle both dict (serialized) and object
             if isinstance(deal, dict):
                 d_type = deal.get('type')
-                d_profit = deal.get('profit', 0.0)
-                d_swap = deal.get('swap', 0.0)
-                d_comm = deal.get('commission', 0.0)
+                d_profit = float(deal.get('profit', 0.0) or 0.0)
+                d_swap = float(deal.get('swap', 0.0) or 0.0)
+                d_comm = float(deal.get('commission', 0.0) or 0.0)
             else:
                 d_type = getattr(deal, 'type', None)
-                d_profit = getattr(deal, 'profit', 0.0)
-                d_swap = getattr(deal, 'swap', 0.0)
-                d_comm = getattr(deal, 'commission', 0.0)
+                d_profit = float(getattr(deal, 'profit', 0.0) or 0.0)
+                d_swap = float(getattr(deal, 'swap', 0.0) or 0.0)
+                d_comm = float(getattr(deal, 'commission', 0.0) or 0.0)
             
-            # DEAL_TYPE_BALANCE = 2
-            if d_type == 2:
+            # DEAL_TYPE_BALANCE = 2 or "BALANCE" (serialized from trader app)
+            is_balance = d_type == 2 or d_type == "BALANCE"
+            if is_balance:
                 if d_profit > 0:
                     deposits += d_profit
                 else:
                     withdrawals += d_profit
             else:
                 actual_profit += (d_profit + d_swap + d_comm)
-                
+        
+        has_mt5_data = True
         stats["hedging_review"]["total_deposits"] = deposits
         stats["hedging_review"]["total_withdrawals"] = withdrawals
         stats["hedging_review"]["actual_hedging_results"] = actual_profit
@@ -520,7 +523,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     # The sheet formula is: =B6+B3+B4+B5+B25 
     # where B3=fees(negative), B4=hedging, B5=farming, B6=payouts, B25=discrepancy
     # Discrepancy = Actual Hedging Results - Sheet Hedging Results (from MT5)
-    discrepancy = stats["hedging_review"]["discrepancy"]
+    # NOTE: Only include discrepancy if we have actual MT5 data, otherwise use 0
+    discrepancy = stats["hedging_review"]["discrepancy"] if has_mt5_data else 0.0
     
     for section in ["profitability_completed", "cashflow_inprogress"]:
         s = stats[section]
