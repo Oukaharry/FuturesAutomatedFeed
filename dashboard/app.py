@@ -364,6 +364,7 @@ def api_client_push():
     """
     Public endpoint - push data using client email only (no API key).
     Automatically looks up hierarchy from email.
+    Recalculates statistics using MT5 deals/account data if provided.
     """
     data = request.json
     email = data.get('email', '').strip().lower()
@@ -380,13 +381,33 @@ def api_client_push():
     trader_id = client_info['trader']
     client_id = client_info['client']
     
+    # Get MT5 data from push
+    mt5_deals = data.get("deals", [])
+    mt5_account = data.get("account", {})
+    new_evaluations = data.get("evaluations", [])
+    
+    # Get existing data to merge evaluations if needed
+    existing_data = get_client_data(client_id) or {}
+    evaluations = new_evaluations if new_evaluations else existing_data.get("evaluations", [])
+    
+    # Recalculate statistics with MT5 data if we have evaluations
+    statistics = data.get("statistics", {})
+    if evaluations and (mt5_deals or mt5_account):
+        try:
+            from utils.data_processor import calculate_statistics
+            statistics = calculate_statistics(evaluations, mt5_account, mt5_deals)
+            app.logger.info(f"Recalculated stats for {client_id} with MT5 data: deals={len(mt5_deals)}, account={bool(mt5_account)}")
+        except Exception as e:
+            app.logger.error(f"Error recalculating stats: {e}")
+            # Keep the provided statistics if recalc fails
+    
     # Prepare client data
     client_data = {
-        "deals": data.get("deals", []),
+        "deals": mt5_deals,
         "positions": data.get("positions", []),
-        "account": data.get("account", {}),
-        "evaluations": data.get("evaluations", []),
-        "statistics": data.get("statistics", {}),
+        "account": mt5_account,
+        "evaluations": evaluations,
+        "statistics": statistics,
         "dropdown_options": data.get("dropdown_options", {}),
         "identity": {
             "admin": admin_id,
