@@ -1,5 +1,5 @@
-MetaTrader5
-customtkinter
+# MetaTrader5 - Windows only, not needed for cloud deployment
+# customtkinter - GUI library, not needed for cloud deployment
 pandas
 flask
 flask-limiter
