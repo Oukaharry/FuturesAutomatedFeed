@@ -394,10 +394,10 @@ def api_client_push():
     acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
     app.logger.info(f"Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
     
-    # ALWAYS recalculate statistics when we have evaluations
+    # ALWAYS recalculate statistics when we have evaluations or MT5 data
     # This ensures discrepancy is only calculated when we have actual MT5 data
     statistics = data.get("statistics", {})
-    if evaluations:
+    if evaluations or mt5_deals or mt5_account:
         try:
             from utils.data_processor import calculate_statistics
             # Pass MT5 data - if empty, discrepancy will be 0

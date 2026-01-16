@@ -7,12 +7,12 @@ import os
 # ============================================================================
 # CONFIGURATION - Update these values
 # ============================================================================
-USERNAME = "ballerquotes"  # Your PythonAnywhere username
-ADMIN_PASSWORD = "YourSecurePassword123"  # CHANGE THIS to your admin password
+USERNAME = "yourusername"  # Your PythonAnywhere username
+ADMIN_PASSWORD = "YourSecurePassword123"  # Your admin password
 # ============================================================================
 
 # Add project directory to path
-project_home = f'/home/{USERNAME}/TrackingDashboard'
+project_home = f'/home/{USERNAME}/MT5Dashboard'
 if project_home not in sys.path:
     sys.path = [project_home] + sys.path
 

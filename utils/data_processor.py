@@ -242,8 +242,11 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         }
     }
 
-    if not evaluations:
+    # If no evaluations and no MT5 data, return empty stats
+    if not evaluations and not mt5_deals and not mt5_account:
         return stats
+        
+    evaluations = evaluations or []
 
     # Helper to get or create firm stats
     def get_firm_stats(firm_name, section):

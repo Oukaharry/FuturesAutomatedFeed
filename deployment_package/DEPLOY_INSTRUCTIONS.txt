@@ -9,14 +9,14 @@ DEPLOYMENT INSTRUCTIONS
 
 2. UPLOAD FILES
    - Go to "Files" tab
-   - Create directory: /home/yourusername/TrackingDashboard
+   - Create directory: /home/yourusername/MT5Dashboard
    - Upload ALL files from this deployment_package folder
 
 3. INSTALL DEPENDENCIES
    - Go to "Consoles" tab
    - Start a "Bash" console
    - Run:
-     cd TrackingDashboard
+     cd MT5Dashboard
      pip3.10 install --user -r requirements.txt
 
 4. SET ADMIN PASSWORD
@@ -28,7 +28,7 @@ DEPLOYMENT INSTRUCTIONS
    - Go to "Web" tab
    - Click "Add a new web app"
    - Choose "Flask" -> Python 3.10
-   - Set source code: /home/yourusername/TrackingDashboard
+   - Set source code: /home/yourusername/MT5Dashboard
 
 6. CONFIGURE WSGI
    - Click "WSGI configuration file" link
@@ -38,7 +38,7 @@ import sys
 import os
 
 # Add project directory
-project_home = '/home/yourusername/TrackingDashboard'
+project_home = '/home/yourusername/MT5Dashboard'
 if project_home not in sys.path:
     sys.path = [project_home] + sys.path
 

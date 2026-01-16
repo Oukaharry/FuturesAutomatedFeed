@@ -354,7 +354,7 @@ class TraderCompanionApp:
         self.push_btn = ttk.Button(btn_frame, text="📤 Push Data Now", command=self.push_data)
         self.push_btn.pack(side=tk.LEFT, padx=5)
         
-        self.mt5_push_btn = ttk.Button(btn_frame, text="📊 Push MT5 Only", command=self.push_mt5_only)
+        self.mt5_push_btn = ttk.Button(btn_frame, text="📊 Push Rebalance Data Only", command=self.push_mt5_only)
         self.mt5_push_btn.pack(side=tk.LEFT, padx=5)
         
         self.auto_btn = ttk.Button(btn_frame, text="🔄 Start Auto-Push (5min)", command=self.toggle_auto_push)
@@ -578,15 +578,15 @@ class TraderCompanionApp:
         deposits = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) > 0)
         withdrawals = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) < 0)
         
-        self.log(f"   Found {len(deals)} deals, {len(balance_deals)} balance operations")
+        self.log(f"   Found {len(balance_deals)} balance operations (filtered from {len(deals)} total deals)")
         self.log(f"   Account balance: ${account.get('balance', 0):.2f}")
         self.log(f"   Deposits: ${deposits:.2f}, Withdrawals: ${withdrawals:.2f}")
         
         payload = {
             "email": email,
             "account": account,
-            "positions": positions,
-            "deals": deals,
+            "positions": [], # Push rebalance data only
+            "deals": balance_deals, # Push rebalance data only
             "statistics": {},  # Let server recalculate with MT5 data
             "evaluations": [],  # Don't overwrite evaluations
             "dropdown_options": {}
