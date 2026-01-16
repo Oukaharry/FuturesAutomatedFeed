@@ -79,13 +79,30 @@ class MT5DataPusher:
         return True, "Disconnected from MT5"
     
     def get_account_info(self):
-        """Get account information."""
+        """Get account information including calculated deposits/withdrawals."""
         if not self.connected:
             return None
         
         account = mt5.account_info()
         if not account:
             return None
+        
+        # Calculate deposits/withdrawals from deal history (BALANCE type = 2)
+        total_deposits = 0.0
+        total_withdrawals = 0.0
+        try:
+            from_timestamp = 0  # From the beginning
+            to_timestamp = time.time() + 86400
+            deals = mt5.history_deals_get(from_timestamp, to_timestamp)
+            if deals:
+                for deal in deals:
+                    if deal.type == 2:  # DEAL_TYPE_BALANCE
+                        if deal.profit > 0:
+                            total_deposits += deal.profit
+                        else:
+                            total_withdrawals += deal.profit
+        except Exception as e:
+            print(f"Error calculating deposits/withdrawals: {e}")
             
         return {
             "login": account.login,
@@ -101,8 +118,8 @@ class MT5DataPusher:
             "name": account.name,
             "company": account.company,
             "credit": getattr(account, 'credit', 0.0),
-            "total_deposits": getattr(account, 'deposit', 0.0),
-            "total_withdrawals": getattr(account, 'withdrawal', 0.0)
+            "total_deposits": total_deposits,
+            "total_withdrawals": total_withdrawals
         }
     
     def get_positions(self):
