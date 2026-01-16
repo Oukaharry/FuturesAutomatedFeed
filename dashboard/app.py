@@ -384,11 +384,18 @@ def api_client_push():
     # Get MT5 data from push
     mt5_deals = data.get("deals", [])
     mt5_account = data.get("account", {})
-    new_evaluations = data.get("evaluations", [])
     
     # Get existing data to merge evaluations if needed
     existing_data = get_client_data(client_id) or {}
-    evaluations = new_evaluations if new_evaluations else existing_data.get("evaluations", [])
+    
+    # Only use new evaluations if explicitly provided and not empty
+    # If "evaluations" key is missing or None, preserve existing data
+    if "evaluations" in data and data["evaluations"]:
+        evaluations = data["evaluations"]
+        app.logger.info(f"   Using {len(evaluations)} NEW evaluations from push")
+    else:
+        evaluations = existing_data.get("evaluations", [])
+        app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
     
     # Debug logging
     acct_balance = mt5_account.get('balance', 0) if mt5_account else 0

@@ -648,7 +648,7 @@ class TraderCompanionApp:
             "positions": [],
             "deals": deals or [],  # Include deals for actual hedging calculation
             "statistics": {},  # Let server recalculate with MT5 data
-            "evaluations": [],  # Don't overwrite evaluations
+            # NOTE: Do NOT include "evaluations" key - server will preserve existing data
             "dropdown_options": {}
         }
         
