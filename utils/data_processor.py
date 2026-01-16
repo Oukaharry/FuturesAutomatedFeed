@@ -504,7 +504,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     else:
         debug_log.append("MT5 Account: NONE")
 
-    has_mt5_data = False  # Track if we actually have MT5 data
+    has_mt5_data = mt5_account is not None and (mt5_account.get('balance', 0) != 0 if isinstance(mt5_account, dict) else getattr(mt5_account, 'balance', 0) != 0)  # Track if we actually have MT5 data
     if mt5_deals and len(mt5_deals) > 0:
         deposits = 0.0
         withdrawals = 0.0

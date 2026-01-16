@@ -443,6 +443,14 @@ def api_client_push():
         }
     }
     
+    # Final verification before save
+    hr_final = statistics.get('hedging_review', {})
+    app.logger.info(f"📦 FINAL DATA TO SAVE for {client_id}:")
+    app.logger.info(f"   - hedging_review.total_deposits: ${hr_final.get('total_deposits', 0):.2f}")
+    app.logger.info(f"   - hedging_review.total_withdrawals: ${hr_final.get('total_withdrawals', 0):.2f}")
+    app.logger.info(f"   - hedging_review.current_balance: ${hr_final.get('current_balance', 0):.2f}")
+    app.logger.info(f"   - account.total_deposits: ${mt5_account.get('total_deposits', 0) if mt5_account else 0:.2f}")
+    
     # Save to database
     save_client_data(client_id, client_data)
     
