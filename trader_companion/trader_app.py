@@ -220,6 +220,120 @@ class MT5DataPusher:
             "largest_loss": round(min(losing), 2) if losing else 0
         }
     
+    def parse_deal_comment(self, comment):
+        """
+        Parse deal comment to extract account number and stage.
+        
+        Comment formats (MFFU example - middle parts abbreviated):
+        - MFFU...81001 contains account ending in 81001
+        - Stage is identified by _CH{n}, _FU{n}, _FA{n}_ patterns
+        
+        Returns:
+            dict with 'account_suffix' (last 5 digits), 'stage' (CH/FU/FA), 'stage_num'
+            or None if cannot parse
+        """
+        import re
+        
+        if not comment:
+            return None
+        
+        result = {
+            'account_suffix': None,
+            'stage': None,
+            'stage_num': None,
+            'farming_date': None,
+            'raw_comment': comment
+        }
+        
+        # Extract account number - look for 5+ digit sequences
+        # The account number appears at the end or within the comment
+        account_matches = re.findall(r'(\d{5,})', comment)
+        if account_matches:
+            # Use the last match, take last 5 digits as identifier
+            result['account_suffix'] = account_matches[-1][-5:]
+        
+        # Extract stage from comment
+        # Challenge: _CH1, _CH2, etc. or CH1, CH2
+        ch_match = re.search(r'_?CH(\d+)', comment, re.IGNORECASE)
+        if ch_match:
+            result['stage'] = 'CH'
+            result['stage_num'] = int(ch_match.group(1))
+            return result
+        
+        # Funded: _FU1, _FU2, etc. or FU1, FU2
+        fu_match = re.search(r'_?FU(\d+)', comment, re.IGNORECASE)
+        if fu_match:
+            result['stage'] = 'FU'
+            result['stage_num'] = int(fu_match.group(1))
+            return result
+        
+        # Farming: _FA1_DD/MM or FA1_DD/MM
+        fa_match = re.search(r'_?FA(\d+)_?(\d{1,2}[/\-]\d{1,2})?', comment, re.IGNORECASE)
+        if fa_match:
+            result['stage'] = 'FA'
+            result['stage_num'] = int(fa_match.group(1))
+            if fa_match.group(2):
+                result['farming_date'] = fa_match.group(2)
+            return result
+        
+        # If we found an account but no stage, return partial result
+        if result['account_suffix']:
+            return result
+        
+        return None
+    
+    def aggregate_deals_by_account(self, deals):
+        """
+        Aggregate deals by account number and stage.
+        
+        Returns dict: {
+            'account_suffix': {
+                'CH': {1: total_profit, 2: total_profit, ...},
+                'FU': {1: total_profit, 2: total_profit, ...},
+                'FA': {1: {'profit': total_profit, 'date': 'DD/MM'}, ...}
+            }
+        }
+        """
+        aggregated = {}
+        unmatched = []
+        
+        for deal in deals:
+            # Skip balance operations
+            if deal.get('type') in ['BALANCE', 'CREDIT', '2', '3']:
+                continue
+            
+            comment = deal.get('comment', '')
+            parsed = self.parse_deal_comment(comment)
+            
+            if not parsed or not parsed['account_suffix']:
+                unmatched.append(deal)
+                continue
+            
+            account = parsed['account_suffix']
+            stage = parsed.get('stage')
+            stage_num = parsed.get('stage_num')
+            
+            if account not in aggregated:
+                aggregated[account] = {'CH': {}, 'FU': {}, 'FA': {}}
+            
+            # Calculate deal P/L (profit + swap + commission)
+            profit = (deal.get('profit', 0) or 0) + (deal.get('swap', 0) or 0) + (deal.get('commission', 0) or 0)
+            
+            if stage and stage_num:
+                if stage == 'FA':
+                    if stage_num not in aggregated[account]['FA']:
+                        aggregated[account]['FA'][stage_num] = {'profit': 0, 'date': parsed.get('farming_date')}
+                    aggregated[account]['FA'][stage_num]['profit'] += profit
+                else:
+                    if stage_num not in aggregated[account][stage]:
+                        aggregated[account][stage][stage_num] = 0
+                    aggregated[account][stage][stage_num] += profit
+            else:
+                # Has account but no stage - could be a general trade
+                unmatched.append(deal)
+        
+        return aggregated, unmatched
+
     def push_to_dashboard(self, client_name, admin_name="", trader_name=""):
         """Push all data to the dashboard."""
         if not self.api_key:
@@ -271,6 +385,205 @@ class MT5DataPusher:
             return False, "Request timed out"
         except Exception as e:
             return False, str(e)
+    
+    def parse_deal_comment(self, comment):
+        """
+        Parse MT5 deal comment to extract account number and stage info.
+        
+        Comment formats:
+        - Challenge: {account}_CH{n}  (e.g., "12345_CH1", "67890_CH2")
+        - Funded: {account}_FU{n}  (e.g., "12345_FU1", "12345_FU2")
+        - Farming: {account}_FA{n}_{DD/MM}  (e.g., "12345_FA1_15/01")
+        
+        Returns dict with:
+        - account: The account number (with middle part extracted if needed)
+        - stage: 'challenge', 'funded', or 'farming'
+        - stage_num: The number (1, 2, 3, etc.)
+        - date: Optional date for farming (DD/MM format)
+        """
+        import re
+        
+        if not comment:
+            return None
+        
+        comment = comment.strip()
+        
+        # Pattern for Challenge: {account}_CH{n}
+        ch_match = re.match(r'^(.+?)_CH(\d+)$', comment, re.IGNORECASE)
+        if ch_match:
+            return {
+                'account': ch_match.group(1),
+                'stage': 'challenge',
+                'stage_num': int(ch_match.group(2)),
+                'date': None
+            }
+        
+        # Pattern for Funded: {account}_FU{n}
+        fu_match = re.match(r'^(.+?)_FU(\d+)$', comment, re.IGNORECASE)
+        if fu_match:
+            return {
+                'account': fu_match.group(1),
+                'stage': 'funded',
+                'stage_num': int(fu_match.group(2)),
+                'date': None
+            }
+        
+        # Pattern for Farming: {account}_FA{n}_{DD/MM}
+        fa_match = re.match(r'^(.+?)_FA(\d+)_(\d{1,2}/\d{1,2})$', comment, re.IGNORECASE)
+        if fa_match:
+            return {
+                'account': fa_match.group(1),
+                'stage': 'farming',
+                'stage_num': int(fa_match.group(2)),
+                'date': fa_match.group(3)
+            }
+        
+        return None
+    
+    def extract_account_core(self, account_num):
+        """
+        Extract the core/middle part of an account number for matching.
+        This handles cases where the full account number might have prefixes/suffixes.
+        
+        For example:
+        - "HFM-123456-USD" -> "123456"
+        - "123456" -> "123456"
+        - "ACC123456END" -> "123456" (extracts numeric middle)
+        """
+        import re
+        
+        if not account_num:
+            return None
+        
+        account_str = str(account_num).strip()
+        
+        # First try: extract all digits as a group
+        digits = re.findall(r'\d+', account_str)
+        if digits:
+            # Return the longest group of digits (likely the account number)
+            return max(digits, key=len)
+        
+        return account_str
+    
+    def process_deals_for_evaluations(self, deals, evaluations):
+        """
+        Process deals and match them to evaluations based on comments.
+        
+        Args:
+            deals: List of MT5 deals with 'comment' field
+            evaluations: List of evaluation records
+        
+        Returns:
+            Tuple of (updated_evaluations, match_log)
+        """
+        if not deals or not evaluations:
+            return evaluations, ["No deals or evaluations to process"]
+        
+        match_log = []
+        
+        # Group deals by parsed comment (account + stage)
+        deal_groups = {}  # key: (account_suffix, stage, stage_num) -> list of deals
+        
+        for deal in deals:
+            comment = deal.get('comment', '')
+            parsed = self.parse_deal_comment(comment)
+            
+            if not parsed or not parsed.get('account_suffix'):
+                continue
+            
+            # Skip balance operations
+            d_type = str(deal.get('type', '')).upper()
+            if d_type in ['BALANCE', 'CREDIT', '2', '3']:
+                continue
+            
+            # Only process closed trades (OUT)
+            if deal.get('entry') != 'OUT':
+                continue
+            
+            account_suffix = parsed['account_suffix']
+            stage = parsed.get('stage')
+            stage_num = parsed.get('stage_num')
+            
+            if not stage or not stage_num:
+                continue
+                
+            key = (account_suffix, stage, stage_num)
+            
+            if key not in deal_groups:
+                deal_groups[key] = []
+            deal_groups[key].append(deal)
+        
+        match_log.append(f"Found {len(deal_groups)} unique account/stage combinations in deals")
+        
+        # Build account lookup from evaluations
+        # Maps account_suffix (last 5 digits) -> evaluation index
+        eval_lookup_ch = {}  # Challenge accounts (Account #)
+        eval_lookup_fu = {}  # Funded accounts (Account #.1)
+        
+        for idx, ev in enumerate(evaluations):
+            # Challenge account (Account #) - extract last 5 digits for matching
+            ch_account = ev.get('Account #', '')
+            if ch_account:
+                ch_suffix = str(ch_account).strip()[-5:] if len(str(ch_account).strip()) >= 5 else str(ch_account).strip()
+                if ch_suffix:
+                    eval_lookup_ch[ch_suffix] = idx
+            
+            # Funded account (Account #.1) - extract last 5 digits for matching
+            fu_account = ev.get('Account #.1', '')
+            if fu_account:
+                fu_suffix = str(fu_account).strip()[-5:] if len(str(fu_account).strip()) >= 5 else str(fu_account).strip()
+                if fu_suffix:
+                    eval_lookup_fu[fu_suffix] = idx
+        
+        match_log.append(f"Built lookup: {len(eval_lookup_ch)} challenge accounts, {len(eval_lookup_fu)} funded accounts")
+        
+        # Debug: Show some of the lookup keys
+        if eval_lookup_ch:
+            sample_ch = list(eval_lookup_ch.keys())[:3]
+            match_log.append(f"   Sample CH accounts: {sample_ch}")
+        if eval_lookup_fu:
+            sample_fu = list(eval_lookup_fu.keys())[:3]
+            match_log.append(f"   Sample FU accounts: {sample_fu}")
+        
+        # Process each deal group and update evaluations
+        for (account_suffix, stage, stage_num), group_deals in deal_groups.items():
+            # Calculate total profit for this group
+            total_profit = sum(
+                (d.get('profit', 0) or 0) + (d.get('swap', 0) or 0) + (d.get('commission', 0) or 0)
+                for d in group_deals
+            )
+            
+            # Find matching evaluation based on stage
+            # CH = Challenge (Account #), FU = Funded (Account #.1), FA = Farming (Account #.1)
+            eval_idx = None
+            if stage == 'CH':
+                eval_idx = eval_lookup_ch.get(account_suffix)
+            elif stage in ['FU', 'FA']:
+                eval_idx = eval_lookup_fu.get(account_suffix)
+            
+            if eval_idx is None:
+                match_log.append(f"⚠️ No match for {account_suffix}_{stage}{stage_num}: ${total_profit:.2f} ({len(group_deals)} deals)")
+                continue
+            
+            # Determine field name to update
+            if stage == 'CH':
+                # Challenge uses: Hedge Result 1, Hedge Result 2, etc.
+                field_name = f"Hedge Result {stage_num}"
+            elif stage == 'FU':
+                # Funded uses: Hedge Result 1.1, Hedge Result 2.1, etc. (up to 7)
+                field_name = f"Hedge Result {stage_num}.1"
+            elif stage == 'FA':
+                # Farming uses: Hedge Day {n}
+                field_name = f"Hedge Day {stage_num}"
+            else:
+                match_log.append(f"⚠️ Unknown stage {stage} for {account_suffix}")
+                continue
+            
+            # Update the evaluation
+            evaluations[eval_idx][field_name] = f"${total_profit:.2f}"
+            match_log.append(f"✓ {account_suffix}_{stage}{stage_num} -> [{field_name}] = ${total_profit:.2f} ({len(group_deals)} deals)")
+        
+        return evaluations, match_log
 
 
 class TraderCompanionApp:
@@ -398,10 +711,20 @@ class TraderCompanionApp:
         self.mt5_push_btn = ttk.Button(btn_frame, text="📊 Push Rebalance Data Only", command=self.push_mt5_only)
         self.mt5_push_btn.pack(side=tk.LEFT, padx=5)
         
-        self.auto_btn = ttk.Button(btn_frame, text="🔄 Start Auto-Push (5min)", command=self.toggle_auto_push)
+        self.sync_hedge_btn = ttk.Button(btn_frame, text="🔗 Sync Hedge Results", command=self.sync_hedge_results)
+        self.sync_hedge_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Second row of buttons
+        btn_frame2 = ttk.Frame(main_frame)
+        btn_frame2.pack(fill=tk.X, pady=(0, 15))
+        
+        self.auto_btn = ttk.Button(btn_frame2, text="🔄 Start Auto-Push (5min)", command=self.toggle_auto_push)
         self.auto_btn.pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(btn_frame, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
+        self.debug_comments_btn = ttk.Button(btn_frame2, text="🔍 Show Deal Comments", command=self.show_deal_comments)
+        self.debug_comments_btn.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(btn_frame2, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
         
         # Google Sheets Migration Frame
         sheet_frame = ttk.LabelFrame(main_frame, text="📋 Import from Google Sheets", padding=15)
@@ -702,6 +1025,186 @@ class TraderCompanionApp:
         except Exception as e:
             self.log(f"❌ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
+    
+    def show_deal_comments(self):
+        """Debug function to show all deal comments from MT5."""
+        if not self.pusher.connected:
+            messagebox.showerror("Error", "Please connect to MT5 first")
+            return
+        
+        self.log("="*60)
+        self.log("🔍 MT5 DEAL COMMENTS DEBUG")
+        self.log("="*60)
+        
+        deals = self.pusher.get_deals(days=365)
+        
+        if not deals:
+            self.log("No deals found")
+            return
+        
+        self.log(f"Total deals: {len(deals)}\n")
+        
+        # Group by unique comments
+        comment_counts = {}
+        for deal in deals:
+            comment = deal.get('comment', '') or '(empty)'
+            d_type = deal.get('type', '')
+            if d_type not in ['BALANCE', 'CREDIT', '2', '3']:  # Skip balance ops
+                if comment not in comment_counts:
+                    comment_counts[comment] = {'count': 0, 'total_profit': 0, 'sample_deal': deal}
+                comment_counts[comment]['count'] += 1
+                comment_counts[comment]['total_profit'] += (deal.get('profit', 0) or 0)
+        
+        self.log(f"Unique comments: {len(comment_counts)}\n")
+        self.log("-"*60)
+        
+        for comment, info in sorted(comment_counts.items()):
+            parsed = self.pusher.parse_deal_comment(comment)
+            
+            self.log(f"\n📋 Comment: '{comment}'")
+            self.log(f"   Deals: {info['count']}, Total P/L: ${info['total_profit']:.2f}")
+            
+            if parsed:
+                self.log(f"   ✓ Parsed -> Account: {parsed['account_suffix']}")
+                if parsed.get('stage'):
+                    self.log(f"   ✓ Stage: {parsed['stage']}{parsed['stage_num']}")
+                else:
+                    self.log(f"   ⚠️ No stage pattern found (CH/FU/FA)")
+            else:
+                self.log(f"   ❌ Could not parse comment")
+        
+        self.log("\n" + "="*60)
+        self.log("💡 Comment format expected:")
+        self.log("   Challenge: ..._CH{n} or ...CH{n}")
+        self.log("   Funded:    ..._FU{n} or ...FU{n}")
+        self.log("   Farming:   ..._FA{n}_DD/MM or ...FA{n}")
+        self.log("="*60)
+    
+    def sync_hedge_results(self):
+        """
+        Sync hedge results from MT5 deal comments to evaluation records.
+        
+        Parses deal comments to extract account number and stage:
+        - Challenge: {account}_CH{n}
+        - Funded: {account}_FU{n}
+        - Farming: {account}_FA{n}_{DD/MM}
+        
+        Then updates the appropriate Hedge Result fields in evaluations.
+        """
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        email = self.client_email_entry.get().strip()
+        
+        if not self.client_info:
+            messagebox.showerror("Error", "Please lookup the client first by entering email and clicking 'Lookup'")
+            return
+        
+        if not self.pusher.connected:
+            messagebox.showerror("Error", "Please connect to MT5 first")
+            return
+        
+        client_name = self.client_info.get('client', '')
+        
+        self.log("="*60)
+        self.log("🔗 SYNC HEDGE RESULTS FROM MT5 COMMENTS")
+        self.log("="*60)
+        self.status_var.set("Syncing hedge results...")
+        
+        # Step 1: Get current evaluations from dashboard
+        self.log("\n📥 Step 1: Fetching current evaluations from dashboard...")
+        try:
+            response = requests.get(
+                f"{dashboard_url}/api/data?client_id={client_name}",
+                cookies=self.session_cookies if hasattr(self, 'session_cookies') else {},
+                timeout=30
+            )
+            
+            if response.status_code != 200:
+                self.log(f"❌ Failed to fetch data: HTTP {response.status_code}", "ERROR")
+                messagebox.showerror("Error", "Could not fetch current data from dashboard. Try logging in via browser first.")
+                return
+            
+            data = response.json()
+            evaluations = data.get('evaluations', [])
+            
+            if not evaluations:
+                self.log("⚠️ No evaluations found in dashboard", "WARNING")
+                messagebox.showwarning("Warning", "No evaluations found. Please import from Google Sheets first.")
+                return
+            
+            self.log(f"   ✓ Found {len(evaluations)} evaluation records")
+            
+        except Exception as e:
+            self.log(f"❌ Error fetching data: {e}", "ERROR")
+            messagebox.showerror("Error", f"Failed to fetch data: {e}")
+            return
+        
+        # Step 2: Get deals from MT5
+        self.log("\n📊 Step 2: Fetching deals from MT5...")
+        deals = self.pusher.get_deals(days=365)  # Get 1 year of deals
+        
+        if not deals:
+            self.log("⚠️ No deals found in MT5", "WARNING")
+            messagebox.showwarning("Warning", "No deals found in MT5 history.")
+            return
+        
+        self.log(f"   ✓ Found {len(deals)} deals")
+        
+        # Show sample comments for debugging
+        comments_with_data = [d.get('comment', '') for d in deals if d.get('comment')]
+        unique_comments = list(set(comments_with_data))[:10]
+        self.log(f"\n📝 Sample deal comments found:")
+        for c in unique_comments:
+            parsed = self.pusher.parse_deal_comment(c)
+            if parsed and parsed.get('stage'):
+                self.log(f"   ✓ '{c}' -> {parsed['stage']}{parsed['stage_num']}, account: {parsed['account_suffix']}")
+            elif parsed and parsed.get('account_suffix'):
+                self.log(f"   · '{c}' -> account: {parsed['account_suffix']} (no stage found)")
+            else:
+                self.log(f"   · '{c}' (not matching pattern)")
+        
+        # Step 3: Process deals and update evaluations
+        self.log("\n🔄 Step 3: Processing deals and matching to evaluations...")
+        updated_evals, match_log = self.pusher.process_deals_for_evaluations(deals, evaluations)
+        
+        for log_line in match_log:
+            self.log(f"   {log_line}")
+        
+        # Step 4: Push updated evaluations back to dashboard
+        self.log("\n📤 Step 4: Pushing updated evaluations to dashboard...")
+        
+        payload = {
+            "email": email,
+            "evaluations": updated_evals,
+            "statistics": {},  # Let server recalculate
+            "dropdown_options": {}
+        }
+        
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/client/push",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "success":
+                    self.log(f"\n✅ HEDGE RESULTS SYNCED SUCCESSFULLY!")
+                    self.log(f"   Updated {len(updated_evals)} evaluation records")
+                    self.log("="*60)
+                    self.status_var.set("Hedge results synced!")
+                    messagebox.showinfo("Success", "Hedge results synced from MT5 comments!")
+                else:
+                    self.log(f"❌ Sync failed: {data.get('message', 'Unknown error')}", "ERROR")
+                    self.status_var.set("Sync failed")
+            else:
+                self.log(f"❌ HTTP {response.status_code}", "ERROR")
+                self.status_var.set("Sync failed")
+                
+        except Exception as e:
+            self.log(f"❌ Sync error: {e}", "ERROR")
+            self.status_var.set("Sync failed")
     
     def migrate_from_sheet(self):
         """Migrate data from Google Sheets to the dashboard with verification."""
