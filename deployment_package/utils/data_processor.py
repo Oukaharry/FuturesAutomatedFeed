@@ -487,12 +487,20 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         # Handle both dict (serialized) and object
         if isinstance(mt5_account, dict):
             balance = float(mt5_account.get('balance', 0.0) or 0.0)
+            deposits = float(mt5_account.get('total_deposits', 0.0) or 0.0)
+            withdrawals = float(mt5_account.get('total_withdrawals', 0.0) or 0.0)
             stats["hedging_review"]["current_balance"] = balance
-            debug_log.append(f"MT5 Account (dict): balance=${balance:.2f}")
+            stats["hedging_review"]["total_deposits"] = deposits
+            stats["hedging_review"]["total_withdrawals"] = withdrawals
+            debug_log.append(f"MT5 Account (dict): balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         else:
             balance = float(getattr(mt5_account, 'balance', 0.0) or 0.0)
+            deposits = float(getattr(mt5_account, 'total_deposits', 0.0) or 0.0)
+            withdrawals = float(getattr(mt5_account, 'total_withdrawals', 0.0) or 0.0)
             stats["hedging_review"]["current_balance"] = balance
-            debug_log.append(f"MT5 Account (object): balance=${balance:.2f}")
+            stats["hedging_review"]["total_deposits"] = deposits
+            stats["hedging_review"]["total_withdrawals"] = withdrawals
+            debug_log.append(f"MT5 Account (object): balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
     else:
         debug_log.append("MT5 Account: NONE")
 
@@ -535,12 +543,17 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
                 actual_profit += (d_profit + d_swap + d_comm)
         
         has_mt5_data = True
-        stats["hedging_review"]["total_deposits"] = deposits
-        stats["hedging_review"]["total_withdrawals"] = withdrawals
+        # Only override deposits/withdrawals if we calculated from deals
+        # Otherwise, use the cumulative totals from mt5_account
+        if balance_count > 0:
+            stats["hedging_review"]["total_deposits"] = deposits
+            stats["hedging_review"]["total_withdrawals"] = withdrawals
+        stats["hedging_review"]["actual_hedging_results"] = actual_profit
+        stats["hedging_review"]["discrepancy"] = actual_profit - sheet_hedge_total
         
         # Debug: store deal types seen for troubleshooting
         debug_log.append(f"   - Balance deals: {balance_count}, Trade deals: {trade_count}")
-        debug_log.append(f"   - Deposits: ${deposits:.2f}, Withdrawals: ${withdrawals:.2f}")
+        debug_log.append(f"   - Deposits from deals: ${deposits:.2f}, Withdrawals: ${withdrawals:.2f}")
         debug_log.append(f"   - Actual profit: ${actual_profit:.2f}")
         debug_log.append(f"   - Deal types seen: {list(deal_types_seen)}")
         

@@ -99,7 +99,10 @@ class MT5DataPusher:
             "leverage": account.leverage,
             "currency": account.currency,
             "name": account.name,
-            "company": account.company
+            "company": account.company,
+            "credit": getattr(account, 'credit', 0.0),
+            "total_deposits": getattr(account, 'deposit', 0.0),
+            "total_withdrawals": getattr(account, 'withdrawal', 0.0)
         }
     
     def get_positions(self):
@@ -586,48 +589,40 @@ class TraderCompanionApp:
         
         # Get MT5 data
         account = self.pusher.get_account_info() or {}
-        positions = self.pusher.get_positions()
-        deals = self.pusher.get_deals(days=90)  # Get 90 days of deals
         
-        if not deals:
-            self.log("⚠️ No deals found in MT5 history", "ERROR")
-            messagebox.showwarning("Warning", "No deals found in MT5 history. Make sure you're connected to the correct account.")
+        if not account:
+            self.log("⚠️ No account info available", "ERROR")
+            messagebox.showerror("Error", "Could not retrieve account information from MT5.")
             return
         
-        # Count balance operations (deposits/withdrawals)
-        balance_deals = [d for d in deals if str(d.get('type', '')).upper() == 'BALANCE']
-        deposits = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) > 0)
-        withdrawals = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) < 0)
+        # Extract rebalance data directly from account info (MT5 provides cumulative totals)
+        balance = account.get('balance', 0)
+        deposits = account.get('total_deposits', 0)
+        withdrawals = account.get('total_withdrawals', 0)
         
         self.log("="*60)
         self.log("📊 REBALANCE DATA DEBUG TRACE")
         self.log("="*60)
-        self.log(f"✓ Total deals retrieved: {len(deals)}")
-        self.log(f"✓ Balance operations found: {len(balance_deals)}")
-        self.log(f"✓ Account Balance: ${account.get('balance', 0):.2f}")
-        self.log(f"✓ Calculated Deposits: ${deposits:.2f}")
-        self.log(f"✓ Calculated Withdrawals: ${withdrawals:.2f}")
-        
-        if balance_deals:
-            self.log(f"\n📋 Sample balance deals:")
-            for i, bd in enumerate(balance_deals[:3]):  # Show first 3
-                self.log(f"   Deal {i+1}: Type={bd.get('type')}, Profit={bd.get('profit', 0):.2f}, Time={bd.get('time', 'N/A')[:10]}")
-        else:
-            self.log("⚠️ WARNING: No balance deals found!")
+        self.log(f"✓ Account Balance: ${balance:.2f}")
+        self.log(f"✓ Total Deposits: ${deposits:.2f}")
+        self.log(f"✓ Total Withdrawals: ${withdrawals:.2f}")
+        self.log(f"✓ Current Equity: ${account.get('equity', 0):.2f}")
+        self.log(f"✓ Profit: ${account.get('profit', 0):.2f}")
         
         payload = {
             "email": email,
             "account": account,
             "positions": [], # Push rebalance data only
-            "deals": balance_deals, # Push rebalance data only
+            "deals": [], # Not needed for rebalance data
             "statistics": {},  # Let server recalculate with MT5 data
             "evaluations": [],  # Don't overwrite evaluations
             "dropdown_options": {}
         }
         
         self.log(f"\n📤 Sending payload with:")
-        self.log(f"   - Account data: {len(account)} fields")
-        self.log(f"   - Deals: {len(balance_deals)} balance operations")
+        self.log(f"   - Balance: ${balance:.2f}")
+        self.log(f"   - Deposits: ${deposits:.2f}")
+        self.log(f"   - Withdrawals: ${withdrawals:.2f}")
         self.log(f"   - Email: {email}")
         
         try:
@@ -645,13 +640,13 @@ class TraderCompanionApp:
                 self.log(f"✓ Response data: {data.get('status', 'unknown')}")
                 
                 if data.get("status") == "success":
-                    self.log(f"\n✅ MT5 DATA PUSHED SUCCESSFULLY!")
-                    self.log(f"   Balance: ${account.get('balance', 0):.2f}")
+                    self.log(f"\n✅ REBALANCE DATA PUSHED SUCCESSFULLY!")
+                    self.log(f"   Balance: ${balance:.2f}")
                     self.log(f"   Deposits: ${deposits:.2f}")
                     self.log(f"   Withdrawals: ${withdrawals:.2f}")
                     self.log(f"   Message: {data.get('message', 'OK')}")
                     self.log("="*60)
-                    self.status_var.set("MT5 data pushed successfully!")
+                    self.status_var.set("Rebalance data pushed successfully!")
                     
                     # Suggest checking dashboard
                     self.log("\n💡 TIP: Refresh your dashboard to see updated Live Hedging Review")
