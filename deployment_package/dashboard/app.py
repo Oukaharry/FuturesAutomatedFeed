@@ -210,13 +210,14 @@ def trader_dashboard(trader_name):
 @require_session
 def client_dashboard(client_id):
     session_user = request.session_user
+    user_type = session_user.get('user_type')
     # Allow super_admin, admin, and trader to access any client dashboard
-    if session_user.get('user_type') in ['super_admin', 'admin', 'trader']:
-        return render_template('index.html', client_id=client_id)
+    if user_type in ['super_admin', 'admin', 'trader']:
+        return render_template('index.html', client_id=client_id, user_type=user_type, can_edit_hedging=True)
     # Check if user is the correct client
-    if session_user.get('user_type') != 'client' or session_user.get('user_identifier') != client_id:
+    if user_type != 'client' or session_user.get('user_identifier') != client_id:
         return redirect('/')
-    return render_template('index.html', client_id=client_id)
+    return render_template('index.html', client_id=client_id, user_type=user_type, can_edit_hedging=False)
 
 # ============ Hierarchy API with Role-Based Access Control ============
 
@@ -1097,6 +1098,65 @@ def get_accessible_clients(user_type, user_identifier):
         return [user_identifier]
     
     return []
+
+@app.route('/api/hedging_review/<client_id>', methods=['POST'])
+@require_session
+def update_hedging_review(client_id):
+    """Update hedging review values manually - only for traders, admins, and super_admins."""
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+    
+    # Only allow traders, admins, and super_admins to edit
+    if user_type not in ['trader', 'admin', 'super_admin']:
+        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"Client tried to edit hedging for: {client_id}", False)
+        return jsonify({"status": "error", "message": "Only traders, admins, and super admins can edit hedging review"}), 403
+    
+    # Check if user can access this client
+    if not can_access_client(user_type, user_identifier, client_id):
+        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"No access to client: {client_id}", False)
+        return jsonify({"status": "error", "message": "Access denied to this client"}), 403
+    
+    data = request.json
+    
+    # Get existing client data
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+    
+    # Update hedging review in statistics
+    if 'statistics' not in client_data:
+        client_data['statistics'] = {}
+    if 'hedging_review' not in client_data['statistics']:
+        client_data['statistics']['hedging_review'] = {}
+    
+    hr = client_data['statistics']['hedging_review']
+    hr['total_deposits'] = float(data.get('total_deposits', hr.get('total_deposits', 0)))
+    hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
+    hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
+    hr['actual_hedging_results'] = float(data.get('actual_hedging_results', hr.get('actual_hedging_results', 0)))
+    hr['discrepancy'] = float(data.get('discrepancy', hr.get('discrepancy', 0)))
+    
+    # Also store in account for consistency with MT5 push
+    if 'account' not in client_data:
+        client_data['account'] = {}
+    client_data['account']['balance'] = hr['current_balance']
+    client_data['account']['total_deposits'] = hr['total_deposits']
+    client_data['account']['total_withdrawals'] = hr['total_withdrawals']
+    
+    # Save updated data
+    save_client_data(client_id, client_data)
+    
+    log_action('HEDGING_EDIT', user_type, user_identifier, get_remote_address(), 
+               f"Updated hedging review for {client_id}: deposits={hr['total_deposits']}, withdrawals={hr['total_withdrawals']}, balance={hr['current_balance']}")
+    
+    return jsonify({
+        "status": "success", 
+        "message": "Hedging review updated",
+        "hedging_review": hr
+    })
 
 @app.route('/api/data')
 def get_data():

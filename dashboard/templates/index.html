@@ -208,9 +208,11 @@
 
     <script>
         const CLIENT_ID = "{{ client_id }}";
+        const canEditHedging = {{ 'true' if can_edit_hedging else 'false' }};
         let currentData = {};
         let isEditing = false;
         let currentNoteTarget = null; // { index, key }
+        let sheetHedgingResults = 0; // Store for recalculation
 
         function openTab(tabName) {
             document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
@@ -493,6 +495,8 @@
             const statsContainer = document.getElementById('stats-summary');
             if (data.statistics) {
                 const s = data.statistics;
+                // Store sheet hedging results for recalculation
+                sheetHedgingResults = s.hedging_review.sheet_hedging_results || 0;
                 statsContainer.innerHTML = `
                             <div class="stats-grid">
                                 <!-- Profitability - Completed -->
@@ -517,14 +521,37 @@
 
                                 <!-- Live Hedging Review -->
                                 <div class="card">
-                                    <div class="card-header">Live Hedging Review</div>
+                                    <div class="card-header">Live Hedging Review
+                                        ${canEditHedging ? '<button class="btn-small" onclick="saveHedgingReview()" style="float:right;padding:2px 8px;font-size:11px;">💾 Save</button>' : ''}
+                                    </div>
                                     <table class="summary-table">
-                                        <tr><td>Total Deposits</td><td class="text-right">${formatMoney(s.hedging_review.total_deposits)}</td></tr>
-                                        <tr><td>Total Withdrawals</td><td class="text-right">${formatMoney(s.hedging_review.total_withdrawals)}</td></tr>
-                                        <tr><td>Current Balance</td><td class="text-right">${formatMoney(s.hedging_review.current_balance)}</td></tr>
-                                        <tr><td>Actual Hedging Results</td><td class="text-right">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
+                                        <tr>
+                                            <td>Total Deposits</td>
+                                            <td class="text-right">
+                                                ${canEditHedging ? 
+                                                    '<input type="number" step="0.01" id="hedging-deposits" value="' + (s.hedging_review.total_deposits || 0) + '" style="width:120px;text-align:right;" onchange="updateHedgingCalc()">' : 
+                                                    formatMoney(s.hedging_review.total_deposits)}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>Total Withdrawals</td>
+                                            <td class="text-right">
+                                                ${canEditHedging ? 
+                                                    '<input type="number" step="0.01" id="hedging-withdrawals" value="' + (s.hedging_review.total_withdrawals || 0) + '" style="width:120px;text-align:right;" onchange="updateHedgingCalc()">' : 
+                                                    formatMoney(s.hedging_review.total_withdrawals)}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td>Current Balance</td>
+                                            <td class="text-right">
+                                                ${canEditHedging ? 
+                                                    '<input type="number" step="0.01" id="hedging-balance" value="' + (s.hedging_review.current_balance || 0) + '" style="width:120px;text-align:right;" onchange="updateHedgingCalc()">' : 
+                                                    formatMoney(s.hedging_review.current_balance)}
+                                            </td>
+                                        </tr>
+                                        <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
                                         <tr><td>Sheet Hedging Results</td><td class="text-right">${formatMoney(s.hedging_review.sheet_hedging_results)}</td></tr>
-                                        <tr><td>Discrepancy</td><td class="text-right">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.discrepancy) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td>Discrepancy</td><td class="text-right" id="hedging-discrepancy">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.discrepancy) : '<span style="color:#888">N/A</span>'}</td></tr>
                                     </table>
                                 </div>
 
@@ -708,6 +735,61 @@
         function formatMoney(value) {
             if (value === undefined || value === null) return '---';
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+        }
+
+        // Hedging Review Manual Edit Functions
+        function updateHedgingCalc() {
+            const deposits = parseFloat(document.getElementById('hedging-deposits')?.value) || 0;
+            const withdrawals = parseFloat(document.getElementById('hedging-withdrawals')?.value) || 0;
+            const balance = parseFloat(document.getElementById('hedging-balance')?.value) || 0;
+            
+            // Formula: Actual Hedging Results = Balance - (Deposits - Withdrawals)
+            // Note: withdrawals should be negative, so we add them
+            const netDeposits = deposits + withdrawals;  // withdrawals is negative
+            const actualHedging = balance - netDeposits;
+            const discrepancy = actualHedging - sheetHedgingResults;
+            
+            // Update display
+            const actualEl = document.getElementById('hedging-actual');
+            const discEl = document.getElementById('hedging-discrepancy');
+            if (actualEl) actualEl.textContent = formatMoney(actualHedging);
+            if (discEl) discEl.textContent = formatMoney(discrepancy);
+        }
+        
+        async function saveHedgingReview() {
+            const deposits = parseFloat(document.getElementById('hedging-deposits')?.value) || 0;
+            const withdrawals = parseFloat(document.getElementById('hedging-withdrawals')?.value) || 0;
+            const balance = parseFloat(document.getElementById('hedging-balance')?.value) || 0;
+            
+            // Calculate actual hedging and discrepancy
+            const netDeposits = deposits + withdrawals;
+            const actualHedging = balance - netDeposits;
+            const discrepancy = actualHedging - sheetHedgingResults;
+            
+            try {
+                const response = await fetch(`/api/hedging_review/${CLIENT_ID}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        total_deposits: deposits,
+                        total_withdrawals: withdrawals,
+                        current_balance: balance,
+                        actual_hedging_results: actualHedging,
+                        discrepancy: discrepancy
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    alert('Hedging review saved successfully!');
+                    updateDashboard();  // Refresh data
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to save'));
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Error saving hedging review: ' + error.message);
+            }
         }
 
         const dropdownOptions = {
