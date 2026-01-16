@@ -405,10 +405,19 @@ def api_client_push():
     if evaluations or mt5_deals or mt5_account:
         try:
             from utils.data_processor import calculate_statistics
+            
+            # Log what we're passing to calculate_statistics
+            app.logger.info(f"🔧 Calling calculate_statistics with:")
+            app.logger.info(f"   - mt5_account type: {type(mt5_account)}, has data: {bool(mt5_account)}")
+            if mt5_account:
+                app.logger.info(f"   - mt5_account.balance: {mt5_account.get('balance', 'N/A')}")
+                app.logger.info(f"   - mt5_account.total_deposits: {mt5_account.get('total_deposits', 'N/A')}")
+                app.logger.info(f"   - mt5_account.total_withdrawals: {mt5_account.get('total_withdrawals', 'N/A')}")
+            
             # Pass MT5 data - if empty, discrepancy will be 0
             mt5_acc_param = mt5_account if mt5_account else None
             mt5_deals_param = mt5_deals if mt5_deals else None
-            statistics = calculate_statistics(evaluations, mt5_acc_param, mt5_deals_param)
+            statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param)
             
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
