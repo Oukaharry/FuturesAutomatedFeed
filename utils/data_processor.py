@@ -479,12 +479,22 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     # --- Hedging Review ---
     stats["hedging_review"]["sheet_hedging_results"] = sheet_hedge_total
     
+    # Debug logging (will be visible in server logs)
+    import sys
+    debug_log = []
+    
     if mt5_account:
         # Handle both dict (serialized) and object
         if isinstance(mt5_account, dict):
-            stats["hedging_review"]["current_balance"] = float(mt5_account.get('balance', 0.0) or 0.0)
+            balance = float(mt5_account.get('balance', 0.0) or 0.0)
+            stats["hedging_review"]["current_balance"] = balance
+            debug_log.append(f"MT5 Account (dict): balance=${balance:.2f}")
         else:
-            stats["hedging_review"]["current_balance"] = float(getattr(mt5_account, 'balance', 0.0) or 0.0)
+            balance = float(getattr(mt5_account, 'balance', 0.0) or 0.0)
+            stats["hedging_review"]["current_balance"] = balance
+            debug_log.append(f"MT5 Account (object): balance=${balance:.2f}")
+    else:
+        debug_log.append("MT5 Account: NONE")
 
     has_mt5_data = False  # Track if we actually have MT5 data
     if mt5_deals and len(mt5_deals) > 0:
@@ -492,6 +502,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         withdrawals = 0.0
         actual_profit = 0.0
         deal_types_seen = set()
+        balance_count = 0
+        trade_count = 0
+        
+        debug_log.append(f"MT5 Deals: {len(mt5_deals)} total")
         
         for deal in mt5_deals:
             # Handle both dict (serialized) and object
@@ -511,19 +525,36 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             # DEAL_TYPE_BALANCE = 2 or "BALANCE" (serialized from trader app)
             is_balance = d_type == 2 or str(d_type).upper() == "BALANCE"
             if is_balance:
+                balance_count += 1
                 if d_profit > 0:
                     deposits += d_profit
                 else:
                     withdrawals += d_profit
             else:
+                trade_count += 1
                 actual_profit += (d_profit + d_swap + d_comm)
         
         has_mt5_data = True
         stats["hedging_review"]["total_deposits"] = deposits
         stats["hedging_review"]["total_withdrawals"] = withdrawals
-        stats["hedging_review"]["actual_hedging_results"] = actual_profit
-        stats["hedging_review"]["discrepancy"] = actual_profit - sheet_hedge_total
+        
         # Debug: store deal types seen for troubleshooting
+        debug_log.append(f"   - Balance deals: {balance_count}, Trade deals: {trade_count}")
+        debug_log.append(f"   - Deposits: ${deposits:.2f}, Withdrawals: ${withdrawals:.2f}")
+        debug_log.append(f"   - Actual profit: ${actual_profit:.2f}")
+        debug_log.append(f"   - Deal types seen: {list(deal_types_seen)}")
+        
+        stats["hedging_review"]["_debug_deal_count"] = len(mt5_deals)
+        stats["hedging_review"]["_debug_deal_types"] = list(deal_types_seen)
+        stats["hedging_review"]["_debug_balance_count"] = balance_count
+    else:
+        debug_log.append("MT5 Deals: NONE or empty")
+    
+    # Print debug log to console/logs
+    print("\n🔍 DATA_PROCESSOR DEBUG:")
+    for line in debug_log:
+        print(f"   {line}")
+    print(
         stats["hedging_review"]["_debug_deal_count"] = len(mt5_deals)
         stats["hedging_review"]["_debug_deal_types"] = list(deal_types_seen)
 

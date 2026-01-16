@@ -392,7 +392,12 @@ def api_client_push():
     
     # Debug logging
     acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
-    app.logger.info(f"Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
+    app.logger.info(f"📥 Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
+    
+    # Log deal types to debug
+    if mt5_deals:
+        deal_types = [str(d.get('type', 'unknown')) for d in mt5_deals[:5]]
+        app.logger.info(f"   Sample deal types: {deal_types}")
     
     # ALWAYS recalculate statistics when we have evaluations or MT5 data
     # This ensures discrepancy is only calculated when we have actual MT5 data
@@ -407,7 +412,15 @@ def api_client_push():
             
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
-            app.logger.info(f"Stats calculated: balance={hr.get('current_balance')}, deposits={hr.get('total_deposits')}, withdrawals={hr.get('total_withdrawals')}, actual_hedging={hr.get('actual_hedging_results')}")
+            app.logger.info(f"✅ Stats calculated:")
+            app.logger.info(f"   - Current balance: ${hr.get('current_balance', 0):.2f}")
+            app.logger.info(f"   - Total deposits: ${hr.get('total_deposits', 0):.2f}")
+            app.logger.info(f"   - Total withdrawals: ${hr.get('total_withdrawals', 0):.2f}")
+            app.logger.info(f"   - Actual hedging: ${hr.get('actual_hedging_results', 0):.2f}")
+            
+            # Debug info
+            if '_debug_deal_count' in hr:
+                app.logger.info(f"   - Debug: {hr.get('_debug_deal_count')} deals processed, types seen: {hr.get('_debug_deal_types', [])}")
         except Exception as e:
             app.logger.error(f"Error recalculating stats: {e}")
             import traceback

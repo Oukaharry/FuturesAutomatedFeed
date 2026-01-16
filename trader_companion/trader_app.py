@@ -262,6 +262,27 @@ class TraderCompanionApp:
         self.root.geometry("750x800")
         self.root.configure(bg='#1a1a2e')
         
+        # Create canvas for scrolling
+        self.main_canvas = tk.Canvas(self.root, bg='#1a1a2e', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.main_canvas)
+        
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+        )
+        
+        self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.main_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.main_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
         self.pusher = MT5DataPusher()
         self.auto_push_enabled = False
         self.auto_push_thread = None
@@ -283,8 +304,8 @@ class TraderCompanionApp:
         style.configure('Status.TLabel', font=('Segoe UI', 10), foreground='#16a34a')
         style.configure('Error.TLabel', font=('Segoe UI', 10), foreground='#dc2626')
         
-        # Main container
-        main_frame = ttk.Frame(self.root, padding=20)
+        # Main container (inside scrollable frame)
+        main_frame = ttk.Frame(self.scrollable_frame, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Header
@@ -578,9 +599,21 @@ class TraderCompanionApp:
         deposits = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) > 0)
         withdrawals = sum(d.get('profit', 0) for d in balance_deals if d.get('profit', 0) < 0)
         
-        self.log(f"   Found {len(balance_deals)} balance operations (filtered from {len(deals)} total deals)")
-        self.log(f"   Account balance: ${account.get('balance', 0):.2f}")
-        self.log(f"   Deposits: ${deposits:.2f}, Withdrawals: ${withdrawals:.2f}")
+        self.log("="*60)
+        self.log("📊 REBALANCE DATA DEBUG TRACE")
+        self.log("="*60)
+        self.log(f"✓ Total deals retrieved: {len(deals)}")
+        self.log(f"✓ Balance operations found: {len(balance_deals)}")
+        self.log(f"✓ Account Balance: ${account.get('balance', 0):.2f}")
+        self.log(f"✓ Calculated Deposits: ${deposits:.2f}")
+        self.log(f"✓ Calculated Withdrawals: ${withdrawals:.2f}")
+        
+        if balance_deals:
+            self.log(f"\n📋 Sample balance deals:")
+            for i, bd in enumerate(balance_deals[:3]):  # Show first 3
+                self.log(f"   Deal {i+1}: Type={bd.get('type')}, Profit={bd.get('profit', 0):.2f}, Time={bd.get('time', 'N/A')[:10]}")
+        else:
+            self.log("⚠️ WARNING: No balance deals found!")
         
         payload = {
             "email": email,
@@ -592,6 +625,11 @@ class TraderCompanionApp:
             "dropdown_options": {}
         }
         
+        self.log(f"\n📤 Sending payload with:")
+        self.log(f"   - Account data: {len(account)} fields")
+        self.log(f"   - Deals: {len(balance_deals)} balance operations")
+        self.log(f"   - Email: {email}")
+        
         try:
             response = requests.post(
                 f"{dashboard_url}/api/client/push",
@@ -600,22 +638,37 @@ class TraderCompanionApp:
                 timeout=30
             )
             
+            self.log(f"\n📡 Server response: HTTP {response.status_code}")
+            
             if response.status_code == 200:
                 data = response.json()
+                self.log(f"✓ Response data: {data.get('status', 'unknown')}")
+                
                 if data.get("status") == "success":
-                    self.log(f"✅ MT5 data pushed successfully!")
-                    self.log(f"   Balance: ${account.get('balance', 0):.2f} | Deposits: ${deposits:.2f} | Withdrawals: ${withdrawals:.2f}")
+                    self.log(f"\n✅ MT5 DATA PUSHED SUCCESSFULLY!")
+                    self.log(f"   Balance: ${account.get('balance', 0):.2f}")
+                    self.log(f"   Deposits: ${deposits:.2f}")
+                    self.log(f"   Withdrawals: ${withdrawals:.2f}")
+                    self.log(f"   Message: {data.get('message', 'OK')}")
+                    self.log("="*60)
                     self.status_var.set("MT5 data pushed successfully!")
+                    
+                    # Suggest checking dashboard
+                    self.log("\n💡 TIP: Refresh your dashboard to see updated Live Hedging Review")
                 else:
-                    self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
+                    self.log(f"❌ Push failed: {data.get('message', 'Unknown error')}", "ERROR")
+                    self.log("="*60, "ERROR")
                     self.status_var.set("Push failed")
             else:
                 error_msg = f"HTTP {response.status_code}"
                 try:
-                    error_msg = response.json().get("message", error_msg)
+                    error_data = response.json()
+                    error_msg = error_data.get("message", error_msg)
+                    self.log(f"❌ Server error response: {error_data}", "ERROR")
                 except:
-                    pass
+                    self.log(f"❌ Server response text: {response.text[:200]}", "ERROR")
                 self.log(f"❌ Push failed: {error_msg}", "ERROR")
+                self.log("="*60, "ERROR")
                 self.status_var.set("Push failed")
                 
         except Exception as e:
