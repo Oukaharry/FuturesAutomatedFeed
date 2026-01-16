@@ -606,6 +606,7 @@ class TraderCompanionApp:
         
         # Get MT5 data
         account = self.pusher.get_account_info() or {}
+        deals = self.pusher.get_deals(days=365)  # Get 1 year of deals for hedging calculations
         
         if not account:
             self.log("⚠️ No account info available", "ERROR")
@@ -617,6 +618,19 @@ class TraderCompanionApp:
         deposits = account.get('total_deposits', 0)
         withdrawals = account.get('total_withdrawals', 0)
         
+        # Calculate actual hedging results from deals (non-BALANCE trades)
+        actual_hedging = 0.0
+        trade_count = 0
+        for deal in (deals or []):
+            d_type = str(deal.get('type', '')).upper()
+            if d_type not in ['BALANCE', 'CREDIT', '2', '3']:  # Skip balance and credit operations
+                profit = deal.get('profit', 0) or 0
+                swap = deal.get('swap', 0) or 0
+                commission = deal.get('commission', 0) or 0
+                actual_hedging += (profit + swap + commission)
+                if deal.get('entry') == 'OUT':  # Count closed trades
+                    trade_count += 1
+        
         self.log("="*60)
         self.log("📊 REBALANCE DATA DEBUG TRACE")
         self.log("="*60)
@@ -625,12 +639,14 @@ class TraderCompanionApp:
         self.log(f"✓ Total Withdrawals: ${withdrawals:.2f}")
         self.log(f"✓ Current Equity: ${account.get('equity', 0):.2f}")
         self.log(f"✓ Profit: ${account.get('profit', 0):.2f}")
+        self.log(f"✓ Actual Hedging Results: ${actual_hedging:.2f} ({trade_count} closed trades)")
+        self.log(f"✓ Deals fetched: {len(deals) if deals else 0}")
         
         payload = {
             "email": email,
             "account": account,
-            "positions": [], # Push rebalance data only
-            "deals": [], # Not needed for rebalance data
+            "positions": [],
+            "deals": deals or [],  # Include deals for actual hedging calculation
             "statistics": {},  # Let server recalculate with MT5 data
             "evaluations": [],  # Don't overwrite evaluations
             "dropdown_options": {}

@@ -489,29 +489,37 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             balance = float(mt5_account.get('balance', 0.0) or 0.0)
             deposits = float(mt5_account.get('total_deposits', 0.0) or 0.0)
             withdrawals = float(mt5_account.get('total_withdrawals', 0.0) or 0.0)
-            stats["hedging_review"]["current_balance"] = balance
-            stats["hedging_review"]["total_deposits"] = deposits
-            stats["hedging_review"]["total_withdrawals"] = withdrawals
-            debug_log.append(f"MT5 Account (dict): balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         else:
             balance = float(getattr(mt5_account, 'balance', 0.0) or 0.0)
             deposits = float(getattr(mt5_account, 'total_deposits', 0.0) or 0.0)
             withdrawals = float(getattr(mt5_account, 'total_withdrawals', 0.0) or 0.0)
-            stats["hedging_review"]["current_balance"] = balance
-            stats["hedging_review"]["total_deposits"] = deposits
-            stats["hedging_review"]["total_withdrawals"] = withdrawals
-            debug_log.append(f"MT5 Account (object): balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
+        
+        stats["hedging_review"]["current_balance"] = balance
+        stats["hedging_review"]["total_deposits"] = deposits
+        stats["hedging_review"]["total_withdrawals"] = withdrawals
+        
+        # Calculate Actual Hedging Results using the Google Sheet formula:
+        # =IF(AND(B20<>"", B22<>""), B22-(B20-B21), "")
+        # Which is: Current Balance - (Total Deposits - Total Withdrawals)
+        # Note: withdrawals are already negative, so we add them
+        net_deposits = deposits + withdrawals  # withdrawals is negative
+        actual_hedging = balance - net_deposits
+        stats["hedging_review"]["actual_hedging_results"] = actual_hedging
+        stats["hedging_review"]["discrepancy"] = actual_hedging - sheet_hedge_total
+        
+        debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
+        debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")
+        has_mt5_data = True
     else:
         debug_log.append("MT5 Account: NONE")
+        has_mt5_data = False
 
-    has_mt5_data = mt5_account is not None and (mt5_account.get('balance', 0) != 0 if isinstance(mt5_account, dict) else getattr(mt5_account, 'balance', 0) != 0)  # Track if we actually have MT5 data
+    # Process deals if available (for trade history tracking only, not hedging review)
     if mt5_deals and len(mt5_deals) > 0:
-        deposits = 0.0
-        withdrawals = 0.0
-        actual_profit = 0.0
         deal_types_seen = set()
         balance_count = 0
         trade_count = 0
+        actual_profit = 0.0
         
         debug_log.append(f"MT5 Deals: {len(mt5_deals)} total")
         
@@ -534,27 +542,16 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             is_balance = d_type == 2 or str(d_type).upper() == "BALANCE"
             if is_balance:
                 balance_count += 1
-                if d_profit > 0:
-                    deposits += d_profit
-                else:
-                    withdrawals += d_profit
             else:
                 trade_count += 1
                 actual_profit += (d_profit + d_swap + d_comm)
         
-        has_mt5_data = True
-        # Only override deposits/withdrawals if we calculated from deals
-        # Otherwise, use the cumulative totals from mt5_account
-        if balance_count > 0:
-            stats["hedging_review"]["total_deposits"] = deposits
-            stats["hedging_review"]["total_withdrawals"] = withdrawals
-        stats["hedging_review"]["actual_hedging_results"] = actual_profit
-        stats["hedging_review"]["discrepancy"] = actual_profit - sheet_hedge_total
+        if not has_mt5_data:
+            has_mt5_data = True
         
         # Debug: store deal types seen for troubleshooting
         debug_log.append(f"   - Balance deals: {balance_count}, Trade deals: {trade_count}")
-        debug_log.append(f"   - Deposits from deals: ${deposits:.2f}, Withdrawals: ${withdrawals:.2f}")
-        debug_log.append(f"   - Actual profit: ${actual_profit:.2f}")
+        debug_log.append(f"   - Trade profit from deals: ${actual_profit:.2f}")
         debug_log.append(f"   - Deal types seen: {list(deal_types_seen)}")
         
         stats["hedging_review"]["_debug_deal_count"] = len(mt5_deals)
