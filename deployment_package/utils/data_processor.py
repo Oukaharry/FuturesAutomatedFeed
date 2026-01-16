@@ -567,9 +567,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     print("\n🔍 DATA_PROCESSOR DEBUG:")
     for line in debug_log:
         print(f"   {line}")
-    print(
-        stats["hedging_review"]["_debug_deal_count"] = len(mt5_deals)
-        stats["hedging_review"]["_debug_deal_types"] = list(deal_types_seen)
+    print()
 
     # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
     # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy
