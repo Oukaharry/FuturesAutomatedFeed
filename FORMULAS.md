@@ -166,15 +166,21 @@ The average profit from completed funded accounts.
     ```
 
 ### Expected Value (EV)
-A projection of the expected value of a single account based on historical performance.
+The average net profit per ended account, calculated as the total net profit of all ended accounts divided by the count of ended accounts.
 
-*   **Formula:**
-    ```python
-    expected_value = (funded_rate * avg_funded_val) + ((1 - funded_rate) * avg_fail_cost)
+*   **Sheet Formula:**
     ```
-    *   `funded_rate`: % of accounts that pass Phase 1 (as a decimal).
-    *   `avg_funded_val`: Average net profit of completed funded accounts.
-    *   `avg_fail_cost`: Average net loss of failed evaluations.
+    =IFERROR(SUM(Evaluations!O:O, Evaluations!AB:AB) / COUNT(Evaluations!O:O, Evaluations!AB:AB), 0)
+    ```
+
+*   **Dashboard Formula:**
+    ```python
+    # For failed P1 accounts: net = -Fee + P1 Hedge Net
+    # For ended funded accounts (Completed/Fail): net = P1 Hedge Net + Funded Hedge Net + Payouts - Fee - Activation Fee
+    expected_value = total_net_ended / count_ended
+    ```
+    *   `total_net_ended`: Sum of net profits from all failed P1 accounts plus all ended funded accounts
+    *   `count_ended`: Total number of ended accounts (failed P1 + completed/failed funded)
 
 ---
 

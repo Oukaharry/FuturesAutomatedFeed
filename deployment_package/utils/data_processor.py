@@ -232,6 +232,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             "not_started": 0, "ongoing": 0, "failed": 0, "completed": 0, "avg_net_failed": 0.0, "avg_net_completed": 0.0, "total_funding": 0.0
         },
         "expected_value": 0.0,
+        "ev_tracking": {
+            "total_net_ended": 0.0,
+            "count_ended": 0
+        },
         "hedging_review": {
             "total_deposits": 0.0,
             "total_withdrawals": 0.0,
@@ -300,6 +304,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         
         # For sheet_hedge_total tracking
         hedge_net = parse_currency(ev.get('Hedge Net')) + parse_currency(ev.get('Hedge Net.1'))
+        p1_hedge_net = parse_currency(ev.get('Hedge Net'))
+        funded_hedge_net = parse_currency(ev.get('Hedge Net.1'))
         sheet_hedge_total += hedge_net
         
         # === PROFITABILITY - COMPLETED (exact SUMIF logic from sheet) ===
@@ -395,6 +401,11 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             stats["eval_totals"]["total_failed"] += 1
             estats["net_failed_sum"] += net_profit 
             stats["eval_totals"]["avg_net_failed"] += net_profit
+            
+            # EV tracking: Failed P1 net = -Fee + P1 Hedge Net (column N/O formula)
+            ev_net_p1_fail = -fee + p1_hedge_net
+            stats["ev_tracking"]["total_net_ended"] += ev_net_p1_fail
+            stats["ev_tracking"]["count_ended"] += 1
 
         # --- 3. Funded Data ---
         fstats = get_firm_stats(firm, "funded_data")
@@ -424,11 +435,21 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
                 fstats["net_failed_sum"] += net_profit
                 stats["funded_totals"]["avg_net_failed"] += net_profit
                 
+                # EV tracking: Funded failed net = P1 Hedge + Funded Hedge + Payouts - Fee - Act Fee (column AA formula)
+                ev_net_funded = p1_hedge_net + funded_hedge_net + payouts - fee - activation_fee
+                stats["ev_tracking"]["total_net_ended"] += ev_net_funded
+                stats["ev_tracking"]["count_ended"] += 1
+                
             elif is_funded_completed:
                 fstats["completed"] += 1
                 stats["funded_totals"]["completed"] += 1
                 fstats["net_completed_sum"] += net_profit
                 stats["funded_totals"]["avg_net_completed"] += net_profit
+                
+                # EV tracking: Funded completed net = P1 Hedge + Funded Hedge + Payouts - Fee - Act Fee (column AA formula)
+                ev_net_funded = p1_hedge_net + funded_hedge_net + payouts - fee - activation_fee
+                stats["ev_tracking"]["total_net_ended"] += ev_net_funded
+                stats["ev_tracking"]["count_ended"] += 1
 
     # --- Calculate Averages & Rates ---
     
@@ -471,10 +492,13 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             d["avg_net_completed"] = 0.0
 
     # --- Expected Value ---
-    fr = stats["eval_totals"]["funded_rate"] / 100
-    avg_funded_val = stats["funded_totals"]["avg_net_completed"]
-    avg_fail_cost = stats["eval_totals"]["avg_net_failed"]
-    stats["expected_value"] = (fr * avg_funded_val) + ((1 - fr) * avg_fail_cost)
+    # Sheet formula: =IFERROR(SUM(Evaluations!O:O,Evaluations!AB:AB) / COUNT(Evaluations!O:O,Evaluations!AB:AB),0)
+    # This is simply the average net profit of all ended accounts (failed P1 + ended funded)
+    ev_data = stats["ev_tracking"]
+    if ev_data["count_ended"] > 0:
+        stats["expected_value"] = ev_data["total_net_ended"] / ev_data["count_ended"]
+    else:
+        stats["expected_value"] = 0.0
 
     # --- Hedging Review ---
     # Sheet Hedging Results = Total Hedging Results + Total Farming Results (from all evaluations)
