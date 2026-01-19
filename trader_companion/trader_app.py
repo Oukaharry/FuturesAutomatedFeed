@@ -592,7 +592,7 @@ class TraderCompanionApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("MT5 Trader Companion - No API Key Required")
-        self.root.geometry("750x800")
+        self.root.geometry("750x900")
         self.root.configure(bg='#1a1a2e')
         
         # Create canvas for scrolling
@@ -620,9 +620,11 @@ class TraderCompanionApp:
         self.auto_push_enabled = False
         self.auto_push_thread = None
         self.client_info = None  # Stores looked-up hierarchy info
+        self.historical_mt5_accounts = []  # List of historical MT5 account data
         
         self.setup_ui()
         self.load_config()
+        self.load_historical_mt5_data()
         
     def setup_ui(self):
         """Setup the user interface."""
@@ -725,6 +727,34 @@ class TraderCompanionApp:
         self.debug_comments_btn.pack(side=tk.LEFT, padx=5)
         
         ttk.Button(btn_frame2, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
+        
+        # Historical MT5 Accounts Frame
+        hist_frame = ttk.LabelFrame(main_frame, text="📜 Historical MT5 Accounts (Manual Entry)", padding=15)
+        hist_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        hist_info = ttk.Label(hist_frame, 
+            text="Add deposits/withdrawals from previous MT5 accounts. These are added to your live totals but NOT pushed to server.",
+            font=('Segoe UI', 8, 'italic'), foreground='#888888', wraplength=650)
+        hist_info.pack(fill=tk.X, pady=(0, 10))
+        
+        # Historical totals display
+        self.hist_totals_var = tk.StringVar(value="No historical accounts added")
+        self.hist_totals_label = ttk.Label(hist_frame, textvariable=self.hist_totals_var, 
+                                           font=('Consolas', 9), foreground='#fbbf24')
+        self.hist_totals_label.pack(fill=tk.X, pady=5)
+        
+        # Buttons for historical accounts
+        hist_btn_frame = ttk.Frame(hist_frame)
+        hist_btn_frame.pack(fill=tk.X, pady=5)
+        
+        self.add_hist_btn = ttk.Button(hist_btn_frame, text="➕ Add Previous MT5", command=self.add_historical_mt5)
+        self.add_hist_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.view_hist_btn = ttk.Button(hist_btn_frame, text="📋 View/Edit All", command=self.view_historical_mt5)
+        self.view_hist_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.clear_hist_btn = ttk.Button(hist_btn_frame, text="🗑️ Clear All", command=self.clear_historical_mt5)
+        self.clear_hist_btn.pack(side=tk.LEFT, padx=5)
         
         # Google Sheets Migration Frame
         sheet_frame = ttk.LabelFrame(main_frame, text="📋 Import from Google Sheets", padding=15)
@@ -941,6 +971,14 @@ class TraderCompanionApp:
         deposits = account.get('total_deposits', 0)
         withdrawals = account.get('total_withdrawals', 0)
         
+        # Get historical totals (for display only - NOT pushed to server)
+        hist_totals = self.get_cumulative_totals()
+        
+        # Combined totals for display
+        combined_deposits = deposits + hist_totals['deposits']
+        combined_withdrawals = withdrawals + hist_totals['withdrawals']
+        combined_balance = balance + hist_totals['final_balance']
+        
         # Calculate actual hedging results from deals (non-BALANCE trades)
         actual_hedging = 0.0
         trade_count = 0
@@ -957,17 +995,38 @@ class TraderCompanionApp:
         self.log("="*60)
         self.log("📊 REBALANCE DATA DEBUG TRACE")
         self.log("="*60)
-        self.log(f"✓ Account Balance: ${balance:.2f}")
-        self.log(f"✓ Total Deposits: ${deposits:.2f}")
-        self.log(f"✓ Total Withdrawals: ${withdrawals:.2f}")
-        self.log(f"✓ Current Equity: ${account.get('equity', 0):.2f}")
-        self.log(f"✓ Profit: ${account.get('profit', 0):.2f}")
+        self.log("📈 CURRENT MT5 (will be pushed):")
+        self.log(f"   Account Balance: ${balance:.2f}")
+        self.log(f"   Total Deposits: ${deposits:.2f}")
+        self.log(f"   Total Withdrawals: ${withdrawals:.2f}")
+        self.log(f"   Equity: ${account.get('equity', 0):.2f}")
+        
+        if hist_totals['deposits'] > 0 or hist_totals['withdrawals'] != 0:
+            self.log("")
+            self.log("📜 HISTORICAL MT5 (local only, NOT pushed):")
+            self.log(f"   Historical Deposits: ${hist_totals['deposits']:.2f}")
+            self.log(f"   Historical Withdrawals: ${hist_totals['withdrawals']:.2f}")
+            self.log(f"   Historical Balance: ${hist_totals['final_balance']:.2f}")
+            self.log("")
+            self.log("📊 COMBINED TOTALS (display):")
+            self.log(f"   Combined Deposits: ${combined_deposits:.2f}")
+            self.log(f"   Combined Withdrawals: ${combined_withdrawals:.2f}")
+            self.log(f"   Combined Balance: ${combined_balance:.2f}")
+        
+        self.log("")
         self.log(f"✓ Actual Hedging Results: ${actual_hedging:.2f} ({trade_count} closed trades)")
         self.log(f"✓ Deals fetched: {len(deals) if deals else 0}")
         
+        # Add historical totals to account data for server-side calculation
+        # This allows the server to show combined totals in the dashboard
+        account_with_history = account.copy()
+        account_with_history['historical_deposits'] = hist_totals['deposits']
+        account_with_history['historical_withdrawals'] = hist_totals['withdrawals']
+        account_with_history['historical_balance'] = hist_totals['final_balance']
+        
         payload = {
             "email": email,
-            "account": account,
+            "account": account_with_history,
             "positions": [],
             "deals": deals or [],  # Include deals for actual hedging calculation
             "statistics": {},  # Let server recalculate with MT5 data
@@ -979,6 +1038,9 @@ class TraderCompanionApp:
         self.log(f"   - Balance: ${balance:.2f}")
         self.log(f"   - Deposits: ${deposits:.2f}")
         self.log(f"   - Withdrawals: ${withdrawals:.2f}")
+        if hist_totals['deposits'] > 0 or hist_totals['withdrawals'] != 0:
+            self.log(f"   - Historical Deposits: ${hist_totals['deposits']:.2f}")
+            self.log(f"   - Historical Withdrawals: ${hist_totals['withdrawals']:.2f}")
         self.log(f"   - Email: {email}")
         
         try:
@@ -1431,6 +1493,267 @@ class TraderCompanionApp:
                 self.log("Configuration loaded")
             except Exception as e:
                 self.log(f"Failed to load config: {e}", "ERROR")
+    
+    def load_historical_mt5_data(self):
+        """Load historical MT5 account data from file."""
+        hist_path = os.path.join(os.path.dirname(__file__), "historical_mt5.json")
+        if os.path.exists(hist_path):
+            try:
+                with open(hist_path, 'r') as f:
+                    self.historical_mt5_accounts = json.load(f)
+                self.update_historical_display()
+                self.log(f"Loaded {len(self.historical_mt5_accounts)} historical MT5 account(s)")
+            except Exception as e:
+                self.log(f"Failed to load historical MT5 data: {e}", "ERROR")
+                self.historical_mt5_accounts = []
+        else:
+            self.historical_mt5_accounts = []
+    
+    def save_historical_mt5_data(self):
+        """Save historical MT5 account data to file."""
+        hist_path = os.path.join(os.path.dirname(__file__), "historical_mt5.json")
+        try:
+            with open(hist_path, 'w') as f:
+                json.dump(self.historical_mt5_accounts, f, indent=2)
+            self.log("Historical MT5 data saved")
+        except Exception as e:
+            self.log(f"Failed to save historical MT5 data: {e}", "ERROR")
+    
+    def update_historical_display(self):
+        """Update the historical totals display."""
+        if not self.historical_mt5_accounts:
+            self.hist_totals_var.set("No historical accounts added")
+            return
+        
+        total_deposits = sum(acc.get('deposits', 0) for acc in self.historical_mt5_accounts)
+        total_withdrawals = sum(acc.get('withdrawals', 0) for acc in self.historical_mt5_accounts)
+        total_balance = sum(acc.get('final_balance', 0) for acc in self.historical_mt5_accounts)
+        
+        self.hist_totals_var.set(
+            f"📊 {len(self.historical_mt5_accounts)} account(s) | "
+            f"Deposits: ${total_deposits:,.2f} | "
+            f"Withdrawals: ${total_withdrawals:,.2f} | "
+            f"Final Balance: ${total_balance:,.2f}"
+        )
+    
+    def get_cumulative_totals(self):
+        """Get cumulative totals from historical accounts."""
+        if not self.historical_mt5_accounts:
+            return {'deposits': 0, 'withdrawals': 0, 'final_balance': 0}
+        
+        return {
+            'deposits': sum(acc.get('deposits', 0) for acc in self.historical_mt5_accounts),
+            'withdrawals': sum(acc.get('withdrawals', 0) for acc in self.historical_mt5_accounts),
+            'final_balance': sum(acc.get('final_balance', 0) for acc in self.historical_mt5_accounts)
+        }
+    
+    def add_historical_mt5(self):
+        """Open dialog to add a historical MT5 account."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Add Historical MT5 Account")
+        dialog.geometry("400x350")
+        dialog.configure(bg='#1a1a2e')
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.geometry(f"+{self.root.winfo_x() + 175}+{self.root.winfo_y() + 200}")
+        
+        style = ttk.Style()
+        style.configure('Dialog.TLabel', background='#1a1a2e', foreground='white', font=('Segoe UI', 10))
+        style.configure('Dialog.TFrame', background='#1a1a2e')
+        
+        main_frame = ttk.Frame(dialog, padding=20, style='Dialog.TFrame')
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(main_frame, text="Add Previous MT5 Account", style='Dialog.TLabel',
+                  font=('Segoe UI', 12, 'bold')).pack(pady=(0, 15))
+        
+        ttk.Label(main_frame, text="Enter values from your previous MT5 that is no longer in use:",
+                  style='Dialog.TLabel', font=('Segoe UI', 9, 'italic')).pack(pady=(0, 15))
+        
+        # Account Name/ID
+        name_frame = ttk.Frame(main_frame, style='Dialog.TFrame')
+        name_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(name_frame, text="Account Name/ID:", width=18, style='Dialog.TLabel').pack(side=tk.LEFT)
+        name_entry = ttk.Entry(name_frame, width=25)
+        name_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Total Deposits
+        dep_frame = ttk.Frame(main_frame, style='Dialog.TFrame')
+        dep_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(dep_frame, text="Total Deposits ($):", width=18, style='Dialog.TLabel').pack(side=tk.LEFT)
+        dep_entry = ttk.Entry(dep_frame, width=25)
+        dep_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Total Withdrawals (should be negative)
+        with_frame = ttk.Frame(main_frame, style='Dialog.TFrame')
+        with_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(with_frame, text="Total Withdrawals ($):", width=18, style='Dialog.TLabel').pack(side=tk.LEFT)
+        with_entry = ttk.Entry(with_frame, width=25)
+        with_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Label(with_frame, text="(negative)", style='Dialog.TLabel', 
+                  font=('Segoe UI', 8, 'italic')).pack(side=tk.LEFT)
+        
+        # Final Balance
+        bal_frame = ttk.Frame(main_frame, style='Dialog.TFrame')
+        bal_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(bal_frame, text="Final Balance ($):", width=18, style='Dialog.TLabel').pack(side=tk.LEFT)
+        bal_entry = ttk.Entry(bal_frame, width=25)
+        bal_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Notes
+        note_frame = ttk.Frame(main_frame, style='Dialog.TFrame')
+        note_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(note_frame, text="Notes (optional):", width=18, style='Dialog.TLabel').pack(side=tk.LEFT)
+        note_entry = ttk.Entry(note_frame, width=25)
+        note_entry.pack(side=tk.LEFT, padx=5)
+        
+        def save_account():
+            try:
+                name = name_entry.get().strip() or f"MT5 Account {len(self.historical_mt5_accounts) + 1}"
+                deposits = float(dep_entry.get().strip() or 0)
+                withdrawals = float(with_entry.get().strip() or 0)
+                balance = float(bal_entry.get().strip() or 0)
+                notes = note_entry.get().strip()
+                
+                # Ensure withdrawals are negative
+                if withdrawals > 0:
+                    withdrawals = -withdrawals
+                
+                account_data = {
+                    'name': name,
+                    'deposits': deposits,
+                    'withdrawals': withdrawals,
+                    'final_balance': balance,
+                    'notes': notes,
+                    'date_added': datetime.now().isoformat()
+                }
+                
+                self.historical_mt5_accounts.append(account_data)
+                self.save_historical_mt5_data()
+                self.update_historical_display()
+                self.log(f"✅ Added historical MT5: {name} (Deposits: ${deposits:,.2f}, Withdrawals: ${withdrawals:,.2f})")
+                dialog.destroy()
+                
+            except ValueError as e:
+                messagebox.showerror("Error", "Please enter valid numbers for deposits, withdrawals, and balance")
+        
+        # Buttons
+        btn_frame = ttk.Frame(main_frame, style='Dialog.TFrame')
+        btn_frame.pack(fill=tk.X, pady=20)
+        
+        ttk.Button(btn_frame, text="💾 Save", command=save_account).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+    
+    def view_historical_mt5(self):
+        """View and edit all historical MT5 accounts."""
+        if not self.historical_mt5_accounts:
+            messagebox.showinfo("Info", "No historical MT5 accounts added yet.\nClick 'Add Previous MT5' to add one.")
+            return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Historical MT5 Accounts")
+        dialog.geometry("600x400")
+        dialog.configure(bg='#1a1a2e')
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.geometry(f"+{self.root.winfo_x() + 75}+{self.root.winfo_y() + 150}")
+        
+        main_frame = ttk.Frame(dialog, padding=15)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(main_frame, text="Historical MT5 Accounts", 
+                  font=('Segoe UI', 12, 'bold')).pack(pady=(0, 10))
+        
+        # Create treeview for accounts
+        columns = ('name', 'deposits', 'withdrawals', 'balance', 'notes')
+        tree = ttk.Treeview(main_frame, columns=columns, show='headings', height=10)
+        
+        tree.heading('name', text='Account Name')
+        tree.heading('deposits', text='Deposits')
+        tree.heading('withdrawals', text='Withdrawals')
+        tree.heading('balance', text='Final Balance')
+        tree.heading('notes', text='Notes')
+        
+        tree.column('name', width=120)
+        tree.column('deposits', width=100)
+        tree.column('withdrawals', width=100)
+        tree.column('balance', width=100)
+        tree.column('notes', width=150)
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Populate tree
+        for idx, acc in enumerate(self.historical_mt5_accounts):
+            tree.insert('', 'end', iid=idx, values=(
+                acc.get('name', f'Account {idx+1}'),
+                f"${acc.get('deposits', 0):,.2f}",
+                f"${acc.get('withdrawals', 0):,.2f}",
+                f"${acc.get('final_balance', 0):,.2f}",
+                acc.get('notes', '')
+            ))
+        
+        # Totals row
+        totals = self.get_cumulative_totals()
+        ttk.Label(main_frame, text=f"\n📊 TOTALS: Deposits: ${totals['deposits']:,.2f} | "
+                  f"Withdrawals: ${totals['withdrawals']:,.2f} | Balance: ${totals['final_balance']:,.2f}",
+                  font=('Consolas', 9, 'bold')).pack(pady=10)
+        
+        def delete_selected():
+            selected = tree.selection()
+            if not selected:
+                messagebox.showwarning("Warning", "Please select an account to delete")
+                return
+            
+            if messagebox.askyesno("Confirm", "Delete selected account(s)?"):
+                # Delete in reverse order to maintain indices
+                for item in sorted(selected, reverse=True):
+                    idx = int(item)
+                    del self.historical_mt5_accounts[idx]
+                    tree.delete(item)
+                
+                self.save_historical_mt5_data()
+                self.update_historical_display()
+                self.log("Deleted historical MT5 account(s)")
+                
+                # Refresh tree
+                for item in tree.get_children():
+                    tree.delete(item)
+                for idx, acc in enumerate(self.historical_mt5_accounts):
+                    tree.insert('', 'end', iid=idx, values=(
+                        acc.get('name', f'Account {idx+1}'),
+                        f"${acc.get('deposits', 0):,.2f}",
+                        f"${acc.get('withdrawals', 0):,.2f}",
+                        f"${acc.get('final_balance', 0):,.2f}",
+                        acc.get('notes', '')
+                    ))
+        
+        # Buttons
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(fill=tk.X, pady=10, padx=15)
+        
+        ttk.Button(btn_frame, text="🗑️ Delete Selected", command=delete_selected).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Close", command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    def clear_historical_mt5(self):
+        """Clear all historical MT5 accounts."""
+        if not self.historical_mt5_accounts:
+            messagebox.showinfo("Info", "No historical MT5 accounts to clear")
+            return
+        
+        if messagebox.askyesno("Confirm", "Are you sure you want to clear ALL historical MT5 accounts?\n\nThis cannot be undone."):
+            self.historical_mt5_accounts = []
+            self.save_historical_mt5_data()
+            self.update_historical_display()
+            self.log("Cleared all historical MT5 accounts")
                 
     def run(self):
         """Run the application."""

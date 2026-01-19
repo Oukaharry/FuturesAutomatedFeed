@@ -494,25 +494,40 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
             balance = float(mt5_account.get('balance', 0.0) or 0.0)
             deposits = float(mt5_account.get('total_deposits', 0.0) or 0.0)
             withdrawals = float(mt5_account.get('total_withdrawals', 0.0) or 0.0)
+            # Historical MT5 accounts (from previous MT5s, manually entered)
+            hist_deposits = float(mt5_account.get('historical_deposits', 0.0) or 0.0)
+            hist_withdrawals = float(mt5_account.get('historical_withdrawals', 0.0) or 0.0)
+            hist_balance = float(mt5_account.get('historical_balance', 0.0) or 0.0)
         else:
             balance = float(getattr(mt5_account, 'balance', 0.0) or 0.0)
             deposits = float(getattr(mt5_account, 'total_deposits', 0.0) or 0.0)
             withdrawals = float(getattr(mt5_account, 'total_withdrawals', 0.0) or 0.0)
+            hist_deposits = float(getattr(mt5_account, 'historical_deposits', 0.0) or 0.0)
+            hist_withdrawals = float(getattr(mt5_account, 'historical_withdrawals', 0.0) or 0.0)
+            hist_balance = float(getattr(mt5_account, 'historical_balance', 0.0) or 0.0)
         
-        stats["hedging_review"]["current_balance"] = balance
-        stats["hedging_review"]["total_deposits"] = deposits
-        stats["hedging_review"]["total_withdrawals"] = withdrawals
+        # Combined totals (current + historical MT5 accounts)
+        total_deposits = deposits + hist_deposits
+        total_withdrawals = withdrawals + hist_withdrawals
+        total_balance = balance + hist_balance
+        
+        stats["hedging_review"]["current_balance"] = total_balance
+        stats["hedging_review"]["total_deposits"] = total_deposits
+        stats["hedging_review"]["total_withdrawals"] = total_withdrawals
         
         # Calculate Actual Hedging Results using the Google Sheet formula:
         # =IF(AND(B20<>"", B22<>""), B22-(B20-B21), "")
         # Which is: Current Balance - (Total Deposits - Total Withdrawals)
         # Note: withdrawals are already negative, so we add them
-        net_deposits = deposits + withdrawals  # withdrawals is negative
-        actual_hedging = balance - net_deposits
+        net_deposits = total_deposits + total_withdrawals  # withdrawals is negative
+        actual_hedging = total_balance - net_deposits
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
         stats["hedging_review"]["discrepancy"] = actual_hedging - stats["hedging_review"]["sheet_hedging_results"]
         
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
+        if hist_deposits > 0 or hist_withdrawals != 0:
+            debug_log.append(f"Historical MT5: deposits=${hist_deposits:.2f}, withdrawals=${hist_withdrawals:.2f}, balance=${hist_balance:.2f}")
+            debug_log.append(f"Combined: deposits=${total_deposits:.2f}, withdrawals=${total_withdrawals:.2f}, balance=${total_balance:.2f}")
         debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")
         has_mt5_data = True
     else:
