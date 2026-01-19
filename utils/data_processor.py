@@ -477,9 +477,11 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     stats["expected_value"] = (fr * avg_funded_val) + ((1 - fr) * avg_fail_cost)
 
     # --- Hedging Review ---
-    # Sheet Hedging Results = Total Hedging Results + Total Farming Results (from all evaluations)
-    total_hedging = stats["profitability_completed"]["hedging_results"] + stats["cashflow_inprogress"]["hedging_results"]
-    total_farming = stats["profitability_completed"]["farming_results"] + stats["cashflow_inprogress"]["farming_results"]
+    # Sheet Hedging Results = Total Hedging Results + Total Farming Results (from ALL evaluations)
+    # cashflow_inprogress already contains the sum of ALL records (no status filter)
+    # So we use those totals directly (not adding completed which would double-count)
+    total_hedging = stats["cashflow_inprogress"]["hedging_results"]
+    total_farming = stats["cashflow_inprogress"]["farming_results"]
     stats["hedging_review"]["sheet_hedging_results"] = total_hedging + total_farming
     
     # Debug logging (will be visible in server logs)
