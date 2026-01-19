@@ -1158,6 +1158,94 @@ def update_hedging_review(client_id):
         "hedging_review": hr
     })
 
+@app.route('/api/historical_mt5/<client_id>', methods=['POST'])
+@require_session
+def manage_historical_mt5(client_id):
+    """Manage historical MT5 accounts - add/delete. Only for traders, admins, and super_admins."""
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+    
+    # Only allow traders, admins, and super_admins to edit
+    if user_type not in ['trader', 'admin', 'super_admin']:
+        log_action('HISTORICAL_MT5_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"Client tried to edit historical MT5 for: {client_id}", False)
+        return jsonify({"status": "error", "message": "Only traders, admins, and super admins can manage historical MT5 accounts"}), 403
+    
+    # Check if user can access this client
+    if not can_access_client(user_type, user_identifier, client_id):
+        log_action('HISTORICAL_MT5_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"No access to client: {client_id}", False)
+        return jsonify({"status": "error", "message": "Access denied to this client"}), 403
+    
+    data = request.json
+    action = data.get('action')  # 'add' or 'delete'
+    
+    # Get existing client data
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+    
+    # Ensure hedging_review structure exists
+    if 'statistics' not in client_data:
+        client_data['statistics'] = {}
+    if 'hedging_review' not in client_data['statistics']:
+        client_data['statistics']['hedging_review'] = {}
+    
+    hr = client_data['statistics']['hedging_review']
+    
+    # Initialize historical_accounts array if not exists
+    if 'historical_accounts' not in hr:
+        hr['historical_accounts'] = []
+    
+    if action == 'add':
+        account = data.get('account', {})
+        hr['historical_accounts'].append({
+            'name': account.get('name', 'MT5 Account'),
+            'deposits': float(account.get('deposits', 0)),
+            'withdrawals': float(account.get('withdrawals', 0)),
+            'final_balance': float(account.get('final_balance', 0)),
+            'date_added': account.get('date_added', '')
+        })
+        
+        log_action('HISTORICAL_MT5_ADD', user_type, user_identifier, get_remote_address(), 
+                   f"Added historical MT5 for {client_id}: {account.get('name')}")
+        
+    elif action == 'delete':
+        index = data.get('index')
+        if index is not None and 0 <= index < len(hr['historical_accounts']):
+            deleted = hr['historical_accounts'].pop(index)
+            log_action('HISTORICAL_MT5_DELETE', user_type, user_identifier, get_remote_address(), 
+                       f"Deleted historical MT5 for {client_id}: {deleted.get('name')}")
+        else:
+            return jsonify({"status": "error", "message": "Invalid index"}), 400
+    else:
+        return jsonify({"status": "error", "message": "Invalid action"}), 400
+    
+    # Recalculate totals including historical accounts
+    hist_deposits = sum(acc.get('deposits', 0) for acc in hr['historical_accounts'])
+    hist_withdrawals = sum(acc.get('withdrawals', 0) for acc in hr['historical_accounts'])
+    hist_balance = sum(acc.get('final_balance', 0) for acc in hr['historical_accounts'])
+    
+    # Store historical totals for data_processor to use
+    hr['historical_deposits'] = hist_deposits
+    hr['historical_withdrawals'] = hist_withdrawals
+    hr['historical_balance'] = hist_balance
+    
+    # Save updated data
+    save_client_data(client_id, client_data)
+    
+    return jsonify({
+        "status": "success", 
+        "message": f"Historical MT5 {action}ed successfully",
+        "historical_accounts": hr['historical_accounts'],
+        "historical_totals": {
+            "deposits": hist_deposits,
+            "withdrawals": hist_withdrawals,
+            "balance": hist_balance
+        }
+    })
+
 @app.route('/api/data')
 def get_data():
     """Get client data - requires authentication and role-based access."""
@@ -1183,6 +1271,27 @@ def get_data():
         
         data = get_client_data(client_id)
         if data:
+            # Add historical MT5 values to hedging_review totals
+            if 'statistics' in data and 'hedging_review' in data['statistics']:
+                hr = data['statistics']['hedging_review']
+                hist_accounts = hr.get('historical_accounts', [])
+                
+                # Calculate historical totals
+                hist_deposits = sum(acc.get('deposits', 0) for acc in hist_accounts)
+                hist_withdrawals = sum(acc.get('withdrawals', 0) for acc in hist_accounts)
+                hist_balance = sum(acc.get('final_balance', 0) for acc in hist_accounts)
+                
+                # Add to current values if there are historical accounts
+                if hist_accounts:
+                    hr['total_deposits'] = hr.get('total_deposits', 0) + hist_deposits
+                    hr['total_withdrawals'] = hr.get('total_withdrawals', 0) + hist_withdrawals
+                    hr['current_balance'] = hr.get('current_balance', 0) + hist_balance
+                    
+                    # Recalculate actual hedging and discrepancy with combined values
+                    net_deposits = hr['total_deposits'] + hr['total_withdrawals']
+                    hr['actual_hedging_results'] = hr['current_balance'] - net_deposits
+                    hr['discrepancy'] = hr['actual_hedging_results'] - hr.get('sheet_hedging_results', 0)
+            
             return jsonify(data)
     
     # If no client specified, return empty
