@@ -477,7 +477,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     stats["expected_value"] = (fr * avg_funded_val) + ((1 - fr) * avg_fail_cost)
 
     # --- Hedging Review ---
-    stats["hedging_review"]["sheet_hedging_results"] = sheet_hedge_total
+    # Sheet Hedging Results = Total Hedging Results + Total Farming Results (from all evaluations)
+    total_hedging = stats["profitability_completed"]["hedging_results"] + stats["cashflow_inprogress"]["hedging_results"]
+    total_farming = stats["profitability_completed"]["farming_results"] + stats["cashflow_inprogress"]["farming_results"]
+    stats["hedging_review"]["sheet_hedging_results"] = total_hedging + total_farming
     
     # Debug logging (will be visible in server logs)
     import sys
@@ -505,7 +508,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         net_deposits = deposits + withdrawals  # withdrawals is negative
         actual_hedging = balance - net_deposits
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
-        stats["hedging_review"]["discrepancy"] = actual_hedging - sheet_hedge_total
+        stats["hedging_review"]["discrepancy"] = actual_hedging - stats["hedging_review"]["sheet_hedging_results"]
         
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")

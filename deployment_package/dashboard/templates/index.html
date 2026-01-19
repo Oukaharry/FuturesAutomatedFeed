@@ -208,7 +208,8 @@
 
     <script>
         const CLIENT_ID = "{{ client_id }}";
-        const canEditHedging = {{ 'true' if can_edit_hedging else 'false' }};
+        // @ts-ignore
+        const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
         let currentData = {};
         let isEditing = false;
         let currentNoteTarget = null; // { index, key }
