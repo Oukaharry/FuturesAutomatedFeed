@@ -48,6 +48,169 @@ limiter = Limiter(
 # Initialize Hierarchy from Config
 hierarchy = SYSTEM_HIERARCHY
 
+
+def get_account_signature(account_number):
+    """
+    Extract account signature for matching: first 4 + last 4 digits.
+    This handles truncated account numbers in MT5 comments.
+    
+    Examples:
+        MFFUEVSTP326057008 -> MFFU7008
+        EVSTP326057008 -> EVST7008
+        12345678 -> 12345678
+    """
+    if not account_number:
+        return None
+    
+    account_str = str(account_number).strip()
+    if len(account_str) < 8:
+        return account_str.lower()
+    
+    # First 4 + last 4
+    return (account_str[:4] + account_str[-4:]).lower()
+
+
+def match_account_to_evaluation(account_number, evaluations, phase_code):
+    """
+    Find matching evaluation for an account number based on phase.
+    
+    For Challenge (CH): Match against 'Account #' column
+    For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
+    
+    Uses first 4 + last 4 character signature for matching.
+    
+    Returns: (eval_index, matched_account) or (None, None)
+    """
+    if not account_number or not evaluations:
+        return None, None
+    
+    target_sig = get_account_signature(account_number)
+    if not target_sig:
+        return None, None
+    
+    # Determine which column to check based on phase
+    if phase_code == 'CH':
+        column_name = 'Account #'  # Challenge accounts
+    else:
+        column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
+    
+    # Search for matching account
+    for idx, ev in enumerate(evaluations):
+        eval_account = str(ev.get(column_name, '')).strip()
+        if not eval_account:
+            continue
+        
+        eval_sig = get_account_signature(eval_account)
+        if eval_sig == target_sig:
+            return idx, eval_account
+    
+    return None, None
+
+
+def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
+    """
+    Determine the correct field name to update based on phase.
+    
+    Phase mappings:
+    - CH1-5: Hedge Result 1-5 (Challenge)
+    - FD (MFFU with FD0): FD0→Hedge Result 1, FD1→Hedge Result 2, etc.
+    - FD (Other starting FD1): FD1→Hedge Result 1, FD2→Hedge Result 2, etc.
+    - DD1-4: Additional funded hedge results
+    - FA: Hedge Day N (based on date or next available slot)
+    """
+    if phase_code == 'CH':
+        # Challenge: CH1 → Hedge Result 1, CH2 → Hedge Result 2, etc.
+        if trade_number is not None and 1 <= trade_number <= 5:
+            return f"Hedge Result {trade_number}"
+    
+    elif phase_code == 'FD':
+        # Determine if this is an MFFU account (uses FD0)
+        # MFFU accounts: FD0→HR1, FD1→HR2, FD2→HR3, etc.
+        # Other accounts: FD1→HR1, FD2→HR2, FD3→HR3, etc.
+        is_mffu = account_number and account_number.upper().startswith('MFFU')
+        
+        if trade_number is not None:
+            if is_mffu:
+                # MFFU: FD0→Hedge Result 1, FD1→Hedge Result 2, etc.
+                return f"Hedge Result {trade_number + 1}.1"
+            else:
+                # Other (starts at FD1): FD1→Hedge Result 1, FD2→Hedge Result 2, etc.
+                return f"Hedge Result {trade_number}.1"
+    
+    elif phase_code == 'DD':
+        # Double Dip: DD1-4 map to available funded hedge columns
+        if trade_number is not None and 1 <= trade_number <= 4:
+            return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
+    
+    elif phase_code == 'FA':
+        # Farming: Find next available Hedge Day slot
+        if eval_idx is not None and evaluations:
+            ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
+            for day_num in range(1, 35):
+                field_name = f"Hedge Day {day_num}"
+                existing_value = ev.get(field_name)
+                if existing_value is None or existing_value == '' or existing_value == 0:
+                    return field_name
+        # Default to Hedge Day 1 if no slot found
+        return "Hedge Day 1"
+    
+    return None
+
+
+def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
+    """
+    Update evaluation hedge result fields from aggregated MT5 comment data.
+    
+    Args:
+        evaluations: List of evaluation records
+        aggregated_data: List of aggregated trade data with account_number, phase_code, etc.
+    
+    Returns:
+        Tuple of (updated_evaluations, match_log)
+    """
+    if not evaluations or not aggregated_data:
+        return evaluations, ["No evaluations or aggregated data to process"]
+    
+    match_log = []
+    updates_made = 0
+    
+    match_log.append(f"📊 Processing {len(aggregated_data)} aggregated trade groups")
+    match_log.append(f"   Against {len(evaluations)} evaluation records")
+    
+    for agg in aggregated_data:
+        account_number = agg.get('account_number', '')
+        phase_code = agg.get('phase_code', '')
+        trade_number = agg.get('trade_number')
+        farming_date = agg.get('farming_date')
+        net_profit = agg.get('net_profit', 0)
+        deal_count = agg.get('deal_count', 0)
+        
+        # Find matching evaluation
+        eval_idx, matched_account = match_account_to_evaluation(account_number, evaluations, phase_code)
+        
+        if eval_idx is None:
+            sig = get_account_signature(account_number)
+            match_log.append(f"⚠️ No match: {account_number} ({sig}) _{phase_code}{trade_number or ''} = ${net_profit:.2f}")
+            continue
+        
+        # Determine field to update
+        field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)
+        
+        if not field_name:
+            match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
+            continue
+        
+        # Update the evaluation
+        evaluations[eval_idx][field_name] = net_profit
+        updates_made += 1
+        
+        sig = get_account_signature(account_number)
+        match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
+        match_log.append(f"   Matched to: {matched_account}")
+    
+    match_log.append(f"\n📈 Total updates: {updates_made}/{len(aggregated_data)}")
+    return evaluations, match_log
+
 # Initialize admin password if not exists
 def init_admin_password():
     """Initialize default admin password if not set."""
@@ -398,6 +561,23 @@ def api_client_push():
         evaluations = existing_data.get("evaluations", [])
         app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
     
+    # Check for aggregated comment data (from Push by Comment feature)
+    aggregated_by_comment = data.get("aggregated_by_comment", [])
+    comment_summary = data.get("comment_summary", {})
+    hedge_match_log = []
+    
+    if aggregated_by_comment:
+        app.logger.info(f"📋 Received aggregated comment data: {len(aggregated_by_comment)} groups")
+        app.logger.info(f"   Comment summary: {comment_summary}")
+        
+        # Update evaluations with hedge results from aggregated data
+        if evaluations:
+            app.logger.info(f"🔄 Matching hedge results to evaluations...")
+            evaluations, hedge_match_log = update_evaluations_from_aggregated_data(evaluations, aggregated_by_comment)
+            
+            for log_line in hedge_match_log:
+                app.logger.info(f"   {log_line}")
+    
     # Debug logging
     acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
     app.logger.info(f"📥 Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
@@ -457,7 +637,10 @@ def api_client_push():
             "trader": trader_id,
             "client": client_id,
             "email": email
-        }
+        },
+        # Store aggregated comment data if provided (from Push by Comment feature)
+        "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
+        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {})
     }
     
     # Final verification before save
@@ -467,6 +650,8 @@ def api_client_push():
     app.logger.info(f"   - hedging_review.total_withdrawals: ${hr_final.get('total_withdrawals', 0):.2f}")
     app.logger.info(f"   - hedging_review.current_balance: ${hr_final.get('current_balance', 0):.2f}")
     app.logger.info(f"   - account.total_deposits: ${mt5_account.get('total_deposits', 0) if mt5_account else 0:.2f}")
+    if aggregated_by_comment:
+        app.logger.info(f"   - aggregated_by_comment: {len(aggregated_by_comment)} groups")
     
     # Save to database
     save_client_data(client_id, client_data)
@@ -477,7 +662,8 @@ def api_client_push():
     add_client(admin_id, trader_id, client_id)
     
     log_action('CLIENT_DATA_PUSH', 'client', email, get_remote_address(), f"Data pushed for {client_id}")
-    return jsonify({
+    
+    response_data = {
         "status": "success", 
         "message": f"Data updated for {client_id}",
         "identity": {
@@ -485,7 +671,14 @@ def api_client_push():
             "trader": trader_id,
             "client": client_id
         }
-    })
+    }
+    
+    # Include hedge match log if we processed aggregated data
+    if hedge_match_log:
+        response_data["hedge_match_log"] = hedge_match_log
+        response_data["hedge_updates"] = len([l for l in hedge_match_log if l.startswith("✅")])
+    
+    return jsonify(response_data)
 
 
 @app.route('/api/client/migrate_sheet', methods=['POST'])

@@ -28,6 +28,24 @@ except ImportError:
     MT5_AVAILABLE = False
     print("MetaTrader5 module not found. Install with: pip install MetaTrader5")
 
+# Import new comment parser
+try:
+    from trader_companion.mt5_comment_parser import (
+        MT5CommentParser, MT5DealAggregator, Phase,
+        parse_mt5_comment, aggregate_deals_by_comment
+    )
+    COMMENT_PARSER_AVAILABLE = True
+except ImportError:
+    try:
+        from mt5_comment_parser import (
+            MT5CommentParser, MT5DealAggregator, Phase,
+            parse_mt5_comment, aggregate_deals_by_comment
+        )
+        COMMENT_PARSER_AVAILABLE = True
+    except ImportError:
+        COMMENT_PARSER_AVAILABLE = False
+        print("MT5 Comment Parser module not found.")
+
 
 class MT5DataPusher:
     """Handles MT5 data extraction and API pushing."""
@@ -219,6 +237,80 @@ class MT5DataPusher:
             "largest_win": round(max(winning), 2) if winning else 0,
             "largest_loss": round(min(losing), 2) if losing else 0
         }
+    
+    def parse_deal_comment_v2(self, comment):
+        """
+        Parse MT5 deal comment using the new TradeAccountConnector format.
+        
+        Comment Format: {TradovateAccountNumber}{PhaseSuffix}
+        
+        Phase Suffixes:
+        - _CH1-4: Challenge Trade 1-4
+        - _FD0: Funded Base (MFFU style)
+        - _FD1-4: Funded/Payout 1-4
+        - _DD1-4: Double Dip 1-4
+        - _FA: Farming/Consistency
+        - _FA_DDMMYY: Farming with date (e.g., _FA_210126 = Jan 21, 2026)
+        - _UNK: Unknown phase
+        
+        Returns:
+            dict with parsed data or None if cannot parse
+        """
+        if COMMENT_PARSER_AVAILABLE:
+            return parse_mt5_comment(comment)
+        else:
+            # Fallback to basic parsing
+            return self.parse_deal_comment(comment)
+    
+    def aggregate_deals_by_comment_v2(self, deals):
+        """
+        Aggregate deals by account and phase using the new comment parser.
+        
+        Returns:
+            Tuple of (aggregated_data, unmatched_deals, log_messages)
+        """
+        if COMMENT_PARSER_AVAILABLE:
+            return aggregate_deals_by_comment(deals)
+        else:
+            # Fallback to basic aggregation
+            aggregated, unmatched = self.aggregate_deals_by_account(deals)
+            return [], unmatched, ["Comment parser not available, using basic aggregation"]
+    
+    def get_deals_grouped_by_phase(self, days=365):
+        """
+        Get deals grouped by account and phase based on comments.
+        
+        Returns:
+            dict with structure:
+            {
+                'aggregated': [list of aggregated trade data],
+                'unmatched': [list of deals without matching comments],
+                'summary': {summary statistics},
+                'log': [parsing log messages]
+            }
+        """
+        deals = self.get_deals(days=days)
+        if not deals:
+            return {'aggregated': [], 'unmatched': [], 'summary': {}, 'log': ['No deals found']}
+        
+        if COMMENT_PARSER_AVAILABLE:
+            aggregator = MT5DealAggregator()
+            aggregator.process_deals(deals)
+            
+            return {
+                'aggregated': aggregator.to_dashboard_format(),
+                'unmatched': aggregator.unmatched_deals,
+                'summary': aggregator.get_summary(),
+                'log': aggregator.parse_log
+            }
+        else:
+            aggregated, unmatched = self.aggregate_deals_by_account(deals)
+            return {
+                'aggregated': [],
+                'unmatched': unmatched,
+                'summary': {},
+                'log': ['Comment parser module not available']
+            }
     
     def parse_deal_comment(self, comment):
         """
@@ -468,6 +560,13 @@ class MT5DataPusher:
     def process_deals_for_evaluations(self, deals, evaluations):
         """
         Process deals and match them to evaluations based on comments.
+        Uses the new TradeAccountConnector comment format.
+        
+        Comment Format: {TradovateAccountNumber}_{Phase}{Number}
+        - CH1-4: Challenge Hedge Results 1-5
+        - FD0-4: Funded Hedge Results (FD0=base, FD1-4=payouts)
+        - DD1-4: Double Dip (treated like funded)
+        - FA or FA_DDMMYY: Farming days
         
         Args:
             deals: List of MT5 deals with 'comment' field
@@ -481,8 +580,233 @@ class MT5DataPusher:
         
         match_log = []
         
-        # Group deals by parsed comment (account + stage)
-        deal_groups = {}  # key: (account_suffix, stage, stage_num) -> list of deals
+        # Use the new parser if available
+        if COMMENT_PARSER_AVAILABLE:
+            return self._process_deals_with_new_parser(deals, evaluations)
+        
+        match_log.append("⚠️ Using legacy parser - install mt5_comment_parser for full support")
+        return self._process_deals_legacy(deals, evaluations)
+    
+    def _process_deals_with_new_parser(self, deals, evaluations):
+        """
+        Process deals using the new MT5 comment parser.
+        Matches account numbers and updates the correct hedge result fields.
+        """
+        match_log = []
+        
+        # Step 1: Aggregate deals by comment using the new parser
+        aggregator = MT5DealAggregator()
+        aggregator.process_deals(deals)
+        
+        aggregated = aggregator.to_dashboard_format()
+        match_log.append(f"📊 Aggregated {len(aggregated)} trade groups from {len(deals)} deals")
+        match_log.append(f"   Unmatched deals: {len(aggregator.unmatched_deals)}")
+        
+        if not aggregated:
+            match_log.append("⚠️ No valid trade groups found in deals")
+            return evaluations, match_log
+        
+        # Step 2: Build account lookup from evaluations
+        # We need to match full account numbers, not just suffixes
+        eval_lookup = {}  # Maps account_number -> list of (eval_index, account_type)
+        
+        for idx, ev in enumerate(evaluations):
+            # Challenge account (Account #) - used for CH phase
+            ch_account = str(ev.get('Account #', '')).strip()
+            if ch_account:
+                if ch_account not in eval_lookup:
+                    eval_lookup[ch_account] = []
+                eval_lookup[ch_account].append((idx, 'challenge'))
+                
+                # Also add partial matches (last 8-10 chars for flexibility)
+                for suffix_len in [8, 10, 12]:
+                    if len(ch_account) >= suffix_len:
+                        suffix = ch_account[-suffix_len:]
+                        if suffix not in eval_lookup:
+                            eval_lookup[suffix] = []
+                        eval_lookup[suffix].append((idx, 'challenge'))
+            
+            # Funded account (Account #.1) - used for FD, DD, FA phases
+            fu_account = str(ev.get('Account #.1', '')).strip()
+            if fu_account:
+                if fu_account not in eval_lookup:
+                    eval_lookup[fu_account] = []
+                eval_lookup[fu_account].append((idx, 'funded'))
+                
+                # Also add partial matches
+                for suffix_len in [8, 10, 12]:
+                    if len(fu_account) >= suffix_len:
+                        suffix = fu_account[-suffix_len:]
+                        if suffix not in eval_lookup:
+                            eval_lookup[suffix] = []
+                        eval_lookup[suffix].append((idx, 'funded'))
+        
+        match_log.append(f"📋 Built account lookup with {len(eval_lookup)} entries")
+        
+        # Sample accounts for debug
+        sample_accounts = list(eval_lookup.keys())[:5]
+        match_log.append(f"   Sample accounts: {sample_accounts}")
+        
+        # Step 3: Process each aggregated trade group
+        updates_made = 0
+        
+        for agg in aggregated:
+            account_number = agg.get('account_number', '')
+            phase_code = agg.get('phase_code', '')
+            trade_number = agg.get('trade_number')
+            farming_date = agg.get('farming_date')
+            net_profit = agg.get('net_profit', 0)
+            deal_count = agg.get('deal_count', 0)
+            
+            # Find matching evaluation
+            eval_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
+            
+            if not eval_matches:
+                match_log.append(f"⚠️ No match: {account_number}_{phase_code}{trade_number or ''} = ${net_profit:.2f}")
+                continue
+            
+            # Determine which field to update based on phase
+            field_name = self._get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_matches[0][0])
+            
+            if not field_name:
+                match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
+                continue
+            
+            # Update the evaluation(s)
+            for eval_idx, account_type in eval_matches:
+                # Verify this is the right type of match
+                if phase_code == 'CH' and account_type != 'challenge':
+                    continue
+                if phase_code in ['FD', 'DD', 'FA'] and account_type != 'funded':
+                    continue
+                
+                # Update the field
+                evaluations[eval_idx][field_name] = net_profit
+                updates_made += 1
+                
+                eval_account = evaluations[eval_idx].get('Account #' if account_type == 'challenge' else 'Account #.1', 'N/A')
+                match_log.append(f"✅ {account_number}_{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f} ({deal_count} deals)")
+                match_log.append(f"   Matched to eval row with account: {eval_account}")
+                break  # Only update first match
+        
+        match_log.append(f"\n📈 Total updates made: {updates_made}")
+        return evaluations, match_log
+    
+    def _find_evaluation_match(self, account_number, phase_code, eval_lookup):
+        """
+        Find matching evaluation(s) for an account number.
+        Tries exact match first, then partial matches.
+        """
+        # Try exact match first
+        if account_number in eval_lookup:
+            return eval_lookup[account_number]
+        
+        # Try matching by suffix (last N characters)
+        for suffix_len in [12, 10, 8]:
+            if len(account_number) >= suffix_len:
+                suffix = account_number[-suffix_len:]
+                if suffix in eval_lookup:
+                    return eval_lookup[suffix]
+        
+        # Try finding accounts that contain this number as substring
+        for key, matches in eval_lookup.items():
+            if account_number in key or key in account_number:
+                return matches
+        
+        return []
+    
+    def _get_field_name_for_phase(self, phase_code, trade_number, farming_date, evaluations, eval_idx):
+        """
+        Determine the correct field name to update based on phase.
+        
+        Phase mappings:
+        - CH1-5: Hedge Result 1-5 (Challenge)
+        - FD0: Hedge Result 1.1 (Funded base)
+        - FD1-4: Hedge Result 2.1-5.1 (Funded payouts)
+        - DD1-4: Hedge Result 6-7 or similar
+        - FA: Hedge Day N (based on date ordering)
+        """
+        if phase_code == 'CH':
+            # Challenge: CH1 → Hedge Result 1, CH2 → Hedge Result 2, etc.
+            if trade_number and 1 <= trade_number <= 5:
+                return f"Hedge Result {trade_number}"
+        
+        elif phase_code == 'FD':
+            # Funded: FD0 → Hedge Result 1.1, FD1 → Hedge Result 2.1, etc.
+            if trade_number is not None:
+                if trade_number == 0:
+                    return "Hedge Result 1.1"
+                elif 1 <= trade_number <= 4:
+                    return f"Hedge Result {trade_number + 1}.1"
+                elif trade_number == 5:
+                    return "Hedge Result 6"
+                elif trade_number == 6:
+                    return "Hedge Result 7"
+        
+        elif phase_code == 'DD':
+            # Double Dip: DD1-4 map to specific funded hedge columns
+            # Usually used for additional funded trades
+            if trade_number and 1 <= trade_number <= 4:
+                # Map DD to available funded hedge result slots
+                return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
+        
+        elif phase_code == 'FA':
+            # Farming: Use date to determine day number
+            if farming_date:
+                # Calculate which farming day this is based on the date
+                day_number = self._calculate_farming_day(farming_date, evaluations, eval_idx)
+                if day_number and 1 <= day_number <= 34:
+                    return f"Hedge Day {day_number}"
+            elif trade_number:
+                # If no date but has trade number, use that
+                if 1 <= trade_number <= 34:
+                    return f"Hedge Day {trade_number}"
+        
+        return None
+    
+    def _calculate_farming_day(self, farming_date_str, evaluations, eval_idx):
+        """
+        Calculate which farming day number to use based on the date.
+        
+        Farming dates in comments are DDMMYY format (e.g., 210126 = Jan 21, 2026).
+        We need to figure out which day number (1-34) this corresponds to.
+        
+        Strategy: Look at existing farming dates in the evaluation to determine sequence,
+        or use the first farming date as day 1 and count from there.
+        """
+        from datetime import datetime
+        
+        # Parse the farming date
+        if isinstance(farming_date_str, str):
+            try:
+                farming_date = datetime.fromisoformat(farming_date_str)
+            except:
+                return None
+        else:
+            farming_date = farming_date_str
+        
+        if not farming_date:
+            return None
+        
+        # Get the evaluation record to check for existing farming dates
+        ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
+        
+        # Find the first empty farming day slot
+        for day_num in range(1, 35):
+            field_name = f"Hedge Day {day_num}"
+            existing_value = ev.get(field_name)
+            
+            # Check if this slot is empty or has no value
+            if existing_value is None or existing_value == '' or existing_value == 0:
+                return day_num
+        
+        # All slots full, return the last one
+        return 34
+    
+    def _process_deals_legacy(self, deals, evaluations):
+        """Legacy deal processing for backward compatibility."""
+        match_log = []
+        deal_groups = {}
         
         for deal in deals:
             comment = deal.get('comment', '')
@@ -725,6 +1049,19 @@ class TraderCompanionApp:
         self.debug_comments_btn.pack(side=tk.LEFT, padx=5)
         
         ttk.Button(btn_frame2, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
+        
+        # Third row - Comment-based push buttons (NEW)
+        btn_frame3 = ttk.Frame(main_frame)
+        btn_frame3.pack(fill=tk.X, pady=(0, 15))
+        
+        self.push_by_comment_btn = ttk.Button(btn_frame3, text="📋 Push by Comment", command=self.push_by_comment)
+        self.push_by_comment_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.analyze_comments_btn = ttk.Button(btn_frame3, text="🔬 Analyze Comments (v2)", command=self.analyze_comments_v2)
+        self.analyze_comments_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.show_aggregated_btn = ttk.Button(btn_frame3, text="📊 Show Aggregated Data", command=self.show_aggregated_data)
+        self.show_aggregated_btn.pack(side=tk.LEFT, padx=5)
         
         # Google Sheets Migration Frame
         sheet_frame = ttk.LabelFrame(main_frame, text="📋 Import from Google Sheets", padding=15)
@@ -1205,6 +1542,332 @@ class TraderCompanionApp:
         except Exception as e:
             self.log(f"❌ Sync error: {e}", "ERROR")
             self.status_var.set("Sync failed")
+    
+    def analyze_comments_v2(self):
+        """
+        Analyze MT5 deal comments using the new TradeAccountConnector format.
+        
+        Shows detailed breakdown of:
+        - Comment format: {TradovateAccountNumber}{PhaseSuffix}
+        - Phases: CH (Challenge), FD (Funded), DD (DoubleDip), FA (Farming)
+        """
+        if not self.pusher.connected:
+            messagebox.showerror("Error", "Please connect to MT5 first")
+            return
+        
+        self.log("="*70)
+        self.log("🔬 MT5 COMMENT ANALYSIS (TradeAccountConnector Format)")
+        self.log("="*70)
+        
+        if not COMMENT_PARSER_AVAILABLE:
+            self.log("⚠️ Comment Parser module not available!", "ERROR")
+            self.log("   Please ensure mt5_comment_parser.py is in the trader_companion folder")
+            return
+        
+        deals = self.pusher.get_deals(days=365)
+        
+        if not deals:
+            self.log("No deals found")
+            return
+        
+        self.log(f"Total deals fetched: {len(deals)}\n")
+        
+        # Use the new parser
+        parser = MT5CommentParser()
+        
+        # Analyze all unique comments
+        comment_analysis = {}
+        for deal in deals:
+            comment = deal.get('comment', '') or ''
+            d_type = str(deal.get('type', '')).upper()
+            
+            if d_type in ['BALANCE', 'CREDIT', '2', '3']:
+                continue
+                
+            if comment not in comment_analysis:
+                parsed = parser.parse(comment)
+                comment_analysis[comment] = {
+                    'parsed': parsed,
+                    'count': 0,
+                    'total_profit': 0,
+                    'total_commission': 0,
+                    'total_swap': 0
+                }
+            
+            comment_analysis[comment]['count'] += 1
+            comment_analysis[comment]['total_profit'] += deal.get('profit', 0) or 0
+            comment_analysis[comment]['total_commission'] += deal.get('commission', 0) or 0
+            comment_analysis[comment]['total_swap'] += deal.get('swap', 0) or 0
+        
+        self.log(f"Unique comments found: {len(comment_analysis)}\n")
+        self.log("-"*70)
+        
+        # Group by validity
+        valid_comments = []
+        invalid_comments = []
+        
+        for comment, data in comment_analysis.items():
+            parsed = data['parsed']
+            if parsed.is_valid:
+                valid_comments.append((comment, data))
+            else:
+                invalid_comments.append((comment, data))
+        
+        # Show valid comments first
+        self.log(f"\n✅ VALID COMMENTS ({len(valid_comments)}):\n")
+        
+        for comment, data in sorted(valid_comments, key=lambda x: x[0]):
+            parsed = data['parsed']
+            net_profit = data['total_profit'] + data['total_commission'] + data['total_swap']
+            
+            self.log(f"📋 '{comment}'")
+            self.log(f"   Account: {parsed.account_number}")
+            self.log(f"   Phase: {parsed.phase.name} ({parsed.phase_code})")
+            if parsed.trade_number:
+                self.log(f"   Trade #: {parsed.trade_number}")
+            if parsed.farming_date:
+                self.log(f"   Farming Date: {parsed.farming_date.strftime('%Y-%m-%d')}")
+            self.log(f"   Deals: {data['count']}, Net P/L: ${net_profit:.2f}")
+            self.log("")
+        
+        # Show invalid comments
+        if invalid_comments:
+            self.log(f"\n⚠️ UNRECOGNIZED COMMENTS ({len(invalid_comments)}):\n")
+            
+            for comment, data in sorted(invalid_comments, key=lambda x: x[0]):
+                net_profit = data['total_profit'] + data['total_commission'] + data['total_swap']
+                self.log(f"❓ '{comment or '(empty)'}'")
+                self.log(f"   Deals: {data['count']}, Net P/L: ${net_profit:.2f}")
+                self.log("")
+        
+        self.log("-"*70)
+        self.log("\n📖 EXPECTED COMMENT FORMATS:")
+        self.log("   Challenge:    {Account}_CH{1-4}     (e.g., MFFUEVSTP326057008_CH1)")
+        self.log("   Funded:       {Account}_FD{0-4}     (e.g., MFFUEVSTP326057008_FD2)")
+        self.log("   Double Dip:   {Account}_DD{1-4}     (e.g., MFFUEVSTP326057008_DD1)")
+        self.log("   Farming:      {Account}_FA          (e.g., MFFUEVSTP326057008_FA)")
+        self.log("   Farming+Date: {Account}_FA_DDMMYY  (e.g., MFFUEVSTP326057008_FA_210126)")
+        self.log("="*70)
+    
+    def show_aggregated_data(self):
+        """
+        Show aggregated deal data by account and phase.
+        Uses the new comment parser to group deals.
+        """
+        if not self.pusher.connected:
+            messagebox.showerror("Error", "Please connect to MT5 first")
+            return
+        
+        self.log("="*70)
+        self.log("📊 AGGREGATED DEAL DATA BY ACCOUNT/PHASE")
+        self.log("="*70)
+        
+        result = self.pusher.get_deals_grouped_by_phase(days=365)
+        
+        aggregated = result.get('aggregated', [])
+        unmatched = result.get('unmatched', [])
+        summary = result.get('summary', {})
+        
+        self.log(f"\nTotal aggregation groups: {len(aggregated)}")
+        self.log(f"Unmatched deals: {len(unmatched)}\n")
+        
+        if not aggregated:
+            self.log("⚠️ No aggregated data available")
+            self.log("   Make sure your deals have comments in the correct format")
+            return
+        
+        # Group by account for display
+        by_account = {}
+        for agg in aggregated:
+            account = agg.get('account_number', 'Unknown')
+            if account not in by_account:
+                by_account[account] = []
+            by_account[account].append(agg)
+        
+        self.log("-"*70)
+        
+        for account, trades in sorted(by_account.items()):
+            account_total = sum(t.get('net_profit', 0) for t in trades)
+            self.log(f"\n🏦 ACCOUNT: {account}")
+            self.log(f"   Total Net P/L: ${account_total:.2f}")
+            self.log("")
+            
+            for trade in sorted(trades, key=lambda x: (x.get('phase_code', ''), x.get('trade_number', 0) or 0)):
+                phase_code = trade.get('phase_code', '?')
+                phase_name = trade.get('phase_name', 'Unknown')
+                trade_num = trade.get('trade_number', '')
+                net_profit = trade.get('net_profit', 0)
+                deal_count = trade.get('deal_count', 0)
+                farming_date = trade.get('farming_date', '')
+                
+                label = f"{phase_code}{trade_num or ''}"
+                if farming_date:
+                    label += f" ({farming_date})"
+                
+                self.log(f"   [{label}] {phase_name}: ${net_profit:.2f} ({deal_count} deals)")
+        
+        # Show summary
+        self.log("\n" + "-"*70)
+        self.log("\n📈 SUMMARY BY PHASE:")
+        by_phase = summary.get('by_phase', {})
+        for phase, data in sorted(by_phase.items()):
+            self.log(f"   {phase}: {data.get('count', 0)} groups, Total: ${data.get('total_net_profit', 0):.2f}")
+        
+        self.log("="*70)
+    
+    def push_by_comment(self):
+        """
+        Push hedge results to dashboard by matching MT5 order comments to evaluation accounts.
+        
+        This uses the TradeAccountConnector comment format:
+        - {TradovateAccountNumber}_CH{1-4}: Challenge Hedge Results 1-5
+        - {TradovateAccountNumber}_FD{0-4}: Funded Hedge Results  
+        - {TradovateAccountNumber}_DD{1-4}: Double Dip (funded hedge results)
+        - {TradovateAccountNumber}_FA or _FA_DDMMYY: Farming Hedge Days
+        
+        The function:
+        1. Aggregates MT5 deals by account/phase from comments
+        2. Sends aggregated data to dashboard
+        3. Dashboard matches account numbers and updates hedge results
+        """
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        email = self.client_email_entry.get().strip()
+        
+        if not self.client_info:
+            messagebox.showerror("Error", "Please lookup the client first by entering email and clicking 'Lookup'")
+            return
+        
+        if not self.pusher.connected:
+            messagebox.showerror("Error", "Please connect to MT5 first")
+            return
+        
+        if not COMMENT_PARSER_AVAILABLE:
+            messagebox.showerror("Error", "Comment Parser module not available!")
+            return
+        
+        client_name = self.client_info.get('client', '')
+        
+        self.log("="*70)
+        self.log("📋 PUSH HEDGE RESULTS BY COMMENT")
+        self.log("="*70)
+        self.log("Comment Format: {Account}_{Phase}{Number}")
+        self.log("  CH1-5 → Hedge Result 1-5 (Challenge)")
+        self.log("  FD0-4 → Hedge Result 1.1-5.1 (Funded)")
+        self.log("  DD1-4 → Additional Funded Hedge Results")
+        self.log("  FA/FA_DDMMYY → Hedge Day 1-34 (Farming)")
+        self.log("Account Matching: First 4 + Last 4 characters")
+        self.log("="*70)
+        self.status_var.set("Processing MT5 deals...")
+        
+        # Step 1: Get and aggregate deals from MT5
+        self.log("\n📊 Step 1: Aggregating deals from MT5 by comment...")
+        
+        result = self.pusher.get_deals_grouped_by_phase(days=365)
+        
+        aggregated = result.get('aggregated', [])
+        unmatched = result.get('unmatched', [])
+        summary = result.get('summary', {})
+        
+        if not aggregated:
+            self.log("⚠️ No deals with valid comments found", "WARNING")
+            messagebox.showwarning("Warning", "No deals found with valid comment format.\nExpected: {Account}_CH{1-5}, {Account}_FD{0-4}, etc.")
+            return
+        
+        self.log(f"   ✓ Found {len(aggregated)} trade groups")
+        self.log(f"   ⚠️ {len(unmatched)} deals without valid comments")
+        
+        # Show sample groups
+        for agg in aggregated[:5]:
+            account = agg.get('account_number', '')
+            phase = agg.get('phase_code', '')
+            trade_num = agg.get('trade_number', '')
+            profit = agg.get('net_profit', 0)
+            sig = f"{account[:4]}...{account[-4:]}" if len(account) >= 8 else account
+            self.log(f"   • {sig}_{phase}{trade_num or ''}: ${profit:.2f}")
+        
+        if len(aggregated) > 5:
+            self.log(f"   ... and {len(aggregated) - 5} more groups")
+        
+        # Step 2: Get account info
+        self.log("\n📊 Step 2: Getting MT5 account info...")
+        account = self.pusher.get_account_info() or {}
+        deals = self.pusher.get_deals(days=365)
+        
+        if account:
+            self.log(f"   Balance: ${account.get('balance', 0):.2f}")
+            self.log(f"   Deposits: ${account.get('total_deposits', 0):.2f}")
+            self.log(f"   Withdrawals: ${account.get('total_withdrawals', 0):.2f}")
+        
+        # Step 3: Send to dashboard (dashboard will do the matching)
+        self.log("\n📤 Step 3: Sending to dashboard for matching...")
+        self.status_var.set("Pushing to dashboard...")
+        
+        # Prepare aggregated data for dashboard
+        trade_data = []
+        for agg in aggregated:
+            trade_data.append({
+                "account_number": agg.get('account_number'),
+                "phase_code": agg.get('phase_code'),
+                "trade_number": agg.get('trade_number'),
+                "farming_date": agg.get('farming_date'),
+                "net_profit": agg.get('net_profit'),
+                "deal_count": agg.get('deal_count')
+            })
+        
+        payload = {
+            "email": email,
+            "account": account,
+            "positions": self.pusher.get_positions(),
+            "deals": deals,
+            "aggregated_by_comment": trade_data,  # Dashboard will match and update
+            "comment_summary": {
+                "total_groups": len(aggregated),
+                "unmatched_deals": len(unmatched),
+                "by_phase": summary.get('by_phase', {})
+            },
+            "statistics": {},  # Let server recalculate
+            "dropdown_options": {}
+        }
+        
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/client/push",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "success":
+                    # Show match log from dashboard
+                    hedge_log = data.get("hedge_match_log", [])
+                    hedge_updates = data.get("hedge_updates", 0)
+                    
+                    self.log(f"\n✅ DASHBOARD MATCHING RESULTS:")
+                    for log_line in hedge_log:
+                        self.log(f"   {log_line}")
+                    
+                    self.log(f"\n✅ HEDGE RESULTS PUSHED SUCCESSFULLY!")
+                    self.log(f"   {hedge_updates} hedge results updated")
+                    self.log("="*70)
+                    self.status_var.set(f"Pushed! {hedge_updates} updates")
+                    messagebox.showinfo("Success", f"Pushed {len(trade_data)} trade groups.\n{hedge_updates} hedge results updated on dashboard!")
+                else:
+                    self.log(f"❌ Push failed: {data.get('message', 'Unknown error')}", "ERROR")
+                    self.status_var.set("Push failed")
+            else:
+                error_msg = f"HTTP {response.status_code}"
+                try:
+                    error_msg = response.json().get("message", error_msg)
+                except:
+                    pass
+                self.log(f"❌ Push failed: {error_msg}", "ERROR")
+                self.status_var.set("Push failed")
+                
+        except Exception as e:
+            self.log(f"❌ Push error: {e}", "ERROR")
+            self.status_var.set("Push failed")
     
     def migrate_from_sheet(self):
         """Migrate data from Google Sheets to the dashboard with verification."""
