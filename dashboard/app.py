@@ -9,6 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
+from dashboard.financial_overview import calculate_propfirm_overview
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -449,6 +450,18 @@ def admin_dashboard(admin_name):
     if session_user.get('user_type') != 'admin' or session_user.get('user_identifier') != admin_name:
         return redirect('/')
     return render_template('admin_dashboard.html', admin_name=admin_name)
+
+@app.route('/financial_overview')
+@require_session
+def financial_overview():
+    session_user = request.session_user
+    # Only allow super_admin and admin
+    if session_user.get('user_type') not in ['super_admin', 'admin']:
+         return redirect('/')
+         
+    overview_data = calculate_propfirm_overview()
+    return render_template('financial_overview.html', overview=overview_data)
+
 
 @app.route('/trader/<trader_name>')
 @require_session

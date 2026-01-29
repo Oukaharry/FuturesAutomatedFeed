@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Overview - MT5 Hedging Engine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .finance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .finance-table th, .finance-table td {
+            padding: 12px 15px;
+            text-align: right;
+            border-bottom: 1px solid #eee;
+        }
+        .finance-table th {
+            text-align: center;
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        .finance-table td:first-child {
+            text-align: left;
+            font-weight: 500;
+        }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .back-link { display: inline-block; margin-bottom: 20px; text-decoration: none; color: #007bff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; align-items: center;">
+                <h1>Financial Overview</h1>
+            </div>
+            <a href="/" class="logout-btn">Back to Dashboard</a>
+        </header>
+
+        <div id="content">
+            <table class="finance-table">
+                <thead>
+                    <tr>
+                        <th>Prop Firm</th>
+                        <th>Accounts</th>
+                        <th>Eval Fees</th>
+                        <th>Activation Fees</th>
+                        <th>Total Payouts</th>
+                        <th>Net Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for firm, data in overview.items()|sort %}
+                    <tr>
+                        <td>{{ firm }}</td>
+                        <td style="text-align: center;">{{ data.account_count }}</td>
+                        <td>{{ "$%0.2f"|format(data.total_fees) }}</td>
+                        <td>{{ "$%0.2f"|format(data.total_activation_fees) }}</td>
+                        <td>{{ "$%0.2f"|format(data.total_payouts) }}</td>
+                        <td class="{{ 'positive' if data.net >= 0 else 'negative' }}">
+                            {{ "$%0.2f"|format(data.net) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                    {% set ns = namespace(fees=0, act=0, pay=0, net=0, acc=0) %}
+                    {% for firm, data in overview.items() %}
+                        {% set ns.fees = ns.fees + data.total_fees %}
+                        {% set ns.act = ns.act + data.total_activation_fees %}
+                        {% set ns.pay = ns.pay + data.total_payouts %}
+                        {% set ns.net = ns.net + data.net %}
+                        {% set ns.acc = ns.acc + data.account_count %}
+                    {% endfor %}
+                    
+                    <tr style="background-color: #f1f3f5; font-weight: bold;">
+                        <td>TOTAL</td>
+                        <td style="text-align: center;">{{ ns.acc }}</td>
+                        <td>{{ "$%0.2f"|format(ns.fees) }}</td>
+                        <td>{{ "$%0.2f"|format(ns.act) }}</td>
+                        <td>{{ "$%0.2f"|format(ns.pay) }}</td>
+                        <td class="{{ 'positive' if ns.net >= 0 else 'negative' }}">
+                            {{ "$%0.2f"|format(ns.net) }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

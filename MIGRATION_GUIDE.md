@@ -41,9 +41,13 @@ This guide covers two ways to use your domain `ballerquotes.com` with your dashb
     *   **Forward Type**: `Permanent (301)`
     *   **Save**.
 
-### 3. Finalize
+### 3. Finalize (Fix "Not Private" Error)
 1.  Back in PythonAnywhere **Web** tab, click **Reload**.
-2.  Scroll down to "Security" and click **HTTPS certificate** -> **Auto-provision Let's Encrypt certificate** (Takes a few minutes).
+2.  **Crucial Step:** Scroll down to the **Security** section.
+3.  Look for "HTTPS certificate".
+4.  Click the button that says **Auto-provision Let's Encrypt certificate**.
+    *   *Note: If this fails, wait 30-60 minutes for DNS to fully propagate and try again.*
+    *   *Until you do this, you will see a red "Your connection is not private" error.*
 
 ---
 
