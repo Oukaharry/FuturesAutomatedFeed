@@ -146,6 +146,16 @@
                             "category": ""
                         }
                     ]
+                },
+                "Wayne": {
+                    "email": "",
+                    "clients": [
+                        {
+                            "name": "Jiang Quang Huang",
+                            "email": "riverflow2ocean@gmail.com",
+                            "category": ""
+                        }
+                    ]
                 }
             }
         },
@@ -268,6 +278,21 @@
                         {
                             "name": "Reece",
                             "email": "reecewebb758@outlook.com",
+                            "category": ""
+                        }
+                    ]
+                }
+            }
+        },
+        "Marion": {
+            "email": "",
+            "traders": {
+                "Paul M": {
+                    "email": "",
+                    "clients": [
+                        {
+                            "name": "Claire",
+                            "email": "",
                             "category": ""
                         }
                     ]

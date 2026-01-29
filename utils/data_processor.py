@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from io import StringIO
 import math
+import re
 
 def clean_float(val):
     """
@@ -17,6 +18,42 @@ def clean_float(val):
         return f_val
     except:
         return 0.0
+
+def normalize_account_size(value):
+    """
+    Normalize account size values to standard format: $X,XXX
+    
+    Handles:
+        - "50k", "50K" → "$50,000"
+        - "100000", "100,000" → "$100,000"
+        - "$50,000" → "$50,000" (already correct)
+        - "5000" → "$5,000"
+    """
+    if not value:
+        return value
+    
+    val = str(value).strip().upper()
+    
+    # Already in correct format
+    if re.match(r'^\$[\d,]+$', val):
+        return value
+    
+    # Handle "50k" or "50K" format
+    match = re.match(r'^[\$]?(\d+\.?\d*)K$', val, re.IGNORECASE)
+    if match:
+        num = float(match.group(1)) * 1000
+        return f"${num:,.0f}"
+    
+    # Handle plain numbers like "50000" or "50,000"
+    val_clean = re.sub(r'[\$,\s]', '', val)
+    try:
+        num = float(val_clean)
+        return f"${num:,.0f}"
+    except:
+        pass
+    
+    # Return original if can't parse
+    return value
 
 def clean_data_structure(data):
     """
@@ -186,6 +223,10 @@ def fetch_evaluations(sheet_url):
             
             # Apply derived metrics calculations
             df = calculate_derived_metrics(df)
+            
+            # Normalize Account Size values to standard format
+            if 'Account Size' in df.columns:
+                df['Account Size'] = df['Account Size'].apply(normalize_account_size)
                 
             # Convert to list of dicts and clean recursively
             raw_data = df.to_dict(orient='records')
@@ -627,7 +668,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'Nova', 'Next Step', 'Maven', 'Quantec', 'Glow Node', 'Other'},
+        'Prop Firm': {'MFFU', 'MFFU_Flex', 'Funded Next', 'FundingTicks', 'TopStep', 'Lucid', 'TradeDay', 'AlphaFutures', 'Tradeify', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }
@@ -640,9 +681,11 @@ def extract_unique_values(data):
         val = row.get('Prop Firm')
         if val: options['Prop Firm'].add(str(val).strip())
             
-        # Account Size
+        # Account Size - normalize to standard format
         val = row.get('Account Size')
-        if val: options['Account Size'].add(str(val).strip())
+        if val: 
+            normalized = normalize_account_size(val)
+            options['Account Size'].add(normalized)
             
         # Status (P1)
         val = row.get('Status P1')

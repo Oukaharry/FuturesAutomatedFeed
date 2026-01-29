@@ -66,17 +66,29 @@ class ParsedComment:
 
 def get_account_signature(account: str) -> str:
     """
-    Generate account signature from first 4 + last 4 characters.
+    Generate account signature from first 4 + last 4/5 characters.
     Used for matching truncated account numbers.
     
+    Handles truncated format with '...' like: FNFT...59574
+    
     Examples:
-        MFFUEVSTP326057008 -> mffu7008
-        EVSTP326057008 -> evst7008
-        MFFU7008 -> mffu7008
+        MFFUEVSTP326057008 -> mffu7008 (full account)
+        FNFT...59574 -> fnft59574 (truncated - use last 5)
+        MFFU7008 -> mffu7008 (short account)
     """
     if not account:
         return ""
     account = account.strip()
+    
+    # Handle truncated format: PREFIX...SUFFIX
+    if '...' in account:
+        parts = account.split('...')
+        if len(parts) == 2:
+            prefix = parts[0][:4] if len(parts[0]) >= 4 else parts[0]
+            suffix = parts[1]  # Keep full suffix (usually 5 digits)
+            return (prefix + suffix).lower()
+    
+    # Standard format: first 4 + last 4
     if len(account) <= 8:
         return account.lower()
     return (account[:4] + account[-4:]).lower()
@@ -502,6 +514,175 @@ def aggregate_deals_by_comment(deals: List[Dict]) -> Tuple[List[Dict], List[Dict
         aggregator.to_dashboard_format(),
         aggregator.unmatched_deals,
         aggregator.parse_log
+    )
+
+
+def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict], List[str]]:
+    """
+    Aggregate deals by position_id first, then by comment/phase.
+    
+    This solves the problem where:
+    - Entry deal has the comment (e.g., FNFT...59574_CH1) but profit=0
+    - Exit deal has the actual profit but different comment (e.g., [sl], [tp])
+    
+    By grouping deals by position_id first, we can:
+    1. Get the comment from the entry deal (entry=0)
+    2. Sum the profit from all deals in that position
+    
+    Args:
+        deals: List of MT5 deal objects or dicts
+        
+    Returns:
+        Tuple of (aggregated_data, unmatched_positions, log_messages)
+    """
+    parser = MT5CommentParser()
+    log_messages = []
+    
+    # Step 1: Group deals by position_id
+    positions = {}
+    for deal in deals:
+        # Handle both MT5 deal objects and dicts
+        if hasattr(deal, '_asdict'):
+            d = deal._asdict()
+        elif hasattr(deal, 'position_id'):
+            d = {
+                'position_id': deal.position_id,
+                'ticket': deal.ticket,
+                'comment': deal.comment,
+                'profit': deal.profit,
+                'commission': getattr(deal, 'commission', 0),
+                'swap': getattr(deal, 'swap', 0),
+                'fee': getattr(deal, 'fee', 0),
+                'entry': deal.entry,
+                'type': deal.type,
+                'volume': getattr(deal, 'volume', 0),
+                'symbol': getattr(deal, 'symbol', ''),
+                'time': getattr(deal, 'time', 0),
+            }
+        else:
+            d = deal
+        
+        pid = d.get('position_id', 0)
+        if pid == 0:
+            continue  # Skip balance/credit operations
+            
+        if pid not in positions:
+            positions[pid] = []
+        positions[pid].append(d)
+    
+    log_messages.append(f"Found {len(positions)} positions from {len(deals)} deals")
+    
+    # Step 2: For each position, find entry deal with comment and sum profits
+    position_data = []
+    unmatched = []
+    
+    for pid, deal_list in positions.items():
+        # Find entry deal (entry=0 is DEAL_ENTRY_IN) with valid comment
+        entry_deal = None
+        total_profit = 0.0
+        total_commission = 0.0
+        total_swap = 0.0
+        total_fee = 0.0
+        
+        for d in deal_list:
+            # entry: 0=IN, 1=OUT, 2=INOUT, 3=OUT_BY
+            if d.get('entry', 1) == 0:  # Entry deal
+                entry_deal = d
+            total_profit += d.get('profit', 0) or 0
+            total_commission += d.get('commission', 0) or 0
+            total_swap += d.get('swap', 0) or 0
+            total_fee += d.get('fee', 0) or 0
+        
+        # If no entry deal found, try to find any deal with a valid comment
+        if not entry_deal:
+            for d in deal_list:
+                comment = d.get('comment', '')
+                if comment and ('CH' in comment or 'FD' in comment or 'FA' in comment or 'DD' in comment):
+                    entry_deal = d
+                    break
+        
+        if not entry_deal:
+            entry_deal = deal_list[0]  # Fallback to first deal
+        
+        comment = entry_deal.get('comment', '')
+        parsed = parser.parse(comment)
+        
+        if not parsed.is_valid or not parsed.account_number:
+            unmatched.append({
+                'position_id': pid,
+                'comment': comment,
+                'total_profit': total_profit,
+                'deal_count': len(deal_list)
+            })
+            continue
+        
+        position_data.append({
+            'position_id': pid,
+            'account_number': parsed.account_number,
+            'phase': parsed.phase.value if parsed.phase else None,
+            'phase_name': parsed.phase.name if parsed.phase else None,
+            'phase_code': parsed.phase_code,
+            'trade_number': parsed.trade_number,
+            'farming_date': parsed.farming_date.isoformat() if parsed.farming_date else None,
+            'total_profit': round(total_profit, 2),
+            'total_commission': round(total_commission, 2),
+            'total_swap': round(total_swap, 2),
+            'total_fee': round(total_fee, 2),
+            'net_profit': round(total_profit + total_commission + total_swap + total_fee, 2),
+            'deal_count': len(deal_list),
+            'account_signature': get_account_signature(parsed.account_number),
+            'raw_comment': comment
+        })
+    
+    log_messages.append(f"Matched {len(position_data)} positions, {len(unmatched)} unmatched")
+    
+    # Step 3: Aggregate by account + phase (in case multiple positions have same account/phase)
+    aggregated = {}
+    for pos in position_data:
+        key = f"{pos['account_number']}_{pos['phase_code']}{pos['trade_number'] or ''}"
+        if pos.get('farming_date'):
+            key += f"_{pos['farming_date'][:10].replace('-', '')}"
+        
+        if key not in aggregated:
+            aggregated[key] = {
+                'account_number': pos['account_number'],
+                'phase': pos['phase'],
+                'phase_name': pos['phase_name'],
+                'phase_code': pos['phase_code'],
+                'trade_number': pos['trade_number'],
+                'farming_date': pos['farming_date'],
+                'total_profit': 0.0,
+                'total_commission': 0.0,
+                'total_swap': 0.0,
+                'total_fee': 0.0,
+                'net_profit': 0.0,
+                'deal_count': 0,
+                'position_count': 0,
+                'account_signature': pos['account_signature'],
+                'key': key
+            }
+        
+        agg = aggregated[key]
+        agg['total_profit'] += pos['total_profit']
+        agg['total_commission'] += pos['total_commission']
+        agg['total_swap'] += pos['total_swap']
+        agg['total_fee'] += pos['total_fee']
+        agg['net_profit'] += pos['net_profit']
+        agg['deal_count'] += pos['deal_count']
+        agg['position_count'] += 1
+    
+    # Round final values
+    for key, agg in aggregated.items():
+        agg['total_profit'] = round(agg['total_profit'], 2)
+        agg['total_commission'] = round(agg['total_commission'], 2)
+        agg['total_swap'] = round(agg['total_swap'], 2)
+        agg['total_fee'] = round(agg['total_fee'], 2)
+        agg['net_profit'] = round(agg['net_profit'], 2)
+    
+    return (
+        list(aggregated.values()),
+        unmatched,
+        log_messages
     )
 
 

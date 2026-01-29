@@ -108,6 +108,36 @@ def init_database():
             )
         ''')
         
+        # Data history table - stores all versions of client data for rollback
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS data_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                changed_by TEXT,
+                changed_by_type TEXT,
+                ip_address TEXT,
+                change_source TEXT,
+                change_description TEXT,
+                deals TEXT DEFAULT '[]',
+                positions TEXT DEFAULT '[]',
+                account TEXT DEFAULT '{}',
+                evaluations TEXT DEFAULT '[]',
+                statistics TEXT DEFAULT '{}',
+                dropdown_options TEXT DEFAULT '{}',
+                identity TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                UNIQUE(client_id, version)
+            )
+        ''')
+        
+        # Create index for faster history lookups
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_data_history_client 
+            ON data_history(client_id, version DESC)
+        ''')
+        
         # Sessions table for web login
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS sessions (
@@ -668,6 +698,282 @@ def update_client_field(client_id: str, field: str, value) -> bool:
         ''', (json.dumps(value), datetime.now().isoformat(), client_id))
         conn.commit()
         return True
+
+# ============ Data History Management ============
+
+def get_next_version(client_id: str) -> int:
+    """Get the next version number for a client's data history."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT MAX(version) as max_version FROM data_history WHERE client_id = ?
+        ''', (client_id,))
+        row = cursor.fetchone()
+        return (row['max_version'] or 0) + 1
+
+def save_data_snapshot(client_id: str, data: dict, action: str, 
+                       changed_by: str = None, changed_by_type: str = None,
+                       ip_address: str = None, change_source: str = None, 
+                       change_description: str = None) -> int:
+    """
+    Save a snapshot of client data to history for versioning/rollback.
+    
+    Args:
+        client_id: The client identifier
+        data: The client data dict to snapshot
+        action: Type of action (INITIAL, UPDATE, SHEET_IMPORT, MT5_PUSH, ROLLBACK, etc.)
+        changed_by: Username/email of who made the change
+        changed_by_type: Type of user (client, trader, admin, system)
+        ip_address: IP address of the request
+        change_source: Source of change (trader_app, dashboard_api, sheet_migration, etc.)
+        change_description: Human-readable description of what changed
+    
+    Returns:
+        The version number of the saved snapshot
+    """
+    version = get_next_version(client_id)
+    now = datetime.now().isoformat()
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO data_history (
+                    client_id, version, action, changed_by, changed_by_type,
+                    ip_address, change_source, change_description,
+                    deals, positions, account, evaluations, statistics,
+                    dropdown_options, identity, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                client_id, version, action, changed_by, changed_by_type,
+                ip_address, change_source, change_description,
+                json.dumps(data.get('deals', [])),
+                json.dumps(data.get('positions', [])),
+                json.dumps(data.get('account', {})),
+                json.dumps(data.get('evaluations', [])),
+                json.dumps(data.get('statistics', {})),
+                json.dumps(data.get('dropdown_options', {})),
+                json.dumps(data.get('identity', {})),
+                now
+            ))
+            conn.commit()
+            return version
+        except Exception as e:
+            print(f"Error saving data snapshot: {e}")
+            return -1
+
+def save_client_data_with_history(client_id: str, data: dict, 
+                                   action: str = 'UPDATE',
+                                   changed_by: str = None, 
+                                   changed_by_type: str = None,
+                                   ip_address: str = None, 
+                                   change_source: str = None,
+                                   change_description: str = None) -> tuple:
+    """
+    Save client data AND create a history snapshot for versioning.
+    
+    Returns:
+        Tuple of (success: bool, version: int)
+    """
+    # First, save a snapshot to history
+    version = save_data_snapshot(
+        client_id, data, action, changed_by, changed_by_type,
+        ip_address, change_source, change_description
+    )
+    
+    # Then save the current data
+    success = save_client_data(client_id, data)
+    
+    return (success, version)
+
+def get_data_history(client_id: str, limit: int = 50) -> list:
+    """
+    Get the history of all data changes for a client.
+    
+    Returns list of history entries (newest first) with metadata.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, client_id, version, action, changed_by, changed_by_type,
+                   ip_address, change_source, change_description, created_at
+            FROM data_history 
+            WHERE client_id = ?
+            ORDER BY version DESC
+            LIMIT ?
+        ''', (client_id, limit))
+        
+        return [dict(row) for row in cursor.fetchall()]
+
+def get_data_version(client_id: str, version: int) -> dict:
+    """
+    Get a specific version of client data from history.
+    
+    Returns the full data dict for that version, or None if not found.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM data_history WHERE client_id = ? AND version = ?
+        ''', (client_id, version))
+        row = cursor.fetchone()
+        
+        if row:
+            return {
+                'version': row['version'],
+                'action': row['action'],
+                'changed_by': row['changed_by'],
+                'changed_by_type': row['changed_by_type'],
+                'change_source': row['change_source'],
+                'change_description': row['change_description'],
+                'created_at': row['created_at'],
+                'data': {
+                    'deals': json.loads(row['deals']),
+                    'positions': json.loads(row['positions']),
+                    'account': json.loads(row['account']),
+                    'evaluations': json.loads(row['evaluations']),
+                    'statistics': json.loads(row['statistics']),
+                    'dropdown_options': json.loads(row['dropdown_options']),
+                    'identity': json.loads(row['identity'])
+                }
+            }
+        return None
+
+def rollback_to_version(client_id: str, version: int, 
+                        rolled_back_by: str = None,
+                        rolled_back_by_type: str = None,
+                        ip_address: str = None) -> tuple:
+    """
+    Rollback client data to a specific historical version.
+    
+    Creates a new version entry marking this as a rollback.
+    
+    Returns:
+        Tuple of (success: bool, new_version: int)
+    """
+    # Get the historical version data
+    historical = get_data_version(client_id, version)
+    if not historical:
+        return (False, -1)
+    
+    # Save as new current data with rollback action
+    return save_client_data_with_history(
+        client_id,
+        historical['data'],
+        action='ROLLBACK',
+        changed_by=rolled_back_by,
+        changed_by_type=rolled_back_by_type,
+        ip_address=ip_address,
+        change_source='rollback',
+        change_description=f'Rolled back to version {version} from {historical["created_at"]}'
+    )
+
+def compare_versions(client_id: str, version1: int, version2: int) -> dict:
+    """
+    Compare two versions of client data and return differences.
+    
+    Returns dict with changed fields and their old/new values.
+    """
+    v1_data = get_data_version(client_id, version1)
+    v2_data = get_data_version(client_id, version2)
+    
+    if not v1_data or not v2_data:
+        return None
+    
+    differences = {
+        'version1': version1,
+        'version2': version2,
+        'version1_date': v1_data['created_at'],
+        'version2_date': v2_data['created_at'],
+        'changes': {}
+    }
+    
+    # Compare each major field
+    for field in ['deals', 'positions', 'account', 'evaluations', 'statistics']:
+        d1 = v1_data['data'].get(field)
+        d2 = v2_data['data'].get(field)
+        
+        if d1 != d2:
+            if isinstance(d1, list) and isinstance(d2, list):
+                differences['changes'][field] = {
+                    'type': 'list',
+                    'v1_count': len(d1),
+                    'v2_count': len(d2),
+                    'changed': True
+                }
+            elif isinstance(d1, dict) and isinstance(d2, dict):
+                # For dicts, find specific key changes
+                changed_keys = []
+                all_keys = set(d1.keys()) | set(d2.keys())
+                for key in all_keys:
+                    if d1.get(key) != d2.get(key):
+                        changed_keys.append(key)
+                differences['changes'][field] = {
+                    'type': 'dict',
+                    'changed_keys': changed_keys
+                }
+            else:
+                differences['changes'][field] = {
+                    'type': 'other',
+                    'changed': True
+                }
+    
+    return differences
+
+def get_latest_version(client_id: str) -> int:
+    """Get the latest version number for a client."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT MAX(version) as max_version FROM data_history WHERE client_id = ?
+        ''', (client_id,))
+        row = cursor.fetchone()
+        return row['max_version'] or 0
+
+def cleanup_old_history(client_id: str = None, keep_versions: int = 100) -> int:
+    """
+    Clean up old history entries, keeping only the latest N versions per client.
+    
+    Returns the number of deleted entries.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        if client_id:
+            # Delete for specific client
+            cursor.execute('''
+                DELETE FROM data_history 
+                WHERE client_id = ? AND version NOT IN (
+                    SELECT version FROM data_history 
+                    WHERE client_id = ? 
+                    ORDER BY version DESC 
+                    LIMIT ?
+                )
+            ''', (client_id, client_id, keep_versions))
+        else:
+            # Get all client IDs
+            cursor.execute('SELECT DISTINCT client_id FROM data_history')
+            clients = [row['client_id'] for row in cursor.fetchall()]
+            
+            total_deleted = 0
+            for cid in clients:
+                cursor.execute('''
+                    DELETE FROM data_history 
+                    WHERE client_id = ? AND version NOT IN (
+                        SELECT version FROM data_history 
+                        WHERE client_id = ? 
+                        ORDER BY version DESC 
+                        LIMIT ?
+                    )
+                ''', (cid, cid, keep_versions))
+                total_deleted += cursor.rowcount
+            
+            conn.commit()
+            return total_deleted
+        
+        deleted = cursor.rowcount
+        conn.commit()
+        return deleted
 
 # ============ Audit Logging ============
 

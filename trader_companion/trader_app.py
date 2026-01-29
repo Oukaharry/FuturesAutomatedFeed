@@ -32,14 +32,14 @@ except ImportError:
 try:
     from trader_companion.mt5_comment_parser import (
         MT5CommentParser, MT5DealAggregator, Phase,
-        parse_mt5_comment, aggregate_deals_by_comment
+        parse_mt5_comment, aggregate_deals_by_comment, aggregate_deals_by_position
     )
     COMMENT_PARSER_AVAILABLE = True
 except ImportError:
     try:
         from mt5_comment_parser import (
             MT5CommentParser, MT5DealAggregator, Phase,
-            parse_mt5_comment, aggregate_deals_by_comment
+            parse_mt5_comment, aggregate_deals_by_comment, aggregate_deals_by_position
         )
         COMMENT_PARSER_AVAILABLE = True
     except ImportError:
@@ -280,11 +280,16 @@ class MT5DataPusher:
         """
         Get deals grouped by account and phase based on comments.
         
+        Uses position-based aggregation which:
+        - Groups deals by position_id (each closed position has entry + exit deals)
+        - Gets comment from entry deal (e.g., FNFT...59574_CH1)
+        - Sums profit from all deals in that position (entry has profit=0, exit has actual profit)
+        
         Returns:
             dict with structure:
             {
                 'aggregated': [list of aggregated trade data],
-                'unmatched': [list of deals without matching comments],
+                'unmatched': [list of positions without matching comments],
                 'summary': {summary statistics},
                 'log': [parsing log messages]
             }
@@ -294,14 +299,24 @@ class MT5DataPusher:
             return {'aggregated': [], 'unmatched': [], 'summary': {}, 'log': ['No deals found']}
         
         if COMMENT_PARSER_AVAILABLE:
-            aggregator = MT5DealAggregator()
-            aggregator.process_deals(deals)
+            # Use position-based aggregation for correct profit calculation
+            # Entry deal has comment but profit=0, exit deal has profit but different comment
+            aggregated, unmatched, log = aggregate_deals_by_position(deals)
+            
+            # Build summary
+            by_phase = {}
+            for agg in aggregated:
+                phase_name = agg.get('phase_name', 'UNKNOWN')
+                if phase_name not in by_phase:
+                    by_phase[phase_name] = {'count': 0, 'total_net_profit': 0.0}
+                by_phase[phase_name]['count'] += 1
+                by_phase[phase_name]['total_net_profit'] += agg.get('net_profit', 0)
             
             return {
-                'aggregated': aggregator.to_dashboard_format(),
-                'unmatched': aggregator.unmatched_deals,
-                'summary': aggregator.get_summary(),
-                'log': aggregator.parse_log
+                'aggregated': aggregated,
+                'unmatched': unmatched,
+                'summary': {'by_phase': by_phase},
+                'log': log
             }
         else:
             aggregated, unmatched = self.aggregate_deals_by_account(deals)

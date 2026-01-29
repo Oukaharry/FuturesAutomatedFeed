@@ -14,7 +14,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
-    update_admin_details, get_client_by_email,
+    update_admin_details, update_trader_details, update_client_details,
+    get_client_by_email,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader
 )
@@ -30,7 +31,10 @@ from dashboard.database import (
     create_user, verify_user_password, verify_client_login, update_user_password,
     get_user, list_users, deactivate_user, reset_user_password, user_exists,
     record_login_attempt, is_account_locked,
-    find_user_by_identifier, verify_user_by_identifier
+    find_user_by_identifier, verify_user_by_identifier,
+    # History management
+    save_client_data_with_history, get_data_history, get_data_version,
+    rollback_to_version, compare_versions, get_latest_version
 )
 
 app = Flask(__name__)
@@ -38,10 +42,12 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 
 # ============ Rate Limiting ============
+# Note: For local development, use higher limits. 
+# For production, consider: ["200 per day", "50 per hour"]
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=["10000 per day", "2000 per hour"],
     storage_uri="memory://"
 )
 
@@ -51,23 +57,44 @@ hierarchy = SYSTEM_HIERARCHY
 
 def get_account_signature(account_number):
     """
-    Extract account signature for matching: first 4 + last 4 digits.
+    Extract account signature for matching: first 4 + last 4/5 digits.
     This handles truncated account numbers in MT5 comments.
     
+    Handles truncated format with '...' like: FNFT...59574
+    
     Examples:
-        MFFUEVSTP326057008 -> MFFU7008
-        EVSTP326057008 -> EVST7008
+        MFFUEVSTP326057008 -> mffu7008 (full account)
+        FNFT...59574 -> fnft59574 (truncated - keep last 5)
         12345678 -> 12345678
     """
     if not account_number:
         return None
     
     account_str = str(account_number).strip()
+    
+    # Handle truncated format: PREFIX...SUFFIX
+    if '...' in account_str:
+        parts = account_str.split('...')
+        if len(parts) == 2:
+            prefix = parts[0][:4] if len(parts[0]) >= 4 else parts[0]
+            suffix = parts[1]  # Keep full suffix (usually 5 digits)
+            return (prefix + suffix).lower()
+    
+    # Standard format: first 4 + last 4
     if len(account_str) < 8:
         return account_str.lower()
     
     # First 4 + last 4
     return (account_str[:4] + account_str[-4:]).lower()
+
+
+def get_last_n_digits(account: str, n: int = 5) -> str:
+    """Extract last N digits from account number."""
+    if not account:
+        return ""
+    # Extract only digits from the end
+    digits = ''.join(c for c in account if c.isdigit())
+    return digits[-n:] if len(digits) >= n else digits
 
 
 def match_account_to_evaluation(account_number, evaluations, phase_code):
@@ -77,7 +104,9 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     For Challenge (CH): Match against 'Account #' column
     For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
     
-    Uses first 4 + last 4 character signature for matching.
+    Matching strategy:
+    1. Try signature match (first4 + last4/5)
+    2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
     
     Returns: (eval_index, matched_account) or (None, None)
     """
@@ -85,7 +114,9 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         return None, None
     
     target_sig = get_account_signature(account_number)
-    if not target_sig:
+    target_last5 = get_last_n_digits(account_number, 5)
+    
+    if not target_sig and not target_last5:
         return None, None
     
     # Determine which column to check based on phase
@@ -94,7 +125,7 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     else:
         column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
     
-    # Search for matching account
+    # First pass: Try signature match
     for idx, ev in enumerate(evaluations):
         eval_account = str(ev.get(column_name, '')).strip()
         if not eval_account:
@@ -104,7 +135,68 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         if eval_sig == target_sig:
             return idx, eval_account
     
+    # Second pass: Try last 5 digits match (for truncated accounts)
+    if target_last5 and len(target_last5) >= 4:
+        for idx, ev in enumerate(evaluations):
+            eval_account = str(ev.get(column_name, '')).strip()
+            if not eval_account:
+                continue
+            
+            eval_last5 = get_last_n_digits(eval_account, 5)
+            if eval_last5 == target_last5:
+                return idx, eval_account
+    
     return None, None
+
+
+def normalize_account_size(value):
+    """
+    Normalize account size values to standard format: $X,XXX
+    
+    Handles:
+        - "50k", "50K" → "$50,000"
+        - "100000", "100,000" → "$100,000"
+        - "$50,000" → "$50,000" (already correct)
+        - "5000" → "$5,000"
+    """
+    import re
+    if not value:
+        return value
+    
+    val = str(value).strip().upper()
+    
+    # Already in correct format
+    if re.match(r'^\$[\d,]+$', val):
+        return value
+    
+    # Handle "50k" or "50K" format
+    match = re.match(r'^[\$]?(\d+\.?\d*)K$', val, re.IGNORECASE)
+    if match:
+        num = float(match.group(1)) * 1000
+        return f"${num:,.0f}"
+    
+    # Handle plain numbers like "50000" or "50,000"
+    val_clean = re.sub(r'[\$,\s]', '', val)
+    try:
+        num = float(val_clean)
+        return f"${num:,.0f}"
+    except:
+        pass
+    
+    # Return original if can't parse
+    return value
+
+
+def normalize_evaluations(evaluations):
+    """Normalize field values in evaluations list."""
+    if not evaluations:
+        return evaluations
+    
+    for ev in evaluations:
+        if 'Account Size' in ev and ev['Account Size']:
+            ev['Account Size'] = normalize_account_size(ev['Account Size'])
+    
+    return evaluations
 
 
 def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
@@ -125,17 +217,21 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
     
     elif phase_code == 'FD':
         # Determine if this is an MFFU account (uses FD0)
-        # MFFU accounts: FD0→HR1, FD1→HR2, FD2→HR3, etc.
-        # Other accounts: FD1→HR1, FD2→HR2, FD3→HR3, etc.
+        # MFFU accounts: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1, etc.
+        # Other accounts: FD0→HR1.1 (rare), FD1→HR1.1, FD2→HR2.1, etc.
         is_mffu = account_number and account_number.upper().startswith('MFFU')
         
         if trade_number is not None:
             if is_mffu:
-                # MFFU: FD0→Hedge Result 1, FD1→Hedge Result 2, etc.
+                # MFFU: FD0→Hedge Result 1.1, FD1→Hedge Result 2.1, etc.
                 return f"Hedge Result {trade_number + 1}.1"
             else:
-                # Other (starts at FD1): FD1→Hedge Result 1, FD2→Hedge Result 2, etc.
-                return f"Hedge Result {trade_number}.1"
+                # Other firms: FD0→HR1.1, FD1→HR1.1, FD2→HR2.1, etc.
+                # FD0 is rare for non-MFFU, treat same as FD1
+                if trade_number == 0:
+                    return "Hedge Result 1.1"
+                else:
+                    return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'DD':
         # Double Dip: DD1-4 map to available funded hedge columns
@@ -374,13 +470,22 @@ def trader_dashboard(trader_name):
 def client_dashboard(client_id):
     session_user = request.session_user
     user_type = session_user.get('user_type')
+    
+    # Get client email for version history feature
+    client_email = ''
+    client_data = get_client_data(client_id)
+    if client_data and client_data.get('identity'):
+        client_email = client_data['identity'].get('email', '')
+    
     # Allow super_admin, admin, and trader to access any client dashboard
     if user_type in ['super_admin', 'admin', 'trader']:
-        return render_template('index.html', client_id=client_id, user_type=user_type, can_edit_hedging=True)
+        return render_template('index.html', client_id=client_id, user_type=user_type, 
+                               can_edit_hedging=True, client_email=client_email)
     # Check if user is the correct client
     if user_type != 'client' or session_user.get('user_identifier') != client_id:
         return redirect('/')
-    return render_template('index.html', client_id=client_id, user_type=user_type, can_edit_hedging=False)
+    return render_template('index.html', client_id=client_id, user_type=user_type, 
+                           can_edit_hedging=False, client_email=client_email)
 
 # ============ Hierarchy API with Role-Based Access Control ============
 
@@ -467,6 +572,159 @@ def get_hierarchy():
     
     filtered = get_filtered_hierarchy(user_type, user_identifier)
     return jsonify(filtered)
+
+@app.route('/api/super_admin/totals')
+def get_super_admin_totals():
+    """Get aggregated totals across all clients for super admin dashboard."""
+    session_token = request.cookies.get('session_token')
+    
+    if not session_token:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    
+    session_info = validate_session(session_token)
+    if not session_info or session_info.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Super admin access required"}), 403
+    
+    # Get all client data
+    all_clients = get_all_clients()
+    
+    # Aggregate totals
+    total_payouts = 0.0
+    total_deposits = 0.0
+    total_fees = 0.0
+    total_hedge_results = 0.0
+    total_farming = 0.0
+    total_net_profit = 0.0
+    active_accounts = 0
+    completed_accounts = 0
+    failed_accounts = 0
+    
+    # List to hold individual client stats
+    client_details = []
+    
+    def parse_currency(val):
+        """Parse currency string to float."""
+        if val is None:
+            return 0.0
+        if isinstance(val, (int, float)):
+            return float(val)
+        try:
+            # Remove currency symbols and commas
+            cleaned = str(val).replace('$', '').replace(',', '').replace(' ', '').strip()
+            if cleaned == '' or cleaned == '-':
+                return 0.0
+            return float(cleaned)
+        except (ValueError, TypeError):
+            return 0.0
+    
+    for client_id, client_data in all_clients.items():
+        if not client_data:
+            continue
+            
+        # Get statistics from client data
+        stats = client_data.get('statistics', {})
+        
+        # Get client metadata
+        identity = client_data.get('identity', {})
+        client_source = identity.get('source', 'Private')  # Default to Private
+        
+        # Get cashflow/in-progress totals (all accounts)
+        cashflow = stats.get('cashflow_inprogress', {})
+        c_payouts = parse_currency(cashflow.get('payouts', 0))
+        c_fees = parse_currency(cashflow.get('challenge_fees', 0))
+        c_hedge = parse_currency(cashflow.get('hedging_results', 0))
+        c_farm = parse_currency(cashflow.get('farming_results', 0))
+        
+        total_payouts += c_payouts
+        total_fees += c_fees
+        total_hedge_results += c_hedge
+        total_farming += c_farm
+        
+        # Get hedging review for deposits
+        hedging_review = stats.get('hedging_review', {})
+        c_deposits = parse_currency(hedging_review.get('total_deposits', 0))
+        total_deposits += c_deposits
+        
+        # Get eval totals for account counts
+        eval_totals = stats.get('eval_totals', {})
+        c_active = int(eval_totals.get('total_running', 0) or 0)
+        c_passed = int(eval_totals.get('total_passed', 0) or 0)
+        c_failed = int(eval_totals.get('total_failed', 0) or 0)
+        
+        active_accounts += c_active
+        completed_accounts += c_passed
+        failed_accounts += c_failed
+        
+        # Calculate net profit from profitability data
+        prof_completed = stats.get('profitability_completed', {})
+        c_net = parse_currency(prof_completed.get('payouts', 0)) + \
+              parse_currency(prof_completed.get('hedging_results', 0)) + \
+              parse_currency(prof_completed.get('farming_results', 0)) - \
+              parse_currency(prof_completed.get('challenge_fees', 0))
+        total_net_profit += c_net
+        
+        # Add to detail list
+        client_details.append({
+            "client_id": client_id,
+            "source": client_source,
+            "payouts": round(c_payouts, 2),
+            "deposits": round(c_deposits, 2),
+            "fees": round(c_fees, 2),
+            "hedge": round(c_hedge, 2),
+            "farming": round(c_farm, 2),
+            "net_profit": round(c_net, 2),
+            "active": c_active,
+            "passed": c_passed,
+            "failed": c_failed
+        })
+    
+    return jsonify({
+        "status": "success",
+        "totals": {
+            "total_payouts": round(total_payouts, 2),
+            "total_deposits": round(total_deposits, 2),
+            "total_fees": round(total_fees, 2),
+            "total_hedge_results": round(total_hedge_results, 2),
+            "total_farming": round(total_farming, 2),
+            "total_net_profit": round(total_net_profit, 2),
+            "active_accounts": active_accounts,
+            "completed_accounts": completed_accounts,
+            "failed_accounts": failed_accounts,
+            "client_count": len(all_clients)
+        },
+        "clients": client_details
+    })
+
+@app.route('/api/client/update_source', methods=['POST'])
+@require_session
+def update_client_source():
+    """Update client source (BEF/Private)."""
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+        
+    data = request.json
+    client_id = data.get('client_id')
+    source = data.get('source')
+    
+    if not client_id or source not in ['BEF', 'Private']:
+        return jsonify({"status": "error", "message": "Invalid data"}), 400
+        
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client not found"}), 404
+        
+    if 'identity' not in client_data:
+        client_data['identity'] = {}
+        
+    client_data['identity']['source'] = source
+    
+    # Save using update_client_field to persist changes
+    # We ideally should create a new history version but for metadata direct update might be okay?
+    # Actually update_client_field handles persistence
+    update_client_field(client_id, 'identity', client_data['identity'])
+    
+    return jsonify({"status": "success"})
 
 @app.route('/api/client/lookup', methods=['POST'])
 @require_api_key
@@ -561,6 +819,9 @@ def api_client_push():
         evaluations = existing_data.get("evaluations", [])
         app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
     
+    # Normalize Account Size values to standard format
+    evaluations = normalize_evaluations(evaluations)
+    
     # Check for aggregated comment data (from Push by Comment feature)
     aggregated_by_comment = data.get("aggregated_by_comment", [])
     comment_summary = data.get("comment_summary", {})
@@ -653,19 +914,36 @@ def api_client_push():
     if aggregated_by_comment:
         app.logger.info(f"   - aggregated_by_comment: {len(aggregated_by_comment)} groups")
     
-    # Save to database
-    save_client_data(client_id, client_data)
+    # Determine change source for history tracking
+    change_source = 'trader_app'
+    if aggregated_by_comment:
+        change_source = 'mt5_push_with_comments'
+    elif mt5_account or mt5_deals:
+        change_source = 'mt5_push'
+    
+    # Save to database WITH history tracking
+    success, version = save_client_data_with_history(
+        client_id, 
+        client_data,
+        action='DATA_PUSH',
+        changed_by=email,
+        changed_by_type='client',
+        ip_address=get_remote_address(),
+        change_source=change_source,
+        change_description=f"Data push from trader app with {len(evaluations)} evaluations"
+    )
     
     # Update Hierarchy (in case new)
     add_admin(admin_id)
     add_trader(admin_id, trader_id)
     add_client(admin_id, trader_id, client_id)
     
-    log_action('CLIENT_DATA_PUSH', 'client', email, get_remote_address(), f"Data pushed for {client_id}")
+    log_action('CLIENT_DATA_PUSH', 'client', email, get_remote_address(), f"Data pushed for {client_id} (v{version})")
     
     response_data = {
         "status": "success", 
         "message": f"Data updated for {client_id}",
+        "version": version,
         "identity": {
             "admin": admin_id,
             "trader": trader_id,
@@ -737,8 +1015,17 @@ def api_migrate_sheet():
             "migrated_at": datetime.now().isoformat()
         }
         
-        # Save to database
-        save_client_data(client_id, client_data)
+        # Save to database WITH history tracking
+        success, version = save_client_data_with_history(
+            client_id, 
+            client_data,
+            action='SHEET_IMPORT',
+            changed_by=email,
+            changed_by_type='client',
+            ip_address=get_remote_address(),
+            change_source='sheet_migration',
+            change_description=f"Imported {len(evaluations)} records from Google Sheets"
+        )
         
         # Update Hierarchy
         add_admin(admin_id)
@@ -746,13 +1033,14 @@ def api_migrate_sheet():
         add_client(admin_id, trader_id, client_id)
         
         log_action('SHEET_MIGRATION', 'client', email, get_remote_address(), 
-                   f"Migrated {len(evaluations)} records from Google Sheets for {client_id}")
+                   f"Migrated {len(evaluations)} records from Google Sheets for {client_id} (v{version})")
         
         # Return statistics for verification
         return jsonify({
             "status": "success", 
             "message": f"Successfully migrated {len(evaluations)} evaluation records",
             "records_imported": len(evaluations),
+            "version": version,
             "statistics": statistics,  # Include stats for client-side verification
             "identity": {
                 "admin": admin_id,
@@ -1132,9 +1420,10 @@ def api_change_password():
 @app.route('/api/add_admin', methods=['POST'])
 def api_add_admin():
     name = request.json.get('name')
+    email = request.json.get('email', '')
     if not name: return jsonify({"status": "error", "message": "Name required"}), 400
     
-    if add_admin(name):
+    if add_admin(name, email):
         log_action('ADD_ADMIN', 'system', name, get_remote_address())
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Admin exists"}), 400
@@ -1150,13 +1439,39 @@ def api_update_admin():
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Admin not found"}), 400
 
+@app.route('/api/update_trader', methods=['POST'])
+def api_update_trader():
+    admin = request.json.get('admin')
+    name = request.json.get('name')
+    email = request.json.get('email')
+    if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    if update_trader_details(admin, name, email):
+        log_action('UPDATE_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Trader not found"}), 400
+
+@app.route('/api/update_client', methods=['POST'])
+def api_update_client():
+    admin = request.json.get('admin')
+    trader = request.json.get('trader')
+    name = request.json.get('name')
+    email = request.json.get('email')
+    if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    if update_client_details(admin, trader, name, email):
+        log_action('UPDATE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Client not found"}), 400
+
 @app.route('/api/add_trader', methods=['POST'])
 def api_add_trader():
     admin = request.json.get('admin')
     name = request.json.get('name')
+    email = request.json.get('email', '')
     if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
-    if add_trader(admin, name):
+    if add_trader(admin, name, email):
         log_action('ADD_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Trader exists"}), 400
@@ -1204,10 +1519,93 @@ def api_remove_client():
     name = request.json.get('name')
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
+    # Save a final snapshot before deletion so data can be recovered
+    client_data = get_client_data(name)
+    if client_data:
+        from dashboard.database import save_data_snapshot
+        save_data_snapshot(
+            name, client_data,
+            action='CLIENT_DELETED',
+            changed_by='system',
+            changed_by_type='admin',
+            ip_address=get_remote_address(),
+            change_source='client_removal',
+            change_description=f"Final snapshot before client removal (Trader: {trader}, Admin: {admin})"
+        )
+    
     if remove_client(admin, trader, name):
         log_action('REMOVE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Client not found"}), 400
+
+@app.route('/api/client/delete_evaluation', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_delete_evaluation():
+    """
+    Delete an evaluation row with history tracking.
+    The data is removed from current view but can be recovered from version history.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    evaluation_index = data.get('index')
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    if evaluation_index is None:
+        return jsonify({"status": "error", "message": "Evaluation index required"}), 400
+    
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    
+    # Get current client data
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+    
+    evaluations = client_data.get('evaluations', [])
+    
+    if evaluation_index < 0 or evaluation_index >= len(evaluations):
+        return jsonify({"status": "error", "message": "Invalid evaluation index"}), 400
+    
+    # Get details of what we're deleting for the log
+    deleted_eval = evaluations[evaluation_index]
+    deleted_info = f"Row {evaluation_index + 1}: {deleted_eval.get('Prop Firm', 'Unknown')} - {deleted_eval.get('Account Size', 'Unknown')}"
+    
+    # Remove the evaluation
+    evaluations.pop(evaluation_index)
+    client_data['evaluations'] = evaluations
+    
+    # Recalculate statistics
+    from utils.data_processor import calculate_statistics
+    client_data['statistics'] = calculate_statistics(evaluations, None, None)
+    
+    # Save with history tracking - the previous version contains the deleted row
+    success, version = save_client_data_with_history(
+        client_id,
+        client_data,
+        action='DELETE_EVALUATION',
+        changed_by=email,
+        changed_by_type='client',
+        ip_address=get_remote_address(),
+        change_source='dashboard_delete',
+        change_description=f"Deleted evaluation: {deleted_info}"
+    )
+    
+    log_action('DELETE_EVALUATION', 'client', email, get_remote_address(), 
+               f"Deleted {deleted_info} from {client_id} (v{version})")
+    
+    return jsonify({
+        "status": "success",
+        "message": f"Evaluation deleted. Use Version History to recover if needed.",
+        "version": version,
+        "deleted": deleted_info
+    })
 
 @app.route('/api/move_client', methods=['POST'])
 def api_move_client():
@@ -1379,6 +1777,18 @@ def manage_historical_mt5(client_id):
     if not client_data:
         return jsonify({"status": "error", "message": "Client data not found"}), 404
     
+    # Save snapshot BEFORE making changes (for recovery)
+    from dashboard.database import save_data_snapshot
+    save_data_snapshot(
+        client_id, client_data,
+        action='BEFORE_HISTORICAL_MT5_' + action.upper(),
+        changed_by=user_identifier,
+        changed_by_type=user_type,
+        ip_address=get_remote_address(),
+        change_source='historical_mt5_management',
+        change_description=f"Snapshot before {action} historical MT5 account"
+    )
+    
     # Ensure hedging_review structure exists
     if 'statistics' not in client_data:
         client_data['statistics'] = {}
@@ -1425,8 +1835,17 @@ def manage_historical_mt5(client_id):
     hr['historical_withdrawals'] = hist_withdrawals
     hr['historical_balance'] = hist_balance
     
-    # Save updated data
-    save_client_data(client_id, client_data)
+    # Save updated data WITH history tracking
+    email = client_data.get('identity', {}).get('email', '')
+    success, version = save_client_data_with_history(
+        client_id, client_data,
+        action='HISTORICAL_MT5_' + action.upper(),
+        changed_by=user_identifier,
+        changed_by_type=user_type,
+        ip_address=get_remote_address(),
+        change_source='historical_mt5_management',
+        change_description=f"{action.capitalize()} historical MT5 account"
+    )
     
     return jsonify({
         "status": "success", 
@@ -1494,24 +1913,103 @@ def get_data():
         "last_updated": "Never"
     })
 
+# ============ Session-based Update (for Dashboard UI) ============
+
 @app.route('/api/update_data', methods=['POST'])
-@require_api_key
 @limiter.limit("60 per minute")
 def update_data():
+    """Update client data - supports both session and API key authentication."""
     data = request.json
     identity = data.get('identity', {})
     
+    # Try session authentication first (for dashboard UI)
+    session_token = request.cookies.get('session_token')
+    api_key = request.headers.get('X-API-Key')
+    
+    if session_token:
+        session_info = validate_session(session_token)
+        if session_info:
+            user_type = session_info.get('user_type')
+            user_identifier = session_info.get('user_identifier')
+            
+            # Get client_id from request data
+            client_id = identity.get('client') or data.get('client_id')
+            
+            if not client_id:
+                return jsonify({"status": "error", "message": "Client ID required"}), 400
+            
+            # Check if user can access this client's data
+            if not can_access_client(user_type, user_identifier, client_id):
+                log_action('UPDATE_DENIED', user_type, user_identifier, get_remote_address(), 
+                          f"Tried to update: {client_id}", False)
+                return jsonify({"status": "error", "message": "Access denied"}), 403
+            
+            # Get existing data to preserve fields not being updated
+            existing_data = get_client_data(client_id) or {}
+            
+            # Get evaluations and normalize Account Size values
+            evaluations = data.get("evaluations", existing_data.get("evaluations", []))
+            evaluations = normalize_evaluations(evaluations)
+            
+            # Merge the update data with existing data
+            client_data = {
+                "deals": data.get("deals", existing_data.get("deals", [])),
+                "positions": data.get("positions", existing_data.get("positions", [])),
+                "account": data.get("account", existing_data.get("account", {})),
+                "evaluations": evaluations,
+                "statistics": data.get("statistics", existing_data.get("statistics", {})),
+                "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
+                "identity": identity or existing_data.get("identity", {})
+            }
+            
+            # Ensure client ID is in identity
+            if 'client' not in client_data['identity']:
+                client_data['identity']['client'] = client_id
+            
+            # Save with history tracking
+            success, version = save_client_data_with_history(
+                client_id,
+                client_data,
+                action='UPDATE',
+                changed_by=user_identifier,
+                changed_by_type=user_type,
+                ip_address=get_remote_address(),
+                change_source='dashboard_edit',
+                change_description=f'Manual edit from dashboard by {user_type}'
+            )
+            
+            if success:
+                log_action('DATA_UPDATE', user_type, user_identifier, get_remote_address(), 
+                          f"Client: {client_id} (v{version})")
+                return jsonify({"status": "success", "message": "Data updated", "version": version})
+            else:
+                return jsonify({"status": "error", "message": "Failed to save data"}), 500
+    
+    # Fall back to API key authentication
+    if api_key:
+        user_info = validate_api_key(api_key)
+        if user_info:
+            return update_data_with_api_key(data, identity, user_info)
+        else:
+            return jsonify({"status": "error", "message": "Invalid API key"}), 403
+    
+    return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+
+def update_data_with_api_key(data, identity, user_info):
+    """Handle update with API key authentication (for external API calls)."""
     # Use authenticated user info if no identity provided
-    if not identity and hasattr(request, 'api_user'):
+    if not identity:
         identity = {
-            'admin': request.api_user.get('admin'),
-            'trader': request.api_user.get('trader'),
-            'client': request.api_user.get('client')
+            'admin': user_info.get('admin'),
+            'trader': user_info.get('trader'),
+            'client': user_info.get('client')
         }
     
     admin_id = identity.get('admin', 'Admin1')
     trader_id = identity.get('trader', 'Trader1')
     client_id = identity.get('client', 'Client1')
+    email = identity.get('email', '')
     
     # Prepare client data
     client_data = {
@@ -1524,16 +2022,25 @@ def update_data():
         "identity": identity
     }
     
-    # Save to database
-    save_client_data(client_id, client_data)
+    # Save to database WITH history tracking
+    success, version = save_client_data_with_history(
+        client_id,
+        client_data,
+        action='UPDATE',
+        changed_by=email or trader_id,
+        changed_by_type='api',
+        ip_address=get_remote_address(),
+        change_source='api_push',
+        change_description='Update via API'
+    )
     
     # Update Hierarchy
     add_admin(admin_id)
     add_trader(admin_id, trader_id)
     add_client(admin_id, trader_id, client_id)
     
-    log_action('DATA_UPDATE', 'trader', trader_id, get_remote_address(), f"Client: {client_id}")
-    return jsonify({"status": "success", "message": "Data updated"})
+    log_action('DATA_UPDATE', 'trader', trader_id, get_remote_address(), f"Client: {client_id} (v{version})")
+    return jsonify({"status": "success", "message": "Data updated", "version": version})
 
 # ============ API Key Management (Admin only) ============
 
@@ -1651,6 +2158,198 @@ def push_evaluations():
     log_action('PUSH_EVALUATIONS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
     
     return jsonify({"status": "success", "message": "Evaluations updated"})
+
+# ============ Data History & Version Control ============
+
+@app.route('/api/client/history', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_get_client_history():
+    """
+    Get the change history for a client's data.
+    Requires client email for authentication.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    limit = data.get('limit', 50)
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    history = get_data_history(client_id, limit)
+    
+    return jsonify({
+        "status": "success",
+        "client_id": client_id,
+        "history": history,
+        "total_versions": len(history)
+    })
+
+@app.route('/api/client/version', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_get_client_version():
+    """
+    Get a specific version of client data.
+    Useful for viewing what the data looked like at a previous point.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    version = data.get('version')
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    if version is None:
+        return jsonify({"status": "error", "message": "Version number required"}), 400
+    
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    version_data = get_data_version(client_id, int(version))
+    
+    if not version_data:
+        return jsonify({"status": "error", "message": f"Version {version} not found"}), 404
+    
+    return jsonify({
+        "status": "success",
+        "client_id": client_id,
+        "version_info": {
+            "version": version_data['version'],
+            "action": version_data['action'],
+            "changed_by": version_data['changed_by'],
+            "change_source": version_data['change_source'],
+            "change_description": version_data['change_description'],
+            "created_at": version_data['created_at']
+        },
+        "data": version_data['data']
+    })
+
+@app.route('/api/client/rollback', methods=['POST'])
+@limiter.limit("5 per hour")
+def api_rollback_client_data():
+    """
+    Rollback client data to a specific previous version.
+    Creates a new version marking this as a rollback.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    version = data.get('version')
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    if version is None:
+        return jsonify({"status": "error", "message": "Version number required"}), 400
+    
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    
+    # Check if version exists
+    version_data = get_data_version(client_id, int(version))
+    if not version_data:
+        return jsonify({"status": "error", "message": f"Version {version} not found"}), 404
+    
+    # Perform rollback
+    success, new_version = rollback_to_version(
+        client_id, 
+        int(version),
+        rolled_back_by=email,
+        rolled_back_by_type='client',
+        ip_address=get_remote_address()
+    )
+    
+    if success:
+        log_action('DATA_ROLLBACK', 'client', email, get_remote_address(), 
+                   f"Rolled back {client_id} to version {version} (new version: {new_version})")
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Data rolled back to version {version}",
+            "client_id": client_id,
+            "rolled_back_to_version": version,
+            "new_version": new_version,
+            "rolled_back_from_date": version_data['created_at']
+        })
+    else:
+        return jsonify({"status": "error", "message": "Failed to rollback data"}), 500
+
+@app.route('/api/client/compare_versions', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_compare_versions():
+    """
+    Compare two versions of client data to see what changed.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    version1 = data.get('version1')
+    version2 = data.get('version2')
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    if version1 is None or version2 is None:
+        return jsonify({"status": "error", "message": "Both version1 and version2 required"}), 400
+    
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    
+    comparison = compare_versions(client_id, int(version1), int(version2))
+    
+    if not comparison:
+        return jsonify({"status": "error", "message": "One or both versions not found"}), 404
+    
+    return jsonify({
+        "status": "success",
+        "client_id": client_id,
+        "comparison": comparison
+    })
+
+@app.route('/api/admin/all_history', methods=['GET'])
+@require_admin_password
+def api_get_all_history():
+    """
+    Admin endpoint to get all history across all clients.
+    """
+    from dashboard.database import get_connection
+    
+    limit = request.args.get('limit', 100, type=int)
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, client_id, version, action, changed_by, changed_by_type,
+                   change_source, change_description, created_at
+            FROM data_history 
+            ORDER BY created_at DESC
+            LIMIT ?
+        ''', (limit,))
+        history = [dict(row) for row in cursor.fetchall()]
+    
+    return jsonify({
+        "status": "success",
+        "history": history,
+        "total_entries": len(history)
+    })
 
 # ============ Health Check ============
 
