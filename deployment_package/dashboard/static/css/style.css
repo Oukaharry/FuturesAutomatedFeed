@@ -997,4 +997,125 @@ button:hover {
     display: inline-block;
 }
 
+/* --- Data Table Improvements Check --- */
+.wide-table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+/* Group Headers (Top Row) */
+.wide-table thead tr:first-child th {
+    height: 40px; /* Fixed height for sticky calc */
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    border: none;
+    z-index: 20;
+}
+
+/* Specific Group Colors */
+.group-header-blue {
+    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+    border-right: 1px solid rgba(255,255,255,0.2);
+}
+.group-header-green {
+    background: linear-gradient(135deg, #10b981, #059669) !important;
+    border-right: 1px solid rgba(255,255,255,0.2);
+}
+.group-header-orange {
+    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+    border-right: 1px solid rgba(255,255,255,0.2);
+}
+.group-header-purple {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed) !important;
+    border-right: 1px solid rgba(255,255,255,0.2);
+}
+
+/* Sub-headers (Second Row) - Sticky Positioning */
+.wide-table thead tr:nth-child(2) th {
+    position: sticky;
+    top: 56px; /* 40px (header) + 16px (padding) approximation, let's play safe */
+    z-index: 15;
+    font-size: 0.75rem;
+    padding: 10px 14px;
+    font-weight: 600;
+    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.05);
+}
+
+/* Note: Default th is top:0. We need to push 2nd row down. 
+   Assuming standard padding on th is 16px top/bottom. 
+   font-size 0.8rem * 1.5 line-height ~= 19px.
+   height ~= 19 + 32 = 51px.
+   Let's set top to 52px.
+*/
+.wide-table thead tr:nth-child(2) th { top: 52px; }
+
+/* Sub-header Color Themes */
+/* Eval Info (Cols 1-4) */
+.wide-table thead tr:nth-child(2) th:nth-child(-n+4) {
+    background: #eff6ff !important;
+    color: #1e3a8a;
+    border-bottom: 2px solid #bfdbfe;
+}
+/* Eval Phase (Cols 5-14) */
+.wide-table thead tr:nth-child(2) th:nth-child(n+5):nth-child(-n+14) {
+    background: #ecfdf5 !important;
+    color: #064e3b;
+    border-bottom: 2px solid #a7f3d0;
+}
+/* Funded Phase (Cols 15-35) */
+.wide-table thead tr:nth-child(2) th:nth-child(n+15):nth-child(-n+35) {
+    background: #fff7ed !important;
+    color: #7c2d12;
+    border-bottom: 2px solid #fed7aa;
+}
+/* Farming Phase (Cols 36+) */
+.wide-table thead tr:nth-child(2) th:nth-child(n+36) {
+    background: #f5f3ff !important;
+    color: #4c1d95;
+    border-bottom: 2px solid #ddd6fe;
+}
+
+/* Sticky Corners (# and Trash) */
+.wide-table thead tr:first-child th:first-child,
+.wide-table thead tr:first-child th:nth-child(2) {
+    background: #ffffff !important;
+    color: #64748b;
+    z-index: 50 !important;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+}
+
+/* Alternating Row Colors for Readability on Wide Tables */
+.wide-table tbody tr:nth-child(even) td {
+    background-color: #f8fafc;
+}
+.wide-table tbody tr:hover td {
+    background-color: #f1f5f9 !important;
+}
+
+/* Input Fields inside table */
+.cell-input {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 6px;
+    width: 100%;
+    transition: all 0.2s;
+}
+.cell-input:hover {
+    background: white;
+    border-color: #cbd5e1;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.cell-input:focus {
+    background: white;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
 /* End of styles */
