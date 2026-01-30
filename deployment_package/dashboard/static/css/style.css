@@ -374,30 +374,66 @@ tr:hover td:first-child { background-color: #f8fafc; }
 
 .grid {
     display: grid;
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 350px 1fr; /* User Management width fixed, Hierarchy fluid */
     gap: 30px;
     align-items: start;
 }
 
+/* Specific Panel Styling - Gemini Grade */
 .panel {
-    background: var(--card-bg);
-    padding: 24px;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.85); /* Glass-like base */
+    padding: 30px;
+    border-radius: 20px; /* Smooth corners */
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.05); /* Soft, elevated shadow */
+    border: 1px solid rgba(255, 255, 255, 0.6); /* Subtle highlight border */
     height: fit-content;
-    position: sticky;
-    top: 24px;
+    position: relative; /* Remove sticky which might cause overlap issues */
+    backdrop-filter: blur(12px); /* Frosted glass effect */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.panel:hover {
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08); /* Lift effect */
+    background: rgba(255, 255, 255, 0.95);
+}
+
+/* User Management Panel Specifics */
+.panel:nth-of-type(2) {
+    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
+    border-left: 4px solid #3b82f6; /* Accent to identify the section */
+}
+
+/* System Hierarchy Panel Specifics */
+.panel:nth-of-type(3) {
+    background: linear-gradient(145deg, #f8fafc 0%, #f1f5f9 100%);
+    border-left: 4px solid #8b5cf6; /* Different accent */
+}
+
+/* Financial Overview Full Width Override */
+.panel[style*="column: 1 / -1"] {
+    position: relative;
+    z-index: 10;
+    margin-bottom: 40px; /* Force separation */
+    background: #ffffff; /* Solid background for numbers */
+    border: none;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
 }
 
 h2 { 
-    font-size: 1.25rem; 
+    font-size: 1.4rem; 
+    font-weight: 800;
     margin-top: 0; 
     margin-bottom: 24px; 
-    border-bottom: 1px solid var(--border-color); 
+    border-bottom: 2px solid rgba(0,0,0,0.05); 
     padding-bottom: 16px;
     color: var(--text-primary);
-    background: linear-gradient(90deg, var(--text-primary), var(--text-secondary));
+    background: transparent; /* Remove old gradient text if it clashes */
+    -webkit-background-clip: unset;
+    -webkit-text-fill-color: initial;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     display: inline-block;
