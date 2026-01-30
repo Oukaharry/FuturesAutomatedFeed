@@ -988,12 +988,13 @@ class TraderCompanionApp:
         conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=15)
         conn_frame.pack(fill=tk.X, pady=(0, 15))
         
-        # Dashboard URL
+        # Dashboard URL (Hardcoded - Read Only)
         url_frame = ttk.Frame(conn_frame)
         url_frame.pack(fill=tk.X, pady=5)
         ttk.Label(url_frame, text="Dashboard URL:", width=15).pack(side=tk.LEFT)
         self.url_entry = ttk.Entry(url_frame, width=40)
-        self.url_entry.insert(0, "https://ballerquotes.pythonanywhere.com")
+        self.url_entry.insert(0, "https://www.ballerquotes.com")
+        self.url_entry.configure(state='readonly')  # Hardcoded - no user input needed
         self.url_entry.pack(side=tk.LEFT, padx=5)
         
         # Identity Frame - SIMPLIFIED: Just client email (NO API KEY NEEDED)
@@ -1040,43 +1041,17 @@ class TraderCompanionApp:
         self.mt5_btn = ttk.Button(mt5_frame, text="Connect to MT5", command=self.toggle_mt5_connection)
         self.mt5_btn.pack(pady=10)
         
-        # Buttons Frame
+        # Buttons Frame - Simplified layout
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=15)
         
-        self.push_btn = ttk.Button(btn_frame, text="📤 Push Data Now", command=self.push_data)
+        self.push_btn = ttk.Button(btn_frame, text="📤 Push Data", command=self.push_data)
         self.push_btn.pack(side=tk.LEFT, padx=5)
         
-        self.mt5_push_btn = ttk.Button(btn_frame, text="📊 Push Rebalance Data Only", command=self.push_mt5_only)
-        self.mt5_push_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.sync_hedge_btn = ttk.Button(btn_frame, text="🔗 Sync Hedge Results", command=self.sync_hedge_results)
-        self.sync_hedge_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Second row of buttons
-        btn_frame2 = ttk.Frame(main_frame)
-        btn_frame2.pack(fill=tk.X, pady=(0, 15))
-        
-        self.auto_btn = ttk.Button(btn_frame2, text="🔄 Start Auto-Push (5min)", command=self.toggle_auto_push)
+        self.auto_btn = ttk.Button(btn_frame, text="🔄 Auto-Push", command=self.toggle_auto_push)
         self.auto_btn.pack(side=tk.LEFT, padx=5)
         
-        self.debug_comments_btn = ttk.Button(btn_frame2, text="🔍 Show Deal Comments", command=self.show_deal_comments)
-        self.debug_comments_btn.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame2, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
-        
-        # Third row - Comment-based push buttons (NEW)
-        btn_frame3 = ttk.Frame(main_frame)
-        btn_frame3.pack(fill=tk.X, pady=(0, 15))
-        
-        self.push_by_comment_btn = ttk.Button(btn_frame3, text="📋 Push by Comment", command=self.push_by_comment)
-        self.push_by_comment_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.analyze_comments_btn = ttk.Button(btn_frame3, text="🔬 Analyze Comments (v2)", command=self.analyze_comments_v2)
-        self.analyze_comments_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.show_aggregated_btn = ttk.Button(btn_frame3, text="📊 Show Aggregated Data", command=self.show_aggregated_data)
-        self.show_aggregated_btn.pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
         
         # Google Sheets Migration Frame
         sheet_frame = ttk.LabelFrame(main_frame, text="📋 Import from Google Sheets", padding=15)
@@ -2069,7 +2044,7 @@ class TraderCompanionApp:
     def save_config(self):
         """Save configuration to file."""
         config = {
-            "dashboard_url": self.url_entry.get(),
+            "dashboard_url": "https://www.ballerquotes.com",  # Hardcoded
             "client_email": self.client_email_entry.get(),
             "sheet_url": self.sheet_url_entry.get(),
             "mt5_login": self.mt5_login.get(),
@@ -2091,8 +2066,8 @@ class TraderCompanionApp:
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                 
-                self.url_entry.delete(0, tk.END)
-                self.url_entry.insert(0, config.get('dashboard_url', 'https://ballerquotes.pythonanywhere.com'))
+                # URL is hardcoded, no need to load from config
+                # self.url_entry is already set and read-only
                 
                 self.client_email_entry.delete(0, tk.END)
                 self.client_email_entry.insert(0, config.get('client_email', ''))
