@@ -95,15 +95,15 @@
                 <h2>User Management</h2>
                 
                 <div class="stats-container" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <div class="stat-box-admin" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
+                    <div class="stat-box-admin" onclick="openUserListModal('admin')" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
                         <div class="stat-label" style="font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">Admins</div>
                         <div id="total-admins" style="font-size: 1.5rem; font-weight: bold;">0</div>
                     </div>
-                    <div class="stat-box-trader" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
+                    <div class="stat-box-trader" onclick="openUserListModal('trader')" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
                         <div class="stat-label" style="font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">Traders</div>
                         <div id="total-traders" style="font-size: 1.5rem; font-weight: bold;">0</div>
                     </div>
-                    <div class="stat-box-client" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
+                    <div class="stat-box-client" onclick="openUserListModal('client')" style="padding: 10px; border-radius: 6px; flex: 1; text-align: center;">
                         <div class="stat-label" style="font-size: 0.8rem; font-weight: bold; text-transform: uppercase;">Clients</div>
                         <div id="total-clients" style="font-size: 1.5rem; font-weight: bold;">0</div>
                     </div>
@@ -182,6 +182,31 @@
             <div class="panel">
                 <h2>System Hierarchy</h2>
                 <div id="hierarchy-tree">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User List Modal -->
+    <div id="userListModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">Users</h3>
+                <span class="modal-close" onclick="closeUserListModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <table class="user-list-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th id="col-parent">Parent</th>
+                            <th>Email</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userListBody">
+                        <!-- Dynamic Content -->
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -731,6 +756,107 @@
             const email = document.getElementById('new-client-email').value;
             if(admin && trader && name) apiCall('/api/add_client', {admin, trader, name, email});
         }
+
+        // --- User List Modal Logic ---
+        function openUserListModal(type) {
+            const modal = document.getElementById('userListModal');
+            const title = document.getElementById('modalTitle');
+            const tbody = document.getElementById('userListBody');
+            const colParent = document.getElementById('col-parent');
+            
+            tbody.innerHTML = '';
+            title.textContent = 'Manage ' + type.charAt(0).toUpperCase() + type.slice(1) + 's';
+            modal.classList.add('show');
+            
+            // Collect data
+            const rows = [];
+            if (type === 'admin') {
+                colParent.style.display = 'none';
+                if(hierarchyData.admins) {
+                    Object.entries(hierarchyData.admins).forEach(([name, data]) => {
+                        rows.push({ name, email: data.email, parent: null, type: 'admin' });
+                    });
+                }
+            } else if (type === 'trader') {
+                colParent.style.display = 'table-cell'; 
+                colParent.textContent = 'Admin';
+                if(hierarchyData.admins) {
+                    Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                        Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
+                            rows.push({ name: traderName, email: traderData.email, parent: adminName, type: 'trader' });
+                        });
+                    });
+                }
+            } else if (type === 'client') {
+                colParent.style.display = 'table-cell';
+                colParent.textContent = 'Trader (Admin)';
+                if(hierarchyData.admins) {
+                    Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                        Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
+                            (traderData.clients || []).forEach(client => {
+                                rows.push({ 
+                                    name: client.name, 
+                                    email: client.email, 
+                                    parent: `${traderName} (${adminName})`,
+                                    rawParentAdmin: adminName,
+                                    rawParentTrader: traderName,
+                                    type: 'client' 
+                                });
+                            });
+                        });
+                    });
+                }
+            }
+            
+            // Render rows
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #999;">No users found.</td></tr>';
+            } else {
+                rows.forEach(r => {
+                    const tr = document.createElement('tr');
+                    let parentCell = '';
+                    if (type !== 'admin') {
+                        parentCell = `<td>${r.parent}</td>`;
+                    }
+                    
+                    let actions = '';
+                    // Reuse existing edit/remove functions but wrap in onclick to avoid immediate execution
+                    if (type === 'admin') {
+                        actions = `
+                            <button class="action-icon-btn" onclick="editAdmin('${r.name}', '${r.email||''}')" title="Edit">✏️</button>
+                            <button class="action-icon-btn delete" onclick="removeAdmin('${r.name}')" title="Remove">🗑️</button>
+                        `;
+                    } else if (type === 'trader') {
+                        actions = `
+                            <button class="action-icon-btn" onclick="editTrader('${r.parent}', '${r.name}', '${r.email||''}')" title="Edit">✏️</button>
+                            <button class="action-icon-btn delete" onclick="removeTrader('${r.parent}', '${r.name}')" title="Remove">🗑️</button>
+                        `;
+                    } else if (type === 'client') {
+                        actions = `
+                            <button class="action-icon-btn" onclick="editClient('${r.rawParentAdmin}', '${r.rawParentTrader}', '${r.name}', '${r.email||''}')" title="Edit">✏️</button>
+                            <button class="action-icon-btn delete" onclick="removeClient('${r.rawParentAdmin}', '${r.rawParentTrader}', '${r.name}')" title="Remove">🗑️</button>
+                        `;
+                    }
+
+                    tr.innerHTML = `
+                        <td style="font-weight: 500;">${r.name}</td>
+                        ${parentCell}
+                        <td style="color: #64748b;">${r.email || '-'}</td>
+                        <td style="text-align: right; white-space: nowrap;">${actions}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        function closeUserListModal() {
+            document.getElementById('userListModal').classList.remove('show');
+        }
+
+        // Close on click outside
+        document.getElementById('userListModal').addEventListener('click', function(e) {
+            if (e.target === this) closeUserListModal();
+        });
 
         loadData();
     </script>

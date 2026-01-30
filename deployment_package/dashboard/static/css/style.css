@@ -399,9 +399,81 @@ tr:hover td:first-child { background-color: #f8fafc; }
 
 /* User Management Panel Specifics */
 .panel:nth-of-type(2) {
-    background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
-    border-left: 4px solid #3b82f6; /* Accent to identify the section */
+    background: linear-gradient(145deg, #fff7ed 0%, #fffaf0 100%); /* Light Orange Tint */
+    border-left: 4px solid #f97316; /* Orange Accent */
 }
+
+/* Clickable Stats in User Management */
+.stat-box-admin, .stat-box-trader, .stat-box-client {
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    background: rgba(255, 255, 255, 0.6); /* Semi-transparent white to blend */
+    border: 1px solid rgba(0,0,0,0.05);
+}
+
+.stat-box-admin:hover, .stat-box-trader:hover, .stat-box-client:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    background: #ffffff; /* Solid white on hover */
+    border-color: #fdba74; /* Light orange border */
+}
+
+/* Modal Styles */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+
+.modal-content {
+    background: white;
+    padding: 0;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    animation: scaleIn 0.2s ease forwards;
+}
+
+.modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8fafc;
+    border-radius: 16px 16px 0 0;
+}
+
+.modal-title { font-size: 1.25rem; font-weight: 700; color: #0f172a; margin: 0; }
+.modal-close { cursor: pointer; font-size: 1.5rem; color: #64748b; line-height: 1; transition: color 0.2s; }
+.modal-close:hover { color: #ef4444; }
+
+.modal-body {
+    padding: 0;
+    overflow-y: auto;
+}
+
+.user-list-table { width: 100%; border-collapse: collapse; }
+.user-list-table th { position: sticky; top: 0; background: #fff; z-index: 10; border-bottom: 2px solid #e2e8f0; padding: 12px 24px; text-align: left; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.user-list-table td { padding: 14px 24px; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: 0.9rem; }
+.user-list-table tr:last-child td { border-bottom: none; }
+.user-list-table tr:hover td { background: #f8fafc; }
+
+.action-icon-btn {
+    background: none; border: none; cursor: pointer; padding: 4px; border-radius: 4px; color: #64748b; transition: all 0.2s;
+}
+.action-icon-btn:hover { background: #e2e8f0; color: #0f172a; }
+.action-icon-btn.delete:hover { background: #fee2e2; color: #ef4444; }
 
 /* System Hierarchy Panel Specifics */
 .panel:nth-of-type(3) {
