@@ -641,3 +641,69 @@ button:hover {
 }
 .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); }
 .hidden { display: none; }
+
+/* Hierarchy Visual Refinement */
+.admin-card {
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    margin-bottom: 30px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
+    overflow: hidden; /* Ensures header corners stay clipped */
+}
+
+/* Adjust admin header to span full width accounting for padding */
+.admin-header {
+    margin: -24px -24px 0 -24px !important;
+    padding: 16px 24px !important;
+    border-radius: 0 0 0 0 !important; /* Let parent overflow handle top corners, or set explicitly if needed */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.trader-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); /* Responsive grid for traders */
+    gap: 20px;
+    padding-top: 8px;
+}
+
+.trader-item {
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.trader-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.client-list {
+    display: flex;
+    flex-wrap: wrap; /* Cloud layout for clients */
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.client-tag {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: grab;
+    user-select: none;
+    max-width: 100%;
+}
+
+.client-tag:active {
+    cursor: grabbing;
+}
