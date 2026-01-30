@@ -697,13 +697,36 @@ button:hover {
 .client-tag {
     display: inline-flex;
     align-items: center;
-    border-radius: 6px;
+    border-radius: 9999px; /* Pill shape */
     font-size: 0.85rem;
     cursor: grab;
     user-select: none;
     max-width: 100%;
+    padding: 6px 14px 6px 10px !important;
+    gap: 6px;
+    background: #fff !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #475569 !important;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.client-tag:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border-color: #cbd5e1 !important;
+    color: #1e293b !important;
+}
+
+.client-tag .client-icon {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #10b981; /* Default Active Status Green */
+    display: inline-block;
 }
 
 .client-tag:active {
     cursor: grabbing;
+    transform: scale(0.98);
 }
