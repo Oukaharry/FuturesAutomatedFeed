@@ -466,8 +466,6 @@
             <div class="controls" style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; gap: 10px;">
                     <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
-                    <button class="btn-gemini" onclick="runGeminiScan()">✨ Gemini Analysis</button>
-                    <div id="gemini-toast" class="gemini-toast">🤖 Analysis Complete: Top Performer Highlighted</div>
                 </div>
                 <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
                     <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()" checked>
@@ -2060,49 +2058,6 @@
 
         setInterval(updateDashboard, 2000);
         updateDashboard();
-
-        // --- GEMINI KING OF AI FEATURE ---
-        function runGeminiScan() {
-            const tableContainer = document.getElementById('eval-table-container');
-            const tbody = document.getElementById('evaluations-body');
-            const toast = document.getElementById('gemini-toast');
-            
-            // 1. Create Scan Overlay
-            let overlay = tableContainer.querySelector('.scan-overlay');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.className = 'scan-overlay';
-                tableContainer.appendChild(overlay);
-            }
-            
-            // 2. Trigger Scan Animation
-            tableContainer.classList.remove('scanning');
-            void tableContainer.offsetWidth; // Trigger reflow
-            tableContainer.classList.add('scanning');
-            
-            // 3. Highlight Logic (Simulated "AI" Analysis)
-            setTimeout(() => {
-                // Remove existing highlights
-                document.querySelectorAll('.gemini-highlight').forEach(el => el.classList.remove('gemini-highlight'));
-                
-                const rows = Array.from(tbody.children);
-                if (rows.length > 0) {
-                    // Pick the "best" row (random for demo, or based on logic like 'Passed')
-                    // Let's try to find a Passed row first
-                    let targetRow = rows.find(r => r.innerText.includes('Passed'));
-                    if (!targetRow) targetRow = rows[Math.floor(Math.random() * rows.length)];
-                    
-                    if(targetRow) {
-                        targetRow.classList.add('gemini-highlight');
-                        targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                    
-                    // Show Toast
-                    toast.classList.add('show');
-                    setTimeout(() => toast.classList.remove('show'), 4000);
-                }
-            }, 1200); // Wait for scan to mostly finish
-        }
     </script>
 </body>
 </html>
