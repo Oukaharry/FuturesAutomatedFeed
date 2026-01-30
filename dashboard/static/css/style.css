@@ -1142,6 +1142,28 @@ button:hover {
     filter: brightness(0.98); /* Subtle darken for even rows while keeping tint */
 }
 
+/* Specific Column Sizing and Fonts */
+/* Payout Columns (Funded Phase: 30, 32, 34, 36) */
+.wide-table th:nth-child(30), .wide-table td:nth-child(30),
+.wide-table th:nth-child(32), .wide-table td:nth-child(32),
+.wide-table th:nth-child(34), .wide-table td:nth-child(34),
+.wide-table th:nth-child(36), .wide-table td:nth-child(36) {
+    min-width: 110px; /* Ensure full amount visibility */
+    font-size: 13px;  /* Reduced font size */
+    font-weight: 500;
+}
+
+/* Hedge Result Columns (Eval: 11-16, Funded: 22-29) */
+.wide-table th:nth-child(n+11):nth-child(-n+16), 
+.wide-table td:nth-child(n+11):nth-child(-n+16),
+.wide-table th:nth-child(n+22):nth-child(-n+29), 
+.wide-table td:nth-child(n+22):nth-child(-n+29) {
+    font-size: 13px; /* Reduced font size for tight fit */
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 
 /* Input Fields inside table */
 .cell-input {
