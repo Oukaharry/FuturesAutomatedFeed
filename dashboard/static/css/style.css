@@ -566,133 +566,186 @@ button:hover {
 }
 .back-link:hover { color: var(--text-primary); background: #f1f5f9; }
 
-/* Overrides */
+/* --- Modern Hierarchy / Super Admin Design --- */
+
+/* Admin Card Container */
 .admin-card {
-    background: var(--admin-bg) !important;
-    border: 1px solid var(--admin-border) !important;
-}
-.admin-header {
-    background: linear-gradient(90deg, #eff6ff 0%, #dbeafe 100%) !important;
-    border-bottom: 1px solid var(--admin-border) !important;
-    color: var(--admin-text) !important;
-    font-weight: 700 !important;
-}
-.badge-admin { 
-    background: #fff !important; color: var(--admin-text) !important; 
-    border: 1px solid var(--admin-border) !important; 
-}
-
-.trader-item {
-    background: var(--trader-bg) !important;
-    border: 1px solid var(--trader-border) !important;
-}
-.trader-header {
-    background: linear-gradient(90deg, #f0fdf4 0%, #dcfce7 100%) !important;
-    color: var(--trader-text) !important;
-    border-bottom: 1px dashed var(--trader-border) !important;
-    margin: -16px -16px 16px -16px !important;
-    padding: 12px 16px !important;
-    border-radius: 8px 8px 0 0 !important;
-}
-.badge-trader {
-    background: #fff !important; color: var(--trader-text) !important;
-    border: 1px solid var(--trader-border) !important;
-}
-
-.client-tag {
-    background: var(--client-bg) !important;
-    color: var(--client-text) !important;
-    border: 1px solid var(--client-border) !important;
-    font-weight: 600 !important;
-    padding: 8px 12px !important;
-}
-.client-tag:hover { filter: brightness(0.97); transform: translateY(-1px); }
-.badge-client {
-    background: var(--client-bg) !important; color: var(--client-text) !important;
-    border: 1px solid var(--client-border) !important;
-}
-
-/* Stats Colors */
-#total-admins, .stat-box-admin .stat-label { color: var(--admin-text) !important; }
-.stat-box-admin { background: var(--admin-bg) !important; border-color: var(--admin-border) !important; }
-
-#total-traders, .stat-box-trader .stat-label { color: var(--trader-text) !important; }
-.stat-box-trader { background: var(--trader-bg) !important; border-color: var(--trader-border) !important; }
-
-#total-clients, .stat-box-client .stat-label { color: var(--client-text) !important; }
-.stat-box-client { background: var(--client-bg) !important; border-color: var(--client-border) !important; }
-
-/* Eval Table Colors */
-#evaluations-table tbody td:nth-child(n+2):nth-child(-n+5) { background-color: rgba(239, 246, 255, 0.5) !important; color: #1d4ed8; }
-#evaluations-table tbody td:nth-child(n+6):nth-child(-n+15) { background-color: rgba(236, 253, 245, 0.5) !important; color: #047857; }
-#evaluations-table tbody td:nth-child(n+16):nth-child(-n+36) { background-color: rgba(255, 251, 235, 0.5) !important; color: #b45309; }
-#evaluations-table tbody td:nth-child(n+37) { background-color: rgba(245, 243, 255, 0.5) !important; color: #6d28d9; }
-#evaluations-table tbody td:nth-child(1) { background-color: var(--card-bg); font-weight: bold; color: var(--text-secondary); }
-
-#evaluations-table .cell-input {
-    width: 100%; border: 1px solid transparent; background: transparent; padding: 6px; border-radius: 4px; transition: all 0.2s; min-width: 140px;
-}
-#evaluations-table .cell-input:hover { border-color: var(--border-color); background: #fff; }
-#evaluations-table .cell-input:focus { border-color: var(--accent-color); background: #fff; outline: none; }
-
-.controls { margin-bottom: 24px; display: flex; gap: 12px; }
-.btn-primary {
-    background: var(--gradient-primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;
-}
-.btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); }
-.hidden { display: none; }
-
-/* Hierarchy Visual Refinement */
-.admin-card {
-    border-radius: 12px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important; /* Clean light border */
+    border-radius: 16px; /* Larger radius for modern look */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); /* Soft shadow */
     margin-bottom: 30px;
-    padding: 24px;
+    padding: 0; /* Remove padding here, we'll handle inner spacing */
     display: flex;
     flex-direction: column;
-    gap: 16px;
     position: relative;
-    overflow: hidden; /* Ensures header corners stay clipped */
+    overflow: hidden;
+    transition: box-shadow 0.3s ease;
 }
 
-/* Adjust admin header to span full width accounting for padding */
+.admin-card:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+/* Admin Header Section */
 .admin-header {
-    margin: -24px -24px 0 -24px !important;
-    padding: 16px 24px !important;
-    border-radius: 0 0 0 0 !important; /* Let parent overflow handle top corners, or set explicitly if needed */
+    background: #ffffff !important;
+    padding: 20px 24px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    position: relative;
+    margin: 0 !important; /* Reset overrides */
+    border-radius: 0 !important;
 }
 
+/* Futuristic Accent Bar */
+.admin-header::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: linear-gradient(to bottom, #3b82f6, #6366f1); /* Blue to Indigo gradient */
+}
+
+/* Typography & Badges */
+.admin-title-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.admin-name {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+}
+
+.admin-email {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    font-weight: 500;
+    background: #f8fafc;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.badge-admin {
+    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4); /* Glow effect */
+    font-size: 0.7rem !important;
+    padding: 5px 10px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 6px;
+    font-weight: 700 !important;
+}
+
+/* Trader Section */
 .trader-list {
+    padding: 24px;
+    background: #f8fafc; /* Subtle contrast background for content area */
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); /* Responsive grid for traders */
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     gap: 20px;
-    padding-top: 8px;
 }
 
 .trader-item {
-    border-radius: 10px;
-    padding: 16px;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 12px;
+    padding: 0 !important; /* Reset padding for header/content split */
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
 
 .trader-item:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    border-color: #cbd5e1 !important;
+}
+
+.trader-header {
+    background: #ffffff !important;
+    padding: 12px 16px !important;
+    border-bottom: 1px dashed #e2e8f0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+.badge-trader {
+    background: rgba(16, 185, 129, 0.1) !important;
+    color: #059669 !important;
+    border: 1px solid rgba(16, 185, 129, 0.2) !important;
+    font-weight: 600 !important;
+    font-size: 0.7rem !important;
+    padding: 3px 8px !important;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.trader-name {
+    font-weight: 600;
+    color: #334155;
+    font-size: 0.95rem;
+}
+
+/* Action Buttons (Icons) */
+.action-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+.action-btn:hover {
+    background: #f1f5f9;
+    color: #3b82f6;
+    transform: scale(1.1);
+}
+
+.action-btn.danger:hover {
+    background: #fef2f2;
+    color: #ef4444;
 }
 
 .client-list {
+    padding: 12px 16px;
+    background: #ffffff;
     display: flex;
-    flex-wrap: wrap; /* Cloud layout for clients */
+    flex-wrap: wrap;
     gap: 8px;
-    margin-top: 4px;
+    min-height: 40px; /* target area for drop */
 }
+
+/* Remove old overrides to avoid conflict */
+/*
+.admin-card { ... }
+.admin-header { ... }
+.badge-admin { ... }
+.trader-item { ... }
+.trader-header { ... }
+.badge-trader { ... }
+*/
 
 .client-tag {
     display: inline-flex;

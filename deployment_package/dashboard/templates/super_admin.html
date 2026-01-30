@@ -457,14 +457,18 @@
                 const adminHeader = document.createElement('div');
                 adminHeader.className = 'admin-header';
                 adminHeader.innerHTML = `
-                    <div style="flex-grow: 1; display: flex; align-items: center; gap: 12px;">
-                        <span class="badge badge-admin">Admin</span> 
-                        <span>${admin}</span>
-                        <span style="font-size: 0.8em; color: #666; font-weight: normal;">${data.email || ''}</span>
+                    <div class="admin-title-group">
+                        <span class="badge badge-admin">ADMIN</span> 
+                        <span class="admin-name">${admin}</span>
+                        <span class="admin-email">${data.email || 'No email'}</span>
                     </div>
-                    <div>
-                        <button onclick="editAdmin('${admin}', '${data.email || ''}')" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">Edit</button>
-                        <button onclick="removeAdmin('${admin}')" style="width: auto; padding: 4px 8px; font-size: 0.8rem; background-color: #dc3545; margin-left: 5px;">Remove</button>
+                    <div style="display: flex; gap: 4px;">
+                        <button class="action-btn" onclick="editAdmin('${admin}', '${data.email || ''}')" title="Edit">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        </button>
+                        <button class="action-btn danger" onclick="removeAdmin('${admin}')" title="Remove">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
                     </div>
                 `;
                 adminCard.appendChild(adminHeader);
@@ -489,13 +493,20 @@
                     // Trader Header
                     traderItem.innerHTML = `
                         <div class="trader-header">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span class="badge badge-trader">Trader</span> ${trader}
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span class="badge badge-trader">TRADER</span> 
+                                <span class="trader-name">${trader}</span>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 5px; margin-left: auto;">
-                                <span style="font-size: 0.8em; color: #666; font-weight: normal;">${traderData.email || ''}</span>
-                                <button onclick="editTrader('${admin}', '${trader}', '${traderData.email || ''}')" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; cursor: pointer;">Edit</button>
-                                <button onclick="removeTrader('${admin}', '${trader}')" style="padding: 2px 6px; font-size: 0.7rem; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">X</button>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                                <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 500;">${traderData.email || ''}</span>
+                                <div style="display: flex; gap: 2px;">
+                                    <button class="action-btn" onclick="editTrader('${admin}', '${trader}', '${traderData.email || ''}')" title="Edit">
+                                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                    </button>
+                                    <button class="action-btn danger" onclick="removeTrader('${admin}', '${trader}')" title="Remove">
+                                        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `;
