@@ -307,7 +307,6 @@ tr:hover td:first-child { background-color: #f8fafc; }
     border-radius: 8px;
     padding: 8px 14px;
     display: inline-flex;
-    min-width: 140px;
     align-items: center;
     font-size: 0.85rem;
     font-weight: 500;
@@ -630,11 +629,11 @@ button:hover {
 #evaluations-table tbody td:nth-child(n+37) { background-color: rgba(245, 243, 255, 0.5) !important; color: #6d28d9; }
 #evaluations-table tbody td:nth-child(1) { background-color: var(--card-bg); font-weight: bold; color: var(--text-secondary); }
 
-.cell-input {
+#evaluations-table .cell-input {
     width: 100%; border: 1px solid transparent; background: transparent; padding: 6px; border-radius: 4px; transition: all 0.2s; min-width: 140px;
 }
-.cell-input:hover { border-color: var(--border-color); background: #fff; }
-.cell-input:focus { border-color: var(--accent-color); background: #fff; outline: none; }
+#evaluations-table .cell-input:hover { border-color: var(--border-color); background: #fff; }
+#evaluations-table .cell-input:focus { border-color: var(--accent-color); background: #fff; outline: none; }
 
 .controls { margin-bottom: 24px; display: flex; gap: 12px; }
 .btn-primary {
