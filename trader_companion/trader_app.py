@@ -977,20 +977,20 @@ class TraderCompanionApp:
         style.configure('Error.TLabel', font=('Segoe UI', 10), foreground='#dc2626')
         
         # Main container (inside scrollable frame)
-        main_frame = ttk.Frame(self.scrollable_frame, padding=20)
+        main_frame = ttk.Frame(self.scrollable_frame, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Header
         header = ttk.Label(main_frame, text="📊 MT5 Trader Companion", style='Header.TLabel')
-        header.pack(pady=(0, 20))
+        header.pack(pady=(0, 10))
         
         # Connection Frame
-        conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=15)
-        conn_frame.pack(fill=tk.X, pady=(0, 15))
+        conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
+        conn_frame.pack(fill=tk.X, pady=(0, 8))
         
         # Dashboard URL (Hardcoded - Read Only)
         url_frame = ttk.Frame(conn_frame)
-        url_frame.pack(fill=tk.X, pady=5)
+        url_frame.pack(fill=tk.X, pady=2)
         ttk.Label(url_frame, text="Dashboard URL:", width=15).pack(side=tk.LEFT)
         self.url_entry = ttk.Entry(url_frame, width=50)
         self.url_entry.insert(0, "https://www.ballerquotes.com")
@@ -998,12 +998,12 @@ class TraderCompanionApp:
         self.url_entry.pack(side=tk.LEFT, padx=5)
         
         # Identity Frame - SIMPLIFIED: Just client email (NO API KEY NEEDED)
-        id_frame = ttk.LabelFrame(main_frame, text="Client Identification (Email Only - No API Key Required)", padding=15)
-        id_frame.pack(fill=tk.X, pady=(0, 15))
+        id_frame = ttk.LabelFrame(main_frame, text="Client Identification (Email Only)", padding=8)
+        id_frame.pack(fill=tk.X, pady=(0, 8))
         
         # Client Email
         email_frame = ttk.Frame(id_frame)
-        email_frame.pack(fill=tk.X, pady=5)
+        email_frame.pack(fill=tk.X, pady=2)
         ttk.Label(email_frame, text="Client Email:", width=15).pack(side=tk.LEFT)
         self.client_email_entry = ttk.Entry(email_frame, width=40)
         self.client_email_entry.pack(side=tk.LEFT, padx=5)
@@ -1011,18 +1011,18 @@ class TraderCompanionApp:
         self.lookup_btn.pack(side=tk.LEFT, padx=5)
         
         # Hierarchy Info Display (read-only, populated after lookup)
-        self.hierarchy_var = tk.StringVar(value="Enter client email and click 'Lookup' to identify hierarchy")
+        self.hierarchy_var = tk.StringVar(value="Enter email and click 'Lookup'")
         self.hierarchy_label = ttk.Label(id_frame, textvariable=self.hierarchy_var, 
                                          font=('Segoe UI', 9, 'italic'), foreground='#888888')
-        self.hierarchy_label.pack(fill=tk.X, pady=(10, 5))
+        self.hierarchy_label.pack(fill=tk.X, pady=(2, 0))
         
         # MT5 Frame
-        mt5_frame = ttk.LabelFrame(main_frame, text="MT5 Connection (Optional)", padding=15)
-        mt5_frame.pack(fill=tk.X, pady=(0, 15))
+        mt5_frame = ttk.LabelFrame(main_frame, text="MT5 Connection (Optional)", padding=8)
+        mt5_frame.pack(fill=tk.X, pady=(0, 8))
         
         # MT5 Login
         login_frame = ttk.Frame(mt5_frame)
-        login_frame.pack(fill=tk.X, pady=5)
+        login_frame.pack(fill=tk.X, pady=2)
         ttk.Label(login_frame, text="Login:", width=15).pack(side=tk.LEFT)
         self.mt5_login = ttk.Entry(login_frame, width=18)
         self.mt5_login.pack(side=tk.LEFT, padx=5)
@@ -1032,18 +1032,18 @@ class TraderCompanionApp:
         
         # MT5 Server
         server_frame = ttk.Frame(mt5_frame)
-        server_frame.pack(fill=tk.X, pady=5)
+        server_frame.pack(fill=tk.X, pady=2)
         ttk.Label(server_frame, text="Server:", width=15).pack(side=tk.LEFT)
         self.mt5_server = ttk.Entry(server_frame, width=50)
         self.mt5_server.pack(side=tk.LEFT, padx=5)
         
         # MT5 Connect Button
         self.mt5_btn = ttk.Button(mt5_frame, text="Connect to MT5", command=self.toggle_mt5_connection)
-        self.mt5_btn.pack(pady=10)
+        self.mt5_btn.pack(pady=5)
         
         # Buttons Frame - Simplified layout
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X, pady=15)
+        btn_frame.pack(fill=tk.X, pady=8)
         
         self.push_btn = ttk.Button(btn_frame, text="📤 Push Data", command=self.push_data)
         self.push_btn.pack(side=tk.LEFT, padx=5)
@@ -1054,24 +1054,24 @@ class TraderCompanionApp:
         ttk.Button(btn_frame, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
         
         # Google Sheets Migration Frame
-        sheet_frame = ttk.LabelFrame(main_frame, text="📋 Import from Google Sheets", padding=15)
-        sheet_frame.pack(fill=tk.X, pady=(0, 15))
+        sheet_frame = ttk.LabelFrame(main_frame, text="📋 Import from Google Sheets", padding=8)
+        sheet_frame.pack(fill=tk.X, pady=(0, 8))
         
         sheet_url_frame = ttk.Frame(sheet_frame)
-        sheet_url_frame.pack(fill=tk.X, pady=5)
+        sheet_url_frame.pack(fill=tk.X, pady=2)
         ttk.Label(sheet_url_frame, text="Sheet URL:", width=15).pack(side=tk.LEFT)
         self.sheet_url_entry = ttk.Entry(sheet_url_frame, width=50)
         self.sheet_url_entry.pack(side=tk.LEFT, padx=5)
         
         self.migrate_btn = ttk.Button(sheet_frame, text="📥 Import Sheet Data", command=self.migrate_from_sheet)
-        self.migrate_btn.pack(pady=10)
+        self.migrate_btn.pack(pady=5)
         
-        ttk.Label(sheet_frame, text="Paste your Google Sheet URL to import existing data (sheet must be public)", 
+        ttk.Label(sheet_frame, text="Sheet must be public", 
                   font=('Segoe UI', 8, 'italic'), foreground='#888888').pack()
         
         # Status Frame
-        status_frame = ttk.LabelFrame(main_frame, text="Status Log", padding=10)
-        status_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        status_frame = ttk.LabelFrame(main_frame, text="Status Log", padding=5)
+        status_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
         self.log_text = scrolledtext.ScrolledText(status_frame, height=6, bg='#0f0f1a', fg='#00ff00',
                                                    font=('Consolas', 9), insertbackground='white')
