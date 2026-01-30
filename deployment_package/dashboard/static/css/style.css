@@ -1090,13 +1090,50 @@ button:hover {
     box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
 }
 
-/* Alternating Row Colors for Readability on Wide Tables */
+/* Column Background Persistence (Matching Headers) */
+
+/* Eval Info (Cols 3-6) - Very Light Blue */
+.wide-table tbody td:nth-child(n+3):nth-child(-n+6) {
+    background-color: #f8fbff; 
+    border-right: 1px solid rgba(59, 130, 246, 0.05);
+}
+.wide-table tbody tr:hover td:nth-child(n+3):nth-child(-n+6) {
+    background-color: #eff6ff !important;
+}
+
+/* Eval Phase (Cols 7-16) - Very Light Green */
+.wide-table tbody td:nth-child(n+7):nth-child(-n+16) {
+    background-color: #f0fdf4;
+    border-right: 1px solid rgba(16, 185, 129, 0.05);
+}
+.wide-table tbody tr:hover td:nth-child(n+7):nth-child(-n+16) {
+    background-color: #dcfce7 !important;
+}
+
+/* Funded Phase (Cols 17-37) - Very Light Orange */
+.wide-table tbody td:nth-child(n+17):nth-child(-n+37) {
+    background-color: #fffaf5;
+    border-right: 1px solid rgba(249, 115, 22, 0.05);
+}
+.wide-table tbody tr:hover td:nth-child(n+17):nth-child(-n+37) {
+    background-color: #ffedd5 !important;
+}
+
+/* Farming Phase (Cols 38+) - Very Light Purple */
+.wide-table tbody td:nth-child(n+38) {
+    background-color: #faf5ff;
+    border-right: 1px solid rgba(139, 92, 246, 0.05);
+}
+.wide-table tbody tr:hover td:nth-child(n+38) {
+    background-color: #f3e8ff !important;
+}
+
+/* Override alternating row colors to respect column themes */
 .wide-table tbody tr:nth-child(even) td {
-    background-color: #f8fafc;
+    background-color: inherit; /* Allow column color to shine through, or use specific darken blend if needed */
+    filter: brightness(0.98); /* Subtle darken for even rows while keeping tint */
 }
-.wide-table tbody tr:hover td {
-    background-color: #f1f5f9 !important;
-}
+
 
 /* Input Fields inside table */
 .cell-input {
