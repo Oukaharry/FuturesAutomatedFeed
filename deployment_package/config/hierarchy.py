@@ -33,6 +33,27 @@ def update_admin_details(admin_name, email):
         return True
     return False
 
+def update_trader_details(admin_name, trader_name, email):
+    if admin_name in SYSTEM_HIERARCHY["admins"]:
+        traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
+        if trader_name in traders:
+            traders[trader_name]["email"] = email
+            save_hierarchy(SYSTEM_HIERARCHY)
+            return True
+    return False
+
+def update_client_details(admin_name, trader_name, client_name, email):
+    if admin_name in SYSTEM_HIERARCHY["admins"]:
+        traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
+        if trader_name in traders:
+            clients = traders[trader_name]["clients"]
+            for client in clients:
+                if client["name"] == client_name:
+                    client["email"] = email
+                    save_hierarchy(SYSTEM_HIERARCHY)
+                    return True
+    return False
+
 def add_trader(admin_name, trader_name, email=""):
     if admin_name in SYSTEM_HIERARCHY["admins"]:
         if trader_name not in SYSTEM_HIERARCHY["admins"][admin_name]["traders"]:
@@ -169,15 +190,52 @@ def get_all_clients():
                 clients_list.append(client["name"])
     return clients_list
 
-def get_client_by_email(email):
-    """Finds the client profile by email."""
+def get_user_by_email(email):
+    """
+    Find specific user (Admin, Trader, or Client) by email.
+    Returns: {'username': name, 'user_type': type, 'email': email, ...defaults}
+    """
     if not email: return None
     email = email.lower().strip()
-    for admin, admin_data in SYSTEM_HIERARCHY["admins"].items():
-        for trader, trader_data in admin_data["traders"].items():
+    
+    for admin_name, admin_data in SYSTEM_HIERARCHY["admins"].items():
+        # Check Admin
+        if admin_data.get("email", "").lower().strip() == email:
+            return {
+                "username": admin_name,
+                "user_type": "admin", 
+                "email": email,
+                "parent_admin": None,
+                "parent_trader": None,
+                "must_change_password": 0,
+                "is_active": 1
+            }
+            
+        for trader_name, trader_data in admin_data["traders"].items():
+            # Check Trader
+            if trader_data.get("email", "").lower().strip() == email:
+                return {
+                    "username": trader_name,
+                    "user_type": "trader",
+                    "email": email,
+                    "parent_admin": admin_name,
+                    "parent_trader": None,
+                    "must_change_password": 0,
+                    "is_active": 1
+                }
+                
+            # Check Clients
             for client in trader_data["clients"]:
                 client_email = client.get("email", "").lower().strip()
                 if client_email == email:
-                    return {"admin": admin, "trader": trader, "client": client["name"], "email": client.get("email", "")}
+                    return {
+                        "username": client["name"],
+                        "user_type": "client",
+                        "email": email,
+                        "parent_admin": admin_name,
+                        "parent_trader": trader_name,
+                        "must_change_password": 0,
+                        "is_active": 1
+                    }
     return None
 

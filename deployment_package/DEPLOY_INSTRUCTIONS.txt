@@ -2,6 +2,14 @@
 DEPLOYMENT INSTRUCTIONS
 =======================
 
+CRITICAL: DATABASE PERSISTENCE
+------------------------------
+The application uses a SQLite database (dashboard.db) stored in the 'dashboard' folder.
+- NEW INSTALL: Everything is set up automatically.
+- UPDATES: When uploading new files, DO NOT overwrite 'dashboard/dashboard.db' if it exists.
+  The deployment package does NOT contain this file to prevent accidental overwrites.
+  Your data is safe as long as you keep the existing dashboard.db file on the server.
+
 1. CREATE PYTHONANYWHERE ACCOUNT
    - Go to https://www.pythonanywhere.com
    - Sign up for FREE account
@@ -11,6 +19,7 @@ DEPLOYMENT INSTRUCTIONS
    - Go to "Files" tab
    - Create directory: /home/yourusername/MT5Dashboard
    - Upload ALL files from this deployment_package folder
+   - NOTE: If upgrading, overwrite .py and .html files but preserve 'dashboard.db'
 
 3. INSTALL DEPENDENCIES
    - Go to "Consoles" tab

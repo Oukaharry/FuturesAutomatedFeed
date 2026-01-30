@@ -27,7 +27,7 @@ def create_deployment_package():
     
     # Files and directories to copy
     items_to_copy = [
-        ("dashboard", ["app.py", "api_client.py", "manage_api_keys.py"]),
+        ("dashboard", ["app.py", "api_client.py", "manage_api_keys.py", "database.py"]),
         ("dashboard/templates", None),  # Copy entire directory
         ("dashboard/static", None),     # Copy entire directory
         ("config", ["hierarchy.py", "hierarchy.json", "settings.py"]),
@@ -86,6 +86,14 @@ __pycache__/
 DEPLOYMENT INSTRUCTIONS
 =======================
 
+CRITICAL: DATABASE PERSISTENCE
+------------------------------
+The application uses a SQLite database (dashboard.db) stored in the 'dashboard' folder.
+- NEW INSTALL: Everything is set up automatically.
+- UPDATES: When uploading new files, DO NOT overwrite 'dashboard/dashboard.db' if it exists.
+  The deployment package does NOT contain this file to prevent accidental overwrites.
+  Your data is safe as long as you keep the existing dashboard.db file on the server.
+
 1. CREATE PYTHONANYWHERE ACCOUNT
    - Go to https://www.pythonanywhere.com
    - Sign up for FREE account
@@ -95,6 +103,7 @@ DEPLOYMENT INSTRUCTIONS
    - Go to "Files" tab
    - Create directory: /home/yourusername/MT5Dashboard
    - Upload ALL files from this deployment_package folder
+   - NOTE: If upgrading, overwrite .py and .html files but preserve 'dashboard.db'
 
 3. INSTALL DEPENDENCIES
    - Go to "Consoles" tab
@@ -236,13 +245,13 @@ try:
     response = requests.get(f"{url}/api/health", timeout=10)
     if response.status_code == 200:
         data = response.json()
-        print("✓ Dashboard is online!")
+        print("[OK] Dashboard is online!")
         print(f"  Status: {data.get('status')}")
         print(f"  Clients: {data.get('clients_count')}")
     else:
-        print(f"✗ Health check failed: {response.status_code}")
+        print(f"[FAIL] Health check failed: {response.status_code}")
 except Exception as e:
-    print(f"✗ Connection failed: {e}")
+    print(f"[FAIL] Connection failed: {e}")
     print("\\nMake sure:")
     print("  1. Dashboard is deployed and running")
     print("  2. URL is correct (should start with https://)")

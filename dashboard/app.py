@@ -9,14 +9,14 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
-from dashboard.financial_overview import calculate_propfirm_overview
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
     update_admin_details, update_trader_details, update_client_details,
-    get_client_by_email,
+    get_client_by_email, get_user_by_email,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader
 )
@@ -455,12 +455,62 @@ def admin_dashboard(admin_name):
 @require_session
 def financial_overview():
     session_user = request.session_user
-    # Only allow super_admin and admin
-    if session_user.get('user_type') not in ['super_admin', 'admin']:
+    # Only allow super_admin
+    if session_user.get('user_type') != 'super_admin':
          return redirect('/')
-         
+    
     overview_data = calculate_propfirm_overview()
-    return render_template('financial_overview.html', overview=overview_data)
+    
+    return render_template('financial_overview.html', 
+                           overview=overview_data)
+
+@app.route('/payout_history')
+@require_session
+def payout_history():
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
+         return redirect('/')
+
+    # Filter dates
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    
+    start_date = None
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        except:
+            pass
+            
+    end_date = None
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        except:
+            pass
+
+    prop_firm_filter = request.args.get('prop_firm')
+    
+    # We need overview data just to get the list of prop firms for the dropdown
+    overview_data = calculate_propfirm_overview()
+    sorted_prop_firms = sorted(overview_data.keys())
+    
+    payouts_list = get_payouts_history(start_date, end_date, prop_firm_filter)
+    
+    return render_template('payout_history.html', 
+                           payouts=payouts_list,
+                           start_date=start_date_str,
+                           end_date=end_date_str,
+                           selected_prop_firm=prop_firm_filter,
+                           prop_firms=sorted_prop_firms)
+
+@app.route('/client_performance')
+@require_session
+def client_performance():
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
+         return redirect('/')
+    return render_template('client_performance.html')
 
 
 @app.route('/trader/<trader_name>')
@@ -1149,6 +1199,13 @@ def unified_login():
     
     # Find user by identifier (email or username)
     user = find_user_by_identifier(identifier)
+    
+    # If not found in DB, check hierarchy (for email-only logins)
+    # This allows users defined in hierarchy.json but not yet in user_credentials to login
+    if not user and '@' in identifier:
+        hierarchy_user = get_user_by_email(identifier)
+        if hierarchy_user:
+            user = hierarchy_user
     
     if not user:
         log_action('LOGIN_FAILED', 'unknown', identifier, client_ip, 'User not found', False)

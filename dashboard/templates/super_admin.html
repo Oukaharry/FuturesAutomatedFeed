@@ -8,19 +8,35 @@
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>Super Admin Dashboard</h1>
-            <div style="display: flex; align-items: center;">
-                <a href="/super_admin/clients" style="margin-right: 15px; color: var(--primary-color); text-decoration: none; font-weight: bold;">Manage Clients</a>
-                <a href="/logout" class="logout-btn">Logout</a>
+        <nav style="background: white; padding: 15px 30px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 20px;">
+                <a href="/super_admin" style="text-decoration: none; color: #0284c7; font-weight: 700;">Dashboard</a>
+                <span style="color: #cbd5e1;">|</span>
+                <a href="/financial_overview" style="text-decoration: none; color: #64748b; font-weight: 600;">Prop Firm Overview</a>
+                <span style="color: #cbd5e1;">|</span>
+                <a href="/payout_history" style="text-decoration: none; color: #64748b; font-weight: 600;">Payout History</a>
+                <span style="color: #cbd5e1;">|</span>
+                <a href="/client_performance" style="text-decoration: none; color: #64748b; font-weight: 600;">Client Performance</a>
             </div>
+            
+             <div style="display: flex; align-items: center; gap: 15px;">
+                <a href="/super_admin/clients" style="color: #64748b; text-decoration: none; font-weight: 600; font-size: 0.9rem;">Manage Clients</a>
+                <a href="/logout" class="logout-btn" style="padding: 6px 12px; font-size: 0.9rem;">Logout</a>
+            </div>
+        </nav>
+
+        <header style="margin-bottom: 20px;">
+            <h1 style="margin: 0;">Super Admin Dashboard</h1>
         </header>
 
         <div class="grid">
             <!-- Financial Overview Panel -->
             <div class="panel" style="grid-column: 1 / -1;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h2 style="margin: 0;">💰 Financial Overview</h2>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <h2 style="margin: 0;">💰 Financial Overview</h2>
+                        <a href="/financial_overview" class="action-btn primary-btn" style="text-decoration: none; font-size: 0.9rem; padding: 6px 12px;">See breakdown by Propfirm</a>
+                    </div>
                     <div style="display: flex; gap: 5px; background: #e5e7eb; padding: 3px; border-radius: 6px;">
                         <button class="filter-btn active" onclick="setFilter('All')">All</button>
                         <button class="filter-btn" onclick="setFilter('BEF')">BEF</button>
@@ -30,27 +46,27 @@
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 10px;">
                     <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 10px; color: white; text-align: center;">
                         <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Total Payouts</div>
-                        <div id="grand-total-payouts" style="font-size: 1.8rem; font-weight: bold;">$0.00</div>
+                        <div id="grand-total-payouts" class="fin-card-value" style="font-weight: bold;">$0.00</div>
                     </div>
                     <div style="background: linear-gradient(135deg, #3b82f6, #2563eb); padding: 20px; border-radius: 10px; color: white; text-align: center;">
                         <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Total Deposits</div>
-                        <div id="grand-total-deposits" style="font-size: 1.8rem; font-weight: bold;">$0.00</div>
+                        <div id="grand-total-deposits" class="fin-card-value" style="font-weight: bold;">$0.00</div>
                     </div>
                     <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 10px; color: white; text-align: center;">
                         <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Total Fees Spent</div>
-                        <div id="grand-total-fees" style="font-size: 1.8rem; font-weight: bold;">$0.00</div>
+                        <div id="grand-total-fees" class="fin-card-value" style="font-weight: bold;">$0.00</div>
                     </div>
                     <div style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 20px; border-radius: 10px; color: white; text-align: center;">
                         <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Hedge Results</div>
-                        <div id="grand-total-hedge" style="font-size: 1.8rem; font-weight: bold;">$0.00</div>
+                        <div id="grand-total-hedge" class="fin-card-value" style="font-weight: bold;">$0.00</div>
                     </div>
                     <div style="background: linear-gradient(135deg, #06b6d4, #0891b2); padding: 20px; border-radius: 10px; color: white; text-align: center;">
                         <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Farming Results</div>
-                        <div id="grand-total-farming" style="font-size: 1.8rem; font-weight: bold;">$0.00</div>
+                        <div id="grand-total-farming" class="fin-card-value" style="font-weight: bold;">$0.00</div>
                     </div>
                     <div style="background: linear-gradient(135deg, #ec4899, #db2777); padding: 20px; border-radius: 10px; color: white; text-align: center;">
                         <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Net Profit</div>
-                        <div id="grand-total-net" style="font-size: 1.8rem; font-weight: bold;">$0.00</div>
+                        <div id="grand-total-net" class="fin-card-value" style="font-weight: bold;">$0.00</div>
                     </div>
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 15px;">
@@ -72,37 +88,6 @@
                     </div>
                 </div>
 
-                <!-- Detailed Client Stats Table -->
-                <div style="margin-top: 25px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                        <h3 style="margin: 0; font-size: 1.1rem; color: var(--heading-color);">Client Performance Details</h3>
-                        <div style="display: flex; gap: 5px; background: #e5e7eb; padding: 3px; border-radius: 6px;">
-                            <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
-                            <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
-                            <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
-                        </div>
-                    </div>
-                    
-                    <div style="overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
-                            <thead>
-                                <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left;">
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280;">Client</th>
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280;">Source</th>
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280; text-align: right;">Payouts</th>
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280; text-align: right;">Deposits</th>
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280; text-align: right;">Fees</th>
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280; text-align: right;">Net Profit</th>
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280; text-align: center;">Accounts</th>
-                                    <th style="padding: 10px 15px; font-weight: 600; color: #6b7280; text-align: center;">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="client-stats-body">
-                                <tr><td colspan="8" style="padding: 20px; text-align: center; color: #9ca3af;">Loading client data...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
             </div>
             
             <!-- Management Panel -->
@@ -247,58 +232,7 @@
         }
         
         function renderClientTable() {
-            const tbody = document.getElementById('client-stats-body');
-            tbody.innerHTML = '';
-            
-            const filteredClients = allClientStats.filter(c => {
-                if (currentFilter === 'All') return true;
-                return c.source === currentFilter;
-            });
-            
-            if (filteredClients.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #6b7280;">No clients found for this filter.</td></tr>';
-                return;
-            }
-            
-            filteredClients.sort((a, b) => b.net_profit - a.net_profit); // Sort by profit desc
-            
-            filteredClients.forEach(c => {
-                const tr = document.createElement('tr');
-                tr.style.borderBottom = '1px solid #e5e7eb';
-                
-                // Color for profit
-                const profitColor = c.net_profit >= 0 ? '#059669' : '#dc2626';
-                
-                // Source Selector HTML
-                const isBEF = c.source === 'BEF';
-                const sourceHtml = `
-                    <select onchange="updateClientSource('${c.client_id}', this.value)" 
-                            style="padding: 4px 8px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 0.85rem; background-color: ${isBEF ? '#dbeafe' : '#f3f4f6'};">
-                        <option value="Private" ${!isBEF ? 'selected' : ''}>Private</option>
-                        <option value="BEF" ${isBEF ? 'selected' : ''}>BEF</option>
-                    </select>
-                `;
-                
-                tr.innerHTML = `
-                    <td style="padding: 10px 15px;">
-                        <a href="/dashboard/${c.client_id}" style="color: #2563eb; text-decoration: none; font-weight: 500;">${c.client_id}</a>
-                    </td>
-                    <td style="padding: 10px 15px;">${sourceHtml}</td>
-                    <td style="padding: 10px 15px; text-align: right;">${formatCurrency(c.payouts)}</td>
-                    <td style="padding: 10px 15px; text-align: right;">${formatCurrency(c.deposits)}</td>
-                    <td style="padding: 10px 15px; text-align: right;">${formatCurrency(c.fees)}</td>
-                    <td style="padding: 10px 15px; text-align: right; font-weight: 600; color: ${profitColor};">${formatCurrency(c.net_profit)}</td>
-                    <td style="padding: 10px 15px; text-align: center;">
-                        <span title="Active" style="color: #059669; font-weight: bold;">${c.active}</span> / 
-                        <span title="Passed" style="color: #2563eb;">${c.passed}</span> / 
-                        <span title="Failed" style="color: #dc2626;">${c.failed}</span>
-                    </td>
-                    <td style="padding: 10px 15px; text-align: center;">
-                       <a href="/dashboard/${c.client_id}" class="btn-xs" style="text-decoration: none; background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px;">View</a>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
+            // Table moved to client_performance.html
         }
         
         function calculateFilteredTotals() {

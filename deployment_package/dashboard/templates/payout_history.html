@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payout History - MT5 Hedging Engine</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Chart Styles */
+        .chart-section {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .chart-box {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+            width: 100%;
+            max-width: 500px;
+            position: relative;
+            height: 350px;
+        }
+
+        .finance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .finance-table th, .finance-table td {
+            padding: 14px 16px;
+            text-align: right;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 0.95rem;
+            vertical-align: middle;
+        }
+        .finance-table th {
+            text-align: center;
+            background-color: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+            white-space: nowrap;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .finance-table td:first-child {
+            text-align: left;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .finance-table tr:hover {
+            background-color: #f8fafc;
+        }
+        .positive { color: #10b981; font-weight: 500; }
+        .negative { color: #ef4444; font-weight: 500; }
+        .neutral { color: #94a3b8; }
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            background: white;
+            border: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body style="background-color: #f1f5f9;">
+    <div class="container" style="max-width: 1600px; padding: 40px;">
+        
+        <nav style="background: white; padding: 15px 30px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center;">
+            <a href="/super_admin" style="text-decoration: none; color: #64748b; font-weight: 600;">Dashboard</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/financial_overview" style="text-decoration: none; color: #64748b; font-weight: 600;">Prop Firm Overview</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/payout_history" style="text-decoration: none; color: #0284c7; font-weight: 700;">Payout History</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/client_performance" style="text-decoration: none; color: #64748b; font-weight: 600;">Client Performance</a>
+        </nav>
+
+        <header style="margin-bottom: 40px;">
+            <h1 style="font-size: 2rem; color: #0f172a; margin: 0;">Payout History</h1>
+            <div style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">
+                Detailed log of all payouts received
+            </div>
+        </header>
+        
+        <form method="get" action="{{ url_for('payout_history') }}" 
+              style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; display: flex; align-items: flex-end; gap: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); flex-wrap: wrap;">
+            <div>
+                <label for="prop_firm" style="display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 5px;">Prop Firm</label>
+                <select id="prop_firm" name="prop_firm" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; min-width: 200px;">
+                    <option value="">All Prop Firms</option>
+                    {% for firm in prop_firms %}
+                        <option value="{{ firm }}" {% if selected_prop_firm == firm %}selected{% endif %}>{{ firm }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="start_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 5px;">Start Date</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date if start_date else '' }}" 
+                       style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
+            </div>
+            <div>
+                <label for="end_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 5px;">End Date</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date if end_date else '' }}"
+                       style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
+            </div>
+            <button type="submit" 
+                    style="padding: 8px 16px; background-color: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                Apply Filters
+            </button>
+            {% if start_date or end_date or selected_prop_firm %}
+                <a href="{{ url_for('payout_history') }}" style="color: #64748b; text-decoration: none; font-size: 0.9rem; align-self: center;">Clear Filters</a>
+            {% endif %}
+        </form>
+
+        {% if payouts %}
+        <div class="chart-section">
+            <div class="chart-box">
+                <canvas id="payoutPieChart"></canvas>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="table-responsive">
+            <table class="finance-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Date</th>
+                        <th style="text-align: left;">Client</th>
+                        <th style="text-align: left;">Account</th>
+                        <th style="text-align: left;">Prop Firm</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set ns_payouts_total = namespace(val=0) %}
+                    {% for payout in payouts %}
+                        {% set ns_payouts_total.val = ns_payouts_total.val + payout.amount %}
+                        <tr>
+                            <td style="text-align: left;">
+                                {% if payout.date %}
+                                    {{ payout.date.strftime('%Y-%m-%d') }}
+                                {% else %}
+                                    <span class="neutral">-</span>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left;">{{ payout.client_name }}</td>
+                            <td style="text-align: left;">{{ payout.account_id }}</td>
+                            <td style="text-align: left;">{{ payout.prop_firm }}</td>
+                            <td class="positive">{{ "$%0.2f"|format(payout.amount) }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: #64748b; padding: 30px;">
+                                No payouts found {% if start_date %}for this period{% endif %}.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    
+                    {% if payouts %}
+                    <tr style="background-color: #f1f5f9; font-weight: 700; border-top: 2px solid #cbd5e1;">
+                        <td colspan="4" style="text-align: right; color: #0f172a;">Total Payouts</td>
+                        <td class="positive">{{ "$%0.2f"|format(ns_payouts_total.val) }}</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    {% if payouts %}
+    <script id="payouts-data" type="application/json">
+        [
+            {% for p in payouts %}
+            {
+                "firm": {{ p.prop_firm | tojson }},
+                "amount": {{ p.amount | default(0) }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]
+    </script>
+    {% endif %}
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dataEl = document.getElementById('payouts-data');
+            
+            if (dataEl) {
+                // Prepare Payout Data
+                const rawPayouts = JSON.parse(dataEl.textContent);
+                
+                // Aggregate by firm
+                const totals = {};
+                rawPayouts.forEach(p => {
+                    const firm = p.firm || 'Unknown';
+                    if (!totals[firm]) totals[firm] = 0;
+                    totals[firm] += p.amount;
+                });
+                
+                const labels = Object.keys(totals).sort();
+                const data = labels.map(l => totals[l]);
+                
+                // Standard Dashboard Colors
+                const colors = [
+                    '#3b82f6', // blue-500
+                    '#10b981', // emerald-500
+                    '#f59e0b', // amber-500
+                    '#ef4444', // red-500
+                    '#8b5cf6', // violet-500
+                    '#ec4899', // pink-500
+                    '#06b6d4', // cyan-500
+                    '#14b8a6', // teal-500
+                    '#f97316', // orange-500
+                    '#6366f1'  // indigo-500
+                ];
+                
+                const ctx = document.getElementById('payoutPieChart');
+                if (ctx) {
+                    new Chart(ctx, {
+                        type: 'pie',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: data,
+                                backgroundColor: colors.slice(0, labels.length),
+                                borderWidth: 1,
+                                borderColor: '#ffffff'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { 
+                                    position: 'bottom',
+                                    labels: {
+                                        usePointStyle: true,
+                                        padding: 20
+                                    }
+                                },
+                                title: { 
+                                    display: true, 
+                                    text: 'Payout Distribution by Prop Firm',
+                                    font: { size: 16, weight: '600' },
+                                    padding: { bottom: 20 }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.label || '';
+                                            if (label) { label += ': '; }
+                                            if (context.parsed !== null) {
+                                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed);
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -464,6 +464,9 @@
                 <button class="history-header-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
                     📜 Version History
                 </button>
+                <a href="/logout" class="logout-btn history-header-btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);">
+                    Logout
+                </a>
             </div>
         </header>
         
@@ -527,7 +530,7 @@
                             <th>Date Started</th>
                             <th>Date Ended</th>
                             <th>Status P1</th>
-                            <th>Account #</th>
+                            <th style="min-width: 200px;">Account #</th>
                             <th>Hedge Result 1</th>
                             <th>Hedge Result 2</th>
                             <th>Hedge Result 3</th>
@@ -536,7 +539,7 @@
                             <th>Hedge Net</th>
 
                             <!-- FUNDED PHASE (14-34) -->
-                            <th>Account #</th>
+                            <th style="min-width: 200px;">Account #</th>
                             <th>Activation Fee</th>
                             <th>Date Started</th>
                             <th>Date Ended</th>
@@ -1646,7 +1649,12 @@
 
         function getInputHtml(value, type, index, key, readOnly = false) {
             const readOnlyAttr = readOnly ? 'readonly' : '';
-            const style = readOnly ? 'background-color: #f9f9f9; cursor: not-allowed;' : '';
+            let style = readOnly ? 'background-color: #f9f9f9; cursor: not-allowed;' : '';
+            
+            if (key.includes('Account #')) {
+                style += ' font-size: 11px; letter-spacing: -0.5px; font-weight: 600;';
+            }
+            
             return `<input type="${type}" class="cell-input" value="${value}" onchange="handleInputChange(${index}, '${key}', this.value)" ${readOnlyAttr} style="${style}">`;
         }
 

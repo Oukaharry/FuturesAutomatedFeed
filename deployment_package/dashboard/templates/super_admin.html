@@ -8,15 +8,88 @@
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>Super Admin Dashboard</h1>
-            <div style="display: flex; align-items: center;">
-                <a href="/super_admin/clients" style="margin-right: 15px; color: var(--primary-color); text-decoration: none; font-weight: bold;">Manage Clients</a>
-                <a href="/logout" class="logout-btn">Logout</a>
+        <nav style="background: white; padding: 15px 30px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 20px;">
+                <a href="/super_admin" style="text-decoration: none; color: #0284c7; font-weight: 700;">Dashboard</a>
+                <span style="color: #cbd5e1;">|</span>
+                <a href="/financial_overview" style="text-decoration: none; color: #64748b; font-weight: 600;">Prop Firm Overview</a>
+                <span style="color: #cbd5e1;">|</span>
+                <a href="/payout_history" style="text-decoration: none; color: #64748b; font-weight: 600;">Payout History</a>
+                <span style="color: #cbd5e1;">|</span>
+                <a href="/client_performance" style="text-decoration: none; color: #64748b; font-weight: 600;">Client Performance</a>
             </div>
+            
+             <div style="display: flex; align-items: center; gap: 15px;">
+                <a href="/super_admin/clients" style="color: #64748b; text-decoration: none; font-weight: 600; font-size: 0.9rem;">Manage Clients</a>
+                <a href="/logout" class="logout-btn" style="padding: 6px 12px; font-size: 0.9rem;">Logout</a>
+            </div>
+        </nav>
+
+        <header style="margin-bottom: 20px;">
+            <h1 style="margin: 0;">Super Admin Dashboard</h1>
         </header>
 
         <div class="grid">
+            <!-- Financial Overview Panel -->
+            <div class="panel" style="grid-column: 1 / -1;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <h2 style="margin: 0;">💰 Financial Overview</h2>
+                        <a href="/financial_overview" class="action-btn primary-btn" style="text-decoration: none; font-size: 0.9rem; padding: 6px 12px;">See breakdown by Propfirm</a>
+                    </div>
+                    <div style="display: flex; gap: 5px; background: #e5e7eb; padding: 3px; border-radius: 6px;">
+                        <button class="filter-btn active" onclick="setFilter('All')">All</button>
+                        <button class="filter-btn" onclick="setFilter('BEF')">BEF</button>
+                        <button class="filter-btn" onclick="setFilter('Private')">Private</button>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 10px;">
+                    <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Total Payouts</div>
+                        <div id="grand-total-payouts" class="fin-card-value" style="font-weight: bold;">$0.00</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #3b82f6, #2563eb); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Total Deposits</div>
+                        <div id="grand-total-deposits" class="fin-card-value" style="font-weight: bold;">$0.00</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #f59e0b, #d97706); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Total Fees Spent</div>
+                        <div id="grand-total-fees" class="fin-card-value" style="font-weight: bold;">$0.00</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #8b5cf6, #7c3aed); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Hedge Results</div>
+                        <div id="grand-total-hedge" class="fin-card-value" style="font-weight: bold;">$0.00</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #06b6d4, #0891b2); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Farming Results</div>
+                        <div id="grand-total-farming" class="fin-card-value" style="font-weight: bold;">$0.00</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #ec4899, #db2777); padding: 20px; border-radius: 10px; color: white; text-align: center;">
+                        <div style="font-size: 0.85rem; opacity: 0.9; text-transform: uppercase; margin-bottom: 8px;">Net Profit</div>
+                        <div id="grand-total-net" class="fin-card-value" style="font-weight: bold;">$0.00</div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 15px;">
+                    <div style="background: #f0fdf4; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #bbf7d0;">
+                        <div style="font-size: 0.75rem; color: #166534; text-transform: uppercase;">Active Accounts</div>
+                        <div id="grand-active-accounts" style="font-size: 1.3rem; font-weight: bold; color: #15803d;">0</div>
+                    </div>
+                    <div style="background: #eff6ff; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #bfdbfe;">
+                        <div style="font-size: 0.75rem; color: #1e40af; text-transform: uppercase;">Passed</div>
+                        <div id="grand-completed-accounts" style="font-size: 1.3rem; font-weight: bold; color: #1d4ed8;">0</div>
+                    </div>
+                    <div style="background: #fef2f2; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #fecaca;">
+                        <div style="font-size: 0.75rem; color: #991b1b; text-transform: uppercase;">Failed</div>
+                        <div id="grand-failed-accounts" style="font-size: 1.3rem; font-weight: bold; color: #dc2626;">0</div>
+                    </div>
+                    <div style="background: #faf5ff; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #e9d5ff;">
+                        <div style="font-size: 0.75rem; color: #6b21a8; text-transform: uppercase;">Total Clients</div>
+                        <div id="grand-client-count" style="font-size: 1.3rem; font-weight: bold; color: #7c3aed;">0</div>
+                    </div>
+                </div>
+
+            </div>
+            
             <!-- Management Panel -->
             <div class="panel">
                 <h2>User Management</h2>
@@ -41,6 +114,7 @@
                     <label>Add New Admin</label>
                     <div style="display: flex; gap: 8px;">
                         <input type="text" id="new-admin-name" placeholder="Admin Name">
+                        <input type="email" id="new-admin-email" placeholder="Email (Optional)">
                         <button onclick="addAdmin()" style="width: auto;">+</button>
                     </div>
                 </div>
@@ -53,6 +127,7 @@
                     <select id="admin-select-trader"></select>
                     <div style="display: flex; gap: 8px; margin-top: 8px;">
                         <input type="text" id="new-trader-name" placeholder="Trader Name">
+                        <input type="email" id="new-trader-email" placeholder="Email (Optional)">
                         <button onclick="addTrader()" style="width: auto;">+</button>
                     </div>
                 </div>
@@ -66,6 +141,7 @@
                     <select id="trader-select-client" style="margin-top: 8px;"></select>
                     <div style="display: flex; gap: 8px; margin-top: 8px;">
                         <input type="text" id="new-client-name" placeholder="Client Name">
+                        <input type="email" id="new-client-email" placeholder="Email (Optional)">
                         <button onclick="addClient()" style="width: auto;">+</button>
                     </div>
                 </div>
@@ -112,6 +188,88 @@
 
     <script>
         let hierarchyData = {};
+        let allClientStats = [];
+        let currentFilter = 'All';
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            
+            // Update buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.trim() === filter) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            // Re-render based on filter
+            renderClientTable();
+            calculateFilteredTotals();
+        }
+        
+        function updateClientSource(clientId, source) {
+            fetch('/api/client/update_source', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ client_id: clientId, source: source })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Update local data
+                    const client = allClientStats.find(c => c.client_id === clientId);
+                    if (client) {
+                        client.source = source;
+                        // Re-render to reflect changes (and possibly filter out row)
+                        renderClientTable();
+                        calculateFilteredTotals();
+                    }
+                } else {
+                    alert('Failed to update source: ' + data.message);
+                }
+            })
+            .catch(err => console.error('Error updating source:', err));
+        }
+        
+        function renderClientTable() {
+            // Table moved to client_performance.html
+        }
+        
+        function calculateFilteredTotals() {
+            const filteredClients = allClientStats.filter(c => {
+                if (currentFilter === 'All') return true;
+                return c.source === currentFilter;
+            });
+            
+            let t = {
+                payouts: 0, deposits: 0, fees: 0, hedge: 0, farming: 0, net: 0,
+                active: 0, passed: 0, failed: 0
+            };
+            
+            filteredClients.forEach(c => {
+                t.payouts += c.payouts;
+                t.deposits += c.deposits;
+                t.fees += c.fees;
+                t.hedge += c.hedge;
+                t.farming += c.farming;
+                t.net += c.net_profit;
+                t.active += c.active;
+                t.passed += c.passed;
+                t.failed += c.failed;
+            });
+            
+            // Update Grand Totals Display
+            document.getElementById('grand-total-payouts').textContent = formatCurrency(t.payouts);
+            document.getElementById('grand-total-deposits').textContent = formatCurrency(t.deposits);
+            document.getElementById('grand-total-fees').textContent = formatCurrency(t.fees);
+            document.getElementById('grand-total-hedge').textContent = formatCurrency(t.hedge);
+            document.getElementById('grand-total-farming').textContent = formatCurrency(t.farming);
+            document.getElementById('grand-total-net').textContent = formatCurrency(t.net);
+            document.getElementById('grand-active-accounts').textContent = t.active;
+            document.getElementById('grand-completed-accounts').textContent = t.passed;
+            document.getElementById('grand-failed-accounts').textContent = t.failed;
+            document.getElementById('grand-client-count').textContent = filteredClients.length;
+        }
 
         // Password Management Functions
         function loadUsersForPassword() {
@@ -203,6 +361,44 @@
             });
         }
 
+        function formatCurrency(value) {
+            const num = parseFloat(value) || 0;
+            const formatted = Math.abs(num).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+            return num < 0 ? `-$${formatted}` : `$${formatted}`;
+        }
+
+        function loadFinancialTotals() {
+            // Show loading state in table
+            const tbody = document.getElementById('client-stats-body');
+            if(tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #6b7280;">Loading data...</td></tr>';
+            
+            fetch('/api/super_admin/totals')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Store detailed client data
+                        if (data.clients) {
+                            allClientStats = data.clients;
+                            renderClientTable();
+                            // Initial calc calls filtering which updates UI
+                            calculateFilteredTotals(); 
+                        } else if (data.totals) {
+                            // Fallback if no client details (shouldn't happen with new backend)
+                            const t = data.totals;
+                            document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
+                            // ... set other fields manually ...
+                        }
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading financial totals:', err);
+                    if(tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #dc2626;">Error loading data.</td></tr>';
+                });
+        }
+
         function loadData() {
             fetch('/api/hierarchy')
                 .then(res => res.json())
@@ -212,6 +408,9 @@
                     updateSelects();
                     updateStats();
                 });
+            
+            // Also load financial totals
+            loadFinancialTotals();
         }
 
         function updateStats() {
@@ -293,8 +492,9 @@
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span class="badge badge-trader">Trader</span> ${trader}
                             </div>
-                            <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
+                            <div style="display: flex; align-items: center; gap: 5px; margin-left: auto;">
                                 <span style="font-size: 0.8em; color: #666; font-weight: normal;">${traderData.email || ''}</span>
+                                <button onclick="editTrader('${admin}', '${trader}', '${traderData.email || ''}')" style="padding: 2px 6px; font-size: 0.7rem; border-radius: 3px; cursor: pointer;">Edit</button>
                                 <button onclick="removeTrader('${admin}', '${trader}')" style="padding: 2px 6px; font-size: 0.7rem; background-color: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">X</button>
                             </div>
                         </div>
@@ -320,7 +520,8 @@
                                 <a href="/dashboard/${clientName}" title="${clientEmail}" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 5px; flex-grow: 1;">
                                     <span class="client-icon"></span>${clientName}
                                 </a>
-                                <span onclick="removeClient('${admin}', '${trader}', '${clientName}')" style="cursor: pointer; margin-left: 8px; font-weight: bold; opacity: 0.6;">&times;</span>
+                                <span onclick="editClient('${admin}', '${trader}', '${clientName}', '${clientEmail}')" style="cursor: pointer; margin-left: 8px; font-size: 0.7rem; color: #666; opacity: 0.8;">✏️</span>
+                                <span onclick="removeClient('${admin}', '${trader}', '${clientName}')" style="cursor: pointer; margin-left: 5px; font-weight: bold; opacity: 0.6; color: #dc3545;">&times;</span>
                             `;
                             clientList.appendChild(clientWrapper);
                         });
@@ -341,6 +542,20 @@
             const newEmail = prompt(`Update email for Admin ${name}:`, currentEmail);
             if (newEmail !== null && newEmail !== currentEmail) {
                 apiCall('/api/update_admin', {name: name, email: newEmail});
+            }
+        }
+
+        function editTrader(admin, name, currentEmail) {
+            const newEmail = prompt(`Update email for Trader ${name}:`, currentEmail);
+            if (newEmail !== null && newEmail !== currentEmail) {
+                apiCall('/api/update_trader', {admin: admin, name: name, email: newEmail});
+            }
+        }
+
+        function editClient(admin, trader, name, currentEmail) {
+            const newEmail = prompt(`Update email for Client ${name}:`, currentEmail);
+            if (newEmail !== null && newEmail !== currentEmail) {
+                apiCall('/api/update_client', {admin: admin, trader: trader, name: name, email: newEmail});
             }
         }
 
@@ -473,8 +688,13 @@
                 loadData(); // Refresh UI
                 // Clear inputs
                 document.getElementById('new-admin-name').value = '';
+                if(document.getElementById('new-admin-email')) document.getElementById('new-admin-email').value = '';
+                
                 document.getElementById('new-trader-name').value = '';
+                if(document.getElementById('new-trader-email')) document.getElementById('new-trader-email').value = '';
+                
                 document.getElementById('new-client-name').value = '';
+                if(document.getElementById('new-client-email')) document.getElementById('new-client-email').value = '';
             } else {
                 alert('Error: ' + data.message);
             }
@@ -482,20 +702,23 @@
 
         function addAdmin() {
             const name = document.getElementById('new-admin-name').value;
-            if(name) apiCall('/api/add_admin', {name});
+            const email = document.getElementById('new-admin-email').value;
+            if(name) apiCall('/api/add_admin', {name, email});
         }
 
         function addTrader() {
             const admin = document.getElementById('admin-select-trader').value;
             const name = document.getElementById('new-trader-name').value;
-            if(admin && name) apiCall('/api/add_trader', {admin, name});
+            const email = document.getElementById('new-trader-email').value;
+            if(admin && name) apiCall('/api/add_trader', {admin, name, email});
         }
 
         function addClient() {
             const admin = document.getElementById('admin-select-client').value;
             const trader = document.getElementById('trader-select-client').value;
             const name = document.getElementById('new-client-name').value;
-            if(admin && trader && name) apiCall('/api/add_client', {admin, trader, name});
+            const email = document.getElementById('new-client-email').value;
+            if(admin && trader && name) apiCall('/api/add_client', {admin, trader, name, email});
         }
 
         loadData();
