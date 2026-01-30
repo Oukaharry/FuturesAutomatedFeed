@@ -579,12 +579,12 @@ button:hover {
     display: flex;
     flex-direction: column;
     position: relative;
-    overflow: hidden;
+    overflow: visible !important; /* Allow popups/dropdowns if needed, or shadows */
     transition: box-shadow 0.3s ease;
 }
 
 .admin-card:hover {
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 /* Admin Header Section */
@@ -597,7 +597,8 @@ button:hover {
     justify-content: space-between;
     position: relative;
     margin: 0 !important; /* Reset overrides */
-    border-radius: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+    overflow: hidden;
 }
 
 /* Futuristic Accent Bar */
@@ -607,8 +608,8 @@ button:hover {
     left: 0;
     top: 0;
     bottom: 0;
-    width: 4px;
-    background: linear-gradient(to bottom, #3b82f6, #6366f1); /* Blue to Indigo gradient */
+    width: 6px;
+    background: linear-gradient(180deg, #3b82f6, #6366f1); /* Blue to Indigo gradient */
 }
 
 /* Typography & Badges */
@@ -616,35 +617,42 @@ button:hover {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap; /* allow wrapping on small screens */
 }
 
 .admin-name {
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: #0f172a;
-    letter-spacing: -0.01em;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #1e293b;
+    letter-spacing: -0.02em;
 }
 
 .admin-email {
-    font-size: 0.85rem;
-    color: #94a3b8;
+    font-size: 0.8rem;
+    color: #64748b;
     font-weight: 500;
-    background: #f8fafc;
-    padding: 4px 8px;
-    border-radius: 6px;
+    background: #f1f5f9;
+    padding: 4px 10px;
+    border-radius: 99px;
+    max-width: 200px; /* Force ellipsis if too long */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    vertical-align: middle;
 }
 
 .badge-admin {
-    background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
     color: white !important;
     border: none !important;
-    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4); /* Glow effect */
+    box-shadow: 0 2px 5px rgba(37, 99, 235, 0.3); /* Glow effect */
     font-size: 0.7rem !important;
-    padding: 5px 10px !important;
+    padding: 4px 8px !important;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border-radius: 6px;
-    font-weight: 700 !important;
+    font-weight: 800 !important;
 }
 
 /* Trader Section */
@@ -652,32 +660,45 @@ button:hover {
     padding: 24px;
     background: #f8fafc; /* Subtle contrast background for content area */
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 20px;
+    border-radius: 0 0 16px 16px;
 }
 
 .trader-item {
     background: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
+    border: 1px solid #cbd5e1 !important; /* Slightly clearer border */
     border-radius: 12px;
     padding: 0 !important; /* Reset padding for header/content split */
     display: flex;
     flex-direction: column;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
+    position: relative;
 }
 
 .trader-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
-    border-color: #cbd5e1 !important;
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    border-color: #94a3b8 !important;
+}
+
+/* Top colored line for trader */
+.trader-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #10b981, #34d399); /* Emerald Gradient */
 }
 
 .trader-header {
     background: #ffffff !important;
-    padding: 12px 16px !important;
-    border-bottom: 1px dashed #e2e8f0 !important;
+    padding: 14px 16px !important;
+    border-bottom: 1px solid #f1f5f9 !important;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -686,55 +707,42 @@ button:hover {
 }
 
 .badge-trader {
-    background: rgba(16, 185, 129, 0.1) !important;
-    color: #059669 !important;
-    border: 1px solid rgba(16, 185, 129, 0.2) !important;
-    font-weight: 600 !important;
-    font-size: 0.7rem !important;
+    background: #ecfdf5 !important;
+    color: #047857 !important;
+    border: 1px solid #d1fae5 !important;
+    font-weight: 700 !important;
+    font-size: 0.65rem !important;
     padding: 3px 8px !important;
     border-radius: 4px;
     text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .trader-name {
-    font-weight: 600;
+    font-weight: 700;
     color: #334155;
-    font-size: 0.95rem;
+    font-size: 1rem;
 }
 
-/* Action Buttons (Icons) */
-.action-btn {
-    background: transparent;
-    border: none;
+.trader-email {
+    font-size: 0.75rem;
     color: #94a3b8;
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 6px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 0;
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
 }
 
-.action-btn:hover {
-    background: #f1f5f9;
-    color: #3b82f6;
-    transform: scale(1.1);
-}
-
-.action-btn.danger:hover {
-    background: #fef2f2;
-    color: #ef4444;
-}
-
+/* Client Cloud Area */
 .client-list {
-    padding: 12px 16px;
+    padding: 16px;
     background: #ffffff;
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    min-height: 40px; /* target area for drop */
+    min-height: 50px; /* target area for drop */
+    align-content: flex-start;
 }
 
 /* Remove old overrides to avoid conflict */
