@@ -224,6 +224,12 @@ th, td {
     transition: background-color 0.2s ease;
 }
 
+/* Header Scroll Protection */
+.scroll-controls {
+    position: relative;
+    z-index: 30; /* Ensure this is above sticky headers */
+}
+
 th {
     background-color: #f8fafc;
     background-image: var(--gradient-header);
@@ -263,16 +269,18 @@ tr:hover td:first-child { background-color: #f8fafc; }
 .text-danger { color: var(--danger-color); }
 
 .summary-table td {
-    padding: 14px 0;
+    padding: 10px 0; /* Reduced padding for tighter fit */
     border-bottom: 1px dashed var(--border-color);
+    font-size: 0.85rem; /* Slightly reduced font size */
+    vertical-align: middle;
 }
 
 .summary-table tr:last-child td {
     border-top: 2px solid var(--text-primary);
     border-bottom: none;
     font-weight: 700;
-    font-size: 1.1em;
-    padding-top: 16px;
+    font-size: 0.95em; /* Adjusted total row size */
+    padding-top: 14px;
     color: var(--text-primary);
 }
 
