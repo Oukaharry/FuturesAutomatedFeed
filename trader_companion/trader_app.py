@@ -992,7 +992,7 @@ class TraderCompanionApp:
         url_frame = ttk.Frame(conn_frame)
         url_frame.pack(fill=tk.X, pady=5)
         ttk.Label(url_frame, text="Dashboard URL:", width=15).pack(side=tk.LEFT)
-        self.url_entry = ttk.Entry(url_frame, width=40)
+        self.url_entry = ttk.Entry(url_frame, width=50)
         self.url_entry.insert(0, "https://www.ballerquotes.com")
         self.url_entry.configure(state='readonly')  # Hardcoded - no user input needed
         self.url_entry.pack(side=tk.LEFT, padx=5)
@@ -1005,7 +1005,7 @@ class TraderCompanionApp:
         email_frame = ttk.Frame(id_frame)
         email_frame.pack(fill=tk.X, pady=5)
         ttk.Label(email_frame, text="Client Email:", width=15).pack(side=tk.LEFT)
-        self.client_email_entry = ttk.Entry(email_frame, width=35)
+        self.client_email_entry = ttk.Entry(email_frame, width=40)
         self.client_email_entry.pack(side=tk.LEFT, padx=5)
         self.lookup_btn = ttk.Button(email_frame, text="🔍 Lookup", command=self.lookup_client)
         self.lookup_btn.pack(side=tk.LEFT, padx=5)
@@ -1024,17 +1024,17 @@ class TraderCompanionApp:
         login_frame = ttk.Frame(mt5_frame)
         login_frame.pack(fill=tk.X, pady=5)
         ttk.Label(login_frame, text="Login:", width=15).pack(side=tk.LEFT)
-        self.mt5_login = ttk.Entry(login_frame, width=20)
+        self.mt5_login = ttk.Entry(login_frame, width=18)
         self.mt5_login.pack(side=tk.LEFT, padx=5)
-        ttk.Label(login_frame, text="Password:").pack(side=tk.LEFT, padx=(20, 0))
-        self.mt5_password = ttk.Entry(login_frame, width=20, show="*")
+        ttk.Label(login_frame, text="Password:", width=10).pack(side=tk.LEFT)
+        self.mt5_password = ttk.Entry(login_frame, width=18, show="*")
         self.mt5_password.pack(side=tk.LEFT, padx=5)
         
         # MT5 Server
         server_frame = ttk.Frame(mt5_frame)
         server_frame.pack(fill=tk.X, pady=5)
         ttk.Label(server_frame, text="Server:", width=15).pack(side=tk.LEFT)
-        self.mt5_server = ttk.Entry(server_frame, width=40)
+        self.mt5_server = ttk.Entry(server_frame, width=50)
         self.mt5_server.pack(side=tk.LEFT, padx=5)
         
         # MT5 Connect Button
@@ -1059,9 +1059,9 @@ class TraderCompanionApp:
         
         sheet_url_frame = ttk.Frame(sheet_frame)
         sheet_url_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(sheet_url_frame, text="Sheet URL:", width=12).pack(side=tk.LEFT)
-        self.sheet_url_entry = ttk.Entry(sheet_url_frame, width=40)
-        self.sheet_url_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        ttk.Label(sheet_url_frame, text="Sheet URL:", width=15).pack(side=tk.LEFT)
+        self.sheet_url_entry = ttk.Entry(sheet_url_frame, width=50)
+        self.sheet_url_entry.pack(side=tk.LEFT, padx=5)
         
         self.migrate_btn = ttk.Button(sheet_frame, text="📥 Import Sheet Data", command=self.migrate_from_sheet)
         self.migrate_btn.pack(pady=10)
