@@ -1406,7 +1406,7 @@
             if (discEl) discEl.textContent = formatMoney(discrepancy);
         }
         
-        async function saveHedgingReview() {
+        async function saveHedgingReview(retryCount = 0) {
             const deposits = parseFloat(document.getElementById('hedging-deposits')?.value) || 0;
             const withdrawals = parseFloat(document.getElementById('hedging-withdrawals')?.value) || 0;
             const balance = parseFloat(document.getElementById('hedging-balance')?.value) || 0;
@@ -1429,16 +1429,31 @@
                     })
                 });
                 
+                if (response.status === 401) {
+                    alert('Your session has expired. Please log in again.');
+                    window.location.href = '/login';
+                    return;
+                }
+                
                 const data = await response.json();
                 if (data.status === 'success') {
-                    alert('Hedging review saved successfully!');
+                    showSaveStatus('saved');
                     updateDashboard();  // Refresh data
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to save'));
+                    throw new Error(data.message || 'Failed to save');
                 }
             } catch (error) {
                 console.error('Save error:', error);
-                alert('Error saving hedging review: ' + error.message);
+                
+                // Retry logic
+                if (retryCount < 3) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    showSaveStatus('retrying', retryCount + 1);
+                    await new Promise(r => setTimeout(r, delay));
+                    return saveHedgingReview(retryCount + 1);
+                }
+                
+                showSaveStatus('failed', error.message);
             }
         }
 
@@ -1528,7 +1543,7 @@
             if (modal) modal.remove();
         }
         
-        async function saveHistoricalMT5() {
+        async function saveHistoricalMT5(retryCount = 0) {
             const name = document.getElementById('hist-mt5-name')?.value || 'MT5 Account';
             const deposits = parseFloat(document.getElementById('hist-mt5-deposits')?.value) || 0;
             let withdrawals = parseFloat(document.getElementById('hist-mt5-withdrawals')?.value) || 0;
@@ -1553,22 +1568,37 @@
                     })
                 });
                 
+                if (response.status === 401) {
+                    alert('Your session has expired. Please log in again.');
+                    window.location.href = '/login';
+                    return;
+                }
+                
                 const data = await response.json();
                 if (data.status === 'success') {
                     closeHistoricalMT5Modal();
-                    alert('Historical MT5 account added successfully!');
+                    showSaveStatus('saved');
                     updateDashboard();  // Refresh data
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to save'));
+                    throw new Error(data.message || 'Failed to save');
                 }
             } catch (error) {
                 console.error('Save error:', error);
-                alert('Error saving historical MT5: ' + error.message);
+                
+                // Retry logic
+                if (retryCount < 3) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    showSaveStatus('retrying', retryCount + 1);
+                    await new Promise(r => setTimeout(r, delay));
+                    return saveHistoricalMT5(retryCount + 1);
+                }
+                
+                showSaveStatus('failed', error.message);
             }
         }
         
-        async function deleteHistoricalMT5(index) {
-            if (!confirm('Delete this historical MT5 account?')) return;
+        async function deleteHistoricalMT5(index, retryCount = 0) {
+            if (retryCount === 0 && !confirm('Delete this historical MT5 account?')) return;
             
             try {
                 const response = await fetch(`/api/historical_mt5/${CLIENT_ID}`, {
@@ -1580,15 +1610,31 @@
                     })
                 });
                 
+                if (response.status === 401) {
+                    alert('Your session has expired. Please log in again.');
+                    window.location.href = '/login';
+                    return;
+                }
+                
                 const data = await response.json();
                 if (data.status === 'success') {
+                    showSaveStatus('saved');
                     updateDashboard();  // Refresh data
                 } else {
-                    alert('Error: ' + (data.message || 'Failed to delete'));
+                    throw new Error(data.message || 'Failed to delete');
                 }
             } catch (error) {
                 console.error('Delete error:', error);
-                alert('Error deleting: ' + error.message);
+                
+                // Retry logic
+                if (retryCount < 3) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    showSaveStatus('retrying', retryCount + 1);
+                    await new Promise(r => setTimeout(r, delay));
+                    return deleteHistoricalMT5(index, retryCount + 1);
+                }
+                
+                showSaveStatus('failed', error.message);
             }
         }
 
@@ -1744,7 +1790,11 @@
             }
         }
 
-        function saveData() {
+        // Retry queue for failed saves
+        let saveRetryQueue = [];
+        let isSaving = false;
+        
+        function saveData(retryCount = 0) {
             if (!currentData.identity) {
                 currentData.identity = {};
             }
@@ -1754,6 +1804,7 @@
 
             // Set editing flag to prevent auto-refresh during save
             isEditing = true;
+            isSaving = true;
             
             fetch('/api/update_data', {
                 method: 'POST',
@@ -1763,6 +1814,10 @@
                 body: JSON.stringify(currentData),
             })
             .then(response => {
+                if (response.status === 401) {
+                    // Session expired - redirect to login
+                    throw new Error('SESSION_EXPIRED');
+                }
                 if (!response.ok) {
                     return response.json().then(err => {
                         throw new Error(err.message || 'Save failed');
@@ -1772,22 +1827,72 @@
             })
             .then(data => {
                 console.log('Data saved, version:', data.version);
+                isSaving = false;
                 // Brief delay before allowing refresh to ensure DB has updated
-                setTimeout(() => { isEditing = false; }, 500);
+                setTimeout(() => { isEditing = false; }, 300);
+                
+                // Show brief success indicator
+                showSaveStatus('saved');
             })
             .catch((error) => {
                 console.error('Error saving data:', error);
+                isSaving = false;
+                
+                if (error.message === 'SESSION_EXPIRED') {
+                    // Session expired - show alert and redirect
+                    alert('Your session has expired. Please log in again to continue.');
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                // Retry logic (up to 3 times with exponential backoff)
+                if (retryCount < 3) {
+                    const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+                    console.log(`Retrying save in ${delay}ms (attempt ${retryCount + 1}/3)...`);
+                    showSaveStatus('retrying', retryCount + 1);
+                    setTimeout(() => saveData(retryCount + 1), delay);
+                    return;
+                }
+                
+                // All retries failed
                 isEditing = false;
-                // Show error to user
-                const statusEl = document.getElementById('last-updated');
-                const originalText = statusEl.textContent;
-                statusEl.textContent = '⚠️ Save failed: ' + error.message;
-                statusEl.style.color = '#ef4444';
+                showSaveStatus('failed', error.message);
+            });
+        }
+        
+        function showSaveStatus(status, detail = '') {
+            const statusEl = document.getElementById('last-updated');
+            const originalText = statusEl.dataset.originalText || statusEl.textContent;
+            statusEl.dataset.originalText = originalText;
+            
+            if (status === 'saved') {
+                statusEl.textContent = '✅ Saved';
+                statusEl.style.color = '#16a34a';
                 setTimeout(() => {
                     statusEl.textContent = originalText;
                     statusEl.style.color = '';
-                }, 3000);
-            });
+                }, 1500);
+            } else if (status === 'retrying') {
+                statusEl.textContent = `⏳ Retrying (${detail}/3)...`;
+                statusEl.style.color = '#f59e0b';
+            } else if (status === 'failed') {
+                statusEl.textContent = '⚠️ Save failed - ' + detail;
+                statusEl.style.color = '#ef4444';
+                // Add retry button
+                const retryBtn = document.createElement('button');
+                retryBtn.textContent = '🔄 Retry';
+                retryBtn.style.cssText = 'margin-left:10px;padding:2px 8px;font-size:11px;cursor:pointer;';
+                retryBtn.onclick = () => {
+                    retryBtn.remove();
+                    saveData(0);
+                };
+                statusEl.appendChild(retryBtn);
+                
+                setTimeout(() => {
+                    statusEl.textContent = originalText;
+                    statusEl.style.color = '';
+                }, 10000);
+            }
         }
 
         document.addEventListener('click', function() {
