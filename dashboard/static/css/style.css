@@ -732,53 +732,102 @@ button:hover {
 }
 
 .trader-header {
-    background: #ffffff !important;
+    background: rgba(236, 253, 245, 0.6) !important; /* Light green tint background */
     padding: 14px 16px !important;
-    border-bottom: 1px solid #f1f5f9 !important;
+    border-bottom: 1px solid rgba(16, 185, 129, 0.1) !important;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column; /* Stack vertically by default */
+    align-items: flex-start;
+    justify-content: center;
+    gap: 8px; /* Space between name row and action row */
     margin: 0 !important;
     border-radius: 0 !important;
 }
 
+.trader-info-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.trader-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
 .badge-trader {
-    background: #ecfdf5 !important;
-    color: #047857 !important;
-    border: 1px solid #d1fae5 !important;
+    background: #10b981 !important; /* Solid emerald */
+    color: white !important;
+    border: none !important;
     font-weight: 700 !important;
     font-size: 0.65rem !important;
     padding: 3px 8px !important;
     border-radius: 4px;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
 }
 
 .trader-name {
     font-weight: 700;
-    color: #334155;
-    font-size: 1rem;
+    color: #064e3b; /* Darker green text */
+    font-size: 1.05rem;
 }
 
 .trader-email {
     font-size: 0.75rem;
-    color: #94a3b8;
-    max-width: 140px;
+    color: #059669; /* Medium green text */
+    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: inline-block;
+    display: block;
 }
 
 /* Client Cloud Area */
 .client-list {
     padding: 16px;
-    background: #ffffff;
+    background: #ffffff; /* Keep white for contrast with green header */
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    min-height: 50px; /* target area for drop */
+    min-height: 50px; 
     align-content: flex-start;
+}
+
+.client-tag {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    cursor: grab;
+    user-select: none;
+    max-width: 100%;
+    padding: 6px 12px !important; /* Slightly more compact */
+    gap: 6px;
+    background: #f0fdf4 !important; /* Very pale green to match trader theme */
+    border: 1px solid #bbf7d0 !important; /* Green border */
+    color: #166534 !important; /* Green text */
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.client-tag:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    background: #dcfce7 !important; /* Darker green on hover */
+    border-color: #86efac !important;
+}
+
+.client-tag .client-icon {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #22c55e; /* Bright green status dot */
+    display: inline-block;
 }
 
 /* Remove old overrides to avoid conflict */

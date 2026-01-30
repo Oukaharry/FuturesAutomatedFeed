@@ -493,13 +493,13 @@
                     // Trader Header
                     traderItem.innerHTML = `
                         <div class="trader-header">
-                            <div style="display: flex; align-items: center; gap: 10px;">
+                            <div class="trader-info-row">
                                 <span class="badge badge-trader">TRADER</span> 
                                 <span class="trader-name">${trader}</span>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
-                                <span style="font-size: 0.8rem; color: #94a3b8; font-weight: 500;">${traderData.email || ''}</span>
-                                <div style="display: flex; gap: 2px;">
+                            <div class="trader-meta-row">
+                                <span class="trader-email">${traderData.email || 'No Email'}</span>
+                                <div style="display: flex; gap: 4px;">
                                     <button class="action-btn" onclick="editTrader('${admin}', '${trader}', '${traderData.email || ''}')" title="Edit">
                                         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                     </button>
