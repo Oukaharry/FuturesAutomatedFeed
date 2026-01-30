@@ -930,9 +930,10 @@ class TraderCompanionApp:
     
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("MT5 Trader Companion - No API Key Required")
-        self.root.geometry("750x800")
+        self.root.title("MT5 Trader Companion")
+        self.root.geometry("520x700")
         self.root.configure(bg='#1a1a2e')
+        self.root.resizable(False, False)  # Fixed size window
         
         # Create canvas for scrolling
         self.main_canvas = tk.Canvas(self.root, bg='#1a1a2e', highlightthickness=0)
