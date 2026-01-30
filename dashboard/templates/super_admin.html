@@ -112,10 +112,10 @@
                 <!-- Add Admin -->
                 <div class="form-group">
                     <label>Add New Admin</label>
-                    <div style="display: flex; gap: 8px;">
-                        <input type="text" id="new-admin-name" placeholder="Admin Name">
-                        <input type="email" id="new-admin-email" placeholder="Email (Optional)">
-                        <button onclick="addAdmin()" style="width: auto;">+</button>
+                    <div class="input-group-custom">
+                        <input type="text" id="new-admin-name" placeholder="Admin Name" class="input-custom">
+                        <input type="email" id="new-admin-email" placeholder="Email (Optional)" class="input-custom" style="border-left: 1px solid #e2e8f0;">
+                        <button onclick="addAdmin()" class="add-btn-green">+</button>
                     </div>
                 </div>
 
@@ -124,11 +124,13 @@
                 <!-- Add Trader -->
                 <div class="form-group">
                     <label>Add New Trader</label>
-                    <select id="admin-select-trader"></select>
-                    <div style="display: flex; gap: 8px; margin-top: 8px;">
-                        <input type="text" id="new-trader-name" placeholder="Trader Name">
-                        <input type="email" id="new-trader-email" placeholder="Email (Optional)">
-                        <button onclick="addTrader()" style="width: auto;">+</button>
+                    <div class="input-group-custom" style="margin-bottom: 8px;">
+                        <select id="admin-select-trader" class="input-custom" style="width: 100%;"></select>
+                    </div>
+                    <div class="input-group-custom">
+                        <input type="text" id="new-trader-name" placeholder="Trader Name" class="input-custom">
+                        <input type="email" id="new-trader-email" placeholder="Email (Optional)" class="input-custom" style="border-left: 1px solid #e2e8f0;">
+                        <button onclick="addTrader()" class="add-btn-green">+</button>
                     </div>
                 </div>
 
@@ -137,12 +139,14 @@
                 <!-- Add Client -->
                 <div class="form-group">
                     <label>Add New Client</label>
-                    <select id="admin-select-client" onchange="updateTraderSelect()"></select>
-                    <select id="trader-select-client" style="margin-top: 8px;"></select>
-                    <div style="display: flex; gap: 8px; margin-top: 8px;">
-                        <input type="text" id="new-client-name" placeholder="Client Name">
-                        <input type="email" id="new-client-email" placeholder="Email (Optional)">
-                        <button onclick="addClient()" style="width: auto;">+</button>
+                    <div class="input-group-custom" style="margin-bottom: 8px;">
+                        <select id="admin-select-client" onchange="updateTraderSelect()" class="input-custom" style="width: 50%; border-right: 1px solid #e2e8f0;"></select>
+                        <select id="trader-select-client" class="input-custom" style="width: 50%;"></select>
+                    </div>
+                    <div class="input-group-custom">
+                        <input type="text" id="new-client-name" placeholder="Client Name" class="input-custom">
+                        <input type="email" id="new-client-email" placeholder="Email (Optional)" class="input-custom" style="border-left: 1px solid #e2e8f0;">
+                        <button onclick="addClient()" class="add-btn-green">+</button>
                     </div>
                 </div>
 
@@ -197,9 +201,8 @@
                 <table class="user-list-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
+                            <th>User</th>
                             <th id="col-parent">Parent</th>
-                            <th>Email</th>
                             <th style="text-align: right;">Actions</th>
                         </tr>
                     </thead>
@@ -838,15 +841,43 @@
                         `;
                     }
 
+                    tr.classList.add('user-list-row');
                     tr.innerHTML = `
-                        <td style="font-weight: 500;">${r.name}</td>
-                        ${parentCell}
-                        <td style="color: #64748b;">${r.email || '-'}</td>
-                        <td style="text-align: right; white-space: nowrap;">${actions}</td>
+                        <td class="user-list-td">
+                            <div class="user-info-cell">
+                                <span class="user-avatar" style="background: ${getAvatarColor(r.name)}">${getInitials(r.name)}</span>
+                                <div>
+                                    <div class="user-name-text">${r.name}</div>
+                                    <span class="user-email-sub">${r.email || 'No email set'}</span>
+                                </div>
+                            </div>
+                        </td>
+                        ${parentCell !== '' ? `<td class="user-list-td">${r.parent}</td>` : ''}
+                        <td class="user-list-td" style="white-space: nowrap;">${actions}</td>
                     `;
                     tbody.appendChild(tr);
                 });
             }
+        }
+
+        function getInitials(name) {
+            return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+        }
+
+        function getAvatarColor(name) {
+            const colors = [
+                'linear-gradient(135deg, #3b82f6, #2563eb)',
+                'linear-gradient(135deg, #10b981, #059669)',
+                'linear-gradient(135deg, #f59e0b, #d97706)',
+                'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                'linear-gradient(135deg, #ec4899, #db2777)',
+                'linear-gradient(135deg, #6366f1, #4f46e5)'
+            ];
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) {
+                hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return colors[Math.abs(hash) % colors.length];
         }
 
         function closeUserListModal() {
