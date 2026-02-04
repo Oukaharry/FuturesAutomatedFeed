@@ -34,10 +34,10 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .finance-table th, .finance-table td {
-            padding: 14px 16px;
+            padding: 10px 12px;
             text-align: right;
             border-bottom: 1px solid #e9ecef;
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             vertical-align: middle;
         }
         .finance-table th {
@@ -134,6 +134,7 @@
                 <thead>
                     <tr>
                         <th style="text-align: left;">Date</th>
+                        <th style="text-align: left;">Trader</th>
                         <th style="text-align: left;">Client</th>
                         <th style="text-align: left;">Account</th>
                         <th style="text-align: left;">Prop Firm</th>
@@ -152,6 +153,7 @@
                                     <span class="neutral">-</span>
                                 {% endif %}
                             </td>
+                            <td style="text-align: left; font-weight: 500;">{{ payout.trader_name }}</td>
                             <td style="text-align: left;">{{ payout.client_name }}</td>
                             <td style="text-align: left;">{{ payout.account_id }}</td>
                             <td style="text-align: left;">{{ payout.prop_firm }}</td>
@@ -159,7 +161,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="5" style="text-align: center; color: #64748b; padding: 30px;">
+                            <td colspan="6" style="text-align: center; color: #64748b; padding: 30px;">
                                 No payouts found {% if start_date %}for this period{% endif %}.
                             </td>
                         </tr>
@@ -167,7 +169,7 @@
                     
                     {% if payouts %}
                     <tr style="background-color: #f1f5f9; font-weight: 700; border-top: 2px solid #cbd5e1;">
-                        <td colspan="4" style="text-align: right; color: #0f172a;">Total Payouts</td>
+                        <td colspan="5" style="text-align: right; color: #0f172a;">Total Payouts</td>
                         <td class="positive">{{ "$%0.2f"|format(ns_payouts_total.val) }}</td>
                     </tr>
                     {% endif %}
