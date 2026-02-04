@@ -296,18 +296,115 @@ def get_cumulative_deposits(profile_filter=None):
         
     return dates, values
 
+def parse_date(date_str):
+    """Parses date string to datetime object."""
+    if not date_str or not isinstance(date_str, str):
+        return None
+    try:
+        # Try common formats
+        for fmt in ["%m/%d/%y", "%m/%d/%Y", "%Y-%m-%d", "%d-%m-%Y"]:
+            try:
+                return datetime.strptime(date_str.strip(), fmt)
+            except ValueError:
+                continue
+        return None
+    except:
+        return None
+
 def get_cumulative_trading_profit(profile_filter=None):
-    """Calculates cumulative trading profit over time."""
-    _, profit_daily = get_mt5_deals_data(profile_filter)
-    if not profit_daily: return [], []
+    """
+    Calculates cumulative Net Profit over time based on Payouts, Hedge Results, Farming, and Fees.
+    Uses Evaluation data (Sheet) to match the Summary Card 'Net Profit'.
+    """
+    clients_data = get_all_clients()
+    events = [] # (datetime, amount)
     
+    # Columns definition matching calculate_propfirm_overview
+    P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
+    FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
+
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        # Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if not client_profile: client_profile = "PRIVATE"
+            if client_profile != profile_filter.upper():
+                continue
+        
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Extract Dates
+            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+            date_started = parse_date(ev.get('Date Started'))
+            date_ended = parse_date(ev.get('Date Ended'))
+            date_started_funded = parse_date(ev.get('Date Started.1'))
+            date_ended_funded = parse_date(ev.get('Date Ended.1'))
+            
+            # Default date fallback logic
+            # If we have a cost/revenue but no specific date, place it at the closest known date
+            base_date = date_purchased or date_started or datetime.now()
+            
+            # 1. Fees (Negative)
+            fee = parse_currency(ev.get('Fee'))
+            act_fee = parse_currency(ev.get('Activation Fee'))
+            total_fee = fee + act_fee
+            if total_fee > 0:
+                events.append((date_purchased or base_date, -total_fee))
+                
+            # 2. Payouts (Positive)
+            for i in range(1, 10):
+                d_str = ev.get(f'Date {i}')
+                amt = parse_currency(ev.get(f'Payout {i}'))
+                if amt != 0:
+                    d = parse_date(d_str)
+                    events.append((d or base_date, amt))
+                    
+            # 3. Hedge Results P1
+            p1_profit = sum(parse_currency(ev.get(c)) for c in P1_HEDGE_COLS)
+            if p1_profit != 0:
+                # Assign to Date Ended or Date Started
+                events.append((date_ended or date_started or base_date, p1_profit))
+                
+            # 4. Funded Hedge Results
+            fd_profit = sum(parse_currency(ev.get(c)) for c in FUNDED_HEDGE_COLS)
+            if fd_profit != 0:
+                # Assign to Date Ended Funded or Date Started Funded
+                events.append((date_ended_funded or date_started_funded or base_date, fd_profit))
+                
+            # 5. Farming Results
+            farming_net = parse_currency(ev.get('Farming Net'))
+            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+            final_farming = farming_net if farming_net != 0 else farming_calc
+            
+            if final_farming != 0:
+                # Assign to later dates
+                events.append((date_ended_funded or date_ended or base_date, final_farming))
+    
+    if not events:
+        return [], []
+        
+    # Sort events by date
+    events.sort(key=lambda x: x[0])
+    
+    # Aggregate by day
+    from collections import defaultdict
+    daily_changes = defaultdict(float)
+    
+    for dt, val in events:
+        d_str = dt.strftime("%Y-%m-%d")
+        daily_changes[d_str] += val
+        
     dates = []
     values = []
     cumulative = 0.0
-    sorted_days = sorted(profit_daily.keys())
+    sorted_days = sorted(daily_changes.keys())
     
     for day in sorted_days:
-        cumulative += profit_daily[day]
+        cumulative += daily_changes[day]
         dates.append(day)
         values.append(cumulative)
         
