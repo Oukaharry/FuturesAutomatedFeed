@@ -221,6 +221,73 @@ def get_payouts_growth_data(profile_filter=None):
         
     return dates, values
 
+def get_cumulative_fees(profile_filter=None):
+    """
+    Calculates cumulative fees (Fee + Activation Fee) over time.
+    Returns lists of labels (dates) and data points (cumulative fees).
+    """
+    clients_data = get_all_clients()
+    events = []
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        # Apply Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if not client_profile: client_profile = "PRIVATE"
+            if client_profile != profile_filter.upper():
+                continue
+        
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Check for valid prop firm
+            raw_prop_firm = ev.get('Prop Firm')
+            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
+                continue
+                
+            # Date Fallback
+            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+            base_date = date_purchased or datetime.now()
+            
+            # Fees (Positive value for graph usually, or negative? 
+            # Summary card shows positive value "Total Fees $X". 
+            # Graph should probably show cumulative positive cost or negative flow?
+            # "Total Payouts" is positive. "Total Fees" as a positive cost accumulation makes sense to compare magnitude.
+            fee = parse_currency(ev.get('Fee'))
+            act_fee = parse_currency(ev.get('Activation Fee'))
+            total_fee = fee + act_fee
+            
+            if total_fee > 0:
+                events.append((base_date, total_fee))
+    
+    # Sort events by date
+    events.sort(key=lambda x: x[0])
+    
+    if not events:
+        return [], []
+        
+    dates = []
+    values = []
+    cumulative = 0.0
+    
+    from collections import defaultdict
+    daily_changes = defaultdict(float)
+    
+    for date_obj, amount in events:
+        date_str = date_obj.strftime("%Y-%m-%d")
+        daily_changes[date_str] += amount
+        
+    sorted_days = sorted(daily_changes.keys())
+    
+    for day in sorted_days:
+        cumulative += daily_changes[day]
+        dates.append(day)
+        values.append(cumulative)
+        
+    return dates, values
+
 def get_mt5_deals_data(profile_filter=None):
     """
     Helper to get processed daily changes for deposits and trading profit.

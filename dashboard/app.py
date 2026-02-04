@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -467,6 +467,7 @@ def financial_overview():
     payouts_dates, payouts_values = get_payouts_growth_data(profile_filter=profile_filter)
     net_profit_dates, net_profit_values = get_cumulative_trading_profit(profile_filter=profile_filter)
     deposits_dates, deposits_values = get_cumulative_deposits(profile_filter=profile_filter)
+    fees_dates, fees_values = get_cumulative_fees(profile_filter=profile_filter)
     
     return render_template('financial_overview.html', 
                            overview=overview_data,
@@ -478,7 +479,9 @@ def financial_overview():
                            net_profit_dates=net_profit_dates,
                            net_profit_values=net_profit_values,
                            deposits_dates=deposits_dates,
-                           deposits_values=deposits_values)
+                           deposits_values=deposits_values,
+                           fees_dates=fees_dates,
+                           fees_values=fees_values)
 
 @app.route('/payout_history')
 @require_session
