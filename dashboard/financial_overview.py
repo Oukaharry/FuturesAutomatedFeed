@@ -171,22 +171,29 @@ def get_payouts_growth_data(profile_filter=None):
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
             client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if client_profile == 'BEF': client_profile = 'BEF'
-            else: client_profile = 'PRIVATE'
-                
+            if not client_profile: client_profile = "PRIVATE"
             if client_profile != profile_filter.upper():
                 continue
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            # Check for valid prop firm
+            raw_prop_firm = ev.get('Prop Firm')
+            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
+                continue
+                
+            # Date Fallback
+            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+            date_started = parse_date(ev.get('Date Started'))
+            base_date = date_purchased or date_started or datetime.now()
+            
             # Payouts Only
             for i in range(1, 10):
-                date_str = ev.get(f'Date {i}')
+                d_str = ev.get(f'Date {i}')
                 amount = parse_currency(ev.get(f'Payout {i}'))
-                if amount > 0 and date_str:
-                    date_obj = parse_date(date_str)
-                    if date_obj:
-                        events.append((date_obj, amount))
+                if amount > 0:
+                    d = parse_date(d_str)
+                    events.append((d or base_date, amount))
     
     # Sort events by date
     events.sort(key=lambda x: x[0])
@@ -416,12 +423,11 @@ def get_cumulative_trading_profit(profile_filter=None):
 
 def get_portfolio_growth_data(profile_filter=None):
     """
-    Calculates cumulative portfolio growth over time.
-    Returns lists of labels (dates) and data points (net profit).
+    Calculates cumulative portfolio growth (Payouts - Fees) over time.
+    Returns lists of labels (dates) and data points (net cashflow).
+    Note: Matches 'Net Profit (Trading)' graph logic generally but excludes internal hedge/farming profit.
     """
     clients_data = get_all_clients()
-    
-    # Store all financial events: (date, amount)
     events = []
     
     for client_id, data in clients_data.items():
@@ -431,49 +437,36 @@ def get_portfolio_growth_data(profile_filter=None):
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
             client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if client_profile == 'BEF': client_profile = 'BEF'
-            else: client_profile = 'PRIVATE'
-                
+            if not client_profile: client_profile = "PRIVATE"
             if client_profile != profile_filter.upper():
                 continue
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            # Check for valid prop firm
+            raw_prop_firm = ev.get('Prop Firm')
+            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
+                continue
+            
+            # Extract Dates for Fallbacks
+            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+            date_started = parse_date(ev.get('Date Started'))
+            base_date = date_purchased or date_started or datetime.now()
+            
             # 1. Payouts (Positive)
             for i in range(1, 10):
-                date_str = ev.get(f'Date {i}')
+                d_str = ev.get(f'Date {i}')
                 amount = parse_currency(ev.get(f'Payout {i}'))
-                if amount > 0 and date_str:
-                    date_obj = parse_date(date_str)
-                    if date_obj:
-                        events.append((date_obj, amount))
+                if amount > 0:
+                    d = parse_date(d_str)
+                    events.append((d or base_date, amount))
             
-            # 2. Fees (Negative) - Use "Date Paid" or similar if available, else approximate?
-            # Many sheets don't have fee dates. We might need to omit fees from the *timeline* 
-            # if we don't have dates, or assume they happened at account start?
-            # For this request, let's focus on Payouts for growth, or Net Profit if we can find dates.
-            # Without dates for Fees/Hedges, a true "Net Profit Over Time" is hard.
-            # Let's try to find dates for Hedges/Farming.
-            
-            # If we only strictly track "Payout Growth" it is accurate.
-            # If we want "Portfolio Value", we ideally need dates for all cashflows.
-            # Let's fallback to "Cumulative Payouts" if fee dates are missing, OR
-            # check if we can infer date from 'Date' column in evaluations (usually purchase date).
-            
-            purchase_date_str = ev.get('Date')
-            purchase_date = parse_date(purchase_date_str)
-            
-            if purchase_date:
-                # Add Fees at purchase date
-                fee = parse_currency(ev.get('Fee'))
-                act_fee = parse_currency(ev.get('Activation Fee'))
-                total_fee = fee + act_fee
-                if total_fee > 0:
-                    events.append((purchase_date, -total_fee))
-                    
-                # Add Hedge Results? We don't have dates for each hedge result usually...
-                # We can assume they happen "after" purchase. 
-                # For now, let's stick to (Payouts - Fees) which has dates.
+            # 2. Fees (Negative)
+            fee = parse_currency(ev.get('Fee'))
+            act_fee = parse_currency(ev.get('Activation Fee'))
+            total_fee = fee + act_fee
+            if total_fee > 0:
+                events.append((date_purchased or base_date, -total_fee))
                 
     # Sort events by date
     events.sort(key=lambda x: x[0])
