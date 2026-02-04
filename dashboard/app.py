@@ -691,7 +691,14 @@ def get_super_admin_totals():
         
         # Get client metadata
         identity = client_data.get('identity', {})
-        client_source = identity.get('source', 'Private')  # Default to Private
+        # Prioritize 'profile' or 'category' as source, fallback to 'source' or 'Private'
+        client_source = identity.get('profile') or identity.get('category') or identity.get('source') or 'Private'
+        
+        # Normalize source/profile value
+        if client_source.upper() == 'BEF':
+             client_source = 'BEF'
+        else:
+             client_source = 'Private'
         
         # Get cashflow/in-progress totals (all accounts)
         cashflow = stats.get('cashflow_inprogress', {})
@@ -771,6 +778,30 @@ def update_client_source():
     data = request.json
     client_id = data.get('client_id')
     source = data.get('source')
+    
+    if not client_id or not source:
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+        
+    # Update Database
+    client_data = get_client_data(client_id)
+    if client_data:
+        identity = client_data.get('identity', {})
+        # Update all relevant fields for consistency
+        identity['profile'] = source
+        identity['category'] = source
+        identity['source'] = source
+        update_client_field(client_id, 'identity', identity)
+        
+        # Also update Hierarchy.json if possible
+        from config.hierarchy import get_client_profile, update_client_category
+        profile = get_client_profile(client_id)
+        if profile:
+            update_client_category(profile['admin'], profile['trader'], client_id, source)
+    
+        log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), f"To: {source}")
+        return jsonify({"status": "success"})
+        
+    return jsonify({"status": "error", "message": "Client not found"}), 404
     
     if not client_id or source not in ['BEF', 'Private']:
         return jsonify({"status": "error", "message": "Invalid data"}), 400
