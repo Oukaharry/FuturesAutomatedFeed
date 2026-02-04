@@ -337,6 +337,11 @@ def get_cumulative_trading_profit(profile_filter=None):
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            # Match filtering logic from calculate_propfirm_overview
+            raw_prop_firm = ev.get('Prop Firm')
+            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
+                continue
+
             # Extract Dates
             date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
             date_started = parse_date(ev.get('Date Started'))
@@ -376,13 +381,12 @@ def get_cumulative_trading_profit(profile_filter=None):
                 events.append((date_ended_funded or date_started_funded or base_date, fd_profit))
                 
             # 5. Farming Results
-            farming_net = parse_currency(ev.get('Farming Net'))
+            # Match calculate_propfirm_overview logic: Sum of Hedge Day 1-34
             farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
-            final_farming = farming_net if farming_net != 0 else farming_calc
             
-            if final_farming != 0:
+            if farming_calc != 0:
                 # Assign to later dates
-                events.append((date_ended_funded or date_ended or base_date, final_farming))
+                events.append((date_ended_funded or date_ended or base_date, farming_calc))
     
     if not events:
         return [], []
