@@ -1,3 +1,10 @@
+import sys
+import os
+
+# Ensure utils is importable when running as PyInstaller bundle
+if hasattr(sys, '_MEIPASS'):
+    sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
+APP_VERSION = "1.0.1"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -930,7 +937,7 @@ class TraderCompanionApp:
     
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("MT5 Trader Companion")
+        self.root.title(f"MT5 Trader Companion v{APP_VERSION}")
         self.root.geometry("620x700")
         self.root.configure(bg='#1a1a2e')
         self.root.resizable(False, False)  # Fixed size window
@@ -982,7 +989,7 @@ class TraderCompanionApp:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Header
-        header = ttk.Label(main_frame, text="📊 MT5 Trader Companion", style='Header.TLabel')
+        header = ttk.Label(main_frame, text=f"📊 MT5 Trader Companion v{APP_VERSION}", style='Header.TLabel')
         header.pack(pady=(0, 10))
         
         # Connection Frame
@@ -1884,9 +1891,6 @@ class TraderCompanionApp:
         
         try:
             # Step 1: Fetch and calculate locally first
-            import sys
-            import os
-            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             from utils.data_processor import fetch_evaluations, calculate_statistics
             
             evaluations = fetch_evaluations(sheet_url)

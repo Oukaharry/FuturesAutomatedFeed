@@ -459,10 +459,12 @@ def financial_overview():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
     
-    overview_data = calculate_propfirm_overview()
+    profile_filter = request.args.get('profile', 'ALL')
+    overview_data = calculate_propfirm_overview(profile_filter=profile_filter)
     
     return render_template('financial_overview.html', 
-                           overview=overview_data)
+                           overview=overview_data,
+                           selected_profile=profile_filter)
 
 @app.route('/payout_history')
 @require_session
@@ -1526,7 +1528,9 @@ def api_update_client():
     admin = request.json.get('admin')
     trader = request.json.get('trader')
     name = request.json.get('name')
-    email = request.json.get('email')
+    email = request.json.get('email', '')
+    category = request.json.get('category', '')
+    
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
     if update_client_details(admin, trader, name, email):
@@ -1560,6 +1564,45 @@ def api_add_client():
         log_action('ADD_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Client exists"}), 400
+
+@app.route('/api/update_client_profile', methods=['POST'])
+@require_session
+def api_update_client_profile():
+    session_user = request.session_user
+    if session_user.get('user_type') not in ['admin', 'super_admin']:
+         return jsonify({"status": "error", "message": "Access denied"}), 403
+
+    data = request.json
+    admin = data.get('admin')
+    trader = data.get('trader')
+    name = data.get('name')
+    category = data.get('category')
+    
+    if not admin or not trader or not name or category is None:
+         return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    from config.hierarchy import update_client_category
+    
+    if update_client_category(admin, trader, name, category):
+        # Determine client_id (assuming it's the name)
+        client_id = name
+        
+        # Also update the dashboard.db logic
+        try:
+             client_data = get_client_data(client_id)
+             if client_data:
+                 identity = client_data.get('identity', {})
+                 # Update both for compatibility
+                 identity['profile'] = category 
+                 identity['category'] = category
+                 update_client_field(client_id, 'identity', identity)
+        except Exception as e:
+             print(f"Error updating DB identity profile: {e}")
+
+        log_action('UPDATE_CLIENT_PROFILE', session_user.get('user_type'), name, get_remote_address(), f"To: {category}")
+        return jsonify({"status": "success"})
+    
+    return jsonify({"status": "error", "message": "Client not found"}), 404
 
 @app.route('/api/remove_admin', methods=['POST'])
 def api_remove_admin():

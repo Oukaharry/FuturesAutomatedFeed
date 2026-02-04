@@ -148,6 +148,19 @@
                 <div style="display: flex; align-items: center; gap: 15px;">
                     <h1 style="font-size: 2rem; color: #0f172a; margin: 0;">Financial Overview by Prop Firm</h1>
                 </div>
+
+                <!-- Profile Filter -->
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <form action="/financial_overview" method="get" style="display: flex; align-items: center; gap: 10px;">
+                        <label for="profile" style="color: #64748b; font-weight: 600;">Profile:</label>
+                        <select name="profile" id="profile" onchange="this.form.submit()" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0; color: #475569; font-weight: 500;">
+                            <option value="ALL" {% if selected_profile == 'ALL' %}selected{% endif %}>ALL</option>
+                            <option value="BEF" {% if selected_profile == 'BEF' %}selected{% endif %}>BEF</option>
+                            <option value="PRIVATE" {% if selected_profile == 'PRIVATE' %}selected{% endif %}>Private</option>
+                        </select>
+                    </form>
+                </div>
+
                 <div style="color: #64748b; font-size: 0.9rem;">
                     Consolidated report across all clients
                 </div>

@@ -21,7 +21,7 @@ def clean_float(val):
 
 def normalize_account_size(value):
     """
-    Normalize account size values to standard format: $X,XXX
+    Normalize account size values to standard format: $X,XXX (v1.0.1)
     
     Handles:
         - "50k", "50K" → "$50,000"

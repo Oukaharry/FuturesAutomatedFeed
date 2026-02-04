@@ -54,6 +54,18 @@ def update_client_details(admin_name, trader_name, client_name, email):
                     return True
     return False
 
+def update_client_category(admin_name, trader_name, client_name, category):
+    if admin_name in SYSTEM_HIERARCHY["admins"]:
+        traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
+        if trader_name in traders:
+            clients = traders[trader_name]["clients"]
+            for client in clients:
+                if client["name"] == client_name:
+                    client["category"] = category
+                    save_hierarchy(SYSTEM_HIERARCHY)
+                    return True
+    return False
+
 def add_trader(admin_name, trader_name, email=""):
     if admin_name in SYSTEM_HIERARCHY["admins"]:
         if trader_name not in SYSTEM_HIERARCHY["admins"][admin_name]["traders"]:

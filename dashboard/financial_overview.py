@@ -155,7 +155,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
     payouts_list.sort(key=lambda x: x['date'], reverse=True)
     return payouts_list
 
-def calculate_propfirm_overview():
+def calculate_propfirm_overview(profile_filter=None):
     """
     Aggregates financial data by Prop Firm.
     Returns a dictionary.
@@ -173,6 +173,18 @@ def calculate_propfirm_overview():
     for client_id, data in clients_data.items():
         if not data:
             continue
+
+        # Filter by Profile if profile_filter is provided
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            # Check 'profile' or 'category' field (handle both for compatibility)
+            client_profile = (identity.get('profile') or identity.get('category') or 'PRIVATE').upper()
+            
+            # Normalize to clean string
+            if not client_profile: client_profile = "PRIVATE"
+            
+            if client_profile != profile_filter.upper():
+                continue
             
         evaluations = data.get('evaluations', [])
         if not evaluations:

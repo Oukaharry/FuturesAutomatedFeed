@@ -19,7 +19,7 @@ class Config:
     
     # Application
     APP_NAME = 'MT5 Hedging Dashboard'
-    APP_VERSION = '1.0.0'
+    APP_VERSION = '1.0.1'
     
     # Session Configuration
     SESSION_TYPE = 'filesystem'  # Options: 'filesystem', 'redis', 'sqlalchemy'
