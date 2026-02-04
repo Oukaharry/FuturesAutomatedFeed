@@ -128,6 +128,31 @@
         .text-green-bright { color: #4ade80 !important; }
         .text-red-bright { color: #f87171 !important; }
         .bg-dark { background-color: #0f172a !important; }
+        
+        .toggle-group {
+            display: flex;
+            gap: 5px;
+        }
+        .toggle-btn {
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            padding: 4px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: #64748b;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .toggle-btn:hover {
+            background: #e2e8f0;
+            color: #475569;
+        }
+        .toggle-btn.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
     </style>
 </head>
 <body style="background-color: #f1f5f9;">
@@ -196,7 +221,15 @@
 
         <!-- Growth Chart Section -->
         <div class="chart-card" style="margin-bottom: 30px; height: 400px;">
-            <div class="chart-title">Portfolio Growth (Net Cashflow)</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div class="chart-title" style="margin-bottom: 0;">Portfolio Overview</div>
+                <div class="toggle-group">
+                    <button onclick="updateGrowthChart('growth')" id="btn-growth" class="toggle-btn active">Net Cashflow</button>
+                    <button onclick="updateGrowthChart('net_profit')" id="btn-net_profit" class="toggle-btn">Net Profit (Trading)</button>
+                    <button onclick="updateGrowthChart('payouts')" id="btn-payouts" class="toggle-btn">Payouts</button>
+                    <button onclick="updateGrowthChart('deposits')" id="btn-deposits" class="toggle-btn">Deposits</button>
+                </div>
+            </div>
             <div class="chart-wrapper">
                 <canvas id="growthChart"></canvas>
             </div>
@@ -339,33 +372,73 @@
     </div>
 
     <!-- Chart Data -->
-    <script type="application/json" id="growth-dates-data">
-        {{ growth_dates|tojson|safe }}
-    </script>
-    <script type="application/json" id="growth-values-data">
-        {{ growth_values|tojson|safe }}
-    </script>
+    <script type="application/json" id="growth-dates-data">{{ growth_dates|tojson|safe }}</script>
+    <script type="application/json" id="growth-values-data">{{ growth_values|tojson|safe }}</script>
+    <script type="application/json" id="payouts-dates-data">{{ payouts_dates|tojson|safe }}</script>
+    <script type="application/json" id="payouts-values-data">{{ payouts_values|tojson|safe }}</script>
+    <script type="application/json" id="profit-dates-data">{{ net_profit_dates|tojson|safe }}</script>
+    <script type="application/json" id="profit-values-data">{{ net_profit_values|tojson|safe }}</script>
+    <script type="application/json" id="deposits-dates-data">{{ deposits_dates|tojson|safe }}</script>
+    <script type="application/json" id="deposits-values-data">{{ deposits_values|tojson|safe }}</script>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const growthDates = JSON.parse(document.getElementById('growth-dates-data').textContent);
-            const growthValues = JSON.parse(document.getElementById('growth-values-data').textContent);
+        let growthChart; // Global reference
+        
+        // Data Store
+        const chartData = {
+            growth: { dates: [], values: [], label: 'Cumulative Net Cashflow', color: '#3b82f6' },
+            payouts: { dates: [], values: [], label: 'Cumulative Payouts', color: '#10b981' },
+            net_profit: { dates: [], values: [], label: 'Cumulative Trading Profit', color: '#8b5cf6' },
+            deposits: { dates: [], values: [], label: 'Cumulative Deposits', color: '#f59e0b' }
+        };
 
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load Data
+            chartData.growth.dates = JSON.parse(document.getElementById('growth-dates-data').textContent);
+            chartData.growth.values = JSON.parse(document.getElementById('growth-values-data').textContent);
+            
+            chartData.payouts.dates = JSON.parse(document.getElementById('payouts-dates-data').textContent);
+            chartData.payouts.values = JSON.parse(document.getElementById('payouts-values-data').textContent);
+            
+            chartData.net_profit.dates = JSON.parse(document.getElementById('profit-dates-data').textContent);
+            chartData.net_profit.values = JSON.parse(document.getElementById('profit-values-data').textContent);
+            
+            chartData.deposits.dates = JSON.parse(document.getElementById('deposits-dates-data').textContent);
+            chartData.deposits.values = JSON.parse(document.getElementById('deposits-values-data').textContent);
+
+            // Init Chart
+            initGrowthChart();
+        });
+
+        function initGrowthChart() {
             const ctx = document.getElementById('growthChart').getContext('2d');
-            
-            // Create gradient
+            const dates = chartData.growth.dates;
+            const values = chartData.growth.values;
+            const label = chartData.growth.label;
+            const color = chartData.growth.color;
+            growthChart = createChart(ctx, dates, values, label, color);
+        }
+
+        function createChart(ctx, dates, values, label, color) {
+            function hexToRgba(hex, alpha) {
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+
             const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)'); // Blue
-            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
-            
-            new Chart(ctx, {
+            gradient.addColorStop(0, hexToRgba(color, 0.2));
+            gradient.addColorStop(1, hexToRgba(color, 0.0));
+
+            return new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: growthDates,
+                    labels: dates,
                     datasets: [{
-                        label: 'Cumulative Net Cashflow',
-                        data: growthValues,
-                        borderColor: '#3b82f6',
+                        label: label,
+                        data: values,
+                        borderColor: color,
                         backgroundColor: gradient,
                         borderWidth: 2,
                         pointRadius: 0,
@@ -385,9 +458,7 @@
                             callbacks: {
                                 label: function(context) {
                                     let label = context.dataset.label || '';
-                                    if (label) {
-                                        label += ': ';
-                                    }
+                                    if (label) { label += ': '; }
                                     if (context.parsed.y !== null) {
                                         label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
                                     }
@@ -399,10 +470,7 @@
                     scales: {
                         x: {
                             grid: { display: false },
-                            ticks: { 
-                                maxTicksLimit: 10,
-                                maxRotation: 0
-                            }
+                            ticks: { maxTicksLimit: 10, maxRotation: 0 }
                         },
                         y: {
                             grid: { color: '#f1f5f9' },
@@ -413,14 +481,37 @@
                             }
                         }
                     },
-                    interaction: {
-                        mode: 'nearest',
-                        axis: 'x',
-                        intersect: false
-                    }
+                    interaction: { mode: 'nearest', axis: 'x', intersect: false }
                 }
             });
-        });
+        }
+        
+        function updateGrowthChart(type) {
+            if (!growthChart) return;
+            document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + type).classList.add('active');
+            
+            const data = chartData[type];
+            function hexToRgba(hex, alpha) {
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+            
+            growthChart.data.labels = data.dates;
+            growthChart.data.datasets[0].data = data.values;
+            growthChart.data.datasets[0].label = data.label;
+            growthChart.data.datasets[0].borderColor = data.color;
+            
+            const ctx = growthChart.ctx;
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, hexToRgba(data.color, 0.2));
+            gradient.addColorStop(1, hexToRgba(data.color, 0.0));
+            growthChart.data.datasets[0].backgroundColor = gradient;
+            
+            growthChart.update();
+        }
     </script>
 
     <script type="application/json" id="overview-data">
@@ -540,7 +631,6 @@
                     }
                 }
             });
-
             // 3. Account Status (Bar Stacked or Grouped)
             // Or a simple Pie of Total Status across all firms? 
             // The user asked for "by Prop Firm" perspective likely.

@@ -1,6 +1,7 @@
 from dashboard.database import get_all_clients
 import re
 from datetime import datetime
+import json
 
 def parse_currency(value_str):
     """
@@ -154,6 +155,163 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
     # Sort by date desc
     payouts_list.sort(key=lambda x: x['date'], reverse=True)
     return payouts_list
+
+def get_payouts_growth_data(profile_filter=None):
+    """
+    Calculates cumulative payouts over time (ignoring fees).
+    Returns lists of labels (dates) and data points (cumulative payouts).
+    """
+    clients_data = get_all_clients()
+    events = []
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        # Apply Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if client_profile == 'BEF': client_profile = 'BEF'
+            else: client_profile = 'PRIVATE'
+                
+            if client_profile != profile_filter.upper():
+                continue
+        
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Payouts Only
+            for i in range(1, 10):
+                date_str = ev.get(f'Date {i}')
+                amount = parse_currency(ev.get(f'Payout {i}'))
+                if amount > 0 and date_str:
+                    date_obj = parse_date(date_str)
+                    if date_obj:
+                        events.append((date_obj, amount))
+    
+    # Sort events by date
+    events.sort(key=lambda x: x[0])
+    
+    if not events:
+        return [], []
+        
+    dates = []
+    values = []
+    cumulative = 0.0
+    
+    from collections import defaultdict
+    daily_changes = defaultdict(float)
+    
+    for date_obj, amount in events:
+        date_str = date_obj.strftime("%Y-%m-%d")
+        daily_changes[date_str] += amount
+        
+    sorted_days = sorted(daily_changes.keys())
+    
+    for day in sorted_days:
+        cumulative += daily_changes[day]
+        dates.append(day)
+        values.append(cumulative)
+        
+    return dates, values
+
+def get_mt5_deals_data(profile_filter=None):
+    """
+    Helper to get processed daily changes for deposits and trading profit.
+    Returns (deposits_daily, profit_daily) dicts: {date_str: amount}
+    """
+    clients_data = get_all_clients()
+    
+    from collections import defaultdict
+    deposits_daily = defaultdict(float)
+    profit_daily = defaultdict(float)
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        # Apply Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if client_profile == 'BEF': client_profile = 'BEF'
+            else: client_profile = 'PRIVATE'
+            if client_profile != profile_filter.upper(): continue
+            
+        deals_json = data.get('deals', '[]')
+        try:
+            deals = json.loads(deals_json) if isinstance(deals_json, str) else deals_json
+        except:
+            deals = []
+            
+        if not deals: continue
+        
+        for deal in deals:
+            # MT5 deal structure: {'time': epoch, 'type': int, 'profit': float, 'swap': float, 'commission': float, ...}
+            d_time = deal.get('time')
+            if not d_time: continue
+                
+            try:
+                dt = datetime.fromtimestamp(int(d_time))
+                date_str = dt.strftime("%Y-%m-%d")
+            except:
+                continue
+                
+            def _f(val):
+                try: return float(val)
+                except: return 0.0
+            
+            d_type = deal.get('type')
+            profit = _f(deal.get('profit', 0))
+            swap = _f(deal.get('swap', 0))
+            comm = _f(deal.get('commission', 0))
+            
+            # Type 2 is usually BALANCE (Deposits/Withdrawals)
+            is_balance = str(d_type) == '2' or str(d_type).upper() == 'BALANCE'
+            
+            if is_balance:
+                # If profit > 0, it's a deposit. If < 0, it's a withdrawal.
+                # User asked to track "Deposits".
+                if profit > 0:
+                    deposits_daily[date_str] += profit
+            else:
+                # Trading Profit
+                trading_profit = profit + swap + comm
+                profit_daily[date_str] += trading_profit
+                
+    return deposits_daily, profit_daily
+
+def get_cumulative_deposits(profile_filter=None):
+    """Calculates cumulative deposits over time."""
+    deposits_daily, _ = get_mt5_deals_data(profile_filter)
+    if not deposits_daily: return [], []
+    
+    dates = []
+    values = []
+    cumulative = 0.0
+    sorted_days = sorted(deposits_daily.keys())
+    
+    for day in sorted_days:
+        cumulative += deposits_daily[day]
+        dates.append(day)
+        values.append(cumulative)
+        
+    return dates, values
+
+def get_cumulative_trading_profit(profile_filter=None):
+    """Calculates cumulative trading profit over time."""
+    _, profit_daily = get_mt5_deals_data(profile_filter)
+    if not profit_daily: return [], []
+    
+    dates = []
+    values = []
+    cumulative = 0.0
+    sorted_days = sorted(profit_daily.keys())
+    
+    for day in sorted_days:
+        cumulative += profit_daily[day]
+        dates.append(day)
+        values.append(cumulative)
+        
+    return dates, values
 
 def get_portfolio_growth_data(profile_filter=None):
     """
