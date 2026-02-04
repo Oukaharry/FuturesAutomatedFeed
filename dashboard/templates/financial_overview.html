@@ -224,8 +224,7 @@
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; gap: 15px;">
                 <h3 class="chart-title" style="margin-bottom: 0;">Portfolio Metric:</h3>
                 <select id="chartMetricSelect" onchange="updateGrowthChart(this.value)" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <option value="net_profit" selected>Net Profit</option>
-                    <option value="payouts">Total Payouts</option>
+                    <option value="payouts" selected>Total Payouts</option>
                     <option value="fees">Total Fees</option>
                 </select>
             </div>
@@ -373,8 +372,6 @@
     <!-- Chart Data -->
     <script type="application/json" id="payouts-dates-data">{{ payouts_dates|tojson|safe }}</script>
     <script type="application/json" id="payouts-values-data">{{ payouts_values|tojson|safe }}</script>
-    <script type="application/json" id="profit-dates-data">{{ net_profit_dates|tojson|safe }}</script>
-    <script type="application/json" id="profit-values-data">{{ net_profit_values|tojson|safe }}</script>
     <script type="application/json" id="fees-dates-data">{{ fees_dates|tojson|safe }}</script>
     <script type="application/json" id="fees-values-data">{{ fees_values|tojson|safe }}</script>
 
@@ -393,7 +390,6 @@
         
         // Data Store
         const chartData = {
-            net_profit: { dates: [], values: [], label: 'Net Profit', color: '#3b82f6' },
             payouts: { dates: [], values: [], label: 'Total Payouts', color: '#10b981' },
             fees: { dates: [], values: [], label: 'Total Fees', color: '#f59e0b' }
         };
@@ -403,22 +399,19 @@
             chartData.payouts.dates = JSON.parse(document.getElementById('payouts-dates-data').textContent);
             chartData.payouts.values = JSON.parse(document.getElementById('payouts-values-data').textContent);
             
-            chartData.net_profit.dates = JSON.parse(document.getElementById('profit-dates-data').textContent);
-            chartData.net_profit.values = JSON.parse(document.getElementById('profit-values-data').textContent);
-            
             chartData.fees.dates = JSON.parse(document.getElementById('fees-dates-data').textContent);
             chartData.fees.values = JSON.parse(document.getElementById('fees-values-data').textContent);
 
-            // Init Chart (Default to Net Profit to match dropdown)
+            // Init Chart (Default to Payouts)
             initGrowthChart();
         });
 
         function initGrowthChart() {
             const ctx = document.getElementById('growthChart').getContext('2d');
-            const dates = chartData.net_profit.dates;
-            const values = chartData.net_profit.values;
-            const label = chartData.net_profit.label;
-            const color = chartData.net_profit.color;
+            const dates = chartData.payouts.dates;
+            const values = chartData.payouts.values;
+            const label = chartData.payouts.label;
+            const color = chartData.payouts.color;
             growthChart = createChart(ctx, dates, values, label, color);
         }
 
