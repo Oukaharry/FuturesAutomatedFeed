@@ -194,6 +194,14 @@
             {% endif %}
         {% endfor %}
 
+        <!-- Growth Chart Section -->
+        <div class="chart-card" style="margin-bottom: 30px; height: 400px;">
+            <div class="chart-title">Portfolio Growth (Net Cashflow)</div>
+            <div class="chart-wrapper">
+                <canvas id="growthChart"></canvas>
+            </div>
+        </div>
+
         <div class="summary-cards">
             <div class="summary-card">
                 <div class="card-label">Total Payouts</div>
@@ -329,6 +337,91 @@
             </table>
         </div>
     </div>
+
+    <!-- Chart Data -->
+    <script type="application/json" id="growth-dates-data">
+        {{ growth_dates|tojson|safe }}
+    </script>
+    <script type="application/json" id="growth-values-data">
+        {{ growth_values|tojson|safe }}
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const growthDates = JSON.parse(document.getElementById('growth-dates-data').textContent);
+            const growthValues = JSON.parse(document.getElementById('growth-values-data').textContent);
+
+            const ctx = document.getElementById('growthChart').getContext('2d');
+            
+            // Create gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)'); // Blue
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: growthDates,
+                    datasets: [{
+                        label: 'Cumulative Net Cashflow',
+                        data: growthValues,
+                        borderColor: '#3b82f6',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed.y !== null) {
+                                        label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { 
+                                maxTicksLimit: 10,
+                                maxRotation: 0
+                            }
+                        },
+                        y: {
+                            grid: { color: '#f1f5f9' },
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + (value / 1000) + 'k';
+                                }
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+        });
+    </script>
 
     <script type="application/json" id="overview-data">
         {{ overview|tojson|safe }}

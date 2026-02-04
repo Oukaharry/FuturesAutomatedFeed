@@ -155,6 +155,94 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
     payouts_list.sort(key=lambda x: x['date'], reverse=True)
     return payouts_list
 
+def get_portfolio_growth_data(profile_filter=None):
+    """
+    Calculates cumulative portfolio growth over time.
+    Returns lists of labels (dates) and data points (net profit).
+    """
+    clients_data = get_all_clients()
+    
+    # Store all financial events: (date, amount)
+    events = []
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        # Apply Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if client_profile == 'BEF': client_profile = 'BEF'
+            else: client_profile = 'PRIVATE'
+                
+            if client_profile != profile_filter.upper():
+                continue
+        
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # 1. Payouts (Positive)
+            for i in range(1, 10):
+                date_str = ev.get(f'Date {i}')
+                amount = parse_currency(ev.get(f'Payout {i}'))
+                if amount > 0 and date_str:
+                    date_obj = parse_date(date_str)
+                    if date_obj:
+                        events.append((date_obj, amount))
+            
+            # 2. Fees (Negative) - Use "Date Paid" or similar if available, else approximate?
+            # Many sheets don't have fee dates. We might need to omit fees from the *timeline* 
+            # if we don't have dates, or assume they happened at account start?
+            # For this request, let's focus on Payouts for growth, or Net Profit if we can find dates.
+            # Without dates for Fees/Hedges, a true "Net Profit Over Time" is hard.
+            # Let's try to find dates for Hedges/Farming.
+            
+            # If we only strictly track "Payout Growth" it is accurate.
+            # If we want "Portfolio Value", we ideally need dates for all cashflows.
+            # Let's fallback to "Cumulative Payouts" if fee dates are missing, OR
+            # check if we can infer date from 'Date' column in evaluations (usually purchase date).
+            
+            purchase_date_str = ev.get('Date')
+            purchase_date = parse_date(purchase_date_str)
+            
+            if purchase_date:
+                # Add Fees at purchase date
+                fee = parse_currency(ev.get('Fee'))
+                act_fee = parse_currency(ev.get('Activation Fee'))
+                total_fee = fee + act_fee
+                if total_fee > 0:
+                    events.append((purchase_date, -total_fee))
+                    
+                # Add Hedge Results? We don't have dates for each hedge result usually...
+                # We can assume they happen "after" purchase. 
+                # For now, let's stick to (Payouts - Fees) which has dates.
+                
+    # Sort events by date
+    events.sort(key=lambda x: x[0])
+    
+    if not events:
+        return [], []
+        
+    dates = []
+    values = []
+    cumulative = 0.0
+    
+    # Aggregate by day
+    from collections import defaultdict
+    daily_changes = defaultdict(float)
+    
+    for date_obj, amount in events:
+        date_str = date_obj.strftime("%Y-%m-%d")
+        daily_changes[date_str] += amount
+        
+    sorted_days = sorted(daily_changes.keys())
+    
+    for day in sorted_days:
+        cumulative += daily_changes[day]
+        dates.append(day)
+        values.append(cumulative)
+        
+    return dates, values
+
 def calculate_propfirm_overview(profile_filter=None):
     """
     Aggregates financial data by Prop Firm.

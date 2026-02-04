@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -462,9 +462,14 @@ def financial_overview():
     profile_filter = request.args.get('profile', 'ALL')
     overview_data = calculate_propfirm_overview(profile_filter=profile_filter)
     
+    # Get growth chart data
+    growth_dates, growth_values = get_portfolio_growth_data(profile_filter=profile_filter)
+    
     return render_template('financial_overview.html', 
                            overview=overview_data,
-                           selected_profile=profile_filter)
+                           selected_profile=profile_filter,
+                           growth_dates=growth_dates,
+                           growth_values=growth_values)
 
 @app.route('/payout_history')
 @require_session
@@ -1577,6 +1582,15 @@ def api_add_trader():
     if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
     if add_trader(admin, name, email):
+        # Also ensure record exists in database
+        try:
+            # We don't have a "trader" table in database, user_credentials holds trader logins.
+            if not user_exists(name, 'trader'):
+                 temp_pass = "trader123" 
+                 create_user(name, temp_pass, 'trader', email)
+        except Exception as e:
+            print(f"Error creating trader DB user: {e}")
+
         log_action('ADD_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Trader exists"}), 400
@@ -1592,6 +1606,31 @@ def api_add_client():
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
     if add_client(admin, trader, name, email, category):
+        # IMPORTANT: Initialize database record for new client
+        try:
+            if not get_client_data(name): 
+                initial_data = {
+                    "identity": {
+                        "name": name,
+                        "email": email,
+                        "category": category,
+                        "profile": category,
+                        "source": category or "Private",
+                        "admin": admin,
+                        "trader": trader,
+                        "client": name
+                    }
+                }
+                save_client_data(name, initial_data)
+                
+            # Create user credential for client portal access
+            if email and not user_exists(name, 'client') and not find_user_by_identifier(email):
+                 temp_pass = "client123"
+                 create_user(name, temp_pass, 'client', email)
+                 
+        except Exception as e:
+             print(f"Error creating client DB record: {e}")
+             
         log_action('ADD_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Client exists"}), 400
