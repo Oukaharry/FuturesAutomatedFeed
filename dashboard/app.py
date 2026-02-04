@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees, get_propfirm_breakdown
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -463,8 +463,14 @@ def financial_overview():
     overview_data = calculate_propfirm_overview(profile_filter=profile_filter)
     
     # Get growth chart data
-    payouts_dates, payouts_values = get_payouts_growth_data(profile_filter=profile_filter)
-    fees_dates, fees_values = get_cumulative_fees(profile_filter=profile_filter)
+    payouts_breakdown = get_propfirm_breakdown('payouts', profile_filter=profile_filter)
+    fees_breakdown = get_propfirm_breakdown('fees', profile_filter=profile_filter)
+    
+    # Defaults for initial load
+    payouts_dates = payouts_breakdown.get('All', {}).get('dates', [])
+    payouts_values = payouts_breakdown.get('All', {}).get('values', [])
+    fees_dates = fees_breakdown.get('All', {}).get('dates', [])
+    fees_values = fees_breakdown.get('All', {}).get('values', [])
     
     return render_template('financial_overview.html', 
                            overview=overview_data,
@@ -472,7 +478,9 @@ def financial_overview():
                            payouts_dates=payouts_dates,
                            payouts_values=payouts_values,
                            fees_dates=fees_dates,
-                           fees_values=fees_values)
+                           fees_values=fees_values,
+                           payouts_breakdown=payouts_breakdown,
+                           fees_breakdown=fees_breakdown)
 
 @app.route('/payout_history')
 @require_session

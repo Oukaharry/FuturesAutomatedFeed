@@ -106,6 +106,21 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
         if not data:
             continue
             
+        # Determine Client Name
+        identity = data.get('identity', {})
+        client_name = client_id
+        if identity:
+            first = identity.get('First Name', '').strip()
+            last = identity.get('Last Name', '').strip()
+            full = identity.get('Name', '').strip()
+            
+            if first and last:
+                client_name = f"{first} {last}"
+            elif first:
+                client_name = first
+            elif full:
+                client_name = full
+
         evaluations = data.get('evaluations', [])
         for eval_data in evaluations:
             prop_firm = eval_data.get('Prop Firm')
@@ -149,12 +164,96 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
                             "prop_firm": prop_firm,
                             "amount": amount,
                             "client": client_id,
-                            "account": account_num
+                            "client_name": client_name,
+                            "account": account_num,
+                            "account_id": account_num
                         })
     
     # Sort by date desc
     payouts_list.sort(key=lambda x: x['date'], reverse=True)
     return payouts_list
+
+def get_propfirm_breakdown(metric, profile_filter=None):
+    """
+    Calculates cumulative growth categorized by Prop Firm.
+    metric: 'payouts' or 'fees'
+    Returns: { 
+        'All': {'dates': [], 'values': []}, 
+        'FirmA': {'dates': [], 'values': []},
+        ...
+    }
+    """
+    clients_data = get_all_clients()
+    
+    from collections import defaultdict
+    # Structure: firm_name -> {date_str: daily_amount}
+    firm_daily_changes = defaultdict(lambda: defaultdict(float))
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        # Apply Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if not client_profile: client_profile = "PRIVATE"
+            if client_profile != profile_filter.upper():
+                continue
+        
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Check for valid prop firm
+            raw_prop_firm = ev.get('Prop Firm')
+            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
+                continue
+            
+            prop_firm = normalize_prop_firm_name(raw_prop_firm)
+            
+            # Date Fallback
+            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+            date_started = parse_date(ev.get('Date Started'))
+            base_date = date_purchased or date_started or datetime.now()
+            
+            if metric == 'payouts':
+                for i in range(1, 10):
+                    d_str = ev.get(f'Date {i}')
+                    amount = parse_currency(ev.get(f'Payout {i}'))
+                    if amount > 0:
+                        d = parse_date(d_str) or base_date
+                        d_str_fmt = d.strftime("%Y-%m-%d")
+                        firm_daily_changes[prop_firm][d_str_fmt] += amount
+                        firm_daily_changes['All'][d_str_fmt] += amount
+                        
+            elif metric == 'fees':
+                fee = parse_currency(ev.get('Fee'))
+                act_fee = parse_currency(ev.get('Activation Fee'))
+                total_fee = fee + act_fee
+                if total_fee > 0:
+                    d_str_fmt = base_date.strftime("%Y-%m-%d")
+                    firm_daily_changes[prop_firm][d_str_fmt] += total_fee
+                    firm_daily_changes['All'][d_str_fmt] += total_fee
+
+    # Process into cumulative arrays
+    result = {}
+    
+    # Ensure 'All' exists even if empty
+    if 'All' not in firm_daily_changes:
+        result['All'] = {'dates': [], 'values': []}
+        
+    for firm, daily_map in firm_daily_changes.items():
+        sorted_days = sorted(daily_map.keys())
+        dates = []
+        values = []
+        cumulative = 0.0
+        
+        for day in sorted_days:
+             cumulative += daily_map[day]
+             dates.append(day)
+             values.append(cumulative)
+             
+        result[firm] = {'dates': dates, 'values': values}
+        
+    return result
 
 def get_payouts_growth_data(profile_filter=None):
     """

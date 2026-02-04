@@ -223,9 +223,14 @@
         <div class="chart-card" style="margin-bottom: 30px; height: 400px;">
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; gap: 15px;">
                 <h3 class="chart-title" style="margin-bottom: 0;">Portfolio Metric:</h3>
-                <select id="chartMetricSelect" onchange="updateGrowthChart(this.value)" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <select id="chartMetricSelect" onchange="updateGrowthChart()" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                     <option value="payouts" selected>Total Payouts</option>
                     <option value="fees">Total Fees</option>
+                </select>
+                
+                <h3 class="chart-title" style="margin-bottom: 0; margin-left: 20px;">Prop Firm:</h3>
+                <select id="propFirmSelect" onchange="updateGrowthChart()" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <option value="All" selected>All Prop Firms</option>
                 </select>
             </div>
             <div class="chart-wrapper">
@@ -370,10 +375,8 @@
     </div>
 
     <!-- Chart Data -->
-    <script type="application/json" id="payouts-dates-data">{{ payouts_dates|tojson|safe }}</script>
-    <script type="application/json" id="payouts-values-data">{{ payouts_values|tojson|safe }}</script>
-    <script type="application/json" id="fees-dates-data">{{ fees_dates|tojson|safe }}</script>
-    <script type="application/json" id="fees-values-data">{{ fees_values|tojson|safe }}</script>
+    <script type="application/json" id="payouts-breakdown-data">{{ payouts_breakdown|tojson|safe }}</script>
+    <script type="application/json" id="fees-breakdown-data">{{ fees_breakdown|tojson|safe }}</script>
 
     <script>
         let growthChart; // Global reference
@@ -390,29 +393,47 @@
         
         // Data Store
         const chartData = {
-            payouts: { dates: [], values: [], label: 'Total Payouts', color: '#10b981' },
-            fees: { dates: [], values: [], label: 'Total Fees', color: '#f59e0b' }
+            payouts: {}, // Will hold { "All": {dates:[], values:[]}, "FirmA": ... }
+            fees: {} 
+        };
+        const metricColors = {
+            payouts: '#10b981',
+            fees: '#f59e0b'
         };
 
         document.addEventListener('DOMContentLoaded', function() {
             // Load Data
-            chartData.payouts.dates = JSON.parse(document.getElementById('payouts-dates-data').textContent);
-            chartData.payouts.values = JSON.parse(document.getElementById('payouts-values-data').textContent);
-            
-            chartData.fees.dates = JSON.parse(document.getElementById('fees-dates-data').textContent);
-            chartData.fees.values = JSON.parse(document.getElementById('fees-values-data').textContent);
+            chartData.payouts = JSON.parse(document.getElementById('payouts-breakdown-data').textContent);
+            chartData.fees = JSON.parse(document.getElementById('fees-breakdown-data').textContent);
 
-            // Init Chart (Default to Payouts)
+            // Populate Prop Firm Select
+            const firmSelect = document.getElementById('propFirmSelect');
+            const firms = new Set([...Object.keys(chartData.payouts), ...Object.keys(chartData.fees)]);
+            
+            // Sort: All first, then alphabetical
+            const firmArray = Array.from(firms).sort((a,b) => {
+                if (a === 'All') return -1;
+                if (b === 'All') return 1;
+                return a.localeCompare(b);
+            });
+
+            firmSelect.innerHTML = '';
+            firmArray.forEach(firm => {
+                const opt = document.createElement('option');
+                opt.value = firm;
+                opt.text = firm === 'All' ? 'All Prop Firms' : firm;
+                firmSelect.appendChild(opt);
+            });
+
+            // Init Chart
             initGrowthChart();
         });
 
         function initGrowthChart() {
             const ctx = document.getElementById('growthChart').getContext('2d');
-            const dates = chartData.payouts.dates;
-            const values = chartData.payouts.values;
-            const label = chartData.payouts.label;
-            const color = chartData.payouts.color;
-            growthChart = createChart(ctx, dates, values, label, color);
+            // Initialize with dummy data, updateGrowthChart will populate it
+            growthChart = createChart(ctx, [], [], '', metricColors.payouts);
+            updateGrowthChart();
         }
 
         function createChart(ctx, dates, values, label, color) {
@@ -475,28 +496,36 @@
             });
         }
         
-        function updateGrowthChart(type) {
-            console.log('Updating chart to:', type);
+        function updateGrowthChart() {
             if (!growthChart) {
                 console.error('growthChart not initialized');
                 return;
             }
             
-            const data = chartData[type];
-            if (!data) {
-                console.error('No data found for type:', type);
-                return;
-            }
+            const metricType = document.getElementById('chartMetricSelect').value;
+            const firm = document.getElementById('propFirmSelect').value;
             
-            growthChart.data.labels = data.dates;
-            growthChart.data.datasets[0].data = data.values;
-            growthChart.data.datasets[0].label = data.label;
-            growthChart.data.datasets[0].borderColor = data.color;
+            console.log('Updating chart to:', metricType, firm);
+
+            const firmData = chartData[metricType] && chartData[metricType][firm];
+            
+            // Fallback or empty if not found
+            const dates = firmData ? firmData.dates : [];
+            const values = firmData ? firmData.values : [];
+            const color = metricColors[metricType];
+            
+            let label = metricType === 'payouts' ? 'Total Payouts' : 'Total Fees';
+            if (firm !== 'All') label += ` (${firm})`;
+
+            growthChart.data.labels = dates;
+            growthChart.data.datasets[0].data = values;
+            growthChart.data.datasets[0].label = label;
+            growthChart.data.datasets[0].borderColor = color;
             
             const ctx = growthChart.ctx;
             const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, hexToRgba(data.color, 0.2));
-            gradient.addColorStop(1, hexToRgba(data.color, 0.0));
+            gradient.addColorStop(0, hexToRgba(color, 0.2));
+            gradient.addColorStop(1, hexToRgba(color, 0.0));
             growthChart.data.datasets[0].backgroundColor = gradient;
             
             growthChart.update();
