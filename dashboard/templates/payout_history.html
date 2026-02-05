@@ -134,9 +134,9 @@
                 <thead>
                     <tr>
                         <th style="text-align: left;">Date</th>
-                        <th style="text-align: left;">Trader</th>
-                        <th style="text-align: left;">Admin</th>
                         <th style="text-align: left;">Client</th>
+                        <th style="text-align: left;">Admin</th>
+                        <th style="text-align: left;">Trader</th>
                         <th style="text-align: left;">Account</th>
                         <th style="text-align: left;">Prop Firm</th>
                         <th>Amount</th>
@@ -154,9 +154,9 @@
                                     <span class="neutral">-</span>
                                 {% endif %}
                             </td>
-                            <td style="text-align: left; font-weight: 500;">{{ payout.trader_name }}</td>
-                            <td style="text-align: left; font-weight: 500;">{{ payout.admin_name }}</td>
                             <td style="text-align: left;">{{ payout.client_name }}</td>
+                            <td style="text-align: left; font-weight: 500;">{{ payout.admin_name }}</td>
+                            <td style="text-align: left; font-weight: 500;">{{ payout.trader_name }}</td>
                             <td style="text-align: left;">{{ payout.account_id }}</td>
                             <td style="text-align: left;">{{ payout.prop_firm }}</td>
                             <td class="positive">{{ "$%0.2f"|format(payout.amount) }}</td>

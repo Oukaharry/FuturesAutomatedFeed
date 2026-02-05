@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trader Performance - MT5 Hedging Engine</title>
+    <!-- Use inline styles or copy from other templates if CSS file is generic -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .finance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .finance-table th, .finance-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 0.9rem;
+            vertical-align: top;
+        }
+        .finance-table th {
+            background-color: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .finance-table tr:hover {
+            background-color: #f8fafc;
+        }
+        .positive, .success { color: #10b981; font-weight: 600; }
+        .negative, .danger { color: #ef4444; font-weight: 600; }
+        .neutral { color: #94a3b8; }
+        .warnings { color: #f59e0b; font-weight: 500; }
+        
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            background: white;
+            border: 1px solid #e2e8f0;
+        }
+        
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #1e293b; }
+    </style>
+</head>
+<body style="background-color: #f1f5f9;">
+    <div class="container" style="max-width: 1600px; padding: 40px;">
+        
+        <nav style="background: white; padding: 15px 30px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+            <a href="/super_admin" style="text-decoration: none; color: #64748b; font-weight: 600;">Dashboard</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/financial_overview" style="text-decoration: none; color: #64748b; font-weight: 600;">Prop Firm Overview</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/payout_history" style="text-decoration: none; color: #64748b; font-weight: 600;">Payout History</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/client_performance" style="text-decoration: none; color: #64748b; font-weight: 600;">Client Performance</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/trader_performance" style="text-decoration: none; color: #0284c7; font-weight: 700;">Trader Performance</a>
+        </nav>
+
+        <header style="margin-bottom: 40px;">
+            <h1 style="font-size: 2rem; color: #0f172a; margin: 0;">Trader Performance</h1>
+            <div style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">
+                Performance metrics aggregated by Trader
+            </div>
+        </header>
+
+        <div class="table-responsive">
+            <table class="finance-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Trader</th>
+                        <th style="text-align: center;">Sheets Reviewed</th>
+                        <th style="text-align: center;">Clients</th>
+                        <th style="text-align: right;">Total Payouts</th>
+                        <th style="text-align: right;">Total Neg. Hedge Net</th>
+                        <th style="text-align: left;">Farming Performance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trader in traders %}
+                        <tr>
+                            <td style="text-align: left;">
+                                <div style="font-weight: 600; font-size: 1.1em;">{{ trader.name }}</div>
+                            </td>
+                            <td style="text-align: center;">{{ trader.sheets_reviewed }}</td>
+                            <td style="text-align: center;">{{ trader.client_count }}</td>
+                            <td style="text-align: right;" class="success">{{ "$%0.2f"|format(trader.total_payouts) }}</td>
+                            <td style="text-align: right;" class="{{ 'danger' if trader.total_negative_hedge < -1 else 'neutral' }}">
+                                {{ "$%0.2f"|format(trader.total_negative_hedge) }}
+                                {% if trader.total_negative_hedge < -1 %}
+                                    <div style="margin-top: 5px; font-size: 0.85em; color: #ef4444; font-weight: normal; text-align: left; padding: 5px; background: #fef2f2; border-radius: 4px;">
+                                        {% for detail in trader.negative_hedge_details %}
+                                            <div style="border-bottom: 1px dotted #e5e7eb; padding: 2px 0;">
+                                                <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left;">
+                                {% if trader.farming_days_count > 0 %}
+                                    <div style="margin-bottom: 5px;"><strong>{{ trader.farming_days_count }}</strong> Farming Days</div>
+                                    {% if trader.farming_missing_notes > 0 %}
+                                        <div class="warnings">⚠️ {{ trader.farming_missing_notes }} Missing Notes/Prop Days</div>
+                                        <div style="font-size: 0.8em; color: #64748b; margin-top: 5px; background: #fffbeb; padding: 5px; border-radius: 4px;">
+                                            {% for w in trader.farming_warnings[:5] %}
+                                                <div>{{ w.client }} (Day {{ w.day }})</div>
+                                            {% endfor %}
+                                            {% if trader.farming_warnings|length > 5 %}
+                                                <div>...and {{ trader.farming_warnings|length - 5 }} more</div>
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        <span class="success">All Prop Days Present</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="neutral">No Farming Activity</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px; color: #64748b;">
+                                No trader data available.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div style="margin-top: 30px; font-size: 0.85em; color: #94a3b8; text-align: center;">
+            * Negative Hedge Net is only calculated for accounts that show actual hedging activity.
+            * "Missing Notes" checks if a Farming Day has a corresponding Prop Day entry.
+        </div>
+    </div>
+</body>
+</html>

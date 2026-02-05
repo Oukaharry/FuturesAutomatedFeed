@@ -795,3 +795,117 @@ def calculate_propfirm_overview(profile_filter=None):
         del data["clients"]
         
     return overview
+
+def get_trader_performance_data():
+    """
+    Aggregates performance metrics by Trader.
+    metrics:
+    - Total Payouts
+    - Total Negative Hedge Net (only if actual hedging results exist)
+    - Farming check: count of farming days where Note/Prop Day is missing?
+      (For now, we'll track 'Farming Days' and 'Missing Prop Day Info' if logic applies)
+    """
+    clients_data = get_all_clients()
+    traders = {} # name -> data
+
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        identity = data.get('identity', {})
+        trader_name = identity.get('trader', 'Unassigned')
+        if not trader_name or trader_name == '-' or str(trader_name).lower() == 'nan': 
+            trader_name = 'Unassigned'
+        
+        if trader_name not in traders:
+            traders[trader_name] = {
+                "name": trader_name,
+                "total_payouts": 0.0,
+                "total_negative_hedge": 0.0,
+                "farming_days_count": 0,
+                "farming_missing_notes": 0,
+                "client_count": 0,
+                "sheets_reviewed": 0,
+                "negative_hedge_details": [], # List of {client, account, amount}
+                "farming_warnings": []        # List of {client, account, day, msg}
+            }
+            
+        t_data = traders[trader_name]
+        t_data["client_count"] += 1
+        
+        evaluations = data.get('evaluations', [])
+        t_data["sheets_reviewed"] += len(evaluations)
+        
+        for ev in evaluations:
+            # 1. Payouts
+            for i in range(1, 10):
+                amt = parse_currency(ev.get(f'Payout {i}'))
+                if amt > 0:
+                    t_data["total_payouts"] += amt
+            
+            # 2. Negative Hedge Nets (Conditional)
+            # Condition: "only check for hedging net where there are actual hedging results"
+            
+            has_hedge_results = False
+            # Check P1
+            for k in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
+                if parse_currency(ev.get(k)) != 0:
+                     has_hedge_results = True
+                     break
+            
+            if not has_hedge_results:
+                # Check Funded
+                for k in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                    if parse_currency(ev.get(k)) != 0:
+                        has_hedge_results = True
+                        break
+                        
+            if has_hedge_results:
+                # Check Hedge Net columns
+                hn1 = parse_currency(ev.get('Hedge Net'))
+                hn2 = parse_currency(ev.get('Hedge Net.1'))
+                
+                # If negative, add to total
+                current_neg = 0.0
+                if hn1 < -1: current_neg += hn1 # Use -1 to ignore tiny rounding floats
+                if hn2 < -1: current_neg += hn2
+                
+                if current_neg < 0:
+                    t_data["total_negative_hedge"] += current_neg
+                    t_data["negative_hedge_details"].append({
+                        "client": identity.get('Name') or client_id,
+                        "account": ev.get('Account #') or ev.get('Account #.1') or 'Unknown',
+                        "amount": current_neg
+                    })
+
+            # 3. Farming - Check for missing notes (Prop Day empty when Hedge Day has value)
+            for d in range(1, 35):
+                hd_val = parse_currency(ev.get(f'Hedge Day {d}'))
+                pd_val = ev.get(f'Prop Day {d}') 
+                
+                # If we have a hedge result for the day
+                if hd_val != 0:
+                    t_data["farming_days_count"] += 1
+                    
+                    # Check if 'Prop Day' (Note/Date) is empty
+                    # Prop Day is often used for the result in the prop firm or date/note
+                    is_missing = False
+                    if pd_val is None:
+                        is_missing = True
+                    elif isinstance(pd_val, str) and not pd_val.strip():
+                        is_missing = True
+                    elif isinstance(pd_val, (int, float)) and pd_val == 0:
+                         # Warning: 0 might be a valid result, but usually Prop Day matches Hedge Day if it's a value
+                         # If it's a note, 0 is weird.
+                         # Let's assume emptiness or "0" means missing if Hedge Day is non-zero
+                         pass 
+                         
+                    # For now, strict empty check for strings, None for others
+                    if str(pd_val).strip() in ['', '-', 'nan', 'None']:
+                        t_data["farming_missing_notes"] += 1
+                        t_data["farming_warnings"].append({
+                            "client": identity.get('Name') or client_id,
+                            "account": ev.get('Account #') or ev.get('Account #.1'),
+                            "day": d
+                        })
+
+    return sorted(list(traders.values()), key=lambda x: x['total_payouts'], reverse=True)

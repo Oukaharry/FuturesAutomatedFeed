@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees, get_propfirm_breakdown
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees, get_propfirm_breakdown, get_trader_performance_data
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -530,6 +530,17 @@ def client_performance():
          return redirect('/')
     return render_template('client_performance.html')
 
+
+@app.route('/trader_performance')
+@require_session
+def trader_performance_page():
+    session_user = request.session_user
+    # Allow admin and super_admin
+    if session_user.get('user_type') not in ['super_admin', 'admin']:
+         return redirect('/')
+    
+    traders = get_trader_performance_data()
+    return render_template('trader_performance.html', traders=traders)
 
 @app.route('/trader/<trader_name>')
 @require_session
@@ -1788,16 +1799,15 @@ def api_delete_evaluation():
     
     client_id = client_info['client']
     
-    # Get current client data
+    # Get client data
     client_data = get_client_data(client_id)
-    if not client_data:
-        return jsonify({"status": "error", "message": "Client data not found"}), 404
-    
+    if not client_data or 'evaluations' not in client_data:
+        return jsonify({"status": "error", "message": "No evaluations found"}), 404
+        
     evaluations = client_data.get('evaluations', [])
-    
     if evaluation_index < 0 or evaluation_index >= len(evaluations):
         return jsonify({"status": "error", "message": "Invalid evaluation index"}), 400
-    
+
     # Get details of what we're deleting for the log
     deleted_eval = evaluations[evaluation_index]
     deleted_info = f"Row {evaluation_index + 1}: {deleted_eval.get('Prop Firm', 'Unknown')} - {deleted_eval.get('Account Size', 'Unknown')}"
