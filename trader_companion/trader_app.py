@@ -1198,11 +1198,58 @@ class TraderCompanionApp:
         self.log(f"Pushing data for {client_name}...")
         self.status_var.set("Pushing data...")
         
-        # Get MT5 data
+        # Get MT5 data - Limit to 14 days for speed (Server merges history)
         account = self.pusher.get_account_info() or {}
+
+        # Log rebalance data for verification
+        if account:
+            b = account.get('balance', 0)
+            d = account.get('total_deposits', 0)
+            w = account.get('total_withdrawals', 0)
+            self.log(f"📊 Rebalance Data Check:")
+            self.log(f"   - Balance: ${b}")
+            self.log(f"   - Total Deposits: ${d}")
+            self.log(f"   - Total Withdrawals: ${w}")
+
         positions = self.pusher.get_positions()
-        deals = self.pusher.get_deals()
+        # Fetch only recent deals for fast sync
+        raw_deals = self.pusher.get_deals(days=14)
+        
+        # Filter deals: Only keep Balance operations and Trades with valid comments
+        deals = []
+        if raw_deals:
+            for deal in raw_deals:
+                # Always keep balance/credit operations
+                d_type = str(deal.get('type', '')).upper()
+                if d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']:
+                    deals.append(deal)
+                    continue
+                
+                # Check comment validity for trades
+                comment = deal.get('comment', '')
+                parsed = self.pusher.parse_deal_comment_v2(comment)
+                
+                is_valid = False
+                if parsed:
+                    # Check for .is_valid attribute (new parser) or non-None dict (fallback parser)
+                    if hasattr(parsed, 'is_valid'):
+                        is_valid = parsed.is_valid
+                    else:
+                        is_valid = True # Fallback parser returned a dict, so it found a match
+                
+                if is_valid:
+                    deals.append(deal)
+            
+            if len(deals) < len(raw_deals):
+                self.log(f"Filtered {len(raw_deals) - len(deals)} deals with invalid comments")
+
         statistics = self.pusher.calculate_statistics(deals)
+        
+        # NOTE: Reduced aggregated result history to 14 days too for speed.
+        # Use "Sync Hedge Results" button separately if you need to re-scan full year.
+        aggregated_result = self.pusher.get_deals_grouped_by_phase(days=14)
+        aggregated_by_comment = aggregated_result.get('aggregated', [])
+        comment_summary = aggregated_result.get('summary', {})
         
         payload = {
             "email": email,
@@ -1211,6 +1258,8 @@ class TraderCompanionApp:
             "deals": deals,
             "statistics": statistics,
             "evaluations": [],
+            "aggregated_by_comment": aggregated_by_comment,
+            "comment_summary": comment_summary,
             "dropdown_options": {}
         }
         
@@ -1227,6 +1276,8 @@ class TraderCompanionApp:
                 data = response.json()
                 if data.get("status") == "success":
                     self.log(f"✅ {data.get('message', 'Data pushed successfully')}")
+                    if aggregated_by_comment:
+                        self.log(f"   ✓ Synced {len(aggregated_by_comment)} hedge result groups from history")
                     self.status_var.set("Ready - Data pushed!")
                 else:
                     self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")

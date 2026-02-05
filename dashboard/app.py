@@ -709,7 +709,9 @@ def get_super_admin_totals():
         identity = client_data.get('identity', {})
         # Prioritize 'profile' or 'category' as source, fallback to 'source' or 'Private'
         client_source = identity.get('profile') or identity.get('category') or identity.get('source') or 'Private'
-        
+        trader_name = identity.get('trader', '-')
+        admin_name = identity.get('admin', '-')
+
         # Normalize source/profile value
         if client_source.upper() == 'BEF':
              client_source = 'BEF'
@@ -755,6 +757,8 @@ def get_super_admin_totals():
         client_details.append({
             "client_id": client_id,
             "source": client_source,
+            "trader": trader_name,
+            "admin": admin_name,
             "payouts": round(c_payouts, 2),
             "deposits": round(c_deposits, 2),
             "fees": round(c_fees, 2),
@@ -922,6 +926,33 @@ def api_client_push():
     # Get existing data to merge evaluations if needed
     existing_data = get_client_data(client_id) or {}
     
+    # Merge Deals Logic: Combine existing history with new push data
+    existing_deals = existing_data.get('deals', [])
+    if mt5_deals:
+        # Create dictionary of existing deals keyed by ticket
+        deals_map = {str(d.get('ticket')): d for d in existing_deals}
+        
+        # Update/Add new deals
+        for d in mt5_deals:
+            ticket = str(d.get('ticket'))
+            deals_map[ticket] = d
+            
+        # Convert back to list and sort by time (descending usually, or standard)
+        # Assuming deals have 'time' field.
+        full_deals_history = list(deals_map.values())
+        # Optional: Sort by time if needed, but calculate_statistics handles it
+        try:
+            full_deals_history.sort(key=lambda x: x.get('time', ''), reverse=True)
+        except:
+            pass
+            
+        app.logger.info(f"   Merged deals: {len(existing_deals)} existing + {len(mt5_deals)} pushed -> {len(full_deals_history)} total")
+        
+        # Use merged list for downstream processing
+        processed_deals = full_deals_history
+    else:
+        processed_deals = existing_deals
+
     # Only use new evaluations if explicitly provided and not empty
     # If "evaluations" key is missing or None, preserve existing data
     if "evaluations" in data and data["evaluations"]:
@@ -963,7 +994,7 @@ def api_client_push():
     # ALWAYS recalculate statistics when we have evaluations or MT5 data
     # This ensures discrepancy is only calculated when we have actual MT5 data
     statistics = data.get("statistics", {})
-    if evaluations or mt5_deals or mt5_account:
+    if evaluations or processed_deals or mt5_account:
         try:
             from utils.data_processor import calculate_statistics
             
@@ -977,7 +1008,7 @@ def api_client_push():
             
             # Pass MT5 data - if empty, discrepancy will be 0
             mt5_acc_param = mt5_account if mt5_account else None
-            mt5_deals_param = mt5_deals if mt5_deals else None
+            mt5_deals_param = processed_deals if processed_deals else None
             statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param)
             
             # Log the hedging review results
@@ -999,7 +1030,7 @@ def api_client_push():
     
     # Prepare client data
     client_data = {
-        "deals": mt5_deals,
+        "deals": processed_deals,
         "positions": data.get("positions", []),
         "account": mt5_account,
         "evaluations": evaluations,

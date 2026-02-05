@@ -93,6 +93,12 @@
                         <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('client_id')">
                             Client <span class="sort-icon" id="sort-client_id"></span>
                         </th>
+                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('trader')">
+                            Trader <span class="sort-icon" id="sort-trader"></span>
+                        </th>
+                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('admin')">
+                            Admin <span class="sort-icon" id="sort-admin"></span>
+                        </th>
                         <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('source')">
                             Source <span class="sort-icon" id="sort-source"></span>
                         </th>
@@ -253,6 +259,8 @@
                     <td style="padding: 14px 16px;">
                         <a href="/dashboard/${c.client_id}" style="color: #2563eb; text-decoration: none; font-weight: 500;">${c.client_id}</a>
                     </td>
+                    <td style="padding: 14px 16px; color: #4b5563;">${c.trader || '-'}</td>
+                    <td style="padding: 14px 16px; color: #4b5563;">${c.admin || '-'}</td>
                     <td style="padding: 14px 16px;">${sourceHtml}</td>
                     <td style="padding: 14px 16px; text-align: right;">${formatCurrency(c.payouts)}</td>
                     <td style="padding: 14px 16px; text-align: right;">${formatCurrency(c.deposits)}</td>

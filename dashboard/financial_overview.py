@@ -122,6 +122,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
                 client_name = full
         
         trader_name = identity.get('trader', '-')
+        admin_name = identity.get('admin', '-')
 
         evaluations = data.get('evaluations', [])
         for eval_data in evaluations:
@@ -168,6 +169,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
                             "client": client_id,
                             "client_name": client_name,
                             "trader_name": trader_name,
+                            "admin_name": admin_name,
                             "account": account_num,
                             "account_id": account_num
                         })
