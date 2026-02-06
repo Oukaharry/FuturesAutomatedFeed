@@ -966,14 +966,14 @@
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
                                      title="Delete this row">🗑️</button>
                         </td>
-                        ${cell(getDropdownHtml('Prop Firm', getVal('Prop Firm'), index, 'Prop Firm'), 'Prop Firm')}
-                        ${cell(getDropdownHtml('Account Size', getVal('Account Size'), index, 'Account Size'), 'Account Size')}
+                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm'), 'Prop Firm')}
+                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size'), 'Account Size')}
                         ${cell(datePurchasedContent, 'Date Purchased')}
                         ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee'), 'Fee')}
                         
                         ${cell(getInputHtml(getVal('Date Started'), 'date', index, 'Date Started'), 'Date Started')}
                         ${cell(getInputHtml(getVal('Date Ended'), 'date', index, 'Date Ended'), 'Date Ended')}
-                        ${cell(getDropdownHtml('Status', getVal('Status P1'), index, 'Status P1'), 'Status P1')}
+                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status', index, 'Status P1'), 'Status P1')}
                         ${cell(getVal('Account #'), 'Account #')}
                         
                         ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1'), 'Hedge Result 1')}
@@ -987,7 +987,7 @@
                         ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee'), 'Activation Fee')}
                         ${cell(getInputHtml(getVal('Date Started.1'), 'date', index, 'Date Started.1'), 'Date Started.1')}
                         ${cell(getInputHtml(getVal('Date Ended.1'), 'date', index, 'Date Ended.1'), 'Date Ended.1')}
-                        ${cell(getDropdownHtml('Status', getVal('Status'), index, 'Status'), 'Status')}
+                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status'), 'Status')}
                         
                         ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1'), 'Hedge Result 1.1')}
                         ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1'), 'Hedge Result 2.1')}
