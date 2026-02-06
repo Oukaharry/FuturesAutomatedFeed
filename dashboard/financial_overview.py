@@ -843,16 +843,12 @@ def get_trader_performance_data():
                     t_data["total_payouts"] += amt
             
             # 2. Negative Hedge Nets (Conditional per phase)
-            # Only count negative hedge nets if there are ACTUAL hedging results for that specific phase.
+            # Only count negative hedge nets if there are ACTUAL POSITIVE hedging results for that specific phase.
             
             # Phase 1 Check
-            has_p1_hedge = False
-            for k in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
-                if parse_currency(ev.get(k)) != 0:
-                     has_p1_hedge = True
-                     break
+            p1_hedge_sum = sum(parse_currency(ev.get(k)) for k in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5'])
             
-            if has_p1_hedge:
+            if p1_hedge_sum != 0:
                 hn1 = parse_currency(ev.get('Hedge Net'))
                 if hn1 < -1: # Use -1 to ignore tiny rounding floats
                     t_data["total_negative_hedge"] += hn1
@@ -863,14 +859,10 @@ def get_trader_performance_data():
                     })
 
             # Funded Phase Check
-            has_funded_hedge = False
-            for k in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                      'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                if parse_currency(ev.get(k)) != 0:
-                    has_funded_hedge = True
-                    break
+            funded_hedge_sum = sum(parse_currency(ev.get(k)) for k in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                      'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7'])
             
-            if has_funded_hedge:
+            if funded_hedge_sum != 0:
                 hn2 = parse_currency(ev.get('Hedge Net.1'))
                 if hn2 < -1:
                     t_data["total_negative_hedge"] += hn2
