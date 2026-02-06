@@ -489,7 +489,7 @@
                     <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
                 </div>
                 <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
-                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()" checked>
+                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()">
                     Show Active Only
                 </label>
             </div>
@@ -520,8 +520,8 @@
                         <tr>
                             <th rowspan="2">#</th>
                             <th rowspan="2" style="width: 30px;">🗑️</th>
-                            <th colspan="4" class="group-header group-header-blue">EVALUATION INFO</th>
-                            <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
+                            <th colspan="5" class="group-header group-header-blue">EVALUATION INFO</th>
+                            <th colspan="9" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
                             <th colspan="31" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
@@ -529,6 +529,7 @@
                             <!-- EVALUATION INFO (0-3) -->
                             <th>Prop Firm</th>
                             <th>Account Size</th>
+                            <th style="min-width: 120px;">Account #</th>
                             <th>Date Purchased</th>
                             <th>Fee</th>
                             
@@ -536,7 +537,6 @@
                             <th>Date Started</th>
                             <th>Date Ended</th>
                             <th>Status P1</th>
-                            <th style="min-width: 200px;">Account #</th>
                             <th>Hedge Result 1</th>
                             <th>Hedge Result 2</th>
                             <th>Hedge Result 3</th>
@@ -899,10 +899,24 @@
             if (currentData.evaluations && currentData.evaluations.length > 0) {
                 let visibleCount = 0;
                 currentData.evaluations.forEach((ev, index) => {
+                    // Wrapper for cell content
+                    // Add ID to cell that matches Excel coordinates (e.g. "N3", "AA5")
+                    // We assume data index 0 corresponds to Sheet Row 3
+                    const currentRowNum = index + 3; 
+
+                    // Check if this row is targeted by deep link
+                    let forceShow = false;
+                    if (hlRange) {
+                        const match = hlRange.match(/([A-Z]+)(\d+)/);
+                        if (match && parseInt(match[2]) === currentRowNum) {
+                            forceShow = true;
+                        }
+                    }
+
                     // Filter Logic
-                    if (showActiveOnly) {
+                    if (showActiveOnly && !forceShow) {
                         const status = String(ev['Status'] || ev['Status P1'] || '').toLowerCase();
-                        if (status.includes('fail') || status.includes('breach') || status.includes('closed') || status.includes('completed')) {
+                        if (status.includes('fail') || status.includes('breach') || status.includes('delete') || status.includes('closed') || status.includes('completed')) {
                              return;
                         }
                     }
@@ -916,11 +930,6 @@
                        const note = ev._notes && ev._notes[key] ? ev._notes[key] : '';
                        return note ? `data-has-note="true" title="${note}"` : '';
                     };
-
-                    // Wrapper for cell content
-                    // Add ID to cell that matches Excel coordinates (e.g. "N3", "AA5")
-                    // We assume data index 0 corresponds to Sheet Row 3
-                    const currentRowNum = index + 3; 
 
                     const cell = (content, key) => {
                         const noteAttrs = addNoteAttrs(key);
