@@ -2127,7 +2127,11 @@
             return date.toISOString().split('T')[0];
         }
 
-    
+        // Initialize Dashboard
+        updateDashboard();
+        
+        // Refresh every 30 seconds
+        setInterval(updateDashboard, 30000);
     </script>
 </body>
 </html>
