@@ -1040,28 +1040,39 @@
         
         function getColumnLetterForKey(key) {
             // Map keys back to Column Letters (Based on standard sheet structure)
-            // Note: This relies on the table layout matching the Excel columns.
+            // Validated via extracted_formulas.txt analysis (A=PropFirm ... N=HedgeNet ... G=StatusP1)
             const map = {
-                'Prop Firm': 'C', 'Account Size': 'D', 'Date Purchased': 'F', 'Fee': 'G',
-                'Date Started': 'D', 'Date Ended': 'E', 'Status P1': 'H', 'Account #': 'E',
+                'Prop Firm': 'A', 'Account Size': 'B', 'Date Purchased': 'C', 'Fee': 'D',
+                'Date Started': 'E', 'Date Ended': 'F', 'Status P1': 'G', 'Account #': 'H',
                 'Hedge Result 1': 'I', 'Hedge Result 2': 'J',
                 'Hedge Result 3': 'K', 'Hedge Result 4': 'L', 'Hedge Result 5': 'M',
-                'Hedge Net': 'N', 'Account #.1': 'O', 'Status': 'S',
+                'Hedge Net': 'N', 
+                'Account #.1': 'O', 'Activation Fee': 'P', 'Date Started.1': 'Q', 'Date Ended.1': 'R', 'Status': 'S',
                 'Hedge Result 1.1': 'T', 'Hedge Result 2.1': 'U', 'Hedge Result 3.1': 'V',
                 'Hedge Result 4.1': 'W', 'Hedge Result 5.1': 'X', 'Hedge Result 6': 'Y',
                 'Hedge Result 7': 'Z',
-                'Hedge Net.1': 'AA'
+                'Hedge Net.1': 'AA',
+                'Payout 1': 'AB', 'Date 1': 'AC', 'Payout 2': 'AD', 'Date 2': 'AE',
+                'Payout 3': 'AF', 'Date 3': 'AG', 'Payout 4': 'AH', 'Date 4': 'AI',
+                'Farming Net': 'AJ'
             };
             if (map[key]) return map[key];
             
             // Generate dynamic farming columns
-            // Prop Day 1 is usually AK (37)
+            // Prop Day 1 starts at AK (37)
             if (key.startsWith('Prop Day ')) {
                 const day = parseInt(key.replace('Prop Day ', ''));
                 if (!isNaN(day)) {
                     // Prop Day 1 = AK (37)
                     // Prop Day 2 = AM (39) ...
                     return getColLetter(37 + (day-1)*2);
+                }
+            }
+             if (key.startsWith('Hedge Day ')) {
+                const day = parseInt(key.replace('Hedge Day ', ''));
+                if (!isNaN(day)) {
+                    // Hedge Day 1 = AL (38)
+                    return getColLetter(38 + (day-1)*2);
                 }
             }
             return null;
