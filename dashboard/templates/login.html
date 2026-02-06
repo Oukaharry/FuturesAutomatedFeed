@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Trading Dashboard</title>
+    <title>Login - BallerQuotes</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
@@ -34,21 +34,16 @@
         
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 50px 30px;
+            padding: 40px 30px;
             text-align: center;
             color: white;
         }
         
-        .logo {
-            width: 80px;
-            height: 80px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            font-size: 2.5rem;
+        .logo-img {
+            width: 100px;
+            height: auto;
+            margin-bottom: 15px;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
         }
         
         .header h1 {
@@ -233,9 +228,9 @@
 <body>
     <div class="login-container">
         <div class="header">
-            <div class="logo">📊</div>
-            <h1>Trading Dashboard</h1>
-            <p>Sign in to access your account</p>
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" class="logo-img">
+            <h1>BallerQuotes</h1>
+            <p>Your go-to virtual assistant</p>
         </div>
         
         <div class="form-container">
