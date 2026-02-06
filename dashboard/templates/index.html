@@ -520,8 +520,8 @@
                         <tr>
                             <th rowspan="2">#</th>
                             <th rowspan="2" style="width: 30px;">🗑️</th>
-                            <th colspan="5" class="group-header group-header-blue">EVALUATION INFO</th>
-                            <th colspan="9" class="group-header group-header-green">EVALUATION PHASE</th>
+                            <th colspan="4" class="group-header group-header-blue">EVALUATION INFO</th>
+                            <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
                             <th colspan="31" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
@@ -529,7 +529,6 @@
                             <!-- EVALUATION INFO (0-3) -->
                             <th>Prop Firm</th>
                             <th>Account Size</th>
-                            <th style="min-width: 120px;">Account #</th>
                             <th>Date Purchased</th>
                             <th>Fee</th>
                             
@@ -537,6 +536,7 @@
                             <th>Date Started</th>
                             <th>Date Ended</th>
                             <th>Status P1</th>
+                            <th style="min-width: 200px;">Account #</th>
                             <th>Hedge Result 1</th>
                             <th>Hedge Result 2</th>
                             <th>Hedge Result 3</th>
@@ -962,13 +962,13 @@
                     row.innerHTML = `
                         ${cell(getDropdownHtml('Prop Firm', getVal('Prop Firm'), index, 'Prop Firm'), 'Prop Firm')}
                         ${cell(getDropdownHtml('Account Size', getVal('Account Size'), index, 'Account Size'), 'Account Size')}
-                        ${cell(getVal('Account #'), 'Account #')}
                         ${cell(datePurchasedContent, 'Date Purchased')}
                         ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee'), 'Fee')}
                         
                         ${cell(getInputHtml(getVal('Date Started'), 'date', index, 'Date Started'), 'Date Started')}
                         ${cell(getInputHtml(getVal('Date Ended'), 'date', index, 'Date Ended'), 'Date Ended')}
                         ${cell(getDropdownHtml('Status', getVal('Status P1'), index, 'Status P1'), 'Status P1')}
+                        ${cell(getVal('Account #'), 'Account #')}
                         
                         ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1'), 'Hedge Result 1')}
                         ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2'), 'Hedge Result 2')}
@@ -1042,8 +1042,9 @@
             // Map keys back to Column Letters (Based on standard sheet structure)
             // Note: This relies on the table layout matching the Excel columns.
             const map = {
-                'Prop Firm': 'C', 'Account Size': 'D', 'Account #': 'E', 'Date Purchased': 'F',
-                'Status P1': 'H', 'Hedge Result 1': 'I', 'Hedge Result 2': 'J',
+                'Prop Firm': 'C', 'Account Size': 'D', 'Date Purchased': 'F', 'Fee': 'G',
+                'Date Started': 'D', 'Date Ended': 'E', 'Status P1': 'H', 'Account #': 'E',
+                'Hedge Result 1': 'I', 'Hedge Result 2': 'J',
                 'Hedge Result 3': 'K', 'Hedge Result 4': 'L', 'Hedge Result 5': 'M',
                 'Hedge Net': 'N', 'Account #.1': 'O', 'Status': 'S',
                 'Hedge Result 1.1': 'T', 'Hedge Result 2.1': 'U', 'Hedge Result 3.1': 'V',
