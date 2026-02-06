@@ -1066,6 +1066,15 @@
             return string;
         }
 
+        function generateDayColumns(ev, cell, index) {
+            let html = '';
+            for (let i = 1; i <= 15; i++) {
+                html += cell(getInputHtml(ev[`Prop Day ${i}`] || '', 'text', index, `Prop Day ${i}`), `Prop Day ${i}`);
+                html += cell(getInputHtml(ev[`Hedge Day ${i}`] || '', 'text', index, `Hedge Day ${i}`), `Hedge Day ${i}`);
+            }
+            return html;
+        }
+        
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             // Check for deep link parameters on load
