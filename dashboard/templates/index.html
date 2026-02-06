@@ -1065,3 +1065,25 @@
             }
             return string;
         }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check for deep link parameters on load
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('range')) {
+                // If deep linking, Disable "Active Only" filter to ensure the target row is visible
+                const activeFilter = document.getElementById('activeFilter');
+                if (activeFilter) {
+                    activeFilter.checked = false;
+                }
+            }
+
+            updateDashboard();
+            setInterval(updateDashboard, 30000); // Auto-refresh every 30s
+            
+            // Re-render when filter changes
+            document.getElementById('activeFilter').addEventListener('change', renderEvaluationsTable);
+        });
+    </script>
+</body>
+</html>
