@@ -193,7 +193,14 @@
                                     <div style="margin-top: 5px; font-size: 0.85em; color: #ef4444; font-weight: normal; text-align: left; padding: 5px; background: #fef2f2; border-radius: 4px;">
                                         {% for detail in trader.negative_hedge_details %}
                                             <div style="border-bottom: 1px dotted #e5e7eb; padding: 2px 0;">
-                                                <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }}
+                                                {% if detail.link %}
+                                                    <a href="{{ detail.link }}" target="_blank" style="text-decoration: none; color: inherit; display: block;" title="View in Sheet">
+                                                        <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }} 
+                                                        <span style="font-size: 0.8em; opacity: 0.7;">↗</span>
+                                                    </a>
+                                                {% else %}
+                                                    <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }}
+                                                {% endif %}
                                             </div>
                                         {% endfor %}
                                     </div>
@@ -206,7 +213,15 @@
                                         <div class="warnings">⚠️ {{ trader.farming_missing_notes }} Missing Notes/Prop Days</div>
                                         <div style="font-size: 0.8em; color: #64748b; margin-top: 5px; background: #fffbeb; padding: 5px; border-radius: 4px;">
                                             {% for w in trader.farming_warnings[:5] %}
-                                                <div>{{ w.client }} (Day {{ w.day }})</div>
+                                                <div>
+                                                    {% if w.link %}
+                                                        <a href="{{ w.link }}" target="_blank" style="text-decoration: underline; color: inherit;">
+                                                            {{ w.client }} (Day {{ w.day }})
+                                                        </a>
+                                                    {% else %}
+                                                        {{ w.client }} (Day {{ w.day }})
+                                                    {% endif %}
+                                                </div>
                                             {% endfor %}
                                             {% if trader.farming_warnings|length > 5 %}
                                                 <div>...and {{ trader.farming_warnings|length - 5 }} more</div>

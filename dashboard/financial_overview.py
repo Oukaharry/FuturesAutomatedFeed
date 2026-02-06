@@ -2,6 +2,19 @@ from dashboard.database import get_all_clients
 import re
 from datetime import datetime
 import json
+try:
+    from config.settings import SHEET_URL
+except ImportError:
+    # Fallback or development url
+    SHEET_URL = "https://docs.google.com/spreadsheets/d/1vtuGcTe8ys44wHCJGJr6VoImeh8q0beaKkZMt0hd3VU/edit?usp=sharing"
+
+def get_col_letter(n):
+    """Convert 1-based column number to letter (e.g. 1->A, 27->AA)"""
+    string = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        string = chr(65 + remainder) + string
+    return string
 
 def parse_currency(value_str):
     """
@@ -835,7 +848,10 @@ def get_trader_performance_data():
         evaluations = data.get('evaluations', [])
         t_data["sheets_reviewed"] += len(evaluations)
         
-        for ev in evaluations:
+        for idx, ev in enumerate(evaluations):
+            # Calculate Excel Row Number (Assuming data starts at Row 3)
+            row_num = idx + 3
+            
             # 1. Payouts
             for i in range(1, 10):
                 amt = parse_currency(ev.get(f'Payout {i}'))
@@ -855,7 +871,8 @@ def get_trader_performance_data():
                     t_data["negative_hedge_details"].append({
                         "client": identity.get('Name') or client_id,
                         "account": f"{ev.get('Account #') or 'P1'} (Phase 1)",
-                        "amount": hn1
+                        "amount": hn1,
+                        "link": f"/dashboard/{client_id}?range=N{row_num}"
                     })
 
             # Funded Phase Check
@@ -869,7 +886,8 @@ def get_trader_performance_data():
                     t_data["negative_hedge_details"].append({
                         "client": identity.get('Name') or client_id,
                         "account": f"{ev.get('Account #.1') or 'Funded'} (Funded)",
-                        "amount": hn2
+                        "amount": hn2,
+                        "link": f"/dashboard/{client_id}?range=AA{row_num}"
                     })
 
             # 3. Farming - Check for missing notes (Prop Day empty when Hedge Day has value)
@@ -896,11 +914,14 @@ def get_trader_performance_data():
                          
                     # For now, strict empty check for strings, None for others
                     if str(pd_val).strip() in ['', '-', 'nan', 'None']:
+                        
+                        col_letter = get_col_letter(37 + (d-1)*2) # AK=37 (Prop Day 1)
                         t_data["farming_missing_notes"] += 1
                         t_data["farming_warnings"].append({
                             "client": identity.get('Name') or client_id,
                             "account": ev.get('Account #') or ev.get('Account #.1'),
-                            "day": d
+                            "day": d,
+                            "link": f"/dashboard/{client_id}?range={col_letter}{row_num}"
                         })
 
     return sorted(list(traders.values()), key=lambda x: x['total_payouts'], reverse=True)
