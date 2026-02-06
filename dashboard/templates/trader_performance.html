@@ -47,21 +47,116 @@
         }
         
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #1e293b; }
+
+        /* Modern Navigation - Gemini Inspired */
+        .modern-nav {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            margin-bottom: 40px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px -1px rgba(0, 0, 0, 0.05);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: #0f172a;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-logo {
+            height: 45px;
+            width: auto;
+            display: block;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            background: #f1f5f9;
+            padding: 5px;
+            border-radius: 12px;
+        }
+
+        .nav-item {
+            text-decoration: none;
+            color: #64748b;
+            font-weight: 600;
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-item:hover {
+            color: #1e293b;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .nav-item.active {
+            background: white;
+            color: #3b82f6;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .action-link {
+            color: #64748b;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+        .action-link:hover { color: #3b82f6; }
+
+        .logout-btn-nav {
+            background: #fee2e2;
+            color: #ef4444;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .logout-btn-nav:hover {
+            background: #fecaca;
+            color: #dc2626;
+        }
     </style>
 </head>
-<body style="background-color: #f1f5f9;">
+<body style="background-color: #f8fafc;">
     <div class="container" style="max-width: 1600px; padding: 40px;">
         
-        <nav style="background: white; padding: 15px 30px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
-            <a href="/super_admin" style="text-decoration: none; color: #64748b; font-weight: 600;">Dashboard</a>
-            <span style="color: #cbd5e1;">|</span>
-            <a href="/financial_overview" style="text-decoration: none; color: #64748b; font-weight: 600;">Prop Firm Overview</a>
-            <span style="color: #cbd5e1;">|</span>
-            <a href="/payout_history" style="text-decoration: none; color: #64748b; font-weight: 600;">Payout History</a>
-            <span style="color: #cbd5e1;">|</span>
-            <a href="/client_performance" style="text-decoration: none; color: #64748b; font-weight: 600;">Client Performance</a>
-            <span style="color: #cbd5e1;">|</span>
-            <a href="/trader_performance" style="text-decoration: none; color: #0284c7; font-weight: 700;">Trader Performance</a>
+        <nav class="modern-nav">
+            <div class="nav-brand">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Baller Quotes" class="brand-logo">
+            </div>
+            <div class="nav-links">
+                <a href="/super_admin" class="nav-item">Dashboard</a>
+                <a href="/financial_overview" class="nav-item">Prop Firms</a>
+                <a href="/payout_history" class="nav-item">Payouts</a>
+                <a href="/client_performance" class="nav-item">Clients</a>
+                <a href="/trader_performance" class="nav-item active">Traders</a>
+            </div>
+            <div class="nav-actions">
+                <a href="/super_admin/clients" class="action-link">Manage Clients</a>
+                <a href="/logout" class="logout-btn-nav">Logout</a>
+            </div>
         </nav>
 
         <header style="margin-bottom: 40px;">

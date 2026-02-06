@@ -842,41 +842,43 @@ def get_trader_performance_data():
                 if amt > 0:
                     t_data["total_payouts"] += amt
             
-            # 2. Negative Hedge Nets (Conditional)
-            # Condition: "only check for hedging net where there are actual hedging results"
+            # 2. Negative Hedge Nets (Conditional per phase)
+            # Only count negative hedge nets if there are ACTUAL hedging results for that specific phase.
             
+            # Phase 1 Check
             has_p1_hedge = False
-            # Check P1
             for k in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
                 if parse_currency(ev.get(k)) != 0:
                      has_p1_hedge = True
                      break
             
+            if has_p1_hedge:
+                hn1 = parse_currency(ev.get('Hedge Net'))
+                if hn1 < -1: # Use -1 to ignore tiny rounding floats
+                    t_data["total_negative_hedge"] += hn1
+                    t_data["negative_hedge_details"].append({
+                        "client": identity.get('Name') or client_id,
+                        "account": f"{ev.get('Account #') or 'P1'} (Phase 1)",
+                        "amount": hn1
+                    })
+
+            # Funded Phase Check
             has_funded_hedge = False
-            # Check Funded
-            for k in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+            for k in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                      'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
                 if parse_currency(ev.get(k)) != 0:
                     has_funded_hedge = True
                     break
-                        
-            # Check Hedge Net columns ONLY if corresponding results exist
-            current_neg = 0.0
             
-            if has_p1_hedge:
-                hn1 = parse_currency(ev.get('Hedge Net'))
-                if hn1 < -1: current_neg += hn1
-
             if has_funded_hedge:
                 hn2 = parse_currency(ev.get('Hedge Net.1'))
-                if hn2 < -1: current_neg += hn2
-            
-            if current_neg < 0:
-                t_data["total_negative_hedge"] += current_neg
-                t_data["negative_hedge_details"].append({
-                    "client": identity.get('Name') or client_id,
-                    "account": ev.get('Account #') or ev.get('Account #.1') or 'Unknown',
-                    "amount": current_neg
-                })
+                if hn2 < -1:
+                    t_data["total_negative_hedge"] += hn2
+                    t_data["negative_hedge_details"].append({
+                        "client": identity.get('Name') or client_id,
+                        "account": f"{ev.get('Account #.1') or 'Funded'} (Funded)",
+                        "amount": hn2
+                    })
 
             # 3. Farming - Check for missing notes (Prop Day empty when Hedge Day has value)
             for d in range(1, 35):
