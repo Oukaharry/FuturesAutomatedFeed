@@ -974,7 +974,7 @@
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started'), 'Date Started')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended'), 'Date Ended')}
                         ${cell(getDropdownHtml(getVal('Status P1'), 'Status', index, 'Status P1'), 'Status P1')}
-                        ${cell(getVal('Account #'), 'Account #')}
+                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #'), 'Account #')}
                         
                         ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1'), 'Hedge Result 1')}
                         ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2'), 'Hedge Result 2')}
@@ -983,7 +983,7 @@
                         ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5'), 'Hedge Result 5')}
                         ${cell(getVal('Hedge Net'), 'Hedge Net')}
                         
-                        ${cell(getVal('Account #.1'), 'Account #.1')}
+                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1'), 'Account #.1')}
                         ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee'), 'Activation Fee')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1'), 'Date Started.1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1'), 'Date Ended.1')}
@@ -1700,6 +1700,8 @@
                 menu.style.top = `${top}px`;
                 // Make menu at least as wide as the trigger
                 menu.style.minWidth = `${Math.max(rect.width, 200)}px`;
+                // Ensure z-index is high enough to be on top of everything
+                menu.style.zIndex = '99999';
             } else {
                 // Hide -> reset inline styles so absolute positioning works next time
                 menu.style.position = '';
