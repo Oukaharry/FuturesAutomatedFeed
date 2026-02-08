@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees, get_propfirm_breakdown, get_trader_performance_data
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -73,21 +73,6 @@ def get_account_signature(account_number):
     
     account_str = str(account_number).strip()
     
-    # Handle MT5 truncated TopStep format: V2-...SUFFIX
-    # This must come before the generic '...' handler to avoid including 'v2-' in the prefix
-    if account_str.lower().startswith('v2-...'):
-        return account_str.split('...')[-1].lower()
-
-    # Handle TopStep/Dashboard formats: 50KTC-V2-..., EXPRESS-V2-...
-    # Extract the last part which is likely the actual account number used in MT5
-    if ('-V2-' in account_str) or ('50KTC' in account_str) or ('EXPRESS' in account_str):
-        parts = account_str.split('-')
-        last_part = parts[-1] 
-        # Only treat as account number if it's alphanumeric but mostly digits/lengthy
-        # Case: 50KTC-V2-472054-49197160 -> last is 49197160
-        if len(parts) > 1:
-            account_str = last_part
-    
     # Handle truncated format: PREFIX...SUFFIX
     if '...' in account_str:
         parts = account_str.split('...')
@@ -108,15 +93,8 @@ def get_last_n_digits(account: str, n: int = 5) -> str:
     """Extract last N digits from account number."""
     if not account:
         return ""
-        
-    # Handle V2-... prefix exclusion (TopStep) to ensure we get actual account digits
-    clean_account = account
-    lower_acc = account.lower()
-    if lower_acc.startswith('v2-...'):
-        clean_account = account.split('...')[-1]
-        
     # Extract only digits from the end
-    digits = ''.join(c for c in clean_account if c.isdigit())
+    digits = ''.join(c for c in account if c.isdigit())
     return digits[-n:] if len(digits) >= n else digits
 
 
@@ -130,6 +108,8 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     Matching strategy:
     1. Try signature match (first4 + last4/5)
     2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
+    
+    Returns: (eval_index, matched_account) or (None, None)
     """
     if not account_number or not evaluations:
         return None, None
@@ -157,23 +137,15 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
             return idx, eval_account
     
     # Second pass: Try last 5 digits match (for truncated accounts)
-    if target_last5:
-        # Check against evaluations
+    if target_last5 and len(target_last5) >= 4:
         for idx, ev in enumerate(evaluations):
             eval_account = str(ev.get(column_name, '')).strip()
             if not eval_account:
                 continue
             
-            # Get last 5 digits of evaluation account
             eval_last5 = get_last_n_digits(eval_account, 5)
-            
-            # Standard exact match of 5 digits
-            if len(target_last5) == 5 and eval_last5 == target_last5:
+            if eval_last5 == target_last5:
                 return idx, eval_account
-            
-            # Fallback for TopStep: If target is short (4 digits) and matches end of eval
-            if len(target_last5) >= 4 and eval_last5.endswith(target_last5):
-                 return idx, eval_account
     
     return None, None
 
@@ -263,15 +235,9 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
                     return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'DD':
-
-    
-        # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
-
-    
-        if trade_number is not None and trade_number >= 1:
-
-    
-            return f"Hedge Result {trade_number}.1" 
+        # Double Dip: DD1-4 map to available funded hedge columns
+        if trade_number is not None and 1 <= trade_number <= 4:
+            return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
     
     elif phase_code == 'FA':
         # Farming: Find next available Hedge Day slot
@@ -304,1535 +270,2201 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
     
     match_log = []
     updates_made = 0
-    grouped_aggs = {}
     
-    # 1. Group aggregations
+    match_log.append(f"📊 Processing {len(aggregated_data)} aggregated trade groups")
+    match_log.append(f"   Against {len(evaluations)} evaluation records")
+    
     for agg in aggregated_data:
-        acc = agg.get('account_number', '')
-        phase = agg.get('phase_code', 'UNK')
-        if phase == 'FA': trade = 'ALL' 
-        else: trade = agg.get('trade_number')
-        group_key = (acc, phase, trade)
-        if group_key not in grouped_aggs: grouped_aggs[group_key] = []
-        grouped_aggs[group_key].append(agg)
+        account_number = agg.get('account_number', '')
+        phase_code = agg.get('phase_code', '')
+        trade_number = agg.get('trade_number')
+        farming_date = agg.get('farming_date')
+        net_profit = agg.get('net_profit', 0)
+        deal_count = agg.get('deal_count', 0)
         
-    # 2. Process groups
-    for (account_number, phase, trade_number), agg_list in grouped_aggs.items():
-        # Sort by date
-        agg_list.sort(key=lambda x: x.get('farming_date') or '')
+        # Find matching evaluation
+        eval_idx, matched_account = match_account_to_evaluation(account_number, evaluations, phase_code)
         
-        # Find Matches
-        eval_matches = match_account_to_evaluation_all(account_number, evaluations, phase)
-        if not eval_matches: continue
-            
-        # Sort Evaluations by Date
-        def get_p_date(eval_tuple):
-            ev = evaluations[eval_tuple[0]]
-            return str(ev.get('Date Purchased') or ev.get('Date Created') or '')
-        eval_matches.sort(key=get_p_date)
-        
-        # Farming Logic
-        if phase == 'FA':
-            target_idx, _ = eval_matches[-1] # Use latest
-            for current_agg in agg_list:
-                amt = current_agg.get('net_profit', 0)
-                col = get_next_empty_farming_slot(evaluations[target_idx])
-                if col:
-                    evaluations[target_idx][col] = amt
-                    updates_made += 1
+        if eval_idx is None:
+            sig = get_account_signature(account_number)
+            match_log.append(f"⚠️ No match: {account_number} ({sig}) _{phase_code}{trade_number or ''} = ${net_profit:.2f}")
             continue
-
-        # Standard Logic
-        eval_ptr = 0
-        for agg in agg_list:
-            if eval_ptr < len(eval_matches):
-                target_tuple = eval_matches[eval_ptr]
-                eval_ptr += 1 
-            else: target_tuple = eval_matches[-1]
-            
-            target_idx, account_type = target_tuple
-            eff_phase = phase
-            eff_trade = agg.get('trade_number')
-            if phase == 'UNK':
-                eff_phase = 'CH' if account_type == 'challenge' else 'FD'
-                eff_trade = 1
-
-            field = get_field_name_for_phase(eff_phase, eff_trade, None, evaluations, target_idx, account_number)
-            if field:
-                 evaluations[target_idx][field] = agg.get('net_profit', 0)
-                 match_log.append(f"✅ Match -> {field}")
-                 updates_made += 1
         
+        # Determine field to update
+        field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)
+        
+        if not field_name:
+            match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
+            continue
+        
+        # Update the evaluation
+        evaluations[eval_idx][field_name] = net_profit
+        updates_made += 1
+        
+        sig = get_account_signature(account_number)
+        match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
+        match_log.append(f"   Matched to: {matched_account}")
+    
+    match_log.append(f"\n📈 Total updates: {updates_made}/{len(aggregated_data)}")
     return evaluations, match_log
 
-def get_next_empty_farming_slot(eval_row):
-    for i in range(1, 40): 
-        col = f"Hedge Day {i}"
-        val = eval_row.get(col)
-        if not val: return col
-    return "Hedge Day 35"
+# Initialize admin password if not exists
+def init_admin_password():
+    """Initialize default admin password if not set."""
+    admin_password = os.getenv('ADMIN_PASSWORD', 'BallerAdmin@123')
+    set_admin_password('super_admin', admin_password)
+    print("Admin password initialized")
 
-def match_account_to_evaluation_all(account_number, evaluations, phase_code):
-    matches = []
-    tsig = get_account_signature(account_number)
-    tlast5 = get_last_n_digits(account_number, 5)
+# Run initialization
+init_database()
+init_admin_password()
+
+# ============ Authentication Decorators ============
+
+def require_api_key(f):
+    """Decorator to require valid API key for endpoint access."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
+        client_ip = get_remote_address()
+        
+        if not api_key:
+            log_action('API_ACCESS_DENIED', 'unknown', 'no_key', client_ip, 'Missing API key', False)
+            return jsonify({"status": "error", "message": "API key required"}), 401
+        
+        user_info = validate_api_key(api_key)
+        if not user_info:
+            log_action('API_ACCESS_DENIED', 'unknown', api_key[:12], client_ip, 'Invalid API key', False)
+            return jsonify({"status": "error", "message": "Invalid API key"}), 403
+        
+        # Add user info to request context
+        request.api_user = user_info
+        log_action('API_ACCESS', 'trader', user_info.get('trader', 'unknown'), client_ip, f"Endpoint: {request.endpoint}")
+        return f(*args, **kwargs)
+    return decorated_function
+
+def require_admin_password(f):
+    """Decorator to require admin password for endpoint access."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        client_ip = get_remote_address()
+        
+        # Check for password in request body or headers
+        admin_password = None
+        if request.is_json:
+            admin_password = request.json.get('admin_password')
+        if not admin_password:
+            admin_password = request.headers.get('X-Admin-Password')
+        
+        if not admin_password:
+            log_action('ADMIN_ACCESS_DENIED', 'admin', 'unknown', client_ip, 'Missing password', False)
+            return jsonify({"status": "error", "message": "Admin password required"}), 401
+        
+        if not verify_admin_password('super_admin', admin_password):
+            log_action('ADMIN_ACCESS_DENIED', 'admin', 'super_admin', client_ip, 'Invalid password', False)
+            return jsonify({"status": "error", "message": "Invalid admin password"}), 403
+        
+        log_action('ADMIN_ACCESS', 'admin', 'super_admin', client_ip, f"Endpoint: {request.endpoint}")
+        return f(*args, **kwargs)
+    return decorated_function
+
+def require_role(*allowed_roles):
+    """Decorator to require specific roles via session authentication."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            session_token = request.cookies.get('session_token')
+            
+            if not session_token:
+                return jsonify({"status": "error", "message": "Authentication required"}), 401
+            
+            session_info = validate_session(session_token)
+            if not session_info:
+                return jsonify({"status": "error", "message": "Invalid or expired session"}), 401
+            
+            user_type = session_info.get('user_type')
+            if user_type not in allowed_roles:
+                log_action('ACCESS_DENIED', user_type, session_info.get('user_identifier'), 
+                          get_remote_address(), f"Required roles: {allowed_roles}", False)
+                return jsonify({"status": "error", "message": "Access denied. Insufficient permissions."}), 403
+            
+            request.session_user = session_info
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def require_session(f):
+    """Decorator to require valid session for web access."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        session_token = request.cookies.get('session_token')
+        
+        if not session_token:
+            return redirect(url_for('index'))
+        
+        session_info = validate_session(session_token)
+        if not session_info:
+            return redirect(url_for('index'))
+        
+        request.session_user = session_info
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ============ Web Routes ============
+
+@app.route('/')
+def index():
+    # Check if already logged in
+    session_token = request.cookies.get('session_token')
+    if session_token:
+        session_info = validate_session(session_token)
+        if session_info:
+            # Redirect to appropriate dashboard
+            user_type = session_info.get('user_type')
+            user_id = session_info.get('user_identifier')
+            if user_type == 'super_admin':
+                return redirect('/super_admin')
+            elif user_type == 'admin':
+                return redirect(f'/admin/{user_id}')
+            elif user_type == 'trader':
+                return redirect(f'/trader/{user_id}')
+            elif user_type == 'client':
+                return redirect(f'/dashboard/{user_id}')
+    return render_template('login.html')
+
+@app.route('/super_admin')
+@require_session
+def super_admin():
+    if request.session_user.get('user_type') != 'super_admin':
+        return redirect('/')
+    return render_template('super_admin.html')
+
+@app.route('/admin/<admin_name>')
+@require_session
+def admin_dashboard(admin_name):
+    session_user = request.session_user
+    # Allow super_admin to access any admin dashboard
+    if session_user.get('user_type') == 'super_admin':
+        return render_template('admin_dashboard.html', admin_name=admin_name)
+    # Check if user is the correct admin
+    if session_user.get('user_type') != 'admin' or session_user.get('user_identifier') != admin_name:
+        return redirect('/')
+    return render_template('admin_dashboard.html', admin_name=admin_name)
+
+@app.route('/financial_overview')
+@require_session
+def financial_overview():
+    session_user = request.session_user
+    # Only allow super_admin
+    if session_user.get('user_type') != 'super_admin':
+         return redirect('/')
     
-    if phase_code in ['CH', 'UNK']:
-        matches.extend(_scan_evals(evaluations, 'Account #', tsig, tlast5, 'challenge'))
-    if phase_code != 'CH':
-        matches.extend(_scan_evals(evaluations, 'Account #.1', tsig, tlast5, 'funded'))
-    return matches
+    overview_data = calculate_propfirm_overview()
+    
+    return render_template('financial_overview.html', 
+                           overview=overview_data)
 
-def _scan_evals(evaluations, col_name, tsig, tlast5, label):
-    found = []
-    for idx, ev in enumerate(evaluations):
-        val = str(ev.get(col_name, '')).strip()
-        if not val: continue
-        if tsig and get_account_signature(val) == tsig:
-            found.append((idx, label))
+@app.route('/payout_history')
+@require_session
+def payout_history():
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
+         return redirect('/')
+
+    # Filter dates
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    
+    start_date = None
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        except:
+            pass
+            
+    end_date = None
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        except:
+            pass
+
+    prop_firm_filter = request.args.get('prop_firm')
+    
+    # We need overview data just to get the list of prop firms for the dropdown
+    overview_data = calculate_propfirm_overview()
+    sorted_prop_firms = sorted(overview_data.keys())
+    
+    payouts_list = get_payouts_history(start_date, end_date, prop_firm_filter)
+    
+    return render_template('payout_history.html', 
+                           payouts=payouts_list,
+                           start_date=start_date_str,
+                           end_date=end_date_str,
+                           selected_prop_firm=prop_firm_filter,
+                           prop_firms=sorted_prop_firms)
+
+@app.route('/client_performance')
+@require_session
+def client_performance():
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
+         return redirect('/')
+    return render_template('client_performance.html')
+
+
+@app.route('/trader/<trader_name>')
+@require_session
+def trader_dashboard(trader_name):
+    session_user = request.session_user
+    # Allow super_admin to access any trader dashboard
+    if session_user.get('user_type') == 'super_admin':
+        return render_template('trader_dashboard.html', trader_name=trader_name)
+    # Allow admin to access traders under them
+    if session_user.get('user_type') == 'admin':
+        return render_template('trader_dashboard.html', trader_name=trader_name)
+    # Check if user is the correct trader
+    if session_user.get('user_type') != 'trader' or session_user.get('user_identifier') != trader_name:
+        return redirect('/')
+    return render_template('trader_dashboard.html', trader_name=trader_name)
+
+@app.route('/dashboard/<client_id>')
+@require_session
+def client_dashboard(client_id):
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    
+    # Get client email for version history feature
+    client_email = ''
+    client_data = get_client_data(client_id)
+    if client_data and client_data.get('identity'):
+        client_email = client_data['identity'].get('email', '')
+    
+    # Allow super_admin, admin, and trader to access any client dashboard
+    if user_type in ['super_admin', 'admin', 'trader']:
+        return render_template('index.html', client_id=client_id, user_type=user_type, 
+                               can_edit_hedging=True, client_email=client_email)
+    # Check if user is the correct client
+    if user_type != 'client' or session_user.get('user_identifier') != client_id:
+        return redirect('/')
+    return render_template('index.html', client_id=client_id, user_type=user_type, 
+                           can_edit_hedging=False, client_email=client_email)
+
+# ============ Hierarchy API with Role-Based Access Control ============
+
+def get_filtered_hierarchy(user_type, user_identifier):
+    """
+    Returns hierarchy filtered based on user role:
+    - super_admin: sees everything
+    - admin: sees only their traders and clients
+    - trader: sees only their clients
+    - client: sees only themselves
+    """
+    full_hierarchy = hierarchy
+    
+    if user_type == 'super_admin':
+        return full_hierarchy
+    
+    if user_type == 'admin':
+        # Admin sees only their own data
+        admin_name = user_identifier
+        if admin_name in full_hierarchy.get('admins', {}):
+            return {
+                'admins': {
+                    admin_name: full_hierarchy['admins'][admin_name]
+                }
+            }
+        return {'admins': {}}
+    
+    if user_type == 'trader':
+        # Trader sees only their clients - need to find which admin they belong to
+        trader_name = user_identifier
+        for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
+            traders = admin_data.get('traders', {})
+            if trader_name in traders:
+                return {
+                    'admins': {
+                        admin_name: {
+                            'email': '',  # Hide admin email from trader
+                            'traders': {
+                                trader_name: traders[trader_name]
+                            }
+                        }
+                    }
+                }
+        return {'admins': {}}
+    
+    if user_type == 'client':
+        # Client sees only themselves
+        client_name = user_identifier
+        for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
+            for trader_name, trader_data in admin_data.get('traders', {}).items():
+                for client in trader_data.get('clients', []):
+                    if client.get('name') == client_name or client.get('email') == client_name:
+                        return {
+                            'admins': {
+                                admin_name: {
+                                    'email': '',
+                                    'traders': {
+                                        trader_name: {
+                                            'email': '',
+                                            'clients': [client]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+        return {'admins': {}}
+    
+    return {'admins': {}}
+
+@app.route('/api/hierarchy')
+def get_hierarchy():
+    """Returns hierarchy filtered by user's role."""
+    session_token = request.cookies.get('session_token')
+    
+    if not session_token:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    
+    session_info = validate_session(session_token)
+    if not session_info:
+        return jsonify({"status": "error", "message": "Invalid session"}), 401
+    
+    user_type = session_info.get('user_type')
+    user_identifier = session_info.get('user_identifier')
+    
+    filtered = get_filtered_hierarchy(user_type, user_identifier)
+    return jsonify(filtered)
+
+@app.route('/api/super_admin/totals')
+def get_super_admin_totals():
+    """Get aggregated totals across all clients for super admin dashboard."""
+    session_token = request.cookies.get('session_token')
+    
+    if not session_token:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    
+    session_info = validate_session(session_token)
+    if not session_info or session_info.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Super admin access required"}), 403
+    
+    # Get all client data
+    all_clients = get_all_clients()
+    
+    # Aggregate totals
+    total_payouts = 0.0
+    total_deposits = 0.0
+    total_fees = 0.0
+    total_hedge_results = 0.0
+    total_farming = 0.0
+    total_net_profit = 0.0
+    active_accounts = 0
+    completed_accounts = 0
+    failed_accounts = 0
+    
+    # List to hold individual client stats
+    client_details = []
+    
+    def parse_currency(val):
+        """Parse currency string to float."""
+        if val is None:
+            return 0.0
+        if isinstance(val, (int, float)):
+            return float(val)
+        try:
+            # Remove currency symbols and commas
+            cleaned = str(val).replace('$', '').replace(',', '').replace(' ', '').strip()
+            if cleaned == '' or cleaned == '-':
+                return 0.0
+            return float(cleaned)
+        except (ValueError, TypeError):
+            return 0.0
+    
+    for client_id, client_data in all_clients.items():
+        if not client_data:
             continue
-        ev5 = get_last_n_digits(val, 5)
-        if tlast5 and len(tlast5)>=4:
-             if ev5 == tlast5 or (len(ev5)>=len(tlast5) and ev5.endswith(tlast5)):
-                 found.append((idx, label))
-    return found
-
-
-app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
-
-# ============ Rate Limiting ============
-# Note: For local development, use higher limits. 
-# For production, consider: ["200 per day", "50 per hour"]
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["10000 per day", "2000 per hour"],
-    storage_uri="memory://"
-)
-
-# Initialize Hierarchy from Config
-hierarchy = SYSTEM_HIERARCHY
-
-
-def get_account_signature(account_number):
-    """
-    Extract account signature for matching: first 4 + last 4/5 digits.
-    This handles truncated account numbers in MT5 comments.
-    
-    Handles truncated format with '...' like: FNFT...59574
-    
-    Examples:
-        MFFUEVSTP326057008 -> mffu7008 (full account)
-        FNFT...59574 -> fnft59574 (truncated - keep last 5)
-        12345678 -> 12345678
-    """
-    if not account_number:
-        return None
-    
-    account_str = str(account_number).strip()
-    
-    # Handle MT5 truncated TopStep format: V2-...SUFFIX
-    # This must come before the generic '...' handler to avoid including 'v2-' in the prefix
-    if account_str.lower().startswith('v2-...'):
-        return account_str.split('...')[-1].lower()
-
-    # Handle TopStep/Dashboard formats: 50KTC-V2-..., EXPRESS-V2-...
-    # Extract the last part which is likely the actual account number used in MT5
-    if ('-V2-' in account_str) or ('50KTC' in account_str) or ('EXPRESS' in account_str):
-        parts = account_str.split('-')
-        last_part = parts[-1] 
-        # Only treat as account number if it's alphanumeric but mostly digits/lengthy
-        # Case: 50KTC-V2-472054-49197160 -> last is 49197160
-        if len(parts) > 1:
-            account_str = last_part
-    
-    # Handle truncated format: PREFIX...SUFFIX
-    if '...' in account_str:
-        parts = account_str.split('...')
-        if len(parts) == 2:
-            prefix = parts[0][:4] if len(parts[0]) >= 4 else parts[0]
-            suffix = parts[1]  # Keep full suffix (usually 5 digits)
-            return (prefix + suffix).lower()
-    
-    # Standard format: first 4 + last 4
-    if len(account_str) < 8:
-        return account_str.lower()
-    
-    # First 4 + last 4
-    return (account_str[:4] + account_str[-4:]).lower()
-
-
-def get_last_n_digits(account: str, n: int = 5) -> str:
-    """Extract last N digits from account number."""
-    if not account:
-        return ""
+            
+        # Get statistics from client data
+        stats = client_data.get('statistics', {})
         
-    # Handle V2-... prefix exclusion (TopStep) to ensure we get actual account digits
-    clean_account = account
-    lower_acc = account.lower()
-    if lower_acc.startswith('v2-...'):
-        clean_account = account.split('...')[-1]
+        # Get client metadata
+        identity = client_data.get('identity', {})
+        client_source = identity.get('source', 'Private')  # Default to Private
         
-    # Extract only digits from the end
-    digits = ''.join(c for c in clean_account if c.isdigit())
-    return digits[-n:] if len(digits) >= n else digits
+        # Get cashflow/in-progress totals (all accounts)
+        cashflow = stats.get('cashflow_inprogress', {})
+        c_payouts = parse_currency(cashflow.get('payouts', 0))
+        c_fees = parse_currency(cashflow.get('challenge_fees', 0))
+        c_hedge = parse_currency(cashflow.get('hedging_results', 0))
+        c_farm = parse_currency(cashflow.get('farming_results', 0))
+        
+        total_payouts += c_payouts
+        total_fees += c_fees
+        total_hedge_results += c_hedge
+        total_farming += c_farm
+        
+        # Get hedging review for deposits
+        hedging_review = stats.get('hedging_review', {})
+        c_deposits = parse_currency(hedging_review.get('total_deposits', 0))
+        total_deposits += c_deposits
+        
+        # Get eval totals for account counts
+        eval_totals = stats.get('eval_totals', {})
+        c_active = int(eval_totals.get('total_running', 0) or 0)
+        c_passed = int(eval_totals.get('total_passed', 0) or 0)
+        c_failed = int(eval_totals.get('total_failed', 0) or 0)
+        
+        active_accounts += c_active
+        completed_accounts += c_passed
+        failed_accounts += c_failed
+        
+        # Calculate net profit from profitability data
+        prof_completed = stats.get('profitability_completed', {})
+        c_net = parse_currency(prof_completed.get('payouts', 0)) + \
+              parse_currency(prof_completed.get('hedging_results', 0)) + \
+              parse_currency(prof_completed.get('farming_results', 0)) - \
+              parse_currency(prof_completed.get('challenge_fees', 0))
+        total_net_profit += c_net
+        
+        # Add to detail list
+        client_details.append({
+            "client_id": client_id,
+            "source": client_source,
+            "payouts": round(c_payouts, 2),
+            "deposits": round(c_deposits, 2),
+            "fees": round(c_fees, 2),
+            "hedge": round(c_hedge, 2),
+            "farming": round(c_farm, 2),
+            "net_profit": round(c_net, 2),
+            "active": c_active,
+            "passed": c_passed,
+            "failed": c_failed
+        })
+    
+    return jsonify({
+        "status": "success",
+        "totals": {
+            "total_payouts": round(total_payouts, 2),
+            "total_deposits": round(total_deposits, 2),
+            "total_fees": round(total_fees, 2),
+            "total_hedge_results": round(total_hedge_results, 2),
+            "total_farming": round(total_farming, 2),
+            "total_net_profit": round(total_net_profit, 2),
+            "active_accounts": active_accounts,
+            "completed_accounts": completed_accounts,
+            "failed_accounts": failed_accounts,
+            "client_count": len(all_clients)
+        },
+        "clients": client_details
+    })
+
+@app.route('/api/client/update_source', methods=['POST'])
+@require_session
+def update_client_source():
+    """Update client source (BEF/Private)."""
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+        
+    data = request.json
+    client_id = data.get('client_id')
+    source = data.get('source')
+    
+    if not client_id or source not in ['BEF', 'Private']:
+        return jsonify({"status": "error", "message": "Invalid data"}), 400
+        
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client not found"}), 404
+        
+    if 'identity' not in client_data:
+        client_data['identity'] = {}
+        
+    client_data['identity']['source'] = source
+    
+    # Save using update_client_field to persist changes
+    # We ideally should create a new history version but for metadata direct update might be okay?
+    # Actually update_client_field handles persistence
+    update_client_field(client_id, 'identity', client_data['identity'])
+    
+    return jsonify({"status": "success"})
+
+@app.route('/api/client/lookup', methods=['POST'])
+@require_api_key
+def api_client_lookup():
+    """Look up client hierarchy info by email."""
+    email = request.json.get('email', '').strip()
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    client = get_client_by_email(email)
+    if client:
+        return jsonify({
+            "status": "success",
+            "client": client['client'],
+            "trader": client['trader'],
+            "admin": client['admin'],
+            "email": client['email']
+        })
+    
+    return jsonify({"status": "error", "message": "Email not found in system"}), 404
+
+# ============ PUBLIC CLIENT API (No API Key Required) ============
+
+@app.route('/api/client/auth', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_client_auth():
+    """
+    Public endpoint - authenticate client by email only.
+    Returns client hierarchy info if email exists in system.
+    No API key required - just the client email.
+    """
+    email = request.json.get('email', '').strip().lower()
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    client = get_client_by_email(email)
+    if client:
+        log_action('CLIENT_AUTH', 'client', email, get_remote_address(), 'Email verified')
+        return jsonify({
+            "status": "success",
+            "identity": {
+                "admin": client['admin'],
+                "trader": client['trader'],
+                "client": client['client'],
+                "email": client['email'],
+                "category": client.get('category', '')
+            }
+        })
+    
+    log_action('CLIENT_AUTH_FAILED', 'client', email, get_remote_address(), 'Email not found', False)
+    return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
 
 
-def match_account_to_evaluation(account_number, evaluations, phase_code):
+@app.route('/api/client/push', methods=['POST'])
+@limiter.limit("60 per minute")
+def api_client_push():
     """
-    Find matching evaluation for an account number based on phase.
-    
-    For Challenge (CH): Match against 'Account #' column
-    For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
-    
-    Matching strategy:
-    1. Try signature match (first4 + last4/5)
-    2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
+    Public endpoint - push data using client email only (no API key).
+    Automatically looks up hierarchy from email.
+    Recalculates statistics using MT5 deals/account data if provided.
     """
-    if not account_number or not evaluations:
-        return None, None
+    data = request.json
+    email = data.get('email', '').strip().lower()
     
-    target_sig = get_account_signature(account_number)
-    target_last5 = get_last_n_digits(account_number, 5)
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
     
-    if not target_sig and not target_last5:
-        return None, None
+    # Look up client by email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
     
-    # Determine which column to check based on phase
-    if phase_code == 'CH':
-        column_name = 'Account #'  # Challenge accounts
+    admin_id = client_info['admin']
+    trader_id = client_info['trader']
+    client_id = client_info['client']
+    
+    # Get MT5 data from push
+    mt5_deals = data.get("deals", [])
+    mt5_account = data.get("account", {})
+    
+    # Get existing data to merge evaluations if needed
+    existing_data = get_client_data(client_id) or {}
+    
+    # Only use new evaluations if explicitly provided and not empty
+    # If "evaluations" key is missing or None, preserve existing data
+    if "evaluations" in data and data["evaluations"]:
+        evaluations = data["evaluations"]
+        app.logger.info(f"   Using {len(evaluations)} NEW evaluations from push")
     else:
-        column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
+        evaluations = existing_data.get("evaluations", [])
+        app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
     
-    # First pass: Try signature match
-    for idx, ev in enumerate(evaluations):
-        eval_account = str(ev.get(column_name, '')).strip()
-        if not eval_account:
-            continue
+    # Normalize Account Size values to standard format
+    evaluations = normalize_evaluations(evaluations)
+    
+    # Check for aggregated comment data (from Push by Comment feature)
+    aggregated_by_comment = data.get("aggregated_by_comment", [])
+    comment_summary = data.get("comment_summary", {})
+    hedge_match_log = []
+    
+    if aggregated_by_comment:
+        app.logger.info(f"📋 Received aggregated comment data: {len(aggregated_by_comment)} groups")
+        app.logger.info(f"   Comment summary: {comment_summary}")
         
-        eval_sig = get_account_signature(eval_account)
-        if eval_sig == target_sig:
-            return idx, eval_account
+        # Update evaluations with hedge results from aggregated data
+        if evaluations:
+            app.logger.info(f"🔄 Matching hedge results to evaluations...")
+            evaluations, hedge_match_log = update_evaluations_from_aggregated_data(evaluations, aggregated_by_comment)
+            
+            for log_line in hedge_match_log:
+                app.logger.info(f"   {log_line}")
     
-    # Second pass: Try last 5 digits match (for truncated accounts)
-    if target_last5:
-        # Check against evaluations
-        for idx, ev in enumerate(evaluations):
-            eval_account = str(ev.get(column_name, '')).strip()
-            if not eval_account:
-                continue
-            
-            # Get last 5 digits of evaluation account
-            eval_last5 = get_last_n_digits(eval_account, 5)
-            
-            # Standard exact match of 5 digits
-            if len(target_last5) == 5 and eval_last5 == target_last5:
-                return idx, eval_account
-            
-            # Fallback for TopStep: If target is short (4 digits) and matches end of eval
-            if len(target_last5) >= 4 and eval_last5.endswith(target_last5):
-                 return idx, eval_account
+    # Debug logging
+    acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
+    app.logger.info(f"📥 Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
     
-    return None, None
+    # Log deal types to debug
+    if mt5_deals:
+        deal_types = [str(d.get('type', 'unknown')) for d in mt5_deals[:5]]
+        app.logger.info(f"   Sample deal types: {deal_types}")
+    
+    # ALWAYS recalculate statistics when we have evaluations or MT5 data
+    # This ensures discrepancy is only calculated when we have actual MT5 data
+    statistics = data.get("statistics", {})
+    if evaluations or mt5_deals or mt5_account:
+        try:
+            from utils.data_processor import calculate_statistics
+            
+            # Log what we're passing to calculate_statistics
+            app.logger.info(f"🔧 Calling calculate_statistics with:")
+            app.logger.info(f"   - mt5_account type: {type(mt5_account)}, has data: {bool(mt5_account)}")
+            if mt5_account:
+                app.logger.info(f"   - mt5_account.balance: {mt5_account.get('balance', 'N/A')}")
+                app.logger.info(f"   - mt5_account.total_deposits: {mt5_account.get('total_deposits', 'N/A')}")
+                app.logger.info(f"   - mt5_account.total_withdrawals: {mt5_account.get('total_withdrawals', 'N/A')}")
+            
+            # Pass MT5 data - if empty, discrepancy will be 0
+            mt5_acc_param = mt5_account if mt5_account else None
+            mt5_deals_param = mt5_deals if mt5_deals else None
+            statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param)
+            
+            # Log the hedging review results
+            hr = statistics.get('hedging_review', {})
+            app.logger.info(f"✅ Stats calculated:")
+            app.logger.info(f"   - Current balance: ${hr.get('current_balance', 0):.2f}")
+            app.logger.info(f"   - Total deposits: ${hr.get('total_deposits', 0):.2f}")
+            app.logger.info(f"   - Total withdrawals: ${hr.get('total_withdrawals', 0):.2f}")
+            app.logger.info(f"   - Actual hedging: ${hr.get('actual_hedging_results', 0):.2f}")
+            
+            # Debug info
+            if '_debug_deal_count' in hr:
+                app.logger.info(f"   - Debug: {hr.get('_debug_deal_count')} deals processed, types seen: {hr.get('_debug_deal_types', [])}")
+        except Exception as e:
+            app.logger.error(f"Error recalculating stats: {e}")
+            import traceback
+            app.logger.error(traceback.format_exc())
+            # Keep the provided statistics if recalc fails
+    
+    # Prepare client data
+    client_data = {
+        "deals": mt5_deals,
+        "positions": data.get("positions", []),
+        "account": mt5_account,
+        "evaluations": evaluations,
+        "statistics": statistics,
+        "dropdown_options": data.get("dropdown_options", {}),
+        "identity": {
+            "admin": admin_id,
+            "trader": trader_id,
+            "client": client_id,
+            "email": email
+        },
+        # Store aggregated comment data if provided (from Push by Comment feature)
+        "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
+        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {})
+    }
+    
+    # Final verification before save
+    hr_final = statistics.get('hedging_review', {})
+    app.logger.info(f"📦 FINAL DATA TO SAVE for {client_id}:")
+    app.logger.info(f"   - hedging_review.total_deposits: ${hr_final.get('total_deposits', 0):.2f}")
+    app.logger.info(f"   - hedging_review.total_withdrawals: ${hr_final.get('total_withdrawals', 0):.2f}")
+    app.logger.info(f"   - hedging_review.current_balance: ${hr_final.get('current_balance', 0):.2f}")
+    app.logger.info(f"   - account.total_deposits: ${mt5_account.get('total_deposits', 0) if mt5_account else 0:.2f}")
+    if aggregated_by_comment:
+        app.logger.info(f"   - aggregated_by_comment: {len(aggregated_by_comment)} groups")
+    
+    # Determine change source for history tracking
+    change_source = 'trader_app'
+    if aggregated_by_comment:
+        change_source = 'mt5_push_with_comments'
+    elif mt5_account or mt5_deals:
+        change_source = 'mt5_push'
+    
+    # Save to database WITH history tracking
+    success, version = save_client_data_with_history(
+        client_id, 
+        client_data,
+        action='DATA_PUSH',
+        changed_by=email,
+        changed_by_type='client',
+        ip_address=get_remote_address(),
+        change_source=change_source,
+        change_description=f"Data push from trader app with {len(evaluations)} evaluations"
+    )
+    
+    # Update Hierarchy (in case new)
+    add_admin(admin_id)
+    add_trader(admin_id, trader_id)
+    add_client(admin_id, trader_id, client_id)
+    
+    log_action('CLIENT_DATA_PUSH', 'client', email, get_remote_address(), f"Data pushed for {client_id} (v{version})")
+    
+    response_data = {
+        "status": "success", 
+        "message": f"Data updated for {client_id}",
+        "version": version,
+        "identity": {
+            "admin": admin_id,
+            "trader": trader_id,
+            "client": client_id
+        }
+    }
+    
+    # Include hedge match log if we processed aggregated data
+    if hedge_match_log:
+        response_data["hedge_match_log"] = hedge_match_log
+        response_data["hedge_updates"] = len([l for l in hedge_match_log if l.startswith("✅")])
+    
+    return jsonify(response_data)
 
 
-def normalize_account_size(value):
+@app.route('/api/client/migrate_sheet', methods=['POST'])
+@limiter.limit("10 per minute")
+def api_migrate_sheet():
     """
-    Normalize account size values to standard format: $X,XXX
-    
-    Handles:
-        - "50k", "50K" → "$50,000"
-        - "100000", "100,000" → "$100,000"
-        - "$50,000" → "$50,000" (already correct)
-        - "5000" → "$5,000"
+    Public endpoint - migrate data from Google Sheets using client email.
+    Fetches data from Google Sheet and pushes it to the dashboard.
     """
-    import re
-    if not value:
-        return value
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    sheet_url = data.get('sheet_url', '').strip()
     
-    val = str(value).strip().upper()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
     
-    # Already in correct format
-    if re.match(r'^\$[\d,]+$', val):
-        return value
+    if not sheet_url:
+        return jsonify({"status": "error", "message": "Google Sheet URL required"}), 400
     
-    # Handle "50k" or "50K" format
-    match = re.match(r'^[\$]?(\d+\.?\d*)K$', val, re.IGNORECASE)
-    if match:
-        num = float(match.group(1)) * 1000
-        return f"${num:,.0f}"
+    # Look up client by email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
     
-    # Handle plain numbers like "50000" or "50,000"
-    val_clean = re.sub(r'[\$,\s]', '', val)
+    admin_id = client_info['admin']
+    trader_id = client_info['trader']
+    client_id = client_info['client']
+    
+    # Fetch data from Google Sheets
     try:
-        num = float(val_clean)
-        return f"${num:,.0f}"
-    except:
-        pass
-    
-    # Return original if can't parse
-    return value
-
-
-def normalize_evaluations(evaluations):
-    """Normalize field values in evaluations list."""
-    if not evaluations:
-        return evaluations
-    
-    for ev in evaluations:
-        if 'Account Size' in ev and ev['Account Size']:
-            ev['Account Size'] = normalize_account_size(ev['Account Size'])
-    
-    return evaluations
-
-
-def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
-    """
-    Determine the correct field name to update based on phase.
-    
-    Phase mappings:
-    - CH1-5: Hedge Result 1-5 (Challenge)
-    - FD (MFFU with FD0): FD0→Hedge Result 1, FD1→Hedge Result 2, etc.
-    - FD (Other starting FD1): FD1→Hedge Result 1, FD2→Hedge Result 2, etc.
-    - DD1-4: Additional funded hedge results
-    - FA: Hedge Day N (based on date or next available slot)
-    """
-    if phase_code == 'CH':
-        # Challenge: CH1 → Hedge Result 1, CH2 → Hedge Result 2, etc.
-        if trade_number is not None and 1 <= trade_number <= 5:
-            return f"Hedge Result {trade_number}"
-    
-    elif phase_code == 'FD':
-        # Determine if this is an MFFU account (uses FD0)
-        # MFFU accounts: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1, etc.
-        # Other accounts: FD0→HR1.1 (rare), FD1→HR1.1, FD2→HR2.1, etc.
-        is_mffu = account_number and account_number.upper().startswith('MFFU')
+        # Import the data processor
+        from utils.data_processor import fetch_evaluations, calculate_statistics
         
-        if trade_number is not None:
-            if is_mffu:
-                # MFFU: FD0→Hedge Result 1.1, FD1→Hedge Result 2.1, etc.
-                return f"Hedge Result {trade_number + 1}.1"
-            else:
-                # Other firms: FD0→HR1.1, FD1→HR1.1, FD2→HR2.1, etc.
-                # FD0 is rare for non-MFFU, treat same as FD1
-                if trade_number == 0:
-                    return "Hedge Result 1.1"
-                else:
-                    return f"Hedge Result {trade_number}.1"
-    
-    elif phase_code == 'DD':
-
-    
-        # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
-
-    
-        if trade_number is not None and trade_number >= 1:
-
-    
-            return f"Hedge Result {trade_number}.1" 
-    
-    elif phase_code == 'FA':
-        # Farming: Find next available Hedge Day slot
-        if eval_idx is not None and evaluations:
-            ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
-            for day_num in range(1, 35):
-                field_name = f"Hedge Day {day_num}"
-                existing_value = ev.get(field_name)
-                if existing_value is None or existing_value == '' or existing_value == 0:
-                    return field_name
-        # Default to Hedge Day 1 if no slot found
-        return "Hedge Day 1"
-    
-    return None
-
-
-def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
-    """
-    Update evaluation hedge result fields from aggregated MT5 comment data.
-    
-    Args:
-        evaluations: List of evaluation records
-        aggregated_data: List of aggregated trade data with account_number, phase_code, etc.
-    
-    Returns:
-        Tuple of (updated_evaluations, match_log)
-    """
-    if not evaluations or not aggregated_data:
-        return evaluations, ["No evaluations or aggregated data to process"]
-    
-    match_log = []
-    updates_made = 0
-    grouped_aggs = {}
-    
-    # 1. Group aggregations
-    for agg in aggregated_data:
-        acc = agg.get('account_number', '')
-        phase = agg.get('phase_code', 'UNK')
-        if phase == 'FA': trade = 'ALL' 
-        else: trade = agg.get('trade_number')
-        group_key = (acc, phase, trade)
-        if group_key not in grouped_aggs: grouped_aggs[group_key] = []
-        grouped_aggs[group_key].append(agg)
+        evaluations = fetch_evaluations(sheet_url)
+        if not evaluations:
+            return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public."}), 400
         
-    # 2. Process groups
-    for (account_number, phase, trade_number), agg_list in grouped_aggs.items():
-        # Sort by date
-        agg_list.sort(key=lambda x: x.get('farming_date') or '')
+        # Calculate statistics without MT5 data (discrepancy will be 0)
+        statistics = calculate_statistics(evaluations, None, None)
         
-        # Find Matches
-        eval_matches = match_account_to_evaluation_all(account_number, evaluations, phase)
-        if not eval_matches: continue
+        # Prepare client data
+        client_data = {
+            "deals": [],
+            "positions": [],
+            "account": {},
+            "evaluations": evaluations,
+            "statistics": statistics,
+            "dropdown_options": {},
+            "identity": {
+                "admin": admin_id,
+                "trader": trader_id,
+                "client": client_id,
+                "email": email
+            },
+            "sheet_url": sheet_url,
+            "migrated_at": datetime.now().isoformat()
+        }
+        
+        # Save to database WITH history tracking
+        success, version = save_client_data_with_history(
+            client_id, 
+            client_data,
+            action='SHEET_IMPORT',
+            changed_by=email,
+            changed_by_type='client',
+            ip_address=get_remote_address(),
+            change_source='sheet_migration',
+            change_description=f"Imported {len(evaluations)} records from Google Sheets"
+        )
+        
+        # Update Hierarchy
+        add_admin(admin_id)
+        add_trader(admin_id, trader_id)
+        add_client(admin_id, trader_id, client_id)
+        
+        log_action('SHEET_MIGRATION', 'client', email, get_remote_address(), 
+                   f"Migrated {len(evaluations)} records from Google Sheets for {client_id} (v{version})")
+        
+        # Return statistics for verification
+        return jsonify({
+            "status": "success", 
+            "message": f"Successfully migrated {len(evaluations)} evaluation records",
+            "records_imported": len(evaluations),
+            "version": version,
+            "statistics": statistics,  # Include stats for client-side verification
+            "identity": {
+                "admin": admin_id,
+                "trader": trader_id,
+                "client": client_id
+            }
+        })
+        
+    except Exception as e:
+        log_action('SHEET_MIGRATION_FAILED', 'client', email, get_remote_address(), str(e), False)
+        return jsonify({"status": "error", "message": f"Migration failed: {str(e)}"}), 500
+
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("10 per minute")
+def api_login():
+    email = request.json.get('email')
+    client_ip = get_remote_address()
+    
+    if not email: 
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    client = get_client_by_email(email)
+    if client:
+        log_action('CLIENT_LOGIN', 'client', email, client_ip, 'Successful login')
+        return jsonify({"status": "success", "redirect": f"/dashboard/{client['client']}"})
+    
+    log_action('CLIENT_LOGIN_FAILED', 'client', email, client_ip, 'Email not found', False)
+    return jsonify({"status": "error", "message": "Email not found"}), 404
+
+@app.route('/api/admin_login', methods=['POST'])
+@limiter.limit("5 per minute")
+def api_admin_login():
+    """Secure admin login with session creation."""
+    password = request.json.get('password')
+    client_ip = get_remote_address()
+    
+    if not password:
+        return jsonify({"status": "error", "message": "Password required"}), 400
+    
+    if verify_admin_password('super_admin', password):
+        session_token = create_session('admin', 'super_admin', client_ip)
+        log_action('ADMIN_LOGIN', 'admin', 'super_admin', client_ip, 'Successful login')
+        
+        response = jsonify({"status": "success", "redirect": "/super_admin"})
+        response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
+        return response
+    
+    log_action('ADMIN_LOGIN_FAILED', 'admin', 'super_admin', client_ip, 'Invalid password', False)
+    return jsonify({"status": "error", "message": "Invalid password"}), 403
+
+@app.route('/logout')
+def logout():
+    """Logout via GET request - clears session and redirects to login."""
+    session_token = request.cookies.get('session_token')
+    if session_token:
+        delete_session(session_token)
+        log_action('LOGOUT', 'user', 'session', get_remote_address())
+    
+    response = redirect('/')
+    response.delete_cookie('session_token')
+    return response
+
+@app.route('/api/logout', methods=['POST'])
+def api_logout():
+    """Logout and invalidate session (API endpoint)."""
+    session_token = request.cookies.get('session_token')
+    if session_token:
+        delete_session(session_token)
+    
+    response = jsonify({"status": "success"})
+    response.delete_cookie('session_token')
+    return response
+
+# ============ Unified Authentication Endpoint ============
+
+@app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("10 per minute")
+def unified_login():
+    """
+    Unified login endpoint - auto-detects user type from email/username.
+    - Super Admin: requires email + password
+    - Admin/Trader/Client: only requires email (no password)
+    """
+    data = request.json
+    identifier = data.get('identifier', '').strip()
+    password = data.get('password', '')
+    remember = data.get('remember', False)
+    client_ip = get_remote_address()
+    
+    if not identifier:
+        return jsonify({"status": "error", "message": "Email is required"}), 400
+    
+    # Find user by identifier (email or username)
+    user = find_user_by_identifier(identifier)
+    
+    # If not found in DB, check hierarchy (for email-only logins)
+    # This allows users defined in hierarchy.json but not yet in user_credentials to login
+    if not user and '@' in identifier:
+        hierarchy_user = get_user_by_email(identifier)
+        if hierarchy_user:
+            user = hierarchy_user
+    
+    if not user:
+        log_action('LOGIN_FAILED', 'unknown', identifier, client_ip, 'User not found', False)
+        return jsonify({"status": "error", "message": "Email not found in system"}), 403
+    
+    user_type = user.get('user_type')
+    username = user.get('username', identifier)
+    
+    # Check account lockout
+    if is_account_locked(username, user_type):
+        log_action('LOGIN_LOCKED', user_type, username, client_ip, 'Account locked', False)
+        return jsonify({"status": "error", "message": "Account locked. Too many failed attempts. Try again in 15 minutes."}), 429
+    
+    # Handle Super Admin login - REQUIRES PASSWORD
+    if user_type == 'super_admin':
+        if not password:
+            return jsonify({"status": "error", "message": "Password is required for Super Admin"}), 400
+        
+        if verify_admin_password('super_admin', password):
+            session_token = create_session('super_admin', 'super_admin', client_ip)
+            record_login_attempt('super_admin', 'super_admin', client_ip, True)
+            log_action('LOGIN_SUCCESS', 'super_admin', 'super_admin', client_ip)
             
-        # Sort Evaluations by Date
-        def get_p_date(eval_tuple):
-            ev = evaluations[eval_tuple[0]]
-            return str(ev.get('Date Purchased') or ev.get('Date Created') or '')
-        eval_matches.sort(key=get_p_date)
+            max_age = 30 * 24 * 60 * 60 if remember else 86400  # 30 days or 24 hours
+            response = jsonify({
+                "status": "success",
+                "user_type": "super_admin",
+                "redirect": "/super_admin",
+                "must_change_password": False
+            })
+            response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Lax', max_age=max_age)
+            return response
         
-        # Farming Logic
-        if phase == 'FA':
-            target_idx, _ = eval_matches[-1] # Use latest
-            for current_agg in agg_list:
-                amt = current_agg.get('net_profit', 0)
-                col = get_next_empty_farming_slot(evaluations[target_idx])
-                if col:
-                    evaluations[target_idx][col] = amt
-                    updates_made += 1
-            continue
+        record_login_attempt('super_admin', 'super_admin', client_ip, False)
+        log_action('LOGIN_FAILED', 'super_admin', 'super_admin', client_ip, 'Invalid password', False)
+        return jsonify({"status": "error", "message": "Invalid password"}), 403
+    
+    # Handle Admin/Trader/Client login - NO PASSWORD REQUIRED (email only)
+    # Just verify the email exists in hierarchy
+    session_token = create_session(user_type, username, client_ip)
+    record_login_attempt(username, user_type, client_ip, True)
+    log_action('LOGIN_SUCCESS', user_type, username, client_ip, 'Email-only login')
+    
+    # Determine redirect URL based on user type
+    redirect_map = {
+        'admin': f'/admin/{username}',
+        'trader': f'/trader/{username}',
+        'client': f'/dashboard/{username}'
+    }
+    redirect_url = redirect_map.get(user_type, '/')
+    
+    max_age = 30 * 24 * 60 * 60 if remember else 86400
+    response = jsonify({
+        "status": "success",
+        "user_type": user_type,
+        "redirect": redirect_url,
+        "must_change_password": False
+    })
+    response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Lax', max_age=max_age)
+    return response
 
-        # Standard Logic
-        eval_ptr = 0
-        for agg in agg_list:
-            if eval_ptr < len(eval_matches):
-                target_tuple = eval_matches[eval_ptr]
-                eval_ptr += 1 
-            else: target_tuple = eval_matches[-1]
-            
-            target_idx, account_type = target_tuple
-            eff_phase = phase
-            eff_trade = agg.get('trade_number')
-            if phase == 'UNK':
-                eff_phase = 'CH' if account_type == 'challenge' else 'FD'
-                eff_trade = 1
+# ============ User Management Endpoints (Admin only) ============
 
-            field = get_field_name_for_phase(eff_phase, eff_trade, None, evaluations, target_idx, account_number)
-            if field:
-                 evaluations[target_idx][field] = agg.get('net_profit', 0)
-                 match_log.append(f"✅ Match -> {field}")
-                 updates_made += 1
+@app.route('/api/admin/create_user', methods=['POST'])
+@require_admin_password
+@limiter.limit("20 per hour")
+def api_create_user():
+    """Create a new user account."""
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    user_type = data.get('user_type')  # admin, trader, or client
+    email = data.get('email')
+    parent_admin = data.get('parent_admin')
+    parent_trader = data.get('parent_trader')
+    
+    if not username or not password or not user_type:
+        return jsonify({"status": "error", "message": "Username, password, and user_type required"}), 400
+    
+    if user_type not in ['admin', 'trader', 'client']:
+        return jsonify({"status": "error", "message": "Invalid user type"}), 400
+    
+    if user_exists(username, user_type):
+        return jsonify({"status": "error", "message": f"{user_type.title()} '{username}' already exists"}), 400
+    
+    if create_user(username, password, user_type, email, parent_admin, parent_trader):
+        log_action('CREATE_USER', 'admin', username, get_remote_address(), f"Type: {user_type}")
+        return jsonify({"status": "success", "message": f"{user_type.title()} '{username}' created successfully"})
+    
+    return jsonify({"status": "error", "message": "Failed to create user"}), 500
+
+def can_manage_user(manager_type, manager_identifier, target_username, target_user_type):
+    """Check if a user can manage (reset password, deactivate) another user."""
+    if manager_type == 'super_admin':
+        return True  # Super admin can manage everyone
+    
+    if manager_type == 'admin':
+        # Admin can manage traders and clients under them
+        admin_data = hierarchy.get('admins', {}).get(manager_identifier, {})
         
-    return evaluations, match_log
-
-def get_next_empty_farming_slot(eval_row):
-    for i in range(1, 40): 
-        col = f"Hedge Day {i}"
-        val = eval_row.get(col)
-        if not val: return col
-    return "Hedge Day 35"
-
-def match_account_to_evaluation_all(account_number, evaluations, phase_code):
-    matches = []
-    tsig = get_account_signature(account_number)
-    tlast5 = get_last_n_digits(account_number, 5)
-    
-    if phase_code in ['CH', 'UNK']:
-        matches.extend(_scan_evals(evaluations, 'Account #', tsig, tlast5, 'challenge'))
-    if phase_code != 'CH':
-        matches.extend(_scan_evals(evaluations, 'Account #.1', tsig, tlast5, 'funded'))
-    return matches
-
-def _scan_evals(evaluations, col_name, tsig, tlast5, label):
-    found = []
-    for idx, ev in enumerate(evaluations):
-        val = str(ev.get(col_name, '')).strip()
-        if not val: continue
-        if tsig and get_account_signature(val) == tsig:
-            found.append((idx, label))
-            continue
-        ev5 = get_last_n_digits(val, 5)
-        if tlast5 and len(tlast5)>=4:
-             if ev5 == tlast5 or (len(ev5)>=len(tlast5) and ev5.endswith(tlast5)):
-                 found.append((idx, label))
-    return found
-
-
-app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
-
-# ============ Rate Limiting ============
-# Note: For local development, use higher limits. 
-# For production, consider: ["200 per day", "50 per hour"]
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["10000 per day", "2000 per hour"],
-    storage_uri="memory://"
-)
-
-# Initialize Hierarchy from Config
-hierarchy = SYSTEM_HIERARCHY
-
-
-def get_account_signature(account_number):
-    """
-    Extract account signature for matching: first 4 + last 4/5 digits.
-    This handles truncated account numbers in MT5 comments.
-    
-    Handles truncated format with '...' like: FNFT...59574
-    
-    Examples:
-        MFFUEVSTP326057008 -> mffu7008 (full account)
-        FNFT...59574 -> fnft59574 (truncated - keep last 5)
-        12345678 -> 12345678
-    """
-    if not account_number:
-        return None
-    
-    account_str = str(account_number).strip()
-    
-    # Handle MT5 truncated TopStep format: V2-...SUFFIX
-    # This must come before the generic '...' handler to avoid including 'v2-' in the prefix
-    if account_str.lower().startswith('v2-...'):
-        return account_str.split('...')[-1].lower()
-
-    # Handle TopStep/Dashboard formats: 50KTC-V2-..., EXPRESS-V2-...
-    # Extract the last part which is likely the actual account number used in MT5
-    if ('-V2-' in account_str) or ('50KTC' in account_str) or ('EXPRESS' in account_str):
-        parts = account_str.split('-')
-        last_part = parts[-1] 
-        # Only treat as account number if it's alphanumeric but mostly digits/lengthy
-        # Case: 50KTC-V2-472054-49197160 -> last is 49197160
-        if len(parts) > 1:
-            account_str = last_part
-    
-    # Handle truncated format: PREFIX...SUFFIX
-    if '...' in account_str:
-        parts = account_str.split('...')
-        if len(parts) == 2:
-            prefix = parts[0][:4] if len(parts[0]) >= 4 else parts[0]
-            suffix = parts[1]  # Keep full suffix (usually 5 digits)
-            return (prefix + suffix).lower()
-    
-    # Standard format: first 4 + last 4
-    if len(account_str) < 8:
-        return account_str.lower()
-    
-    # First 4 + last 4
-    return (account_str[:4] + account_str[-4:]).lower()
-
-
-def get_last_n_digits(account: str, n: int = 5) -> str:
-    """Extract last N digits from account number."""
-    if not account:
-        return ""
+        if target_user_type == 'trader':
+            # Check if trader is under this admin
+            return target_username in admin_data.get('traders', {})
         
-    # Handle V2-... prefix exclusion (TopStep) to ensure we get actual account digits
-    clean_account = account
-    lower_acc = account.lower()
-    if lower_acc.startswith('v2-...'):
-        clean_account = account.split('...')[-1]
+        if target_user_type == 'client':
+            # Check if client is under any of this admin's traders
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    if client.get('name') == target_username or client.get('email') == target_username:
+                        return True
+            return False
         
-    # Extract only digits from the end
-    digits = ''.join(c for c in clean_account if c.isdigit())
-    return digits[-n:] if len(digits) >= n else digits
+        return False  # Admin cannot manage other admins
+    
+    if manager_type == 'trader':
+        # Trader can only manage their clients
+        if target_user_type != 'client':
+            return False
+        
+        for admin_data in hierarchy.get('admins', {}).values():
+            trader_data = admin_data.get('traders', {}).get(manager_identifier, {})
+            for client in trader_data.get('clients', []):
+                if client.get('name') == target_username or client.get('email') == target_username:
+                    return True
+        return False
+    
+    return False
 
+@app.route('/api/admin/list_users', methods=['GET'])
+@require_admin_password
+def api_list_users():
+    """List all users."""
+    user_type = request.args.get('type')
+    users = list_users(user_type)
+    return jsonify({"status": "success", "users": users})
 
-def match_account_to_evaluation(account_number, evaluations, phase_code):
-    """
-    Find matching evaluation for an account number based on phase.
+@app.route('/api/user/reset_password', methods=['POST'])
+@require_role('super_admin', 'admin', 'trader')
+def api_reset_password_rbac():
+    """Reset a user's password with role-based access control."""
+    from dashboard.email_service import send_password_reset_with_temp
     
-    For Challenge (CH): Match against 'Account #' column
-    For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
+    session_user = request.session_user
+    manager_type = session_user.get('user_type')
+    manager_id = session_user.get('user_identifier')
     
-    Matching strategy:
-    1. Try signature match (first4 + last4/5)
-    2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
-    """
-    if not account_number or not evaluations:
-        return None, None
+    data = request.json
+    username = data.get('username')
+    user_type = data.get('user_type')
+    email = data.get('email')
     
-    target_sig = get_account_signature(account_number)
-    target_last5 = get_last_n_digits(account_number, 5)
+    if not username or not user_type:
+        return jsonify({"status": "error", "message": "Username and user_type required"}), 400
     
-    if not target_sig and not target_last5:
-        return None, None
+    # Check if user has permission to reset this user's password
+    if not can_manage_user(manager_type, manager_id, username, user_type):
+        log_action('RESET_PASSWORD_DENIED', manager_type, manager_id, get_remote_address(), 
+                   f"Attempted to reset: {username} ({user_type})", False)
+        return jsonify({"status": "error", "message": "Access denied. You can only manage users under your hierarchy."}), 403
     
-    # Determine which column to check based on phase
-    if phase_code == 'CH':
-        column_name = 'Account #'  # Challenge accounts
+    temp_password = reset_user_password(username, user_type)
+    if temp_password:
+        log_action('RESET_PASSWORD', manager_type, username, get_remote_address(), f"By: {manager_id}")
+        
+        email_sent = False
+        if email:
+            email_sent = send_password_reset_with_temp(email, username, temp_password)
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Password reset for {username}",
+            "temporary_password": temp_password,
+            "email_sent": email_sent
+        })
+    
+    return jsonify({"status": "error", "message": "User not found"}), 404
+
+@app.route('/api/admin/reset_password', methods=['POST'])
+@require_admin_password
+def api_reset_password():
+    """Reset a user's password (legacy - uses password header)."""
+    from dashboard.email_service import send_password_reset_with_temp
+    
+    data = request.json
+    username = data.get('username')
+    user_type = data.get('user_type')
+    email = data.get('email')  # Optional - for email notification
+    
+    if not username or not user_type:
+        return jsonify({"status": "error", "message": "Username and user_type required"}), 400
+    
+    temp_password = reset_user_password(username, user_type)
+    if temp_password:
+        log_action('RESET_PASSWORD', 'admin', username, get_remote_address(), f"Type: {user_type}")
+        
+        # Send email notification if email provided
+        email_sent = False
+        if email:
+            email_sent = send_password_reset_with_temp(email, username, temp_password)
+        
+        return jsonify({
+            "status": "success", 
+            "message": f"Password reset for {username}",
+            "temporary_password": temp_password,
+            "email_sent": email_sent
+        })
+    
+    return jsonify({"status": "error", "message": "User not found"}), 404
+
+@app.route('/api/admin/deactivate_user', methods=['POST'])
+@require_admin_password
+def api_deactivate_user():
+    """Deactivate a user account."""
+    data = request.json
+    username = data.get('username')
+    user_type = data.get('user_type')
+    
+    if not username or not user_type:
+        return jsonify({"status": "error", "message": "Username and user_type required"}), 400
+    
+    if deactivate_user(username, user_type):
+        log_action('DEACTIVATE_USER', 'admin', username, get_remote_address(), f"Type: {user_type}")
+        return jsonify({"status": "success", "message": f"User '{username}' deactivated"})
+    
+    return jsonify({"status": "error", "message": "User not found"}), 404
+
+# ============ Change Password Endpoint ============
+
+@app.route('/change-password')
+@require_session
+def change_password_page():
+    """Page to change password."""
+    return render_template('change_password.html')
+
+@app.route('/api/auth/change_password', methods=['POST'])
+@require_session
+@limiter.limit("5 per hour")
+def api_change_password():
+    """Change user's own password."""
+    from dashboard.email_service import send_password_changed_notification
+    
+    data = request.json
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+    
+    if not current_password or not new_password:
+        return jsonify({"status": "error", "message": "Current and new password required"}), 400
+    
+    if len(new_password) < 8:
+        return jsonify({"status": "error", "message": "Password must be at least 8 characters"}), 400
+    
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    username = session_user.get('user_identifier')
+    user_email = session_user.get('email', username)  # Use email if available
+    
+    # Verify current password
+    if user_type == 'super_admin':
+        if not verify_admin_password('super_admin', current_password):
+            return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
+        if set_admin_password('super_admin', new_password):
+            log_action('CHANGE_PASSWORD', 'super_admin', 'super_admin', get_remote_address())
+            # Send email notification
+            if user_email:
+                send_password_changed_notification(user_email, 'Super Admin', 'self')
+            return jsonify({"status": "success", "message": "Password changed successfully"})
     else:
-        column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
+        user_info = verify_user_password(username, user_type, current_password)
+        if not user_info:
+            return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
+        if update_user_password(username, user_type, new_password):
+            log_action('CHANGE_PASSWORD', user_type, username, get_remote_address())
+            # Send email notification
+            if user_email and '@' in user_email:
+                send_password_changed_notification(user_email, username, 'self')
+            return jsonify({"status": "success", "message": "Password changed successfully"})
     
-    # First pass: Try signature match
-    for idx, ev in enumerate(evaluations):
-        eval_account = str(ev.get(column_name, '')).strip()
-        if not eval_account:
-            continue
+    return jsonify({"status": "error", "message": "Failed to change password"}), 500
+
+# ============ Admin/Trader/Client Management ============
+
+@app.route('/api/add_admin', methods=['POST'])
+def api_add_admin():
+    name = request.json.get('name')
+    email = request.json.get('email', '')
+    if not name: return jsonify({"status": "error", "message": "Name required"}), 400
+    
+    if add_admin(name, email):
+        log_action('ADD_ADMIN', 'system', name, get_remote_address())
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Admin exists"}), 400
+
+@app.route('/api/update_admin', methods=['POST'])
+def api_update_admin():
+    name = request.json.get('name')
+    email = request.json.get('email')
+    if not name: return jsonify({"status": "error", "message": "Name required"}), 400
+    
+    if update_admin_details(name, email):
+        log_action('UPDATE_ADMIN', 'admin', name, get_remote_address())
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Admin not found"}), 400
+
+@app.route('/api/update_trader', methods=['POST'])
+def api_update_trader():
+    admin = request.json.get('admin')
+    name = request.json.get('name')
+    email = request.json.get('email')
+    if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    if update_trader_details(admin, name, email):
+        log_action('UPDATE_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Trader not found"}), 400
+
+@app.route('/api/update_client', methods=['POST'])
+def api_update_client():
+    admin = request.json.get('admin')
+    trader = request.json.get('trader')
+    name = request.json.get('name')
+    email = request.json.get('email')
+    if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    if update_client_details(admin, trader, name, email):
+        log_action('UPDATE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Client not found"}), 400
+
+@app.route('/api/add_trader', methods=['POST'])
+def api_add_trader():
+    admin = request.json.get('admin')
+    name = request.json.get('name')
+    email = request.json.get('email', '')
+    if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    if add_trader(admin, name, email):
+        log_action('ADD_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Invalid request or Trader exists"}), 400
+
+@app.route('/api/add_client', methods=['POST'])
+def api_add_client():
+    admin = request.json.get('admin')
+    trader = request.json.get('trader')
+    name = request.json.get('name')
+    email = request.json.get('email', '')
+    category = request.json.get('category', '')
+    
+    if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    if add_client(admin, trader, name, email, category):
+        log_action('ADD_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Invalid request or Client exists"}), 400
+
+@app.route('/api/remove_admin', methods=['POST'])
+def api_remove_admin():
+    name = request.json.get('name')
+    if not name: return jsonify({"status": "error", "message": "Name required"}), 400
+    
+    if remove_admin(name):
+        log_action('REMOVE_ADMIN', 'system', name, get_remote_address())
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Admin not found"}), 400
+
+@app.route('/api/remove_trader', methods=['POST'])
+def api_remove_trader():
+    admin = request.json.get('admin')
+    name = request.json.get('name')
+    if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    if remove_trader(admin, name):
+        log_action('REMOVE_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Trader not found"}), 400
+
+@app.route('/api/remove_client', methods=['POST'])
+def api_remove_client():
+    admin = request.json.get('admin')
+    trader = request.json.get('trader')
+    name = request.json.get('name')
+    if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    # Save a final snapshot before deletion so data can be recovered
+    client_data = get_client_data(name)
+    if client_data:
+        from dashboard.database import save_data_snapshot
+        save_data_snapshot(
+            name, client_data,
+            action='CLIENT_DELETED',
+            changed_by='system',
+            changed_by_type='admin',
+            ip_address=get_remote_address(),
+            change_source='client_removal',
+            change_description=f"Final snapshot before client removal (Trader: {trader}, Admin: {admin})"
+        )
+    
+    if remove_client(admin, trader, name):
+        log_action('REMOVE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Client not found"}), 400
+
+@app.route('/api/client/delete_evaluation', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_delete_evaluation():
+    """
+    Delete an evaluation row with history tracking.
+    The data is removed from current view but can be recovered from version history.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    evaluation_index = data.get('index')
+    
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    
+    if evaluation_index is None:
+        return jsonify({"status": "error", "message": "Evaluation index required"}), 400
+    
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    
+    # Get current client data
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+    
+    evaluations = client_data.get('evaluations', [])
+    
+    if evaluation_index < 0 or evaluation_index >= len(evaluations):
+        return jsonify({"status": "error", "message": "Invalid evaluation index"}), 400
+    
+    # Get details of what we're deleting for the log
+    deleted_eval = evaluations[evaluation_index]
+    deleted_info = f"Row {evaluation_index + 1}: {deleted_eval.get('Prop Firm', 'Unknown')} - {deleted_eval.get('Account Size', 'Unknown')}"
+    
+    # Remove the evaluation
+    evaluations.pop(evaluation_index)
+    client_data['evaluations'] = evaluations
+    
+    # Recalculate statistics
+    from utils.data_processor import calculate_statistics
+    client_data['statistics'] = calculate_statistics(evaluations, None, None)
+    
+    # Save with history tracking - the previous version contains the deleted row
+    success, version = save_client_data_with_history(
+        client_id,
+        client_data,
+        action='DELETE_EVALUATION',
+        changed_by=email,
+        changed_by_type='client',
+        ip_address=get_remote_address(),
+        change_source='dashboard_delete',
+        change_description=f"Deleted evaluation: {deleted_info}"
+    )
+    
+    log_action('DELETE_EVALUATION', 'client', email, get_remote_address(), 
+               f"Deleted {deleted_info} from {client_id} (v{version})")
+    
+    return jsonify({
+        "status": "success",
+        "message": f"Evaluation deleted. Use Version History to recover if needed.",
+        "version": version,
+        "deleted": deleted_info
+    })
+
+@app.route('/api/move_client', methods=['POST'])
+def api_move_client():
+    data = request.json
+    if move_client(data['client_name'], data['old_admin'], data['old_trader'], data['new_admin'], data['new_trader']):
+        log_action('MOVE_CLIENT', 'admin', data['client_name'], get_remote_address())
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Move failed"}), 400
+
+@app.route('/api/move_trader', methods=['POST'])
+def api_move_trader():
+    data = request.json
+    if move_trader(data['trader_name'], data['old_admin'], data['new_admin']):
+        log_action('MOVE_TRADER', 'admin', data['trader_name'], get_remote_address())
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Move failed"}), 400
+
+@app.route('/super_admin/clients')
+@require_session
+def client_management():
+    if request.session_user.get('user_type') != 'super_admin':
+        return redirect('/')
+    return render_template('client_management.html')
+
+# ============ Data API with Role-Based Access Control ============
+
+def can_access_client(user_type, user_identifier, target_client):
+    """Check if user has permission to access a client's data."""
+    if user_type == 'super_admin':
+        return True
+    
+    if user_type == 'client':
+        # Client can only access their own data
+        return user_identifier == target_client
+    
+    # For admins and traders, check hierarchy
+    for admin_name, admin_data in hierarchy.get('admins', {}).items():
+        for trader_name, trader_data in admin_data.get('traders', {}).items():
+            for client in trader_data.get('clients', []):
+                client_name = client.get('name', '')
+                client_email = client.get('email', '')
+                
+                if client_name == target_client or client_email == target_client:
+                    if user_type == 'admin' and user_identifier == admin_name:
+                        return True
+                    if user_type == 'trader' and user_identifier == trader_name:
+                        return True
+    
+    return False
+
+def get_accessible_clients(user_type, user_identifier):
+    """Get list of client names this user can access."""
+    clients = []
+    
+    if user_type == 'super_admin':
+        # Super admin can access all clients
+        for admin_data in hierarchy.get('admins', {}).values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    clients.append(client.get('name'))
+        return clients
+    
+    if user_type == 'admin':
+        # Admin can access all clients under their traders
+        admin_data = hierarchy.get('admins', {}).get(user_identifier, {})
+        for trader_data in admin_data.get('traders', {}).values():
+            for client in trader_data.get('clients', []):
+                clients.append(client.get('name'))
+        return clients
+    
+    if user_type == 'trader':
+        # Trader can access only their clients
+        for admin_data in hierarchy.get('admins', {}).values():
+            trader_data = admin_data.get('traders', {}).get(user_identifier, {})
+            for client in trader_data.get('clients', []):
+                clients.append(client.get('name'))
+        return clients
+    
+    if user_type == 'client':
+        # Client can only access themselves
+        return [user_identifier]
+    
+    return []
+
+@app.route('/api/hedging_review/<client_id>', methods=['POST'])
+@require_session
+def update_hedging_review(client_id):
+    """Update hedging review values manually - only for traders, admins, and super_admins."""
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+    
+    # Only allow traders, admins, and super_admins to edit
+    if user_type not in ['trader', 'admin', 'super_admin']:
+        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"Client tried to edit hedging for: {client_id}", False)
+        return jsonify({"status": "error", "message": "Only traders, admins, and super admins can edit hedging review"}), 403
+    
+    # Check if user can access this client
+    if not can_access_client(user_type, user_identifier, client_id):
+        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"No access to client: {client_id}", False)
+        return jsonify({"status": "error", "message": "Access denied to this client"}), 403
+    
+    data = request.json
+    
+    # Get existing client data
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+    
+    # Update hedging review in statistics
+    if 'statistics' not in client_data:
+        client_data['statistics'] = {}
+    if 'hedging_review' not in client_data['statistics']:
+        client_data['statistics']['hedging_review'] = {}
+    
+    hr = client_data['statistics']['hedging_review']
+    hr['total_deposits'] = float(data.get('total_deposits', hr.get('total_deposits', 0)))
+    hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
+    hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
+    hr['actual_hedging_results'] = float(data.get('actual_hedging_results', hr.get('actual_hedging_results', 0)))
+    hr['discrepancy'] = float(data.get('discrepancy', hr.get('discrepancy', 0)))
+    
+    # Also store in account for consistency with MT5 push
+    if 'account' not in client_data:
+        client_data['account'] = {}
+    client_data['account']['balance'] = hr['current_balance']
+    client_data['account']['total_deposits'] = hr['total_deposits']
+    client_data['account']['total_withdrawals'] = hr['total_withdrawals']
+    
+    # Save updated data
+    save_client_data(client_id, client_data)
+    
+    log_action('HEDGING_EDIT', user_type, user_identifier, get_remote_address(), 
+               f"Updated hedging review for {client_id}: deposits={hr['total_deposits']}, withdrawals={hr['total_withdrawals']}, balance={hr['current_balance']}")
+    
+    return jsonify({
+        "status": "success", 
+        "message": "Hedging review updated",
+        "hedging_review": hr
+    })
+
+@app.route('/api/historical_mt5/<client_id>', methods=['POST'])
+@require_session
+def manage_historical_mt5(client_id):
+    """Manage historical MT5 accounts - add/delete. Only for traders, admins, and super_admins."""
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+    
+    # Only allow traders, admins, and super_admins to edit
+    if user_type not in ['trader', 'admin', 'super_admin']:
+        log_action('HISTORICAL_MT5_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"Client tried to edit historical MT5 for: {client_id}", False)
+        return jsonify({"status": "error", "message": "Only traders, admins, and super admins can manage historical MT5 accounts"}), 403
+    
+    # Check if user can access this client
+    if not can_access_client(user_type, user_identifier, client_id):
+        log_action('HISTORICAL_MT5_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"No access to client: {client_id}", False)
+        return jsonify({"status": "error", "message": "Access denied to this client"}), 403
+    
+    data = request.json
+    action = data.get('action')  # 'add' or 'delete'
+    
+    # Get existing client data
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+    
+    # Save snapshot BEFORE making changes (for recovery)
+    from dashboard.database import save_data_snapshot
+    save_data_snapshot(
+        client_id, client_data,
+        action='BEFORE_HISTORICAL_MT5_' + action.upper(),
+        changed_by=user_identifier,
+        changed_by_type=user_type,
+        ip_address=get_remote_address(),
+        change_source='historical_mt5_management',
+        change_description=f"Snapshot before {action} historical MT5 account"
+    )
+    
+    # Ensure hedging_review structure exists
+    if 'statistics' not in client_data:
+        client_data['statistics'] = {}
+    if 'hedging_review' not in client_data['statistics']:
+        client_data['statistics']['hedging_review'] = {}
+    
+    hr = client_data['statistics']['hedging_review']
+    
+    # Initialize historical_accounts array if not exists
+    if 'historical_accounts' not in hr:
+        hr['historical_accounts'] = []
+    
+    if action == 'add':
+        account = data.get('account', {})
+        hr['historical_accounts'].append({
+            'name': account.get('name', 'MT5 Account'),
+            'deposits': float(account.get('deposits', 0)),
+            'withdrawals': float(account.get('withdrawals', 0)),
+            'final_balance': float(account.get('final_balance', 0)),
+            'date_added': account.get('date_added', '')
+        })
         
-        eval_sig = get_account_signature(eval_account)
-        if eval_sig == target_sig:
-            return idx, eval_account
-    
-    # Second pass: Try last 5 digits match (for truncated accounts)
-    if target_last5:
-        # Check against evaluations
-        for idx, ev in enumerate(evaluations):
-            eval_account = str(ev.get(column_name, '')).strip()
-            if not eval_account:
-                continue
-            
-            # Get last 5 digits of evaluation account
-            eval_last5 = get_last_n_digits(eval_account, 5)
-            
-            # Standard exact match of 5 digits
-            if len(target_last5) == 5 and eval_last5 == target_last5:
-                return idx, eval_account
-            
-            # Fallback for TopStep: If target is short (4 digits) and matches end of eval
-            if len(target_last5) >= 4 and eval_last5.endswith(target_last5):
-                 return idx, eval_account
-    
-    return None, None
-
-
-def normalize_account_size(value):
-    """
-    Normalize account size values to standard format: $X,XXX
-    
-    Handles:
-        - "50k", "50K" → "$50,000"
-        - "100000", "100,000" → "$100,000"
-        - "$50,000" → "$50,000" (already correct)
-        - "5000" → "$5,000"
-    """
-    import re
-    if not value:
-        return value
-    
-    val = str(value).strip().upper()
-    
-    # Already in correct format
-    if re.match(r'^\$[\d,]+$', val):
-        return value
-    
-    # Handle "50k" or "50K" format
-    match = re.match(r'^[\$]?(\d+\.?\d*)K$', val, re.IGNORECASE)
-    if match:
-        num = float(match.group(1)) * 1000
-        return f"${num:,.0f}"
-    
-    # Handle plain numbers like "50000" or "50,000"
-    val_clean = re.sub(r'[\$,\s]', '', val)
-    try:
-        num = float(val_clean)
-        return f"${num:,.0f}"
-    except:
-        pass
-    
-    # Return original if can't parse
-    return value
-
-
-def normalize_evaluations(evaluations):
-    """Normalize field values in evaluations list."""
-    if not evaluations:
-        return evaluations
-    
-    for ev in evaluations:
-        if 'Account Size' in ev and ev['Account Size']:
-            ev['Account Size'] = normalize_account_size(ev['Account Size'])
-    
-    return evaluations
-
-
-def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
-    """
-    Determine the correct field name to update based on phase.
-    
-    Phase mappings:
-    - CH1-5: Hedge Result 1-5 (Challenge)
-    - FD (MFFU with FD0): FD0→Hedge Result 1, FD1→Hedge Result 2, etc.
-    - FD (Other starting FD1): FD1→Hedge Result 1, FD2→Hedge Result 2, etc.
-    - DD1-4: Additional funded hedge results
-    - FA: Hedge Day N (based on date or next available slot)
-    """
-    if phase_code == 'CH':
-        # Challenge: CH1 → Hedge Result 1, CH2 → Hedge Result 2, etc.
-        if trade_number is not None and 1 <= trade_number <= 5:
-            return f"Hedge Result {trade_number}"
-    
-    elif phase_code == 'FD':
-        # Determine if this is an MFFU account (uses FD0)
-        # MFFU accounts: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1, etc.
-        # Other accounts: FD0→HR1.1 (rare), FD1→HR1.1, FD2→HR2.1, etc.
-        is_mffu = account_number and account_number.upper().startswith('MFFU')
+        log_action('HISTORICAL_MT5_ADD', user_type, user_identifier, get_remote_address(), 
+                   f"Added historical MT5 for {client_id}: {account.get('name')}")
         
-        if trade_number is not None:
-            if is_mffu:
-                # MFFU: FD0→Hedge Result 1.1, FD1→Hedge Result 2.1, etc.
-                return f"Hedge Result {trade_number + 1}.1"
-            else:
-                # Other firms: FD0→HR1.1, FD1→HR1.1, FD2→HR2.1, etc.
-                # FD0 is rare for non-MFFU, treat same as FD1
-                if trade_number == 0:
-                    return "Hedge Result 1.1"
-                else:
-                    return f"Hedge Result {trade_number}.1"
-    
-    elif phase_code == 'DD':
-
-    
-        # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
-
-    
-        if trade_number is not None and trade_number >= 1:
-
-    
-            return f"Hedge Result {trade_number}.1" 
-    
-    elif phase_code == 'FA':
-        # Farming: Find next available Hedge Day slot
-        if eval_idx is not None and evaluations:
-            ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
-            for day_num in range(1, 35):
-                field_name = f"Hedge Day {day_num}"
-                existing_value = ev.get(field_name)
-                if existing_value is None or existing_value == '' or existing_value == 0:
-                    return field_name
-        # Default to Hedge Day 1 if no slot found
-        return "Hedge Day 1"
-    
-    return None
-
-
-def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
-    """
-    Update evaluation hedge result fields from aggregated MT5 comment data.
-    
-    Args:
-        evaluations: List of evaluation records
-        aggregated_data: List of aggregated trade data with account_number, phase_code, etc.
-    
-    Returns:
-        Tuple of (updated_evaluations, match_log)
-    """
-    if not evaluations or not aggregated_data:
-        return evaluations, ["No evaluations or aggregated data to process"]
-    
-    match_log = []
-    updates_made = 0
-    grouped_aggs = {}
-    
-    # 1. Group aggregations
-    for agg in aggregated_data:
-        acc = agg.get('account_number', '')
-        phase = agg.get('phase_code', 'UNK')
-        if phase == 'FA': trade = 'ALL' 
-        else: trade = agg.get('trade_number')
-        group_key = (acc, phase, trade)
-        if group_key not in grouped_aggs: grouped_aggs[group_key] = []
-        grouped_aggs[group_key].append(agg)
-        
-    # 2. Process groups
-    for (account_number, phase, trade_number), agg_list in grouped_aggs.items():
-        # Sort by date
-        agg_list.sort(key=lambda x: x.get('farming_date') or '')
-        
-        # Find Matches
-        eval_matches = match_account_to_evaluation_all(account_number, evaluations, phase)
-        if not eval_matches: continue
-            
-        # Sort Evaluations by Date
-        def get_p_date(eval_tuple):
-            ev = evaluations[eval_tuple[0]]
-            return str(ev.get('Date Purchased') or ev.get('Date Created') or '')
-        eval_matches.sort(key=get_p_date)
-        
-        # Farming Logic
-        if phase == 'FA':
-            target_idx, _ = eval_matches[-1] # Use latest
-            for current_agg in agg_list:
-                amt = current_agg.get('net_profit', 0)
-                col = get_next_empty_farming_slot(evaluations[target_idx])
-                if col:
-                    evaluations[target_idx][col] = amt
-                    updates_made += 1
-            continue
-
-        # Standard Logic
-        eval_ptr = 0
-        for agg in agg_list:
-            if eval_ptr < len(eval_matches):
-                target_tuple = eval_matches[eval_ptr]
-                eval_ptr += 1 
-            else: target_tuple = eval_matches[-1]
-            
-            target_idx, account_type = target_tuple
-            eff_phase = phase
-            eff_trade = agg.get('trade_number')
-            if phase == 'UNK':
-                eff_phase = 'CH' if account_type == 'challenge' else 'FD'
-                eff_trade = 1
-
-            field = get_field_name_for_phase(eff_phase, eff_trade, None, evaluations, target_idx, account_number)
-            if field:
-                 evaluations[target_idx][field] = agg.get('net_profit', 0)
-                 match_log.append(f"✅ Match -> {field}")
-                 updates_made += 1
-        
-    return evaluations, match_log
-
-def get_next_empty_farming_slot(eval_row):
-    for i in range(1, 40): 
-        col = f"Hedge Day {i}"
-        val = eval_row.get(col)
-        if not val: return col
-    return "Hedge Day 35"
-
-def match_account_to_evaluation_all(account_number, evaluations, phase_code):
-    matches = []
-    tsig = get_account_signature(account_number)
-    tlast5 = get_last_n_digits(account_number, 5)
-    
-    if phase_code in ['CH', 'UNK']:
-        matches.extend(_scan_evals(evaluations, 'Account #', tsig, tlast5, 'challenge'))
-    if phase_code != 'CH':
-        matches.extend(_scan_evals(evaluations, 'Account #.1', tsig, tlast5, 'funded'))
-    return matches
-
-def _scan_evals(evaluations, col_name, tsig, tlast5, label):
-    found = []
-    for idx, ev in enumerate(evaluations):
-        val = str(ev.get(col_name, '')).strip()
-        if not val: continue
-        if tsig and get_account_signature(val) == tsig:
-            found.append((idx, label))
-            continue
-        ev5 = get_last_n_digits(val, 5)
-        if tlast5 and len(tlast5)>=4:
-             if ev5 == tlast5 or (len(ev5)>=len(tlast5) and ev5.endswith(tlast5)):
-                 found.append((idx, label))
-    return found
-
-
-app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
-
-# ============ Rate Limiting ============
-# Note: For local development, use higher limits. 
-# For production, consider: ["200 per day", "50 per hour"]
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["10000 per day", "2000 per hour"],
-    storage_uri="memory://"
-)
-
-# Initialize Hierarchy from Config
-hierarchy = SYSTEM_HIERARCHY
-
-
-def get_account_signature(account_number):
-    """
-    Extract account signature for matching: first 4 + last 4/5 digits.
-    This handles truncated account numbers in MT5 comments.
-    
-    Handles truncated format with '...' like: FNFT...59574
-    
-    Examples:
-        MFFUEVSTP326057008 -> mffu7008 (full account)
-        FNFT...59574 -> fnft59574 (truncated - keep last 5)
-        12345678 -> 12345678
-    """
-    if not account_number:
-        return None
-    
-    account_str = str(account_number).strip()
-    
-    # Handle MT5 truncated TopStep format: V2-...SUFFIX
-    # This must come before the generic '...' handler to avoid including 'v2-' in the prefix
-    if account_str.lower().startswith('v2-...'):
-        return account_str.split('...')[-1].lower()
-
-    # Handle TopStep/Dashboard formats: 50KTC-V2-..., EXPRESS-V2-...
-    # Extract the last part which is likely the actual account number used in MT5
-    if ('-V2-' in account_str) or ('50KTC' in account_str) or ('EXPRESS' in account_str):
-        parts = account_str.split('-')
-        last_part = parts[-1] 
-        # Only treat as account number if it's alphanumeric but mostly digits/lengthy
-        # Case: 50KTC-V2-472054-49197160 -> last is 49197160
-        if len(parts) > 1:
-            account_str = last_part
-    
-    # Handle truncated format: PREFIX...SUFFIX
-    if '...' in account_str:
-        parts = account_str.split('...')
-        if len(parts) == 2:
-            prefix = parts[0][:4] if len(parts[0]) >= 4 else parts[0]
-            suffix = parts[1]  # Keep full suffix (usually 5 digits)
-            return (prefix + suffix).lower()
-    
-    # Standard format: first 4 + last 4
-    if len(account_str) < 8:
-        return account_str.lower()
-    
-    # First 4 + last 4
-    return (account_str[:4] + account_str[-4:]).lower()
-
-
-def get_last_n_digits(account: str, n: int = 5) -> str:
-    """Extract last N digits from account number."""
-    if not account:
-        return ""
-        
-    # Handle V2-... prefix exclusion (TopStep) to ensure we get actual account digits
-    clean_account = account
-    lower_acc = account.lower()
-    if lower_acc.startswith('v2-...'):
-        clean_account = account.split('...')[-1]
-        
-    # Extract only digits from the end
-    digits = ''.join(c for c in clean_account if c.isdigit())
-    return digits[-n:] if len(digits) >= n else digits
-
-
-def match_account_to_evaluation(account_number, evaluations, phase_code):
-    """
-    Find matching evaluation for an account number based on phase.
-    
-    For Challenge (CH): Match against 'Account #' column
-    For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
-    
-    Matching strategy:
-    1. Try signature match (first4 + last4/5)
-    2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
-    """
-    if not account_number or not evaluations:
-        return None, None
-    
-    target_sig = get_account_signature(account_number)
-    target_last5 = get_last_n_digits(account_number, 5)
-    
-    if not target_sig and not target_last5:
-        return None, None
-    
-    # Determine which column to check based on phase
-    if phase_code == 'CH':
-        column_name = 'Account #'  # Challenge accounts
+    elif action == 'delete':
+        index = data.get('index')
+        if index is not None and 0 <= index < len(hr['historical_accounts']):
+            deleted = hr['historical_accounts'].pop(index)
+            log_action('HISTORICAL_MT5_DELETE', user_type, user_identifier, get_remote_address(), 
+                       f"Deleted historical MT5 for {client_id}: {deleted.get('name')}")
+        else:
+            return jsonify({"status": "error", "message": "Invalid index"}), 400
     else:
-        column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
+        return jsonify({"status": "error", "message": "Invalid action"}), 400
     
-    # First pass: Try signature match
-    for idx, ev in enumerate(evaluations):
-        eval_account = str(ev.get(column_name, '')).strip()
-        if not eval_account:
-            continue
+    # Recalculate totals including historical accounts
+    hist_deposits = sum(acc.get('deposits', 0) for acc in hr['historical_accounts'])
+    hist_withdrawals = sum(acc.get('withdrawals', 0) for acc in hr['historical_accounts'])
+    hist_balance = sum(acc.get('final_balance', 0) for acc in hr['historical_accounts'])
+    
+    # Store historical totals for data_processor to use
+    hr['historical_deposits'] = hist_deposits
+    hr['historical_withdrawals'] = hist_withdrawals
+    hr['historical_balance'] = hist_balance
+    
+    # Save updated data WITH history tracking
+    email = client_data.get('identity', {}).get('email', '')
+    success, version = save_client_data_with_history(
+        client_id, client_data,
+        action='HISTORICAL_MT5_' + action.upper(),
+        changed_by=user_identifier,
+        changed_by_type=user_type,
+        ip_address=get_remote_address(),
+        change_source='historical_mt5_management',
+        change_description=f"{action.capitalize()} historical MT5 account"
+    )
+    
+    return jsonify({
+        "status": "success", 
+        "message": f"Historical MT5 {action}ed successfully",
+        "historical_accounts": hr['historical_accounts'],
+        "historical_totals": {
+            "deposits": hist_deposits,
+            "withdrawals": hist_withdrawals,
+            "balance": hist_balance
+        }
+    })
+
+@app.route('/api/data')
+def get_data():
+    """Get client data - requires authentication and role-based access."""
+    client_id = request.args.get('client_id')
+    
+    # Check authentication
+    session_token = request.cookies.get('session_token')
+    if not session_token:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    
+    session_info = validate_session(session_token)
+    if not session_info:
+        return jsonify({"status": "error", "message": "Invalid session"}), 401
+    
+    user_type = session_info.get('user_type')
+    user_identifier = session_info.get('user_identifier')
+    
+    if client_id:
+        # Check if user can access this client's data
+        if not can_access_client(user_type, user_identifier, client_id):
+            log_action('ACCESS_DENIED', user_type, user_identifier, get_remote_address(), f"Tried to access: {client_id}", False)
+            return jsonify({"status": "error", "message": "Access denied"}), 403
         
-        eval_sig = get_account_signature(eval_account)
-        if eval_sig == target_sig:
-            return idx, eval_account
-    
-    # Second pass: Try last 5 digits match (for truncated accounts)
-    if target_last5:
-        # Check against evaluations
-        for idx, ev in enumerate(evaluations):
-            eval_account = str(ev.get(column_name, '')).strip()
-            if not eval_account:
-                continue
+        data = get_client_data(client_id)
+        if data:
+            # Add historical MT5 values to hedging_review totals
+            if 'statistics' in data and 'hedging_review' in data['statistics']:
+                hr = data['statistics']['hedging_review']
+                hist_accounts = hr.get('historical_accounts', [])
+                
+                # Calculate historical totals
+                hist_deposits = sum(acc.get('deposits', 0) for acc in hist_accounts)
+                hist_withdrawals = sum(acc.get('withdrawals', 0) for acc in hist_accounts)
+                hist_balance = sum(acc.get('final_balance', 0) for acc in hist_accounts)
+                
+                # Add to current values if there are historical accounts
+                if hist_accounts:
+                    hr['total_deposits'] = hr.get('total_deposits', 0) + hist_deposits
+                    hr['total_withdrawals'] = hr.get('total_withdrawals', 0) + hist_withdrawals
+                    hr['current_balance'] = hr.get('current_balance', 0) + hist_balance
+                    
+                    # Recalculate actual hedging and discrepancy with combined values
+                    net_deposits = hr['total_deposits'] + hr['total_withdrawals']
+                    hr['actual_hedging_results'] = hr['current_balance'] - net_deposits
+                    hr['discrepancy'] = hr['actual_hedging_results'] - hr.get('sheet_hedging_results', 0)
             
-            # Get last 5 digits of evaluation account
-            eval_last5 = get_last_n_digits(eval_account, 5)
+            return jsonify(data)
+    
+    # If no client specified, return empty
+    return jsonify({
+        "deals": [], "positions": [], "account": {}, 
+        "evaluations": [], "statistics": {}, "dropdown_options": {}, 
+        "last_updated": "Never"
+    })
+
+# ============ Session-based Update (for Dashboard UI) ============
+
+@app.route('/api/update_data', methods=['POST'])
+@limiter.limit("60 per minute")
+def update_data():
+    """Update client data - supports both session and API key authentication."""
+    data = request.json
+    identity = data.get('identity', {})
+    
+    # Try session authentication first (for dashboard UI)
+    session_token = request.cookies.get('session_token')
+    api_key = request.headers.get('X-API-Key')
+    
+    if session_token:
+        session_info = validate_session(session_token)
+        if session_info:
+            user_type = session_info.get('user_type')
+            user_identifier = session_info.get('user_identifier')
             
-            # Standard exact match of 5 digits
-            if len(target_last5) == 5 and eval_last5 == target_last5:
-                return idx, eval_account
+            # Get client_id from request data
+            client_id = identity.get('client') or data.get('client_id')
             
-            # Fallback for TopStep: If target is short (4 digits) and matches end of eval
-            if len(target_last5) >= 4 and eval_last5.endswith(target_last5):
-                 return idx, eval_account
-    
-    return None, None
-
-
-def normalize_account_size(value):
-    """
-    Normalize account size values to standard format: $X,XXX
-    
-    Handles:
-        - "50k", "50K" → "$50,000"
-        - "100000", "100,000" → "$100,000"
-        - "$50,000" → "$50,000" (already correct)
-        - "5000" → "$5,000"
-    """
-    import re
-    if not value:
-        return value
-    
-    val = str(value).strip().upper()
-    
-    # Already in correct format
-    if re.match(r'^\$[\d,]+$', val):
-        return value
-    
-    # Handle "50k" or "50K" format
-    match = re.match(r'^[\$]?(\d+\.?\d*)K$', val, re.IGNORECASE)
-    if match:
-        num = float(match.group(1)) * 1000
-        return f"${num:,.0f}"
-    
-    # Handle plain numbers like "50000" or "50,000"
-    val_clean = re.sub(r'[\$,\s]', '', val)
-    try:
-        num = float(val_clean)
-        return f"${num:,.0f}"
-    except:
-        pass
-    
-    # Return original if can't parse
-    return value
-
-
-def normalize_evaluations(evaluations):
-    """Normalize field values in evaluations list."""
-    if not evaluations:
-        return evaluations
-    
-    for ev in evaluations:
-        if 'Account Size' in ev and ev['Account Size']:
-            ev['Account Size'] = normalize_account_size(ev['Account Size'])
-    
-    return evaluations
-
-
-def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
-    """
-    Determine the correct field name to update based on phase.
-    
-    Phase mappings:
-    - CH1-5: Hedge Result 1-5 (Challenge)
-    - FD (MFFU with FD0): FD0→Hedge Result 1, FD1→Hedge Result 2, etc.
-    - FD (Other starting FD1): FD1→Hedge Result 1, FD2→Hedge Result 2, etc.
-    - DD1-4: Additional funded hedge results
-    - FA: Hedge Day N (based on date or next available slot)
-    """
-    if phase_code == 'CH':
-        # Challenge: CH1 → Hedge Result 1, CH2 → Hedge Result 2, etc.
-        if trade_number is not None and 1 <= trade_number <= 5:
-            return f"Hedge Result {trade_number}"
-    
-    elif phase_code == 'FD':
-        # Determine if this is an MFFU account (uses FD0)
-        # MFFU accounts: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1, etc.
-        # Other accounts: FD0→HR1.1 (rare), FD1→HR1.1, FD2→HR2.1, etc.
-        is_mffu = account_number and account_number.upper().startswith('MFFU')
-        
-        if trade_number is not None:
-            if is_mffu:
-                # MFFU: FD0→Hedge Result 1.1, FD1→Hedge Result 2.1, etc.
-                return f"Hedge Result {trade_number + 1}.1"
+            if not client_id:
+                return jsonify({"status": "error", "message": "Client ID required"}), 400
+            
+            # Check if user can access this client's data
+            if not can_access_client(user_type, user_identifier, client_id):
+                log_action('UPDATE_DENIED', user_type, user_identifier, get_remote_address(), 
+                          f"Tried to update: {client_id}", False)
+                return jsonify({"status": "error", "message": "Access denied"}), 403
+            
+            # Get existing data to preserve fields not being updated
+            existing_data = get_client_data(client_id) or {}
+            
+            # Get evaluations and normalize Account Size values
+            evaluations = data.get("evaluations", existing_data.get("evaluations", []))
+            evaluations = normalize_evaluations(evaluations)
+            
+            # Merge the update data with existing data
+            client_data = {
+                "deals": data.get("deals", existing_data.get("deals", [])),
+                "positions": data.get("positions", existing_data.get("positions", [])),
+                "account": data.get("account", existing_data.get("account", {})),
+                "evaluations": evaluations,
+                "statistics": data.get("statistics", existing_data.get("statistics", {})),
+                "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
+                "identity": identity or existing_data.get("identity", {})
+            }
+            
+            # Ensure client ID is in identity
+            if 'client' not in client_data['identity']:
+                client_data['identity']['client'] = client_id
+            
+            # Save with history tracking
+            success, version = save_client_data_with_history(
+                client_id,
+                client_data,
+                action='UPDATE',
+                changed_by=user_identifier,
+                changed_by_type=user_type,
+                ip_address=get_remote_address(),
+                change_source='dashboard_edit',
+                change_description=f'Manual edit from dashboard by {user_type}'
+            )
+            
+            if success:
+                log_action('DATA_UPDATE', user_type, user_identifier, get_remote_address(), 
+                          f"Client: {client_id} (v{version})")
+                return jsonify({"status": "success", "message": "Data updated", "version": version})
             else:
-                # Other firms: FD0→HR1.1, FD1→HR1.1, FD2→HR2.1, etc.
-                # FD0 is rare for non-MFFU, treat same as FD1
-                if trade_number == 0:
-                    return "Hedge Result 1.1"
-                else:
-                    return f"Hedge Result {trade_number}.1"
+                return jsonify({"status": "error", "message": "Failed to save data"}), 500
     
-    elif phase_code == 'DD':
-
+    # Fall back to API key authentication
+    if api_key:
+        user_info = validate_api_key(api_key)
+        if user_info:
+            return update_data_with_api_key(data, identity, user_info)
+        else:
+            return jsonify({"status": "error", "message": "Invalid API key"}), 403
     
-        # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
-
-    
-        if trade_number is not None and trade_number >= 1:
-
-    
-            return f"Hedge Result {trade_number}.1" 
-    
-    elif phase_code == 'FA':
-        # Farming: Find next available Hedge Day slot
-        if eval_idx is not None and evaluations:
-            ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
-            for day_num in range(1, 35):
-                field_name = f"Hedge Day {day_num}"
-                existing_value = ev.get(field_name)
-                if existing_value is None or existing_value == '' or existing_value == 0:
-                    return field_name
-        # Default to Hedge Day 1 if no slot found
-        return "Hedge Day 1"
-    
-    return None
+    return jsonify({"status": "error", "message": "Authentication required"}), 401
 
 
-def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
+def update_data_with_api_key(data, identity, user_info):
+    """Handle update with API key authentication (for external API calls)."""
+    # Use authenticated user info if no identity provided
+    if not identity:
+        identity = {
+            'admin': user_info.get('admin'),
+            'trader': user_info.get('trader'),
+            'client': user_info.get('client')
+        }
+    
+    admin_id = identity.get('admin', 'Admin1')
+    trader_id = identity.get('trader', 'Trader1')
+    client_id = identity.get('client', 'Client1')
+    email = identity.get('email', '')
+    
+    # Prepare client data
+    client_data = {
+        "deals": data.get("deals", []),
+        "positions": data.get("positions", []),
+        "account": data.get("account", {}),
+        "evaluations": data.get("evaluations", []),
+        "statistics": data.get("statistics", {}),
+        "dropdown_options": data.get("dropdown_options", {}),
+        "identity": identity
+    }
+    
+    # Save to database WITH history tracking
+    success, version = save_client_data_with_history(
+        client_id,
+        client_data,
+        action='UPDATE',
+        changed_by=email or trader_id,
+        changed_by_type='api',
+        ip_address=get_remote_address(),
+        change_source='api_push',
+        change_description='Update via API'
+    )
+    
+    # Update Hierarchy
+    add_admin(admin_id)
+    add_trader(admin_id, trader_id)
+    add_client(admin_id, trader_id, client_id)
+    
+    log_action('DATA_UPDATE', 'trader', trader_id, get_remote_address(), f"Client: {client_id} (v{version})")
+    return jsonify({"status": "success", "message": "Data updated", "version": version})
+
+# ============ API Key Management (Admin only) ============
+
+@app.route('/api/admin/generate_key', methods=['POST'])
+@require_admin_password
+@limiter.limit("10 per hour")
+def api_generate_key():
+    """Generate a new API key for a trader."""
+    trader_info = request.json.get('trader_info', {})
+    admin = trader_info.get('admin')
+    trader = trader_info.get('trader')
+    client = trader_info.get('client', '')
+    
+    if not admin or not trader:
+        return jsonify({"status": "error", "message": "Admin and trader required"}), 400
+    
+    # Generate hashed API key
+    api_key = generate_api_key(admin, trader, client)
+    
+    if api_key:
+        log_action('GENERATE_API_KEY', 'admin', trader, get_remote_address())
+        return jsonify({
+            "status": "success",
+            "api_key": api_key,  # Only time the full key is visible
+            "trader_info": {"admin": admin, "trader": trader, "client": client}
+        })
+    
+    return jsonify({"status": "error", "message": "Failed to generate key"}), 500
+
+@app.route('/api/admin/list_keys', methods=['GET'])
+@require_admin_password
+def api_list_keys():
+    """List all API keys (showing only prefix)."""
+    keys = list_api_keys()
+    log_action('LIST_API_KEYS', 'admin', 'super_admin', get_remote_address())
+    return jsonify({"status": "success", "keys": keys})
+
+@app.route('/api/admin/revoke_key', methods=['POST'])
+@require_admin_password
+def api_revoke_key():
+    """Revoke an API key."""
+    key_prefix = request.json.get('key_prefix')
+    
+    if not key_prefix:
+        return jsonify({"status": "error", "message": "Key prefix required"}), 400
+    
+    if revoke_api_key(key_prefix):
+        log_action('REVOKE_API_KEY', 'admin', key_prefix, get_remote_address())
+        return jsonify({"status": "success", "message": "API key revoked"})
+    
+    return jsonify({"status": "error", "message": "API key not found"}), 404
+
+# ============ Audit Log (Admin only) ============
+
+@app.route('/api/admin/audit_log', methods=['GET'])
+@require_admin_password
+def api_audit_log():
+    """Get audit log entries."""
+    limit = request.args.get('limit', 100, type=int)
+    action_filter = request.args.get('action', None)
+    
+    logs = get_audit_log(limit, action_filter)
+    return jsonify({"status": "success", "logs": logs})
+
+# ============ Trader Push Endpoints ============
+
+@app.route('/api/trader/push_account', methods=['POST'])
+@require_api_key
+@limiter.limit("30 per minute")
+def push_account_data():
+    """Endpoint for traders to push account information."""
+    data = request.json
+    client_id = data.get('client_id') or request.api_user.get('client', 'Client1')
+    
+    update_client_field(client_id, 'account', data.get('account', {}))
+    log_action('PUSH_ACCOUNT', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
+    
+    return jsonify({"status": "success", "message": "Account data updated"})
+
+@app.route('/api/trader/push_positions', methods=['POST'])
+@require_api_key
+@limiter.limit("30 per minute")
+def push_positions():
+    """Endpoint for traders to push current positions."""
+    data = request.json
+    client_id = data.get('client_id') or request.api_user.get('client', 'Client1')
+    
+    update_client_field(client_id, 'positions', data.get('positions', []))
+    log_action('PUSH_POSITIONS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
+    
+    return jsonify({"status": "success", "message": "Positions updated"})
+
+@app.route('/api/trader/push_deals', methods=['POST'])
+@require_api_key
+@limiter.limit("30 per minute")
+def push_deals():
+    """Endpoint for traders to push deal history."""
+    data = request.json
+    client_id = data.get('client_id') or request.api_user.get('client', 'Client1')
+    
+    update_client_field(client_id, 'deals', data.get('deals', []))
+    log_action('PUSH_DEALS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
+    
+    return jsonify({"status": "success", "message": "Deals updated"})
+
+@app.route('/api/trader/push_evaluations', methods=['POST'])
+@require_api_key
+@limiter.limit("30 per minute")
+def push_evaluations():
+    """Endpoint for traders to push evaluation data."""
+    data = request.json
+    client_id = data.get('client_id') or request.api_user.get('client', 'Client1')
+    
+    update_client_field(client_id, 'evaluations', data.get('evaluations', []))
+    log_action('PUSH_EVALUATIONS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
+    
+    return jsonify({"status": "success", "message": "Evaluations updated"})
+
+# ============ Data History & Version Control ============
+
+@app.route('/api/client/history', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_get_client_history():
     """
-    Update evaluation hedge result fields from aggregated MT5 comment data.
-    
-    Args:
-        evaluations: List of evaluation records
-        aggregated_data: List of aggregated trade data with account_number, phase_code, etc.
-    
-    Returns:
-        Tuple of (updated_evaluations, match_log)
+    Get the change history for a client's data.
+    Requires client email for authentication.
     """
-    if not evaluations or not aggregated_data:
-        return evaluations, ["No evaluations or aggregated data to process"]
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    limit = data.get('limit', 50)
     
-    match_log = []
-    updates_made = 0
-    grouped_aggs = {}
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
     
-    # 1. Group aggregations
-    for agg in aggregated_data:
-        acc = agg.get('account_number', '')
-        phase = agg.get('phase_code', 'UNK')
-        if phase == 'FA': trade = 'ALL' 
-        else: trade = agg.get('trade_number')
-        group_key = (acc, phase, trade)
-        if group_key not in grouped_aggs: grouped_aggs[group_key] = []
-        grouped_aggs[group_key].append(agg)
-        
-    # 2. Process groups
-    for (account_number, phase, trade_number), agg_list in grouped_aggs.items():
-        # Sort by date
-        agg_list.sort(key=lambda x: x.get('farming_date') or '')
-        
-        # Find Matches
-        eval_matches = match_account_to_evaluation_all(account_number, evaluations, phase)
-        if not eval_matches: continue
-            
-        # Sort Evaluations by Date
-        def get_p_date(eval_tuple):
-            ev = evaluations[eval_tuple[0]]
-            return str(ev.get('Date Purchased') or ev.get('Date Created') or '')
-        eval_matches.sort(key=get_p_date)
-        
-        # Farming Logic
-        if phase == 'FA':
-            target_idx, _ = eval_matches[-1] # Use latest
-            for current_agg in agg_list:
-                amt = current_agg.get('net_profit', 0)
-                col = get_next_empty_farming_slot(evaluations[target_idx])
-                if col:
-                    evaluations[target_idx][col] = amt
-                    updates_made += 1
-            continue
-
-        # Standard Logic
-        eval_ptr = 0
-        for agg in agg_list:
-            if eval_ptr < len(eval_matches):
-                target_tuple = eval_matches[eval_ptr]
-                eval_ptr += 1 
-            else: target_tuple = eval_matches[-1]
-            
-            target_idx, account_type = target_tuple
-            eff_phase = phase
-            eff_trade = agg.get('trade_number')
-            if phase == 'UNK':
-                eff_phase = 'CH' if account_type == 'challenge' else 'FD'
-                eff_trade = 1
-
-            field = get_field_name_for_phase(eff_phase, eff_trade, None, evaluations, target_idx, account_number)
-            if field:
-                 evaluations[target_idx][field] = agg.get('net_profit', 0)
-                 match_log.append(f"✅ Match -> {field}")
-                 updates_made += 1
-        
-    return evaluations, match_log
-
-def get_next_empty_farming_slot(eval_row):
-    for i in range(1, 40): 
-        col = f"Hedge Day {i}"
-        val = eval_row.get(col)
-        if not val: return col
-    return "Hedge Day 35"
-
-def match_account_to_evaluation_all(account_number, evaluations, phase_code):
-    matches = []
-    tsig = get_account_signature(account_number)
-    tlast5 = get_last_n_digits(account_number, 5)
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
     
-    if phase_code in ['CH', 'UNK']:
-        matches.extend(_scan_evals(evaluations, 'Account #', tsig, tlast5, 'challenge'))
-    if phase_code != 'CH':
-        matches.extend(_scan_evals(evaluations, 'Account #.1', tsig, tlast5, 'funded'))
-    return matches
+    client_id = client_info['client']
+    history = get_data_history(client_id, limit)
+    
+    return jsonify({
+        "status": "success",
+        "client_id": client_id,
+        "history": history,
+        "total_versions": len(history)
+    })
 
-def _scan_evals(evaluations, col_name, tsig, tlast5, label):
-    found = []
-    for idx, ev in enumerate(evaluations):
-        val = str(ev.get(col_name, '')).strip()
-        if not val: continue
-        if tsig and get_account_signature(val) == tsig:
-            found.append((idx, label))
-            continue
-        ev5 = get_last_n_digits(val, 5)
-        if tlast5 and len(tlast5)>=4:
-             if ev5 == tlast5 or (len(ev5)>=len(tlast5) and ev5.endswith(tlast5)):
-                 found.append((idx, label))
-    return found
-
-
-app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
-app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
-
-# ============ Rate Limiting ============
-# Note: For local development, use higher limits. 
-# For production, consider: ["200 per day", "50 per hour"]
-limiter = Limiter(
-    app=app,
-    key_func=get_remote_address,
-    default_limits=["10000 per day", "2000 per hour"],
-    storage_uri="memory://"
-)
-
-# Initialize Hierarchy from Config
-hierarchy = SYSTEM_HIERARCHY
-
-
-def get_account_signature(account_number):
+@app.route('/api/client/version', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_get_client_version():
     """
-    Extract account signature for matching: first 4 + last 4/5 digits.
-    This handles truncated account numbers in MT5 comments.
-    
-    Handles truncated format with '...' like: FNFT...59574
-    
-    Examples:
-        MFFUEVSTP326057008 -> mffu7008 (full account)
-        FNFT...59574 -> fnft59574 (truncated - keep last 5)
-        12345678 -> 12345678
+    Get a specific version of client data.
+    Useful for viewing what the data looked like at a previous point.
     """
-    if not account_number:
-        return None
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    version = data.get('version')
     
-    account_str = str(account_number).strip()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
     
-    # Handle MT5 truncated TopStep format: V2-...SUFFIX
-    # This must come before the generic '...' handler to avoid including 'v2-' in the prefix
-    if account_str.lower().startswith('v2-...'):
-        return account_str.split('...')[-1].lower()
+    if version is None:
+        return jsonify({"status": "error", "message": "Version number required"}), 400
+    
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    version_data = get_data_version(client_id, int(version))
+    
+    if not version_data:
+        return jsonify({"status": "error", "message": f"Version {version} not found"}), 404
+    
+    return jsonify({
+        "status": "success",
+        "client_id": client_id,
+        "version_info": {
+            "version": version_data['version'],
+            "action": version_data['action'],
+            "changed_by": version_data['changed_by'],
+            "change_source": version_data['change_source'],
+            "change_description": version_data['change_description'],
+            "created_at": version_data['created_at']
+        },
+        "data": version_data['data']
+    })
 
-    # Handle TopStep/Dashboard formats: 50KTC-V2-..., EXPRESS-V2-...
-    # Extract the last part which is likely the actual account number used in MT5
-    if ('-V2-' in account_str) or ('50KTC' in account_str) or ('EXPRESS' in account_str):
-        parts = account_str.split('-')
-        last_part = parts[-1] 
-        # Only treat as account number if it's alphanumeric but mostly digits/lengthy
-        # Case: 50KTC-V2-472054-49197160 -> last is 49197160
-        if len(parts) > 1:
-            account_str = last_part
+@app.route('/api/client/rollback', methods=['POST'])
+@limiter.limit("5 per hour")
+def api_rollback_client_data():
+    """
+    Rollback client data to a specific previous version.
+    Creates a new version marking this as a rollback.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    version = data.get('version')
     
-    # Handle truncated format: PREFIX...SUFFIX
-    if '...' in account_str:
-        parts = account_str.split('...')
-        if len(parts) == 2:
-            prefix = parts[0][:4] if len(parts[0]) >= 4 else parts[0]
-            suffix = parts[1]  # Keep full suffix (usually 5 digits)
-            return (prefix + suffix).lower()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
     
-    # Standard format: first 4 + last 4
-    if len(account_str) < 8:
-        return account_str.lower()
+    if version is None:
+        return jsonify({"status": "error", "message": "Version number required"}), 400
     
-    # First 4 + last 4
-    return (account_str[:4] + account_str[-4:]).lower()
-
-
-def get_last_n_digits(account: str, n: int = 5) -> str:
-    """Extract last N digits from account number."""
-    if not account:
-        return ""
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    
+    client_id = client_info['client']
+    
+    # Check if version exists
+    version_data = get_data_version(client_id, int(version))
+    if not version_data:
+        return jsonify({"status": "error", "message": f"Version {version} not found"}), 404
+    
+    # Perform rollback
+    success, new_version = rollback_to_version(
+        client_id, 
+        int(version),
+        rolled_back_by=email,
+        rolled_back_by_type='client',
+        ip_address=get_remote_address()
+    )
+    
+    if success:
+        log_action('DATA_ROLLBACK', 'client', email, get_remote_address(), 
+                   f"Rolled back {client_id} to version {version} (new version: {new_version})")
         
-    # Handle V2-... prefix exclusion (TopStep) to ensure we get actual account digits
-    clean_account = account
-    lower_acc = account.lower()
-    if lower_acc.startswith('v2-...'):
-        clean_account = account.split('...')[-1]
-        
-    # Extract only digits from the end
-    digits = ''.join(c for c in clean_account if c.isdigit())
-    return digits[-n:] if len(digits) >= n else digits
-
-
-def match_account_to_evaluation(account_number, evaluations, phase_code):
-    """
-    Find matching evaluation for an account number based on phase.
-    
-    For Challenge (CH): Match against 'Account #' column
-    For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
-    
-    Matching strategy:
-    1. Try signature match (first4 + last4/5)
-    2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
-    """
-    if not account_number or not evaluations:
-        return None, None
-    
-    target_sig = get_account_signature(account_number)
-    target_last5 = get_last_n_digits(account_number, 5)
-    
-    if not target_sig and not target_last5:
-        return None, None
-    
-    # Determine which column to check based on phase
-    if phase_code == 'CH':
-        column_name = 'Account #'  # Challenge accounts
+        return jsonify({
+            "status": "success",
+            "message": f"Data rolled back to version {version}",
+            "client_id": client_id,
+            "rolled_back_to_version": version,
+            "new_version": new_version,
+            "rolled_back_from_date": version_data['created_at']
+        })
     else:
-        column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
-    
-    # First pass: Try signature match
-    for idx, ev in enumerate(evaluations):
-        eval_account = str(ev.get(column_name, '')).strip()
-        if not eval_account:
-            continue
-        
-        eval_sig = get_account_signature(eval_account)
-        if eval_sig == target_sig:
-            return idx, eval_account
-    
-    # Second pass: Try last 5 digits match (for truncated accounts)
-    if target_last5:
-        # Check against evaluations
-        for idx, ev in enumerate(evaluations):
-            eval_account = str(ev.get(column_name, '')).strip()
-            if not eval_account:
-                continue
-            
-            # Get last 5 digits of evaluation account
-            eval_last5 = get_last_n_digits(eval_account, 5)
-            
-            # Standard exact match of 5 digits
-            if len(target_last5) == 5 and eval_last5 == target_last5:
-                return idx, eval_account
-            
-            # Fallback for TopStep: If target is short (4 digits) and matches end of eval
-            if len(target_last5) >= 4 and eval_last5.endswith(target_last5):
-                 return idx, eval_account
-    
-    return None, None
+        return jsonify({"status": "error", "message": "Failed to rollback data"}), 500
 
-
-def normalize_account_size(value):
+@app.route('/api/client/compare_versions', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_compare_versions():
     """
-    Normalize account size values to standard format: $X,XXX
-    
-    Handles:
-        - "50k", "50K" → "$50,000"
-        - "100000", "100,000" → "$100,000"
-        - "$50,000" → "$50,000" (already correct)
-        - "5000" → "$5,000"
+    Compare two versions of client data to see what changed.
     """
-    import re
-    if not value:
-        return value
+    data = request.json
+    email = data.get('email', '').strip().lower()
+    version1 = data.get('version1')
+    version2 = data.get('version2')
     
-    val = str(value).strip().upper()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
     
-    # Already in correct format
-    if re.match(r'^\$[\d,]+$', val):
-        return value
+    if version1 is None or version2 is None:
+        return jsonify({"status": "error", "message": "Both version1 and version2 required"}), 400
     
-    # Handle "50k" or "50K" format
-    match = re.match(r'^[\$]?(\d+\.?\d*)K$', val, re.IGNORECASE)
-    if match:
-        num = float(match.group(1)) * 1000
-        return f"${num:,.0f}"
+    # Look up client by email
+    from config.hierarchy import get_client_by_email
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
     
-    # Handle plain numbers like "50000" or "50,000"
-    val_clean = re.sub(r'[\$,\s]', '', val)
-    try:
-        num = float(val_clean)
-        return f"${num:,.0f}"
-    except:
-        pass
+    client_id = client_info['client']
     
-    # Return original if can't parse
-    return value
+    comparison = compare_versions(client_id, int(version1), int(version2))
+    
+    if not comparison:
+        return jsonify({"status": "error", "message": "One or both versions not found"}), 404
+    
+    return jsonify({
+        "status": "success",
+        "client_id": client_id,
+        "comparison": comparison
+    })
 
-
-def normalize_evaluations(evaluations):
-    """Normalize field values in evaluations list."""
-    if not evaluations:
-        return evaluations
-    
-    for ev in evaluations:
-        if 'Account Size' in ev and ev['Account Size']:
-            ev['Account Size'] = normalize_account_size(ev['Account Size'])
-    
-    return evaluations
-
-
-def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
+@app.route('/api/admin/all_history', methods=['GET'])
+@require_admin_password
+def api_get_all_history():
     """
-    Determine the correct field name to update based on phase.
-    
-    Phase mappings:
-    - CH1-5: Hedge Result 1-5 (Challenge)
-    - FD (MFFU with FD0): FD0→Hedge Result 1, FD1→Hedge Result 2, etc.
-    - FD (Other starting FD1): FD1→Hedge Result 1, FD2→Hedge Result 2, etc.
-    - DD1-4: Additional funded hedge results
-    - FA: Hedge Day N (based on date or next available slot)
+    Admin endpoint to get all history across all clients.
     """
-    if phase_code == 'CH':
-        # Challenge: CH1 → Hedge Result 1, CH2 → Hedge Result 2, etc.
-        if trade_number is not None and 1 <= trade_number <= 5:
-            return f"Hedge Result {trade_number}"
+    from dashboard.database import get_connection
     
-    elif phase_code == 'FD':
-        # Determine if this is an MFFU account (uses FD0)
-        # MFFU accounts: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1, etc.
-        # Other accounts: FD0→HR1.1 (rare), FD1→HR1.1, FD2→HR2.1, etc.
-        is_mffu = account_number and account_number.upper().startswith('MFFU')
-        
-        if trade_number is not None:
-            if is_mffu:
-                # MFFU: FD0→Hedge Result 1.1, FD1→Hedge Result 2.1, etc.
-                return f"Hedge Result {trade_number + 1}.1"
-            else:
-                # Other firms: FD0→HR1.1, FD1→HR1.1, FD2→HR2.1, etc.
-                # FD0 is rare for non-MFFU, treat same as FD1
-                if trade_number == 0:
-                    return "Hedge Result 1.1"
-                else:
-                    return f"Hedge Result {trade_number}.1"
+    limit = request.args.get('limit', 100, type=int)
     
-    elif phase_code == 'DD':
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, client_id, version, action, changed_by, changed_by_type,
+                   change_source, change_description, created_at
+            FROM data_history 
+            ORDER BY created_at DESC
+            LIMIT ?
+        ''', (limit,))
+        history = [dict(row) for row in cursor.fetchall()]
+    
+    return jsonify({
+        "status": "success",
+        "history": history,
+        "total_entries": len(history)
+    })
 
-    
-        # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
+# ============ Health Check ============
 
-    
-        if trade_number is not None and trade_number >= 1:
+@app.route('/health', methods=['GET'])
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Simple health check endpoint."""
+    return jsonify({
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "clients_count": get_clients_count()
+    })
 
-    
-            return f"Hedge Result {trade_number}.1" 
-    
-    elif phase_code == 'FA':
-        # Farming: Find next available Hedge Day slot
-        if eval_idx is not None and evaluations:
-            ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
-            for day_num in range(1, 35):
-                field_name = f"Hedge Day {day_num}"
-                existing_value = ev.get(field_name)
-                if existing_value is None or existing_value == '' or existing_value == 0:
-                    return field_name
-        # Default to Hedge Day 1 if no slot found
-        return "Hedge Day 1"
-    
-    return None
+# ============ Change Password Endpoint ============
 
-
-def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
-    """
-    Update evaluation hedge result fields from aggregated MT5 comment data.
+@app.route('/api/admin/change_password', methods=['POST'])
+@require_admin_password
+@limiter.limit("3 per hour")
+def change_admin_password():
+    """Change admin password."""
+    new_password = request.json.get('new_password')
     
-    Args:
-        evaluations: List of evaluation records
-        aggregated_data: List of aggregated trade data with account_number, phase_code, etc.
+    if not new_password or len(new_password) < 8:
+        return jsonify({"status": "error", "message": "Password must be at least 8 characters"}), 400
     
-    Returns:
-        Tuple of (updated_evaluations, match_log)
-    """
-    if not evaluations or not aggregated_data:
-        return evaluations, ["No evaluations or aggregated data to process"]
+    if set_admin_password('super_admin', new_password):
+        log_action('CHANGE_PASSWORD', 'admin', 'super_admin', get_remote_address())
+        return jsonify({"status": "success", "message": "Password changed successfully"})
     
-    match_log = []
-    updates_made = 0
-    grouped_aggs = {}
-    
-    # 1. Group aggregations
-    for agg in aggregated_data:
-        acc = agg.get('account_number', '')
-        phase = agg.get('phase_code', 'UNK')
-        if phase == 'FA': trade = 'ALL' 
-        else: trade = agg.get('trade_number')
-        group_key = (acc, phase, trade)
-        if group_key not in grouped_aggs: grouped_aggs[group_key] = []
-        grouped_aggs[group_key].append(agg)
-        
-    # 2. Process groups
-    for (account_number, phase, trade_number), agg_list in grouped_aggs.items():
-        # Sort by date
-        agg_list.sort(key=lambda x: x.get('farming_date') or '')
-        
-        # Find Matches
-        eval_matches = match_account_to_evaluation_all(account_number, evaluations, phase)
-        if not eval_matches: continue
-            
-        # Sort Evaluations by Date
-        def get_p_date(eval_tuple):
-            ev = evaluations[eval_tuple[0]]
-            return str(ev.get('Date Purchased') or ev.get('Date Created') or '')
-        eval_matches.sort(key=get_p_date)
-        
-        # Farming Logic
-        if phase == 'FA':
-            target_idx, _ = eval_matches[-1] # Use latest
-            for current_agg in agg_list:
-                amt = current_agg.get('net_profit', 0)
-                col = get_next_empty_farming_slot(evaluations[target_idx])
-                if col:
-                    evaluations[target_idx][col] = amt
-                    updates_made += 1
-            continue
+    return jsonify({"status": "error", "message": "Failed to change password"}), 500
 
-        # Standard Logic
-        eval_ptr = 0
-        for agg in agg_list:
-            if eval_ptr < len(eval_matches):
-                target_tuple = eval_matches[eval_ptr]
-                eval_ptr += 1 
-            else: target_tuple = eval_matches[-1]
-            
-            target_idx, account_type = target_tuple
-            eff_phase = phase
-            eff_trade = agg.get('trade_number')
-            if phase == 'UNK':
-                eff_phase = 'CH' if account_type == 'challenge' else 'FD'
-                eff_trade = 1
+# ============ Main Entry Point ============
 
-            field = get_field_name_for_phase(eff_phase, eff_trade, None, evaluations, target_idx, account_number)
-            if field:
-                 evaluations[target_idx][field] = agg.get('net_profit', 0)
-                 match_log.append(f"✅ Match -> {field}")
-                 updates_made += 1
-        
-    return evaluations, match_log
+def run_dashboard():
+    print(f"\n{'='*60}")
+    print("SECURE DASHBOARD API SERVER STARTING")
+    print(f"{'='*60}")
+    print(f"Database: SQLite with encrypted storage")
+    print(f"Rate Limiting: Enabled")
+    print(f"Password Hashing: PBKDF2-SHA256 (100,000 iterations)")
+    print(f"API Keys: Hashed with SHA-256")
+    print(f"Audit Logging: Enabled")
+    print(f"\nClients in database: {get_clients_count()}")
+    print(f"{'='*60}\n")
+    app.run(host='0.0.0.0', port=5001, debug=True)
 
-def get_next_empty_farming_slot(eval_row):
-    for i in range(1, 40): 
-        col = f"Hedge Day {i}"
-        val = eval_row.get(col)
-        if not val: return col
-    return "Hedge Day 35"
-
-def match_account_to_evaluation_all(account_number, evaluations, phase_code):
-    matches = []
-    tsig = get_account_signature(account_number)
-    tlast5 = get_last_n_digits(account_number, 5)
-    
-    if phase_code in ['CH', 'UNK']:
-        matches.extend(_scan_evals(evaluations, 'Account #', tsig, tlast5, 'challenge'))
-    if phase_code != 'CH':
-        matches.extend(_scan_evals(evaluations, 'Account #.1', tsig, tlast5, 'funded'))
-    return matches
-
-def _scan_evals(evaluations, col_name, tsig, tlast5, label):
-    found = []
-    for idx, ev in enumerate(evaluations):
-        val = str(ev.get(col_name, '')).strip()
-        if not val: continue
-        if tsig and get_account_signature(val) == tsig:
-            found.append((idx, label))
-            continue
-        ev5 = get_last_n_digits(val, 5)
-        if tlast5 and len(tlast5)>=4:
-             if ev5 == tlast5 or (len(ev5)>=len(tlast5) and ev5.endswith(tlast5)):
-                 found.append((idx, label))
-    return found
+if __name__ == '__main__':
+    run_dashboard()
