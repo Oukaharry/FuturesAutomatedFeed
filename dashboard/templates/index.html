@@ -1637,7 +1637,7 @@
             }
 
             const options = dropdownOptions[type] || [];
-            const items = options.map(opt => `<div class="dropdown-item" onclick="selectItem(event, this, ${index}, '${key}')">${opt}</div>`).join('');
+            const items = options.map(opt => `<div class="dropdown-item" data-val="${opt}" data-idx="${index}" data-k="${key}">${opt}</div>`).join('');
             
             let colorStyle = "";
             if (type === 'Status') {
@@ -1696,6 +1696,37 @@
                     closeGlobalMenu();
                 }
             }, true);
+            
+            // Event delegation for menu items (portal)
+            globalDropdownMenu.addEventListener('click', (e) => {
+                const item = e.target.closest('.dropdown-item');
+                if (item) {
+                    e.stopPropagation();
+                    const index = parseInt(item.getAttribute('data-idx'));
+                    const key = item.getAttribute('data-k');
+                    const value = item.innerText;
+
+                    if (activeDropdownTrigger) {
+                        const valueSpan = activeDropdownTrigger.querySelector('.selected-value');
+                        if (valueSpan) valueSpan.innerText = value;
+                        
+                        // Update color if status
+                        if (key.includes('Status')) {
+                            const v = value.toLowerCase();
+                            let color = "";
+                            if (v.includes('active') || v.includes('progress') || v.includes('pass')) color = "#27ae60";
+                            else if (v.includes('fail') || v.includes('breach')) color = "#c0392b";
+                            else if (v.includes('tp') || v.includes('payout')) color = "#f39c12";
+                            else if (v.includes('complete')) color = "#8e44ad";
+                            
+                            activeDropdownTrigger.style.color = color;
+                        }
+
+                        handleInputChange(index, key, value);
+                    }
+                    closeGlobalMenu();
+                }
+            });
 
             // Update position on scroll/resize
             ['scroll', 'resize'].forEach(ev => {
