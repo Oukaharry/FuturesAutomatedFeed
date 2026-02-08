@@ -120,8 +120,12 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     # Determine which column to check based on phase
     if phase_code == 'CH':
         column_name = 'Account #'  # Challenge accounts
+    elif phase_code in ['FD', 'DD', 'FA']:
+         # Funded accounts for FD, DD, FA
+        column_name = 'Account #.1'
     else:
-        column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
+         # Default to Funded column if unknown
+         column_name = 'Account #.1'
     
     # Scan ALL rows for matches
     for idx, ev in enumerate(evaluations):
@@ -142,6 +146,100 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
                 matches.append((idx, eval_account))
 
     return matches
+
+
+def parse_sheet_date(date_str):
+    """
+    Parse date string from Google Sheet into datetime object.
+    Supports formats: DD/MM/YYYY, YYYY-MM-DD, MM/DD/YYYY, etc.
+    """
+    if not date_str:
+        return None
+    
+    date_str = str(date_str).strip()
+    if not date_str:
+        return None
+        
+    formats = [
+        '%d/%m/%Y', '%Y-%m-%d', '%m/%d/%Y', 
+        '%d-%m-%Y', '%Y/%m/%d', '%d.%m.%Y',
+        '%d/%m/%y', '%m/%d/%y'
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+            
+    return None
+
+
+def filter_matches_by_date(matches, evaluations, trade_timestamp):
+    """
+    Filter matches to find the one where Trade Date > Date Purchased.
+    If multiple valid matches, pick the one closest to trade date (most recent purchase before trade).
+    
+    Args:
+        matches: List of (eval_index, matched_account)
+        evaluations: List of evaluation dicts
+        trade_timestamp: Timestamp of the trade (float or int)
+        
+    Returns:
+        The best matching (eval_index, matched_account) or None if no valid match.
+        If trade_timestamp is missing/invalid, returns the first match (fallback).
+    """
+    if not matches or not trade_timestamp:
+        return matches[0] if matches else None
+
+    # Convert trade timestamp to datetime
+    try:
+        trade_date = datetime.fromtimestamp(float(trade_timestamp))
+    except (ValueError, TypeError):
+        return matches[0]
+        
+    valid_matches = []
+    
+    for eval_idx, matched_acc in matches:
+        ev = evaluations[eval_idx]
+        # "Date Purchased" is typically at index 2, but we address by name
+        date_purchased_str = ev.get('Date Started', '') or ev.get('Date Purchased', '')
+        date_purchased = parse_sheet_date(date_purchased_str)
+        
+        if not date_purchased:
+            # If no date purchased, treat as potentially valid but low priority?
+            # Or maybe this is an old entry without date.
+            # Let's keep it as a fallback with distance infinity
+            valid_matches.append({
+                'match': (eval_idx, matched_acc),
+                'delta': float('inf'),
+                'valid_date': False
+            })
+            continue
+            
+        # Check if Trade Date is AFTER Date Purchased
+        # Use a small buffer (e.g. same day is fine)
+        # Reset time to midnight for comparison
+        dp_date = date_purchased.replace(hour=0, minute=0, second=0, microsecond=0)
+        td_date = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        if td_date >= dp_date:
+            delta = (td_date - dp_date).total_seconds()
+            valid_matches.append({
+                'match': (eval_idx, matched_acc),
+                'delta': delta,
+                'valid_date': True
+            })
+            
+    if not valid_matches:
+        # No matches with valid dates found? Return first match as fallback
+        return matches[0]
+        
+    # Sort by delta (smallest positive difference)
+    # Prefer matches with valid dates
+    valid_matches.sort(key=lambda x: (not x['valid_date'], x['delta']))
+    
+    return valid_matches[0]['match']
 
 
 def normalize_account_size(value):
@@ -275,6 +373,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         farming_date = agg.get('farming_date')
         net_profit = agg.get('net_profit', 0)
         deal_count = agg.get('deal_count', 0)
+        trade_timestamp = agg.get('timestamp', 0)
         
         # Find matching evaluation
         matches = match_account_to_evaluation(account_number, evaluations, phase_code)
@@ -284,8 +383,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
             match_log.append(f"⚠️ No match: {account_number} ({sig}) _{phase_code}{trade_number or ''} = ${net_profit:.2f}")
             continue
         
+        # Filter matches by date logic (Date Started/Purchased <= Trade Date)
+        best_match = filter_matches_by_date(matches, evaluations, trade_timestamp)
+        if best_match:
+            matches = [best_match]
+        
         # Determine field to update
-        # Use first match to determine logic, apply to all
+        # Use first match to determine logic
         first_idx, first_account = matches[0]
         field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, first_idx, account_number)
         
@@ -293,14 +397,18 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
             match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
             continue
         
-        # Update ALL matching evaluations
+        # Update matching evaluation (should be just one best match now)
         for eval_idx, matched_account in matches:
             evaluations[eval_idx][field_name] = net_profit
             updates_made += 1
             
             sig = get_account_signature(account_number)
+            
+            # Log with Date Started context
+            date_started = evaluations[eval_idx].get('Date Started', '') or evaluations[eval_idx].get('Date Purchased', 'N/A')
+            
             match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
-            match_log.append(f"   Matched to: {matched_account} (Row {eval_idx})")
+            match_log.append(f"   Matched to: {matched_account} (Row {eval_idx}, Started: {date_started})")
     
     match_log.append(f"\n📈 Total updates: {updates_made}/{len(aggregated_data)}")
     return evaluations, match_log
@@ -1715,106 +1823,6 @@ def can_access_client(user_type, user_identifier, target_client):
                 client_name = client.get('name', '')
                 client_email = client.get('email', '')
                 
-                if client_name == target_client or client_email == target_client:
-                    if user_type == 'admin' and user_identifier == admin_name:
-                        return True
-                    if user_type == 'trader' and user_identifier == trader_name:
-                        return True
-    
-    return False
-
-def get_accessible_clients(user_type, user_identifier):
-    """Get list of client names this user can access."""
-    clients = []
-    
-    if user_type == 'super_admin':
-        # Super admin can access all clients
-        for admin_data in hierarchy.get('admins', {}).values():
-            for trader_data in admin_data.get('traders', {}).values():
-                for client in trader_data.get('clients', []):
-                    clients.append(client.get('name'))
-        return clients
-    
-    if user_type == 'admin':
-        # Admin can access all clients under their traders
-        admin_data = hierarchy.get('admins', {}).get(user_identifier, {})
-        for trader_data in admin_data.get('traders', {}).values():
-            for client in trader_data.get('clients', []):
-                clients.append(client.get('name'))
-        return clients
-    
-    if user_type == 'trader':
-        # Trader can access only their clients
-        for admin_data in hierarchy.get('admins', {}).values():
-            trader_data = admin_data.get('traders', {}).get(user_identifier, {})
-            for client in trader_data.get('clients', []):
-                clients.append(client.get('name'))
-        return clients
-    
-    if user_type == 'client':
-        # Client can only access themselves
-        return [user_identifier]
-    
-    return []
-
-@app.route('/api/hedging_review/<client_id>', methods=['POST'])
-@require_session
-def update_hedging_review(client_id):
-    """Update hedging review values manually - only for traders, admins, and super_admins."""
-    session_user = request.session_user
-    user_type = session_user.get('user_type')
-    user_identifier = session_user.get('user_identifier')
-    
-    # Only allow traders, admins, and super_admins to edit
-    if user_type not in ['trader', 'admin', 'super_admin']:
-        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
-                   f"Client tried to edit hedging for: {client_id}", False)
-        return jsonify({"status": "error", "message": "Only traders, admins, and super admins can edit hedging review"}), 403
-    
-    # Check if user can access this client
-    if not can_access_client(user_type, user_identifier, client_id):
-        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
-                   f"No access to client: {client_id}", False)
-        return jsonify({"status": "error", "message": "Access denied to this client"}), 403
-    
-    data = request.json
-    
-    # Get existing client data
-    client_data = get_client_data(client_id)
-    if not client_data:
-        return jsonify({"status": "error", "message": "Client data not found"}), 404
-    
-    # Update hedging review in statistics
-    if 'statistics' not in client_data:
-        client_data['statistics'] = {}
-    if 'hedging_review' not in client_data['statistics']:
-        client_data['statistics']['hedging_review'] = {}
-    
-    hr = client_data['statistics']['hedging_review']
-    hr['total_deposits'] = float(data.get('total_deposits', hr.get('total_deposits', 0)))
-    hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
-    hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
-    hr['actual_hedging_results'] = float(data.get('actual_hedging_results', hr.get('actual_hedging_results', 0)))
-    hr['discrepancy'] = float(data.get('discrepancy', hr.get('discrepancy', 0)))
-    
-    # Also store in account for consistency with MT5 push
-    if 'account' not in client_data:
-        client_data['account'] = {}
-    client_data['account']['balance'] = hr['current_balance']
-    client_data['account']['total_deposits'] = hr['total_deposits']
-    client_data['account']['total_withdrawals'] = hr['total_withdrawals']
-    
-    # Save updated data
-    save_client_data(client_id, client_data)
-    
-    log_action('HEDGING_EDIT', user_type, user_identifier, get_remote_address(), 
-               f"Updated hedging review for {client_id}: deposits={hr['total_deposits']}, withdrawals={hr['total_withdrawals']}, balance={hr['current_balance']}")
-    
-    return jsonify({
-        "status": "success", 
-        "message": "Hedging review updated",
-        "hedging_review": hr
-    })
 
 @app.route('/api/historical_mt5/<client_id>', methods=['POST'])
 @require_session
