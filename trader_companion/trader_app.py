@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.3"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -16,6 +16,7 @@ import requests
 import time
 from datetime import datetime
 import threading
+import re
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1630,7 +1631,7 @@ class TraderCompanionApp:
             comment = deal.get('comment', '') or ''
             d_type = str(deal.get('type', '')).upper()
             
-            if d_type in ['BALANCE', 'CREDIT', '2', '3']:
+            if d_type in ['BALANCE', 'CREDIT', '2', '3']:  # Skip balance and credit ops
                 continue
                 
             if comment not in comment_analysis:
@@ -1762,8 +1763,7 @@ class TraderCompanionApp:
         for phase, data in sorted(by_phase.items()):
             self.log(f"   {phase}: {data.get('count', 0)} groups, Total: ${data.get('total_net_profit', 0):.2f}")
         
-        self.log("="*70)
-    
+       
     def push_by_comment(self):
         """
         Push hedge results to dashboard by matching MT5 order comments to evaluation accounts.

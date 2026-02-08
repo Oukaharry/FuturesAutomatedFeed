@@ -298,16 +298,18 @@ class MT5CommentParser:
     
     def _parse_legacy_combine(self, match: re.Match, comment: str) -> ParsedComment:
         """Parse legacy Combine format: Combine{N}_."""
-        combine_num = match.group(1)
+        combinenum = match.group(1)
+        rest = match.group(2)
+        # Usually Combine1_Account
         return ParsedComment(
-            account_number=f"Combine{combine_num}",
-            phase=Phase.LEGACY,
-            phase_code="LEGACY",
-            trade_number=int(combine_num),
+            account_number=rest,
+            phase=Phase.CHALLENGE,
+            phase_code="CH",
+            trade_number=int(combinenum),
             raw_comment=comment,
             is_valid=True
         )
-    
+
     def get_phase_meaning(self, phase_code: str, prop_firm: str = "MFFU") -> str:
         """
         Get human-readable meaning for a phase code.

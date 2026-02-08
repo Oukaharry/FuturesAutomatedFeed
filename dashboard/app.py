@@ -73,6 +73,21 @@ def get_account_signature(account_number):
     
     account_str = str(account_number).strip()
     
+    # Handle MT5 truncated TopStep format: V2-...SUFFIX
+    # This must come before the generic '...' handler to avoid including 'v2-' in the prefix
+    if account_str.lower().startswith('v2-...'):
+        return account_str.split('...')[-1].lower()
+
+    # Handle TopStep/Dashboard formats: 50KTC-V2-..., EXPRESS-V2-...
+    # Extract the last part which is likely the actual account number used in MT5
+    if ('-V2-' in account_str) or ('50KTC' in account_str) or ('EXPRESS' in account_str):
+        parts = account_str.split('-')
+        last_part = parts[-1] 
+        # Only treat as account number if it's alphanumeric but mostly digits/lengthy
+        # Case: 50KTC-V2-472054-49197160 -> last is 49197160
+        if len(parts) > 1:
+            account_str = last_part
+    
     # Handle truncated format: PREFIX...SUFFIX
     if '...' in account_str:
         parts = account_str.split('...')
@@ -93,8 +108,15 @@ def get_last_n_digits(account: str, n: int = 5) -> str:
     """Extract last N digits from account number."""
     if not account:
         return ""
+        
+    # Handle V2-... prefix exclusion (TopStep) to ensure we get actual account digits
+    clean_account = account
+    lower_acc = account.lower()
+    if lower_acc.startswith('v2-...'):
+        clean_account = account.split('...')[-1]
+        
     # Extract only digits from the end
-    digits = ''.join(c for c in account if c.isdigit())
+    digits = ''.join(c for c in clean_account if c.isdigit())
     return digits[-n:] if len(digits) >= n else digits
 
 
@@ -108,8 +130,6 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     Matching strategy:
     1. Try signature match (first4 + last4/5)
     2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
-    
-    Returns: (eval_index, matched_account) or (None, None)
     """
     if not account_number or not evaluations:
         return None, None
@@ -137,15 +157,23 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
             return idx, eval_account
     
     # Second pass: Try last 5 digits match (for truncated accounts)
-    if target_last5 and len(target_last5) >= 4:
+    if target_last5:
+        # Check against evaluations
         for idx, ev in enumerate(evaluations):
             eval_account = str(ev.get(column_name, '')).strip()
             if not eval_account:
                 continue
             
+            # Get last 5 digits of evaluation account
             eval_last5 = get_last_n_digits(eval_account, 5)
-            if eval_last5 == target_last5:
+            
+            # Standard exact match of 5 digits
+            if len(target_last5) == 5 and eval_last5 == target_last5:
                 return idx, eval_account
+            
+            # Fallback for TopStep: If target is short (4 digits) and matches end of eval
+            if len(target_last5) >= 4 and eval_last5.endswith(target_last5):
+                 return idx, eval_account
     
     return None, None
 
