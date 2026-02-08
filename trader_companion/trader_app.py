@@ -690,13 +690,14 @@ class MT5DataPusher:
                 continue
             
             # Determine which field to update based on phase
+            # Use first match to determine field name logic
             field_name = self._get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_matches[0][0])
             
             if not field_name:
                 match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
                 continue
             
-            # Update the evaluation(s)
+            # Update ALL matching evaluations
             for eval_idx, account_type in eval_matches:
                 # Verify this is the right type of match
                 if phase_code == 'CH' and account_type != 'challenge':
@@ -710,8 +711,7 @@ class MT5DataPusher:
                 
                 eval_account = evaluations[eval_idx].get('Account #' if account_type == 'challenge' else 'Account #.1', 'N/A')
                 match_log.append(f"✅ {account_number}_{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f} ({deal_count} deals)")
-                match_log.append(f"   Matched to eval row with account: {eval_account}")
-                break  # Only update first match
+                match_log.append(f"   Matched to eval row: {eval_account} (Row {eval_idx})")
         
         match_log.append(f"\n📈 Total updates made: {updates_made}")
         return evaluations, match_log
