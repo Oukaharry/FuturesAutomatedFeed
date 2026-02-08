@@ -127,7 +127,7 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
     
     # First pass: Try signature match
-    for idx, ev in enumerate(evaluations):
+    for idx, ev in reversed(list(enumerate(evaluations))):
         eval_account = str(ev.get(column_name, '')).strip()
         if not eval_account:
             continue
@@ -138,7 +138,7 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     
     # Second pass: Try last 5 digits match (for truncated accounts)
     if target_last5 and len(target_last5) >= 4:
-        for idx, ev in enumerate(evaluations):
+        for idx, ev in reversed(list(enumerate(evaluations))):
             eval_account = str(ev.get(column_name, '')).strip()
             if not eval_account:
                 continue
@@ -235,9 +235,9 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
                     return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'DD':
-        # Double Dip: DD1-4 map to available funded hedge columns
-        if trade_number is not None and 1 <= trade_number <= 4:
-            return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
+        # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
+        if trade_number is not None:
+             return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'FA':
         # Farming: Find next available Hedge Day slot

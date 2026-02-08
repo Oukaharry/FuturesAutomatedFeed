@@ -619,8 +619,14 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
                 entry_deal = d
             
             # Track latest time (exit time)
-            t = d.get('time', 0)
-            if t > exit_time:
+            t = d.get('time_raw', d.get('time', 0))
+            if isinstance(t, str):
+                try:
+                    t = datetime.fromisoformat(t).timestamp()
+                except (ValueError, AttributeError):
+                    t = 0
+            
+            if isinstance(t, (int, float)) and t > exit_time:
                 exit_time = t
                 
             total_profit += d.get('profit', 0) or 0

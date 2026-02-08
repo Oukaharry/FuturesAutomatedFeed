@@ -204,6 +204,7 @@ class MT5DataPusher:
                 "swap": deal.swap,
                 "fee": deal.fee,
                 "time": datetime.fromtimestamp(deal.time).isoformat(),
+                "time_raw": deal.time,
                 "magic": deal.magic,
                 "comment": deal.comment
             })
@@ -767,11 +768,9 @@ class MT5DataPusher:
                     return "Hedge Result 7"
         
         elif phase_code == 'DD':
-            # Double Dip: DD1-4 map to specific funded hedge columns
-            # Usually used for additional funded trades
-            if trade_number and 1 <= trade_number <= 4:
-                # Map DD to available funded hedge result slots
-                return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
+            # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
+            if trade_number:
+                 return f"Hedge Result {trade_number}.1"
         
         elif phase_code == 'FA':
             # Farming: Use date to determine day number
