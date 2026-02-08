@@ -374,6 +374,33 @@ class MT5DealAggregator:
             self.parse_log.append(f"⚠️ Unmatched: {comment or '(empty)'}")
             return None
         
+        # Get deal date for clustering
+        deal_time_str = deal.get('time', '')
+        deal_date = None
+        try:
+            if deal_time_str:
+                # Handle ISO format string (YYYY-MM-DDTHH:MM:SS)
+                if isinstance(deal_time_str, str):
+                    if 'T' in deal_time_str:
+                        deal_date = datetime.fromisoformat(deal_time_str).date()
+                    else:
+                        # Fallback parsing if just YYYY-MM-DD
+                        deal_date = datetime.strptime(deal_time_str.split()[0], '%Y-%m-%d').date()
+                # Handle timestamp
+                elif isinstance(deal_time_str, (int, float)):
+                    deal_date = datetime.fromtimestamp(deal_time_str).date()
+        except:
+            pass # Keep deal_date as None if parsing fails
+
+        # For Farming (FA), if no date in comment, use deal date
+        # For Reset Accounts (CH/FD), we also want to separate by date to distinguish resets
+        # So we update parsed.farming_date if it's currently None, using the deal date
+        
+        # Override/Set farming_date for grouping if not present in comment
+        if not parsed.farming_date and deal_date:
+            # We treat 'farming_date' field as 'grouping_date' effectively
+            parsed.farming_date = datetime(deal_date.year, deal_date.month, deal_date.day)
+
         # Build aggregation key
         key = self._build_key(parsed)
         
@@ -404,6 +431,9 @@ class MT5DealAggregator:
         if parsed.trade_number is not None:
             parts.append(str(parsed.trade_number))
         
+        # Always append date if available (now populated from deal time too)
+        # This breaks simple CH1 aggregation into CH1_Date1, CH1_Date2...
+        # Which is exactly what we want for Reset Account handling
         if parsed.farming_date:
             parts.append(parsed.farming_date.strftime('%d%m%y'))
         
@@ -523,13 +553,8 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
     """
     Aggregate deals by position_id first, then by comment/phase.
     
-    This solves the problem where:
-    - Entry deal has the comment (e.g., FNFT...59574_CH1) but profit=0
-    - Exit deal has the actual profit but different comment (e.g., [sl], [tp])
-    
-    By grouping deals by position_id first, we can:
-    1. Get the comment from the entry deal (entry=0)
-    2. Sum the profit from all deals in that position
+    Also handles "Farming" cluster logic:
+    - If Phase is FARMING (FA) and no date in comment, uses Trade Date (Time).
     
     Args:
         deals: List of MT5 deal objects or dicts
@@ -581,6 +606,8 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
     for pid, deal_list in positions.items():
         # Find entry deal (entry=0 is DEAL_ENTRY_IN) with valid comment
         entry_deal = None
+        exit_time = 0 
+        
         total_profit = 0.0
         total_commission = 0.0
         total_swap = 0.0
@@ -590,6 +617,12 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
             # entry: 0=IN, 1=OUT, 2=INOUT, 3=OUT_BY
             if d.get('entry', 1) == 0:  # Entry deal
                 entry_deal = d
+            
+            # Track latest time (exit time)
+            t = d.get('time', 0)
+            if t > exit_time:
+                exit_time = t
+                
             total_profit += d.get('profit', 0) or 0
             total_commission += d.get('commission', 0) or 0
             total_swap += d.get('swap', 0) or 0
@@ -617,6 +650,13 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
                 'deal_count': len(deal_list)
             })
             continue
+            
+        # --- FARMING DATE INFERENCE ---
+        # If Phase is FA but no farming_date, use the exit time date
+        if parsed.phase_code == 'FA' and not parsed.farming_date:
+            if exit_time > 0:
+                parsed.farming_date = datetime.fromtimestamp(exit_time) 
+        # -----------------------------
         
         position_data.append({
             'position_id': pid,
@@ -626,6 +666,7 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
             'phase_code': parsed.phase_code,
             'trade_number': parsed.trade_number,
             'farming_date': parsed.farming_date.isoformat() if parsed.farming_date else None,
+            'timestamp': exit_time, # Store timestamp for sorting
             'total_profit': round(total_profit, 2),
             'total_commission': round(total_commission, 2),
             'total_swap': round(total_swap, 2),
@@ -639,11 +680,22 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
     log_messages.append(f"Matched {len(position_data)} positions, {len(unmatched)} unmatched")
     
     # Step 3: Aggregate by account + phase (in case multiple positions have same account/phase)
+    # ALSO group by DATE for Farming if not already specific
     aggregated = {}
+    
     for pos in position_data:
         key = f"{pos['account_number']}_{pos['phase_code']}{pos['trade_number'] or ''}"
-        if pos.get('farming_date'):
-            key += f"_{pos['farming_date'][:10].replace('-', '')}"
+        
+        # For Farming, always append Date to key to separate days
+        if pos['phase_code'] == 'FA' and pos.get('farming_date'):
+            # Convert ISO string back to date for key or use string slice
+            # ISO format: YYYY-MM-DDTHH:MM:SS
+            date_str = pos['farming_date'][:10] # YYYY-MM-DD
+            key += f"_{date_str}"
+        elif pos.get('farming_date'):
+            # Some other phases might have dates too (rare)
+            date_str = pos['farming_date'][:10].replace('-', '')
+            key += f"_{date_str}"
         
         if key not in aggregated:
             aggregated[key] = {
@@ -661,7 +713,8 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
                 'deal_count': 0,
                 'position_count': 0,
                 'account_signature': pos['account_signature'],
-                'key': key
+                'key': key,
+                'timestamp': pos['timestamp'] # Keep one timestamp
             }
         
         agg = aggregated[key]
@@ -672,6 +725,10 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
         agg['net_profit'] += pos['net_profit']
         agg['deal_count'] += pos['deal_count']
         agg['position_count'] += 1
+        
+        # Update timestamp to latest in group (usually irrelevant for same day)
+        if pos['timestamp'] > agg['timestamp']:
+            agg['timestamp'] = pos['timestamp']
     
     # Round final values
     for key, agg in aggregated.items():
