@@ -1669,60 +1669,115 @@
             return `<input type="${type}" class="cell-input" value="${value}" onchange="handleInputChange(${index}, '${key}', this.value)" ${readOnlyAttr} style="${style}">`;
         }
 
-        function toggleMenu(e, dropdown) {
-            e.stopPropagation();
-            // Close other open menus first
-            document.querySelectorAll('.dropdown-menu.show').forEach(m => {
-                if (m.parentElement !== dropdown) {
-                    m.classList.remove('show');
-                    // reset inline positioning if any
-                    m.style.position = '';
-                    m.style.left = '';
-                    m.style.top = '';
+        // Global state for portal dropdowns
+        let activeDropdownTrigger = null;
+        let globalDropdownMenu = null;
+
+        // Initialize portal on load
+        document.addEventListener('DOMContentLoaded', () => {
+            globalDropdownMenu = document.createElement('div');
+            globalDropdownMenu.className = 'dropdown-menu-portal';
+            globalDropdownMenu.style.display = 'none';
+            globalDropdownMenu.style.position = 'fixed';
+            globalDropdownMenu.style.zIndex = '999999';
+            globalDropdownMenu.style.background = 'var(--card-bg)';
+            globalDropdownMenu.style.border = '1px solid var(--border-color)';
+            globalDropdownMenu.style.borderRadius = '12px';
+            globalDropdownMenu.style.padding = '8px';
+            globalDropdownMenu.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+            globalDropdownMenu.style.backdropFilter = 'blur(12px)';
+            globalDropdownMenu.style.maxHeight = '300px';
+            globalDropdownMenu.style.overflowY = 'auto';
+            document.body.appendChild(globalDropdownMenu);
+
+            // Close on outside click
+            document.addEventListener('click', (e) => {
+                if (activeDropdownTrigger && !activeDropdownTrigger.contains(e.target) && !globalDropdownMenu.contains(e.target)) {
+                    closeGlobalMenu();
                 }
+            }, true);
+
+            // Update position on scroll/resize
+            ['scroll', 'resize'].forEach(ev => {
+                window.addEventListener(ev, () => {
+                   if (activeDropdownTrigger && globalDropdownMenu.style.display !== 'none') {
+                       updateGlobalMenuPosition();
+                   }
+                }, { capture: true, passive: true });
             });
+        });
 
-            const menu = dropdown.querySelector('.dropdown-menu');
-            if (!menu) return;
-
-            const willShow = !menu.classList.contains('show');
-            // Toggle class
-            menu.classList.toggle('show');
-
-            if (willShow) {
-                // Position the menu as fixed to avoid being clipped by overflow:hidden ancestors
-                const rect = dropdown.getBoundingClientRect();
-                // Ensure the menu appears below the element and within viewport
-                const left = Math.max(8, rect.left);
-                const top = rect.bottom + 8;
-                menu.style.position = 'fixed';
-                menu.style.left = `${left}px`;
-                menu.style.top = `${top}px`;
-                // Make menu at least as wide as the trigger
-                menu.style.minWidth = `${Math.max(rect.width, 200)}px`;
-                // Ensure z-index is high enough to be on top of everything
-                menu.style.zIndex = '99999';
-            } else {
-                // Hide -> reset inline styles so absolute positioning works next time
-                menu.style.position = '';
-                menu.style.left = '';
-                menu.style.top = '';
-                menu.style.minWidth = '';
+        function closeGlobalMenu() {
+            if (globalDropdownMenu) {
+                globalDropdownMenu.style.display = 'none';
+                globalDropdownMenu.innerHTML = '';
+            }
+            if (activeDropdownTrigger) {
+                activeDropdownTrigger.classList.remove('active');
+                activeDropdownTrigger = null;
             }
         }
 
-        // Reposition any open dropdown menus on scroll/resize to keep them aligned
-        ['scroll', 'resize'].forEach(ev => {
-            window.addEventListener(ev, () => {
-                document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
-                    const dropdown = menu.parentElement;
-                    if (!dropdown) return;
-                    const rect = dropdown.getBoundingClientRect();
-                    menu.style.left = `${Math.max(8, rect.left)}px`;
-                    menu.style.top = `${rect.bottom + 8}px`;
-                });
-            }, { passive: true });
-        });
+        function updateGlobalMenuPosition() {
+            if (!activeDropdownTrigger || !globalDropdownMenu) return;
+            const rect = activeDropdownTrigger.getBoundingClientRect();
+            
+            // Default position: Bottom Left
+            let top = rect.bottom + 4;
+            let left = rect.left;
+            
+            // Check overflow bottom
+            if (top + 200 > window.innerHeight) {
+                // Flip top if not enough space (approx menu height)
+                top = rect.top - globalDropdownMenu.offsetHeight - 4;
+            }
+
+            globalDropdownMenu.style.top = `${top}px`;
+            globalDropdownMenu.style.left = `${left}px`;
+            globalDropdownMenu.style.minWidth = `${Math.max(rect.width, 180)}px`;
+        }
+
+        function toggleMenu(e, dropdown) {
+            e.stopPropagation();
+            
+            // If clicking the currently active one, toggle close
+            if (activeDropdownTrigger === dropdown) {
+                closeGlobalMenu();
+                return;
+            }
+
+            // Close existing
+            closeGlobalMenu();
+
+            // Set new active
+            activeDropdownTrigger = dropdown;
+            dropdown.classList.add('active');
+
+            // Copy content
+            const templateMenu = dropdown.querySelector('.dropdown-menu');
+            if (templateMenu) {
+                globalDropdownMenu.innerHTML = templateMenu.innerHTML;
+                globalDropdownMenu.style.display = 'block';
+                updateGlobalMenuPosition(); // Init position once content loaded (for height calc)
+            }
+        }
+
+        function selectItem(e, item, index, key) {
+            e.stopPropagation();
+            // Note: 'item' is inside globalDropdownMenu now
+            
+            if (!activeDropdownTrigger) return;
+
+            const valueSpan = activeDropdownTrigger.querySelector('.selected-value');
+            if (valueSpan) {
+                const newValue = item.innerText;
+                valueSpan.innerText = newValue;
+                handleInputChange(index, key, newValue);
+            }
+
+            // Close menu
+            closeGlobalMenu();
+        }
 
         function selectItem(e, item, index, key) {
             e.stopPropagation();
