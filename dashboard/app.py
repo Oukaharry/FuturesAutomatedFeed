@@ -100,25 +100,22 @@ def get_last_n_digits(account: str, n: int = 5) -> str:
 
 def match_account_to_evaluation(account_number, evaluations, phase_code):
     """
-    Find matching evaluation for an account number based on phase.
+    Find ALL matching evaluations for an account number based on phase.
     
     For Challenge (CH): Match against 'Account #' column
     For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
     
-    Matching strategy:
-    1. Try signature match (first4 + last4/5)
-    2. Fallback: Try last 5 digits match (for truncated accounts like FNFT...59574)
-    
-    Returns: (eval_index, matched_account) or (None, None)
+    Returns: List of (eval_index, matched_account)
     """
+    matches = []
     if not account_number or not evaluations:
-        return None, None
+        return matches
     
     target_sig = get_account_signature(account_number)
     target_last5 = get_last_n_digits(account_number, 5)
     
     if not target_sig and not target_last5:
-        return None, None
+        return matches
     
     # Determine which column to check based on phase
     if phase_code == 'CH':
@@ -126,28 +123,25 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     else:
         column_name = 'Account #.1'  # Funded accounts for FD, DD, FA
     
-    # First pass: Try signature match
-    for idx, ev in reversed(list(enumerate(evaluations))):
+    # Scan ALL rows for matches
+    for idx, ev in enumerate(evaluations):
         eval_account = str(ev.get(column_name, '')).strip()
         if not eval_account:
             continue
         
+        # Check signature match
         eval_sig = get_account_signature(eval_account)
         if eval_sig == target_sig:
-            return idx, eval_account
-    
-    # Second pass: Try last 5 digits match (for truncated accounts)
-    if target_last5 and len(target_last5) >= 4:
-        for idx, ev in reversed(list(enumerate(evaluations))):
-            eval_account = str(ev.get(column_name, '')).strip()
-            if not eval_account:
-                continue
+            matches.append((idx, eval_account))
+            continue # Don't check last 5 if sig matched
             
+        # Check last 5 match
+        if target_last5 and len(target_last5) >= 4:
             eval_last5 = get_last_n_digits(eval_account, 5)
             if eval_last5 == target_last5:
-                return idx, eval_account
-    
-    return None, None
+                matches.append((idx, eval_account))
+
+    return matches
 
 
 def normalize_account_size(value):
@@ -283,27 +277,30 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         deal_count = agg.get('deal_count', 0)
         
         # Find matching evaluation
-        eval_idx, matched_account = match_account_to_evaluation(account_number, evaluations, phase_code)
+        matches = match_account_to_evaluation(account_number, evaluations, phase_code)
         
-        if eval_idx is None:
+        if not matches:
             sig = get_account_signature(account_number)
             match_log.append(f"⚠️ No match: {account_number} ({sig}) _{phase_code}{trade_number or ''} = ${net_profit:.2f}")
             continue
         
         # Determine field to update
-        field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)
+        # Use first match to determine logic, apply to all
+        first_idx, first_account = matches[0]
+        field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, first_idx, account_number)
         
         if not field_name:
             match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
             continue
         
-        # Update the evaluation
-        evaluations[eval_idx][field_name] = net_profit
-        updates_made += 1
-        
-        sig = get_account_signature(account_number)
-        match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
-        match_log.append(f"   Matched to: {matched_account}")
+        # Update ALL matching evaluations
+        for eval_idx, matched_account in matches:
+            evaluations[eval_idx][field_name] = net_profit
+            updates_made += 1
+            
+            sig = get_account_signature(account_number)
+            match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
+            match_log.append(f"   Matched to: {matched_account} (Row {eval_idx})")
     
     match_log.append(f"\n📈 Total updates: {updates_made}/{len(aggregated_data)}")
     return evaluations, match_log
