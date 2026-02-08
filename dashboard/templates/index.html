@@ -1671,12 +1671,56 @@
 
         function toggleMenu(e, dropdown) {
             e.stopPropagation();
+            // Close other open menus first
             document.querySelectorAll('.dropdown-menu.show').forEach(m => {
-                if (m.parentElement !== dropdown) m.classList.remove('show');
+                if (m.parentElement !== dropdown) {
+                    m.classList.remove('show');
+                    // reset inline positioning if any
+                    m.style.position = '';
+                    m.style.left = '';
+                    m.style.top = '';
+                }
             });
+
             const menu = dropdown.querySelector('.dropdown-menu');
-            if (menu) menu.classList.toggle('show');
+            if (!menu) return;
+
+            const willShow = !menu.classList.contains('show');
+            // Toggle class
+            menu.classList.toggle('show');
+
+            if (willShow) {
+                // Position the menu as fixed to avoid being clipped by overflow:hidden ancestors
+                const rect = dropdown.getBoundingClientRect();
+                // Ensure the menu appears below the element and within viewport
+                const left = Math.max(8, rect.left);
+                const top = rect.bottom + 8;
+                menu.style.position = 'fixed';
+                menu.style.left = `${left}px`;
+                menu.style.top = `${top}px`;
+                // Make menu at least as wide as the trigger
+                menu.style.minWidth = `${Math.max(rect.width, 200)}px`;
+            } else {
+                // Hide -> reset inline styles so absolute positioning works next time
+                menu.style.position = '';
+                menu.style.left = '';
+                menu.style.top = '';
+                menu.style.minWidth = '';
+            }
         }
+
+        // Reposition any open dropdown menus on scroll/resize to keep them aligned
+        ['scroll', 'resize'].forEach(ev => {
+            window.addEventListener(ev, () => {
+                document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+                    const dropdown = menu.parentElement;
+                    if (!dropdown) return;
+                    const rect = dropdown.getBoundingClientRect();
+                    menu.style.left = `${Math.max(8, rect.left)}px`;
+                    menu.style.top = `${rect.bottom + 8}px`;
+                });
+            }, { passive: true });
+        });
 
         function selectItem(e, item, index, key) {
             e.stopPropagation();
