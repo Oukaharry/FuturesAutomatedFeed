@@ -198,6 +198,100 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     return matches
 
 
+def parse_sheet_date(date_str):
+    """
+    Parse date string from Google Sheet into datetime object.
+    Supports formats: DD/MM/YYYY, YYYY-MM-DD, MM/DD/YYYY, etc.
+    """
+    if not date_str:
+        return None
+    
+    date_str = str(date_str).strip()
+    if not date_str:
+        return None
+        
+    formats = [
+        '%d/%m/%Y', '%Y-%m-%d', '%m/%d/%Y', 
+        '%d-%m-%Y', '%Y/%m/%d', '%d.%m.%Y',
+        '%d/%m/%y', '%m/%d/%y'
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+            
+    return None
+
+
+def filter_matches_by_date(matches, evaluations, trade_timestamp):
+    """
+    Filter matches to find the one where Trade Date > Date Purchased.
+    If multiple valid matches, pick the one closest to trade date (most recent purchase before trade).
+    
+    Args:
+        matches: List of (eval_index, matched_account)
+        evaluations: List of evaluation dicts
+        trade_timestamp: Timestamp of the trade (float or int)
+        
+    Returns:
+        The best matching (eval_index, matched_account) or None if no valid match.
+        If trade_timestamp is missing/invalid, returns the first match (fallback).
+    """
+    if not matches or not trade_timestamp:
+        return matches[0] if matches else None
+
+    # Convert trade timestamp to datetime
+    try:
+        trade_date = datetime.fromtimestamp(float(trade_timestamp))
+    except (ValueError, TypeError):
+        return matches[0]
+        
+    valid_matches = []
+    
+    for eval_idx, matched_acc in matches:
+        ev = evaluations[eval_idx]
+        # "Date Purchased" is typically at index 2, but we address by name
+        date_purchased_str = ev.get('Date Started', '') or ev.get('Date Purchased', '')
+        date_purchased = parse_sheet_date(date_purchased_str)
+        
+        if not date_purchased:
+            # If no date purchased, treat as potentially valid but low priority?
+            # Or maybe this is an old entry without date.
+            # Let's keep it as a fallback with distance infinity
+            valid_matches.append({
+                'match': (eval_idx, matched_acc),
+                'delta': float('inf'),
+                'valid_date': False
+            })
+            continue
+            
+        # Check if Trade Date is AFTER Date Purchased
+        # Use a small buffer (e.g. same day is fine)
+        # Reset time to midnight for comparison
+        dp_date = date_purchased.replace(hour=0, minute=0, second=0, microsecond=0)
+        td_date = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        if td_date >= dp_date:
+            delta = (td_date - dp_date).total_seconds()
+            valid_matches.append({
+                'match': (eval_idx, matched_acc),
+                'delta': delta,
+                'valid_date': True
+            })
+            
+    if not valid_matches:
+        # No matches with valid matches found? Return first match as fallback
+        return matches[0]
+        
+    # Sort by delta (smallest positive difference)
+    # Prefer matches with valid dates
+    valid_matches.sort(key=lambda x: (not x['valid_date'], x['delta']))
+    
+    return valid_matches[0]['match']
+
+
 def normalize_account_size(value):
     """
     Normalize account size values to standard format: $X,XXX
@@ -331,12 +425,19 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         deal_count = agg.get('deal_count', 0)
         
         # Find matching evaluation
-        eval_idx, matched_account = match_account_to_evaluation(account_number, evaluations, phase_code)
+        matches = match_account_to_evaluation(account_number, evaluations, phase_code)
         
-        if eval_idx is None:
+        # Use date filtering to pick the best match
+        # Try to get timestamp from agg if available, otherwise it will fallback to first match
+        trade_timestamp = agg.get('timestamp') 
+        match = filter_matches_by_date(matches, evaluations, trade_timestamp)
+        
+        if not match:
             sig = get_account_signature(account_number)
             match_log.append(f"⚠️ No match: {account_number} ({sig}) _{phase_code}{trade_number or ''} = ${net_profit:.2f}")
             continue
+
+        eval_idx, matched_account = match
         
         # Determine field to update
         field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)

@@ -153,116 +153,19 @@
             color: white;
             border-color: #3b82f6;
         }
-
-        /* Modern Navigation - Gemini Inspired */
-        .modern-nav {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 15px 30px;
-            margin-bottom: 40px;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px -1px rgba(0, 0, 0, 0.05);
-            display: flex;
-            gap: 20px;
-            align-items: center;
-            justify-content: space-between;
-            border: 1px solid rgba(255, 255, 255, 0.5);
-        }
-
-        .nav-brand {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 800;
-            font-size: 1.1rem;
-            color: #0f172a;
-            letter-spacing: -0.02em;
-        }
-
-        .brand-logo {
-            height: 45px;
-            width: auto;
-            display: block;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 8px;
-            background: #f1f5f9;
-            padding: 5px;
-            border-radius: 12px;
-        }
-
-        .nav-item {
-            text-decoration: none;
-            color: #64748b;
-            font-weight: 600;
-            font-size: 0.9rem;
-            padding: 8px 16px;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-        }
-
-        .nav-item:hover {
-            color: #1e293b;
-            background: rgba(255, 255, 255, 0.5);
-        }
-
-        .nav-item.active {
-            background: white;
-            color: #3b82f6;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .nav-actions {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .action-link {
-            color: #64748b;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-        }
-        .action-link:hover { color: #3b82f6; }
-
-        .logout-btn-nav {
-            background: #fee2e2;
-            color: #ef4444;
-            text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: all 0.2s;
-        }
-        .logout-btn-nav:hover {
-            background: #fecaca;
-            color: #dc2626;
-        }
     </style>
 </head>
-<body style="background-color: #f8fafc;">
+<body style="background-color: #f1f5f9;">
     <div class="container" style="max-width: 1600px; padding: 40px;">
 
-        <nav class="modern-nav">
-            <div class="nav-brand">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Baller Quotes" class="brand-logo">
-            </div>
-            <div class="nav-links">
-                <a href="/super_admin" class="nav-item">Dashboard</a>
-                <a href="/financial_overview" class="nav-item active">Prop Firms</a>
-                <a href="/payout_history" class="nav-item">Payouts</a>
-                <a href="/client_performance" class="nav-item">Clients</a>
-                <a href="/trader_performance" class="nav-item">Traders</a>
-            </div>
-            <div class="nav-actions">
-                <a href="/super_admin/clients" class="action-link">Manage Clients</a>
-                <a href="/logout" class="logout-btn-nav">Logout</a>
-            </div>
+        <nav style="background: white; padding: 15px 30px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center;">
+            <a href="/super_admin" style="text-decoration: none; color: #64748b; font-weight: 600;">Dashboard</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/financial_overview" style="text-decoration: none; color: #0284c7; font-weight: 700;">Prop Firm Overview</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/payout_history" style="text-decoration: none; color: #64748b; font-weight: 600;">Payout History</a>
+            <span style="color: #cbd5e1;">|</span>
+            <a href="/client_performance" style="text-decoration: none; color: #64748b; font-weight: 600;">Client Performance</a>
         </nav>
 
         <header style="background: transparent; box-shadow: none; border: none; padding: 0; margin-bottom: 40px;">
@@ -320,14 +223,13 @@
         <div class="chart-card" style="margin-bottom: 30px; height: 400px;">
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; gap: 15px;">
                 <h3 class="chart-title" style="margin-bottom: 0;">Portfolio Metric:</h3>
-                <select id="chartMetricSelect" onchange="updateGrowthChart()" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <option value="payouts" selected>Total Payouts</option>
-                    <option value="fees">Total Fees</option>
-                </select>
-                
-                <h3 class="chart-title" style="margin-bottom: 0; margin-left: 20px;">Prop Firm:</h3>
-                <select id="propFirmSelect" onchange="updateGrowthChart()" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <option value="All" selected>All Prop Firms</option>
+                <select id="chartMetricSelect" onchange="updateGrowthChart(this.value)" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                    <option value="net_profit">Net Profit (Trading)</option>
+                    <option value="payouts">Total Payouts</option>
+                    <option value="deposits">Total Deposits</option>
+                    <option value="fees">Total Fees Spent</option>
+                    <option value="hedge">Hedge Results</option>
+                    <option value="farming">Farming Results</option>
                 </select>
             </div>
             <div class="chart-wrapper">
@@ -472,8 +374,14 @@
     </div>
 
     <!-- Chart Data -->
-    <script type="application/json" id="payouts-breakdown-data">{{ payouts_breakdown|tojson|safe }}</script>
-    <script type="application/json" id="fees-breakdown-data">{{ fees_breakdown|tojson|safe }}</script>
+    <script type="application/json" id="growth-dates-data">{{ growth_dates|tojson|safe }}</script>
+    <script type="application/json" id="growth-values-data">{{ growth_values|tojson|safe }}</script>
+    <script type="application/json" id="payouts-dates-data">{{ payouts_dates|tojson|safe }}</script>
+    <script type="application/json" id="payouts-values-data">{{ payouts_values|tojson|safe }}</script>
+    <script type="application/json" id="profit-dates-data">{{ net_profit_dates|tojson|safe }}</script>
+    <script type="application/json" id="profit-values-data">{{ net_profit_values|tojson|safe }}</script>
+    <script type="application/json" id="deposits-dates-data">{{ deposits_dates|tojson|safe }}</script>
+    <script type="application/json" id="deposits-values-data">{{ deposits_values|tojson|safe }}</script>
 
     <script>
         let growthChart; // Global reference
@@ -490,37 +398,25 @@
         
         // Data Store
         const chartData = {
-            payouts: {}, // Will hold { "All": {dates:[], values:[]}, "FirmA": ... }
-            fees: {} 
-        };
-        const metricColors = {
-            payouts: '#10b981',
-            fees: '#f59e0b'
+            growth: { dates: [], values: [], label: 'Cumulative Net Cashflow', color: '#3b82f6' },
+            payouts: { dates: [], values: [], label: 'Cumulative Payouts', color: '#10b981' },
+            net_profit: { dates: [], values: [], label: 'Cumulative Trading Profit', color: '#8b5cf6' },
+            deposits: { dates: [], values: [], label: 'Cumulative Deposits', color: '#f59e0b' }
         };
 
         document.addEventListener('DOMContentLoaded', function() {
             // Load Data
-            chartData.payouts = JSON.parse(document.getElementById('payouts-breakdown-data').textContent);
-            chartData.fees = JSON.parse(document.getElementById('fees-breakdown-data').textContent);
-
-            // Populate Prop Firm Select
-            const firmSelect = document.getElementById('propFirmSelect');
-            const firms = new Set([...Object.keys(chartData.payouts), ...Object.keys(chartData.fees)]);
+            chartData.growth.dates = JSON.parse(document.getElementById('growth-dates-data').textContent);
+            chartData.growth.values = JSON.parse(document.getElementById('growth-values-data').textContent);
             
-            // Sort: All first, then alphabetical
-            const firmArray = Array.from(firms).sort((a,b) => {
-                if (a === 'All') return -1;
-                if (b === 'All') return 1;
-                return a.localeCompare(b);
-            });
-
-            firmSelect.innerHTML = '';
-            firmArray.forEach(firm => {
-                const opt = document.createElement('option');
-                opt.value = firm;
-                opt.text = firm === 'All' ? 'All Prop Firms' : firm;
-                firmSelect.appendChild(opt);
-            });
+            chartData.payouts.dates = JSON.parse(document.getElementById('payouts-dates-data').textContent);
+            chartData.payouts.values = JSON.parse(document.getElementById('payouts-values-data').textContent);
+            
+            chartData.net_profit.dates = JSON.parse(document.getElementById('profit-dates-data').textContent);
+            chartData.net_profit.values = JSON.parse(document.getElementById('profit-values-data').textContent);
+            
+            chartData.deposits.dates = JSON.parse(document.getElementById('deposits-dates-data').textContent);
+            chartData.deposits.values = JSON.parse(document.getElementById('deposits-values-data').textContent);
 
             // Init Chart
             initGrowthChart();
@@ -528,9 +424,11 @@
 
         function initGrowthChart() {
             const ctx = document.getElementById('growthChart').getContext('2d');
-            // Initialize with dummy data, updateGrowthChart will populate it
-            growthChart = createChart(ctx, [], [], '', metricColors.payouts);
-            updateGrowthChart();
+            const dates = chartData.growth.dates;
+            const values = chartData.growth.values;
+            const label = chartData.growth.label;
+            const color = chartData.growth.color;
+            growthChart = createChart(ctx, dates, values, label, color);
         }
 
         function createChart(ctx, dates, values, label, color) {
@@ -593,36 +491,28 @@
             });
         }
         
-        function updateGrowthChart() {
+        function updateGrowthChart(type) {
+            console.log('Updating chart to:', type);
             if (!growthChart) {
                 console.error('growthChart not initialized');
                 return;
             }
             
-            const metricType = document.getElementById('chartMetricSelect').value;
-            const firm = document.getElementById('propFirmSelect').value;
+            const data = chartData[type];
+            if (!data) {
+                console.error('No data found for type:', type);
+                return;
+            }
             
-            console.log('Updating chart to:', metricType, firm);
-
-            const firmData = chartData[metricType] && chartData[metricType][firm];
-            
-            // Fallback or empty if not found
-            const dates = firmData ? firmData.dates : [];
-            const values = firmData ? firmData.values : [];
-            const color = metricColors[metricType];
-            
-            let label = metricType === 'payouts' ? 'Total Payouts' : 'Total Fees';
-            if (firm !== 'All') label += ` (${firm})`;
-
-            growthChart.data.labels = dates;
-            growthChart.data.datasets[0].data = values;
-            growthChart.data.datasets[0].label = label;
-            growthChart.data.datasets[0].borderColor = color;
+            growthChart.data.labels = data.dates;
+            growthChart.data.datasets[0].data = data.values;
+            growthChart.data.datasets[0].label = data.label;
+            growthChart.data.datasets[0].borderColor = data.color;
             
             const ctx = growthChart.ctx;
             const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, hexToRgba(color, 0.2));
-            gradient.addColorStop(1, hexToRgba(color, 0.0));
+            gradient.addColorStop(0, hexToRgba(data.color, 0.2));
+            gradient.addColorStop(1, hexToRgba(data.color, 0.0));
             growthChart.data.datasets[0].backgroundColor = gradient;
             
             growthChart.update();

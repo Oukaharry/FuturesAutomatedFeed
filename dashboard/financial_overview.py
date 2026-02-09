@@ -2,19 +2,6 @@ from dashboard.database import get_all_clients
 import re
 from datetime import datetime
 import json
-try:
-    from config.settings import SHEET_URL
-except ImportError:
-    # Fallback or development url
-    SHEET_URL = "https://docs.google.com/spreadsheets/d/1vtuGcTe8ys44wHCJGJr6VoImeh8q0beaKkZMt0hd3VU/edit?usp=sharing"
-
-def get_col_letter(n):
-    """Convert 1-based column number to letter (e.g. 1->A, 27->AA)"""
-    string = ""
-    while n > 0:
-        n, remainder = divmod(n - 1, 26)
-        string = chr(65 + remainder) + string
-    return string
 
 def parse_currency(value_str):
     """
@@ -119,24 +106,6 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
         if not data:
             continue
             
-        # Determine Client Name
-        identity = data.get('identity', {})
-        client_name = client_id
-        if identity:
-            first = identity.get('First Name', '').strip()
-            last = identity.get('Last Name', '').strip()
-            full = identity.get('Name', '').strip()
-            
-            if first and last:
-                client_name = f"{first} {last}"
-            elif first:
-                client_name = first
-            elif full:
-                client_name = full
-        
-        trader_name = identity.get('trader', '-')
-        admin_name = identity.get('admin', '-')
-
         evaluations = data.get('evaluations', [])
         for eval_data in evaluations:
             prop_firm = eval_data.get('Prop Firm')
@@ -180,98 +149,12 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
                             "prop_firm": prop_firm,
                             "amount": amount,
                             "client": client_id,
-                            "client_name": client_name,
-                            "trader_name": trader_name,
-                            "admin_name": admin_name,
-                            "account": account_num,
-                            "account_id": account_num
+                            "account": account_num
                         })
     
     # Sort by date desc
     payouts_list.sort(key=lambda x: x['date'], reverse=True)
     return payouts_list
-
-def get_propfirm_breakdown(metric, profile_filter=None):
-    """
-    Calculates cumulative growth categorized by Prop Firm.
-    metric: 'payouts' or 'fees'
-    Returns: { 
-        'All': {'dates': [], 'values': []}, 
-        'FirmA': {'dates': [], 'values': []},
-        ...
-    }
-    """
-    clients_data = get_all_clients()
-    
-    from collections import defaultdict
-    # Structure: firm_name -> {date_str: daily_amount}
-    firm_daily_changes = defaultdict(lambda: defaultdict(float))
-    
-    for client_id, data in clients_data.items():
-        if not data: continue
-        
-        # Apply Profile Filter
-        if profile_filter and profile_filter.upper() != "ALL":
-            identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not client_profile: client_profile = "PRIVATE"
-            if client_profile != profile_filter.upper():
-                continue
-        
-        evaluations = data.get('evaluations', [])
-        for ev in evaluations:
-            # Check for valid prop firm
-            raw_prop_firm = ev.get('Prop Firm')
-            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
-                continue
-            
-            prop_firm = normalize_prop_firm_name(raw_prop_firm)
-            
-            # Date Fallback
-            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
-            date_started = parse_date(ev.get('Date Started'))
-            base_date = date_purchased or date_started or datetime.now()
-            
-            if metric == 'payouts':
-                for i in range(1, 10):
-                    d_str = ev.get(f'Date {i}')
-                    amount = parse_currency(ev.get(f'Payout {i}'))
-                    if amount > 0:
-                        d = parse_date(d_str) or base_date
-                        d_str_fmt = d.strftime("%Y-%m-%d")
-                        firm_daily_changes[prop_firm][d_str_fmt] += amount
-                        firm_daily_changes['All'][d_str_fmt] += amount
-                        
-            elif metric == 'fees':
-                fee = parse_currency(ev.get('Fee'))
-                act_fee = parse_currency(ev.get('Activation Fee'))
-                total_fee = fee + act_fee
-                if total_fee > 0:
-                    d_str_fmt = base_date.strftime("%Y-%m-%d")
-                    firm_daily_changes[prop_firm][d_str_fmt] += total_fee
-                    firm_daily_changes['All'][d_str_fmt] += total_fee
-
-    # Process into cumulative arrays
-    result = {}
-    
-    # Ensure 'All' exists even if empty
-    if 'All' not in firm_daily_changes:
-        result['All'] = {'dates': [], 'values': []}
-        
-    for firm, daily_map in firm_daily_changes.items():
-        sorted_days = sorted(daily_map.keys())
-        dates = []
-        values = []
-        cumulative = 0.0
-        
-        for day in sorted_days:
-             cumulative += daily_map[day]
-             dates.append(day)
-             values.append(cumulative)
-             
-        result[firm] = {'dates': dates, 'values': values}
-        
-    return result
 
 def get_payouts_growth_data(profile_filter=None):
     """
@@ -288,96 +171,22 @@ def get_payouts_growth_data(profile_filter=None):
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
             client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not client_profile: client_profile = "PRIVATE"
+            if client_profile == 'BEF': client_profile = 'BEF'
+            else: client_profile = 'PRIVATE'
+                
             if client_profile != profile_filter.upper():
                 continue
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
-            # Check for valid prop firm
-            raw_prop_firm = ev.get('Prop Firm')
-            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
-                continue
-                
-            # Date Fallback
-            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
-            date_started = parse_date(ev.get('Date Started'))
-            base_date = date_purchased or date_started or datetime.now()
-            
             # Payouts Only
             for i in range(1, 10):
-                d_str = ev.get(f'Date {i}')
+                date_str = ev.get(f'Date {i}')
                 amount = parse_currency(ev.get(f'Payout {i}'))
-                if amount > 0:
-                    d = parse_date(d_str)
-                    events.append((d or base_date, amount))
-    
-    # Sort events by date
-    events.sort(key=lambda x: x[0])
-    
-    if not events:
-        return [], []
-        
-    dates = []
-    values = []
-    cumulative = 0.0
-    
-    from collections import defaultdict
-    daily_changes = defaultdict(float)
-    
-    for date_obj, amount in events:
-        date_str = date_obj.strftime("%Y-%m-%d")
-        daily_changes[date_str] += amount
-        
-    sorted_days = sorted(daily_changes.keys())
-    
-    for day in sorted_days:
-        cumulative += daily_changes[day]
-        dates.append(day)
-        values.append(cumulative)
-        
-    return dates, values
-
-def get_cumulative_fees(profile_filter=None):
-    """
-    Calculates cumulative fees (Fee + Activation Fee) over time.
-    Returns lists of labels (dates) and data points (cumulative fees).
-    """
-    clients_data = get_all_clients()
-    events = []
-    
-    for client_id, data in clients_data.items():
-        if not data: continue
-        
-        # Apply Profile Filter
-        if profile_filter and profile_filter.upper() != "ALL":
-            identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not client_profile: client_profile = "PRIVATE"
-            if client_profile != profile_filter.upper():
-                continue
-        
-        evaluations = data.get('evaluations', [])
-        for ev in evaluations:
-            # Check for valid prop firm
-            raw_prop_firm = ev.get('Prop Firm')
-            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
-                continue
-                
-            # Date Fallback
-            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
-            base_date = date_purchased or datetime.now()
-            
-            # Fees (Positive value for graph usually, or negative? 
-            # Summary card shows positive value "Total Fees $X". 
-            # Graph should probably show cumulative positive cost or negative flow?
-            # "Total Payouts" is positive. "Total Fees" as a positive cost accumulation makes sense to compare magnitude.
-            fee = parse_currency(ev.get('Fee'))
-            act_fee = parse_currency(ev.get('Activation Fee'))
-            total_fee = fee + act_fee
-            
-            if total_fee > 0:
-                events.append((base_date, total_fee))
+                if amount > 0 and date_str:
+                    date_obj = parse_date(date_str)
+                    if date_obj:
+                        events.append((date_obj, amount))
     
     # Sort events by date
     events.sort(key=lambda x: x[0])
@@ -607,11 +416,12 @@ def get_cumulative_trading_profit(profile_filter=None):
 
 def get_portfolio_growth_data(profile_filter=None):
     """
-    Calculates cumulative portfolio growth (Payouts - Fees) over time.
-    Returns lists of labels (dates) and data points (net cashflow).
-    Note: Matches 'Net Profit (Trading)' graph logic generally but excludes internal hedge/farming profit.
+    Calculates cumulative portfolio growth over time.
+    Returns lists of labels (dates) and data points (net profit).
     """
     clients_data = get_all_clients()
+    
+    # Store all financial events: (date, amount)
     events = []
     
     for client_id, data in clients_data.items():
@@ -621,36 +431,44 @@ def get_portfolio_growth_data(profile_filter=None):
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
             client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not client_profile: client_profile = "PRIVATE"
+            if client_profile == 'BEF': client_profile = 'BEF'
+            else: client_profile = 'PRIVATE'
+                
             if client_profile != profile_filter.upper():
                 continue
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
-            # Check for valid prop firm
-            raw_prop_firm = ev.get('Prop Firm')
-            if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
-                continue
-            
-            # Extract Dates for Fallbacks
-            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
-            date_started = parse_date(ev.get('Date Started'))
-            base_date = date_purchased or date_started or datetime.now()
-            
             # 1. Payouts (Positive)
             for i in range(1, 10):
-                d_str = ev.get(f'Date {i}')
+                date_str = ev.get(f'Date {i}')
                 amount = parse_currency(ev.get(f'Payout {i}'))
-                if amount > 0:
-                    d = parse_date(d_str)
-                    events.append((d or base_date, amount))
+                if amount > 0 and date_str:
+                    date_obj = parse_date(date_str)
+                    if date_obj:
+                        events.append((date_obj, amount))
             
-            # 2. Fees (Negative)
-            fee = parse_currency(ev.get('Fee'))
-            act_fee = parse_currency(ev.get('Activation Fee'))
-            total_fee = fee + act_fee
-            if total_fee > 0:
-                events.append((date_purchased or base_date, -total_fee))
+            # 2. Fees (Negative) - Use "Date Paid" or similar if available, else approximate?
+            # Many sheets don't have fee dates. We might need to omit fees from the *timeline* 
+            # if we don't have dates, or assume they happened at account start?
+            # For this request, let's focus on Payouts for growth, or Net Profit if we can find dates.
+            # Without dates for Fees/Hedges, a true "Net Profit Over Time" is hard.
+            # Let's try to find dates for Hedges/Farming.
+            
+            purchase_date_str = ev.get('Date')
+            purchase_date = parse_date(purchase_date_str)
+            
+            if purchase_date:
+                # Add Fees at purchase date
+                fee = parse_currency(ev.get('Fee'))
+                act_fee = parse_currency(ev.get('Activation Fee'))
+                total_fee = fee + act_fee
+                if total_fee > 0:
+                    events.append((purchase_date, -total_fee))
+                    
+                # Add Hedge Results? We don't have dates for each hedge result usually...
+                # We can assume they happen "after" purchase. 
+                # For now, let's stick to (Payouts - Fees) which has dates.
                 
     # Sort events by date
     events.sort(key=lambda x: x[0])
@@ -809,119 +627,128 @@ def calculate_propfirm_overview(profile_filter=None):
         
     return overview
 
-def get_trader_performance_data():
-    """
-    Aggregates performance metrics by Trader.
-    metrics:
-    - Total Payouts
-    - Total Negative Hedge Net (only if actual hedging results exist)
-    - Farming check: count of farming days where Note/Prop Day is missing?
-      (For now, we'll track 'Farming Days' and 'Missing Prop Day Info' if logic applies)
-    """
+def get_cumulative_fees_data(profile_filter=None):
+    """Calculates cumulative fees (Fees + Activation) over time."""
     clients_data = get_all_clients()
-    traders = {} # name -> data
-
+    events = [] # (datetime, amount)
+    
     for client_id, data in clients_data.items():
         if not data: continue
         
-        identity = data.get('identity', {})
-        trader_name = identity.get('trader', 'Unassigned')
-        if not trader_name or trader_name == '-' or str(trader_name).lower() == 'nan': 
-            trader_name = 'Unassigned'
-        
-        if trader_name not in traders:
-            traders[trader_name] = {
-                "name": trader_name,
-                "total_payouts": 0.0,
-                "total_negative_hedge": 0.0,
-                "farming_days_count": 0,
-                "farming_missing_notes": 0,
-                "client_count": 0,
-                "sheets_reviewed": 0,
-                "negative_hedge_details": [], # List of {client, account, amount}
-                "farming_warnings": []        # List of {client, account, day, msg}
-            }
-            
-        t_data = traders[trader_name]
-        t_data["client_count"] += 1
+        # Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if not client_profile: client_profile = "PRIVATE"
+            if client_profile != profile_filter.upper(): continue
         
         evaluations = data.get('evaluations', [])
-        t_data["sheets_reviewed"] += len(evaluations)
-        
-        for idx, ev in enumerate(evaluations):
-            # Calculate Excel Row Number (Assuming data starts at Row 3)
-            row_num = idx + 3
+        for ev in evaluations:
+            # 1. Fees (Negative, but usually shown as positive 'Spent' on card. 
+            # Graph should likely show cumulative SPEND (positive slope) or cumulative CASHFLOW (negative slope)?
+            # The card says "Total Fees Spent: $1.1M". Correct graph would probably be strictly increasing cost.
+            # But "Net Profit" graph subtracts it.
+            # Let's show it as Positive Cumulative Cost for the "Total Fees Spent" graph.
             
-            # 1. Payouts
-            for i in range(1, 10):
-                amt = parse_currency(ev.get(f'Payout {i}'))
-                if amt > 0:
-                    t_data["total_payouts"] += amt
+            fee = parse_currency(ev.get('Fee'))
+            act_fee = parse_currency(ev.get('Activation Fee'))
+            total_fee = fee + act_fee
             
-            # 2. Negative Hedge Nets (Conditional per phase)
-            # Only count negative hedge nets if there are ACTUAL POSITIVE hedging results for that specific phase.
-            
-            # Phase 1 Check
-            p1_hedge_sum = sum(parse_currency(ev.get(k)) for k in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5'])
-            
-            if p1_hedge_sum != 0:
-                hn1 = parse_currency(ev.get('Hedge Net'))
-                if hn1 < -1: # Use -1 to ignore tiny rounding floats
-                    t_data["total_negative_hedge"] += hn1
-                    t_data["negative_hedge_details"].append({
-                        "client": identity.get('Name') or client_id,
-                        "account": f"{ev.get('Account #') or 'P1'} (Phase 1)",
-                        "amount": hn1,
-                        "link": f"/dashboard/{client_id}?range=N{row_num}"
-                    })
+            if total_fee > 0:
+                date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+                date_started = parse_date(ev.get('Date Started'))
+                base_date = date_purchased or date_started or datetime.now()
+                events.append((base_date, total_fee)) # Positive value = Total Spent
 
-            # Funded Phase Check
-            funded_hedge_sum = sum(parse_currency(ev.get(k)) for k in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                      'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7'])
-            
-            if funded_hedge_sum != 0:
-                hn2 = parse_currency(ev.get('Hedge Net.1'))
-                if hn2 < -1:
-                    t_data["total_negative_hedge"] += hn2
-                    t_data["negative_hedge_details"].append({
-                        "client": identity.get('Name') or client_id,
-                        "account": f"{ev.get('Account #.1') or 'Funded'} (Funded)",
-                        "amount": hn2,
-                        "link": f"/dashboard/{client_id}?range=AA{row_num}"
-                    })
+    return _aggregate_events_cumulative(events)
 
-            # 3. Farming - Check for missing notes (Prop Day empty when Hedge Day has value)
-            for d in range(1, 35):
-                hd_val = parse_currency(ev.get(f'Hedge Day {d}'))
-                pd_val = ev.get(f'Prop Day {d}') 
+def get_cumulative_hedge_data(profile_filter=None):
+    """Calculates cumulative hedge results over time."""
+    clients_data = get_all_clients()
+    events = [] 
+    
+    P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
+    FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
+
+    for client_id, data in clients_data.items():
+        if not data: continue
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            cp = (identity.get('profile') or identity.get('category') or 'PRIVATE').upper()
+            if not cp: cp = 'PRIVATE'
+            if cp != profile_filter.upper(): continue
+            
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Dates
+            date_started = parse_date(ev.get('Date Started'))
+            date_ended = parse_date(ev.get('Date Ended'))
+            date_started_funded = parse_date(ev.get('Date Started.1'))
+            date_ended_funded = parse_date(ev.get('Date Ended.1'))
+            base_date = date_started or datetime.now()
+
+            # P1 Hedges
+            p1_profit = sum(parse_currency(ev.get(c)) for c in P1_HEDGE_COLS)
+            if p1_profit != 0:
+                events.append((date_ended or date_started or base_date, p1_profit))
+            
+            # Funded Hedges
+            fd_profit = sum(parse_currency(ev.get(c)) for c in FUNDED_HEDGE_COLS)
+            if fd_profit != 0:
+                events.append((date_ended_funded or date_started_funded or base_date, fd_profit))
                 
-                # If we have a hedge result for the day
-                if hd_val != 0:
-                    t_data["farming_days_count"] += 1
-                    
-                    # Check if 'Prop Day' (Note/Date) is empty
-                    # Prop Day is often used for the result in the prop firm or date/note
-                    is_missing = False
-                    if pd_val is None:
-                        is_missing = True
-                    elif isinstance(pd_val, str) and not pd_val.strip():
-                        is_missing = True
-                    elif isinstance(pd_val, (int, float)) and pd_val == 0:
-                         # Warning: 0 might be a valid result, but usually Prop Day matches Hedge Day if it's a value
-                         # If it's a note, 0 is weird.
-                         # Let's assume emptiness or "0" means missing if Hedge Day is non-zero
-                         pass 
-                         
-                    # For now, strict empty check for strings, None for others
-                    if str(pd_val).strip() in ['', '-', 'nan', 'None']:
-                        
-                        col_letter = get_col_letter(37 + (d-1)*2) # AK=37 (Prop Day 1)
-                        t_data["farming_missing_notes"] += 1
-                        t_data["farming_warnings"].append({
-                            "client": identity.get('Name') or client_id,
-                            "account": ev.get('Account #') or ev.get('Account #.1'),
-                            "day": d,
-                            "link": f"/dashboard/{client_id}?range={col_letter}{row_num}"
-                        })
+    return _aggregate_events_cumulative(events)
 
-    return sorted(list(traders.values()), key=lambda x: x['total_payouts'], reverse=True)
+def get_cumulative_farming_data(profile_filter=None):
+    """Calculates cumulative farming results over time."""
+    clients_data = get_all_clients()
+    events = [] 
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            cp = (identity.get('profile') or identity.get('category') or 'PRIVATE').upper()
+            if not cp: cp = 'PRIVATE'
+            if cp != profile_filter.upper(): continue
+            
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Dates
+            date_started = parse_date(ev.get('Date Started'))
+            date_ended = parse_date(ev.get('Date Ended'))
+            date_ended_funded = parse_date(ev.get('Date Ended.1'))
+            base_date = date_started or datetime.now()
+
+            # Farming Results
+            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+            if farming_calc != 0:
+                events.append((date_ended_funded or date_ended or base_date, farming_calc))
+                
+    return _aggregate_events_cumulative(events)
+
+def _aggregate_events_cumulative(events):
+    if not events:
+        return [], []
+        
+    events.sort(key=lambda x: x[0])
+    
+    from collections import defaultdict
+    daily_changes = defaultdict(float)
+    
+    for dt, val in events:
+        d_str = dt.strftime("%Y-%m-%d")
+        daily_changes[d_str] += val
+        
+    dates = []
+    values = []
+    cumulative = 0.0
+    sorted_days = sorted(daily_changes.keys())
+    
+    for day in sorted_days:
+        cumulative += daily_changes[day]
+        dates.append(day)
+        values.append(cumulative)
+        
+    return dates, values
