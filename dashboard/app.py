@@ -461,12 +461,17 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
     # Sort aggregated data to ensure farming days are processed chronologically
     # Sort by account, then by timestamp (or farming_date)
     def sort_key(x):
+        # Ensure consistent string type for comparison to avoid TypeError between float/str
+        ts = x.get('timestamp') or x.get('farming_date') or ''
         return (
             str(x.get('account_number', '')),
-            x.get('timestamp') or x.get('farming_date') or ''
+            str(ts)
         )
     
-    aggregated_data.sort(key=sort_key)
+    try:
+        aggregated_data.sort(key=sort_key)
+    except Exception as e:
+        match_log.append(f"⚠️ Warning: Sorting failed ({str(e)}), processing unsorted.")
     
     # Track next available slot for Farming (FA) phase per evaluation
     # This ensures we overwrite from Day 1 sequentially instead of appending
