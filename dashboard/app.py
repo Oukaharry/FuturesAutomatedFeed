@@ -311,6 +311,19 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
             })
             
     if not valid_matches:
+        # Check if this is a FundedNext account (FNFT prefix)
+        # If so, strictly require valid date match to avoid overwriting old Challenge accounts
+        is_funded_next = False
+        if matches:
+            first_acc = str(matches[0][1]).upper()
+            if 'FNFT' in first_acc or 'FUNDEDNEXT' in first_acc:
+                is_funded_next = True
+        
+        if is_funded_next:
+             import logging
+             logging.debug(f"[MATCH] Strict date check failed for FundedNext account. Trade Date: {trade_date}")
+             return None
+
         # No matches with valid matches found? Return first match as fallback
         return matches[0]
         
