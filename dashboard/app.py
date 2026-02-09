@@ -372,9 +372,18 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
                     return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'DD':
-        # Double Dip: DD1-4 map to available funded hedge columns
-        if trade_number is not None and 1 <= trade_number <= 4:
-            return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
+        # Double Dip: DD1-4 map to specific hedge results based on user guide
+        # Assuming DD1 -> Hedge Result 4.1 ?? Or should it be dynamic?
+        # Let's map DD1->4.1, DD2->5.1, DD3->6.1... or use available slots?
+        # PREVIOUS LOGIC: return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
+        # This mapped DD1 -> 4.1, DD2 -> 5.1
+        if trade_number is not None:
+             match trade_number:
+                 case 1: return "Hedge Result 4.1"
+                 case 2: return "Hedge Result 5.1"
+                 case 3: return "Hedge Result 6.1"
+                 case 4: return "Hedge Result 7.1"
+                 case _: return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'FA':
         # Farming: Find next available Hedge Day slot
@@ -419,6 +428,9 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         net_profit = agg.get('net_profit', 0)
         deal_count = agg.get('deal_count', 0)
         
+        if account_number and str(account_number).lower().startswith("unknown"):
+             continue
+
         # Find matching evaluation
         matches = match_account_to_evaluation(account_number, evaluations, phase_code)
         
