@@ -137,12 +137,12 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     # Combine funded and evaluation accounts for matching
     combined_accounts = []
     for idx, ev in enumerate(evaluations):
-        funded_account = str(ev.get('account', '')).strip()
-        if funded_account:
+        funded_account = str(ev.get('account') or '').strip()
+        if funded_account and funded_account.lower() != 'none':
             combined_accounts.append({'idx': idx, 'account': funded_account, 'source': 'funded'})
         for col_name in ['Account #.1', 'Account #']:
-            eval_account = str(ev.get(col_name, '')).strip()
-            if eval_account:
+            eval_account = str(ev.get(col_name) or '').strip()
+            if eval_account and eval_account.lower() != 'none':
                 combined_accounts.append({'idx': idx, 'account': eval_account, 'source': col_name})
 
     is_topstep = str(account_number).upper().startswith('V2')
