@@ -21,9 +21,87 @@
         </div>
     </div>
 
+    <!-- Edit Client Modal for Admins -->
+    <div id="editClientModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;">
+        <div style="background:white; margin:15% auto; padding:20px; width:400px; border-radius:8px; position:relative;">
+            <span onclick="closeEditModal()" style="position:absolute; right:15px; top:10px; font-size:24px; cursor:pointer;">&times;</span>
+            <h2 style="margin-top:0;">Edit Client Profile</h2>
+            <form id="editClientForm">
+                <input type="hidden" id="editAdmin">
+                <input type="hidden" id="editTrader">
+                <input type="hidden" id="editName">
+                
+                <div style="margin-bottom:15px;">
+                    <label style="display:block; margin-bottom:5px; font-weight:600;">Client: <span id="editNameDisplay" style="font-weight:normal;"></span></label>
+                </div>
+                
+                <div style="margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:5px; font-weight:600;">Category (Profile)</label>
+                    <select id="editCategory" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:4px;">
+                        <option value="BEF">BEF</option>
+                        <option value="PRIVATE">Private</option>
+                    </select>
+                </div>
+                <button type="submit" style="background:#0f172a; color:white; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; width:100%;">Save Changes</button>
+            </form>
+        </div>
+    </div>
+    
     <script>
         const adminName = "{{ admin_name }}";
         
+        // Modal functions
+        function editClient(admin, trader, name, category) {
+            document.getElementById('editAdmin').value = admin;
+            document.getElementById('editTrader').value = trader;
+            document.getElementById('editName').value = name;
+            document.getElementById('editNameDisplay').textContent = name;
+            
+            let val = 'PRIVATE';
+            if (category && category.toUpperCase() === 'BEF') val = 'BEF';
+            document.getElementById('editCategory').value = val;
+            
+            document.getElementById('editClientModal').style.display = 'block';
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editClientModal').style.display = 'none';
+        }
+
+        // Close on outside click
+        window.onclick = function(event) {
+            const modal = document.getElementById('editClientModal');
+            if (event.target == modal) {
+                closeEditModal();
+            }
+        }
+        
+        // Handle form submit
+        document.getElementById('editClientForm').onsubmit = function(e) {
+            e.preventDefault();
+            const data = {
+                admin: document.getElementById('editAdmin').value,
+                trader: document.getElementById('editTrader').value,
+                name: document.getElementById('editName').value,
+                category: document.getElementById('editCategory').value
+            };
+
+            fetch('/api/update_client_profile', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    alert('Client profile updated successfully');
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            });
+        };
+
         fetch('/api/hierarchy')
             .then(res => res.json())
             .then(data => {
@@ -46,12 +124,23 @@
                     const clientsList = traderData.clients || (Array.isArray(traderData) ? traderData : []);
 
                     let clientsHtml = clientsList.map(clientObj => {
-                        const clientName = (typeof clientObj === 'object' && clientObj !== null) ? clientObj.name : clientObj;
+                        // Support both string client or client object
+                        let client = clientObj;
+                        let profile = "PRIVATE";
+                        if (typeof clientObj === 'object' && clientObj !== null) {
+                            client = clientObj.name;
+                            profile = clientObj.category || 'PRIVATE';
+                        }
+                        
                         return `
-                        <a href="/dashboard/${clientName}" class="client-card">
-                            <div class="client-name">${clientName}</div>
-                            <div class="client-status">View Dashboard →</div>
-                        </a>
+                        <div class="client-card-wrapper" style="position:relative;">
+                             <a href="/dashboard/${client}" class="client-card" style="display:block;">
+                                <div class="client-name">${client}</div>
+                                <div class="client-status" style="font-size:0.8rem; color:#64748b;">${profile}</div>
+                                <div class="client-status">View Dashboard →</div>
+                            </a>
+                            <button onclick="editClient('${adminName}', '${trader}', '${client}', '${profile}')" class="btn-sm" style="position:absolute; top:10px; right:10px; background:#e2e8f0; border:none; border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.7rem;">Edit</button>
+                        </div>
                     `}).join('');
 
                     if (!clientsHtml) clientsHtml = '<div style="color:#999; font-size:0.9rem; font-style:italic;">No clients assigned</div>';

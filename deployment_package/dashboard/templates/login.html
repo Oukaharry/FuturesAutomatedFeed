@@ -3,18 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Trading Dashboard</title>
+    <title>Login - BallerQuotes</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            background-color: #0f172a;
+            /* Logo as background */
+            background-image: url("{{ url_for('static', filename='images/logo.png') }}");
+            background-size: 80%; /* Large watermark */
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
+            position: relative;
+        }
+        /* Heavy overlay to fade the background logo */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.94); /* Dark luxury slate overlay */
+            z-index: -1;
         }
         
         .login-container {
@@ -33,37 +48,37 @@
         }
         
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 50px 30px;
+            background: white;
+            padding: 40px 30px;
             text-align: center;
-            color: white;
+            color: #0f172a;
+            border-bottom: 1px solid #f1f5f9;
         }
         
-        .logo {
-            width: 80px;
-            height: 80px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            font-size: 2.5rem;
+        .logo-img {
+            width: 140px;
+            height: auto;
+            margin-bottom: 20px;
+            /* Filter removed to avoid shadow on white box */
         }
         
         .header h1 {
             font-size: 1.8rem;
             margin-bottom: 8px;
-            font-weight: 700;
+            font-weight: 800;
+            color: #0f172a;
+            letter-spacing: -0.02em;
         }
         
         .header p {
-            opacity: 0.9;
+            color: #64748b;
             font-size: 0.95rem;
+            font-weight: 500;
         }
         
         .form-container {
             padding: 40px 35px;
+            background: white;
         }
         
         .form-group {
@@ -103,9 +118,9 @@
         
         .form-group input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: #d4af37;
             background: white;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.1);
         }
         
         .password-toggle {
@@ -121,29 +136,32 @@
         }
         
         .password-toggle:hover {
-            color: #667eea;
+            color: #d4af37;
         }
         
         .login-btn {
             width: 100%;
             padding: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #d4af37 0%, #b4941f 100%);
             color: white;
             border: none;
             border-radius: 12px;
             font-size: 1.1rem;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
             transition: all 0.3s ease;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
         
         .login-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 10px 30px rgba(212, 175, 55, 0.3);
+            background: linear-gradient(135deg, #e5be48 0%, #c4a123 100%);
         }
         
         .login-btn:disabled {
@@ -220,7 +238,7 @@
         .remember-me input[type="checkbox"] {
             width: 18px;
             height: 18px;
-            accent-color: #667eea;
+            accent-color: #d4af37;
         }
         
         .remember-me label {
@@ -233,9 +251,9 @@
 <body>
     <div class="login-container">
         <div class="header">
-            <div class="logo">📊</div>
-            <h1>Trading Dashboard</h1>
-            <p>Sign in to access your account</p>
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" class="logo-img">
+            <h1>BallerQuotes</h1>
+            <p>Your go-to virtual assistant</p>
         </div>
         
         <div class="form-container">

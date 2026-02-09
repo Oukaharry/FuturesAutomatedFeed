@@ -208,6 +208,7 @@
             cursor: pointer;
             font-weight: 500;
         }
+        
         /* Overlay when history panel is open */
         .history-overlay {
             position: fixed;
@@ -401,6 +402,25 @@
             font-family: monospace;
             font-size: 10px;
         }
+
+        /* Deep Linking Highlight */
+        @keyframes highlightPulse {
+            0% { background-color: rgba(255, 255, 0, 0.5); outline: 3px solid #eab308; }
+            100% { background-color: transparent; outline: 3px solid transparent; }
+        }
+        .highlight-cell {
+            animation: highlightPulse 3s ease-out forwards;
+            scroll-margin-top: 150px; /* Offset for sticky headers */
+        }
+
+        /* Deep Link Highlighting */
+        .highlight-cell {
+            background-color: #fff9c4 !important; /* Light Yellow */
+            box-shadow: inset 0 0 0 2px #fbc02d !important; /* Gold Border */
+            font-weight: bold;
+            color: #333;
+            transition: background-color 0.5s ease;
+        }
     </style>
 </head>
 <body>
@@ -469,7 +489,7 @@
                     <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
                 </div>
                 <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
-                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()" checked>
+                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()">
                     Show Active Only
                 </label>
             </div>
@@ -870,33 +890,35 @@
             const noEvalMsg = document.getElementById('no-evaluations-msg');
             const showActiveOnly = document.getElementById('activeFilter').checked;
             
+            // Check for deep link parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const hlRange = urlParams.get('range');
+            
             evalBody.innerHTML = '';
             
             if (currentData.evaluations && currentData.evaluations.length > 0) {
                 let visibleCount = 0;
                 currentData.evaluations.forEach((ev, index) => {
-                    // Filter Logic
-                    if (showActiveOnly) {
-                        const statusP1 = (ev['Status P1'] || '').toLowerCase();
-                        const statusFunded = (ev['Status'] || '').toLowerCase();
-                        
-                        // Check P1 (Evaluation) Inactivity
-                        // Hide if Failed or Deleted
-                        const p1Inactive = 
-                            statusP1.includes('fail') || 
-                            statusP1.includes('deleted');
+                    // Wrapper for cell content
+                    // Add ID to cell that matches Excel coordinates (e.g. "N3", "AA5")
+                    // We assume data index 0 corresponds to Sheet Row 3
+                    const currentRowNum = index + 3; 
 
-                        // Check Funded Inactivity
-                        // Hide if Failed, Deleted, Completed, Breached, Closed, or Payout
-                        const fundedInactive = 
-                            statusFunded.includes('fail') || 
-                            statusFunded.includes('breach') || 
-                            statusFunded.includes('closed') || 
-                            statusFunded.includes('completed') || 
-                            statusFunded.includes('payout') ||
-                            statusFunded.includes('deleted');
-                            
-                        if (p1Inactive || fundedInactive) return;
+                    // Check if this row is targeted by deep link
+                    let forceShow = false;
+                    if (hlRange) {
+                        const match = hlRange.match(/([A-Z]+)(\d+)/);
+                        if (match && parseInt(match[2]) === currentRowNum) {
+                            forceShow = true;
+                        }
+                    }
+
+                    // Filter Logic
+                    if (showActiveOnly && !forceShow) {
+                        const status = String(ev['Status'] || ev['Status P1'] || '').toLowerCase();
+                        if (status.includes('fail') || status.includes('breach') || status.includes('delete') || status.includes('closed') || status.includes('completed')) {
+                             return;
+                        }
                     }
                     visibleCount++;
 
@@ -905,56 +927,68 @@
                     
                     // Helper to add note attributes
                     const addNoteAttrs = (key) => {
-                        const note = ev._notes && ev._notes[key];
-                        const noteClass = note ? 'has-note' : '';
-                        const noteTitle = note ? `title="${note}"` : '';
-                        const contextMenu = `oncontextmenu="openNoteEditor(event, ${index}, '${key}')"`;
-                        return { cls: noteClass, title: noteTitle, ctx: contextMenu };
+                       const note = ev._notes && ev._notes[key] ? ev._notes[key] : '';
+                       return note ? `data-has-note="true" title="${note}"` : '';
                     };
 
-                    // Wrapper for cell content
                     const cell = (content, key) => {
-                        const { cls, title, ctx } = addNoteAttrs(key);
-                        return `<td class="${cls}" ${title} ${ctx}>${content}</td>`;
+                        const noteAttrs = addNoteAttrs(key);
+                        const hasNoteClass = noteAttrs ? 'has-note' : '';
+                        
+                        // Determine Column Letter based on key map (simplified mappings)
+                        let colLetter = getColumnLetterForKey(key);
+                        let cellId = colLetter ? `id="${colLetter}${currentRowNum}"` : '';
+                        
+                        // Check if this cell is the target
+                        let highlightClass = '';
+                        if (hlRange && colLetter && `${colLetter}${currentRowNum}` === hlRange) {
+                             highlightClass = 'highlight-cell';
+                             // Also ensure we are showing the row if filters might hide it?
+                             // (Though we handle filter above, usually links go to active things)
+                        }
+                        
+                        // Combine classes
+                        const classes = [hasNoteClass, highlightClass].filter(Boolean).join(' ');
+
+                        return `<td ${cellId} class="${classes}" oncontextmenu="openNoteEditor(event, ${index}, '${key}')" ${noteAttrs}>${content}</td>`;
                     };
 
                     // Date Purchased Logic: 
                     // If Account # exists, it's an extracted/imported row -> Read-only Text.
                     // If no Account #, it's a manual entry -> Editable Input.
-                    // Date Purchased - Always editable with date picker
                     const datePurchased = getVal('Date Purchased');
                     const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased');
 
                     row.innerHTML = `
                         <td>${index + 1}</td>
                         <td style="text-align:center;padding:2px;">
-                            <button onclick="deleteEvaluation(${index})" 
-                                    style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
-                                    title="Delete this row (recoverable via Version History)">🗑️</button>
+                             <button onclick="deleteEvaluation(${index})" 
+                                     style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
+                                     title="Delete this row">🗑️</button>
                         </td>
                         ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm'), 'Prop Firm')}
                         ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size'), 'Account Size')}
                         ${cell(datePurchasedContent, 'Date Purchased')}
                         ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee'), 'Fee')}
                         
-                        <!-- Evaluation Phase -->
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started'), 'Date Started')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended'), 'Date Ended')}
-                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status', index, 'Status P1', false), 'Status P1')}
+                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status', index, 'Status P1'), 'Status P1')}
                         ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #'), 'Account #')}
+                        
                         ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1'), 'Hedge Result 1')}
                         ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2'), 'Hedge Result 2')}
                         ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3'), 'Hedge Result 3')}
                         ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4'), 'Hedge Result 4')}
                         ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5'), 'Hedge Result 5')}
-                        ${cell(getInputHtml(getVal('Hedge Net'), 'text', index, 'Hedge Net'), 'Hedge Net')}
-
-                        <!-- Funded Phase -->
+                        ${cell(getVal('Hedge Net'), 'Hedge Net')}
+                        
                         ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1'), 'Account #.1')}
                         ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee'), 'Activation Fee')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1'), 'Date Started.1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1'), 'Date Ended.1')}
-                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', false), 'Status')}
+                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status'), 'Status')}
+                        
                         ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1'), 'Hedge Result 1.1')}
                         ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1'), 'Hedge Result 2.1')}
                         ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1'), 'Hedge Result 3.1')}
@@ -962,7 +996,8 @@
                         ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1'), 'Hedge Result 5.1')}
                         ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6'), 'Hedge Result 6')}
                         ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7'), 'Hedge Result 7')}
-                        ${cell(getInputHtml(getVal('Hedge Net.1'), 'text', index, 'Hedge Net.1'), 'Hedge Net.1')}
+                        ${cell(getVal('Hedge Net.1'), 'Hedge Net.1')}
+                        
                         ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1'), 'Payout 1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1'), 'Date 1')}
                         ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2'), 'Payout 2')}
@@ -972,8 +1007,8 @@
                         ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4'), 'Payout 4')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4'), 'Date 4')}
 
-                        <!-- Farming Phase -->
-                        ${cell(getInputHtml(getVal('Farming Net'), 'text', index, 'Farming Net'), 'Farming Net')}
+                        ${cell(getVal('Farming Net'), 'Farming Net')}
+                        
                         ${generateDayColumns(ev, cell, index)}
                     `;
                     evalBody.appendChild(row);
@@ -987,132 +1022,76 @@
                 }
                 
                 // Recalculate section positions after table render
-                setTimeout(calculateSectionPositions, 100);
+                setTimeout(() => {
+                    calculateSectionPositions();
+                    // Auto-scroll to highlighted cell if exists
+                    if (hlRange) {
+                        const target = document.getElementById(hlRange);
+                        if (target) {
+                            target.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'center'});
+                            // Add temporary flash effect
+                            target.style.transition = 'background-color 0.5s';
+                            const origBg = target.style.backgroundColor;
+                            target.style.backgroundColor = '#ffff00'; // Flash yellow
+                            setTimeout(() => {
+                                target.style.backgroundColor = '';
+                            }, 1500);
+                        }
+                    }
+                }, 100);
             } else {
                 noEvalMsg.style.display = 'block';
             }
         }
-
-        function openNoteEditor(e, index, key) {
-            e.preventDefault();
-            currentNoteTarget = { index, key };
+        
+        function getColumnLetterForKey(key) {
+            // Map keys back to Column Letters (Based on standard sheet structure)
+            // Validated via extracted_formulas.txt analysis (A=PropFirm ... N=HedgeNet ... G=StatusP1)
+            const map = {
+                'Prop Firm': 'A', 'Account Size': 'B', 'Date Purchased': 'C', 'Fee': 'D',
+                'Date Started': 'E', 'Date Ended': 'F', 'Status P1': 'G', 'Account #': 'H',
+                'Hedge Result 1': 'I', 'Hedge Result 2': 'J',
+                'Hedge Result 3': 'K', 'Hedge Result 4': 'L', 'Hedge Result 5': 'M',
+                'Hedge Net': 'N', 
+                'Account #.1': 'O', 'Activation Fee': 'P', 'Date Started.1': 'Q', 'Date Ended.1': 'R', 'Status': 'S',
+                'Hedge Result 1.1': 'T', 'Hedge Result 2.1': 'U', 'Hedge Result 3.1': 'V',
+                'Hedge Result 4.1': 'W', 'Hedge Result 5.1': 'X', 'Hedge Result 6': 'Y',
+                'Hedge Result 7': 'Z',
+                'Hedge Net.1': 'AA',
+                'Payout 1': 'AB', 'Date 1': 'AC', 'Payout 2': 'AD', 'Date 2': 'AE',
+                'Payout 3': 'AF', 'Date 3': 'AG', 'Payout 4': 'AH', 'Date 4': 'AI',
+                'Farming Net': 'AJ'
+            };
+            if (map[key]) return map[key];
             
-            const editor = document.getElementById('note-editor');
-            const textarea = document.getElementById('note-text');
-            
-            // Load existing note
-            const note = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key] || '';
-            textarea.value = note;
-            
-            // Position editor
-            editor.style.display = 'block';
-            editor.style.left = `${e.pageX}px`;
-            editor.style.top = `${e.pageY}px`;
-            
-            // Adjust if off screen
-            const rect = editor.getBoundingClientRect();
-            if (rect.right > window.innerWidth) {
-                editor.style.left = `${window.innerWidth - rect.width - 20}px`;
-            }
-            
-            textarea.focus();
-            isEditing = true;
-        }
-
-        function closeNoteEditor() {
-            document.getElementById('note-editor').style.display = 'none';
-            currentNoteTarget = null;
-            isEditing = false;
-        }
-
-        function saveNote() {
-            if (!currentNoteTarget) return;
-            const { index, key } = currentNoteTarget;
-            const note = document.getElementById('note-text').value;
-            
-            if (!currentData.evaluations[index]._notes) {
-                currentData.evaluations[index]._notes = {};
-            }
-            
-            if (note.trim()) {
-                currentData.evaluations[index]._notes[key] = note;
-            } else {
-                delete currentData.evaluations[index]._notes[key];
-            }
-            
-            saveData();
-            renderEvaluationsTable();
-            closeNoteEditor();
-        }
-
-        function deleteNote() {
-            document.getElementById('note-text').value = '';
-            saveNote();
-        }
-
-        // Close editor when clicking outside
-        document.addEventListener('click', function(e) {
-            const editor = document.getElementById('note-editor');
-            if (editor.style.display === 'block' && !editor.contains(e.target) && !e.target.closest('td')) {
-                closeNoteEditor();
-            }
-        });
-
-        function formatDateForInput(dateStr) {
-            if (!dateStr) return '';
-            
-            // Ensure string and trim whitespace
-            dateStr = String(dateStr).trim();
-            
-            // Check if already in YYYY-MM-DD format
-            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-            
-            // Handle MM/DD/YY or MM/DD/YYYY or M/D/YY
-            if (dateStr.includes('/')) {
-                const parts = dateStr.split('/');
-                if (parts.length === 3) {
-                    let [m, d, y] = parts;
-                    m = String(parseInt(m, 10)).padStart(2, '0');
-                    d = String(parseInt(d, 10)).padStart(2, '0');
-                    y = String(parseInt(y, 10));
-                    if (y.length === 2) y = '20' + y; // Assume 20xx
-                    if (y.length === 4 && m.length === 2 && d.length === 2) {
-                        return `${y}-${m}-${d}`;
-                    }
+            // Generate dynamic farming columns
+            // Prop Day 1 starts at AK (37)
+            if (key.startsWith('Prop Day ')) {
+                const day = parseInt(key.replace('Prop Day ', ''));
+                if (!isNaN(day)) {
+                    // Prop Day 1 = AK (37)
+                    // Prop Day 2 = AM (39) ...
+                    return getColLetter(37 + (day-1)*2);
                 }
             }
-            
-            // Handle MM-DD-YY or MM-DD-YYYY
-            if (dateStr.includes('-')) {
-                 const parts = dateStr.split('-');
-                 if (parts.length === 3) {
-                     // If first part is 4 digits, assume YYYY-MM-DD
-                     if (parts[0].length === 4) {
-                         // Validate and normalize
-                         const y = parts[0];
-                         const m = String(parseInt(parts[1], 10)).padStart(2, '0');
-                         const d = String(parseInt(parts[2], 10)).padStart(2, '0');
-                         return `${y}-${m}-${d}`;
-                     }
-                     
-                     // Otherwise MM-DD-YY format
-                     let [m, d, y] = parts;
-                     m = String(parseInt(m, 10)).padStart(2, '0');
-                     d = String(parseInt(d, 10)).padStart(2, '0');
-                     y = String(parseInt(y, 10));
-                     if (y.length === 2) y = '20' + y;
-                     return `${y}-${m}-${d}`;
-                 }
+             if (key.startsWith('Hedge Day ')) {
+                const day = parseInt(key.replace('Hedge Day ', ''));
+                if (!isNaN(day)) {
+                    // Hedge Day 1 = AL (38)
+                    return getColLetter(38 + (day-1)*2);
+                }
             }
-            
-            // Fallback: Try Date object
-            const date = new Date(dateStr);
-            if (!isNaN(date.getTime())) {
-                return date.toISOString().split('T')[0];
+            return null;
+        }
+
+        function getColLetter(n) {
+            let string = "";
+            while (n > 0) {
+                n--;
+                string = String.fromCharCode(65 + (n % 26)) + string;
+                n = Math.floor(n / 26);
             }
-            
-            console.warn('Failed to format date:', dateStr);
-            return '';
+            return string;
         }
 
         function generateDayColumns(ev, cell, index) {
@@ -1658,7 +1637,7 @@
             }
 
             const options = dropdownOptions[type] || [];
-            const items = options.map(opt => `<div class="dropdown-item" onclick="selectItem(event, this, ${index}, '${key}')">${opt}</div>`).join('');
+            const items = options.map(opt => `<div class="dropdown-item" data-val="${opt}" data-idx="${index}" data-k="${key}">${opt}</div>`).join('');
             
             let colorStyle = "";
             if (type === 'Status') {
@@ -1684,19 +1663,151 @@
             let style = readOnly ? 'background-color: #f9f9f9; cursor: not-allowed;' : '';
             
             if (key.includes('Account #')) {
-                style += ' font-size: 11px; letter-spacing: -0.5px; font-weight: 600;';
+                style += ' font-size:  11px; letter-spacing: -0.5px; font-weight: 600;';
             }
             
             return `<input type="${type}" class="cell-input" value="${value}" onchange="handleInputChange(${index}, '${key}', this.value)" ${readOnlyAttr} style="${style}">`;
         }
 
+        // Global state for portal dropdowns
+        let activeDropdownTrigger = null;
+        let globalDropdownMenu = null;
+
+        // Initialize portal on load
+        document.addEventListener('DOMContentLoaded', () => {
+            globalDropdownMenu = document.createElement('div');
+            globalDropdownMenu.className = 'dropdown-menu-portal';
+            globalDropdownMenu.style.display = 'none';
+            globalDropdownMenu.style.position = 'fixed';
+            globalDropdownMenu.style.zIndex = '999999';
+            globalDropdownMenu.style.background = 'var(--card-bg)';
+            globalDropdownMenu.style.border = '1px solid var(--border-color)';
+            globalDropdownMenu.style.borderRadius = '12px';
+            globalDropdownMenu.style.padding = '8px';
+            globalDropdownMenu.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+            globalDropdownMenu.style.backdropFilter = 'blur(12px)';
+            globalDropdownMenu.style.maxHeight = '300px';
+            globalDropdownMenu.style.overflowY = 'auto';
+            document.body.appendChild(globalDropdownMenu);
+
+            // Close on outside click
+            document.addEventListener('click', (e) => {
+                if (activeDropdownTrigger && !activeDropdownTrigger.contains(e.target) && !globalDropdownMenu.contains(e.target)) {
+                    closeGlobalMenu();
+                }
+            }, true);
+            
+            // Event delegation for menu items (portal)
+            globalDropdownMenu.addEventListener('click', (e) => {
+                const item = e.target.closest('.dropdown-item');
+                if (item) {
+                    e.stopPropagation();
+                    const index = parseInt(item.getAttribute('data-idx'));
+                    const key = item.getAttribute('data-k');
+                    const value = item.innerText;
+
+                    if (activeDropdownTrigger) {
+                        const valueSpan = activeDropdownTrigger.querySelector('.selected-value');
+                        if (valueSpan) valueSpan.innerText = value;
+                        
+                        // Update color if status
+                        if (key.includes('Status')) {
+                            const v = value.toLowerCase();
+                            let color = "";
+                            if (v.includes('active') || v.includes('progress') || v.includes('pass')) color = "#27ae60";
+                            else if (v.includes('fail') || v.includes('breach')) color = "#c0392b";
+                            else if (v.includes('tp') || v.includes('payout')) color = "#f39c12";
+                            else if (v.includes('complete')) color = "#8e44ad";
+                            
+                            activeDropdownTrigger.style.color = color;
+                        }
+
+                        handleInputChange(index, key, value);
+                    }
+                    closeGlobalMenu();
+                }
+            });
+
+            // Update position on scroll/resize
+            ['scroll', 'resize'].forEach(ev => {
+                window.addEventListener(ev, () => {
+                   if (activeDropdownTrigger && globalDropdownMenu.style.display !== 'none') {
+                       updateGlobalMenuPosition();
+                   }
+                }, { capture: true, passive: true });
+            });
+        });
+
+        function closeGlobalMenu() {
+            if (globalDropdownMenu) {
+                globalDropdownMenu.style.display = 'none';
+                globalDropdownMenu.innerHTML = '';
+            }
+            if (activeDropdownTrigger) {
+                activeDropdownTrigger.classList.remove('active');
+                activeDropdownTrigger = null;
+            }
+        }
+
+        function updateGlobalMenuPosition() {
+            if (!activeDropdownTrigger || !globalDropdownMenu) return;
+            const rect = activeDropdownTrigger.getBoundingClientRect();
+            
+            // Default position: Bottom Left
+            let top = rect.bottom + 4;
+            let left = rect.left;
+            
+            // Check overflow bottom
+            if (top + 200 > window.innerHeight) {
+                // Flip top if not enough space (approx menu height)
+                top = rect.top - globalDropdownMenu.offsetHeight - 4;
+            }
+
+            globalDropdownMenu.style.top = `${top}px`;
+            globalDropdownMenu.style.left = `${left}px`;
+            globalDropdownMenu.style.minWidth = `${Math.max(rect.width, 180)}px`;
+        }
+
         function toggleMenu(e, dropdown) {
             e.stopPropagation();
-            document.querySelectorAll('.dropdown-menu.show').forEach(m => {
-                if (m.parentElement !== dropdown) m.classList.remove('show');
-            });
-            const menu = dropdown.querySelector('.dropdown-menu');
-            if (menu) menu.classList.toggle('show');
+            
+            // If clicking the currently active one, toggle close
+            if (activeDropdownTrigger === dropdown) {
+                closeGlobalMenu();
+                return;
+            }
+
+            // Close existing
+            closeGlobalMenu();
+
+            // Set new active
+            activeDropdownTrigger = dropdown;
+            dropdown.classList.add('active');
+
+            // Copy content
+            const templateMenu = dropdown.querySelector('.dropdown-menu');
+            if (templateMenu) {
+                globalDropdownMenu.innerHTML = templateMenu.innerHTML;
+                globalDropdownMenu.style.display = 'block';
+                updateGlobalMenuPosition(); // Init position once content loaded (for height calc)
+            }
+        }
+
+        function selectItem(e, item, index, key) {
+            e.stopPropagation();
+            // Note: 'item' is inside globalDropdownMenu now
+            
+            if (!activeDropdownTrigger) return;
+
+            const valueSpan = activeDropdownTrigger.querySelector('.selected-value');
+            if (valueSpan) {
+                const newValue = item.innerText;
+                valueSpan.innerText = newValue;
+                handleInputChange(index, key, newValue);
+            }
+
+            // Close menu
+            closeGlobalMenu();
         }
 
         function selectItem(e, item, index, key) {
@@ -2162,8 +2273,25 @@
             }
         });
 
-        setInterval(updateDashboard, 2000);
+        // Initialize helpers - formatDateForInput fallback
+        function formatDateForInput(dateStr) {
+            if (!dateStr) return '';
+            
+            // If already in YYYY-MM-DD
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) return dateStr;
+            
+            // Try parsing
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return dateStr;
+            
+            return date.toISOString().split('T')[0];
+        }
+
+        // Initialize Dashboard
         updateDashboard();
+        
+        // Refresh every 30 seconds
+        setInterval(updateDashboard, 30000);
     </script>
 </body>
 </html>

@@ -82,6 +82,32 @@
         </div>
     </div>
 
+    <!-- Edit Client Modal -->
+    <div id="editClientModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <h2>Edit Client Profile</h2>
+            <form id="editClientForm">
+                <input type="hidden" id="editAdmin">
+                <input type="hidden" id="editTrader">
+                <input type="hidden" id="editName">
+                
+                <div class="form-group">
+                    <label>Client Name: <span id="editNameDisplay" style="font-weight:bold;"></span></label>
+                </div>
+                
+                <div class="form-group">
+                    <label>Category (Profile)</label>
+                    <select id="editCategory">
+                        <option value="BEF">BEF</option>
+                        <option value="PRIVATE">Private</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         // Load Clients
         fetch('/api/hierarchy')
@@ -108,13 +134,15 @@
 
                         clients.forEach(client => {
                             const row = tbody.insertRow();
+                            const profile = client.category || client.profile || 'PRIVATE';
                             row.innerHTML = `
                                 <td>${client.name}</td>
                                 <td>${client.email || ''}</td>
-                                <td>${client.category || ''}</td>
+                                <td>${profile}</td>
                                 <td>${adminName}</td>
                                 <td>${traderName}</td>
                                 <td>
+                                    <button class="btn" style="margin-right: 5px;" onclick="editClient('${adminName}', '${traderName}', '${client.name}', '${profile}')">Edit</button>
                                     <button class="btn" style="background-color: #dc3545; padding: 4px 8px; font-size: 0.8rem;" onclick="removeClient('${adminName}', '${traderName}', '${client.name}')">Remove</button>
                                 </td>
                             `;
@@ -163,9 +191,20 @@
         // Modal Functions
         function openModal() { document.getElementById('addClientModal').style.display = 'block'; }
         function closeModal() { document.getElementById('addClientModal').style.display = 'none'; }
+        function openEditModal(clientName, admin, trader, category) {
+            document.getElementById('editNameDisplay').textContent = clientName;
+            document.getElementById('editAdmin').value = admin;
+            document.getElementById('editTrader').value = trader;
+            document.getElementById('editName').value = clientName;
+            document.getElementById('editCategory').value = category;
+            document.getElementById('editClientModal').style.display = 'block';
+        }
+        function closeEditModal() { document.getElementById('editClientModal').style.display = 'none'; }
         window.onclick = function(event) {
             if (event.target == document.getElementById('addClientModal')) {
                 closeModal();
+            } else if (event.target == document.getElementById('editClientModal')) {
+                closeEditModal();
             }
         }
 
@@ -189,6 +228,46 @@
             .then(result => {
                 if (result.status === 'success') {
                     alert('Client added successfully');
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.message);
+                }
+            });
+        };
+
+        // Edit Modal Functions
+        function editClient(admin, trader, name, category) {
+            document.getElementById('editAdmin').value = admin;
+            document.getElementById('editTrader').value = trader;
+            document.getElementById('editName').value = name;
+            document.getElementById('editNameDisplay').textContent = name;
+            
+            // Normalize category just in case
+            let val = 'PRIVATE';
+            if (category && category.toUpperCase() === 'BEF') val = 'BEF';
+            document.getElementById('editCategory').value = val;
+            
+            document.getElementById('editClientModal').style.display = 'block';
+        }
+
+        document.getElementById('editClientForm').onsubmit = function(e) {
+            e.preventDefault();
+            const data = {
+                admin: document.getElementById('editAdmin').value,
+                trader: document.getElementById('editTrader').value,
+                name: document.getElementById('editName').value,
+                category: document.getElementById('editCategory').value
+            };
+
+            fetch('/api/update_client_profile', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    alert('Client profile updated successfully');
                     location.reload();
                 } else {
                     alert('Error: ' + result.message);

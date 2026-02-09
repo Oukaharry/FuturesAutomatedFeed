@@ -27,7 +27,7 @@ def create_deployment_package():
     
     # Files and directories to copy
     items_to_copy = [
-        ("dashboard", ["app.py", "api_client.py", "manage_api_keys.py", "database.py"]),
+        ("dashboard", ["app.py", "api_client.py", "manage_api_keys.py", "database.py", "financial_overview.py"]),
         ("dashboard/templates", None),  # Copy entire directory
         ("dashboard/static", None),     # Copy entire directory
         ("config", ["hierarchy.py", "hierarchy.json", "settings.py"]),

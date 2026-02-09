@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trader Performance - MT5 Hedging Engine</title>
+    <!-- Use inline styles or copy from other templates if CSS file is generic -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .finance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .finance-table th, .finance-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
+            font-size: 0.9rem;
+            vertical-align: top;
+        }
+        .finance-table th {
+            background-color: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .finance-table tr:hover {
+            background-color: #f8fafc;
+        }
+        .positive, .success { color: #10b981; font-weight: 600; }
+        .negative, .danger { color: #ef4444; font-weight: 600; }
+        .neutral { color: #94a3b8; }
+        .warnings { color: #f59e0b; font-weight: 500; }
+        
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            background: white;
+            border: 1px solid #e2e8f0;
+        }
+        
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #1e293b; }
+
+        /* Modern Navigation - Gemini Inspired */
+        .modern-nav {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            margin-bottom: 40px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px -1px rgba(0, 0, 0, 0.05);
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 800;
+            font-size: 1.1rem;
+            color: #0f172a;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-logo {
+            height: 45px;
+            width: auto;
+            display: block;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            background: #f1f5f9;
+            padding: 5px;
+            border-radius: 12px;
+        }
+
+        .nav-item {
+            text-decoration: none;
+            color: #64748b;
+            font-weight: 600;
+            font-size: 0.9rem;
+            padding: 8px 16px;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-item:hover {
+            color: #1e293b;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .nav-item.active {
+            background: white;
+            color: #3b82f6;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .action-link {
+            color: #64748b;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+        .action-link:hover { color: #3b82f6; }
+
+        .logout-btn-nav {
+            background: #fee2e2;
+            color: #ef4444;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .logout-btn-nav:hover {
+            background: #fecaca;
+            color: #dc2626;
+        }
+    </style>
+</head>
+<body style="background-color: #f8fafc;">
+    <div class="container" style="max-width: 1600px; padding: 40px;">
+        
+        <nav class="modern-nav">
+            <div class="nav-brand">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Baller Quotes" class="brand-logo">
+            </div>
+            <div class="nav-links">
+                <a href="/super_admin" class="nav-item">Dashboard</a>
+                <a href="/financial_overview" class="nav-item">Prop Firms</a>
+                <a href="/payout_history" class="nav-item">Payouts</a>
+                <a href="/client_performance" class="nav-item">Clients</a>
+                <a href="/trader_performance" class="nav-item active">Traders</a>
+            </div>
+            <div class="nav-actions">
+                <a href="/super_admin/clients" class="action-link">Manage Clients</a>
+                <a href="/logout" class="logout-btn-nav">Logout</a>
+            </div>
+        </nav>
+
+        <header style="margin-bottom: 40px;">
+            <h1 style="font-size: 2rem; color: #0f172a; margin: 0;">Trader Performance</h1>
+            <div style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">
+                Performance metrics aggregated by Trader
+            </div>
+        </header>
+
+        <div class="table-responsive">
+            <table class="finance-table">
+                <thead>
+                    <tr>
+                        <th style="text-align: left;">Trader</th>
+                        <th style="text-align: center;">Sheets Reviewed</th>
+                        <th style="text-align: center;">Clients</th>
+                        <th style="text-align: right;">Total Payouts</th>
+                        <th style="text-align: right;">Total Neg. Hedge Net</th>
+                        <th style="text-align: left;">Farming Performance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trader in traders %}
+                        <tr>
+                            <td style="text-align: left;">
+                                <div style="font-weight: 600; font-size: 1.1em;">{{ trader.name }}</div>
+                            </td>
+                            <td style="text-align: center;">{{ trader.sheets_reviewed }}</td>
+                            <td style="text-align: center;">{{ trader.client_count }}</td>
+                            <td style="text-align: right;" class="success">{{ "$%0.2f"|format(trader.total_payouts) }}</td>
+                            <td style="text-align: right;" class="{{ 'danger' if trader.total_negative_hedge < -1 else 'neutral' }}">
+                                {{ "$%0.2f"|format(trader.total_negative_hedge) }}
+                                {% if trader.total_negative_hedge < -1 %}
+                                    <div style="margin-top: 5px; font-size: 0.85em; color: #ef4444; font-weight: normal; text-align: left; padding: 5px; background: #fef2f2; border-radius: 4px;">
+                                        {% for detail in trader.negative_hedge_details %}
+                                            <div style="border-bottom: 1px dotted #e5e7eb; padding: 2px 0;">
+                                                {% if detail.link %}
+                                                    <a href="{{ detail.link }}" target="_blank" style="text-decoration: none; color: inherit; display: block;" title="View in Sheet">
+                                                        <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }} 
+                                                        <span style="font-size: 0.8em; opacity: 0.7;">↗</span>
+                                                    </a>
+                                                {% else %}
+                                                    <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }}
+                                                {% endif %}
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                            <td style="text-align: left;">
+                                {% if trader.farming_days_count > 0 %}
+                                    <div style="margin-bottom: 5px;"><strong>{{ trader.farming_days_count }}</strong> Farming Days</div>
+                                    {% if trader.farming_missing_notes > 0 %}
+                                        <div class="warnings">⚠️ {{ trader.farming_missing_notes }} Missing Notes/Prop Days</div>
+                                        <div style="font-size: 0.8em; color: #64748b; margin-top: 5px; background: #fffbeb; padding: 5px; border-radius: 4px;">
+                                            {% for w in trader.farming_warnings[:5] %}
+                                                <div>
+                                                    {% if w.link %}
+                                                        <a href="{{ w.link }}" target="_blank" style="text-decoration: underline; color: inherit;">
+                                                            {{ w.client }} (Day {{ w.day }})
+                                                        </a>
+                                                    {% else %}
+                                                        {{ w.client }} (Day {{ w.day }})
+                                                    {% endif %}
+                                                </div>
+                                            {% endfor %}
+                                            {% if trader.farming_warnings|length > 5 %}
+                                                <div>...and {{ trader.farming_warnings|length - 5 }} more</div>
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        <span class="success">All Prop Days Present</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="neutral">No Farming Activity</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 30px; color: #64748b;">
+                                No trader data available.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div style="margin-top: 30px; font-size: 0.85em; color: #94a3b8; text-align: center;">
+            * Negative Hedge Net is only calculated for accounts that show actual hedging activity.
+            * "Missing Notes" checks if a Farming Day has a corresponding Prop Day entry.
+        </div>
+    </div>
+</body>
+</html>

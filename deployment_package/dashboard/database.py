@@ -704,7 +704,7 @@ def get_clients_count() -> int:
 
 def update_client_field(client_id: str, field: str, value) -> bool:
     """Update a specific field for a client."""
-    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics']
+    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options']
     if field not in valid_fields:
         return False
     
