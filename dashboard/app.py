@@ -90,11 +90,22 @@ def get_account_signature(account_number):
 
 
 def get_last_n_digits(account: str, n: int = 5) -> str:
-    """Extract last N digits from account number."""
+    """
+    Extract last N digits from account number.
+    Prioritizes digits at the end of the string to avoid prefix contamination.
+    """
+    import re
     if not account:
         return ""
-    # Extract only digits from the end
-    digits = ''.join(c for c in account if c.isdigit())
+    
+    # Try to extract the final sequence of digits
+    match = re.search(r'(\d+)$', str(account).strip())
+    if match:
+        digits = match.group(1)
+        return digits[-n:]
+    
+    # Fallback: extract all digits
+    digits = ''.join(c for c in str(account) if c.isdigit())
     return digits[-n:] if len(digits) >= n else digits
 
 
@@ -150,12 +161,23 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
                 seen_row_indices.add(idx)
                 continue
                 
-            # Check last 5 match
+            # Check last 5 match with fuzzy logic
             if target_last5 and len(target_last5) >= 4:
                 eval_last5 = get_last_n_digits(eval_account, 5)
+                
+                # Check for exact match
                 if eval_last5 == target_last5:
                     matches.append((idx, eval_account))
                     seen_row_indices.add(idx)
+                    continue
+
+                # Check for suffix match (e.g. 9889 matches 59889)
+                # Useful when one is truncated to 4 digits and other is 5+
+                if len(eval_last5) != len(target_last5):
+                    if eval_last5.endswith(target_last5) or target_last5.endswith(eval_last5):
+                        matches.append((idx, eval_account))
+                        seen_row_indices.add(idx)
+                        continue
 
     return matches
 
