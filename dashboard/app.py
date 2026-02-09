@@ -154,14 +154,15 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         if idx in seen_row_indices:
             continue
         eval_sig = get_account_signature(eval_account)
-        eval_last5 = get_last_n_digits(eval_account, 5)
-        logging.debug(f"[MATCH] Comparing to DB account: {eval_account} (source: {source}) | Signature: {eval_sig} | Last5: {eval_last5}")
+        # eval_last5 = get_last_n_digits(eval_account, 5)
+        # logging.debug(f"[MATCH] Comparing to DB account: {eval_account} (source: {source}) | Signature: {eval_sig} | Last5: {eval_last5}")
         if eval_sig == target_sig:
             matches.append((idx, eval_account))
             seen_row_indices.add(idx)
             logging.debug(f"[MATCH] Signature match: {account_number} == {eval_account}")
             continue
         if target_last5 and len(target_last5) >= 4:
+            eval_last5 = get_last_n_digits(eval_account, 5)
             if eval_last5 == target_last5:
                 matches.append((idx, eval_account))
                 seen_row_indices.add(idx)
