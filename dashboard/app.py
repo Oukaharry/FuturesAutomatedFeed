@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -102,6 +102,9 @@ def get_last_n_digits(account: str, n: int = 5) -> str:
     match = re.search(r'(\d+)$', str(account).strip())
     if match:
         digits = match.group(1)
+        # For Topstep (V2-) or short accounts, ensure we don't demand more digits than exist
+        if len(digits) < n:
+            return digits
         return digits[-n:]
     
     # Fallback: extract all digits
@@ -142,6 +145,9 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
          # Default to both if unknown
         columns_to_check = ['Account #.1', 'Account #']
     
+    # Check if Topstep (V2 prefix) -> Enable relaxed 4-digit matching
+    is_topstep = str(account_number).upper().startswith('V2')
+    
     # Scan rows for matches in allowed columns
     seen_row_indices = set()
     
@@ -178,102 +184,18 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
                         matches.append((idx, eval_account))
                         seen_row_indices.add(idx)
                         continue
+            
+            # Topstep Specific: Relaxed 4-digit matching
+            # If account is V2-4047, match against 4047 even if last 5 logic missed it
+            if is_topstep:
+                 target_last4 = get_last_n_digits(account_number, 4)
+                 eval_last4 = get_last_n_digits(eval_account, 4)
+                 if target_last4 and len(target_last4) == 4 and target_last4 == eval_last4:
+                      matches.append((idx, eval_account))
+                      seen_row_indices.add(idx)
+                      continue
 
     return matches
-
-
-def parse_sheet_date(date_str):
-    """
-    Parse date string from Google Sheet into datetime object.
-    Supports formats: DD/MM/YYYY, YYYY-MM-DD, MM/DD/YYYY, etc.
-    """
-    if not date_str:
-        return None
-    
-    date_str = str(date_str).strip()
-    if not date_str:
-        return None
-        
-    formats = [
-        '%d/%m/%Y', '%Y-%m-%d', '%m/%d/%Y', 
-        '%d-%m-%Y', '%Y/%m/%d', '%d.%m.%Y',
-        '%d/%m/%y', '%m/%d/%y'
-    ]
-    
-    for fmt in formats:
-        try:
-            return datetime.strptime(date_str, fmt)
-        except ValueError:
-            continue
-            
-    return None
-
-
-def filter_matches_by_date(matches, evaluations, trade_timestamp):
-    """
-    Filter matches to find the one where Trade Date > Date Purchased.
-    If multiple valid matches, pick the one closest to trade date (most recent purchase before trade).
-    
-    Args:
-        matches: List of (eval_index, matched_account)
-        evaluations: List of evaluation dicts
-        trade_timestamp: Timestamp of the trade (float or int)
-        
-    Returns:
-        The best matching (eval_index, matched_account) or None if no valid match.
-        If trade_timestamp is missing/invalid, returns the first match (fallback).
-    """
-    if not matches or not trade_timestamp:
-        return matches[0] if matches else None
-
-    # Convert trade timestamp to datetime
-    try:
-        trade_date = datetime.fromtimestamp(float(trade_timestamp))
-    except (ValueError, TypeError):
-        return matches[0]
-        
-    valid_matches = []
-    
-    for eval_idx, matched_acc in matches:
-        ev = evaluations[eval_idx]
-        # "Date Purchased" is typically at index 2, but we address by name
-        date_purchased_str = ev.get('Date Started', '') or ev.get('Date Purchased', '')
-        date_purchased = parse_sheet_date(date_purchased_str)
-        
-        if not date_purchased:
-            # If no date purchased, treat as potentially valid but low priority?
-            # Or maybe this is an old entry without date.
-            # Let's keep it as a fallback with distance infinity
-            valid_matches.append({
-                'match': (eval_idx, matched_acc),
-                'delta': float('inf'),
-                'valid_date': False
-            })
-            continue
-            
-        # Check if Trade Date is AFTER Date Purchased
-        # Use a small buffer (e.g. same day is fine)
-        # Reset time to midnight for comparison
-        dp_date = date_purchased.replace(hour=0, minute=0, second=0, microsecond=0)
-        td_date = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        if td_date >= dp_date:
-            delta = (td_date - dp_date).total_seconds()
-            valid_matches.append({
-                'match': (eval_idx, matched_acc),
-                'delta': delta,
-                'valid_date': True
-            })
-            
-    if not valid_matches:
-        # No matches with valid dates found? Return first match as fallback
-        return matches[0]
-        
-    # Sort by delta (smallest positive difference)
-    # Prefer matches with valid dates
-    valid_matches.sort(key=lambda x: (not x['valid_date'], x['delta']))
-    
-    return valid_matches[0]['match']
 
 
 def normalize_account_size(value):
@@ -361,9 +283,9 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
                     return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'DD':
-        # Double Dip: DD1 -> Hedge Result 1.1, DD2 -> Hedge Result 2.1
-        if trade_number is not None:
-             return f"Hedge Result {trade_number}.1"
+        # Double Dip: DD1-4 map to available funded hedge columns
+        if trade_number is not None and 1 <= trade_number <= 4:
+            return f"Hedge Result {trade_number + 3}.1" if trade_number <= 2 else f"Hedge Result {trade_number + 3}"
     
     elif phase_code == 'FA':
         # Farming: Find next available Hedge Day slot
@@ -407,42 +329,29 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         farming_date = agg.get('farming_date')
         net_profit = agg.get('net_profit', 0)
         deal_count = agg.get('deal_count', 0)
-        trade_timestamp = agg.get('timestamp', 0)
         
         # Find matching evaluation
-        matches = match_account_to_evaluation(account_number, evaluations, phase_code)
+        eval_idx, matched_account = match_account_to_evaluation(account_number, evaluations, phase_code)
         
-        if not matches:
+        if eval_idx is None:
             sig = get_account_signature(account_number)
             match_log.append(f"⚠️ No match: {account_number} ({sig}) _{phase_code}{trade_number or ''} = ${net_profit:.2f}")
             continue
         
-        # Filter matches by date logic (Date Started/Purchased <= Trade Date)
-        best_match = filter_matches_by_date(matches, evaluations, trade_timestamp)
-        if best_match:
-            matches = [best_match]
-        
         # Determine field to update
-        # Use first match to determine logic
-        first_idx, first_account = matches[0]
-        field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, first_idx, account_number)
+        field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)
         
         if not field_name:
             match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
             continue
         
-        # Update matching evaluation (should be just one best match now)
-        for eval_idx, matched_account in matches:
-            evaluations[eval_idx][field_name] = net_profit
-            updates_made += 1
-            
-            sig = get_account_signature(account_number)
-            
-            # Log with Date Started context
-            date_started = evaluations[eval_idx].get('Date Started', '') or evaluations[eval_idx].get('Date Purchased', 'N/A')
-            
-            match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
-            match_log.append(f"   Matched to: {matched_account} (Row {eval_idx}, Started: {date_started})")
+        # Update the evaluation
+        evaluations[eval_idx][field_name] = net_profit
+        updates_made += 1
+        
+        sig = get_account_signature(account_number)
+        match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
+        match_log.append(f"   Matched to: {matched_account}")
     
     match_log.append(f"\n📈 Total updates: {updates_made}/{len(aggregated_data)}")
     return evaluations, match_log
@@ -598,10 +507,36 @@ def financial_overview():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
     
-    overview_data = calculate_propfirm_overview()
+    profile_filter = request.args.get('profile', 'ALL')
+    overview_data = calculate_propfirm_overview(profile_filter=profile_filter)
+    
+    # Get growth chart data
+    growth_dates, growth_values = get_portfolio_growth_data(profile_filter=profile_filter)
+    payouts_dates, payouts_values = get_payouts_growth_data(profile_filter=profile_filter)
+    net_profit_dates, net_profit_values = get_cumulative_trading_profit(profile_filter=profile_filter)
+    deposits_dates, deposits_values = get_cumulative_deposits(profile_filter=profile_filter)
+    
+    fees_dates, fees_values = get_cumulative_fees_data(profile_filter=profile_filter)
+    hedge_dates, hedge_values = get_cumulative_hedge_data(profile_filter=profile_filter)
+    farming_dates, farming_values = get_cumulative_farming_data(profile_filter=profile_filter)
     
     return render_template('financial_overview.html', 
-                           overview=overview_data)
+                           overview=overview_data,
+                           selected_profile=profile_filter,
+                           growth_dates=growth_dates,
+                           growth_values=growth_values,
+                           payouts_dates=payouts_dates,
+                           payouts_values=payouts_values,
+                           net_profit_dates=net_profit_dates,
+                           net_profit_values=net_profit_values,
+                           deposits_dates=deposits_dates,
+                           deposits_values=deposits_values,
+                           fees_dates=fees_dates,
+                           fees_values=fees_values,
+                           hedge_dates=hedge_dates,
+                           hedge_values=hedge_values,
+                           farming_dates=farming_dates,
+                           farming_values=farming_values)
 
 @app.route('/payout_history')
 @require_session
@@ -828,7 +763,14 @@ def get_super_admin_totals():
         
         # Get client metadata
         identity = client_data.get('identity', {})
-        client_source = identity.get('source', 'Private')  # Default to Private
+        # Prioritize 'profile' or 'category' as source, fallback to 'source' or 'Private'
+        client_source = identity.get('profile') or identity.get('category') or identity.get('source') or 'Private'
+        
+        # Normalize source/profile value
+        if client_source.upper() == 'BEF':
+             client_source = 'BEF'
+        else:
+             client_source = 'Private'
         
         # Get cashflow/in-progress totals (all accounts)
         cashflow = stats.get('cashflow_inprogress', {})
@@ -908,6 +850,30 @@ def update_client_source():
     data = request.json
     client_id = data.get('client_id')
     source = data.get('source')
+    
+    if not client_id or not source:
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+        
+    # Update Database
+    client_data = get_client_data(client_id)
+    if client_data:
+        identity = client_data.get('identity', {})
+        # Update all relevant fields for consistency
+        identity['profile'] = source
+        identity['category'] = source
+        identity['source'] = source
+        update_client_field(client_id, 'identity', identity)
+        
+        # Also update Hierarchy.json if possible
+        from config.hierarchy import get_client_profile, update_client_category
+        profile = get_client_profile(client_id)
+        if profile:
+            update_client_category(profile['admin'], profile['trader'], client_id, source)
+    
+        log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), f"To: {source}")
+        return jsonify({"status": "success"})
+        
+    return jsonify({"status": "error", "message": "Client not found"}), 404
     
     if not client_id or source not in ['BEF', 'Private']:
         return jsonify({"status": "error", "message": "Invalid data"}), 400
@@ -1665,7 +1631,9 @@ def api_update_client():
     admin = request.json.get('admin')
     trader = request.json.get('trader')
     name = request.json.get('name')
-    email = request.json.get('email')
+    email = request.json.get('email', '')
+    category = request.json.get('category', '')
+    
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
     if update_client_details(admin, trader, name, email):
@@ -1681,6 +1649,15 @@ def api_add_trader():
     if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
     if add_trader(admin, name, email):
+        # Also ensure record exists in database
+        try:
+            # We don't have a "trader" table in database, user_credentials holds trader logins.
+            if not user_exists(name, 'trader'):
+                 temp_pass = "trader123" 
+                 create_user(name, temp_pass, 'trader', email)
+        except Exception as e:
+            print(f"Error creating trader DB user: {e}")
+
         log_action('ADD_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Trader exists"}), 400
@@ -1696,9 +1673,73 @@ def api_add_client():
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
     if add_client(admin, trader, name, email, category):
+        # IMPORTANT: Initialize database record for new client
+        try:
+            if not get_client_data(name): 
+                initial_data = {
+                    "identity": {
+                        "name": name,
+                        "email": email,
+                        "category": category,
+                        "profile": category,
+                        "source": category or "Private",
+                        "admin": admin,
+                        "trader": trader,
+                        "client": name
+                    }
+                }
+                save_client_data(name, initial_data)
+                
+            # Create user credential for client portal access
+            if email and not user_exists(name, 'client') and not find_user_by_identifier(email):
+                 temp_pass = "client123"
+                 create_user(name, temp_pass, 'client', email)
+                 
+        except Exception as e:
+             print(f"Error creating client DB record: {e}")
+             
         log_action('ADD_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Client exists"}), 400
+
+@app.route('/api/update_client_profile', methods=['POST'])
+@require_session
+def api_update_client_profile():
+    session_user = request.session_user
+    if session_user.get('user_type') not in ['admin', 'super_admin']:
+         return jsonify({"status": "error", "message": "Access denied"}), 403
+
+    data = request.json
+    admin = data.get('admin')
+    trader = data.get('trader')
+    name = data.get('name')
+    category = data.get('category')
+    
+    if not admin or not trader or not name or category is None:
+         return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    from config.hierarchy import update_client_category
+    
+    if update_client_category(admin, trader, name, category):
+        # Determine client_id (assuming it's the name)
+        client_id = name
+        
+        # Also update the dashboard.db logic
+        try:
+             client_data = get_client_data(client_id)
+             if client_data:
+                 identity = client_data.get('identity', {})
+                 # Update both for compatibility
+                 identity['profile'] = category 
+                 identity['category'] = category
+                 update_client_field(client_id, 'identity', identity)
+        except Exception as e:
+             print(f"Error updating DB identity profile: {e}")
+
+        log_action('UPDATE_CLIENT_PROFILE', session_user.get('user_type'), name, get_remote_address(), f"To: {category}")
+        return jsonify({"status": "success"})
+    
+    return jsonify({"status": "error", "message": "Client not found"}), 404
 
 @app.route('/api/remove_admin', methods=['POST'])
 def api_remove_admin():
@@ -1857,6 +1898,106 @@ def can_access_client(user_type, user_identifier, target_client):
                 client_name = client.get('name', '')
                 client_email = client.get('email', '')
                 
+                if client_name == target_client or client_email == target_client:
+                    if user_type == 'admin' and user_identifier == admin_name:
+                        return True
+                    if user_type == 'trader' and user_identifier == trader_name:
+                        return True
+    
+    return False
+
+def get_accessible_clients(user_type, user_identifier):
+    """Get list of client names this user can access."""
+    clients = []
+    
+    if user_type == 'super_admin':
+        # Super admin can access all clients
+        for admin_data in hierarchy.get('admins', {}).values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    clients.append(client.get('name'))
+        return clients
+    
+    if user_type == 'admin':
+        # Admin can access all clients under their traders
+        admin_data = hierarchy.get('admins', {}).get(user_identifier, {})
+        for trader_data in admin_data.get('traders', {}).values():
+            for client in trader_data.get('clients', []):
+                clients.append(client.get('name'))
+        return clients
+    
+    if user_type == 'trader':
+        # Trader can access only their clients
+        for admin_data in hierarchy.get('admins', {}).values():
+            trader_data = admin_data.get('traders', {}).get(user_identifier, {})
+            for client in trader_data.get('clients', []):
+                clients.append(client.get('name'))
+        return clients
+    
+    if user_type == 'client':
+        # Client can only access themselves
+        return [user_identifier]
+    
+    return []
+
+@app.route('/api/hedging_review/<client_id>', methods=['POST'])
+@require_session
+def update_hedging_review(client_id):
+    """Update hedging review values manually - only for traders, admins, and super_admins."""
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+    
+    # Only allow traders, admins, and super_admins to edit
+    if user_type not in ['trader', 'admin', 'super_admin']:
+        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"Client tried to edit hedging for: {client_id}", False)
+        return jsonify({"status": "error", "message": "Only traders, admins, and super admins can edit hedging review"}), 403
+    
+    # Check if user can access this client
+    if not can_access_client(user_type, user_identifier, client_id):
+        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
+                   f"No access to client: {client_id}", False)
+        return jsonify({"status": "error", "message": "Access denied to this client"}), 403
+    
+    data = request.json
+    
+    # Get existing client data
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+    
+    # Update hedging review in statistics
+    if 'statistics' not in client_data:
+        client_data['statistics'] = {}
+    if 'hedging_review' not in client_data['statistics']:
+        client_data['statistics']['hedging_review'] = {}
+    
+    hr = client_data['statistics']['hedging_review']
+    hr['total_deposits'] = float(data.get('total_deposits', hr.get('total_deposits', 0)))
+    hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
+    hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
+    hr['actual_hedging_results'] = float(data.get('actual_hedging_results', hr.get('actual_hedging_results', 0)))
+    hr['discrepancy'] = float(data.get('discrepancy', hr.get('discrepancy', 0)))
+    
+    # Also store in account for consistency with MT5 push
+    if 'account' not in client_data:
+        client_data['account'] = {}
+    client_data['account']['balance'] = hr['current_balance']
+    client_data['account']['total_deposits'] = hr['total_deposits']
+    client_data['account']['total_withdrawals'] = hr['total_withdrawals']
+    
+    # Save updated data
+    save_client_data(client_id, client_data)
+    
+    log_action('HEDGING_EDIT', user_type, user_identifier, get_remote_address(), 
+               f"Updated hedging review for {client_id}: deposits={hr['total_deposits']}, withdrawals={hr['total_withdrawals']}, balance={hr['current_balance']}")
+    
+    return jsonify({
+        "status": "success", 
+        "message": "Hedging review updated",
+        "hedging_review": hr
+    })
 
 @app.route('/api/historical_mt5/<client_id>', methods=['POST'])
 @require_session
@@ -2068,7 +2209,6 @@ def update_data():
                 "evaluations": evaluations,
                 "statistics": data.get("statistics", existing_data.get("statistics", {})),
                 "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
-                "identity": identity or existing_data.get("identity", {})
             }
             
             # Ensure client ID is in identity
