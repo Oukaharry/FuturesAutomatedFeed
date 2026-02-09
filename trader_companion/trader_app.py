@@ -544,6 +544,16 @@ class MT5DataPusher:
                 'date': None
             }
         
+        # Pattern for Double Dip: {account}_DD{n}
+        dd_match = re.match(r'^(.+?)_DD(\d+)$', comment, re.IGNORECASE)
+        if dd_match:
+            return {
+                'account': dd_match.group(1),
+                'stage': 'doubledip',
+                'stage_num': int(dd_match.group(2)),
+                'date': None
+            }
+        
         # Pattern for Farming: {account}_FA{n}_{DD/MM}
         fa_match = re.match(r'^(.+?)_FA(\d+)_(\d{1,2}/\d{1,2})$', comment, re.IGNORECASE)
         if fa_match:

@@ -117,33 +117,45 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     if not target_sig and not target_last5:
         return matches
     
-    # Determine which column to check based on phase
-    if phase_code == 'CH':
-        column_name = 'Account #'  # Challenge accounts
-    elif phase_code in ['FD', 'DD', 'FA']:
-         # Funded accounts for FD, DD, FA
-        column_name = 'Account #.1'
-    else:
-         # Default to Funded column if unknown
-         column_name = 'Account #.1'
+    # Determine columns to check based on phase
+    # Prioritize the correct column, but allow fallback
+    columns_to_check = []
     
-    # Scan ALL rows for matches
-    for idx, ev in enumerate(evaluations):
-        eval_account = str(ev.get(column_name, '')).strip()
-        if not eval_account:
-            continue
-        
-        # Check signature match
-        eval_sig = get_account_signature(eval_account)
-        if eval_sig == target_sig:
-            matches.append((idx, eval_account))
-            continue # Don't check last 5 if sig matched
+    if phase_code == 'CH':
+        columns_to_check = ['Account #']
+    elif phase_code in ['FD', 'DD', 'FA']:
+         # Funded/DoubleDip/Farming usually in Account #.1
+         # But check Account # as fallback in case user hasn't moved it or it's same number
+        columns_to_check = ['Account #.1', 'Account #']
+    else:
+         # Default to both if unknown
+        columns_to_check = ['Account #.1', 'Account #']
+    
+    # Scan rows for matches in allowed columns
+    seen_row_indices = set()
+    
+    for col_name in columns_to_check:
+        for idx, ev in enumerate(evaluations):
+            if idx in seen_row_indices:
+                continue
+                
+            eval_account = str(ev.get(col_name, '')).strip()
+            if not eval_account:
+                continue
             
-        # Check last 5 match
-        if target_last5 and len(target_last5) >= 4:
-            eval_last5 = get_last_n_digits(eval_account, 5)
-            if eval_last5 == target_last5:
+            # Check signature match
+            eval_sig = get_account_signature(eval_account)
+            if eval_sig == target_sig:
                 matches.append((idx, eval_account))
+                seen_row_indices.add(idx)
+                continue
+                
+            # Check last 5 match
+            if target_last5 and len(target_last5) >= 4:
+                eval_last5 = get_last_n_digits(eval_account, 5)
+                if eval_last5 == target_last5:
+                    matches.append((idx, eval_account))
+                    seen_row_indices.add(idx)
 
     return matches
 
