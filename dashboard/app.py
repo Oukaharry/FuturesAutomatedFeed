@@ -1367,10 +1367,6 @@ def api_admin_login():
         response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
         return response
     
-    log_action('ADMIN_LOGIN_FAILED', 'admin', 'super_admin', client_ip, 'Invalid password', False)
-    return jsonify({"status": "error", "message": "Invalid password"}), 403
-
-@app.route('/logout')
 def logout():
     """Logout via GET request - clears session and redirects to login."""
     session_token = request.cookies.get('session_token')

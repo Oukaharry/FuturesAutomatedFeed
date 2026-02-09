@@ -147,7 +147,6 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     
     # Check if Topstep (V2 prefix) -> Enable relaxed 4-digit matching
     is_topstep = str(account_number).upper().startswith('V2')
-    is_debug_acc = '9889' in str(account_number)
     
     # Scan rows for matches in allowed columns
     seen_row_indices = set()
@@ -161,9 +160,6 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
             if not eval_account:
                 continue
             
-            if is_debug_acc:
-                print(f"DEBUG_MATCH: Target={account_number} Eval={eval_account} Col={col_name}")
-
             # Check signature match
             eval_sig = get_account_signature(eval_account)
             if eval_sig == target_sig:
