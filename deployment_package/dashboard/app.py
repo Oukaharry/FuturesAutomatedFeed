@@ -147,6 +147,7 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     
     # Check if Topstep (V2 prefix) -> Enable relaxed 4-digit matching
     is_topstep = str(account_number).upper().startswith('V2')
+    is_debug_acc = '9889' in str(account_number)
     
     # Scan rows for matches in allowed columns
     seen_row_indices = set()
@@ -160,6 +161,9 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
             if not eval_account:
                 continue
             
+            if is_debug_acc:
+                print(f"DEBUG_MATCH: Target={account_number} Eval={eval_account} Col={col_name}")
+
             # Check signature match
             eval_sig = get_account_signature(eval_account)
             if eval_sig == target_sig:
@@ -181,6 +185,15 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
                 # Useful when one is truncated to 4 digits and other is 5+
                 if len(eval_last5) != len(target_last5):
                     if eval_last5.endswith(target_last5) or target_last5.endswith(eval_last5):
+                        matches.append((idx, eval_account))
+                        seen_row_indices.add(idx)
+                        continue
+                        
+                # Additional Fuzzy check: Last 4 digits match only (regardless of is_topstep)
+                # This helps when account format is messy but last 4 are strong signal
+                # e.g. v2-9889 (29889) vs ...64959889 (59889) -> Last 4 (9889) match
+                if len(target_last5) >= 4 and len(eval_last5) >= 4:
+                     if target_last5[-4:] == eval_last5[-4:]:
                         matches.append((idx, eval_account))
                         seen_row_indices.add(idx)
                         continue
@@ -1358,10 +1371,6 @@ def api_admin_login():
         response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
         return response
     
-    log_action('ADMIN_LOGIN_FAILED', 'admin', 'super_admin', client_ip, 'Invalid password', False)
-    return jsonify({"status": "error", "message": "Invalid password"}), 403
-
-@app.route('/logout')
 def logout():
     """Logout via GET request - clears session and redirects to login."""
     session_token = request.cookies.get('session_token')
