@@ -1208,7 +1208,7 @@ class TraderCompanionApp:
         self.log(f"Pushing data for {client_name}...")
         self.status_var.set("Pushing data...")
         
-        # Get MT5 data - Limit to 14 days for speed (Server merges history)
+        # Get MT5 data - Limit to 30 days for better coverage (especially Farming)
         account = self.pusher.get_account_info() or {}
 
         # Log rebalance data for verification
@@ -1222,8 +1222,8 @@ class TraderCompanionApp:
             self.log(f"   - Total Withdrawals: ${w}")
 
         positions = self.pusher.get_positions()
-        # Fetch only recent deals for fast sync
-        raw_deals = self.pusher.get_deals(days=14)
+        # Fetch deals for fast sync (increased to 30 days)
+        raw_deals = self.pusher.get_deals(days=30)
         
         # Filter deals: Only keep Balance operations and Trades with valid comments
         deals = []
@@ -1255,9 +1255,9 @@ class TraderCompanionApp:
 
         statistics = self.pusher.calculate_statistics(deals)
         
-        # NOTE: Reduced aggregated result history to 14 days too for speed.
+        # NOTE: Increased aggregated result history to 30 days coverage.
         # Use "Sync Hedge Results" button separately if you need to re-scan full year.
-        aggregated_result = self.pusher.get_deals_grouped_by_phase(days=14)
+        aggregated_result = self.pusher.get_deals_grouped_by_phase(days=30)
         aggregated_by_comment = aggregated_result.get('aggregated', [])
         comment_summary = aggregated_result.get('summary', {})
         
