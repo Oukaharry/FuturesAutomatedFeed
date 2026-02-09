@@ -168,7 +168,7 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
                 seen_row_indices.add(idx)
                 logging.debug(f"[MATCH] Last5 exact match: {target_last5} == {eval_last5}")
                 continue
-            if len(eval_last5) != len(target_last5):
+            if len(eval_last5) != len(target_last5) and eval_last5 and target_last5:
                 if eval_last5.endswith(target_last5) or target_last5.endswith(eval_last5):
                     matches.append((idx, eval_account))
                     seen_row_indices.add(idx)
