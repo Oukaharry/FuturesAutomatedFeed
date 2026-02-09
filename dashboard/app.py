@@ -121,67 +121,74 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     
     Returns: List of (eval_index, matched_account)
     """
+    import logging
     matches = []
     if not account_number:
+        logging.debug(f"[MATCH] No account_number provided.")
         return matches
 
     target_sig = get_account_signature(account_number)
     target_last5 = get_last_n_digits(account_number, 5)
+    logging.debug(f"[MATCH] Target account: {account_number} | Signature: {target_sig} | Last5: {target_last5}")
     if not target_sig and not target_last5:
+        logging.debug(f"[MATCH] No signature or last5 for target account.")
         return matches
 
     # Combine funded and evaluation accounts for matching
     combined_accounts = []
-    # If evaluations is a list of dicts, extract funded and evaluation accounts
     for idx, ev in enumerate(evaluations):
-        # Add funded account if present
         funded_account = str(ev.get('account', '')).strip()
         if funded_account:
             combined_accounts.append({'idx': idx, 'account': funded_account, 'source': 'funded'})
-        # Add evaluation accounts from allowed columns
         for col_name in ['Account #.1', 'Account #']:
             eval_account = str(ev.get(col_name, '')).strip()
             if eval_account:
                 combined_accounts.append({'idx': idx, 'account': eval_account, 'source': col_name})
 
-    # Check if Topstep (V2 prefix) -> Enable relaxed 4-digit matching
     is_topstep = str(account_number).upper().startswith('V2')
     seen_row_indices = set()
     for entry in combined_accounts:
         idx = entry['idx']
         eval_account = entry['account']
+        source = entry['source']
         if idx in seen_row_indices:
             continue
         eval_sig = get_account_signature(eval_account)
+        eval_last5 = get_last_n_digits(eval_account, 5)
+        logging.debug(f"[MATCH] Comparing to DB account: {eval_account} (source: {source}) | Signature: {eval_sig} | Last5: {eval_last5}")
         if eval_sig == target_sig:
             matches.append((idx, eval_account))
             seen_row_indices.add(idx)
+            logging.debug(f"[MATCH] Signature match: {account_number} == {eval_account}")
             continue
-        # Check last 5 match with fuzzy logic
         if target_last5 and len(target_last5) >= 4:
-            eval_last5 = get_last_n_digits(eval_account, 5)
             if eval_last5 == target_last5:
                 matches.append((idx, eval_account))
                 seen_row_indices.add(idx)
+                logging.debug(f"[MATCH] Last5 exact match: {target_last5} == {eval_last5}")
                 continue
             if len(eval_last5) != len(target_last5):
                 if eval_last5.endswith(target_last5) or target_last5.endswith(eval_last5):
                     matches.append((idx, eval_account))
                     seen_row_indices.add(idx)
+                    logging.debug(f"[MATCH] Last5 suffix match: {target_last5} <-> {eval_last5}")
                     continue
             if len(target_last5) >= 4 and len(eval_last5) >= 4:
                 if target_last5[-4:] == eval_last5[-4:]:
                     matches.append((idx, eval_account))
                     seen_row_indices.add(idx)
+                    logging.debug(f"[MATCH] Last4 match: {target_last5[-4:]} == {eval_last5[-4:]}")
                     continue
-        # Topstep Specific: Relaxed 4-digit matching
         if is_topstep:
             target_last4 = get_last_n_digits(account_number, 4)
             eval_last4 = get_last_n_digits(eval_account, 4)
             if target_last4 and len(target_last4) == 4 and target_last4 == eval_last4:
                 matches.append((idx, eval_account))
                 seen_row_indices.add(idx)
+                logging.debug(f"[MATCH] Topstep relaxed 4-digit match: {target_last4} == {eval_last4}")
                 continue
+    if not matches:
+        logging.debug(f"[MATCH] No match found for {account_number} in any DB account.")
     return matches
 
 
