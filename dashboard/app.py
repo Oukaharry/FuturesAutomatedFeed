@@ -458,6 +458,20 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
     match_log.append(f"📊 Processing {len(aggregated_data)} aggregated trade groups")
     match_log.append(f"   Against {len(evaluations)} evaluation records")
     
+    # Sort aggregated data to ensure farming days are processed chronologically
+    # Sort by account, then by timestamp (or farming_date)
+    def sort_key(x):
+        return (
+            str(x.get('account_number', '')),
+            x.get('timestamp') or x.get('farming_date') or ''
+        )
+    
+    aggregated_data.sort(key=sort_key)
+    
+    # Track next available slot for Farming (FA) phase per evaluation
+    # This ensures we overwrite from Day 1 sequentially instead of appending
+    fa_slot_tracker = {}
+
     for agg in aggregated_data:
         account_number = agg.get('account_number', '')
         phase_code = agg.get('phase_code', '')
@@ -485,7 +499,16 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         eval_idx, matched_account = match
         
         # Determine field to update
-        field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)
+        field_name = None
+        
+        if phase_code == 'FA':
+            # Special handling for Farming: Always overwrite sequentially from Day 1
+            # Get next slot for this evaluation
+            current_slot = fa_slot_tracker.get(eval_idx, 1)
+            field_name = f"Hedge Day {current_slot}"
+            fa_slot_tracker[eval_idx] = current_slot + 1
+        else:
+            field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)
         
         if not field_name:
             match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
