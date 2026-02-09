@@ -134,6 +134,20 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         logging.debug(f"[MATCH] No signature or last5 for target account.")
         return matches
 
+    def get_prefix(acc_str):
+        import re
+        s = str(acc_str).strip().upper()
+        if '...' in s:
+            s = s.split('...')[0]
+        if '-' in s:
+            return s.split('-')[0]
+        m = re.match(r'^([A-Z]+)', s)
+        if m:
+            return m.group(1)
+        return None
+
+    target_prefix = get_prefix(account_number)
+
     # Combine funded and evaluation accounts for matching
     combined_accounts = []
     for idx, ev in enumerate(evaluations):
@@ -154,6 +168,20 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         if idx in seen_row_indices:
             continue
         eval_sig = get_account_signature(eval_account)
+        eval_prefix = get_prefix(eval_account)
+        has_letters = any(c.isalpha() for c in str(eval_account).upper())
+        
+        # Check for strict prefix mismatch
+        prefix_mismatch = False
+        if target_prefix and has_letters:
+            if eval_prefix and target_prefix != eval_prefix:
+                # If they are totally different prefixes, mismatch
+                # But allow partials like MFFU vs MFFUEV
+                 if not (target_prefix.startswith(str(eval_prefix)) or str(eval_prefix).startswith(target_prefix)):
+                      # Also check if target_prefix is inside eval_account (e.g. V2 inside EXPRESS-V2)
+                      if target_prefix not in eval_account.upper():
+                           prefix_mismatch = True
+
         # eval_last5 = get_last_n_digits(eval_account, 5)
         # logging.debug(f"[MATCH] Comparing to DB account: {eval_account} (source: {source}) | Signature: {eval_sig} | Last5: {eval_last5}")
         if eval_sig == target_sig:
@@ -161,6 +189,12 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
             seen_row_indices.add(idx)
             logging.debug(f"[MATCH] Signature match: {account_number} == {eval_account}")
             continue
+        
+        # Strict prefix check applies to partial matches below
+        if prefix_mismatch:
+             logging.debug(f"[MATCH] Rejected partial match due to prefix mismatch: {target_prefix} vs {eval_account}")
+             continue
+
         if target_last5 and len(target_last5) >= 4:
             eval_last5 = get_last_n_digits(eval_account, 5)
             if eval_last5 == target_last5:
