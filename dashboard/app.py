@@ -122,88 +122,66 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     Returns: List of (eval_index, matched_account)
     """
     matches = []
-    if not account_number or not evaluations:
+    if not account_number:
         return matches
-    
+
     target_sig = get_account_signature(account_number)
     target_last5 = get_last_n_digits(account_number, 5)
-    
     if not target_sig and not target_last5:
         return matches
-    
-    # Determine columns to check based on phase
-    # Prioritize the correct column, but allow fallback
-    columns_to_check = []
-    
-    if phase_code == 'CH':
-        columns_to_check = ['Account #']
-    elif phase_code in ['FD', 'DD', 'FA']:
-         # Funded/DoubleDip/Farming usually in Account #.1
-         # But check Account # as fallback in case user hasn't moved it or it's same number
-        columns_to_check = ['Account #.1', 'Account #']
-    else:
-         # Default to both if unknown
-        columns_to_check = ['Account #.1', 'Account #']
-    
+
+    # Combine funded and evaluation accounts for matching
+    combined_accounts = []
+    # If evaluations is a list of dicts, extract funded and evaluation accounts
+    for idx, ev in enumerate(evaluations):
+        # Add funded account if present
+        funded_account = str(ev.get('account', '')).strip()
+        if funded_account:
+            combined_accounts.append({'idx': idx, 'account': funded_account, 'source': 'funded'})
+        # Add evaluation accounts from allowed columns
+        for col_name in ['Account #.1', 'Account #']:
+            eval_account = str(ev.get(col_name, '')).strip()
+            if eval_account:
+                combined_accounts.append({'idx': idx, 'account': eval_account, 'source': col_name})
+
     # Check if Topstep (V2 prefix) -> Enable relaxed 4-digit matching
     is_topstep = str(account_number).upper().startswith('V2')
-    
-    # Scan rows for matches in allowed columns
     seen_row_indices = set()
-    
-    for col_name in columns_to_check:
-        for idx, ev in enumerate(evaluations):
-            if idx in seen_row_indices:
-                continue
-                
-            eval_account = str(ev.get(col_name, '')).strip()
-            if not eval_account:
-                continue
-            
-            # Check signature match
-            eval_sig = get_account_signature(eval_account)
-            if eval_sig == target_sig:
+    for entry in combined_accounts:
+        idx = entry['idx']
+        eval_account = entry['account']
+        if idx in seen_row_indices:
+            continue
+        eval_sig = get_account_signature(eval_account)
+        if eval_sig == target_sig:
+            matches.append((idx, eval_account))
+            seen_row_indices.add(idx)
+            continue
+        # Check last 5 match with fuzzy logic
+        if target_last5 and len(target_last5) >= 4:
+            eval_last5 = get_last_n_digits(eval_account, 5)
+            if eval_last5 == target_last5:
                 matches.append((idx, eval_account))
                 seen_row_indices.add(idx)
                 continue
-                
-            # Check last 5 match with fuzzy logic
-            if target_last5 and len(target_last5) >= 4:
-                eval_last5 = get_last_n_digits(eval_account, 5)
-                
-                # Check for exact match
-                if eval_last5 == target_last5:
+            if len(eval_last5) != len(target_last5):
+                if eval_last5.endswith(target_last5) or target_last5.endswith(eval_last5):
                     matches.append((idx, eval_account))
                     seen_row_indices.add(idx)
                     continue
-
-                # Check for suffix match (e.g. 9889 matches 59889)
-                # Useful when one is truncated to 4 digits and other is 5+
-                if len(eval_last5) != len(target_last5):
-                    if eval_last5.endswith(target_last5) or target_last5.endswith(eval_last5):
-                        matches.append((idx, eval_account))
-                        seen_row_indices.add(idx)
-                        continue
-                        
-                # Additional Fuzzy check: Last 4 digits match only (regardless of is_topstep)
-                # This helps when account format is messy but last 4 are strong signal
-                # e.g. v2-9889 (29889) vs ...64959889 (59889) -> Last 4 (9889) match
-                if len(target_last5) >= 4 and len(eval_last5) >= 4:
-                     if target_last5[-4:] == eval_last5[-4:]:
-                        matches.append((idx, eval_account))
-                        seen_row_indices.add(idx)
-                        continue
-            
-            # Topstep Specific: Relaxed 4-digit matching
-            # If account is V2-4047, match against 4047 even if last 5 logic missed it
-            if is_topstep:
-                 target_last4 = get_last_n_digits(account_number, 4)
-                 eval_last4 = get_last_n_digits(eval_account, 4)
-                 if target_last4 and len(target_last4) == 4 and target_last4 == eval_last4:
-                      matches.append((idx, eval_account))
-                      seen_row_indices.add(idx)
-                      continue
-
+            if len(target_last5) >= 4 and len(eval_last5) >= 4:
+                if target_last5[-4:] == eval_last5[-4:]:
+                    matches.append((idx, eval_account))
+                    seen_row_indices.add(idx)
+                    continue
+        # Topstep Specific: Relaxed 4-digit matching
+        if is_topstep:
+            target_last4 = get_last_n_digits(account_number, 4)
+            eval_last4 = get_last_n_digits(eval_account, 4)
+            if target_last4 and len(target_last4) == 4 and target_last4 == eval_last4:
+                matches.append((idx, eval_account))
+                seen_row_indices.add(idx)
+                continue
     return matches
 
 
