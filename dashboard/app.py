@@ -184,6 +184,15 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
                         matches.append((idx, eval_account))
                         seen_row_indices.add(idx)
                         continue
+                        
+                # Additional Fuzzy check: Last 4 digits match only (regardless of is_topstep)
+                # This helps when account format is messy but last 4 are strong signal
+                # e.g. v2-9889 (29889) vs ...64959889 (59889) -> Last 4 (9889) match
+                if len(target_last5) >= 4 and len(eval_last5) >= 4:
+                     if target_last5[-4:] == eval_last5[-4:]:
+                        matches.append((idx, eval_account))
+                        seen_row_indices.add(idx)
+                        continue
             
             # Topstep Specific: Relaxed 4-digit matching
             # If account is V2-4047, match against 4047 even if last 5 logic missed it
