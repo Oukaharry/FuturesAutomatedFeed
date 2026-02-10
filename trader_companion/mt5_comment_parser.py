@@ -398,7 +398,7 @@ class MT5DealAggregator:
         
         # Override/Set farming_date for grouping if not present in comment
         if not parsed.farming_date and deal_date:
-            # We treat 'farming_date' field as 'grouping_date' effectively
+            # Always populate farming_date (used as grouping date for all phases now)
             parsed.farming_date = datetime(deal_date.year, deal_date.month, deal_date.day)
 
         # Build aggregation key
@@ -425,17 +425,19 @@ class MT5DealAggregator:
         return key
     
     def _build_key(self, parsed: ParsedComment) -> str:
-        """Build a unique key for an aggregation."""
+        """
+        Build a unique key for an aggregation.
+        Now includes DATE for ALL phases to support FundedNext resets.
+        """
         parts = [parsed.account_number, parsed.phase_code]
         
         if parsed.trade_number is not None:
             parts.append(str(parsed.trade_number))
         
-        # Always append date if available (now populated from deal time too)
-        # This breaks simple CH1 aggregation into CH1_Date1, CH1_Date2...
-        # Which is exactly what we want for Reset Account handling
-        if parsed.farming_date:
-            parts.append(parsed.farming_date.strftime('%d%m%y'))
+        # Always append date to separate trades by day
+        # This allows the server to match Jan trades to Account A and Feb trades to Account B (Reset)
+        date_to_use = parsed.farming_date or datetime.now()
+        parts.append(date_to_use.strftime('%d%m%y'))
         
         return "_".join(parts)
     
