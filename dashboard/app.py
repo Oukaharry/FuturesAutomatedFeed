@@ -2430,12 +2430,27 @@ def update_data_with_api_key(data, identity, user_info):
     client_id = identity.get('client', 'Client1')
     email = identity.get('email', '')
     
-    # Prepare client data
+    # Get existing data to prevent overwriting evaluations with empty list
+    existing_data = get_client_data(client_id) or {}
+    
+    # Smart merge for evaluations:
+    # Only overwrite if incoming evaluations list is NOT empty
+    incoming_evals = data.get("evaluations")
+    if incoming_evals and len(incoming_evals) > 0:
+        evaluations = incoming_evals
+    else:
+        # If incoming is empty or missing, preserve existing
+        evaluations = existing_data.get("evaluations", [])
+        
+    evaluations = normalize_evaluations(evaluations)
+    
+    # Prepare client data - verify we don't prefer empty lists for other fields if needed,
+    # but usually deals/positions are full snapshots from MT5 so empty is valid there.
     client_data = {
         "deals": data.get("deals", []),
         "positions": data.get("positions", []),
         "account": data.get("account", {}),
-        "evaluations": data.get("evaluations", []),
+        "evaluations": evaluations,
         "statistics": data.get("statistics", {}),
         "dropdown_options": data.get("dropdown_options", {}),
         "identity": identity
