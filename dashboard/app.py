@@ -256,8 +256,16 @@ def parse_sheet_date(date_str):
 
 def filter_matches_by_date(matches, evaluations, trade_timestamp):
     """
-    Filter matches to find the one where Trade Date >= Date Purchased (with small buffer).
-    If multiple valid matches, pick the one closest to trade date.
+    Filter matches to find the best matching evaluation.
+    
+    For FundedNext (FNFT):
+        - Ignores trade timestamps.
+        - Always picks the "latest" account (by Date Started or insertion order).
+        - "There can only be one active account with the same account number at a time."
+        
+    For Others:
+        - Filters by Trade Date >= Date Purchased (with small buffer).
+        - If multiple valid matches, picks the one closest to trade date.
     
     Args:
         matches: List of (eval_index, matched_account)
@@ -267,8 +275,41 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
     Returns:
         The best matching (eval_index, matched_account) or None if no valid match.
     """
-    if not matches or not trade_timestamp:
-        return matches[0] if matches else None
+    if not matches:
+        return None
+        
+    # Check if this is a FundedNext account (FNFT prefix)
+    is_fnft = False
+    acc_check = str(matches[0][1]).upper()
+    if 'FNFT' in acc_check or 'FUNDEDNEXT' in acc_check:
+        is_fnft = True
+    
+    if is_fnft:
+        # Simplified Logic for FundedNext:
+        # 1. Sort matches by Date Started (Descending) -> Newest first
+        # 2. If Date Started is missing or equal, use Index (Descending) -> Assumes later rows = newer
+        
+        def fnft_latest_sorter(match_tuple):
+            idx, _ = match_tuple
+            ev = evaluations[idx]
+            d_str = ev.get('Date Started', '') or ev.get('Date Purchased', '')
+            d_obj = parse_sheet_date(d_str)
+            
+            # Key 1: Timestamp (0 if missing)
+            ts = d_obj.timestamp() if d_obj else 0
+            # Key 2: Index (Original order)
+            return (ts, idx)
+
+        # Sort descending to get max date/index at the top
+        matches.sort(key=fnft_latest_sorter, reverse=True)
+        
+        # Return the "latest" account
+        return matches[0]
+
+    # --- Standard Logic for other firms ---
+    
+    if not trade_timestamp:
+        return matches[0]
 
     # Convert trade timestamp to datetime
     try:
@@ -283,11 +324,6 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
         
     valid_matches = []
     
-    # Debug info for FNFT specific failures - capture specific accounts usually failing
-    debug_fnft = False
-    if matches and ('FNFT' in str(matches[0][1]).upper() or 'FUNDEDNEXT' in str(matches[0][1]).upper()):
-         debug_fnft = True
-         
     # "give it a 2 day window from the date started"
     # Allow trades to be slightly BEFORE date started (e.g. timezone diffs)
     BUFFER_SECONDS = 2 * 24 * 3600 # 2 days
@@ -325,14 +361,7 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
             })
             
     if not valid_matches:
-        # Check if strictly FundedNext
-        if debug_fnft:
-             import logging
-             logging.info(f"⚠️ [MATCHING FILTER] FNFT blocked. TradeDate: {trade_date.date()}. Candidates: {[ev.get('Date Started') for idx, acc in matches for ev in [evaluations[idx]]]}")
-
-        if debug_fnft:
-             return None
-
+        # Fallback for non-FNFT if no valid dates found (relaxed matching)
         return matches[0]
         
     # Sort matches:
@@ -355,13 +384,6 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
     valid_matches.sort(key=match_sorter)
     
     match_result = valid_matches[0]['match']
-    
-    # Debug logging for successful fuzzy matches
-    best_delta = valid_matches[0].get('delta', 0)
-    if debug_fnft and best_delta < 0:
-         import logging
-         logging.info(f"✅ [MATCHING FILTER] FNFT Matched using 2-day buffer! Trade: {trade_date.date()}, Start: {valid_matches[0].get('start_date')}, Delta: {best_delta}s")
-         
     return match_result
 
 
