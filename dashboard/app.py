@@ -476,6 +476,10 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
     # Track next available slot for Farming (FA) phase per evaluation
     # This ensures we overwrite from Day 1 sequentially instead of appending
     fa_slot_tracker = {}
+    
+    # Track accumulated values for standard phases (CH, FD, DD) because client now sends daily chunks
+    # Key: (eval_idx, field_name) -> value
+    accumulation_tracker = {}
 
     for agg in aggregated_data:
         account_number = agg.get('account_number', '')
@@ -519,13 +523,33 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
             match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
             continue
         
-        # Update the evaluation
-        evaluations[eval_idx][field_name] = net_profit
-        updates_made += 1
+        # Determine whether to Accumulate (CH, FD, DD) or Overwrite (FA)
+        should_accumulate = phase_code in ['CH', 'FD', 'DD']
         
-        sig = get_account_signature(account_number)
-        match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
-        match_log.append(f"   Matched to: {matched_account}")
+        if should_accumulate:
+            # Add to accumulator
+            key = (eval_idx, field_name)
+            current_val = accumulation_tracker.get(key, 0.0)
+            accumulation_tracker[key] = current_val + float(net_profit)
+            
+            # Log individual contribution
+            # sig = get_account_signature(account_number)
+            # match_log.append(f"   + {account_number} ({sig}) → [{field_name}] += ${net_profit:.2f}")
+        else:
+            # Direct overwrite (Farming)
+            evaluations[eval_idx][field_name] = net_profit
+            updates_made += 1
+            sig = get_account_signature(account_number)
+            match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
+            match_log.append(f"   Matched to: {matched_account}")
+            
+    # Apply accumulated updates
+    for (eval_idx, field_name), total_profit in accumulation_tracker.items():
+        evaluations[eval_idx][field_name] = total_profit
+        updates_made += 1
+        # Log the final total update
+        # We can't easily show which account number triggered it if multiple did, but usually it's one.
+        match_log.append(f"✅ [Accumulated] → Eval #{eval_idx} [{field_name}] = ${total_profit:.2f}")
     
     match_log.append(f"\n📈 Total updates: {updates_made}/{len(aggregated_data)}")
     return evaluations, match_log
