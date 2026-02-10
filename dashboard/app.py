@@ -286,13 +286,20 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
     
     if is_fnft:
         # Simplified Logic for FundedNext:
-        # 1. Sort matches by Date Started (Descending) -> Newest first
-        # 2. If Date Started is missing or equal, use Index (Descending) -> Assumes later rows = newer
+        # 1. Prioritize rows with "New Account" placeholders (e.g., "DAY", "MONDAY/Y") as they are waiting for data.
+        # 2. Then Sort matches by Date Started (Descending) -> Newest first
+        # 3. If Date Started is missing or equal, use Index (Descending) -> Assumes later rows = newer
         
         def fnft_latest_sorter(match_tuple):
             idx, _ = match_tuple
             ev = evaluations[idx]
-            d_str = ev.get('Date Started', '') or ev.get('Date Purchased', '')
+            d_str = str(ev.get('Date Started', '') or ev.get('Date Purchased', '')).upper()
+            
+            # Check for placeholders that indicate a "New/Waiting" account
+            if 'DAY' in d_str or '/Y' in d_str or 'MON' in d_str or 'TUE' in d_str or 'WED' in d_str or 'THU' in d_str or 'FRI' in d_str:
+                # Give massive priority to placeholders
+                return (float('inf'), idx)
+                
             d_obj = parse_sheet_date(d_str)
             
             # Key 1: Timestamp (0 if missing)
