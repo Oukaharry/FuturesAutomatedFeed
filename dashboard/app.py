@@ -555,21 +555,24 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         match_log.append(f"⚠️ Warning: Sorting failed ({str(e)}), processing unsorted.")
     
     # --- FNFT FILTERING LOGIC ---
-    # For FundedNext accounts, only process the active (latest) phase.
-    # We group by account and find the phase with the max timestamp.
-    fnft_latest_phase_map = {} # account_sig -> (phase_code, trade_number)
+    # For FundedNext accounts:
+    # 1. Only process the active (latest) phase.
+    # 2. Within that phase, only process the LATEST DAY (ignore prior history for same phase).
     
-    # 1. Identify latest phase for each FNFT account
+    # Map: account_sig -> (max_timestamp, (phase_code, trade_number))
+    fnft_latest_phase_map = {} 
+    
+    # 1. Identify latest phase AND latest timestamp for that phase
     for agg in aggregated_data:
         acc = str(agg.get('account_number', '')).upper()
         if 'FNFT' in acc or 'FUNDEDNEXT' in acc:
             sig = get_account_signature(acc)
             ts = agg.get('timestamp') or 0
             
-            current_max_ts, _ = fnft_latest_phase_map.get(sig, (0, None))
+            # Update global max timestamp for account (determines active phase)
+            curr_max_ts, curr_combo = fnft_latest_phase_map.get(sig, (0, None))
             
-            if ts >= current_max_ts:
-                # This group is newer (or same), update the tracker
+            if ts >= curr_max_ts:
                 p_code = agg.get('phase_code')
                 t_num = agg.get('trade_number')
                 fnft_latest_phase_map[sig] = (ts, (p_code, t_num))
@@ -580,17 +583,28 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         acc = str(agg.get('account_number', '')).upper()
         if 'FNFT' in acc or 'FUNDEDNEXT' in acc:
             sig = get_account_signature(acc)
-            _, latest_combo = fnft_latest_phase_map.get(sig, (0, None))
+            max_ts_global, latest_combo = fnft_latest_phase_map.get(sig, (0, None))
             
             this_combo = (agg.get('phase_code'), agg.get('trade_number'))
+            this_ts = agg.get('timestamp') or 0
             
-            # If this record's phase doesn't match the latest phase, skip it
-            # This prevents partial history from old phases (e.g. CH1) overwriting
-            # closed values when CH2 is active.
+            # Check 1: Is this the active phase?
             if latest_combo and this_combo != latest_combo:
-                 match_log.append(f"⏩ Skipping {acc} old phase {this_combo} (Active: {latest_combo})")
+                 match_log.append(f"⏩ FNFT: Skipping {acc} old phase {this_combo} (Active: {latest_combo})")
                  continue
-                 
+            
+            # Check 2: Is this the LATEST DAY for this phase?
+            # We allow a small tolerance (e.g. same day), but strictly speaking
+            # if we have data for Feb 10 and Jan 10 for the SAME phase, we only want Feb 10.
+            # aggregated_data is grouped by day.
+            
+            # If (max_ts - this_ts) is large (e.g. > 24 hours), it's old history for the SAME phase.
+            # This handles the "Reset" case where Account+Phase is reused but weeks apart.
+            time_diff = max_ts_global - this_ts
+            if time_diff > 86400: # 24 hours
+                 match_log.append(f"⏩ FNFT: Skipping {acc} old history {this_combo} (Age: {time_diff/3600:.1f}h)")
+                 continue
+
         filtered_data.append(agg)
         
     aggregated_data = filtered_data
