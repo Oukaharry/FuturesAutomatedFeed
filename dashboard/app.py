@@ -587,23 +587,29 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
             
             this_combo = (agg.get('phase_code'), agg.get('trade_number'))
             this_ts = agg.get('timestamp') or 0
+            this_phase_code = agg.get('phase_code', '')
             
             # Check 1: Is this the active phase?
             if latest_combo and this_combo != latest_combo:
                  match_log.append(f"⏩ FNFT: Skipping {acc} old phase {this_combo} (Active: {latest_combo})")
                  continue
             
-            # Check 2: Is this the LATEST DAY for this phase?
-            # We allow a small tolerance (e.g. same day), but strictly speaking
-            # if we have data for Feb 10 and Jan 10 for the SAME phase, we only want Feb 10.
-            # aggregated_data is grouped by day.
-            
-            # If (max_ts - this_ts) is large (e.g. > 24 hours), it's old history for the SAME phase.
-            # This handles the "Reset" case where Account+Phase is reused but weeks apart.
-            time_diff = max_ts_global - this_ts
-            if time_diff > 86400: # 24 hours
-                 match_log.append(f"⏩ FNFT: Skipping {acc} old history {this_combo} (Age: {time_diff/3600:.1f}h)")
-                 continue
+            # Check 2: Age Check applied ONLY to Challenge (CH) phase
+            # For FA (Farming) and FD (Funded), we need full history accumulation/overwrite,
+            # so we SKIP the age filter.
+            if this_phase_code == 'CH':
+                # If (max_ts - this_ts) is large (e.g. > 7 days), it's likely old history from a previous reset.
+                # Standard Challenge won't have a 7-day gap in active trading usually.
+                # 24h was too strict for multi-day challenges.
+                AGE_THRESHOLD = 7 * 24 * 3600 # 7 days
+                time_diff = max_ts_global - this_ts
+                
+                if time_diff > AGE_THRESHOLD:
+                     match_log.append(f"⏩ FNFT: Skipping {acc} old Challenge history {this_combo} (Age: {time_diff/3600:.1f}h)")
+                     continue
+            else:
+                 # Pass through FA/FD/DD to allow standard logic
+                 pass
 
         filtered_data.append(agg)
         
