@@ -526,6 +526,48 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
     except Exception as e:
         match_log.append(f"⚠️ Warning: Sorting failed ({str(e)}), processing unsorted.")
     
+    # --- FNFT FILTERING LOGIC ---
+    # For FundedNext accounts, only process the active (latest) phase.
+    # We group by account and find the phase with the max timestamp.
+    fnft_latest_phase_map = {} # account_sig -> (phase_code, trade_number)
+    
+    # 1. Identify latest phase for each FNFT account
+    for agg in aggregated_data:
+        acc = str(agg.get('account_number', '')).upper()
+        if 'FNFT' in acc or 'FUNDEDNEXT' in acc:
+            sig = get_account_signature(acc)
+            ts = agg.get('timestamp') or 0
+            
+            current_max_ts, _ = fnft_latest_phase_map.get(sig, (0, None))
+            
+            if ts >= current_max_ts:
+                # This group is newer (or same), update the tracker
+                p_code = agg.get('phase_code')
+                t_num = agg.get('trade_number')
+                fnft_latest_phase_map[sig] = (ts, (p_code, t_num))
+
+    # 2. Filter loop
+    filtered_data = []
+    for agg in aggregated_data:
+        acc = str(agg.get('account_number', '')).upper()
+        if 'FNFT' in acc or 'FUNDEDNEXT' in acc:
+            sig = get_account_signature(acc)
+            _, latest_combo = fnft_latest_phase_map.get(sig, (0, None))
+            
+            this_combo = (agg.get('phase_code'), agg.get('trade_number'))
+            
+            # If this record's phase doesn't match the latest phase, skip it
+            # This prevents partial history from old phases (e.g. CH1) overwriting
+            # closed values when CH2 is active.
+            if latest_combo and this_combo != latest_combo:
+                 match_log.append(f"⏩ Skipping {acc} old phase {this_combo} (Active: {latest_combo})")
+                 continue
+                 
+        filtered_data.append(agg)
+        
+    aggregated_data = filtered_data
+    # ----------------------------
+
     # Track next available slot for Farming (FA) phase per evaluation
     # This ensures we overwrite from Day 1 sequentially instead of appending
     fa_slot_tracker = {}
