@@ -673,10 +673,19 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
             continue
         
         # Determine whether to Accumulate (CH, FD, DD) or Overwrite (FA)
+        # UPDATE: FNFT Challenge (CH) should NOT accumulate if we are strictly enforcing "Current Day" in client.
+        # However, checking 'is_fnft' here is tricky without context.
+        # But wait - if we are now only sending today's data, accumulation of *just today's* trades is correct if they came in multiple chunks.
+        # But we do NOT want to read the OLD value from DB and add to it.
+        # The logic below `accumulation_tracker[key] = current_val + float(net_profit)` only sums up what is in `aggregated_data` (the current request/payload).
+        # It does NOT pull from evaluations[eval_idx][field_name] first.
+        # So it is effectively a "Fresh Sum of Payload".
+        # This is correct behavior for "Current Day Only" payload.
+        
         should_accumulate = phase_code in ['CH', 'FD', 'DD']
         
         if should_accumulate:
-            # Add to accumulator
+            # Add to accumulator (sums up multiple entries in SAME payload)
             key = (eval_idx, field_name)
             current_val = accumulation_tracker.get(key, 0.0)
             accumulation_tracker[key] = current_val + float(net_profit)

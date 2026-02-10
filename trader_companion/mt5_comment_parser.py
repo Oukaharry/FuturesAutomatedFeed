@@ -134,6 +134,7 @@ class AggregatedTrade:
             "phase_code": self.phase_code,
             "trade_number": self.trade_number,
             "farming_date": self.farming_date.isoformat() if self.farming_date else None,
+            "timestamp": self.farming_date.timestamp() if self.farming_date else None, # Add timestamp for server filtering
             "total_profit": round(self.total_profit, 2),
             "total_commission": round(self.total_commission, 2),
             "total_swap": round(self.total_swap, 2),
