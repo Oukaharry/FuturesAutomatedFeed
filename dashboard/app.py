@@ -595,20 +595,20 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
                  continue
             
             # Check 2: Age Check applied ONLY to Challenge (CH) phase
-            # For FA (Farming) and FD (Funded), we need full history accumulation/overwrite,
-            # so we SKIP the age filter.
+            # "only checking the current days trades will check this"
             if this_phase_code == 'CH':
-                # If (max_ts - this_ts) is large (e.g. > 7 days), it's likely old history from a previous reset.
-                # Standard Challenge won't have a 7-day gap in active trading usually.
-                # 24h was too strict for multi-day challenges.
-                AGE_THRESHOLD = 7 * 24 * 3600 # 7 days
+                # Strictly filter to the "Current Day" (represented by max_ts_global).
+                # We discard any data older than 18 hours from the latest timestamp.
+                # This ensures we don't sum up "Old Reset" results (e.g. from 2 days ago)
+                # with "New Reset" results (Today).
+                AGE_THRESHOLD = 18 * 3600 # 18 hours (Current session only)
                 time_diff = max_ts_global - this_ts
                 
                 if time_diff > AGE_THRESHOLD:
                      match_log.append(f"⏩ FNFT: Skipping {acc} old Challenge history {this_combo} (Age: {time_diff/3600:.1f}h)")
                      continue
             else:
-                 # Pass through FA/FD/DD to allow standard logic
+                 # Pass through FA/FD/DD to allow standard logic as requested
                  pass
 
         filtered_data.append(agg)
