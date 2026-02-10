@@ -94,6 +94,11 @@ class MT5DataPusher:
         self.connected = True
         account = mt5.account_info()
         if account:
+            # Update server info from actual account connection if not manually provided
+            if not self.server:
+                self.server = account.server
+            # Also store company for FNFT detection
+            self.company = account.company
             return True, f"Connected to account #{account.login} ({account.server})"
         return True, "Connected to MT5 (no account logged in)"
     
@@ -184,6 +189,23 @@ class MT5DataPusher:
         from_timestamp = time.time() - (days * 24 * 3600)
         to_timestamp = time.time() + 86400
         
+        # FNFT Specific Logic: Only push current day's trades (Midnight to Now)
+        # This prevents fetching history from previous failed challenges on the same account number (Resets).
+        is_fnft = False
+        try:
+            srv = str(self.server).upper() if self.server else ""
+            cmp = str(getattr(self, 'company', '')).upper()
+            if 'FUNDEDNEXT' in srv or 'FNFT' in srv or 'FUNDEDNEXT' in cmp or 'FNFT' in cmp:
+                is_fnft = True
+        except Exception:
+            pass
+
+        if is_fnft:
+            # Override from_timestamp to Local Midnight
+            now = datetime.now()
+            midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            from_timestamp = midnight.timestamp()
+
         deals = mt5.history_deals_get(from_timestamp, to_timestamp)
         if deals is None:
             return []
