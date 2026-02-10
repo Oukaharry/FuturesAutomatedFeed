@@ -8,7 +8,7 @@ import sys
 from functools import wraps
 import secrets
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data
 
 # Add project root to sys.path to import config
@@ -240,9 +240,9 @@ def parse_sheet_date(date_str):
         return None
         
     formats = [
-        '%d/%m/%Y', '%Y-%m-%d', '%m/%d/%Y', 
-        '%d-%m-%Y', '%Y/%m/%d', '%d.%m.%Y',
-        '%d/%m/%y', '%m/%d/%y'
+        '%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d', 
+        '%m/%d/%y', '%d/%m/%y', 
+        '%d-%m-%Y', '%Y/%m/%d', '%d.%m.%Y'
     ]
     
     for fmt in formats:
@@ -256,8 +256,8 @@ def parse_sheet_date(date_str):
 
 def filter_matches_by_date(matches, evaluations, trade_timestamp):
     """
-    Filter matches to find the one where Trade Date > Date Purchased.
-    If multiple valid matches, pick the one closest to trade date (most recent purchase before trade).
+    Filter matches to find the one where Trade Date >= Date Purchased (with small buffer).
+    If multiple valid matches, pick the one closest to trade date.
     
     Args:
         matches: List of (eval_index, matched_account)
@@ -266,19 +266,32 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
         
     Returns:
         The best matching (eval_index, matched_account) or None if no valid match.
-        If trade_timestamp is missing/invalid, returns the first match (fallback).
     """
     if not matches or not trade_timestamp:
         return matches[0] if matches else None
 
     # Convert trade timestamp to datetime
     try:
-        trade_date = datetime.fromtimestamp(float(trade_timestamp))
+        val = float(trade_timestamp)
+        trade_date = datetime.fromtimestamp(val)
     except (ValueError, TypeError):
-        return matches[0]
+         # If not a float, try isoformat string if present
+        try:
+             trade_date = datetime.fromisoformat(str(trade_timestamp).replace('Z', '+00:00'))
+        except ValueError:
+             return matches[0]
         
     valid_matches = []
     
+    # Debug info for FNFT specific failures - capture specific accounts usually failing
+    debug_fnft = False
+    if matches and ('FNFT' in str(matches[0][1]).upper() or 'FUNDEDNEXT' in str(matches[0][1]).upper()):
+         debug_fnft = True
+         
+    # "give it a 2 day window from the date started"
+    # Allow trades to be slightly BEFORE date started (e.g. timezone diffs)
+    BUFFER_SECONDS = 2 * 24 * 3600 # 2 days
+
     for eval_idx, matched_acc in matches:
         ev = evaluations[eval_idx]
         # "Date Purchased" is typically at index 2, but we address by name
@@ -286,52 +299,70 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
         date_purchased = parse_sheet_date(date_purchased_str)
         
         if not date_purchased:
-            # If no date purchased, treat as potentially valid but low priority?
-            # Or maybe this is an old entry without date.
-            # Let's keep it as a fallback with distance infinity
+            # If no date purchased, keep as fallback
             valid_matches.append({
                 'match': (eval_idx, matched_acc),
                 'delta': float('inf'),
-                'valid_date': False
+                'valid_date': False,
+                'start_date': 'None'
             })
             continue
             
-        # Check if Trade Date is AFTER Date Purchased
-        # Use a small buffer (e.g. same day is fine)
         # Reset time to midnight for comparison
         dp_date = date_purchased.replace(hour=0, minute=0, second=0, microsecond=0)
         td_date = trade_date.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        if td_date >= dp_date:
-            delta = (td_date - dp_date).total_seconds()
+        raw_delta_seconds = (td_date - dp_date).total_seconds()
+        
+        # Check if Trade Date is within valid window relative to Start Date
+        # Valid: Trade >= Start - 2 days
+        if raw_delta_seconds >= -BUFFER_SECONDS:
             valid_matches.append({
                 'match': (eval_idx, matched_acc),
-                'delta': delta,
-                'valid_date': True
+                'delta': raw_delta_seconds,
+                'valid_date': True,
+                'start_date': dp_date.strftime('%Y-%m-%d')
             })
             
     if not valid_matches:
-        # Check if this is a FundedNext account (FNFT prefix)
-        # If so, strictly require valid date match to avoid overwriting old Challenge accounts
-        is_funded_next = False
-        if matches:
-            first_acc = str(matches[0][1]).upper()
-            if 'FNFT' in first_acc or 'FUNDEDNEXT' in first_acc:
-                is_funded_next = True
-        
-        if is_funded_next:
+        # Check if strictly FundedNext
+        if debug_fnft:
              import logging
-             logging.debug(f"[MATCH] Strict date check failed for FundedNext account. Trade Date: {trade_date}")
+             logging.info(f"⚠️ [MATCHING FILTER] FNFT blocked. TradeDate: {trade_date.date()}. Candidates: {[ev.get('Date Started') for idx, acc in matches for ev in [evaluations[idx]]]}")
+
+        if debug_fnft:
              return None
 
-        # No matches with valid matches found? Return first match as fallback
         return matches[0]
         
-    # Sort by delta (smallest positive difference)
-    # Prefer matches with valid dates
-    valid_matches.sort(key=lambda x: (not x['valid_date'], x['delta']))
+    # Sort matches:
+    # 1. Prefer Non-Negative Delta (Trade >= Start) -> Logic: Trade follows Start.
+    # 2. Then Smallest Absolute Delta (Closest date).
+    def match_sorter(x):
+        delta = x['delta']
+        valid_date = x['valid_date']
+        
+        if not valid_date:
+             return (2, 0) # Least preferred
+        
+        # If delta is negative (Trade < Start), it is a "buffer match". 
+        # We penalize it slightly so that if we have a "real match" (Trade > Start), we pick that.
+        if delta < 0:
+             return (1, abs(delta)) 
+        
+        return (0, delta) # Best match: Positive delta, smallest value
+        
+    valid_matches.sort(key=match_sorter)
     
-    return valid_matches[0]['match']
+    match_result = valid_matches[0]['match']
+    
+    # Debug logging for successful fuzzy matches
+    best_delta = valid_matches[0].get('delta', 0)
+    if debug_fnft and best_delta < 0:
+         import logging
+         logging.info(f"✅ [MATCHING FILTER] FNFT Matched using 2-day buffer! Trade: {trade_date.date()}, Start: {valid_matches[0].get('start_date')}, Delta: {best_delta}s")
+         
+    return match_result
 
 
 def normalize_account_size(value):
