@@ -254,14 +254,15 @@ def parse_sheet_date(date_str):
     return None
 
 
-def filter_matches_by_date(matches, evaluations, trade_timestamp):
+def filter_matches_by_date(matches, evaluations, trade_timestamp, phase_code=None, trade_number=None):
     """
     Filter matches to find the best matching evaluation.
     
     For FundedNext (FNFT):
-        - Ignores trade timestamps.
-        - Always picks the "latest" account (by Date Started or insertion order).
-        - "There can only be one active account with the same account number at a time."
+        - Ignores trade timestamps (mostly).
+        - Priority 1: Check if the TARGET FIELD (e.g. Hedge Result 1) contains a PLACEHOLDER ("DAY", "/Y", etc).
+          If found, this is the active reset account expecting data.
+        - Priority 2: Sort by Date Started (Newest first).
         
     For Others:
         - Filters by Trade Date >= Date Purchased (with small buffer).
@@ -271,35 +272,57 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
         matches: List of (eval_index, matched_account)
         evaluations: List of evaluation dicts
         trade_timestamp: Timestamp of the trade (float or int)
-        
-    Returns:
-        The best matching (eval_index, matched_account) or None if no valid match.
+        phase_code: (Optional) Phase code to help determine target field for placeholder check
+        trade_number: (Optional) Trade number for target field check
     """
     if not matches:
         return None
         
     # Check if this is a FundedNext account (FNFT prefix)
     is_fnft = False
-    acc_check = str(matches[0][1]).upper()
-    if 'FNFT' in acc_check or 'FUNDEDNEXT' in acc_check:
+    match_acc_str = str(matches[0][1]).upper()
+    if 'FNFT' in match_acc_str or 'FUNDEDNEXT' in match_acc_str:
         is_fnft = True
     
     if is_fnft:
-        # Simplified Logic for FundedNext:
-        # 1. Prioritize rows with "New Account" placeholders (e.g., "DAY", "MONDAY/Y") as they are waiting for data.
-        # 2. Then Sort matches by Date Started (Descending) -> Newest first
-        # 3. If Date Started is missing or equal, use Index (Descending) -> Assumes later rows = newer
+        # FNFT Priority Logic
         
+        # Helper to detect placeholders in a specific field content
+        def has_placeholder(val):
+            s = str(val).upper()
+            placeholders = ['DAY', '/Y', 'MON', 'TUE', 'WED', 'THU', 'FRI']
+            return any(p in s for p in placeholders)
+
+        # 1. Try to find a match where the expected TARGET FIELD has a placeholder
+        # We need to guess the field name. 
+        if phase_code:
+            target_field = None
+            # Replicate simpler version of get_field_name logic or use it if context allows
+            # Since we are outside the update loop, we simulate field name logic
+            if phase_code == 'CH' and trade_number:
+                target_field = f"Hedge Result {trade_number}"
+            elif phase_code == 'FD' and trade_number:
+                # FNFT: FD0->1.1 (Wait, FNFT usually starts at 1?)
+                # FNFT logic in get_field_name: "Other firms: FD0->HR1.1, FD1->HR1.1"
+                # Let's assume standard behavior for now.
+                target_field = f"Hedge Result {trade_number}.1" if trade_number > 0 else "Hedge Result 1.1"
+            elif phase_code == 'DD' and trade_number:
+                target_field = f"Hedge Result {trade_number}.1"
+            
+            # If we identified a potential target field, check candidates
+            if target_field:
+                for idx, acc in matches:
+                    ev = evaluations[idx]
+                    existing_val = ev.get(target_field, '')
+                    if has_placeholder(existing_val):
+                         # Found a winner! This "new" account is waiting for data.
+                         return (idx, acc)
+
+        # 2. Fallback: Sort matches by Date Started (Descending) -> Newest first
         def fnft_latest_sorter(match_tuple):
             idx, _ = match_tuple
             ev = evaluations[idx]
-            d_str = str(ev.get('Date Started', '') or ev.get('Date Purchased', '')).upper()
-            
-            # Check for placeholders that indicate a "New/Waiting" account
-            if 'DAY' in d_str or '/Y' in d_str or 'MON' in d_str or 'TUE' in d_str or 'WED' in d_str or 'THU' in d_str or 'FRI' in d_str:
-                # Give massive priority to placeholders
-                return (float('inf'), idx)
-                
+            d_str = ev.get('Date Started', '') or ev.get('Date Purchased', '')
             d_obj = parse_sheet_date(d_str)
             
             # Key 1: Timestamp (0 if missing)
@@ -309,8 +332,6 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
 
         # Sort descending to get max date/index at the top
         matches.sort(key=fnft_latest_sorter, reverse=True)
-        
-        # Return the "latest" account
         return matches[0]
 
     # --- Standard Logic for other firms ---
@@ -600,7 +621,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
         # Use date filtering to pick the best match
         # Try to get timestamp from agg if available, otherwise it will fallback to first match
         trade_timestamp = agg.get('timestamp') 
-        match = filter_matches_by_date(matches, evaluations, trade_timestamp)
+        match = filter_matches_by_date(
+            matches, 
+            evaluations, 
+            trade_timestamp, 
+            phase_code=phase_code, 
+            trade_number=trade_number
+        )
         
         if not match:
             sig = get_account_signature(account_number)
