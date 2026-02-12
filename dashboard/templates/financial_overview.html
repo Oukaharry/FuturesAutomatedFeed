@@ -250,7 +250,7 @@
         {% set ns = namespace(
             fees=0, act=0, pay=0, net=0, acc=0, clients=0,
             hedge=0, farm=0,
-            active=0, passed=0, failed=0,
+            active=0, passed=0, failed=0, ended=0,
             top_firm_name="", top_firm_val=0
         ) %}
         
@@ -266,6 +266,7 @@
             {% set ns.active = ns.active + data.active_accounts %}
             {% set ns.passed = ns.passed + data.passed_accounts %}
             {% set ns.failed = ns.failed + data.failed_accounts %}
+            {% set ns.ended = ns.ended + data.ended_count %}
             
             {% if data.total_payouts > ns.top_firm_val %}
                 {% set ns.top_firm_val = data.total_payouts %}
@@ -341,6 +342,8 @@
                         <th colspan="2" style="background-color: #f1f5f9;">Costs</th>
                         <th colspan="3">Income / Results</th>
                         <th rowspan="2" style="vertical-align: middle; width: 150px; background-color: #f8fafc;">Net Profit</th>
+                        <th rowspan="2" style="vertical-align: middle; background-color: #f1f5f9;">EV</th>
+                        <th rowspan="2" style="vertical-align: middle; background-color: #f1f5f9;">EV/Day</th>
                     </tr>
                     <tr>
                         <th style="background-color: #f1f5f9;">Total</th>
@@ -395,6 +398,12 @@
                         <td class="{{ 'positive' if data.net >= 0 else 'negative' }}" style="font-weight: 700; background-color: #f8fafc;">
                             {{ "$%0.2f"|format(data.net) }}
                         </td>
+                        <td style="background-color: #f1f5f9; color: #64748b;">
+                            {{ "$%0.2f"|format(data.expected_value) }}
+                        </td>
+                        <td style="background-color: #f1f5f9; color: #64748b;">
+                            {{ "$%0.2f"|format(data.ev_per_day) }}
+                        </td>
                     </tr>
                     {% endfor %}
                     
@@ -421,6 +430,10 @@
                         <td class="bg-dark {{ 'text-green-bright' if ns.net >= 0 else 'text-red-bright' }}">
                             {{ "$%0.2f"|format(ns.net) }}
                         </td>
+                        <td class="bg-dark" style="color: #cbd5e1;">
+                            {{ "$%0.2f"|format(ns.net / ns.ended) if ns.ended > 0 else "-" }}
+                        </td>
+                        <td class="bg-dark" style="color: #cbd5e1;">-</td>
                     </tr>
                 </tbody>
             </table>

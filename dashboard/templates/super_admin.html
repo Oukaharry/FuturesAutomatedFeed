@@ -300,6 +300,14 @@
                         <div class="stat-label-modern">Net Profit</div>
                         <div id="grand-total-net" class="stat-value-modern" style="color: #c084fc;">$0.00</div>
                     </div>
+                    <div class="stat-card-modern">
+                         <div class="stat-label-modern">Expected Value (EV)</div>
+                         <div id="grand-ev" class="stat-value-modern" style="color: #facc15;">$0.00</div>
+                    </div>
+                    <div class="stat-card-modern">
+                         <div class="stat-label-modern">EV / Day</div>
+                         <div id="grand-ev-day" class="stat-value-modern" style="color: #fca5a5;">$0.00</div>
+                    </div>
                     <!-- Mini Stats in one card -->
                      <div class="stat-card-modern" style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
                         <div style="display:flex; justify-content:space-between;">
@@ -497,7 +505,13 @@
                     const t = fData.totals;
                     document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
                     document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
-                    document.getElementById('grand-total-net').textContent = formatCurrency(t.net_profit || (t.total_payouts - t.total_deposits));
+                    document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
+                    document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
+                    document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
+                    
+                    document.getElementById('grand-active-accounts').textContent = t.active_accounts;
+                    document.getElementById('grand-completed-accounts').textContent = t.completed_accounts;
+                    document.getElementById('grand-failed-accounts').textContent = t.failed_accounts;
                 }
             });
         }

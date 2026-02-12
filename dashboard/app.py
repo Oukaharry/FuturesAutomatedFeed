@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime, timedelta
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1102,6 +1102,9 @@ def get_super_admin_totals():
     completed_accounts = 0
     failed_accounts = 0
     
+    # Track earliest date for EV/Day calculation
+    earliest_date = None
+    
     # List to hold individual client stats
     client_details = []
     
@@ -1124,6 +1127,16 @@ def get_super_admin_totals():
         if not client_data:
             continue
             
+        # Check for earliest date
+        evals = client_data.get('evaluations', [])
+        for ev in evals:
+            d_str = ev.get('Date Started') or ev.get('Date')
+            if d_str:
+                d_obj = parse_date(d_str)
+                if d_obj:
+                    if earliest_date is None or d_obj < earliest_date:
+                        earliest_date = d_obj
+                        
         # Get statistics from client data
         stats = client_data.get('statistics', {})
         
@@ -1188,6 +1201,18 @@ def get_super_admin_totals():
             "failed": c_failed
         })
     
+    # Calculate EV Stats
+    total_ended = completed_accounts + failed_accounts
+    expected_value = 0.0
+    if total_ended > 0:
+        expected_value = total_net_profit / total_ended
+        
+    ev_per_day = 0.0
+    if earliest_date:
+        days_active = (datetime.now() - earliest_date).days
+        if days_active > 0:
+            ev_per_day = total_net_profit / days_active
+            
     return jsonify({
         "status": "success",
         "totals": {
@@ -1200,7 +1225,9 @@ def get_super_admin_totals():
             "active_accounts": active_accounts,
             "completed_accounts": completed_accounts,
             "failed_accounts": failed_accounts,
-            "client_count": len(all_clients)
+            "client_count": len(all_clients),
+            "expected_value": round(expected_value, 2),
+            "ev_per_day": round(ev_per_day, 2)
         },
         "clients": client_details
     })

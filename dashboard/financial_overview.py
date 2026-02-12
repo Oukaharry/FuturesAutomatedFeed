@@ -554,6 +554,8 @@ def calculate_propfirm_overview(profile_filter=None):
                     "active_accounts": 0,
                     "passed_accounts": 0,
                     "failed_accounts": 0,
+                    "ended_count": 0,
+                    "earliest_date": None,
                     "clients": set()
                 }
             
@@ -605,6 +607,18 @@ def calculate_propfirm_overview(profile_filter=None):
                 
             if is_p1_fail or is_funded_fail:
                 overview[prop_firm]["failed_accounts"] += 1
+                
+            if is_p1_fail or is_funded_ended:
+                overview[prop_firm]["ended_count"] += 1
+                
+            # Date tracking
+            d_str = eval_data.get('Date Started') or eval_data.get('Date')
+            if d_str:
+                d_obj = parse_date(d_str)
+                if d_obj:
+                     cur_earliest = overview[prop_firm]["earliest_date"]
+                     if cur_earliest is None or d_obj < cur_earliest:
+                         overview[prop_firm]["earliest_date"] = d_obj
             
             # Update totals (accumulate)
             overview[prop_firm]["total_fees"] += fee
@@ -621,6 +635,21 @@ def calculate_propfirm_overview(profile_filter=None):
         # Net Profit = Payouts + Hedge Results + Farming Results - (Fees + Activation Fees)
         data["net"] = data["total_payouts"] + data["hedge_results"] + data["farming_results"] - (data["total_fees"] + data["total_activation_fees"])
         
+        # EV
+        ended = data.get("ended_count", 0)
+        data["expected_value"] = data["net"] / ended if ended > 0 else 0.0
+        
+        # EV Per Day
+        data["ev_per_day"] = 0.0
+        if data.get("earliest_date"):
+            days = (datetime.now() - data["earliest_date"]).days
+            if days > 0:
+                data["ev_per_day"] = data["net"] / days
+        
+        # Clean up objects not serializable
+        if "earliest_date" in data:
+            del data["earliest_date"]
+
         # Convert set to count
         data["total_clients"] = len(data["clients"])
         del data["clients"]
