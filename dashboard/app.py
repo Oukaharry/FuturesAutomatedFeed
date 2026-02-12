@@ -1141,23 +1141,13 @@ def get_super_admin_totals():
         
         # Apply Profile Filter
         if profile_filter != 'ALL':
-             # Handle "BEF" vs "PRIVATE". 
-             # If filter is BEF, we want BEF only.
-             # If filter is PRIVATE, we want anything NOT BEF? Or explicitly Private?
-             # Usually matching exactly is safer if data is clean.
-             # Let's assume loose matching: if 'BEF' in string, etc.
-             
-             if 'BEF' in profile_filter and 'BEF' not in client_profile:
-                 continue
-             if 'PRIVATE' in profile_filter and 'BEF' in client_profile:
-                 # If we want private, skip BEF
-                 continue
-             # Simplest check: exact match if clean, otherwise containment
-             if profile_filter == "BEF" and client_profile != "BEF": continue
-             if profile_filter == "PRIVATE" and client_profile == "BEF": continue
-             # Better:
-             # If filter is 'BEF' and client is not 'BEF' -> skip
-             # If filter is 'PRIVATE' and client IS 'BEF' -> skip (assuming everything non-BEF is private)
+             # Robust Filtering
+             if profile_filter == 'BEF':
+                 if 'BEF' not in client_profile:
+                     continue
+             elif profile_filter == 'PRIVATE':
+                 if 'BEF' in client_profile:
+                     continue
 
         # Check for earliest date
         evals = client_data.get('evaluations', [])
@@ -1173,7 +1163,7 @@ def get_super_admin_totals():
         stats = client_data.get('statistics', {})
         
         # Normalize source/profile value
-        if client_source.upper() == 'BEF':
+        if 'BEF' in client_profile:
              client_source = 'BEF'
         else:
              client_source = 'Private'
