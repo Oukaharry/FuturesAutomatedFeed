@@ -44,6 +44,13 @@ def cache_result(ttl=300):
             return result
         return wrapper
     return decorator
+
+# --- Internal Data Access Helpers ---
+# Wraps database calls to provide short-term caching within a request cycle or short period
+@cache_result(ttl=10) 
+def _get_cached_clients():
+    """Cached wrapper for database.get_all_clients"""
+    return get_all_clients()
 # ------------------------------------------------
 
 def parse_currency(value_str):
@@ -142,7 +149,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
     """
     Returns a list of all payouts with details.
     """
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     payouts_list = []
     
     for client_id, data in clients_data.items():
@@ -205,7 +212,7 @@ def get_payouts_growth_data(profile_filter=None):
     Calculates cumulative payouts over time (ignoring fees).
     Returns lists of labels (dates) and data points (cumulative payouts).
     """
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     events = []
     
     for client_id, data in clients_data.items():
@@ -263,7 +270,7 @@ def get_mt5_deals_data(profile_filter=None):
     Helper to get processed daily changes for deposits and trading profit.
     Returns (deposits_daily, profit_daily) dicts: {date_str: amount}
     """
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     
     from collections import defaultdict
     deposits_daily = defaultdict(float)
@@ -362,7 +369,7 @@ def get_cumulative_trading_profit(profile_filter=None):
     Calculates cumulative Net Profit over time based on Payouts, Hedge Results, Farming, and Fees.
     Uses Evaluation data (Sheet) to match the Summary Card 'Net Profit'.
     """
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     events = [] # (datetime, amount)
     
     # Columns definition matching calculate_propfirm_overview
@@ -466,7 +473,7 @@ def get_portfolio_growth_data(profile_filter=None):
     Calculates cumulative portfolio growth over time.
     Returns lists of labels (dates) and data points (net profit).
     """
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     
     # Store all financial events: (date, amount)
     events = []
@@ -550,7 +557,7 @@ def calculate_propfirm_overview(profile_filter=None):
     Aggregates financial data by Prop Firm.
     Returns a dictionary.
     """
-    clients_data = get_all_clients() # Returns {client_id: full_data_dict}
+    clients_data = _get_cached_clients() # Returns {client_id: full_data_dict}
     
     overview = {}
     
