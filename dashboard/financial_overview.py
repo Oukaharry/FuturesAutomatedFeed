@@ -752,3 +752,85 @@ def _aggregate_events_cumulative(events):
         values.append(cumulative)
         
     return dates, values
+
+def calculate_trader_stats():
+    """Calculates aggregated statistics per trader."""
+    clients_data = get_all_clients()
+    traders_stats = {}
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        identity = data.get('identity', {})
+        trader_name = identity.get('trader')
+        
+        if not trader_name or str(trader_name).strip().lower() in ['none', 'null', '', '-']:
+            trader_name = "Unassigned"
+            
+        if trader_name not in traders_stats:
+            traders_stats[trader_name] = {
+                "name": trader_name,
+                "sheets_reviewed": 0,
+                "client_count": 0,
+                "total_payouts": 0.0,
+                "total_negative_hedge": 0.0,
+                "negative_hedge_details": [],
+                "farming_days_count": 0,
+                "farming_missing_notes": 0,
+                "farming_warnings": []
+            }
+        
+        stats = traders_stats[trader_name]
+        stats['client_count'] += 1
+        stats['sheets_reviewed'] += 1
+        
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            acc_num = ev.get('Account #') or ev.get('Account #.1') or 'Unknown'
+            # Payouts 1-10
+            for i in range(1, 11):
+                val = ev.get(f'Payout {i}')
+                amt = parse_currency(val) if val else 0.0
+                if amt > 0: stats['total_payouts'] += amt
+            
+            # Negative Hedge Logic
+            hedge_sum = 0.0
+            has_activity = False
+            
+            check_list = []
+            for i in range(1, 6):
+                check_list.append(f'Hedge Result {i}')
+                check_list.append(f'Hedge Result {i}.1')
+                check_list.append(f'Hedge Result {i}.2')
+            
+            for k in check_list:
+                val = parse_currency(ev.get(k))
+                if val != 0:
+                    has_activity = True
+                    hedge_sum += val
+            
+            if has_activity and hedge_sum < -1.0: 
+                stats['total_negative_hedge'] += hedge_sum
+                stats['negative_hedge_details'].append({
+                    "client": client_id,
+                    "account": acc_num,
+                    "amount": hedge_sum,
+                    "link": f"/dashboard/{client_id}"
+                })
+            
+            # Farming Logic
+            for d in range(1, 60):
+                h_val = parse_currency(ev.get(f'Hedge Day {d}'))
+                if h_val != 0:
+                    stats['farming_days_count'] += 1
+                    
+                    p_val_raw = ev.get(f'Day {d} Profit')
+                    if not p_val_raw or str(p_val_raw).strip() in ['', '-']:
+                        stats['farming_missing_notes'] += 1
+                        stats['farming_warnings'].append({
+                            "client": client_id,
+                            "day": d,
+                            "link": f"/dashboard/{client_id}"
+                        })
+
+    return list(traders_stats.values())

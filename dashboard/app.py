@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime, timedelta
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -941,6 +941,16 @@ def client_performance():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
     return render_template('client_performance.html')
+
+@app.route('/trader_performance')
+@require_session
+def trader_performance():
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
+         return redirect('/')
+         
+    traders_data = calculate_trader_stats()
+    return render_template('trader_performance.html', traders=traders_data)
 
 
 @app.route('/trader/<trader_name>')
