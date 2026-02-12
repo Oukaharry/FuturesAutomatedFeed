@@ -1091,6 +1091,8 @@ def get_super_admin_totals():
     if not session_info or session_info.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Super admin access required"}), 403
     
+    profile_filter = request.args.get('profile', 'ALL').upper()
+
     # Get all client data (Cached)
     all_clients = get_cached_clients_dataset()
     
@@ -1130,6 +1132,33 @@ def get_super_admin_totals():
         if not client_data:
             continue
             
+        # Get client metadata
+        identity = client_data.get('identity', {})
+        # Prioritize 'profile' or 'category' as source, fallback to 'source' or 'Private'
+        # Normalize to upper case for comparison
+        raw_source = identity.get('profile') or identity.get('category') or identity.get('source') or 'Private'
+        client_profile = str(raw_source).upper()
+        
+        # Apply Profile Filter
+        if profile_filter != 'ALL':
+             # Handle "BEF" vs "PRIVATE". 
+             # If filter is BEF, we want BEF only.
+             # If filter is PRIVATE, we want anything NOT BEF? Or explicitly Private?
+             # Usually matching exactly is safer if data is clean.
+             # Let's assume loose matching: if 'BEF' in string, etc.
+             
+             if 'BEF' in profile_filter and 'BEF' not in client_profile:
+                 continue
+             if 'PRIVATE' in profile_filter and 'BEF' in client_profile:
+                 # If we want private, skip BEF
+                 continue
+             # Simplest check: exact match if clean, otherwise containment
+             if profile_filter == "BEF" and client_profile != "BEF": continue
+             if profile_filter == "PRIVATE" and client_profile == "BEF": continue
+             # Better:
+             # If filter is 'BEF' and client is not 'BEF' -> skip
+             # If filter is 'PRIVATE' and client IS 'BEF' -> skip (assuming everything non-BEF is private)
+
         # Check for earliest date
         evals = client_data.get('evaluations', [])
         for ev in evals:
@@ -1142,11 +1171,6 @@ def get_super_admin_totals():
                         
         # Get statistics from client data
         stats = client_data.get('statistics', {})
-        
-        # Get client metadata
-        identity = client_data.get('identity', {})
-        # Prioritize 'profile' or 'category' as source, fallback to 'source' or 'Private'
-        client_source = identity.get('profile') or identity.get('category') or identity.get('source') or 'Private'
         
         # Normalize source/profile value
         if client_source.upper() == 'BEF':
