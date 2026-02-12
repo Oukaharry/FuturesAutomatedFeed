@@ -3,46 +3,283 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - MT5 Hedging Engine</title>
+    <title>Admin Dashboard - BallerQuotes</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 24px;
+            margin-top: 20px;
+        }
+
+        .trader-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 24px;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            background-image: var(--gradient-card);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .trader-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 4px; height: 100%;
+            background: var(--gradient-primary);
+            opacity: 0.5;
+        }
+
+        .trader-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .trader-name {
+            font-size: 1.25rem;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .client-list-container {
+            flex: 1;
+            margin-bottom: 20px;
+        }
+
+        .client-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s ease;
+        }
+
+        .client-item:hover {
+            background: rgba(30, 41, 59, 0.6);
+            border-color: rgba(251, 191, 36, 0.2);
+            transform: translateX(4px);
+        }
+
+        .client-link {
+            text-decoration: none;
+            color: var(--text-primary);
+            font-weight: 500;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .client-profile-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 99px;
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        }
+
+        .client-profile-badge.bef {
+            background: rgba(234, 179, 8, 0.1);
+            color: #facc15;
+            border-color: rgba(234, 179, 8, 0.2);
+        }
+
+        .edit-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px;
+            opacity: 0.5;
+            transition: all 0.2s;
+        }
+        
+        .edit-btn:hover {
+            opacity: 1;
+            color: var(--accent-color);
+        }
+
+        /* Modal Styling */
+        .modal {
+            display: none; 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(0,0,0,0.8); 
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+        
+        .modal-content {
+            background: var(--card-bg);
+            margin: 10% auto;
+            padding: 32px;
+            width: 400px;
+            border-radius: var(--radius);
+            position: relative;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block; 
+            margin-bottom: 8px; 
+            font-weight: 600; 
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .form-input, .form-select {
+            width: 100%; 
+            padding: 10px 12px; 
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border-color); 
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+        }
+        
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.1);
+        }
+
+        .modal-close {
+            position: absolute; 
+            right: 20px; 
+            top: 20px; 
+            font-size: 24px; 
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: color 0.2s;
+        }
+        
+        .modal-close:hover { color: var(--text-primary); }
+
+        .btn-gold {
+            background: var(--gradient-primary);
+            color: #0f172a;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: 700;
+            transition: all 0.3s;
+        }
+        
+        .btn-gold:hover {
+            box-shadow: var(--shadow-glow);
+            transform: translateY(-2px);
+        }
+
+        .modern-nav {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(16px);
+            padding: 16px 32px;
+            margin-bottom: 40px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            position: sticky; top: 20px; z-index: 99;
+        }
+
+        .brand {
+            font-weight: 800; font-size: 1.5rem; display: flex; align-items: center; gap: 12px;
+            color: var(--text-primary);
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <div style="display: flex; align-items: center;">
-                <h1>{{ admin_name }}</h1>
-                <span class="role-badge">Admin</span>
+        <!-- Modern Nav -->
+        <nav class="modern-nav">
+             <div class="brand">
+                <i class="fas fa-chart-pie" style="color: var(--accent-color);"></i>
+                <span>BallerQuotes <span style="font-weight: 400; font-size: 0.9em; opacity: 0.6;">Admin</span></span>
             </div>
-            <a href="/logout" class="logout-btn">Logout</a>
-        </header>
+            
+            <div style="display: flex; align-items: center; gap: 24px;">
+                <div style="text-align: right; line-height: 1.2;">
+                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">{{ admin_name }}</div>
+                    <div style="font-size: 0.75rem; color: var(--accent-color); text-transform: uppercase;">Administrator</div>
+                </div>
+                
+                <div style="height: 32px; width: 1px; background: var(--border-color);"></div>
+                
+                <a href="/logout" class="tab-btn" style="padding: 8px 16px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 8px;">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </nav>
 
-        <div id="content">
-            <!-- Traders will be injected here -->
+        <div class="welcome-hero" style="margin-bottom: 30px;">
+            <h1 style="font-size: 2rem; margin-bottom: 8px;">Managed Traders</h1>
+            <p style="color: var(--text-secondary);">Manage client profiles and view trader portfolios.</p>
+        </div>
+
+        <div id="content" class="dashboard-grid">
+            <!-- Loading State -->
+            <div style="grid-column: 1/-1; text-align: center; padding: 80px; color: var(--text-secondary);">
+                <i class="fas fa-circle-notch fa-spin" style="font-size: 2.5rem; color: var(--accent-color); margin-bottom: 24px;"></i>
+                <p>Loading administration panel...</p>
+            </div>
         </div>
     </div>
 
-    <!-- Edit Client Modal for Admins -->
-    <div id="editClientModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;">
-        <div style="background:white; margin:15% auto; padding:20px; width:400px; border-radius:8px; position:relative;">
-            <span onclick="closeEditModal()" style="position:absolute; right:15px; top:10px; font-size:24px; cursor:pointer;">&times;</span>
-            <h2 style="margin-top:0;">Edit Client Profile</h2>
+    <!-- Edit Client Modal -->
+    <div id="editClientModal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close" onclick="closeEditModal()">&times;</span>
+            <h2 style="margin-top: 0; margin-bottom: 24px; color: var(--text-primary);">Edit Client Profile</h2>
             <form id="editClientForm">
                 <input type="hidden" id="editAdmin">
                 <input type="hidden" id="editTrader">
                 <input type="hidden" id="editName">
                 
-                <div style="margin-bottom:15px;">
-                    <label style="display:block; margin-bottom:5px; font-weight:600;">Client: <span id="editNameDisplay" style="font-weight:normal;"></span></label>
+                <div class="form-group">
+                    <label class="form-label">Client Name</label>
+                    <div id="editNameDisplay" style="padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; color: var(--text-secondary);"></div>
                 </div>
                 
-                <div style="margin-bottom:20px;">
-                    <label style="display:block; margin-bottom:5px; font-weight:600;">Category (Profile)</label>
-                    <select id="editCategory" style="width:100%; padding:8px; border:1px solid #cbd5e1; border-radius:4px;">
-                        <option value="BEF">BEF</option>
-                        <option value="PRIVATE">Private</option>
+                <div class="form-group">
+                    <label class="form-label">Risk Profile / Category</label>
+                    <select id="editCategory" class="form-select">
+                        <option value="PRIVATE">Private (Standard)</option>
+                        <option value="BEF">BEF (High Risk)</option>
                     </select>
                 </div>
-                <button type="submit" style="background:#0f172a; color:white; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; width:100%;">Save Changes</button>
+                
+                <button type="submit" class="btn-gold">
+                    <i class="fas fa-save" style="margin-right: 8px;"></i> Save Changes
+                </button>
             </form>
         </div>
     </div>
@@ -50,7 +287,85 @@
     <script>
         const adminName = "{{ admin_name }}";
         
-        // Modal functions
+        // --- Fetch & Render Logic ---
+        fetch('/api/hierarchy')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('content');
+                container.innerHTML = '';
+                
+                if (data.status === 'error' || !data.admins || !data.admins[adminName]) {
+                    container.innerHTML = `<div style="padding: 40px; text-align: center; color: var(--danger-color);">Admin Access Error</div>`;
+                    return;
+                }
+
+                const adminData = data.admins[adminName];
+                const traders = adminData.traders || {};
+
+                if (Object.keys(traders).length === 0) {
+                    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">No traders assigned to this admin.</div>`;
+                    return;
+                }
+
+                Object.entries(traders).forEach(([traderName, traderData]) => {
+                    const traderCard = document.createElement('div');
+                    traderCard.className = 'trader-card';
+
+                    // Determine Clients List
+                    let clients = [];
+                    if (Array.isArray(traderData)) {
+                        clients = traderData; // Legacy format
+                    } else if (traderData && traderData.clients) {
+                        clients = traderData.clients;
+                    }
+
+                    // Render Clients
+                    const clientsHTML = clients.map(client => {
+                        // Handle strict object format
+                        const cName = (typeof client === 'object') ? client.name : client;
+                        const cProfile = (typeof client === 'object') ? (client.category || 'PRIVATE') : 'PRIVATE';
+                        
+                        // Badge logic
+                        const isBEF = cProfile.toUpperCase() === 'BEF';
+                        const badgeHTML = isBEF 
+                            ? `<span class="client-profile-badge bef">BEF</span>` 
+                            : `<span class="client-profile-badge">PVT</span>`;
+
+                        return `
+                            <div class="client-item">
+                                <a href="/dashboard/${cName}" class="client-link">
+                                    <i class="fas fa-user" style="font-size: 0.8em; color: var(--text-secondary);"></i>
+                                    ${cName}
+                                    ${badgeHTML}
+                                </a>
+                                <button onclick="editClient('${adminName}', '${traderName}', '${cName}', '${cProfile}')" class="edit-btn" title="Edit Profile">
+                                    <i class="fas fa-cog"></i>
+                                </button>
+                            </div>
+                        `;
+                    }).join('');
+
+                    traderCard.innerHTML = `
+                        <div class="trader-header">
+                            <div class="trader-name">
+                                <i class="fas fa-briefcase" style="margin-right: 8px; color: var(--accent-color);"></i>
+                                ${traderName}
+                            </div>
+                            <span class="status" style="font-size: 0.75rem;">${clients.length} Clients</span>
+                        </div>
+                        <div class="client-list-container">
+                            ${clients.length > 0 ? clientsHTML : '<div style="color: var(--text-secondary); font-size: 0.9em; font-style: italic; padding: 10px;">No clients assigned</div>'}
+                        </div>
+                    `;
+                    container.appendChild(traderCard);
+                });
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('content').innerHTML = `<div style="text-align:center; color: var(--danger-color);">System Error: Failed to load hierarchy.</div>`;
+            });
+
+        // --- Modal Functions ---
         function editClient(admin, trader, name, category) {
             document.getElementById('editAdmin').value = admin;
             document.getElementById('editTrader').value = trader;
@@ -68,17 +383,16 @@
             document.getElementById('editClientModal').style.display = 'none';
         }
 
-        // Close on outside click
         window.onclick = function(event) {
             const modal = document.getElementById('editClientModal');
-            if (event.target == modal) {
-                closeEditModal();
-            }
+            if (event.target == modal) closeEditModal();
         }
         
-        // Handle form submit
         document.getElementById('editClientForm').onsubmit = function(e) {
             e.preventDefault();
+            const originalBtnText = document.querySelector('.btn-gold').innerHTML;
+            document.querySelector('.btn-gold').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            
             const data = {
                 admin: document.getElementById('editAdmin').value,
                 trader: document.getElementById('editTrader').value,
@@ -94,70 +408,18 @@
             .then(res => res.json())
             .then(result => {
                 if (result.status === 'success') {
-                    alert('Client profile updated successfully');
+                    // Success notification could be toast, using alert specifically requested by logic context usually
                     location.reload();
                 } else {
                     alert('Error: ' + result.message);
+                    document.querySelector('.btn-gold').innerHTML = originalBtnText;
                 }
+            })
+            .catch(err => {
+                alert('Connection error');
+                document.querySelector('.btn-gold').innerHTML = originalBtnText;
             });
         };
-
-        fetch('/api/hierarchy')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('content');
-                const adminData = data.admins[adminName];
-                
-                if (!adminData) {
-                    container.innerHTML = '<div style="text-align:center; padding:40px;">Admin not found.</div>';
-                    return;
-                }
-
-                const traders = adminData.traders;
-                if (Object.keys(traders).length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding:40px; color:#999;">No traders assigned.</div>';
-                    return;
-                }
-
-                for (const [trader, traderData] of Object.entries(traders)) {
-                    // Handle new structure where traderData is an object with a 'clients' array
-                    const clientsList = traderData.clients || (Array.isArray(traderData) ? traderData : []);
-
-                    let clientsHtml = clientsList.map(clientObj => {
-                        // Support both string client or client object
-                        let client = clientObj;
-                        let profile = "PRIVATE";
-                        if (typeof clientObj === 'object' && clientObj !== null) {
-                            client = clientObj.name;
-                            profile = clientObj.category || 'PRIVATE';
-                        }
-                        
-                        return `
-                        <div class="client-card-wrapper" style="position:relative;">
-                             <a href="/dashboard/${client}" class="client-card" style="display:block;">
-                                <div class="client-name">${client}</div>
-                                <div class="client-status" style="font-size:0.8rem; color:#64748b;">${profile}</div>
-                                <div class="client-status">View Dashboard →</div>
-                            </a>
-                            <button onclick="editClient('${adminName}', '${trader}', '${client}', '${profile}')" class="btn-sm" style="position:absolute; top:10px; right:10px; background:#e2e8f0; border:none; border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.7rem;">Edit</button>
-                        </div>
-                    `}).join('');
-
-                    if (!clientsHtml) clientsHtml = '<div style="color:#999; font-size:0.9rem; font-style:italic;">No clients assigned</div>';
-
-                    const card = document.createElement('div');
-                    card.className = 'trader-card';
-                    card.innerHTML = `
-                        <div class="trader-header">
-                            ${trader} <span class="trader-badge">Trader</span>
-                        </div>
-                        <div class="client-grid">
-                            ${clientsHtml}
-                        </div>
-                    `;
-                    container.appendChild(card);
-                }
-            });
     </script>
 </body>
 </html>

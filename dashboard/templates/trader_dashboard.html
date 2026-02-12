@@ -3,21 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trader Dashboard - MT5 Hedging Engine</title>
+    <title>Trader Dashboard - BallerQuotes</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+            margin-top: 40px;
+        }
+
+        .client-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 24px;
+            text-decoration: none;
+            color: var(--text-primary);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--border-color);
+            background-image: var(--gradient-card);
+            min-height: 180px;
+        }
+
+        .client-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 4px; height: 100%;
+            background: var(--gradient-primary);
+            opacity: 0.7;
+            transition: width 0.3s ease;
+        }
+
+        .client-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-glow), var(--shadow-lg);
+            border-color: rgba(251, 191, 36, 0.4);
+        }
+
+        .client-card:hover::before {
+            width: 6px;
+            opacity: 1;
+        }
+
+        /* Glassmorphism for card content */
+        .client-name {
+            font-size: 1.4rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.01em;
+            background: linear-gradient(90deg, #fff, #cbd5e1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .client-meta {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: auto; /* Pushes arrow to bottom */
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            margin-top: 10px;
+        }
+
+        .action-arrow {
+            margin-top: 20px;
+            align-self: flex-end;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+            opacity: 0.8;
+        }
+
+        .client-card:hover .action-arrow {
+            gap: 12px;
+            color: #fff;
+            opacity: 1;
+        }
+
+        .modern-nav {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(16px);
+            padding: 16px 32px;
+            margin-bottom: 40px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            position: sticky;
+            top: 20px;
+            z-index: 100;
+        }
+
+        .brand {
+            font-weight: 800;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text-primary);
+        }
+        
+        .brand span {
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome-hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <div style="display: flex; align-items: center;">
-                <h1>{{ trader_name }}</h1>
-                <span class="role-badge">Trader</span>
+        <!-- Navigation -->
+        <nav class="modern-nav">
+            <div class="brand">
+                <i class="fas fa-chart-line" style="color: var(--accent-color);"></i>
+                <span>BallerQuotes</span>
             </div>
-            <a href="/logout" class="logout-btn">Logout</a>
-        </header>
+            
+            <div style="display: flex; align-items: center; gap: 24px;">
+                <div style="text-align: right; line-height: 1.2;">
+                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">{{ trader_name }}</div>
+                    <div style="font-size: 0.75rem; color: var(--accent-color); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Trader Portal</div>
+                </div>
+                
+                <div style="height: 32px; width: 1px; background: var(--border-color);"></div>
+                
+                <a href="/logout" class="tab-btn" style="padding: 8px 16px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 8px;">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </nav>
 
-        <div id="content" class="client-list">
-            <!-- Clients will be injected here -->
+        <!-- Dynamic Client Load -->
+        <div id="content" class="dashboard-grid">
+            <!-- Loading State -->
+            <div style="grid-column: 1/-1; text-align: center; padding: 80px; color: var(--text-secondary);">
+                <i class="fas fa-circle-notch fa-spin" style="font-size: 2.5rem; color: var(--accent-color); margin-bottom: 24px; filter: drop-shadow(0 0 10px var(--accent-glow));"></i>
+                <p style="font-size: 1.1rem;">Loading your portfolio...</p>
+            </div>
         </div>
     </div>
 
@@ -29,37 +174,96 @@
             .then(data => {
                 const container = document.getElementById('content');
                 
-                // Find the trader in the hierarchy
-                let clients = [];
-                for (const adminData of Object.values(data.admins)) {
-                    if (adminData.traders[traderName]) {
-                        // New structure: trader is an object with a 'clients' array
-                        const traderData = adminData.traders[traderName];
-                        clients = traderData.clients || []; 
-                        // Handle legacy case where it might be just an array (though we updated it)
-                        if (Array.isArray(traderData)) clients = traderData;
-                        break;
-                    }
+                if (data.status === 'error') {
+                    throw new Error(data.message);
                 }
 
-                if (clients.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding:40px; color:#999;">No clients assigned or trader not found.</div>';
+                // Find visible clients for this trader
+                let clients = [];
+                const norm = s => String(s).trim().toLowerCase();
+                const targetTrader = norm(traderName);
+
+                // Deep search logic (adapts to hierarchy structure)
+                if (data.admins) {
+                    Object.values(data.admins).forEach(admin => {
+                        if (admin && admin.traders) {
+                            // Can be object or list depending on legacy
+                            const traders = admin.traders;
+                            // If object (new structure)
+                            if (typeof traders === 'object' && !Array.isArray(traders)) {
+                                Object.entries(traders).forEach(([tName, tData]) => {
+                                    if (norm(tName) === targetTrader) {
+                                        clients = tData.clients || (Array.isArray(tData) ? tData : []);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
+
+                container.innerHTML = ''; // Clear loading
+
+                if (!clients || clients.length === 0) {
+                    container.innerHTML = `
+                        <div style="grid-column: 1/-1; text-align: center; padding: 60px; background: var(--card-bg); border-radius: var(--radius); border: 1px dashed var(--border-color);">
+                            <div style="background: rgba(255,255,255,0.05); width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
+                                <i class="fas fa-folder-open" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.7;"></i>
+                            </div>
+                            <h3 style="margin-bottom: 8px; color: var(--text-primary);">No Clients Assigned</h3>
+                            <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto;">Contact your administrator to have clients assigned to your portfolio.</p>
+                        </div>
+                    `;
                     return;
                 }
 
-                clients.forEach(clientObj => {
-                    // Handle both object and string formats for robustness
-                    const clientName = (typeof clientObj === 'object' && clientObj !== null) ? clientObj.name : clientObj;
-                    
+                // Deduplicate clients
+                const uniqueClients = [...new Set(clients.map(c => (typeof c === 'object' ? c.name : c)))];
+
+                // Inject Hero Header if not exists
+                if (!document.getElementById('clients-header')) {
+                    const hero = document.createElement('div');
+                    hero.id = 'clients-header';
+                    hero.className = 'welcome-hero';
+                    hero.style.gridColumn = '1/-1';
+                    hero.style.marginBottom = '20px';
+                    hero.innerHTML = `
+                        <h1>Your Portfolio</h1>
+                        <p style="color: var(--text-secondary); font-size: 1.1rem; max-width: 600px;">
+                            You are managing <strong>${uniqueClients.length}</strong> active client accounts. 
+                            Select a client below to view detailed performance metrics.
+                        </p>
+                    `;
+                    container.appendChild(hero);
+                }
+
+                uniqueClients.forEach(clientName => {
                     const card = document.createElement('a');
                     card.href = `/dashboard/${clientName}`;
                     card.className = 'client-card';
                     card.innerHTML = `
-                        <div class="client-name">${clientName}</div>
-                        <div class="arrow">View Dashboard →</div>
+                        <div style="flex: 1;">
+                            <div class="client-name">${clientName}</div>
+                            <div class="client-meta">
+                                <i class="fas fa-shield-alt" style="color: var(--success-color);"></i> 
+                                Managed Account
+                            </div>
+                        </div>
+                        <div class="action-arrow">
+                            Access Dashboard <i class="fas fa-arrow-right"></i>
+                        </div>
                     `;
                     container.appendChild(card);
                 });
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('content').innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; background: rgba(239, 68, 68, 0.1); border-radius: var(--radius); border: 1px solid var(--danger-color);">
+                        <i class="fas fa-exclamation-triangle" style="color: var(--danger-color); font-size: 2rem; margin-bottom: 16px;"></i>
+                        <h3 style="color: var(--danger-color);">Connection Error</h3>
+                        <p style="color: var(--text-secondary);">Failed to load client list. Please refresh the page.</p>
+                    </div>
+                `;
             });
     </script>
 </body>
