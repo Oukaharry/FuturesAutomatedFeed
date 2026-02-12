@@ -164,7 +164,8 @@
         /* Modal Overrides */
         .modal-overlay {
             background: rgba(0,0,0,0.85);
-            backdrop-filter: blur(5px);
+            /* backdrop-filter: blur(5px); - Removed for performance */
+            z-index: 1000;
         }
         
         .modal-content {
@@ -415,93 +416,95 @@
         function openUserListModal(type) {
             const modal = document.getElementById('userListModal');
             document.getElementById('modalTitle').textContent = type.toUpperCase() + 'S';
-            
-            // Build content off-screen first to avoid layout thrashing
-            const rows = [];
-            
-            if (type === 'admin') {
-                document.getElementById('col-parent').style.display = 'none';
-                if(hierarchyData.admins) {
-                    Object.entries(hierarchyData.admins).forEach(([name, data]) => {
-                        rows.push({ name, email: data.email, parent: null });
-                    });
-                }
-            } else if (type === 'trader') {
-                const colParent = document.getElementById('col-parent');
-                colParent.style.display = 'table-cell'; 
-                colParent.textContent = 'Admin';
-                if(hierarchyData.admins) {
-                    Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                        Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
-                            if (traderData && traderData.email !== undefined) {
-                                rows.push({ name: traderName, email: traderData.email, parent: adminName });
-                            } else if (typeof traderData === 'string') {
-                                // Legacy: just a name string? unlikely for trader dict
-                            } 
-                        });
-                    });
-                }
-            } else if (type === 'client') {
-                const colParent = document.getElementById('col-parent');
-                colParent.style.display = 'table-cell';
-                colParent.textContent = 'Trader (Admin)';
+            const tbody = document.getElementById('userListBody');
+            tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+            modal.style.display = 'block';
+
+            // process in next tick to prevent UI freeze
+            setTimeout(() => {
+                const rows = [];
                 
-                if(hierarchyData.admins) {
-                    Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                        const traders = adminData.traders || {};
-                        Object.entries(traders).forEach(([traderName, traderData]) => {
-                            // Handle both object format {clients: [...]} and array format [...]
-                            let clients = [];
-                            if (Array.isArray(traderData)) {
-                                clients = traderData;
-                            } else if (traderData && traderData.clients) {
-                                clients = traderData.clients;
-                            }
-                            
-                            clients.forEach(client => {
-                                // check if client is object or string
-                                // Safely handle null/undefined
-                                if (!client) return;
-                                
-                                const cName = (typeof client === 'object') ? client.name : client;
-                                const cEmail = (typeof client === 'object') ? client.email : '';
-                                rows.push({ 
-                                    name: cName || 'Unknown', 
-                                    email: cEmail, 
-                                    parent: `${traderName} (${adminName})`
-                                });
+                if (type === 'admin') {
+                    document.getElementById('col-parent').style.display = 'none';
+                    if(hierarchyData.admins) {
+                        Object.entries(hierarchyData.admins).forEach(([name, data]) => {
+                            rows.push({ name, email: data.email, parent: null, url: '/admin/' + name });
+                        });
+                    }
+                } else if (type === 'trader') {
+                    const colParent = document.getElementById('col-parent');
+                    colParent.style.display = 'table-cell'; 
+                    colParent.textContent = 'Admin';
+                    if(hierarchyData.admins) {
+                        Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                            Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
+                                if (traderData && traderData.email !== undefined) {
+                                    rows.push({ name: traderName, email: traderData.email, parent: adminName, url: '/trader/' + traderName });
+                                } else if (typeof traderData === 'string') {
+                                    // Legacy support
+                                    rows.push({ name: traderName, email: '', parent: adminName, url: '/trader/' + traderName });
+                                } 
                             });
                         });
-                    });
+                    }
+                } else if (type === 'client') {
+                    const colParent = document.getElementById('col-parent');
+                    colParent.style.display = 'table-cell';
+                    colParent.textContent = 'Trader (Admin)';
+                    
+                    if(hierarchyData.admins) {
+                        try {
+                            Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                                const traders = adminData.traders || {};
+                                Object.entries(traders).forEach(([traderName, traderData]) => {
+                                    let clients = [];
+                                    if (Array.isArray(traderData)) {
+                                        clients = traderData;
+                                    } else if (traderData && traderData.clients) {
+                                        clients = traderData.clients;
+                                    }
+                                    
+                                    if(Array.isArray(clients)){
+                                        clients.forEach(client => {
+                                            if (!client) return;
+                                            const cName = (typeof client === 'object') ? client.name : client;
+                                            const cEmail = (typeof client === 'object') ? client.email : '';
+                                            rows.push({ 
+                                                name: cName || 'Unknown', 
+                                                email: cEmail, 
+                                                parent: `${traderName} (${adminName})`,
+                                                url: '/dashboard/' + cName
+                                            });
+                                        });
+                                    }
+                                });
+                            });
+                        } catch(e) { console.error("Error parsing clients", e); }
+                    }
                 }
-            }
 
-            const tbody = document.getElementById('userListBody');
-            
-            if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);">No ' + type + 's found</td></tr>';
-            } else {
-                // Use a document fragment or single innerHTML set for performance
-                let html = '';
-                rows.forEach(r => {
-                    let parentHtml = (type !== 'admin') ? `<td style="padding:12px;">${r.parent}</td>` : '';
-                    html += `
-                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                            <td style="padding:12px; color:var(--text-primary);">
-                                <div style="font-weight:600;">${r.name}</div>
-                                <div style="font-size:0.8rem; color:var(--text-secondary);">${r.email || ''}</div>
-                            </td>
-                            ${parentHtml}
-                            <td style="padding:12px; text-align:right;">
-                                <span style="color:var(--text-secondary); font-size:0.8rem;">View in Dashboard</span>
-                            </td>
-                        </tr>
-                    `;
-                });
-                tbody.innerHTML = html;
-            }
-            
-            modal.style.display = 'block';
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);">No ' + type + 's found</td></tr>';
+                } else {
+                    let html = '';
+                    rows.forEach(r => {
+                        let parentHtml = (type !== 'admin') ? `<td style="padding:12px;">${r.parent}</td>` : '';
+                        html += `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td style="padding:12px; color:var(--text-primary);">
+                                    <div style="font-weight:600;">${r.name}</div>
+                                    <div style="font-size:0.8rem; color:var(--text-secondary);">${r.email || ''}</div>
+                                </td>
+                                ${parentHtml}
+                                <td style="padding:12px; text-align:right;">
+                                    <a href="${r.url}" class="btn-gold" style="font-size:0.8rem; padding:4px 12px; text-decoration:none; display:inline-block;">Dashboard</a>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                }
+            }, 10);
         }
         function closeUserListModal() {
             document.getElementById('userListModal').style.display = 'none';
