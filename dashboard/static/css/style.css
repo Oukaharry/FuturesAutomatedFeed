@@ -1083,70 +1083,74 @@ button:hover {
 */
 .wide-table thead tr:nth-child(2) th { top: 52px; }
 
-/* Sub-header Color Themes */
+/* Sub-header Color Themes (Updated for Dark Theme) */
 /* Eval Info (Cols 1-4) */
 .wide-table thead tr:nth-child(2) th:nth-child(-n+4) {
-    background: #eff6ff !important;
-    color: #1e3a8a;
-    border-bottom: 2px solid #bfdbfe;
+    background: rgba(30, 41, 59, 0.95) !important;
+    color: #60a5fa; /* Blue 400 */
+    border-bottom: 2px solid #3b82f6;
+    backdrop-filter: blur(8px);
 }
 /* Eval Phase (Cols 5-14) */
 .wide-table thead tr:nth-child(2) th:nth-child(n+5):nth-child(-n+14) {
-    background: #ecfdf5 !important;
-    color: #064e3b;
-    border-bottom: 2px solid #a7f3d0;
+    background: rgba(6, 78, 59, 0.95) !important;
+    color: #34d399; /* Emerald 400 */
+    border-bottom: 2px solid #10b981;
+    backdrop-filter: blur(8px);
 }
 /* Funded Phase (Cols 15-35) */
 .wide-table thead tr:nth-child(2) th:nth-child(n+15):nth-child(-n+35) {
-    background: #fff7ed !important;
-    color: #7c2d12;
-    border-bottom: 2px solid #fed7aa;
+    background: rgba(69, 26, 3, 0.95) !important;
+    color: #fb923c; /* Orange 400 */
+    border-bottom: 2px solid #f97316;
+    backdrop-filter: blur(8px);
 }
 /* Farming Phase (Cols 36+) */
 .wide-table thead tr:nth-child(2) th:nth-child(n+36) {
-    background: #f5f3ff !important;
-    color: #4c1d95;
-    border-bottom: 2px solid #ddd6fe;
+    background: rgba(46, 16, 101, 0.95) !important;
+    color: #d8b4fe; /* Purple 300 */
+    border-bottom: 2px solid #8b5cf6;
+    backdrop-filter: blur(8px);
 }
 
 /* Sticky Corners (# and Trash) */
 .wide-table thead tr:first-child th:first-child,
 .wide-table thead tr:first-child th:nth-child(2) {
-    background: #ffffff !important;
-    color: #64748b;
+    background: var(--card-bg) !important;
+    color: var(--text-secondary);
     z-index: 50 !important;
-    border-right: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
-    box-shadow: 2px 2px 5px rgba(0,0,0,0.05);
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
 }
 
-/* Column Background Persistence (Matching Headers) */
+/* Column Background Persistence (Matching Headers - Dark Theme Tweaks) */
 
-/* Eval Info (Cols 3-6) - Very Light Blue */
+/* Eval Info (Cols 3-6) */
 .wide-table tbody td:nth-child(n+3):nth-child(-n+6) {
-    background-color: #f8fbff; 
-    border-right: 1px solid rgba(59, 130, 246, 0.05);
+    background-color: rgba(30, 58, 138, 0.1); 
+    border-right: 1px solid rgba(59, 130, 246, 0.1);
 }
 .wide-table tbody tr:hover td:nth-child(n+3):nth-child(-n+6) {
-    background-color: #eff6ff !important;
+    background-color: rgba(30, 58, 138, 0.2) !important;
 }
 
-/* Eval Phase (Cols 7-16) - Very Light Green */
+/* Eval Phase (Cols 7-16) */
 .wide-table tbody td:nth-child(n+7):nth-child(-n+16) {
-    background-color: #f0fdf4;
-    border-right: 1px solid rgba(16, 185, 129, 0.05);
+    background-color: rgba(6, 78, 59, 0.1);
+    border-right: 1px solid rgba(16, 185, 129, 0.1);
 }
 .wide-table tbody tr:hover td:nth-child(n+7):nth-child(-n+16) {
-    background-color: #dcfce7 !important;
+    background-color: rgba(6, 78, 59, 0.2) !important;
 }
 
-/* Funded Phase (Cols 17-37) - Very Light Orange */
+/* Funded Phase (Cols 17-37) */
 .wide-table tbody td:nth-child(n+17):nth-child(-n+37) {
-    background-color: #fffaf5;
-    border-right: 1px solid rgba(249, 115, 22, 0.05);
+    background-color: rgba(124, 45, 18, 0.1);
+    border-right: 1px solid rgba(249, 115, 22, 0.1);
 }
 .wide-table tbody tr:hover td:nth-child(n+17):nth-child(-n+37) {
-    background-color: #ffedd5 !important;
+    background-color: rgba(124, 45, 18, 0.2) !important;
 }
 
 /* Farming Phase (Cols 38+) - Very Light Purple */
