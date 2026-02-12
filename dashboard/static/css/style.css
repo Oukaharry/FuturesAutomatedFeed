@@ -798,7 +798,46 @@ button:hover {
 }
 .back-link:hover { color: var(--text-primary); background: #f1f5f9; }
 
-/* --- Modern Hierarchy / Super Admin Design --- */
+/* --- Brand / Logo Styling --- */
+.brand {
+    font-weight: 800;
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    letter-spacing: -0.02em;
+    position: relative;
+    text-decoration: none; /* In case it's a link */
+}
+
+.brand i {
+    color: #fbbf24;
+    font-size: 1.4rem;
+    filter: drop-shadow(0 0 15px rgba(251, 191, 36, 0.4));
+    transition: transform 0.3s ease;
+}
+
+.brand:hover i {
+    transform: rotate(15deg) scale(1.1);
+}
+
+.brand > span:first-of-type {
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 40%, #d97706 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    position: relative;
+}
+
+/* Optional: "Super Admin" / "Admin" subtitle styling */
+.brand span span {
+    -webkit-text-fill-color: #94a3b8 !important; /* Reset gradient for subtitle */
+    font-weight: 500;
+    font-size: 0.85em;
+    margin-left: 6px;
+    opacity: 0.8;
+}
+
+/* --- End Brand Styling --- */
 
 /* Admin Card Container */
 .admin-card {
@@ -913,8 +952,8 @@ button:hover {
 
 .trader-item:hover {
     transform: translateY(-3px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    border-color: #94a3b8 !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+    border-color: #475569 !important; /* Slate 600 */
 }
 
 /* Top colored line for trader */
@@ -924,19 +963,20 @@ button:hover {
     top: 0;
     left: 0;
     right: 0;
-    height: 3px;
+    height: 2px;
     background: linear-gradient(90deg, #10b981, #34d399); /* Emerald Gradient */
+    opacity: 0.7;
 }
 
 .trader-header {
-    background: rgba(236, 253, 245, 0.6) !important; /* Light green tint background */
+    background: rgba(6, 78, 59, 0.3) !important; /* Dark Green Tint */
     padding: 14px 16px !important;
-    border-bottom: 1px solid rgba(16, 185, 129, 0.1) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
     display: flex;
-    flex-direction: column; /* Stack vertically by default */
+    flex-direction: column; 
     align-items: flex-start;
     justify-content: center;
-    gap: 8px; /* Space between name row and action row */
+    gap: 8px;
     margin: 0 !important;
     border-radius: 0 !important;
 }
@@ -956,9 +996,9 @@ button:hover {
 }
 
 .badge-trader {
-    background: #10b981 !important; /* Solid emerald */
-    color: white !important;
-    border: none !important;
+    background: rgba(16, 185, 129, 0.2) !important; /* Transparent Emerald */
+    color: #34d399 !important; /* Light Emerald */
+    border: 1px solid rgba(16, 185, 129, 0.3) !important;
     font-weight: 700 !important;
     font-size: 0.65rem !important;
     padding: 3px 8px !important;
@@ -969,14 +1009,14 @@ button:hover {
 }
 
 .trader-name {
-    font-weight: 700;
-    color: #064e3b; /* Darker green text */
-    font-size: 1.05rem;
+    font-weight: 600;
+    color: #e2e8f0; /* Light Slate text */
+    font-size: 1.0rem;
 }
 
 .trader-email {
     font-size: 0.75rem;
-    color: #059669; /* Medium green text */
+    color: #94a3b8; /* Slate 400 */
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
@@ -987,7 +1027,7 @@ button:hover {
 /* Client Cloud Area */
 .client-list {
     padding: 16px;
-    background: #ffffff; /* Keep white for contrast with green header */
+    background: rgba(15, 23, 42, 0.3); /* Dark transparent background */
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -998,33 +1038,29 @@ button:hover {
 .client-tag {
     display: inline-flex;
     align-items: center;
-    border-radius: 9999px;
-    font-size: 0.85rem;
-    cursor: grab;
+    border-radius: 6px; /* Squarer look */
+    font-size: 0.8rem;
+    cursor: pointer;
     user-select: none;
     max-width: 100%;
-    padding: 6px 12px !important; /* Slightly more compact */
-    gap: 6px;
-    background: #f0fdf4 !important; /* Very pale green to match trader theme */
-    border: 1px solid #bbf7d0 !important; /* Green border */
-    color: #166534 !important; /* Green text */
-    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 6px 10px !important;
+    gap: 8px;
+    background: rgba(30, 41, 59, 0.6) !important; /* Dark Slate pill */
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    color: #cbd5e1 !important; /* Slate 300 */
+    transition: all 0.2s ease;
 }
 
 .client-tag:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    background: #dcfce7 !important; /* Darker green on hover */
-    border-color: #86efac !important;
+    background: rgba(51, 65, 85, 0.8) !important; /* Lighter Slate hover */
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #f1f5f9 !important;
 }
 
 .client-tag .client-icon {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background-color: #22c55e; /* Bright green status dot */
-    display: inline-block;
+    font-size: 0.7rem;
+    color: #fbbf24; /* Gold Icon */
 }
 
 /* --- Data Table Improvements Check --- */
