@@ -421,6 +421,138 @@
             color: #333;
             transition: background-color 0.5s ease;
         }
+
+        /* --- Dark Theme Overrides (BallerQuotes) --- */
+        :root {
+            --bg-dark: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-color: #fbbf24;
+            --border-color: rgba(255,255,255,0.1);
+        }
+
+        body {
+            background-color: var(--bg-dark) !important;
+            color: var(--text-primary) !important;
+        }
+        
+        .container {
+            background: transparent !important; /* Let body bg show through or card style */
+            width: 98% !important; /* Wider on dark mode */
+            max-width: 1800px !important;
+        }
+
+        /* Header & Controls */
+        header {
+            background: var(--card-bg) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            padding: 20px !important;
+            border-radius: 12px 12px 0 0 !important;
+            margin-bottom: 20px !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6 { color: var(--text-primary) !important; }
+        
+        .version-badge {
+            background: rgba(251, 191, 36, 0.2) !important;
+            color: #fbbf24 !important;
+        }
+
+        /* Tabs */
+        .tabs {
+            border-bottom: 1px solid var(--border-color) !important;
+            background: var(--card-bg) !important;
+            padding: 0 20px !important;
+            border-radius: 12px 12px 0 0 !important; /* Actually attach to container below? */
+            margin-bottom: 0 !important;
+        }
+        
+        .tab-btn {
+            background: transparent !important;
+            color: var(--text-secondary) !important;
+            border: none !important;
+            border-bottom: 2px solid transparent !important;
+            padding: 15px 20px !important;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.05) !important; }
+        .tab-btn.active {
+            color: var(--accent-color) !important;
+            border-bottom-color: var(--accent-color) !important;
+            background: rgba(251, 191, 36, 0.05) !important;
+        }
+
+        /* Tables & Content */
+        .tab-content {
+            background: var(--card-bg) !important;
+            padding: 24px !important;
+            border: 1px solid var(--border-color) !important;
+            border-top: none !important;
+            border-radius: 0 0 12px 12px !important;
+            color: var(--text-primary) !important;
+        }
+        
+        /* Table Elements */
+        table {
+            color: var(--text-primary) !important;
+        }
+        th {
+            background: rgba(15, 23, 42, 0.8) !important;
+            color: var(--text-secondary) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        td {
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        tr:hover td {
+            background: rgba(255,255,255,0.05) !important;
+        }
+
+        /* Inputs */
+        input, select, textarea {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border: 1px solid var(--border-color) !important;
+            color: white !important;
+        }
+        input:focus { border-color: var(--accent-color) !important; }
+
+        /* History Panel Overrides */
+        .history-panel {
+            background: var(--card-bg) !important;
+            color: var(--text-primary) !important;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.5) !important;
+        }
+        .history-header {
+            background: linear-gradient(135deg, #fbbf24, #d97706) !important;
+            color: #0f172a !important; 
+        }
+        .history-item {
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        .history-item:hover {
+            background: rgba(255,255,255,0.05) !important;
+        }
+        .history-item.selected {
+            background: rgba(251, 191, 36, 0.1) !important;
+            border-left-color: var(--accent-color) !important;
+        }
+        .history-version { color: var(--accent-color) !important; }
+        .history-date { color: var(--text-secondary) !important; }
+        
+        /* Scroll Controls */
+        .scroll-controls {
+            background: rgba(15, 23, 42, 0.8) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        .scroll-btn {
+            background: rgba(255,255,255,0.1) !important;
+            border: 1px solid var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+        .scroll-btn:hover {
+            background: var(--accent-color) !important;
+            color: #0f172a !important;
+        }
     </style>
 </head>
 <body>

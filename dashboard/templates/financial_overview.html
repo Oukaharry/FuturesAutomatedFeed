@@ -153,6 +153,60 @@
             color: white;
             border-color: #3b82f6;
         }
+
+        /* --- Dark Theme Overrides (BallerQuotes) --- */
+        :root {
+            --bg-dark: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-color: #fbbf24;
+            --border-color: rgba(255,255,255,0.1);
+        }
+
+        body {
+            background-color: var(--bg-dark) !important;
+            color: var(--text-primary) !important;
+        }
+
+        h1, h2, h3, h4, h5 { color: var(--text-primary) !important; }
+
+        /* Tables */
+        .finance-table, .table-responsive {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            box-shadow: none !important;
+            color: var(--text-primary) !important;
+        }
+        .finance-table th {
+            background: rgba(15, 23, 42, 0.8) !important;
+            color: var(--text-secondary) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        .finance-table td {
+            border-bottom: 1px solid var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+        .finance-table td:first-child {
+            color: #fff !important;
+        }
+        .finance-table tr:hover {
+            background: rgba(255,255,255,0.05) !important;
+        }
+
+        /* Summary Cards */
+        .summary-card {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+        }
+        .card-label { color: var(--text-secondary) !important; }
+        .card-value { color: var(--text-primary) !important; }
+
+        /* Links */
+        .back-link { color: var(--accent-color) !important; }
+        
+        /* Charts Backgrounds if transparent, they work. If specific bg set in JS, might need more work. */
     </style>
 </head>
 <body style="background-color: #f1f5f9;">

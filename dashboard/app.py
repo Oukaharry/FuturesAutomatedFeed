@@ -1622,7 +1622,8 @@ def api_admin_login():
         response = jsonify({"status": "success", "redirect": "/super_admin"})
         response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
         return response
-    
+
+@app.route('/logout')
 def logout():
     """Logout via GET request - clears session and redirects to login."""
     session_token = request.cookies.get('session_token')

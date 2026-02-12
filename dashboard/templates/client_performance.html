@@ -145,6 +145,66 @@
             background: #fecaca;
             color: #dc2626;
         }
+
+        /* --- Dark Theme Overrides (BallerQuotes) --- */
+        :root {
+            --bg-dark: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-color: #fbbf24;
+            --border-color: rgba(255,255,255,0.1);
+        }
+
+        body {
+            background-color: var(--bg-dark) !important;
+            color: var(--text-primary) !important;
+        }
+
+        /* Nav */
+        .modern-nav {
+            background: rgba(30, 41, 59, 0.95) !important;
+            border: 1px solid var(--border-color) !important;
+            color: var(--text-primary) !important;
+            box-shadow: none !important;
+        }
+        .nav-brand { color: var(--text-primary) !important; }
+        .nav-links {
+            background: rgba(15, 23, 42, 0.6) !important;
+            border: 1px solid var(--border-color) !important;
+        }
+        .nav-item {
+            color: var(--text-secondary) !important;
+        }
+        .nav-item:hover, .nav-item.active {
+            color: var(--accent-color) !important;
+            background: rgba(255,255,255,0.05) !important;
+        }
+
+        /* Table Components */
+        .finance-table {
+            background: var(--card-bg) !important;
+            border: 1px solid var(--border-color) !important;
+            box-shadow: none !important;
+            color: var(--text-primary) !important;
+        }
+        .finance-table th {
+            background: rgba(15, 23, 42, 0.8) !important;
+            color: var(--text-secondary) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        .finance-table td {
+            border-bottom: 1px solid var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+        .finance-table td:first-child {
+            color: #fff !important;
+        }
+        .finance-table tr:hover {
+            background: rgba(255,255,255,0.05) !important;
+        }
+
+        h1, h2, h3 { color: var(--text-primary) !important; }
     </style>
 </head>
 <body style="background-color: #f8fafc;">
