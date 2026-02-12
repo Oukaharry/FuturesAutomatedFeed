@@ -547,29 +547,50 @@
             
             const totalsUrl = currentProfile === 'ALL' ? '/api/super_admin/totals' : `/api/super_admin/totals?profile=${currentProfile}`;
             
-            Promise.all([
-                fetch('/api/hierarchy').then(r => r.json()),
-                fetch(totalsUrl).then(r => r.json())
-            ]).then(([hData, fData]) => {
-                hierarchyData = hData;
-                renderTree();
-                updateSelects();
-                updateStats();
-                
-                if(fData.status === 'success' && fData.totals) {
-                    const t = fData.totals;
-                    document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
-                    document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
-                    document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
-                    document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
-                    document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
-                    document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
-                    
-                    document.getElementById('grand-active-accounts').textContent = t.active_accounts;
-                    document.getElementById('grand-completed-accounts').textContent = t.completed_accounts;
-                    document.getElementById('grand-failed-accounts').textContent = t.failed_accounts;
-                }
-            });
+            // 1. Load Hierarchy (Critical for UI)
+            fetch('/api/hierarchy')
+                .then(r => {
+                    if(!r.ok) throw new Error('Failed to load hierarchy');
+                    return r.json();
+                })
+                .then(hData => {
+                    hierarchyData = hData;
+                    renderTree();
+                    updateSelects();
+                    updateStats(); // Initial stats based on hierarchy counts
+                })
+                .catch(err => {
+                    console.error("Hierarchy Load Error:", err);
+                    document.getElementById('hierarchy-tree').innerHTML = `<div class="alert alert-danger">Failed to load user hierarchy: ${err.message}</div>`;
+                });
+
+            // 2. Load Financial Totals (Independent)
+            fetch(totalsUrl)
+                .then(r => {
+                    if(!r.ok) throw new Error('Failed to load totals');
+                    return r.json();
+                })
+                .then(fData => {
+                    if(fData.status === 'success' && fData.totals) {
+                        const t = fData.totals;
+                        document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
+                        document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
+                        document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
+                        document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
+                        document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
+                        document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
+                        
+                        document.getElementById('grand-active-accounts').textContent = t.active_accounts;
+                        document.getElementById('grand-completed-accounts').textContent = t.completed_accounts;
+                        document.getElementById('grand-failed-accounts').textContent = t.failed_accounts;
+                    }
+                })
+                .catch(err => {
+                    console.error("Totals Load Error:", err);
+                    // Show error state in cards
+                    document.getElementById('grand-total-payouts').textContent = 'Error';
+                    document.getElementById('grand-ev').textContent = 'Error';
+                });
         }
 
         function updateStats() {
