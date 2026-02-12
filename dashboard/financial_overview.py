@@ -51,6 +51,9 @@ def cache_result(ttl=300):
 def _get_cached_clients():
     """Cached wrapper for database.get_all_clients"""
     return get_all_clients()
+
+# Public alias for external use
+get_cached_clients_dataset = _get_cached_clients
 # ------------------------------------------------
 
 def parse_currency(value_str):
@@ -713,7 +716,7 @@ def calculate_propfirm_overview(profile_filter=None):
 
 def get_cumulative_fees_data(profile_filter=None):
     """Calculates cumulative fees (Fees + Activation) over time."""
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     events = [] # (datetime, amount)
     
     for client_id, data in clients_data.items():
@@ -748,7 +751,7 @@ def get_cumulative_fees_data(profile_filter=None):
 
 def get_cumulative_hedge_data(profile_filter=None):
     """Calculates cumulative hedge results over time."""
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     events = [] 
     
     P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
@@ -786,7 +789,7 @@ def get_cumulative_hedge_data(profile_filter=None):
 
 def get_cumulative_farming_data(profile_filter=None):
     """Calculates cumulative farming results over time."""
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     events = [] 
     
     for client_id, data in clients_data.items():
@@ -839,7 +842,7 @@ def _aggregate_events_cumulative(events):
 
 def calculate_trader_stats():
     """Calculates aggregated statistics per trader."""
-    clients_data = get_all_clients()
+    clients_data = _get_cached_clients()
     traders_stats = {}
     
     for client_id, data in clients_data.items():

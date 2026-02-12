@@ -297,6 +297,10 @@
                         <div id="grand-total-deposits" class="stat-value-modern text-blue" style="color: #60a5fa;">$0.00</div>
                     </div>
                     <div class="stat-card-modern">
+                        <div class="stat-label-modern">Challenge Fees</div>
+                        <div id="grand-total-fees" class="stat-value-modern" style="color: #ef4444;">$0.00</div>
+                    </div>
+                    <div class="stat-card-modern">
                         <div class="stat-label-modern">Net Profit</div>
                         <div id="grand-total-net" class="stat-value-modern" style="color: #c084fc;">$0.00</div>
                     </div>
@@ -505,6 +509,7 @@
                     const t = fData.totals;
                     document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
                     document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
+                    document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
                     document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
                     document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
                     document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
