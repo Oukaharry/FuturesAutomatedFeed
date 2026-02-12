@@ -280,8 +280,8 @@ th:first-child {
 
 tr:last-child td { border-bottom: none; }
 
-tr:hover td { background-color: #f1f5f9; }
-tr:hover td:first-child { background-color: #f8fafc; }
+tr:hover td { background-color: rgba(255, 255, 255, 0.05); }
+tr:hover td:first-child { background-color: rgba(255, 255, 255, 0.07); }
 
 .text-right { text-align: right; }
 .font-bold { font-weight: 600; }
@@ -653,14 +653,15 @@ input, select {
     font-size: 0.95rem;
     box-sizing: border-box;
     transition: all 0.2s;
-    background: #f8fafc;
+    background: rgba(15, 23, 42, 0.6);
+    color: var(--text-primary);
 }
 
 input:focus, select:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-    background: #ffffff;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+    background: rgba(15, 23, 42, 0.8);
 }
 
 button {
@@ -801,33 +802,34 @@ button:hover {
 
 /* Admin Card Container */
 .admin-card {
-    background: #ffffff !important;
-    border: 1px solid #e2e8f0 !important; /* Clean light border */
-    border-radius: 16px; /* Larger radius for modern look */
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); /* Soft shadow */
+    background: var(--card-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 16px;
+    box-shadow: var(--shadow-sm);
     margin-bottom: 30px;
-    padding: 0; /* Remove padding here, we'll handle inner spacing */
+    padding: 0;
     display: flex;
     flex-direction: column;
     position: relative;
-    overflow: visible !important; /* Allow popups/dropdowns if needed, or shadows */
+    overflow: visible !important;
     transition: box-shadow 0.3s ease;
 }
 
 .admin-card:hover {
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-lg), var(--shadow-glow);
+    border-color: rgba(251, 191, 36, 0.3) !important;
 }
 
 /* Admin Header Section */
 .admin-header {
-    background: #ffffff !important;
+    background: rgba(255, 255, 255, 0.02) !important;
     padding: 20px 24px !important;
-    border-bottom: 1px solid #f1f5f9 !important;
+    border-bottom: 1px solid var(--border-color) !important;
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: relative;
-    margin: 0 !important; /* Reset overrides */
+    margin: 0 !important;
     border-radius: 16px 16px 0 0 !important;
     overflow: hidden;
 }
@@ -854,15 +856,15 @@ button:hover {
 .admin-name {
     font-size: 1.25rem;
     font-weight: 800;
-    color: #1e293b;
+    color: var(--text-primary);
     letter-spacing: -0.02em;
 }
 
 .admin-email {
     font-size: 0.8rem;
-    color: #64748b;
+    color: var(--text-secondary);
     font-weight: 500;
-    background: #f1f5f9;
+    background: rgba(255, 255, 255, 0.05);
     padding: 4px 10px;
     border-radius: 99px;
     max-width: 200px; /* Force ellipsis if too long */
@@ -889,7 +891,7 @@ button:hover {
 /* Trader Section */
 .trader-list {
     padding: 24px;
-    background: #f8fafc; /* Subtle contrast background for content area */
+    background: rgba(0, 0, 0, 0.1); 
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
     gap: 20px;
@@ -897,7 +899,7 @@ button:hover {
 }
 
 .trader-item {
-    background: #ffffff !important;
+    background: var(--card-bg) !important;
     border: 1px solid #cbd5e1 !important; /* Slightly clearer border */
     border-radius: 12px;
     padding: 0 !important; /* Reset padding for header/content split */
