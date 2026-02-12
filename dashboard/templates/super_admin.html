@@ -429,91 +429,117 @@
             tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
             modal.style.display = 'block';
 
-            // process in next tick to prevent UI freeze
-            setTimeout(() => {
-                const rows = [];
-                
+            // Use requestAnimationFrame to let the "Loading..." render first
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    generateAndRenderRows(type, tbody);
+                }, 50);
+            });
+        }
+
+        function generateAndRenderRows(type, tbody) {
+            const rows = [];
+            
+            try {
                 if (type === 'admin') {
-                    document.getElementById('col-parent').style.display = 'none';
                     if(hierarchyData.admins) {
                         Object.entries(hierarchyData.admins).forEach(([name, data]) => {
                             rows.push({ name, email: data.email, parent: null, url: '/admin/' + name });
                         });
                     }
                 } else if (type === 'trader') {
-                    const colParent = document.getElementById('col-parent');
-                    colParent.style.display = 'table-cell'; 
-                    colParent.textContent = 'Admin';
                     if(hierarchyData.admins) {
                         Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
                             Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
-                                if (traderData && traderData.email !== undefined) {
-                                    rows.push({ name: traderName, email: traderData.email, parent: adminName, url: '/trader/' + traderName });
-                                } else if (typeof traderData === 'string') {
-                                    // Legacy support
-                                    rows.push({ name: traderName, email: '', parent: adminName, url: '/trader/' + traderName });
-                                } 
+                                let email = '';
+                                if (traderData && traderData.email !== undefined) email = traderData.email;
+                                rows.push({ name: traderName, email: email, parent: adminName, url: '/trader/' + traderName });
                             });
                         });
                     }
                 } else if (type === 'client') {
-                    const colParent = document.getElementById('col-parent');
-                    colParent.style.display = 'table-cell';
-                    colParent.textContent = 'Trader (Admin)';
-                    
                     if(hierarchyData.admins) {
-                        try {
-                            Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                                const traders = adminData.traders || {};
-                                Object.entries(traders).forEach(([traderName, traderData]) => {
-                                    let clients = [];
-                                    if (Array.isArray(traderData)) {
-                                        clients = traderData;
-                                    } else if (traderData && traderData.clients) {
-                                        clients = traderData.clients;
-                                    }
-                                    
-                                    if(Array.isArray(clients)){
-                                        clients.forEach(client => {
-                                            if (!client) return;
-                                            const cName = (typeof client === 'object') ? client.name : client;
-                                            const cEmail = (typeof client === 'object') ? client.email : '';
-                                            rows.push({ 
-                                                name: cName || 'Unknown', 
-                                                email: cEmail, 
-                                                parent: `${traderName} (${adminName})`,
-                                                url: '/dashboard/' + cName
-                                            });
+                        Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                            const traders = adminData.traders || {};
+                            Object.entries(traders).forEach(([traderName, traderData]) => {
+                                let clients = [];
+                                if (Array.isArray(traderData)) clients = traderData;
+                                else if (traderData && traderData.clients) clients = traderData.clients;
+                                
+                                if(Array.isArray(clients)){
+                                    clients.forEach(client => {
+                                        if (!client) return;
+                                        const cName = (typeof client === 'object') ? client.name : client;
+                                        const cEmail = (typeof client === 'object') ? client.email : '';
+                                        rows.push({ 
+                                            name: cName || 'Unknown', 
+                                            email: cEmail, 
+                                            parent: `${traderName} (${adminName})`,
+                                            url: '/dashboard/' + cName
                                         });
-                                    }
-                                });
+                                    });
+                                }
                             });
-                        } catch(e) { console.error("Error parsing clients", e); }
+                        });
                     }
                 }
+            } catch (err) {
+                console.error("Error generating rows:", err);
+                tbody.innerHTML = `<tr><td colspan="3" style="color:red; text-align:center;">Error: ${err.message}</td></tr>`;
+                return;
+            }
 
-                if (rows.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);">No ' + type + 's found</td></tr>';
-                } else {
-                    let html = '';
-                    rows.forEach(r => {
-                        let parentHtml = (type !== 'admin') ? `<td style="padding:12px;">${r.parent}</td>` : '';
-                        html += `
-                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                                <td style="padding:12px; color:var(--text-primary);">
-                                    <div style="font-weight:600;">${r.name}</div>
-                                    <div style="font-size:0.8rem; color:var(--text-secondary);">${r.email || ''}</div>
-                                </td>
-                                ${parentHtml}
-                                <td style="padding:12px; text-align:right;">
-                                    <a href="${r.url}" class="btn-gold" style="font-size:0.8rem; padding:4px 12px; text-decoration:none; display:inline-block;">Dashboard</a>
-                                </td>
-                            </tr>
-                        `;
-                    });
-                    tbody.innerHTML = html;
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);">No ' + type + 's found</td></tr>';
+                return;
+            }
+
+            // Clear loading spinner
+            tbody.innerHTML = '';
+
+            // Chunked Rendering to prevent freeze
+            const CHUNK_SIZE = 20; // Render 20 rows at a time
+            let index = 0;
+
+            function renderChunk() {
+                const chunk = rows.slice(index, index + CHUNK_SIZE);
+                if (chunk.length === 0) return;
+
+                let html = '';
+                chunk.forEach(r => {
+                    let parentHtml = (type !== 'admin') ? `<td style="padding:12px;">${r.parent || '-'}</td>` : '';
+                    // Conditional display logic
+                    const colParentHeader = document.getElementById('col-parent');
+                    if (type === 'admin') colParentHeader.style.display = 'none';
+                    else {
+                        colParentHeader.style.display = 'table-cell';
+                        colParentHeader.textContent = (type==='client') ? 'Trader/Admin' : 'Admin';
+                    }
+
+                    html += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:12px; color:var(--text-primary);">
+                                <div style="font-weight:600;">${r.name}</div>
+                                <div style="font-size:0.8rem; color:var(--text-secondary);">${r.email || ''}</div>
+                            </td>
+                            ${parentHtml}
+                            <td style="padding:12px; text-align:right;">
+                                <a href="${r.url}" class="btn-gold" style="font-size:0.8rem; padding:4px 12px; text-decoration:none; display:inline-block;">Dashboard</a>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                tbody.insertAdjacentHTML('beforeend', html);
+                index += CHUNK_SIZE;
+
+                if (index < rows.length) {
+                    requestAnimationFrame(renderChunk);
                 }
-            }, 10);
+            }
+
+            // Start rendering
+            renderChunk();
         }
         function closeUserListModal() {
             document.getElementById('userListModal').style.display = 'none';
