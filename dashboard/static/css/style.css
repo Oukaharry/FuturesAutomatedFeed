@@ -1248,4 +1248,115 @@ button:hover {
 }
 
 
-/* End of styles */
+/* End of styles - Legacy */
+
+/* --- BallerQuotes Luxury Tables (Global) --- */
+
+.finance-table, .wide-table, .user-list-table {
+    width: 100%;
+    border-collapse: separate; /* Required for border-radius on headers */
+    border-spacing: 0;
+    margin-top: 20px;
+    background: var(--card-bg);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-md);
+    overflow: hidden; /* For rounded corners */
+}
+
+/* Base Header Style */
+.finance-table th, .wide-table th, .user-list-table th {
+    background: #1e293b; /* Dark Slate default */
+    color: #94a3b8;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-right: 1px solid rgba(255,255,255,0.05);
+    padding: 14px 12px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.finance-table td, .user-list-table td {
+    padding: 14px 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.finance-table tr:last-child td {
+    border-bottom: none;
+}
+
+.finance-table tr:hover, .user-list-table tr:hover {
+    background: rgba(255,255,255,0.03);
+}
+
+/* Group Header Base (The "Glowing" Headers) */
+.finance-table th.group-header, .wide-table th.group-header {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: white;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    border-bottom: none;
+    padding: 16px;
+}
+
+/* 1. Evaluation Info / Accounts (Midnight Blue - Wisdom/Foundation) */
+th.group-header-blue, .tr-info th {
+    background: linear-gradient(135deg, #1e3a8a, #0f172a) !important;
+    border-bottom: 3px solid #3b82f6 !important;
+    box-shadow: inset 0 -10px 20px -10px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* 2. Evaluation Phase / Performance (Emerald Green - The Money Path) */
+th.group-header-green, .tr-perf th {
+    background: linear-gradient(135deg, #065f46, #064e3b) !important;
+    border-bottom: 3px solid #10b981 !important;
+    box-shadow: inset 0 -10px 20px -10px rgba(16, 185, 129, 0.3) !important;
+}
+
+/* 3. Funded Phase / Income (Baller Gold - Success/Prestige) */
+th.group-header-orange, .tr-income th {
+    background: linear-gradient(135deg, #78350f, #451a03) !important;
+    border-bottom: 3px solid #fbbf24 !important;
+    color: #fbbf24 !important;
+    text-shadow: 0 0 10px rgba(251, 191, 36, 0.3) !important;
+    box-shadow: inset 0 -10px 20px -10px rgba(251, 191, 36, 0.2) !important;
+}
+
+/* 4. Farming Phase / Legacy (Royal Purple) */
+th.group-header-purple {
+    background: linear-gradient(135deg, #581c87, #3b0764) !important;
+    border-bottom: 3px solid #a855f7 !important;
+    box-shadow: inset 0 -10px 20px -10px rgba(168, 85, 247, 0.3) !important;
+}
+
+/* Input Fields inside table (Dark Mode) */
+input[type="date"].cell-input, select.cell-input, input[type="text"].cell-input {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    color: white !important;
+    padding: 8px !important;
+    border-radius: 6px !important;
+    transition: all 0.2s ease !important;
+}
+
+input.cell-input:focus, select.cell-input:focus {
+    background: #0f172a !important;
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15) !important;
+    outline: none !important;
+}
+
+/* Date Picker Dark Mode Indicator */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(0.7);
+    cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+@

@@ -348,12 +348,12 @@
                 <span onclick="closeUserListModal()" style="cursor: pointer; font-size: 1.5rem; color: var(--text-secondary);">&times;</span>
             </div>
             <div class="modal-body">
-                <table class="user-list-table" style="width: 100%; border-collapse: collapse;">
+                <table class="user-list-table">
                     <thead>
-                        <tr style="text-align: left; border-bottom: 1px solid var(--border-color); color: var(--text-secondary);">
-                            <th style="padding: 10px;">User</th>
-                            <th id="col-parent" style="padding: 10px;">Parent</th>
-                            <th style="padding: 10px; text-align: right;">Actions</th>
+                        <tr>
+                            <th class="group-header group-header-blue" style="text-align: left;">User</th>
+                            <th class="group-header group-header-blue" id="col-parent" style="text-align: left;">Parent</th>
+                            <th class="group-header group-header-blue" style="text-align: right;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="userListBody"></tbody>

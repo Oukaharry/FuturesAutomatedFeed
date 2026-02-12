@@ -7,40 +7,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        .finance-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .finance-table th, .finance-table td {
-            padding: 14px 16px;
-            text-align: right;
-            border-bottom: 1px solid #e9ecef;
-            font-size: 0.95rem;
-            vertical-align: middle;
-        }
-        .finance-table th {
-            text-align: center;
-            background-color: #f8fafc;
-            color: #475569;
-            font-weight: 600;
-            white-space: nowrap;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 0.05em;
-            border-bottom: 2px solid #e2e8f0;
-        }
-        .finance-table td:first-child {
-            text-align: left;
-            font-weight: 600;
-            color: #1e293b;
-        }
-        .finance-table tr:hover {
-            background-color: #f8fafc;
-        }
+        /* Table Styles inherited from style.css (ballerquotes) */
+        
         .positive { color: #10b981; font-weight: 500; }
         .negative { color: #ef4444; font-weight: 500; }
         .neutral { color: #94a3b8; }
@@ -59,9 +27,8 @@
         .table-responsive {
             overflow-x: auto;
             border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            background: white;
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Shadow fallback */
+            /* Background handled by global css */
         }
         .summary-cards {
             display: grid;
@@ -362,22 +329,26 @@
                 <thead>
                     <tr>
                         <th rowspan="2" style="vertical-align: middle; text-align: left; padding-left: 20px; width: 250px;">Prop Firm</th>
-                        <th colspan="2" style="background-color: #f1f5f9;">Accounts</th>
-                        <th colspan="3">Performance Status</th>
-                        <th colspan="2" style="background-color: #f1f5f9;">Costs</th>
-                        <th colspan="3">Income / Results</th>
-                        <th rowspan="2" style="vertical-align: middle; width: 150px; background-color: #f8fafc;">Net Profit</th>
-                        <th rowspan="2" style="vertical-align: middle; background-color: #f1f5f9;">EV</th>
-                        <th rowspan="2" style="vertical-align: middle; background-color: #f1f5f9;">EV/Day</th>
+                        <th colspan="2" class="group-header group-header-blue">Accounts</th>
+                        <th colspan="3" class="group-header group-header-green">Performance Status</th>
+                        <th colspan="2" class="group-header group-header-purple">Costs</th>
+                        <th colspan="3" class="group-header group-header-orange">Income / Results</th>
+                        <th rowspan="2" class="group-header" style="vertical-align: middle; width: 150px; background: #0f172a;">Net Profit</th>
+                        <th rowspan="2" class="group-header" style="vertical-align: middle; background: #1e293b;">EV</th>
+                        <th rowspan="2" class="group-header" style="vertical-align: middle; background: #1e293b;">EV/Day</th>
                     </tr>
                     <tr>
-                        <th style="background-color: #f1f5f9;">Total</th>
-                        <th style="background-color: #f1f5f9;">Active</th>
+                        <!-- Accounts -->
+                        <th>Total</th>
+                        <th>Active</th>
+                        <!-- Performance -->
                         <th>Pass</th>
                         <th>Fail</th>
                         <th>Rate</th>
-                        <th style="background-color: #f1f5f9;">Eval Fees</th>
-                        <th style="background-color: #f1f5f9;">Act. Fees</th>
+                        <!-- Costs -->
+                        <th>Eval Fees</th>
+                        <th>Act. Fees</th>
+                        <!-- Income -->
                         <th>Payouts</th>
                         <th>Hedge Res.</th>
                         <th>Farm Res.</th>
