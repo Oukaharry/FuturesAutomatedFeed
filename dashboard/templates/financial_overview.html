@@ -209,42 +209,59 @@
         /* Charts Backgrounds if transparent, they work. If specific bg set in JS, might need more work. */
     </style>
 </head>
-<body style="background-color: #f1f5f9;">
-    <div class="container" style="max-width: 1600px; padding: 40px;">
-
-        <nav style="background: white; padding: 15px 30px; margin-bottom: 30px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 20px; align-items: center;">
-            <a href="/super_admin" style="text-decoration: none; color: #64748b; font-weight: 600;">Dashboard</a>
-            <span style="color: #cbd5e1;">|</span>
-            <a href="/financial_overview" style="text-decoration: none; color: #0284c7; font-weight: 700;">Prop Firm Overview</a>
-            <span style="color: #cbd5e1;">|</span>
-            <a href="/payout_history" style="text-decoration: none; color: #64748b; font-weight: 600;">Payout History</a>
-            <span style="color: #cbd5e1;">|</span>
-            <a href="/client_performance" style="text-decoration: none; color: #64748b; font-weight: 600;">Client Performance</a>
+<body>
+    <div class="container">
+        <!-- Modern Navigation -->
+        <nav class="modern-nav">
+            <div class="brand">
+                <i class="fas fa-chart-pie" style="color: var(--accent-color); margin-right: 10px;"></i>
+                <span>BallerQuotes <span style="font-weight: 400; font-size: 0.9em; opacity: 0.6;">Super Admin</span></span>
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 24px;">
+                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="/financial_overview" class="tab-btn active"><i class="fas fa-coins"></i> Prop Firms</a>
+                <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+                
+                <div style="height: 32px; width: 1px; background: var(--border-color);"></div>
+                
+                <a href="/logout" class="tab-btn" style="padding: 8px 16px; border: 1px solid var(--border-color); border-radius: 8px;">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
         </nav>
 
-        <header style="background: transparent; box-shadow: none; border: none; padding: 0; margin-bottom: 40px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <h1 style="font-size: 2rem; color: #0f172a; margin: 0;">Financial Overview by Prop Firm</h1>
+        <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px;">
+            <div>
+                <h1 style="font-size: 2rem; margin: 0; color: #fff;">Financial Overview</h1>
+                <p style="color: var(--text-secondary); margin-top: 5px;">Consolidated report across all clients and prop firms</p>
+            </div>
+            
+            <!-- Filters Control Group -->
+            <div style="display: flex; align-items: center; gap: 20px; background: rgba(30,41,59,0.5); padding: 10px 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+                
+                <!-- Profile Toggle -->
+                <div class="toggle-group">
+                    <span style="color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; margin-right: 10px; align-self: center;">DATA SOURCE:</span>
+                    <a href="?profile=ALL" class="toggle-btn {% if selected_profile == 'ALL' %}active{% endif %}" style="text-decoration: none;">ALL</a>
+                    <a href="?profile=BEF" class="toggle-btn {% if selected_profile == 'BEF' %}active{% endif %}" style="text-decoration: none;">BEF</a>
+                    <a href="?profile=PRIVATE" class="toggle-btn {% if selected_profile == 'PRIVATE' %}active{% endif %}" style="text-decoration: none;">PRIVATE</a>
                 </div>
 
-                <!-- Profile Filter -->
+                <div style="width: 1px; height: 24px; background: var(--border-color);"></div>
+
+                <!-- Prop Firm EV/Data Filter -->
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <form action="/financial_overview" method="get" style="display: flex; align-items: center; gap: 10px;">
-                        <label for="profile" style="color: #64748b; font-weight: 600;">Profile:</label>
-                        <select name="profile" id="profile" onchange="this.form.submit()" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #e2e8f0; color: #475569; font-weight: 500;">
-                            <option value="ALL" {% if selected_profile == 'ALL' %}selected{% endif %}>ALL</option>
-                            <option value="BEF" {% if selected_profile == 'BEF' %}selected{% endif %}>BEF</option>
-                            <option value="PRIVATE" {% if selected_profile == 'PRIVATE' %}selected{% endif %}>Private</option>
-                        </select>
-                    </form>
-                </div>
-
-                <div style="color: #64748b; font-size: 0.9rem;">
-                    Consolidated report across all clients
+                    <span style="color: var(--text-secondary); font-size: 0.85rem; font-weight: 600;">FIRM FOCUS:</span>
+                    <select id="firmFocusSelect" onchange="updateFirmDisplay()" style="background: var(--bg-color); color: var(--text-primary); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 6px; outline: none; font-family: var(--font-family);">
+                        <option value="ALL">All Firms (Global)</option>
+                        {% for firm in overview.keys()|sort %}
+                        <option value="{{ firm }}">{{ firm }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
             </div>
-        </header>
+        </div>
         
         <!-- Summary Statistics Calculations in Jinja -->
         {% set ns = namespace(
@@ -295,20 +312,28 @@
         <div class="summary-cards">
             <div class="summary-card">
                 <div class="card-label">Total Payouts</div>
-                <div class="card-value" style="color: #10b981;">{{ "$%0.2f"|format(ns.pay) }}</div>
+                <div class="card-value" id="card-payouts" style="color: #10b981;">{{ "$%0.2f"|format(ns.pay) }}</div>
             </div>
             <div class="summary-card">
                 <div class="card-label">Net Profit</div>
-                <div class="card-value" style="color: #3b82f6;">{{ "$%0.2f"|format(ns.net) }}</div>
+                <div class="card-value" id="card-net" style="color: #3b82f6;">{{ "$%0.2f"|format(ns.net) }}</div>
+            </div>
+             <div class="summary-card">
+                <div class="card-label">Exp. Value (EV)</div>
+                <div class="card-value" id="card-ev" style="color: #fbbf24;">{{ "$%0.2f"|format(global_stats.expected_value|default(0)) }}</div>
+            </div>
+             <div class="summary-card">
+                <div class="card-label">EV / Day</div>
+                <div class="card-value" id="card-ev-day" style="color: #fca5a5;">{{ "$%0.2f"|format(global_stats.ev_per_day|default(0)) }}</div>
             </div>
             <div class="summary-card">
                 <div class="card-label">Top Payer</div>
-                <div class="card-value" style="font-size: 1.4rem;">{{ ns.top_firm_name or "-" }}</div>
-                <div style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">{{ "$%0.2f"|format(ns.top_firm_val) }} paid out</div>
+                <div class="card-value" id="card-top-name" style="font-size: 1.4rem;">{{ ns.top_firm_name or "-" }}</div>
+                <div id="card-top-val" style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">{{ "$%0.2f"|format(ns.top_firm_val) }} paid out</div>
             </div>
             <div class="summary-card">
                 <div class="card-label">Total Fees</div>
-                <div class="card-value" style="color: #f59e0b;">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
+                <div class="card-value" id="card-fees" style="color: #f59e0b;">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
             </div>
         </div>
         <!-- Charts Section -->
@@ -742,7 +767,58 @@
                     }
                 }
             });
+
+            // Capture init values for global
+            const init_payouts = {{ ns.pay }};
+            const init_net = {{ ns.net }};
+            const init_fees = {{ ns.fees + ns.act }};
+            const init_ev = {{ global_stats.expected_value|default(0) }};
+            const init_ev_day = {{ global_stats.ev_per_day|default(0) }};
+            const init_top_name = "{{ ns.top_firm_name }}";
+            const init_top_val = {{ ns.top_firm_val|default(0) }};
+
+            // Global store
+            window.financialOverviewData = {{ overview|tojson }};
+            window.globalDataStore = {
+                payouts: init_payouts,
+                net: init_net,
+                fees: init_fees,
+                ev: init_ev,
+                ev_day: init_ev_day,
+                top_name: init_top_name,
+                top_val: init_top_val
+            };
         });
+
+        function updateFirmDisplay() {
+            const firmName = document.getElementById('firmFocusSelect').value;
+            const formatCurrency = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
+            
+            if (firmName === 'ALL') {
+                const g = window.globalDataStore;
+                document.getElementById('card-payouts').textContent = formatCurrency(g.payouts);
+                document.getElementById('card-net').textContent = formatCurrency(g.net);
+                document.getElementById('card-fees').textContent = formatCurrency(g.fees);
+                document.getElementById('card-ev').textContent = formatCurrency(g.ev);
+                document.getElementById('card-ev-day').textContent = formatCurrency(g.ev_day);
+                
+                document.getElementById('card-top-name').textContent = g.top_name || "-";
+                document.getElementById('card-top-val').textContent = formatCurrency(g.top_val) + " paid out";
+            } else {
+                const data = window.financialOverviewData[firmName];
+                if (!data) return;
+                
+                document.getElementById('card-payouts').textContent = formatCurrency(data.total_payouts);
+                document.getElementById('card-net').textContent = formatCurrency(data.net);
+                document.getElementById('card-fees').textContent = formatCurrency(data.total_fees + data.total_activation_fees);
+                document.getElementById('card-ev').textContent = formatCurrency(data.expected_value);
+                document.getElementById('card-ev-day').textContent = formatCurrency(data.ev_per_day);
+                
+                // For Top Payer Card -> Show current firm info
+                document.getElementById('card-top-name').textContent = firmName;
+                document.getElementById('card-top-val').textContent = formatCurrency(data.total_payouts) + " paid out";
+            }
+        }
     </script>
 </body>
 </html>

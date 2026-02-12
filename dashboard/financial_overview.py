@@ -83,6 +83,297 @@ def parse_currency(value_str):
     except ValueError:
         return 0.0
 
+@cache_result(ttl=300)
+def calculate_all_financials(profile_filter=None):
+    """
+    Optimized aggregator that computes all financial metrics in a single pass.
+    Returns a dictionary containing all necessary datasets for the dashboard.
+    """
+    clients_data = _get_cached_clients()
+    
+    # Initialize containers
+    overview = {}
+    
+    # Time-series containers (list of (date, amount))
+    ts_payouts = []
+    ts_net_profit = [] # Events for net profit (payouts, hedges, farming, -fees)
+    ts_fees = []
+    ts_hedge = []
+    ts_farming = []
+    
+    # Deposits need special handling via deals
+    # We will do deposits separately or integrate if feasible. 
+    # For now, let's keep deposits separate or integrate if we process deals here too.
+    # To maximize speed, let's process deals here too if possible.
+    
+    from collections import defaultdict
+    deposits_daily = defaultdict(float)
+    
+    # Constants
+    P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
+    FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
+
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        # --- Profile Filtering ---
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get('identity', {})
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if not client_profile: client_profile = "PRIVATE"
+            if client_profile != profile_filter.upper():
+                continue
+        
+        # --- 1. Process Evaluations (Sheet Data) ---
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Prop Firm Overview Logic
+            raw_prop_firm = ev.get('Prop Firm')
+            if raw_prop_firm and raw_prop_firm != "-" and str(raw_prop_firm).lower() != "prop firm":
+                prop_firm = normalize_prop_firm_name(raw_prop_firm)
+                
+                if prop_firm not in overview:
+                    overview[prop_firm] = {
+                        "total_fees": 0.0,
+                        "total_activation_fees": 0.0,
+                        "total_payouts": 0.0,
+                        "net": 0.0,
+                        "account_count": 0,
+                        "hedge_results": 0.0,
+                        "farming_results": 0.0,
+                        "active_accounts": 0,
+                        "passed_accounts": 0,
+                        "failed_accounts": 0,
+                        "ended_count": 0,
+                        "earliest_date": None,
+                        "clients": set()
+                    }
+                
+                # Financials for Overview
+                fee = parse_currency(ev.get('Fee'))
+                activation_fee = parse_currency(ev.get('Activation Fee'))
+                
+                payouts = 0.0
+                for i in range(1, 10):
+                    payouts += parse_currency(ev.get(f'Payout {i}'))
+                
+                p1_hedges = sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS)
+                funded_hedges = sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
+                hedge_results = p1_hedges + funded_hedges
+                
+                farming_results = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+                
+                # Status Logic
+                status_p1 = str(ev.get('Status P1', '')).strip()
+                status_funded = str(ev.get('Status', '')).strip()
+                
+                is_p1_fail = status_p1 == 'Fail'
+                is_funded_fail = status_funded == 'Fail'
+                is_funded_completed = status_funded == 'Completed'
+                is_funded_ended = is_funded_fail or is_funded_completed
+                is_in_progress = not is_p1_fail and not is_funded_ended
+                is_passed_p1 = status_p1 == 'Pass' or status_p1.lower() == 'pass'
+                
+                target = overview[prop_firm]
+                target["total_fees"] += fee
+                target["total_activation_fees"] += activation_fee
+                target["total_payouts"] += payouts
+                target["hedge_results"] += hedge_results
+                target["farming_results"] += farming_results
+                target["account_count"] += 1
+                target["clients"].add(client_id)
+                
+                if is_in_progress: target["active_accounts"] += 1
+                if is_passed_p1: target["passed_accounts"] += 1
+                if is_p1_fail or is_funded_fail: target["failed_accounts"] += 1
+                if is_p1_fail or is_funded_ended: target["ended_count"] += 1
+                
+                # Overview Earliest Date
+                d_str = ev.get('Date Started') or ev.get('Date')
+                if d_str:
+                    d_obj = parse_date(d_str)
+                    if d_obj:
+                         if target["earliest_date"] is None or d_obj < target["earliest_date"]:
+                             target["earliest_date"] = d_obj
+
+            # Time Series Logic
+            # Dates
+            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+            date_started = parse_date(ev.get('Date Started'))
+            date_ended = parse_date(ev.get('Date Ended'))
+            date_started_funded = parse_date(ev.get('Date Started.1'))
+            date_ended_funded = parse_date(ev.get('Date Ended.1'))
+            base_date = date_purchased or date_started or datetime.now()
+
+            # 1. Fees
+            fee = parse_currency(ev.get('Fee'))
+            act_fee = parse_currency(ev.get('Activation Fee'))
+            total_fee = fee + act_fee
+            if total_fee > 0:
+                fee_date = date_purchased or base_date
+                ts_fees.append((fee_date, total_fee))
+                ts_net_profit.append((fee_date, -total_fee)) # Cost
+
+            # 2. Payouts
+            for i in range(1, 10):
+                d_str = ev.get(f'Date {i}')
+                amt = parse_currency(ev.get(f'Payout {i}'))
+                if amt > 0:
+                    d = parse_date(d_str)
+                    final_d = d or base_date
+                    ts_payouts.append((final_d, amt))
+                    ts_net_profit.append((final_d, amt))
+            
+            # 3. Hedge Results
+            p1_profit = sum(parse_currency(ev.get(c)) for c in P1_HEDGE_COLS)
+            if p1_profit != 0:
+                d = date_ended or date_started or base_date
+                ts_hedge.append((d, p1_profit))
+                ts_net_profit.append((d, p1_profit))
+            
+            fd_profit = sum(parse_currency(ev.get(c)) for c in FUNDED_HEDGE_COLS)
+            if fd_profit != 0:
+                d = date_ended_funded or date_started_funded or base_date
+                ts_hedge.append((d, fd_profit))
+                ts_net_profit.append((d, fd_profit))
+
+            # 4. Farming Results
+            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+            if farming_calc != 0:
+                d = date_ended_funded or date_ended or base_date
+                ts_farming.append((d, farming_calc))
+                ts_net_profit.append((d, farming_calc))
+
+        # --- 2. Process Deals (Deposits) ---
+        deals_json = data.get('deals', '[]')
+        try:
+            deals = json.loads(deals_json) if isinstance(deals_json, str) else deals_json
+        except:
+            deals = []
+            
+        if deals:
+            for deal in deals:
+                d_time = deal.get('time')
+                if not d_time: continue
+                
+                try:
+                    dt = datetime.fromtimestamp(int(d_time))
+                    date_str = dt.strftime("%Y-%m-%d")
+                except:
+                    continue
+                
+                d_type = deal.get('type')
+                def _f(val):
+                    try: return float(val)
+                    except: return 0.0
+                profit = _f(deal.get('profit', 0))
+                
+                # Check for deposit
+                is_balance = str(d_type) == '2' or str(d_type).upper() == 'BALANCE'
+                if is_balance and profit > 0:
+                     deposits_daily[date_str] += profit
+
+    # --- Finalize Overview Data ---
+    global_stats = {
+        "net": 0.0,
+        "ended": 0,
+        "earliest": None,
+        "expected_value": 0.0,
+        "ev_per_day": 0.0
+    }
+
+    for firm in overview:
+        data = overview[firm]
+        data["net"] = data["total_payouts"] + data["hedge_results"] + data["farming_results"] - (data["total_fees"] + data["total_activation_fees"])
+        
+        # Accumulate global
+        global_stats["net"] += data["net"]
+        global_stats["ended"] += data["ended_count"]
+        
+        if data.get("earliest_date"):
+            if global_stats["earliest"] is None or data["earliest_date"] < global_stats["earliest"]:
+                global_stats["earliest"] = data["earliest_date"]
+        
+        ended = data.get("ended_count", 0)
+        data["expected_value"] = data["net"] / ended if ended > 0 else 0.0
+        
+        data["ev_per_day"] = 0.0
+        if data.get("earliest_date"):
+            days = (datetime.now() - data["earliest_date"]).days
+            if days > 0:
+                data["ev_per_day"] = data["net"] / days
+        
+        if "earliest_date" in data: del data["earliest_date"]
+        data["total_clients"] = len(data["clients"])
+        del data["clients"]
+        
+    # Finalize Global Stats
+    if global_stats["ended"] > 0:
+        global_stats["expected_value"] = global_stats["net"] / global_stats["ended"]
+        
+    if global_stats["earliest"]:
+        days = (datetime.now() - global_stats["earliest"]).days
+        if days > 0:
+            global_stats["ev_per_day"] = global_stats["net"] / days
+    # Remove datetime object before return
+    if "earliest" in global_stats: del global_stats["earliest"]
+
+    # --- Finalize Time Series ---
+    def process_ts(events):
+        if not events: return [], []
+        events.sort(key=lambda x: x[0])
+        from collections import defaultdict
+        daily = defaultdict(float)
+        for dt, val in events:
+            daily[dt.strftime("%Y-%m-%d")] += val
+        
+        dates = []
+        vals = []
+        cum = 0.0
+        for day in sorted(daily.keys()):
+            cum += daily[day]
+            dates.append(day)
+            vals.append(cum)
+        return dates, vals
+    
+    # Process Deposits from simple dict
+    def process_deposits_dict(d_dict):
+        if not d_dict: return [], []
+        dates = []
+        vals = []
+        cum = 0.0
+        for day in sorted(d_dict.keys()):
+            cum += d_dict[day]
+            dates.append(day)
+            vals.append(cum)
+        return dates, vals
+
+    payouts_dates, payouts_values = process_ts(ts_payouts)
+    fees_dates, fees_values = process_ts(ts_fees)
+    hedge_dates, hedge_values = process_ts(ts_hedge)
+    farming_dates, farming_values = process_ts(ts_farming)
+    net_dates, net_values = process_ts(ts_net_profit)
+    dep_dates, dep_values = process_deposits_dict(deposits_daily)
+    
+    # Growth data usually refers to Net Profit (or Equity?)
+    # In original: get_portfolio_growth_data was (Payouts - Fees) basically
+    # But get_cumulative_trading_profit was the full net profit.
+    # The chart allows selecting metric.
+    # We will pass 'net_dates' as 'growth_dates' for default view.
+    
+    return {
+        "overview": overview,
+        "global_stats": global_stats,
+        "payouts": (payouts_dates, payouts_values),
+        "fees": (fees_dates, fees_values),
+        "hedge": (hedge_dates, hedge_values),
+        "farming": (farming_dates, farming_values),
+        "net_profit": (net_dates, net_values),
+        "deposits": (dep_dates, dep_values),
+        "growth": (net_dates, net_values) # Default growth
+    }
+
 def normalize_prop_firm_name(name):
     """
     Normalizes prop firm names to merge duplicates.

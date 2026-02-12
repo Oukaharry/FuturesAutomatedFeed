@@ -9,7 +9,7 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime, timedelta
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -864,20 +864,23 @@ def financial_overview():
          return redirect('/')
     
     profile_filter = request.args.get('profile', 'ALL')
-    overview_data = calculate_propfirm_overview(profile_filter=profile_filter)
     
-    # Get growth chart data
-    growth_dates, growth_values = get_portfolio_growth_data(profile_filter=profile_filter)
-    payouts_dates, payouts_values = get_payouts_growth_data(profile_filter=profile_filter)
-    net_profit_dates, net_profit_values = get_cumulative_trading_profit(profile_filter=profile_filter)
-    deposits_dates, deposits_values = get_cumulative_deposits(profile_filter=profile_filter)
+    # NEW: Use optimized single-pass aggregator
+    all_data = calculate_all_financials(profile_filter=profile_filter)
     
-    fees_dates, fees_values = get_cumulative_fees_data(profile_filter=profile_filter)
-    hedge_dates, hedge_values = get_cumulative_hedge_data(profile_filter=profile_filter)
-    farming_dates, farming_values = get_cumulative_farming_data(profile_filter=profile_filter)
+    overview_data = all_data['overview']
+    global_stats = all_data.get('global_stats', {})
+    growth_dates, growth_values = all_data['growth']
+    payouts_dates, payouts_values = all_data['payouts']
+    net_profit_dates, net_profit_values = all_data['net_profit']
+    deposits_dates, deposits_values = all_data['deposits']
+    fees_dates, fees_values = all_data['fees']
+    hedge_dates, hedge_values = all_data['hedge']
+    farming_dates, farming_values = all_data['farming']
     
     return render_template('financial_overview.html', 
                            overview=overview_data,
+                           global_stats=global_stats,
                            selected_profile=profile_filter,
                            growth_dates=growth_dates,
                            growth_values=growth_values,
