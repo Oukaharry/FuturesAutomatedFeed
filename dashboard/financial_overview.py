@@ -1,7 +1,50 @@
 from dashboard.database import get_all_clients
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
+import functools
+import time
+
+# --- Simple In-Memory Cache to fix performance ---
+class SimpleCache:
+    def __init__(self):
+        self._cache = {}
+        self._ttl = 300 # 5 minutes default
+
+    def get(self, key):
+        if key in self._cache:
+            data, expiry = self._cache[key]
+            if time.time() < expiry:
+                return data
+            else:
+                del self._cache[key]
+        return None
+
+    def set(self, key, value, ttl=None):
+        expiration = time.time() + (ttl or self._ttl)
+        self._cache[key] = (value, expiration)
+
+    def clear(self):
+        self._cache = {}
+
+_overview_cache = SimpleCache()
+
+def cache_result(ttl=300):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create a cache key based on function name and arguments
+            key = f"{func.__name__}:{str(args)}:{str(kwargs)}"
+            cached = _overview_cache.get(key)
+            if cached is not None:
+                return cached
+            
+            result = func(*args, **kwargs)
+            _overview_cache.set(key, result, ttl)
+            return result
+        return wrapper
+    return decorator
+# ------------------------------------------------
 
 def parse_currency(value_str):
     """
@@ -156,6 +199,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
     payouts_list.sort(key=lambda x: x['date'], reverse=True)
     return payouts_list
 
+@cache_result(ttl=300)
 def get_payouts_growth_data(profile_filter=None):
     """
     Calculates cumulative payouts over time (ignoring fees).
@@ -279,6 +323,7 @@ def get_mt5_deals_data(profile_filter=None):
                 
     return deposits_daily, profit_daily
 
+@cache_result(ttl=300)
 def get_cumulative_deposits(profile_filter=None):
     """Calculates cumulative deposits over time."""
     deposits_daily, _ = get_mt5_deals_data(profile_filter)
@@ -311,6 +356,7 @@ def parse_date(date_str):
     except:
         return None
 
+@cache_result(ttl=300)
 def get_cumulative_trading_profit(profile_filter=None):
     """
     Calculates cumulative Net Profit over time based on Payouts, Hedge Results, Farming, and Fees.
@@ -414,6 +460,7 @@ def get_cumulative_trading_profit(profile_filter=None):
         
     return dates, values
 
+@cache_result(ttl=300)
 def get_portfolio_growth_data(profile_filter=None):
     """
     Calculates cumulative portfolio growth over time.
@@ -497,6 +544,7 @@ def get_portfolio_growth_data(profile_filter=None):
         
     return dates, values
 
+@cache_result(ttl=300)
 def calculate_propfirm_overview(profile_filter=None):
     """
     Aggregates financial data by Prop Firm.
