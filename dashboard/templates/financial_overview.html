@@ -96,24 +96,26 @@
         .text-red-bright { color: #f87171 !important; }
         .bg-dark { background-color: #0f172a !important; }
         
+        /* Updated Toggle Group for Dark Theme */
         .toggle-group {
             display: flex;
             gap: 5px;
+            align-items: center;
         }
         .toggle-btn {
-            background: #f1f5f9;
-            border: 1px solid #e2e8f0;
+            background: rgba(255,255,255,0.05); /* Transparent dark */
+            border: 1px solid transparent;
             padding: 4px 12px;
             border-radius: 6px;
             cursor: pointer;
             font-size: 0.8rem;
-            color: #64748b;
+            color: #94a3b8; /* text-secondary */
             font-weight: 500;
             transition: all 0.2s;
         }
         .toggle-btn:hover {
-            background: #e2e8f0;
-            color: #475569;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
         }
         .toggle-btn.active {
             background: #3b82f6;
@@ -246,9 +248,9 @@
                     <!-- Data Source Filter (Moved Here) -->
                     <div class="toggle-group" style="background: rgba(15, 23, 42, 0.6); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
                         <span style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; margin-right: 8px; align-self: center;">PROFILE:</span>
-                        <a href="?profile=ALL" class="toggle-btn {% if selected_profile == 'ALL' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">ALL</a>
-                        <a href="?profile=BEF" class="toggle-btn {% if selected_profile == 'BEF' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">BEF</a>
-                        <a href="?profile=PRIVATE" class="toggle-btn {% if selected_profile == 'PRIVATE' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">PRIVATE</a>
+                        <a href="?profile=ALL" class="toggle-btn {% if selected_profile|upper == 'ALL' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">ALL</a>
+                        <a href="?profile=BEF" class="toggle-btn {% if selected_profile|upper == 'BEF' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">BEF</a>
+                        <a href="?profile=PRIVATE" class="toggle-btn {% if selected_profile|upper == 'PRIVATE' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">PRIVATE</a>
                     </div>
     
                     <!-- Firm Filter -->

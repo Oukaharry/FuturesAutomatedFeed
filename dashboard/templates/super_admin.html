@@ -413,44 +413,60 @@
         
         // Modal Logic
         function openUserListModal(type) {
+            const modal = document.getElementById('userListModal');
             document.getElementById('modalTitle').textContent = type.toUpperCase() + 'S';
-            document.getElementById('userListModal').style.display = 'block';
             
-            // Populate Modal
-            const tbody = document.getElementById('userListBody');
-            const colParent = document.getElementById('col-parent');
-            tbody.innerHTML = '';
+            // Build content off-screen first to avoid layout thrashing
+            const rows = [];
             
-            let rows = [];
-             if (type === 'admin') {
-                colParent.style.display = 'none';
+            if (type === 'admin') {
+                document.getElementById('col-parent').style.display = 'none';
                 if(hierarchyData.admins) {
                     Object.entries(hierarchyData.admins).forEach(([name, data]) => {
                         rows.push({ name, email: data.email, parent: null });
                     });
                 }
             } else if (type === 'trader') {
+                const colParent = document.getElementById('col-parent');
                 colParent.style.display = 'table-cell'; 
                 colParent.textContent = 'Admin';
                 if(hierarchyData.admins) {
                     Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
                         Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
-                            rows.push({ name: traderName, email: traderData.email, parent: adminName });
+                            if (traderData && traderData.email !== undefined) {
+                                rows.push({ name: traderName, email: traderData.email, parent: adminName });
+                            } else if (typeof traderData === 'string') {
+                                // Legacy: just a name string? unlikely for trader dict
+                            } 
                         });
                     });
                 }
             } else if (type === 'client') {
+                const colParent = document.getElementById('col-parent');
                 colParent.style.display = 'table-cell';
                 colParent.textContent = 'Trader (Admin)';
+                
                 if(hierarchyData.admins) {
                     Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                        Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
-                            (traderData.clients || []).forEach(client => {
+                        const traders = adminData.traders || {};
+                        Object.entries(traders).forEach(([traderName, traderData]) => {
+                            // Handle both object format {clients: [...]} and array format [...]
+                            let clients = [];
+                            if (Array.isArray(traderData)) {
+                                clients = traderData;
+                            } else if (traderData && traderData.clients) {
+                                clients = traderData.clients;
+                            }
+                            
+                            clients.forEach(client => {
                                 // check if client is object or string
+                                // Safely handle null/undefined
+                                if (!client) return;
+                                
                                 const cName = (typeof client === 'object') ? client.name : client;
                                 const cEmail = (typeof client === 'object') ? client.email : '';
                                 rows.push({ 
-                                    name: cName, 
+                                    name: cName || 'Unknown', 
                                     email: cEmail, 
                                     parent: `${traderName} (${adminName})`
                                 });
@@ -460,28 +476,32 @@
                 }
             }
 
+            const tbody = document.getElementById('userListBody');
+            
             if (rows.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);">No ' + type + 's found</td></tr>';
             } else {
+                // Use a document fragment or single innerHTML set for performance
+                let html = '';
                 rows.forEach(r => {
-                    const tr = document.createElement('tr');
-                    tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-                    
                     let parentHtml = (type !== 'admin') ? `<td style="padding:12px;">${r.parent}</td>` : '';
-                    
-                    tr.innerHTML = `
-                        <td style="padding:12px; color:var(--text-primary);">
-                            <div style="font-weight:600;">${r.name}</div>
-                            <div style="font-size:0.8rem; color:var(--text-secondary);">${r.email || ''}</div>
-                        </td>
-                        ${parentHtml}
-                        <td style="padding:12px; text-align:right;">
-                            <span style="color:var(--text-secondary); font-size:0.8rem;">Use dashboard edit</span>
-                        </td>
+                    html += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding:12px; color:var(--text-primary);">
+                                <div style="font-weight:600;">${r.name}</div>
+                                <div style="font-size:0.8rem; color:var(--text-secondary);">${r.email || ''}</div>
+                            </td>
+                            ${parentHtml}
+                            <td style="padding:12px; text-align:right;">
+                                <span style="color:var(--text-secondary); font-size:0.8rem;">View in Dashboard</span>
+                            </td>
+                        </tr>
                     `;
-                    tbody.appendChild(tr);
                 });
+                tbody.innerHTML = html;
             }
+            
+            modal.style.display = 'block';
         }
         function closeUserListModal() {
             document.getElementById('userListModal').style.display = 'none';
