@@ -231,9 +231,12 @@
 <body>
     <div class="container">
         <nav class="modern-nav">
-            <div class="brand">
-                <i class="fas fa-chart-pie" style="color: var(--accent-color); margin-right: 10px;"></i>
-                <span>BallerQuotes <span style="font-weight: 400; font-size: 0.9em; opacity: 0.6;">Super Admin</span></span>
+            <div class="brand" style="display: flex; align-items: center;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 40px; margin-right: 12px;">
+                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
+                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
+                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
+                </div>
             </div>
             
             <div style="display: flex; align-items: center; gap: 8px;">
