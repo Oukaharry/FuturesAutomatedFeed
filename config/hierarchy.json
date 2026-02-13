@@ -48,7 +48,7 @@
                         {
                             "name": "Tsubasa",
                             "email": "tsubasa.mnb@gmail.com",
-                            "category": ""
+                            "category": "BEF"
                         },
                         {
                             "name": "Watkins",
@@ -83,7 +83,7 @@
                         {
                             "name": "Jake Lloyd",
                             "email": "jacoblloyd1214@gmail.com",
-                            "category": ""
+                            "category": "Private"
                         }
                     ]
                 },
@@ -153,7 +153,7 @@
                         {
                             "name": "Jiang Quang Huang",
                             "email": "riverflow2ocean@gmail.com",
-                            "category": ""
+                            "category": "BEF"
                         }
                     ]
                 }
@@ -168,12 +168,12 @@
                         {
                             "name": "Nikki",
                             "email": "",
-                            "category": ""
+                            "category": "Private"
                         },
                         {
                             "name": "Jon",
                             "email": "jonathon_rylatt@yahoo.com",
-                            "category": ""
+                            "category": "Private"
                         }
                     ]
                 },
@@ -293,9 +293,18 @@
                         {
                             "name": "Claire",
                             "email": "",
-                            "category": ""
+                            "category": "Private"
                         }
                     ]
+                }
+            }
+        },
+        "Harry": {
+            "email": "harryodhiambo17@gmail.com",
+            "traders": {
+                "Jane": {
+                    "email": "janehill@gmail.com",
+                    "clients": []
                 }
             }
         }

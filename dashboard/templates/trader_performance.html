@@ -6,6 +6,7 @@
     <title>Trader Performance - MT5 Hedging Engine</title>
     <!-- Use inline styles or copy from other templates if CSS file is generic -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         /* CSS Inherited from style.css */
         
@@ -40,37 +41,97 @@
             font-size: 0.9rem;
             transition: all 0.2s;
         }
-        .logout-btn-nav:hover {
-            background: #ef4444;
-            color: white;
+        /* Modern Navigation - Gemini Inspired (Updated to Match Super Admin) */
+        .modern-nav {
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important; /* Blue Gradient */
+            border: 1px solid rgba(255, 255, 255, 0.08); /* var(--border-color) */
+            border-radius: 8px; /* var(--radius) fallback */
+            padding: 12px 24px !important;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            color: #f8fafc;
         }
+
+        .tab-btn {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+        }
+        .tab-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .tab-btn.active {
+            background: #3b82f6 !important; /* Solide Blue */
+            color: #ffffff !important;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.6) !important;
+            padding: 6px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        /* Hide old nav classes */
+        .nav-brand, .action-link, .logout-btn-nav, .brand { display: none; }
     </style>
 </head>
 <body>
     <div class="container" style="max-width: 1600px; padding: 40px;">
         
         <nav class="modern-nav">
-            <div class="brand">
-                <i class="fas fa-chart-line" style="color: var(--accent-color);"></i>
-                <span>BallerQuotes <span style="font-weight: 400; font-size: 0.9em; opacity: 0.6;">Traders</span></span>
+             <div class="brand" style="display: flex; align-items: center;">
+                <!-- Logo with 'App Icon' styling to blend better -->
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
+                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
+                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
+                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
+                </div>
             </div>
-            <div class="nav-links" style="background: transparent;">
-                <a href="/super_admin" class="tab-btn">Dashboard</a>
-                <a href="/financial_overview" class="tab-btn">Prop Firms</a>
-                <a href="/payout_history" class="tab-btn">Payouts</a>
-                <a href="/client_performance" class="tab-btn">Clients</a>
-                <a href="/trader_performance" class="tab-btn active" style="color: var(--accent-color);">Traders</a>
-            </div>
-            <div class="nav-actions">
-                <a href="/super_admin/clients" class="action-link">Manage Clients</a>
-                <a href="/logout" class="logout-btn-nav">Logout</a>
+            
+            <div class="nav-links">
+                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
+                <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+                <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+                <a href="/trader_performance" class="tab-btn active"><i class="fas fa-user-tie"></i> Traders</a>
+                
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
+                
+                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
             </div>
         </nav>
 
-        <header style="margin-bottom: 40px; background: transparent; border: none; box-shadow: none; padding-left: 0;">
-            <h1 style="font-size: 2rem; color: #f8fafc; margin: 0;">Trader Performance</h1>
-            <div style="color: #94a3b8; font-size: 0.9rem; margin-top: 5px;">
-                Performance metrics aggregated by Trader
+        <header style="margin-bottom: 20px; background: transparent; border: none; box-shadow: none; padding-left: 0; display: flex; justify-content: space-between; align-items: flex-end;">
+            <div>
+                <h1 style="font-size: 1.5rem; color: #f8fafc; margin: 0; margin-bottom: 4px;">Trader Performance</h1>
+                <div style="color: #94a3b8; font-size: 0.9rem; margin: 0;">
+                    Performance metrics aggregated by Trader
+                </div>
+            </div>
+             <!-- Filter Section (Matches Client Performance style) -->
+             <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+                <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
+                <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
+                <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
             </div>
         </header>
 
@@ -98,16 +159,40 @@
                             <td style="text-align: right;" class="{{ 'danger' if trader.total_negative_hedge < -1 else 'neutral' }}">
                                 {{ "$%0.2f"|format(trader.total_negative_hedge) }}
                                 {% if trader.total_negative_hedge < -1 %}
-                                    <div style="margin-top: 5px; font-size: 0.85em; color: #ef4444; font-weight: normal; text-align: left; padding: 5px; background: #fef2f2; border-radius: 4px;">
+                                    <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 5px; align-items: flex-end;">
+                                        <div style="display: flex; gap: 5px;">
+                                            <button onclick="toggleDetails('details-{{ loop.index }}', this)" 
+                                                    style="padding: 4px 8px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; cursor: pointer; font-size: 0.75rem;">
+                                                Show List
+                                            </button>
+                                            <select onchange="filterDetails('details-{{ loop.index }}', this.value)" 
+                                                    style="padding: 2px 4px; background: #0f172a; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; font-size: 0.75rem; width: auto; min-width: 80px;">
+                                                <option value="all">All Time</option>
+                                                <option value="today">Today</option>
+                                                <option value="7days">Last 7 Days</option>
+                                                <option value="30days">Last 30 Days</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div id="details-{{ loop.index }}" style="display: none; margin-top: 8px; font-size: 0.85em; color: #fecaca; font-weight: normal; text-align: left; padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.2); max-height: 300px; overflow-y: auto;">
                                         {% for detail in trader.negative_hedge_details %}
-                                            <div style="border-bottom: 1px dotted #e5e7eb; padding: 2px 0;">
+                                            <div data-date="{{ detail.date }}" style="border-bottom: 1px dotted rgba(255,255,255,0.1); padding: 4px 0;">
                                                 {% if detail.link %}
                                                     <a href="{{ detail.link }}" target="_blank" style="text-decoration: none; color: inherit; display: block;" title="View in Sheet">
-                                                        <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }} 
-                                                        <span style="font-size: 0.8em; opacity: 0.7;">↗</span>
+                                                        <div style="display: flex; justify-content: space-between;">
+                                                            <span><strong>{{ detail.client }}</strong> ({{ detail.account }})</span>
+                                                            <span>{{ "$%0.2f"|format(detail.amount) }} ↗</span>
+                                                        </div>
+                                                        {% if detail.date %}
+                                                        <div style="font-size: 0.8em; opacity: 0.6;">{{ detail.date }}</div>
+                                                        {% endif %}
                                                     </a>
                                                 {% else %}
-                                                    <strong>{{ detail.client }}</strong> ({{ detail.account }}): {{ "$%0.2f"|format(detail.amount) }}
+                                                    <div style="display: flex; justify-content: space-between;">
+                                                        <span><strong>{{ detail.client }}</strong> ({{ detail.account }})</span>
+                                                        <span>{{ "$%0.2f"|format(detail.amount) }}</span>
+                                                    </div>
                                                 {% endif %}
                                             </div>
                                         {% endfor %}
@@ -119,7 +204,7 @@
                                     <div style="margin-bottom: 5px;"><strong>{{ trader.farming_days_count }}</strong> Farming Days</div>
                                     {% if trader.farming_missing_notes > 0 %}
                                         <div class="warnings">⚠️ {{ trader.farming_missing_notes }} Missing Notes/Prop Days</div>
-                                        <div style="font-size: 0.8em; color: #64748b; margin-top: 5px; background: #fffbeb; padding: 5px; border-radius: 4px;">
+                                        <div style="font-size: 0.8em; color: #cbd5e1; margin-top: 5px; background: rgba(245, 158, 11, 0.1); padding: 5px; border-radius: 4px; border: 1px solid rgba(245, 158, 11, 0.2);">
                                             {% for w in trader.farming_warnings[:5] %}
                                                 <div>
                                                     {% if w.link %}
@@ -159,5 +244,81 @@
             * "Missing Notes" checks if a Farming Day has a corresponding Prop Day entry.
         </div>
     </div>
+    <script>
+        function setFilter(filter) {
+             const url = new URL(window.location);
+             url.searchParams.set('profile', filter);
+             window.location.href = url.toString();
+        }
+
+        function toggleDetails(id, btn) {
+            const el = document.getElementById(id);
+            if (el.style.display === 'none') {
+                el.style.display = 'block';
+                btn.textContent = 'Hide List';
+            } else {
+                el.style.display = 'none';
+                btn.textContent = 'Show List';
+            }
+        }
+
+        function filterDetails(containerId, range) {
+            const container = document.getElementById(containerId);
+            const items = container.querySelectorAll('div[data-date]');
+            const now = new Date();
+            // Reset hours for accurate daily comparison
+            now.setHours(0,0,0,0);
+            
+            items.forEach(item => {
+                const itemDateStr = item.getAttribute('data-date');
+                if (!itemDateStr) {
+                    item.style.display = range === 'all' ? 'block' : 'none'; 
+                    return;
+                }
+                
+                // Parse date string (YYYY-MM-DD)
+                const parts = itemDateStr.split('-');
+                const itemDate = new Date(parts[0], parts[1]-1, parts[2]); // Month is 0-indexed
+                
+                let show = false;
+                
+                if (range === 'all') {
+                    show = true;
+                } else if (range === 'today') {
+                    show = itemDate.getTime() === now.getTime();
+                } else if (range === '7days') {
+                    const diffTime = Math.abs(now - itemDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                    show = diffDays <= 7;
+                } else if (range === '30days') {
+                    const diffTime = Math.abs(now - itemDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    show = diffDays <= 30;
+                }
+                
+                item.style.display = show ? 'block' : 'none';
+            });
+            
+            // If hidden, show it automatically when filtering
+            if (container.style.display === 'none') {
+                 // Try to find the button
+                 const btn = container.previousElementSibling.querySelector('button');
+                 if (btn) toggleDetails(containerId, btn);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+             const currentProfile = "{{ selected_profile|default('ALL') }}";
+             const map = {'ALL': 'All', 'BEF': 'BEF', 'PRIVATE': 'Private'};
+             const targetText = map[currentProfile.toUpperCase()] || 'All';
+             
+             document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.trim() === targetText) {
+                    btn.classList.add('active');
+                }
+             });
+        });
+    </script>
 </body>
 </html>

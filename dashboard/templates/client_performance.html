@@ -5,26 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Client Performance - MT5 Hedging Engine</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .finance-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
-            background: white;
+            background: rgba(30, 41, 59, 0.6);
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .finance-table th, .finance-table td {
             padding: 14px 16px;
             text-align: right;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             font-size: 0.95rem;
             vertical-align: middle;
+            color: #f8fafc;
         }
         .finance-table th {
             text-align: center;
-            background-color: #f8fafc;
-            color: #475569;
+            background-color: rgba(15, 23, 42, 0.6);
+            color: #94a3b8;
             font-weight: 600;
             white-space: nowrap;
             text-transform: uppercase;
@@ -35,10 +38,10 @@
         .finance-table td:first-child {
             text-align: left;
             font-weight: 600;
-            color: #1e293b;
+            color: #f8fafc;
         }
         .finance-table tr:hover {
-            background-color: #f8fafc;
+            background-color: rgba(255, 255, 255, 0.05);
         }
         .btn-xs {
             display: inline-block;
@@ -56,95 +59,53 @@
             background-color: #2563eb;
         }
 
-        /* Modern Navigation - Gemini Inspired */
+        /* Modern Navigation - Gemini Inspired (Updated to Match Super Admin) */
         .modern-nav {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 15px 30px;
-            margin-bottom: 40px;
-            border-radius: 16px;
-            box-shadow: 0 4px 20px -1px rgba(0, 0, 0, 0.05);
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important; /* Blue Gradient */
+            border: 1px solid rgba(255, 255, 255, 0.08); /* var(--border-color) */
+            border-radius: 8px; /* var(--radius) fallback */
+            padding: 12px 24px !important;
             display: flex;
-            gap: 20px;
-            align-items: center;
             justify-content: space-between;
-            border: 1px solid rgba(255, 255, 255, 0.5);
-        }
-
-        .nav-brand {
-            display: flex;
             align-items: center;
-            gap: 10px;
-            font-weight: 800;
-            font-size: 1.1rem;
-            color: #0f172a;
-            letter-spacing: -0.02em;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
-
-        .brand-logo {
-            height: 45px;
-            width: auto;
-            display: block;
-        }
-
+        
         .nav-links {
             display: flex;
             gap: 8px;
-            background: #f1f5f9;
-            padding: 5px;
+            background: rgba(15, 23, 42, 0.6) !important;
+            padding: 6px;
             border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
-
-        .nav-item {
+        
+        .tab-btn {
+            color: var(--text-secondary);
             text-decoration: none;
-            color: #64748b;
-            font-weight: 600;
-            font-size: 0.9rem;
-            padding: 8px 16px;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-        }
-
-        .nav-item:hover {
-            color: #1e293b;
-            background: rgba(255, 255, 255, 0.5);
-        }
-
-        .nav-item.active {
-            background: white;
-            color: #3b82f6;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .nav-actions {
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             align-items: center;
-            gap: 15px;
-        }
-
-        .action-link {
-            color: #64748b;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-        }
-        .action-link:hover { color: #3b82f6; }
-
-        .logout-btn-nav {
-            background: #fee2e2;
-            color: #ef4444;
-            text-decoration: none;
+            gap: 8px;
             padding: 8px 16px;
             border-radius: 8px;
+        }
+        .tab-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .tab-btn.active {
+            background: #3b82f6 !important; /* Solide Blue */
+            color: #ffffff !important;
             font-weight: 600;
-            font-size: 0.9rem;
-            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
-        .logout-btn-nav:hover {
-            background: #fecaca;
-            color: #dc2626;
-        }
+        
+        /* Hide old nav classes */
+        .nav-brand, .nav-item, .action-link, .logout-btn-nav { display: none; }
 
         /* --- Dark Theme Overrides (BallerQuotes) --- */
         :root {
@@ -161,26 +122,7 @@
             color: var(--text-primary) !important;
         }
 
-        /* Nav */
-        .modern-nav {
-            background: rgba(30, 41, 59, 0.95) !important;
-            border: 1px solid var(--border-color) !important;
-            color: var(--text-primary) !important;
-            box-shadow: none !important;
-        }
-        .nav-brand { color: var(--text-primary) !important; }
-        .nav-links {
-            background: rgba(15, 23, 42, 0.6) !important;
-            border: 1px solid var(--border-color) !important;
-        }
-        .nav-item {
-            color: var(--text-secondary) !important;
-        }
-        .nav-item:hover, .nav-item.active {
-            color: var(--accent-color) !important;
-            background: rgba(255,255,255,0.05) !important;
-        }
-
+        /* Nav overrides - Removed conflicting .modern-nav background to let the gradient apply */
         /* Table Components */
         .finance-table {
             background: var(--card-bg) !important;
@@ -211,45 +153,53 @@
     <div class="container" style="max-width: 1600px; padding: 40px;">
 
         <nav class="modern-nav">
-            <div class="nav-brand">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Baller Quotes" class="brand-logo">
+             <div class="brand" style="display: flex; align-items: center;">
+                <!-- Logo with 'App Icon' styling to blend better -->
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
+                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
+                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
+                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
+                </div>
             </div>
+            
             <div class="nav-links">
-                <a href="/super_admin" class="nav-item">Dashboard</a>
-                <a href="/financial_overview" class="nav-item">Prop Firms</a>
-                <a href="/payout_history" class="nav-item">Payouts</a>
-                <a href="/client_performance" class="nav-item active">Clients</a>
-                <a href="/trader_performance" class="nav-item">Traders</a>
-            </div>
-            <div class="nav-actions">
-                <a href="/super_admin/clients" class="action-link">Manage Clients</a>
-                <a href="/logout" class="logout-btn-nav">Logout</a>
+                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
+                <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+                <a href="/client_performance" class="tab-btn active"><i class="fas fa-users"></i> Clients</a>
+                <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
+                
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
+                
+                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
             </div>
         </nav>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h1 style="font-size: 1.8rem; color: #0f172a; margin: 0;">Client Performance Details</h1>
-            <div style="display: flex; gap: 5px; background: #e5e7eb; padding: 3px; border-radius: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h1 style="font-size: 1.5rem; color: #f8fafc; margin: 0;">Client Performance Details</h1>
+            <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
                 <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
                 <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
                 <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
             </div>
         </div>
         
-        <div style="overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: white;">
+        <div style="overflow-x: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; background: #1e293b;">
             <table class="finance-table" style="margin-top: 0; box-shadow: none;">
                 <thead>
-                    <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb; text-align: left;">
-                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('client_id')">
+                    <tr style="background: rgba(15, 23, 42, 0.6); border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
+                        <th style="padding: 14px 16px; font-weight: 600; color: #94a3b8; text-align: left; cursor: pointer;" onclick="sortBy('client_id')">
                             Client <span class="sort-icon" id="sort-client_id"></span>
                         </th>
-                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('trader')">
+                        <th style="padding: 14px 16px; font-weight: 600; color: #94a3b8; text-align: left; cursor: pointer;" onclick="sortBy('trader')">
                             Trader <span class="sort-icon" id="sort-trader"></span>
                         </th>
-                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('admin')">
+                        <th style="padding: 14px 16px; font-weight: 600; color: #94a3b8; text-align: left; cursor: pointer;" onclick="sortBy('admin')">
                             Admin <span class="sort-icon" id="sort-admin"></span>
                         </th>
-                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: left; cursor: pointer;" onclick="sortBy('source')">
+                        <th style="padding: 14px 16px; font-weight: 600; color: #94a3b8; text-align: left; cursor: pointer;" onclick="sortBy('source')">
                             Source <span class="sort-icon" id="sort-source"></span>
                         </th>
                         <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: right; cursor: pointer;" onclick="sortBy('payouts')">
@@ -271,7 +221,7 @@
                     </tr>
                 </thead>
                 <tbody id="client-stats-body">
-                    <tr><td colspan="8" style="padding: 20px; text-align: center; color: #6b7280;">Loading data...</td></tr>
+                    <tr><td colspan="10" style="padding: 20px; text-align: center; color: #6b7280;">Loading data...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -366,7 +316,7 @@
             });
             
             if (filteredClients.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #6b7280;">No clients found for this filter.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="10" style="padding: 20px; text-align: center; color: #6b7280;">No clients found for this filter.</td></tr>';
                 return;
             }
             
@@ -388,41 +338,42 @@
             
             filteredClients.forEach(c => {
                 const tr = document.createElement('tr');
-                tr.style.borderBottom = '1px solid #e5e7eb';
-                tr.addEventListener('mouseenter', () => tr.style.backgroundColor = '#f8fafc');
+                tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                tr.addEventListener('mouseenter', () => tr.style.backgroundColor = 'rgba(255,255,255,0.05)');
                 tr.addEventListener('mouseleave', () => tr.style.backgroundColor = 'transparent');
                 
                 // Color for profit
-                const profitColor = c.net_profit >= 0 ? '#059669' : '#dc2626';
+                const profitColor = c.net_profit >= 0 ? '#34d399' : '#f87171';
                 
                 // Source Selector HTML
                 const isBEF = c.source === 'BEF';
+                // Dark theme select with light text
                 const sourceHtml = `
                     <select onchange="updateClientSource('${c.client_id}', this.value)" 
-                            style="padding: 6px 10px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 0.85rem; background-color: ${isBEF ? '#dbeafe' : '#f3f4f6'}; cursor: pointer;">
-                        <option value="Private" ${!isBEF ? 'selected' : ''}>Private</option>
-                        <option value="BEF" ${isBEF ? 'selected' : ''}>BEF</option>
+                            style="padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); font-size: 0.85rem; background-color: ${isBEF ? 'rgba(59, 130, 246, 0.2)' : '#0f172a'}; color: #f8fafc; cursor: pointer;">
+                        <option value="Private" ${!isBEF ? 'selected' : ''} style="background-color: #0f172a; color: #f8fafc;">Private</option>
+                        <option value="BEF" ${isBEF ? 'selected' : ''} style="background-color: #0f172a; color: #f8fafc;">BEF</option>
                     </select>
                 `;
                 
                 tr.innerHTML = `
                     <td style="padding: 14px 16px;">
-                        <a href="/dashboard/${c.client_id}" style="color: #2563eb; text-decoration: none; font-weight: 500;">${c.client_id}</a>
+                        <a href="/dashboard/${c.client_id}" style="color: #60a5fa; text-decoration: none; font-weight: 500;">${c.client_id}</a>
                     </td>
-                    <td style="padding: 14px 16px; color: #4b5563;">${c.trader || '-'}</td>
-                    <td style="padding: 14px 16px; color: #4b5563;">${c.admin || '-'}</td>
+                    <td style="padding: 14px 16px; color: #cbd5e1;">${c.trader || '-'}</td>
+                    <td style="padding: 14px 16px; color: #cbd5e1;">${c.admin || '-'}</td>
                     <td style="padding: 14px 16px;">${sourceHtml}</td>
-                    <td style="padding: 14px 16px; text-align: right;">${formatCurrency(c.payouts)}</td>
-                    <td style="padding: 14px 16px; text-align: right;">${formatCurrency(c.deposits)}</td>
-                    <td style="padding: 14px 16px; text-align: right;">${formatCurrency(c.fees)}</td>
+                    <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.payouts)}</td>
+                    <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.deposits)}</td>
+                    <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.fees)}</td>
                     <td style="padding: 14px 16px; text-align: right; font-weight: 600; color: ${profitColor};">${formatCurrency(c.net_profit)}</td>
                     <td style="padding: 14px 16px; text-align: center;">
-                        <span title="Active" style="color: #059669; font-weight: bold;">${c.active}</span> / 
-                        <span title="Passed" style="color: #2563eb;">${c.passed}</span> / 
-                        <span title="Failed" style="color: #dc2626;">${c.failed}</span>
+                        <span title="Active" style="color: #34d399; font-weight: bold;">${c.active}</span> / 
+                        <span title="Passed" style="color: #60a5fa;">${c.passed}</span> / 
+                        <span title="Failed" style="color: #f87171;">${c.failed}</span>
                     </td>
                     <td style="padding: 14px 16px; text-align: center;">
-                       <a href="/dashboard/${c.client_id}" class="btn-xs">View</a>
+                       <a href="/dashboard/${c.client_id}" class="btn-xs" style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none;">View</a>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -447,7 +398,7 @@
                 })
                 .catch(err => {
                     console.error('Error loading client data:', err);
-                    tbody.innerHTML = '<tr><td colspan="8" style="padding: 20px; text-align: center; color: #dc2626;">Error loading data.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="10" style="padding: 20px; text-align: center; color: #dc2626;">Error loading data.</td></tr>';
                 });
         });
     </script>

@@ -51,15 +51,18 @@
         }
 
         .trader-item {
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--border-color);
+            background: linear-gradient(180deg, #0f172a 0%, #334155 100%); /* Slate Gradient Body */
+            border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
             margin-bottom: 16px;
             transition: all 0.2s;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
         
         .trader-item:hover {
-            border-color: var(--accent-color);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
         }
 
         .trader-header {
@@ -67,38 +70,53 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: rgba(255,255,255,0.02);
-            border-bottom: 1px solid rgba(255,255,255,0.03);
-            border-radius: 8px 8px 0 0;
+            /* Green Header as requested */
+            background: linear-gradient(90deg, #065f46 0%, #047857 100%); 
+            border-bottom: 1px solid rgba(255,255,255,0.1);
         }
 
         .trader-name {
-            font-weight: 600;
-            color: var(--text-primary);
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.02em;
         }
         
         .client-list {
-            padding: 12px;
+            padding: 16px; /* Spacing for the client tags */
             display: flex;
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 10px;
         }
 
+        /* World Class Client Tag Design */
         .client-tag {
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            padding: 6px 12px;
+            background: #1e293b; /* Slate 800 */
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 8px 14px;
             border-radius: 6px;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             display: flex;
             align-items: center;
-            color: #93c5fd;
-            transition: all 0.2s;
+            color: #cbd5e1; /* Slate 300 */
+            text-decoration: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            font-weight: 500;
         }
         
         .client-tag:hover {
-            background: rgba(59, 130, 246, 0.2);
-            transform: translateY(-1px);
+            background: #334155; /* Slate 700 */
+            color: #ffffff;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            border-color: rgba(255,255,255,0.2);
+        }
+        
+        /* Icon styling inside tag */
+        .client-tag i {
+            color: #fbbf24; /* Amber 400 */
+            margin-right: 8px !important;
+            font-size: 1rem;
         }
 
         .badge {
@@ -176,7 +194,7 @@
         }
         
         .welcome-hero {
-            margin-bottom: 30px;
+            margin-bottom: 16px;
         }
         
         .tab-btn {
@@ -203,29 +221,125 @@
         }
         
         .modern-nav {
-            background: rgba(30, 41, 59, 0.6);
-            backdrop-filter: blur(12px);
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%); /* Blue Gradient */
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: var(--radius);
-            padding: 16px 24px;
+            padding: 12px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 32px;
+            margin-bottom: 20px;
             box-shadow: var(--shadow-sm);
         }
         
-        /* Blue Header Variation */
+        /* User Management Header - Lighter Blue Gradient */
         .admin-header {
-            background: linear-gradient(to right, rgba(30, 58, 138, 0.3), rgba(30, 41, 59, 0.0));
-            border-bottom: 1px solid rgba(59, 130, 246, 0.15);
+            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+            border-bottom: 2px solid #60a5fa;
+            position: relative;
+            overflow: hidden;
+            padding: 16px 24px;
+        }
+        .admin-header::before {
+            display: none;
         }
         
-        .badge-admin {
-            background: rgba(37, 99, 235, 0.2);
-            color: #60a5fa;
-            border: 1px solid rgba(37, 99, 235, 0.3);
+        /* Table Headers - Matching the Gradient Style */
+        .group-header-blue {
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
+            border-bottom: 2px solid #3b82f6 !important; /* Bright blue bottom line */
+            color: #94a3b8 !important;
+            font-weight: 700 !important;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+            text-align: center; /* Center align based on screenshot 'EVALUATION INFO' */
+            padding: 12px !important;
         }
+
+        /* --- GRADIENT SECTION STYLES --- */
+        
+        .admin-header {
+            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%) !important;
+            border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+            border-top: 1px solid rgba(255,255,255,0.2) !important;
+        }
+        
+        .trader-header {
+             background: linear-gradient(90deg, #059669 0%, #047857 100%) !important;
+             border-bottom: 1px solid rgba(255,255,255,0.1);
+             border-top: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .client-tag {
+             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+             border: 1px solid rgba(255,255,255,0.15) !important;
+             color: #fbbf24 !important; /* Gold text for names */
+        }
+        .client-tag:hover {
+             background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
+             border-color: #fbbf24 !important;
+        }
+
+        /* Form Inputs & Buttons */
+        .form-dark {
+            background: rgba(15, 23, 42, 0.4) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            color: #fff !important;
+            transition: all 0.2s;
+        }
+        .form-dark:focus {
+            border-color: #60a5fa !important;
+            background: rgba(15, 23, 42, 0.8) !important;
+            box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+        }
+        
+        .btn-gold {
+             background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%) !important;
+             box-shadow: 0 4px 6px -1px rgba(251, 191, 36, 0.3);
+             border: none !important;
+        }
+        .btn-gold:hover {
+             filter: brightness(1.1);
+             transform: translateY(-1px);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.6);
+            padding: 6px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .tab-btn {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 8px;
+        }
+        .tab-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .tab-btn.active {
+            background: #3b82f6; /* Solid Blue like screenshot */
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        /* Drag and Drop Visuals */
+        .dragging { opacity: 0.5; border: 2px dashed #fbbf24 !important; }
+        .drag-over { background: rgba(251, 191, 36, 0.1) !important; border: 2px solid #fbbf24 !important; }
+        
+        .admin-email, .trader-email { color: rgba(255,255,255,0.9) !important; font-weight: 500; opacity: 1 !important; }
     </style>
 </head>
 <body>
@@ -233,19 +347,21 @@
         <nav class="modern-nav">
             <div class="brand" style="display: flex; align-items: center;">
                 <!-- Logo with 'App Icon' styling to blend better -->
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: white; border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
                 <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
                      <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
                      <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
                 </div>
             </div>
             
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="nav-links">
                 <a href="/super_admin" class="tab-btn active"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+                <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+                <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
                 
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 12px;"></div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
                 
                 <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
                     <i class="fas fa-sign-out-alt"></i> Logout
@@ -253,31 +369,41 @@
             </div>
         </nav>
 
-        <div class="welcome-hero">
-            <h1 style="font-size: 2rem; margin-bottom: 8px; color: #fff;">Platform Administration</h1>
-            <p style="color: var(--text-secondary);">Manage system hierarchy, users, and global financial data.</p>
+        <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div>
+                <h1 style="font-size: 1.5rem; margin-bottom: 4px; color: #fff;">Platform Administration</h1>
+                <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Manage system hierarchy, users, and global financial data.</p>
+            </div>
         </div>
 
         <div class="dashboard-grid" style="grid-template-columns: 350px 1fr; gap: 24px; display: grid;">
             
             <!-- Management Panel (Left Sidebar) -->
-            <div class="client-card" style="height: fit-content; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px;">
-                <h3 style="margin-bottom: 20px; color: var(--accent-color); display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                    <span><i class="fas fa-users-cog"></i> User Management</span>
-                </h3>
+            <div class="client-card" style="height: fit-content; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0; overflow: hidden;">
+                <div class="admin-header">
+                    <h3 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px; font-size: 1.1rem;">
+                        <i class="fas fa-users-cog"></i> User Management
+                    </h3>
+                </div>
+                <div style="padding: 20px;">
                 
-                <div style="display: flex; gap: 10px; margin-bottom: 24px;">
-                    <div class="stat-box-modern" onclick="openUserListModal('admin')" style="background: rgba(255,255,255,0.03); flex:1; text-align:center; padding:12px; border-radius:8px; cursor:pointer; border:1px solid transparent; transition:all 0.2s;">
-                        <div style="font-size:0.75rem; color:var(--text-secondary);">ADMINS</div>
-                        <div id="total-admins" style="font-size:1.5rem; font-weight:700; color:var(--warning-color);">0</div>
+                <div style="display: flex; gap: 15px; margin-bottom: 24px;">
+                    <!-- ADMINS: Gold/Amber Gradient -->
+                    <div id="stat-card-admin" class="stat-box-modern" onclick="window.openUserListModal('admin')" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
+                        <div style="font-size:0.8rem; color: #fde047; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 5px;">ADMINS</div>
+                        <div id="total-admins" style="font-size:2rem; font-weight:800; color: #fbbf24; text-shadow: 0 0 20px rgba(251, 191, 36, 0.4); pointer-events: none;">0</div>
                     </div>
-                    <div class="stat-box-modern" onclick="openUserListModal('trader')" style="background: rgba(255,255,255,0.03); flex:1; text-align:center; padding:12px; border-radius:8px; cursor:pointer;">
-                        <div style="font-size:0.75rem; color:var(--text-secondary);">TRADERS</div>
-                        <div id="total-traders" style="font-size:1.5rem; font-weight:700; color:var(--accent-color);">0</div>
+
+                    <!-- TRADERS: Green Gradient -->
+                    <div id="stat-card-trader" class="stat-box-modern" onclick="window.openUserListModal('trader')" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
+                        <div style="font-size:0.8rem; color: #6ee7b7; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 5px;">TRADERS</div>
+                        <div id="total-traders" style="font-size:2rem; font-weight:800; color: #34d399; text-shadow: 0 0 20px rgba(52, 211, 153, 0.4); pointer-events: none;">0</div>
                     </div>
-                    <div class="stat-box-modern" onclick="openUserListModal('client')" style="background: rgba(255,255,255,0.03); flex:1; text-align:center; padding:12px; border-radius:8px; cursor:pointer;">
-                        <div style="font-size:0.75rem; color:var(--text-secondary);">CLIENTS</div>
-                        <div id="total-clients" style="font-size:1.5rem; font-weight:700; color:#fff;">0</div>
+
+                    <!-- CLIENTS: Blue Gradient -->
+                    <div id="stat-card-client" class="stat-box-modern" onclick="window.openUserListModal('client')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
+                        <div style="font-size:0.8rem; color: #93c5fd; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 5px;">CLIENTS</div>
+                        <div id="total-clients" style="font-size:2rem; font-weight:800; color: #60a5fa; text-shadow: 0 0 20px rgba(96, 165, 250, 0.4); pointer-events: none;">0</div>
                     </div>
                 </div>
                 
@@ -319,6 +445,8 @@
                         <input type="text" id="new-client-name" placeholder="Name" class="form-dark" style="border-radius: 8px 0 0 8px; border-right: none;">
                         <button onclick="addClient()" class="btn-gold" style="width:auto; padding: 0 16px; border-radius: 0 8px 8px 0; background: var(--accent-color); border: none; color: #000; font-weight: bold; cursor: pointer;">+</button>
                     </div>
+                    <input type="email" id="new-client-email" placeholder="Email (Optional)" class="form-dark" style="margin-top:8px;">
+                </div>
                 </div>
             </div>
 
@@ -335,46 +463,74 @@
                 </div>
 
                 <!-- Financial Cards -->
-                <div class="stat-grid-modern" style="margin-bottom: 0;">
-                    <div class="stat-card-modern">
-                        <div class="stat-label-modern">Total Payouts</div>
-                        <div id="grand-total-payouts" class="stat-value-modern" style="color: #4ade80;">$0.00</div>
+                <div class="stat-grid-modern" style="margin-bottom: 0; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+                    
+                    <!-- Total Payouts -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #6ee7b7 !important; font-weight: 700;">Total Payouts</div>
+                        <div id="grand-total-payouts" class="stat-value-modern" style="color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">$0.00</div>
                     </div>
-                    <div class="stat-card-modern">
-                        <div class="stat-label-modern">Total Deposits</div>
-                        <div id="grand-total-deposits" class="stat-value-modern text-blue" style="color: #60a5fa;">$0.00</div>
+                    
+                    <!-- Total Deposits -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #93c5fd !important; font-weight: 700;">Total Deposits</div>
+                        <div id="grand-total-deposits" class="stat-value-modern" style="color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">$0.00</div>
                     </div>
-                    <div class="stat-card-modern">
-                        <div class="stat-label-modern">Challenge Fees</div>
-                        <div id="grand-total-fees" class="stat-value-modern" style="color: #ef4444;">$0.00</div>
+                    
+                    <!-- Challenge Fees -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #fca5a5 !important; font-weight: 700;">Challenge Fees</div>
+                        <div id="grand-total-fees" class="stat-value-modern" style="color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">$0.00</div>
                     </div>
-                    <div class="stat-card-modern">
-                        <div class="stat-label-modern">Net Profit</div>
-                        <div id="grand-total-net" class="stat-value-modern" style="color: #c084fc;">$0.00</div>
+                    
+                    <!-- Net Profit -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #d8b4fe !important; font-weight: 700;">Net Profit</div>
+                        <div id="grand-total-net" class="stat-value-modern" style="color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">$0.00</div>
                     </div>
-                    <div class="stat-card-modern">
-                         <div class="stat-label-modern">Expected Value (EV)</div>
-                         <div id="grand-ev" class="stat-value-modern" style="color: #facc15;">$0.00</div>
+
+                    <!-- Hedging Results -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #bae6fd !important; font-weight: 700;">Hedging Results</div>
+                        <div id="grand-hedge" class="stat-value-modern" style="color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">$0.00</div>
                     </div>
-                    <div class="stat-card-modern">
-                         <div class="stat-label-modern">EV / Day</div>
-                         <div id="grand-ev-day" class="stat-value-modern" style="color: #fca5a5;">$0.00</div>
+
+                    <!-- Farming Results -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #d9f99d !important; font-weight: 700;">Farming Results</div>
+                        <div id="grand-farming" class="stat-value-modern" style="color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">$0.00</div>
                     </div>
+                    
+                    <!-- Expected Value (EV) -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #fde047 !important; font-weight: 700;">Expected Value (EV)</div>
+                        <div id="grand-ev" class="stat-value-modern" style="color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);">$0.00</div>
+                    </div>
+                    
+                    <!-- EV / Day -->
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(131, 24, 67, 0.6) 100%); border: 1px solid rgba(244, 114, 182, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                         <div class="stat-label-modern" style="color: #fbcfe8 !important; font-weight: 700;">EV / Day</div>
+                         <div id="grand-ev-day" class="stat-value-modern" style="color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">$0.00</div>
+                    </div>
+
                     <!-- Mini Stats in one card -->
-                     <div class="stat-card-modern" style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
-                        <div style="display:flex; justify-content:space-between;">
+                     <!-- Mini Stats in one card -->
+                    <div class="stat-card-modern" style="grid-column: 1 / -1; background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; justify-content: center; gap: 8px;">
+                        <div style="display: flex; gap: 40px; justify-content: start;">
+                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color:var(--text-secondary);">Active</span>
-                            <span id="grand-active-accounts" style="font-weight:700; color:#fff;">0</span>
+                            <span id="grand-active-accounts" style="font-weight:700; color:#fff !important;">0</span>
                         </div>
-                        <div style="display:flex; justify-content:space-between;">
+                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color:var(--text-secondary);">Passed</span>
-                            <span id="grand-completed-accounts" style="font-weight:700; color:#4ade80;">0</span>
+                            <span id="grand-completed-accounts" style="font-weight:700; color:#34d399 !important;">0</span>
                         </div>
-                        <div style="display:flex; justify-content:space-between;">
+                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color:var(--text-secondary);">Failed</span>
-                            <span id="grand-failed-accounts" style="font-weight:700; color:#f87171;">0</span>
+                            <span id="grand-failed-accounts" style="font-weight:700; color:#f87171 !important;">0</span>
                         </div>
                     </div>
+                </div>
                 </div>
 
                 <!-- Hierarchy Tree -->
@@ -389,28 +545,98 @@
     </div>
 
     <!-- User List Modal -->
-    <div id="userListModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000;">
-        <div class="modal-content" style="margin: 5% auto; width: 80%; max-width: 800px; padding: 24px; border-radius: var(--radius); position: relative;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 id="modalTitle" style="margin: 0;">Users</h3>
-                <span onclick="closeUserListModal()" style="cursor: pointer; font-size: 1.5rem; color: var(--text-secondary);">&times;</span>
+    <div id="userListModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10000; background: rgba(0,0,0,0.8);">
+        <!-- Helper container to center content reliably -->
+        <div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;">
+            <div class="modal-content" style="width: 90%; max-width: 800px; height: 80vh; background: #1e293b; border: 2px solid #60a5fa; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+                
+                <!-- Header -->
+                <div class="modal-header" style="padding: 15px 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                    <h3 id="modalTitle" style="margin: 0; color: #f8fafc; font-size: 1.2rem;">Users</h3>
+                    <button onclick="closeUserListModal()" style="background: #ef4444; border: none; color: white; cursor: pointer; padding: 5px 12px; border-radius: 4px; font-weight: bold;">CLOSE (X)</button>
+                </div>
+                
+                <!-- Body (Scrollable) -->
+                <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 0; background: #1e293b; position: relative;">
+                     <table class="user-list-table" style="width: 100%; border-collapse: collapse;">
+                        <thead style="position: sticky; top: 0; background: #334155; color: white; z-index: 5;">
+                            <tr>
+                                <th id="col-user" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">User</th>
+                                <th id="col-parent" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">Parent</th>
+                                <th id="col-actions" style="text-align: right; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userListBody"></tbody>
+                    </table>
+                </div>
+
+                <!-- Footer -->
+                <div style="padding: 10px; background: #0f172a; border-top: 1px solid #334155; text-align: right; flex-shrink: 0;">
+                    <button onclick="closeUserListModal()" style="padding: 8px 16px; background: #475569; color: white; border: none; border-radius: 4px; cursor: pointer;">Close Window</button>
+                </div>
             </div>
-            <div class="modal-body">
-                <table class="user-list-table">
-                    <thead>
-                        <tr>
-                            <th class="group-header group-header-blue" style="text-align: left;">User</th>
-                            <th class="group-header group-header-blue" id="col-parent" style="text-align: left;">Parent</th>
-                            <th class="group-header group-header-blue" style="text-align: right;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="userListBody"></tbody>
-                </table>
+        </div>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="editUserModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10050; background: rgba(0,0,0,0.8);">
+        <div class="modal-content" style="margin: 10% auto; width: 90%; max-width: 500px; padding: 24px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius);">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 id="editModalTitle" style="margin: 0; color: var(--text-primary);">Edit User</h3>
+                <span onclick="closeEditUserModal()" style="cursor: pointer; font-size: 1.5rem; color: var(--text-secondary);">&times;</span>
+            </div>
+            <div class="form-group">
+                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Name (Read Only)</label>
+                <input type="text" id="editUserName" class="form-input" readonly disabled style="opacity: 0.7; cursor: not-allowed; width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
+            </div>
+            <div class="form-group" style="margin-top: 15px;">
+                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Email</label>
+                <input type="email" id="editUserEmail" class="form-input" placeholder="user@example.com" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
+            </div>
+             <div class="form-group" style="margin-top: 15px; display:none;" id="editClientCategoryGroup">
+                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Category/Profile</label>
+                <select id="editUserCategory" class="form-input" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
+                     <option value="Private">Private</option>
+                     <option value="Retail">Retail</option>
+                     <option value="Institutional">Institutional</option>
+                     <option value="PropFirm">Prop Firm</option>
+                </select>
+            </div>
+            
+            <!-- Hidden fields for context -->
+            <input type="hidden" id="editUserType">
+            <input type="hidden" id="editUserAdmin">
+            <input type="hidden" id="editUserTrader">
+            
+            <div style="margin-top: 24px; text-align: right;">
+                <button onclick="closeEditUserModal()" style="margin-right: 10px; padding: 8px 16px; background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; cursor: pointer;">Cancel</button>
+                <button onclick="submitEditUser()" style="padding: 8px 16px; background: var(--accent-gold); border: none; color: black; font-weight: bold; border-radius: 4px; cursor: pointer;">Save Changes</button>
             </div>
         </div>
     </div>
 
     <script>
+        // --- DEBUGGER ---
+        function debugLog(msg, type='info') {
+            if (type === 'error') console.error(msg);
+            else console.log(msg);
+        }
+
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            console.error(`ERROR: ${msg} (Line ${lineNo})`);
+            return false;
+        };
+        
+        // Escape Key Listener
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Escape") {
+                debugLog("ESC key pressed. Attempting to close modal.");
+                if (window.closeUserListModal) window.closeUserListModal();
+            }
+        });
+
+        debugLog("Script initialization started...");
+
         // API Base Functions to replace inline calls
         async function apiCall(url, data) {
             try {
@@ -454,139 +680,301 @@
             const admin = document.getElementById('admin-select-client').value;
             const trader = document.getElementById('trader-select-client').value;
             const name = document.getElementById('new-client-name').value;
-            const email = document.getElementById('new-client-email').value; // if needed
+            const emailInput = document.getElementById('new-client-email');
+            const email = emailInput ? emailInput.value : '';
+            
             if(!trader || !name) return alert('Trader and Name required');
             apiCall('/api/admin/create_user', { username: name, user_type: 'client', parent_user: trader, email: email });
         }
         
         // Modal Logic
-        function openUserListModal(type) {
-            const modal = document.getElementById('userListModal');
-            document.getElementById('modalTitle').textContent = type.toUpperCase() + 'S';
-            const tbody = document.getElementById('userListBody');
-            tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
-            modal.style.display = 'block';
+        let renderInterval = null; // To control the chunked rendering loop
+        let renderTimeout = null;
+        let currentRenderId = 0;
 
-            // Use requestAnimationFrame to let the "Loading..." render first
-            requestAnimationFrame(() => {
-                setTimeout(() => {
-                    generateAndRenderRows(type, tbody);
-                }, 50);
-            });
+        // Simplified Synchronous Version
+        function openUserListModal(type) {
+             debugLog(`openUserListModal called for: ${type}`);
+             
+             try {
+                const modal = document.getElementById('userListModal');
+                if(!modal) { debugLog("FATAL: #userListModal missing", 'error'); return; }
+                
+                // Show modal immediately: ensure display AND opacity are set to override CSS
+                modal.style.display = 'block';
+                modal.style.opacity = '1'; 
+                modal.classList.add('show'); // Just in case CSS relies on this class
+                
+                document.getElementById('modalTitle').textContent = type.toUpperCase() + 'S';
+                
+                const tbody = document.getElementById('userListBody');
+                tbody.innerHTML = '';
+                
+                // Synchronous generation for max reliability
+                debugLog("Generating rows synchronously...");
+                
+                const rows = [];
+                // Gather Data
+                try {
+                    if (type === 'admin') {
+                        if(hierarchyData.admins) {
+                            Object.entries(hierarchyData.admins).forEach(([name, data]) => {
+                                rows.push({ name, email: data.email, parent: null, url: '#', type: 'admin' });
+                            });
+                        }
+                    } else if (type === 'trader') {
+                        if(hierarchyData.admins) {
+                            Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                                Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
+                                    let email = (traderData && traderData.email) ? traderData.email : '';
+                                    rows.push({ name: traderName, email: email, parent: adminName, url: '#', type: 'trader', admin: adminName });
+                                });
+                            });
+                        }
+                    } else if (type === 'client') {
+                        if(hierarchyData.admins) {
+                            Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                                const traders = adminData.traders || {};
+                                Object.entries(traders).forEach(([traderName, traderData]) => {
+                                    let clients = [];
+                                    if (Array.isArray(traderData)) clients = traderData;
+                                    else if (traderData && traderData.clients) clients = traderData.clients;
+                                    
+                                    if(Array.isArray(clients)){
+                                        clients.forEach(client => {
+                                            if (!client) return;
+                                            const cName = (typeof client === 'object') ? client.name : client;
+                                            const cEmail = (typeof client === 'object') ? client.email : '';
+                                            const cCat = (typeof client === 'object') ? (client.category || client.profile || 'Private') : 'Private';
+                                            rows.push({ 
+                                                name: cName || 'Unknown', 
+                                                email: cEmail, 
+                                                parent: `${traderName} (${adminName})`,
+                                                url: '/dashboard/' + cName,
+                                                type: 'client',
+                                                admin: adminName,
+                                                trader: traderName,
+                                                category: cCat
+                                            });
+                                        });
+                                    }
+                                });
+                            });
+                        }
+                    }
+                } catch(e) { debugLog("Data gather error: " + e.message, 'error'); }
+
+                debugLog(`Got ${rows.length} rows.`);
+                
+                // Handle Columns
+                const colParentHeader = document.getElementById('col-parent');
+                if (type === 'admin') colParentHeader.style.display = 'none';
+                else {
+                    colParentHeader.style.display = 'table-cell';
+                    colParentHeader.textContent = (type==='client') ? 'Trader/Admin' : 'Admin';
+                }
+
+                if (rows.length === 0) {
+                     tbody.innerHTML = '<tr><td colspan="3" style="padding:20px; text-align:center; color:white;">No records found</td></tr>';
+                } else {
+                     // Build HTML String
+                     let html = '';
+                     for(let i=0; i<rows.length; i++) {
+                         const r = rows[i];
+                         const safeName = r.name.replace(/'/g, "\\'");
+                         const safeEmail = (r.email||'').replace(/'/g, "\\'");
+                         
+                         let btns = '';
+                         // Common button styles
+                         const delStyle = "color:#ef4444; border:1px solid #7f1d1d; background:rgba(127,29,29,0.2); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-right:5px;";
+                         const editStyle = "color:#fbbf24; border:1px solid #78350f; background:rgba(120,53,15,0.2); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold;";
+
+                         if(type === 'client') {
+                             btns += `<a href="${r.url}" style="color:#fbbf24; text-decoration:none; margin-right:10px; font-weight:bold;">Dash</a>`;
+                             btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}')" style="${editStyle}">Edit</button>`;
+                         } else if (type === 'trader') {
+                             btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
+                         } else {
+                             btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}')" style="${editStyle}">Edit</button>`;
+                         }
+
+                         let parentCol = (type !== 'admin') ? `<td style="padding:10px; color:#cbd5e1;">${r.parent || '-'}</td>` : '';
+                         
+                         // Create clickable email span
+                         const emailDisplay = (r.email) ? r.email : '<span style="color:#64748b; font-style:italic;">No Email</span>';
+                         const editArgs = (type==='client') 
+                            ? `'client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}'` 
+                            : (type==='trader') 
+                                ? `'trader', '${safeName}', '${safeEmail}', '${r.admin}'` 
+                                : `'admin', '${safeName}', '${safeEmail}'`;
+
+                         html += `
+                            <tr style="border-bottom: 1px solid #334155;">
+                                <td style="padding:10px; color:#f1f5f9;">
+                                    <div style="font-weight:bold; font-size:1rem;">${r.name}</div>
+                                    <div style="font-size:0.85rem; color:#94a3b8; margin-top:2px; cursor:pointer;" 
+                                         title="Click to Edit Email"
+                                         onclick="openEditUserModal(${editArgs})">
+                                        ${emailDisplay} <i class="fas fa-pencil-alt" style="font-size:0.7rem; opacity:0.5; margin-left:4px;"></i>
+                                    </div>
+                                </td>
+                                ${parentCol}
+                                <td style="padding:10px; text-align:right;">${btns}</td>
+                            </tr>
+                         `;
+                     }
+                     tbody.innerHTML = html;
+                }
+                
+                debugLog("Render Complete.");
+
+             } catch(err) {
+                 debugLog("FATAL ERROR: " + err.message, 'error');
+                 alert("Error: " + err.message);
+             }
+        }
+        
+        function closeUserListModal() {
+            const m = document.getElementById('userListModal');
+            if(m) m.style.display = 'none';
         }
 
-        function generateAndRenderRows(type, tbody) {
-            const rows = [];
+
+
+        // --- Edit / Delete User Logic ---
+        
+        // Refactored to separate simple prompt function
+        async function openEditUserModal(type, name, email, parent1, parent2, extra) {
+             // Stop propagation if called from a button inside a clickable card
+             if(event) event.stopPropagation();
+
+             // Native prompt for Email as requested
+             const newEmail = prompt(`Edit Email for ${name}:`, (email && email !== 'undefined' && email !== 'null') ? email : '');
+             if (newEmail === null) return; // User Cancelled
+             
+             // Prepare payload
+             const payload = { 
+                name: name,
+                email: newEmail.trim()
+            };
+            
+            if (type !== 'admin') {
+                payload.admin = parent1;
+            }
+            if (type === 'client') {
+                payload.trader = parent2;
+                payload.category = extra || 'Private'; // Preserve category
+            }
+            
+            let url = '';
+            if (type === 'admin') url = '/api/update_admin';
+            else if (type === 'trader') url = '/api/update_trader';
+            else if (type === 'client') url = '/api/update_client';
             
             try {
-                if (type === 'admin') {
-                    if(hierarchyData.admins) {
-                        Object.entries(hierarchyData.admins).forEach(([name, data]) => {
-                            rows.push({ name, email: data.email, parent: null, url: '/admin/' + name });
-                        });
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                // Inspect response content type to avoid crashing on HTML error pages
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    const result = await res.json();
+                    if (result.status === 'success') {
+                        loadData(); 
+                    } else {
+                        alert('Error updating: ' + result.message);
                     }
-                } else if (type === 'trader') {
-                    if(hierarchyData.admins) {
-                        Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                            Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
-                                let email = '';
-                                if (traderData && traderData.email !== undefined) email = traderData.email;
-                                rows.push({ name: traderName, email: email, parent: adminName, url: '/trader/' + traderName });
-                            });
-                        });
-                    }
-                } else if (type === 'client') {
-                    if(hierarchyData.admins) {
-                        Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                            const traders = adminData.traders || {};
-                            Object.entries(traders).forEach(([traderName, traderData]) => {
-                                let clients = [];
-                                if (Array.isArray(traderData)) clients = traderData;
-                                else if (traderData && traderData.clients) clients = traderData.clients;
-                                
-                                if(Array.isArray(clients)){
-                                    clients.forEach(client => {
-                                        if (!client) return;
-                                        const cName = (typeof client === 'object') ? client.name : client;
-                                        const cEmail = (typeof client === 'object') ? client.email : '';
-                                        rows.push({ 
-                                            name: cName || 'Unknown', 
-                                            email: cEmail, 
-                                            parent: `${traderName} (${adminName})`,
-                                            url: '/dashboard/' + cName
-                                        });
-                                    });
-                                }
-                            });
-                        });
-                    }
+                } else {
+                    const text = await res.text();
+                    console.error("Non-JSON Response:", text);
+                    alert('Server Error: ' + res.status + ' ' + res.statusText);
                 }
             } catch (err) {
-                console.error("Error generating rows:", err);
-                tbody.innerHTML = `<tr><td colspan="3" style="color:red; text-align:center;">Error: ${err.message}</td></tr>`;
-                return;
+                console.error(err);
+                alert('Network error updating user: ' + err.message);
             }
+        }
+        
+        async function deleteUser(type, name, parent1, parent2) {
+            if(event) event.stopPropagation(); // Prevent card click
+            const cleanName = name.replace(/\\'/g, "'");
+            if (!confirm(`Are you sure you want to delete ${type} "${cleanName}"?\nThis cannot be undone.`)) return;
+            // ... (rest of deleteUser)
+            
+            const payload = {
+                type: type,
+                name: cleanName,
+                admin: (type !== 'admin') ? parent1 : undefined,
+                trader: (type === 'client') ? parent2 : undefined
+            };
 
-            if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="padding:15px; text-align:center; color:var(--text-secondary);">No ' + type + 's found</td></tr>';
-                return;
-            }
-
-            // Clear loading spinner
-            tbody.innerHTML = '';
-
-            // Chunked Rendering to prevent freeze
-            const CHUNK_SIZE = 20; // Render 20 rows at a time
-            let index = 0;
-
-            function renderChunk() {
-                const chunk = rows.slice(index, index + CHUNK_SIZE);
-                if (chunk.length === 0) return;
-
-                let html = '';
-                chunk.forEach(r => {
-                    let parentHtml = (type !== 'admin') ? `<td style="padding:12px;">${r.parent || '-'}</td>` : '';
-                    // Conditional display logic
-                    const colParentHeader = document.getElementById('col-parent');
-                    if (type === 'admin') colParentHeader.style.display = 'none';
-                    else {
-                        colParentHeader.style.display = 'table-cell';
-                        colParentHeader.textContent = (type==='client') ? 'Trader/Admin' : 'Admin';
-                    }
-
-                    html += `
-                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                            <td style="padding:12px; color:var(--text-primary);">
-                                <div style="font-weight:600;">${r.name}</div>
-                                <div style="font-size:0.8rem; color:var(--text-secondary);">${r.email || ''}</div>
-                            </td>
-                            ${parentHtml}
-                            <td style="padding:12px; text-align:right;">
-                                <a href="${r.url}" class="btn-gold" style="font-size:0.8rem; padding:4px 12px; text-decoration:none; display:inline-block;">Dashboard</a>
-                            </td>
-                        </tr>
-                    `;
+            try {
+                const res = await fetch('/api/delete_user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
                 });
-
-                tbody.insertAdjacentHTML('beforeend', html);
-                index += CHUNK_SIZE;
-
-                if (index < rows.length) {
-                    requestAnimationFrame(renderChunk);
+                const result = await res.json();
+                if (result.status === 'success') {
+                    loadData();
+                    // Reopen modal? No, we are in tree view now. 
+                    // Just reload tree.
+                } else {
+                    alert('Error deleting: ' + result.message);
                 }
+            } catch (err) {
+                console.error(err);
+                alert('Network error deleting user');
             }
+        }
 
-            // Start rendering
-            renderChunk();
+        async function deleteUser(type, name, parent1, parent2) {
+            const cleanName = name.replace(/\\'/g, "'");
+            if (!confirm(`Are you sure you want to delete ${type} "${cleanName}"?\nThis cannot be undone.`)) return;
+            
+            const payload = {
+                type: type,
+                name: cleanName,
+                admin: (type !== 'admin') ? parent1 : undefined,
+                trader: (type === 'client') ? parent2 : undefined
+            };
+
+            try {
+                const res = await fetch('/api/delete_user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    loadData();
+                    // Reopen modal to show updated list
+                    setTimeout(() => openUserListModal(type), 500);
+                } else {
+                    alert('Error deleting: ' + result.message);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Network error deleting user');
+            }
         }
-        function closeUserListModal() {
-            document.getElementById('userListModal').style.display = 'none';
-        }
+
 
         // --- Core Logic ---
         let hierarchyData = {};
         let currentProfile = 'ALL';
         
+        // Glue code for new buttons
+        function setFilter(profile) {
+            changeProfile(profile);
+        }
+
         function formatCurrency(value) {
             const num = parseFloat(value) || 0;
             return '$' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -606,8 +994,11 @@
 
         function loadData() {
             // Add loading indicator to stat cards
-            document.getElementById('grand-total-payouts').innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            document.getElementById('grand-ev').innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            debugLog("Loading Data...");
+            const p = document.getElementById('grand-total-payouts');
+            if(p) p.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            const v = document.getElementById('grand-ev');
+            if(v) v.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             
             const totalsUrl = currentProfile === 'ALL' ? '/api/super_admin/totals' : `/api/super_admin/totals?profile=${currentProfile}`;
             
@@ -615,17 +1006,22 @@
             fetch('/api/hierarchy')
                 .then(r => {
                     if(!r.ok) throw new Error('Failed to load hierarchy');
+                    debugLog("Hierarchy Fetch Response OK");
                     return r.json();
                 })
                 .then(hData => {
+                    debugLog(`Hierarchy Loaded: ${Object.keys(hData.admins || {}).length} admins`);
                     hierarchyData = hData;
                     renderTree();
                     updateSelects();
                     updateStats(); // Initial stats based on hierarchy counts
+                    debugLog("Hierarchy Render Complete");
                 })
                 .catch(err => {
+                    debugLog("Hierarchy Load Error: " + err.message, 'error');
                     console.error("Hierarchy Load Error:", err);
-                    document.getElementById('hierarchy-tree').innerHTML = `<div class="alert alert-danger">Failed to load user hierarchy: ${err.message}</div>`;
+                    const tree = document.getElementById('hierarchy-tree');
+                    if(tree) tree.innerHTML = `<div class="alert alert-danger">Failed to load user hierarchy: ${err.message}</div>`;
                 });
 
             // 2. Load Financial Totals (Independent)
@@ -637,25 +1033,34 @@
                 .then(fData => {
                     if(fData.status === 'success' && fData.totals) {
                         const t = fData.totals;
-                        document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
-                        document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
-                        document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
-                        document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
-                        document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
-                        document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
-                        
-                        document.getElementById('grand-active-accounts').textContent = t.active_accounts;
-                        document.getElementById('grand-completed-accounts').textContent = t.completed_accounts;
-                        document.getElementById('grand-failed-accounts').textContent = t.failed_accounts;
+                        try {
+                            document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
+                            document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
+                            document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
+                            document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
+                            document.getElementById('grand-hedge').textContent = formatCurrency(t.total_hedge);
+                            document.getElementById('grand-farming').textContent = formatCurrency(t.total_farming);
+                            document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
+                            document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
+                            
+                            document.getElementById('grand-active-accounts').textContent = t.active_accounts;
+                            document.getElementById('grand-completed-accounts').textContent = t.completed_accounts;
+                            document.getElementById('grand-failed-accounts').textContent = t.failed_accounts;
+                            debugLog("Totals Updated");
+                        } catch(e) {
+                             debugLog("Error updating DOM with totals: " + e.message, 'error');
+                        }
                     }
                 })
                 .catch(err => {
+                    debugLog("Totals Load Error: " + err.message, 'error');
                     console.error("Totals Load Error:", err);
                     // Show error state in cards
                     document.getElementById('grand-total-payouts').textContent = 'Error';
                     document.getElementById('grand-ev').textContent = 'Error';
                 });
         }
+
 
         function updateStats() {
             if(!hierarchyData.admins) return;
@@ -665,8 +1070,20 @@
                 const traders = adm.traders || {};
                 t += Object.keys(traders).length;
                 Object.values(traders).forEach(tr => {
-                    if(tr.clients) c += tr.clients.length;
-                    else if(Array.isArray(tr)) c += tr.length; // legacy check
+                    let clients = tr.clients || [];
+                    if(Array.isArray(tr)) clients = tr; // legacy
+                    
+                    // Filter stats
+                    clients = clients.filter(cl => {
+                        if (currentProfile === 'ALL') return true;
+                        let cat = 'PRIVATE';
+                        if (typeof cl === 'object') {
+                            cat = (cl.profile || cl.category || cl.source || 'PRIVATE').toUpperCase();
+                        }
+                        return cat === currentProfile;
+                    });
+                    
+                    c += clients.length;
                 });
             });
             document.getElementById('total-admins').textContent = a;
@@ -707,24 +1124,151 @@
             }
         }
 
+        // --- Drag and Drop Logic --- (Updated with validation)
+        
+        function dragStart(ev, type, name, parent1, parent2) {
+            ev.stopPropagation(); // Stop event from bubbling up to parents (prevents client drag from triggering trader drag)
+            ev.dataTransfer.setData("type", type);
+            ev.dataTransfer.setData("name", name);
+            ev.dataTransfer.setData("parent1", parent1); // Admin 
+            ev.dataTransfer.setData("parent2", parent2); // Trader
+            ev.target.classList.add('dragging');
+            
+            // Store type globally for dragOver check
+            window.dragType = type;
+        }
+
+        function dragEnd(ev) {
+            ev.target.classList.remove('dragging');
+            document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            window.dragType = null;
+        }
+
+        function allowDrop(ev, targetType) {
+            // Only allow dropping Traders on Admins
+            if (window.dragType === 'trader' && targetType !== 'admin') return;
+            // Only allow dropping Clients on Traders
+            if (window.dragType === 'client' && targetType !== 'trader') return;
+            
+            ev.preventDefault(); 
+            ev.currentTarget.classList.add('drag-over');
+        }
+
+        function dragLeave(ev) {
+            ev.currentTarget.classList.remove('drag-over');
+        }
+
+        async function drop(ev, targetType, targetName, targetAdmin) {
+            ev.preventDefault();
+            ev.currentTarget.classList.remove('drag-over');
+            
+            const sourceType = ev.dataTransfer.getData("type");
+            const sourceName = ev.dataTransfer.getData("name");
+            const oldParent1 = ev.dataTransfer.getData("parent1"); // Admin (source)
+            const oldParent2 = ev.dataTransfer.getData("parent2"); // Trader (source)
+            
+            // 1. Move Trader -> Admin
+            if (sourceType === 'trader' && targetType === 'admin') {
+                if (oldParent1 === targetName) return; 
+                
+                // Call API
+                const payload = { 
+                    type: 'trader', 
+                    name: sourceName, 
+                    old_admin: oldParent1, 
+                    new_admin: targetName 
+                };
+                
+                await performMove(payload);
+            }
+            // 2. Move Client -> Trader
+            else if (sourceType === 'client' && targetType === 'trader') {
+                // targetName is the new Trader, targetAdmin is the new Admin
+                if (oldParent2 === targetName && oldParent1 === targetAdmin) return;
+                
+                const payload = {
+                    type: 'client',
+                    name: sourceName,
+                    old_trader: oldParent2,
+                    old_admin: oldParent1,
+                    new_trader: targetName,
+                    new_admin: targetAdmin
+                };
+                
+                await performMove(payload);
+            }
+        }
+        
+        async function performMove(payload) {
+             if(!confirm(`Confirm move?`)) return;
+             try {
+                const res = await fetch('/api/move_user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    // alert('Moved successfully');
+                    loadData(); 
+                } else {
+                    alert('Move failed: ' + result.message);
+                }
+            } catch(e) {
+                alert('Network error: ' + e.message);
+            }
+        }
+
+
         function renderTree() {
             const container = document.getElementById('hierarchy-tree');
             container.innerHTML = '';
             
             if (!hierarchyData.admins) return;
 
+            // Robust escaping for HTML attributes: 
+            const esc = (s) => (s || '').replace(/[\\']/g, '\\$&').replace(/"/g, '&quot;');
+
             Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                const sAdmin = esc(adminName);
+                const sAdminEmail = esc(adminData.email);
+
                 // Admin Card
                 const card = document.createElement('div');
                 card.className = 'admin-card';
+                card.style.marginBottom = '12px';
+                
+                // --- Drop Zone Attributes for Admin (Result: Move Trader here) ---
+                card.setAttribute('ondragover', "allowDrop(event, 'admin')");
+                card.setAttribute('ondragleave', "dragLeave(event)");
+                card.setAttribute('ondrop', `drop(event, 'admin', '${sAdmin}', null)`);
                 
                 const header = document.createElement('div');
                 header.className = 'admin-header';
+                // Clickable Header
+                header.style.cursor = 'pointer';
+                header.onclick = (e) => {
+                    if (e.target.closest('button')) return;
+                    window.location.href = '/admin/' + encodeURIComponent(adminName);
+                };
+
+                // Ultra Compact Layout
+                header.style.display = 'flex';
+                header.style.justifyContent = 'space-between';
+                header.style.alignItems = 'center';
+                header.style.padding = '4px 12px';
+                header.style.minHeight = '32px';
+                
                 header.innerHTML = `
-                    <div class="admin-title-group">
-                        <span class="badge badge-admin">ADMIN</span>
-                        <div class="admin-name">${adminName}</div>
-                        <div class="admin-email">${adminData.email || ''}</div>
+                    <div class="admin-title-group" style="display:flex; align-items:center;">
+                        <span class="badge badge-admin" style="margin-right:8px; font-size:0.6rem; padding: 1px 5px;">ADMIN</span>
+                        <div class="admin-name" style="margin-right:8px; font-size:0.9rem; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.3); text-underline-offset: 2px;">${adminName}</div> 
+                        <div class="admin-email" style="font-size:0.75rem; color:rgba(255,255,255,0.9); font-weight:500;">${adminData.email || ''}</div>
+                    </div>
+                    <div class="action-buttons" style="display:flex; gap:8px; align-items:center;">
+                        <a href="/admin/${encodeURIComponent(adminName)}" onclick="event.stopPropagation()" style="color:var(--text-secondary); text-decoration:none;" title="View Dashboard"><i class="fas fa-external-link-alt" style="font-size:0.9rem;"></i></a>
+                        <button type="button" onclick="openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:0 2px;" title="Edit API/Info"><i class="fas fa-edit" style="font-size:0.9rem;"></i></button>
+                        <button type="button" onclick="deleteUser('admin', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Admin"><i class="fas fa-trash" style="font-size:0.9rem;"></i></button>
                     </div>
                 `;
                 card.appendChild(header);
@@ -732,19 +1276,42 @@
                 // Trader List
                 const tList = document.createElement('div');
                 tList.className = 'trader-list';
+                tList.style.padding = '8px'; // Reduced padding
                 
                 const traders = adminData.traders || {};
                 Object.entries(traders).forEach(([traderName, traderData]) => {
+                    const sTrader = esc(traderName);
+                    const sTraderEmail = esc(traderData.email);
+
                     const tItem = document.createElement('div');
                     tItem.className = 'trader-item';
+                    tItem.style.marginBottom = '8px'; // Reduced gap
                     
-                    // Trader Header
+                    // --- Drag Attributes for Trader (Move this trader) ---
+                    tItem.draggable = true;
+                    tItem.setAttribute('ondragstart', `dragStart(event, 'trader', '${sTrader}', '${sAdmin}', null)`);
+                    tItem.setAttribute('ondragend', `dragEnd(event)`);
+                    
+                    // --- Drop Zone Attributes for Trader (Result: Move Client here) ---
+                    tItem.setAttribute('ondragover', "allowDrop(event, 'trader')");
+                    tItem.setAttribute('ondragleave', "dragLeave(event)");
+                    tItem.setAttribute('ondrop', `drop(event, 'trader', '${sTrader}', '${sAdmin}')`);
+
+                    
+                    // Trader Header - Clickable (Link)
+                    const safeTraderLink = '/trader/' + encodeURIComponent(traderName).replace(/'/g, '%27');
+
                     tItem.innerHTML = `
-                        <div class="trader-header">
-                            <div style="display:flex; align-items:center; gap:10px;">
-                                <span class="badge badge-trader">TRADER</span>
-                                <span class="trader-name">${traderName}</span>
-                                <span class="admin-email" style="font-size:0.8rem;">${traderData.email || ''}</span>
+                        <div class="trader-header" onclick="if(!event.target.closest('button')) window.location.href='${safeTraderLink}'" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding: 4px 8px; min-height: 28px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="badge badge-trader" style="font-size:0.6rem; padding: 1px 5px;">TRADER</span>
+                                <span class="trader-name" style="font-size:0.85rem; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.3); text-underline-offset: 2px;">${traderName}</span>
+                                <span class="trader-email" style="font-size:0.75rem; color:rgba(255,255,255,0.9); font-weight:500;">${traderData.email || ''}</span>
+                            </div>
+                            <div class="action-buttons" style="display:flex; gap:6px; align-items:center;">
+                                <a href="${safeTraderLink}" onclick="event.stopPropagation()" style="color:rgba(255,255,255,0.8); text-decoration:none;" title="View Dashboard"><i class="fas fa-external-link-alt" style="font-size:0.85rem;"></i></a>
+                                <button type="button" onclick="openEditUserModal('trader', '${sTrader}', '${sTraderEmail}', '${sAdmin}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer; padding:0 2px;" title="Edit Trader"><i class="fas fa-edit" style="font-size:0.85rem;"></i></button>
+                                <button type="button" onclick="deleteUser('trader', '${sTrader}', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Trader"><i class="fas fa-trash" style="font-size:0.85rem;"></i></button>
                             </div>
                         </div>
                     `;
@@ -752,14 +1319,51 @@
                     // Client Tag List
                     const cList = document.createElement('div');
                     cList.className = 'client-list';
+                    cList.style.padding = '10px'; // Reduced padding inside trader box
                     const clients = traderData.clients || [];
                     
                     clients.forEach(c => {
+                        // Filter logic
+                        if (currentProfile !== 'ALL') {
+                            let cat = 'PRIVATE';
+                            if (typeof c === 'object') {
+                                cat = (c.profile || c.category || c.source || 'PRIVATE').toUpperCase();
+                            }
+                            if (cat !== currentProfile) return;
+                        }
+
                         const cName = (typeof c === 'object') ? c.name : c;
-                        const tag = document.createElement('a');
-                        tag.href = `/dashboard/${cName}`;
+                        const cEmail = (typeof c === 'object') ? c.email : '';
+                        const cCat = (typeof c === 'object') ? (c.category || c.profile || 'Private') : 'Private';
+                        
+                        const sClient = esc(cName);
+                        const sClientEmail = esc(cEmail);
+                        const sCat = esc(cCat);
+                        
+                        const tag = document.createElement('div'); 
                         tag.className = 'client-tag';
-                        tag.innerHTML = `<i class="fas fa-user-circle" style="margin-right:6px;"></i> ${cName}`;
+                        
+                        // --- Drag Attributes for Client ---
+                        tag.draggable = true;
+                        tag.setAttribute('ondragstart', `dragStart(event, 'client', '${sClient}', '${sAdmin}', '${sTrader}')`);
+                        tag.setAttribute('ondragend', `dragEnd(event)`);
+                        
+                        tag.style.display = 'inline-flex';
+                        tag.style.alignItems = 'center';
+                        tag.style.gap = '6px';
+                        tag.style.padding = '6px 10px'; // Reduced tag size
+                        tag.style.fontSize = '0.85rem';
+                        
+                        tag.innerHTML = `
+                            <a href="/dashboard/${cName}" style="color:inherit; text-decoration:none; display:flex; align-items:center;">
+                                <i class="fas fa-user-circle" style="margin-right:5px;"></i> ${cName}
+                            </a>
+                            <div class="mini-actions" style="margin-left:4px; border-left:1px solid rgba(255,255,255,0.2); padding-left:6px; display:flex; gap:4px;">
+                                <button type="button" onclick="openEditUserModal('client', '${sClient}', '${sClientEmail}', '${sAdmin}', '${sTrader}', '${sCat}')" style="background:none; border:none; cursor:pointer; font-size:0.75rem; opacity:0.7; color: inherit; padding:0;" title="Edit"><i class="fas fa-pencil-alt"></i></button>
+                                <button type="button" onclick="deleteUser('client', '${sClient}', '${sAdmin}', '${sTrader}')" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#ff8888; opacity:0.7; padding:0;" title="Delete"><i class="fas fa-times"></i></button>
+                            </div>
+                        `;
+                        
                         cList.appendChild(tag);
                     });
                     
@@ -772,8 +1376,66 @@
             });
         }
 
+        // Global Delegation for reliability (Fix for non-clickable cards)
+        document.addEventListener('click', function(e) {
+            // debugLog(`Click detected on: ${e.target.tagName} - ID: ${e.target.id} - Classes: ${e.target.className}`); // Verbose log
+
+            // Check if clicked element or parent is one of our stat cards
+            const card = e.target.closest('.stat-box-modern');
+            if (card) {
+                debugLog(`Click matched card: ${card.id}`);
+                let type = null;
+                if (card.id === 'stat-card-admin') type = 'admin';
+                else if (card.id === 'stat-card-trader') type = 'trader';
+                else if (card.id === 'stat-card-client') type = 'client';
+
+                if (type) {
+                     debugLog(`Triggering modal for: ${type}`);
+                     e.preventDefault(); 
+                     e.stopPropagation();
+                     
+                     if (window.openUserListModal) {
+                        try {
+                            window.openUserListModal(type);
+                            debugLog(`Modal triggered successfully`);
+                        } catch(err) {
+                            debugLog(`Modal trigger failed: ${err.message}`, 'error');
+                        }
+                     } else {
+                        debugLog("openUserListModal not defined globally", 'error');
+                     }
+                }
+            }
+        }, true); // Capture phase
+
         // Init
-        document.addEventListener('DOMContentLoaded', loadData);
+        document.addEventListener('DOMContentLoaded', () => {
+             debugLog("DOMContentLoaded - Page Ready");
+
+             // 1. Force Modal to Body Root immediately
+             const modal = document.getElementById('userListModal');
+             if (modal) {
+                 if(modal.parentNode !== document.body) document.body.appendChild(modal);
+                 // Reset modal styles just in case
+                 modal.style.display = 'none';
+                 modal.style.zIndex = '99999';
+                 debugLog("Modal moved to body root");
+             } else {
+                 debugLog("ERROR: userListModal element not found DOM", 'error');
+             }
+
+             // 2. Wrap loadData
+             try { 
+                loadData(); 
+                debugLog("Initial data load started");
+             } catch(e) { 
+                debugLog(`Initial loadData failed: ${e.message}`, 'error');
+             }
+        });
+        
+        // Expose to global window
+        window.openUserListModal = openUserListModal;
+        window.closeUserListModal = closeUserListModal;
     </script>
 </body>
 </html>

@@ -472,6 +472,29 @@ def verify_user_by_identifier(identifier: str, password: str) -> dict:
     
     return None
 
+def delete_user_credential(username: str, user_type: str) -> bool:
+    """Permanently delete a user credential."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM user_credentials 
+            WHERE username = ? AND user_type = ?
+        ''', (username, user_type))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def update_user_email(username: str, user_type: str, new_email: str) -> bool:
+    """Update a user's email address."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE user_credentials 
+            SET email = ?, updated_at = ?
+            WHERE username = ? AND user_type = ?
+        ''', (new_email, datetime.now().isoformat(), username, user_type))
+        conn.commit()
+        return cursor.rowcount > 0
+
 def user_exists(username: str, user_type: str) -> bool:
     """Check if a user already exists."""
     with get_connection() as conn:

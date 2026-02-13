@@ -9,13 +9,13 @@ from functools import wraps
 import secrets
 import hashlib
 from datetime import datetime, timedelta
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
 
 # Add project root to sys.path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
-    update_admin_details, update_trader_details, update_client_details,
+    update_admin_details, update_trader_details, update_client_details, update_client_category,
     get_client_by_email, get_user_by_email,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader
@@ -30,6 +30,7 @@ from dashboard.database import (
     log_action, get_audit_log,
     create_session, validate_session, delete_session,
     create_user, verify_user_password, verify_client_login, update_user_password,
+    delete_user_credential, update_user_email,
     get_user, list_users, deactivate_user, reset_user_password, user_exists,
     record_login_attempt, is_account_locked,
     find_user_by_identifier, verify_user_by_identifier,
@@ -923,18 +924,20 @@ def payout_history():
             pass
 
     prop_firm_filter = request.args.get('prop_firm')
+    profile_filter = request.args.get('profile', 'ALL')
     
     # We need overview data just to get the list of prop firms for the dropdown
     overview_data = calculate_propfirm_overview()
     sorted_prop_firms = sorted(overview_data.keys())
     
-    payouts_list = get_payouts_history(start_date, end_date, prop_firm_filter)
+    payouts_list = get_payouts_history(start_date, end_date, prop_firm_filter, profile_filter=profile_filter)
     
     return render_template('payout_history.html', 
                            payouts=payouts_list,
                            start_date=start_date_str,
                            end_date=end_date_str,
                            selected_prop_firm=prop_firm_filter,
+                           selected_profile=profile_filter,
                            prop_firms=sorted_prop_firms)
 
 @app.route('/client_performance')
@@ -952,8 +955,9 @@ def trader_performance():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
          
-    traders_data = calculate_trader_stats()
-    return render_template('trader_performance.html', traders=traders_data)
+    profile_filter = request.args.get('profile', 'ALL')
+    traders_data = calculate_trader_stats(profile_filter=profile_filter)
+    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter)
 
 
 @app.route('/trader/<trader_name>')
@@ -1079,6 +1083,8 @@ def get_hierarchy():
     filtered = get_filtered_hierarchy(user_type, user_identifier)
     return jsonify(filtered)
 
+from dashboard.financial_overview import calculate_all_financials
+
 @app.route('/api/super_admin/totals')
 def get_super_admin_totals():
     """Get aggregated totals across all clients for super admin dashboard."""
@@ -1087,167 +1093,75 @@ def get_super_admin_totals():
     if not session_token:
         return jsonify({"status": "error", "message": "Authentication required"}), 401
     
+    # Check session
+    # ... (auth check logic is fine, keeping it implicitly via context if needed or re-implementing if I replace the whole function body)
+    # The snippet below replaces the body.
+    
     session_info = validate_session(session_token)
     if not session_info or session_info.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Super admin access required"}), 403
     
     profile_filter = request.args.get('profile', 'ALL').upper()
 
-    # Get all client data (Cached)
-    all_clients = get_cached_clients_dataset()
+    # Use the centralized financial calculation
+    data = calculate_all_financials(profile_filter)
+    stats = data['global_stats']
+    overview = data['overview']
     
-    # Aggregate totals
-    total_payouts = 0.0
+    # Calculate Deposits separately if not in global_stats
+    # In financial_overview.py, deposits are in data['deposits'] tuple (dates, cum_values)
+    # The last value of cum_values is the total.
     total_deposits = 0.0
-    total_fees = 0.0
-    total_hedge_results = 0.0
-    total_farming = 0.0
-    total_net_profit = 0.0
+    if data.get('deposits') and data['deposits'][1]:
+        total_deposits = data['deposits'][1][-1]
+        
+    # Calculate Totals
     active_accounts = 0
-    completed_accounts = 0
+    passed_accounts = 0
     failed_accounts = 0
     
-    # Track earliest date for EV/Day calculation
-    earliest_date = None
+    total_hedge = 0.0
+    total_farming = 0.0
     
-    # List to hold individual client stats
-    client_details = []
-    
-    def parse_currency(val):
-        """Parse currency string to float."""
-        if val is None:
-            return 0.0
-        if isinstance(val, (int, float)):
-            return float(val)
-        try:
-            # Remove currency symbols and commas
-            cleaned = str(val).replace('$', '').replace(',', '').replace(' ', '').strip()
-            if cleaned == '' or cleaned == '-':
-                return 0.0
-            return float(cleaned)
-        except (ValueError, TypeError):
-            return 0.0
-    
-    for client_id, client_data in all_clients.items():
-        if not client_data:
-            continue
-            
-        # Get client metadata
-        identity = client_data.get('identity', {})
-        # Prioritize 'profile' or 'category' as source, fallback to 'source' or 'Private'
-        # Normalize to upper case for comparison
-        raw_source = identity.get('profile') or identity.get('category') or identity.get('source') or 'Private'
-        client_profile = str(raw_source).upper()
+    for firm, f_data in overview.items():
+        active_accounts += f_data.get('active_accounts', 0)
+        passed_accounts += f_data.get('passed_accounts', 0)
+        failed_accounts += f_data.get('failed_accounts', 0)
+        total_hedge += f_data.get('hedge_results', 0.0)
+        total_farming += f_data.get('farming_results', 0.0)
         
-        # Apply Profile Filter
-        if profile_filter != 'ALL':
-             # Robust Filtering
-             if profile_filter == 'BEF':
-                 if 'BEF' not in client_profile:
-                     continue
-             elif profile_filter == 'PRIVATE':
-                 if 'BEF' in client_profile:
-                     continue
-
-        # Check for earliest date
-        evals = client_data.get('evaluations', [])
-        for ev in evals:
-            d_str = ev.get('Date Started') or ev.get('Date')
-            if d_str:
-                d_obj = parse_date(d_str)
-                if d_obj:
-                    if earliest_date is None or d_obj < earliest_date:
-                        earliest_date = d_obj
-                        
-        # Get statistics from client data
-        stats = client_data.get('statistics', {})
-        
-        # Normalize source/profile value
-        if 'BEF' in client_profile:
-             client_source = 'BEF'
-        else:
-             client_source = 'Private'
-        
-        # Get cashflow/in-progress totals (all accounts)
-        cashflow = stats.get('cashflow_inprogress', {})
-        c_payouts = parse_currency(cashflow.get('payouts', 0))
-        c_fees = parse_currency(cashflow.get('challenge_fees', 0))
-        c_hedge = parse_currency(cashflow.get('hedging_results', 0))
-        c_farm = parse_currency(cashflow.get('farming_results', 0))
-        
-        total_payouts += c_payouts
-        total_fees += c_fees
-        total_hedge_results += c_hedge
-        total_farming += c_farm
-        
-        # Get hedging review for deposits
-        hedging_review = stats.get('hedging_review', {})
-        c_deposits = parse_currency(hedging_review.get('total_deposits', 0))
-        total_deposits += c_deposits
-        
-        # Get eval totals for account counts
-        eval_totals = stats.get('eval_totals', {})
-        c_active = int(eval_totals.get('total_running', 0) or 0)
-        c_passed = int(eval_totals.get('total_passed', 0) or 0)
-        c_failed = int(eval_totals.get('total_failed', 0) or 0)
-        
-        active_accounts += c_active
-        completed_accounts += c_passed
-        failed_accounts += c_failed
-        
-        # Calculate net profit from profitability data
-        prof_completed = stats.get('profitability_completed', {})
-        c_net = parse_currency(prof_completed.get('payouts', 0)) + \
-              parse_currency(prof_completed.get('hedging_results', 0)) + \
-              parse_currency(prof_completed.get('farming_results', 0)) - \
-              parse_currency(prof_completed.get('challenge_fees', 0))
-        total_net_profit += c_net
-        
-        # Add to detail list
-        client_details.append({
-            "client_id": client_id,
-            "source": client_source,
-            "payouts": round(c_payouts, 2),
-            "deposits": round(c_deposits, 2),
-            "fees": round(c_fees, 2),
-            "hedge": round(c_hedge, 2),
-            "farming": round(c_farm, 2),
-            "net_profit": round(c_net, 2),
-            "active": c_active,
-            "passed": c_passed,
-            "failed": c_failed
-        })
-    
-    # Calculate EV Stats
-    total_ended = completed_accounts + failed_accounts
-    expected_value = 0.0
-    if total_ended > 0:
-        expected_value = total_net_profit / total_ended
-        
-    ev_per_day = 0.0
-    if earliest_date:
-        days_active = (datetime.now() - earliest_date).days
-        if days_active > 0:
-            ev_per_day = total_net_profit / days_active
-            
-    return jsonify({
+    response_data = {
         "status": "success",
         "totals": {
-            "total_payouts": round(total_payouts, 2),
+            "total_payouts": 0.0, # Not in global_stats explicitly, need to sum?
+            # global_stats keys: net, ended, expected_value, ev_per_day
             "total_deposits": round(total_deposits, 2),
-            "total_fees": round(total_fees, 2),
-            "total_hedge_results": round(total_hedge_results, 2),
-            "total_farming": round(total_farming, 2),
-            "total_net_profit": round(total_net_profit, 2),
+            "total_fees": 0.0,
+            "total_net_profit": round(stats.get('net', 0), 2),
             "active_accounts": active_accounts,
-            "completed_accounts": completed_accounts,
+            "completed_accounts": passed_accounts,
             "failed_accounts": failed_accounts,
-            "client_count": len(all_clients),
-            "expected_value": round(expected_value, 2),
-            "ev_per_day": round(ev_per_day, 2)
-        },
-        "clients": client_details
-    })
+            "total_hedge": round(total_hedge, 2),
+            "total_farming": round(total_farming, 2),
+            "expected_value": round(stats.get('expected_value', 0), 2),
+            "ev_per_day": round(stats.get('ev_per_day', 0), 2)
+        }
+    }
+    
+    # Sum up Payouts and Fees from overview to fill gaps
+    t_pay = 0.0
+    t_fees = 0.0
+    for firm, f_data in overview.items():
+        t_pay += f_data.get('total_payouts', 0)
+        t_fees += f_data.get('total_fees', 0) + f_data.get('total_activation_fees', 0)
+        
+    response_data['totals']['total_payouts'] = round(t_pay, 2)
+    response_data['totals']['total_fees'] = round(t_fees, 2)
+    
+    # Add Client Performance Stats used by client_performance.html
+    response_data['clients'] = get_client_performance_stats(profile_filter)
+    
+    return jsonify(response_data)
 
 @app.route('/api/client/update_source', methods=['POST'])
 @require_session
@@ -1782,32 +1696,96 @@ def unified_login():
 # ============ User Management Endpoints (Admin only) ============
 
 @app.route('/api/admin/create_user', methods=['POST'])
-@require_admin_password
+@require_role('super_admin')
 @limiter.limit("20 per hour")
 def api_create_user():
     """Create a new user account."""
     data = request.json
     username = data.get('username')
-    password = data.get('password')
     user_type = data.get('user_type')  # admin, trader, or client
     email = data.get('email')
+    
+    # Auto-generate password if not provided
+    password = data.get('password')
+    if not password:
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        password = ''.join(secrets.choice(alphabet) for i in range(12))
+    
     parent_admin = data.get('parent_admin')
     parent_trader = data.get('parent_trader')
     
-    if not username or not password or not user_type:
-        return jsonify({"status": "error", "message": "Username, password, and user_type required"}), 400
+    if not username or not user_type:
+        return jsonify({"status": "error", "message": "Username and user_type required"}), 400
     
     if user_type not in ['admin', 'trader', 'client']:
         return jsonify({"status": "error", "message": "Invalid user type"}), 400
     
-    if user_exists(username, user_type):
+    # Check if user already exists in DB
+    user_db_exists = user_exists(username, user_type)
+    
+    # Check if user exists in Hierarchy
+    hierarchy_exists = False
+    if user_type == 'admin':
+        if username in hierarchy.get('admins', {}):
+            hierarchy_exists = True
+    elif user_type == 'trader':
+        for adm in hierarchy.get('admins', {}).values():
+            if username in adm.get('traders', {}):
+                hierarchy_exists = True
+                break
+    elif user_type == 'client':
+        for adm in hierarchy.get('admins', {}).values():
+            for tr in adm.get('traders', {}).values():
+                clients = tr.get('clients', [])
+                for cl in clients:
+                    c_name = cl.get('name') if isinstance(cl, dict) else cl
+                    if c_name == username:
+                        hierarchy_exists = True
+                        break
+                if hierarchy_exists: break
+            if hierarchy_exists: break
+
+    if user_db_exists and hierarchy_exists:
         return jsonify({"status": "error", "message": f"{user_type.title()} '{username}' already exists"}), 400
     
-    if create_user(username, password, user_type, email, parent_admin, parent_trader):
-        log_action('CREATE_USER', 'admin', username, get_remote_address(), f"Type: {user_type}")
-        return jsonify({"status": "success", "message": f"{user_type.title()} '{username}' created successfully"})
-    
-    return jsonify({"status": "error", "message": "Failed to create user"}), 500
+    # Create user in database (auth) if not exists
+    if not user_db_exists:
+        if not create_user(username, password, user_type, email, parent_admin, parent_trader):
+            return jsonify({"status": "error", "message": "Failed to create user"}), 500
+
+    # Update Hierarchy (for display) - even if they existed in DB but not hierarchy
+    try:
+        if user_type == 'admin':
+            if not hierarchy_exists:
+                add_admin(username, email)
+        elif user_type == 'trader':
+            if not hierarchy_exists:
+                # Map parent_user to parent_admin for simple logic if needed, 
+                # but request.json usually sends 'parent_user' which we need to grab
+                p_admin = data.get('parent_user') or parent_admin
+                if p_admin:
+                    add_trader(p_admin, username, email)
+        elif user_type == 'client':
+            if not hierarchy_exists:
+                p_trader = data.get('parent_user') or parent_trader
+                # We need to find the admin for this trader to call add_client(admin, trader, client)
+                # Search hierarchy for the trader
+                found_admin = None
+                if hierarchy.get('admins'):
+                    for adm, a_data in hierarchy['admins'].items():
+                        if p_trader in a_data.get('traders', {}):
+                            found_admin = adm
+                            break
+                if found_admin and p_trader:
+                    add_client(found_admin, p_trader, username, email)
+    except Exception as e:
+        print(f"Hierarchy update failed: {e}")
+        # Continue, as user was created in DB
+
+    log_action('CREATE_USER', 'admin', username, get_remote_address(), f"Type: {user_type}")
+    return jsonify({"status": "success", "message": f"{user_type.title()} '{username}' created successfully"})
 
 def can_manage_user(manager_type, manager_identifier, target_username, target_user_type):
     """Check if a user can manage (reset password, deactivate) another user."""
@@ -2010,6 +1988,39 @@ def api_add_admin():
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Admin exists"}), 400
 
+@app.route('/api/delete_user', methods=['POST'])
+@require_role('super_admin')
+def api_delete_user():
+    data = request.json
+    user_type = data.get('type')
+    name = data.get('name')
+    admin = data.get('admin')
+    trader = data.get('trader')
+    
+    if not user_type or not name:
+        return jsonify({"status": "error", "message": "Missing arguments"}), 400
+        
+    result = False
+    if user_type == 'admin':
+        result = remove_admin(name)
+        delete_user_credential(name, 'admin')
+            
+    elif user_type == 'trader':
+        if not admin: return jsonify({"status": "error", "message": "Admin parent required"}), 400
+        result = remove_trader(admin, name)
+        delete_user_credential(name, 'trader')
+            
+    elif user_type == 'client':
+        if not admin or not trader: return jsonify({"status": "error", "message": "Parents required"}), 400
+        result = remove_client(admin, trader, name)
+        delete_user_credential(name, 'client')
+    
+    if result:
+        log_action(f'DELETE_{user_type.upper()}', user_type, name, get_remote_address())
+        return jsonify({"status": "success"})
+    else:
+        return jsonify({"status": "error", "message": "Delete failed (not found)"}), 400
+
 @app.route('/api/update_admin', methods=['POST'])
 def api_update_admin():
     name = request.json.get('name')
@@ -2017,6 +2028,7 @@ def api_update_admin():
     if not name: return jsonify({"status": "error", "message": "Name required"}), 400
     
     if update_admin_details(name, email):
+        update_user_email(name, 'admin', email)
         log_action('UPDATE_ADMIN', 'admin', name, get_remote_address())
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Admin not found"}), 400
@@ -2029,6 +2041,7 @@ def api_update_trader():
     if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
     if update_trader_details(admin, name, email):
+        update_user_email(name, 'trader', email)
         log_action('UPDATE_TRADER', 'admin', name, get_remote_address(), f"Admin: {admin}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Trader not found"}), 400
@@ -2043,7 +2056,11 @@ def api_update_client():
     
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
     
+    if category:
+        update_client_category(admin, trader, name, category)
+        
     if update_client_details(admin, trader, name, email):
+        update_user_email(name, 'client', email)
         log_action('UPDATE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Client not found"}), 400
@@ -2108,6 +2125,66 @@ def api_add_client():
         log_action('ADD_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid request or Client exists"}), 400
+
+@app.route('/api/move_user', methods=['POST'])
+def api_move_user():
+    data = request.json
+    user_type = data.get('type')
+    name = data.get('name')
+    
+    if user_type == 'trader':
+        old_admin = data.get('old_admin')
+        new_admin = data.get('new_admin')
+        if not all([name, old_admin, new_admin]): 
+            return jsonify({"status": "error", "message": "Missing fields"}), 400
+            
+        if move_trader(name, old_admin, new_admin):
+            try:
+                # Update DB using raw SQL since no helper exposes raw update
+                # We need to manually get a connection from the pool/manager
+                # get_connection is imported from dashboard.database
+                with get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE user_credentials SET parent_admin = ? WHERE username = ? AND user_type = 'trader'", (new_admin, name))
+                    # Also update all clients of this trader to point to new admin
+                    cursor.execute("UPDATE user_credentials SET parent_admin = ? WHERE parent_trader = ? AND user_type = 'client'", (new_admin, name))
+                    conn.commit()
+            except Exception as e:
+                print(f"DB update failed: {e}")
+                
+            log_action('MOVE_TRADER', 'super_admin', name, get_remote_address(), f"{old_admin} -> {new_admin}")
+            return jsonify({"status": "success"})
+        else:
+            return jsonify({"status": "error", "message": "Move failed (invalid target or user not found)"}), 400
+            
+    elif user_type == 'client':
+        old_trader = data.get('old_trader')
+        old_admin = data.get('old_admin')
+        new_trader = data.get('new_trader') # The target trader
+        new_admin = data.get('new_admin')   # The admin of the target trader (required for consistency)
+        
+        if not all([name, old_trader, old_admin, new_trader, new_admin]): 
+             return jsonify({"status": "error", "message": "Missing fields"}), 400
+             
+        # Signature: move_client(client_name, old_admin, old_trader, new_admin, new_trader)
+        if move_client(name, old_admin, old_trader, new_admin, new_trader):
+            try:
+                with get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE user_credentials SET parent_trader = ?, parent_admin = ? WHERE username = ? AND user_type = 'client'", 
+                        (new_trader, new_admin, name)
+                    )
+                    conn.commit()
+            except Exception as e:
+                print(f"DB update failed: {e}")
+                
+            log_action('MOVE_CLIENT', 'super_admin', name, get_remote_address(), f"{old_trader} -> {new_trader}")
+            return jsonify({"status": "success"})
+        else:
+             return jsonify({"status": "error", "message": "Move failed (duplicate name?)"}), 400
+
+    return jsonify({"status": "error", "message": "Invalid type"}), 400
 
 @app.route('/api/update_client_profile', methods=['POST'])
 @require_session

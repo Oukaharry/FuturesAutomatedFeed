@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Client Dashboard - MT5 Hedging Engine</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         /* Version History Sidebar Styles - Google Sheets Style */
         .history-panel {
@@ -100,26 +101,26 @@
             font-weight: 500;
             text-transform: uppercase;
         }
-        .history-action.SHEET_IMPORT { background: #e8f5e9; color: #2e7d32; }
-        .history-action.DATA_PUSH { background: #e3f2fd; color: #1565c0; }
-        .history-action.ROLLBACK { background: #fff3e0; color: #ef6c00; }
-        .history-action.UPDATE { background: #f3e5f5; color: #7b1fa2; }
-        .history-action.INITIAL { background: #fce4ec; color: #c2185b; }
+        .history-action.SHEET_IMPORT { background: rgba(34, 197, 94, 0.2); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .history-action.DATA_PUSH { background: rgba(59, 130, 246, 0.2); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .history-action.ROLLBACK { background: rgba(249, 115, 22, 0.2); color: #fdba74; border: 1px solid rgba(249, 115, 22, 0.3); }
+        .history-action.UPDATE { background: rgba(168, 85, 247, 0.2); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.3); }
+        .history-action.INITIAL { background: rgba(236, 72, 153, 0.2); color: #f9a8d4; border: 1px solid rgba(236, 72, 153, 0.3); }
         .history-description {
             font-size: 13px;
-            color: #555;
+            color: #cbd5e1;
             margin-top: 6px;
             line-height: 1.4;
         }
         .history-changed-by {
             font-size: 11px;
-            color: #888;
+            color: #94a3b8;
             margin-top: 4px;
         }
         .history-actions {
             padding: 16px 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e0e0e0;
+            background: #0f172a;
+            border-top: 1px solid rgba(255,255,255,0.1);
             display: flex;
             gap: 10px;
         }
@@ -134,23 +135,28 @@
             transition: all 0.2s;
         }
         .history-btn-restore {
-            background: #1a73e8;
+            background: #3b82f6;
             color: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
         .history-btn-restore:hover {
-            background: #1557b0;
+            background: #2563eb;
+            box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
         }
         .history-btn-restore:disabled {
-            background: #ccc;
+            background: #64748b;
             cursor: not-allowed;
+            box-shadow: none;
         }
         .history-btn-preview {
-            background: #fff;
-            color: #1a73e8;
-            border: 1px solid #1a73e8;
+            background: rgba(30, 41, 59, 0.6);
+            color: #60a5fa;
+            border: 1px solid rgba(96, 165, 250, 0.3);
         }
         .history-btn-preview:hover {
-            background: #e3f2fd;
+            background: rgba(30, 41, 59, 0.8);
+            border-color: #60a5fa;
+            color: #93c5fd;
         }
         /* History button in header - next to Last Updated */
         .history-header-btn {
@@ -202,9 +208,9 @@
             display: flex;
         }
         .preview-banner button {
-            background: white;
-            color: #f57c00;
-            border: none;
+            background: #1e293b;
+            color: #facc15;
+            border: 1px solid rgba(255, 255, 255, 0.1);
             padding: 8px 16px;
             border-radius: 4px;
             cursor: pointer;
@@ -282,7 +288,7 @@
             justify-content: space-between;
             align-items: center;
             padding: 8px 12px;
-            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+            background: linear-gradient(135deg, #1e293b, #0f172a);
             border-bottom: 1px solid var(--border-color);
             border-radius: var(--radius) var(--radius) 0 0;
             overflow-x: auto;
@@ -295,7 +301,7 @@
         }
         
         .scroll-controls::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
+            background: #475569;
             border-radius: 3px;
         }
         
@@ -306,14 +312,14 @@
         }
         
         .scroll-btn {
-            background: white;
-            border: 1px solid #d1d5db;
+            background: #1e293b;
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 6px;
             padding: 4px 8px;
             cursor: pointer;
             font-size: 12px;
             font-weight: 500;
-            color: #374151;
+            color: #94a3b8;
             transition: all 0.15s ease;
             display: flex;
             align-items: center;
@@ -323,18 +329,19 @@
         }
         
         .scroll-btn:hover {
-            background: #f3f4f6;
-            border-color: #9ca3af;
+            background: #334155;
+            border-color: rgba(255,255,255,0.2);
+            color: #f8fafc;
         }
         
         .scroll-btn:active {
-            background: #e5e7eb;
+            background: #0f172a;
             transform: scale(0.98);
         }
         
         .scroll-indicator {
             font-size: 11px;
-            color: #6b7280;
+            color: #94a3b8;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -343,7 +350,7 @@
         }
         
         .scroll-position {
-            background: #e5e7eb;
+            background: rgba(255,255,255,0.1);
             padding: 3px 8px;
             border-radius: 10px;
             font-weight: 500;
@@ -409,7 +416,7 @@
 
         /* Deep Linking Highlight */
         @keyframes highlightPulse {
-            0% { background-color: rgba(255, 255, 0, 0.5); outline: 3px solid #eab308; }
+            0% { background-color: rgba(234, 179, 8, 0.3); outline: 3px solid #eab308; }
             100% { background-color: transparent; outline: 3px solid transparent; }
         }
         .highlight-cell {
@@ -417,12 +424,12 @@
             scroll-margin-top: 150px; /* Offset for sticky headers */
         }
 
-        /* Deep Link Highlighting */
+        /* Deep Link Highlighting - Dark Theme Friendly */
         .highlight-cell {
-            background-color: #fff9c4 !important; /* Light Yellow */
-            box-shadow: inset 0 0 0 2px #fbc02d !important; /* Gold Border */
+            background-color: rgba(234, 179, 8, 0.2) !important; /* Transparent Gold */
+            box-shadow: inset 0 0 0 2px #eab308 !important; /* Gold Border */
             font-weight: bold;
-            color: #333;
+            color: #fef08a !important; /* Light Yellow Text */
             transition: background-color 0.5s ease;
         }
 
@@ -559,6 +566,48 @@
             background: var(--accent-color) !important;
             color: #0f172a !important;
         }
+
+        /* Modern Nav Bar Styles (Super Admin) */
+        .modern-nav {
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius);
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .tab-btn {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+        }
+        .tab-btn:hover {
+            color: #60a5fa;
+            background: rgba(59, 130, 246, 0.08);
+        }
+        .tab-btn.active {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            color: #ffffff;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            font-weight: 600;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 8px;
+        }
     </style>
 </head>
 <body>
@@ -592,6 +641,28 @@
     </div>
 
     <div class="container">
+        {% if user_type == 'super_admin' %}
+        <nav class="modern-nav">
+            <div class="brand" style="display: flex; align-items: center;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
+                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
+                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
+                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
+                </div>
+            </div>
+            <div class="nav-links">
+                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
+                <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+                <a href="/client_performance" class="tab-btn active"><i class="fas fa-users"></i> Clients</a>
+                <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
+                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </nav>
+        {% endif %}
         <header>
             <div class="header-content">
                 <a href="javascript:history.back()" class="back-link">←</a>
@@ -665,78 +736,78 @@
                         </tr>
                         <tr>
                             <!-- EVALUATION INFO (0-3) -->
-                            <th>Prop Firm</th>
-                            <th>Account Size</th>
-                            <th>Date Purchased</th>
-                            <th>Fee</th>
+                            <th class="sub-header-blue">Prop Firm</th>
+                            <th class="sub-header-blue">Account Size</th>
+                            <th class="sub-header-blue">Date Purchased</th>
+                            <th class="sub-header-blue" style="min-width: 100px;">Fee</th>
                             
                             <!-- EVALUATION PHASE (4-13) -->
-                            <th>Date Started</th>
-                            <th>Date Ended</th>
-                            <th>Status P1</th>
-                            <th style="min-width: 200px;">Account #</th>
-                            <th>Hedge Result 1</th>
-                            <th>Hedge Result 2</th>
-                            <th>Hedge Result 3</th>
-                            <th>Hedge Result 4</th>
-                            <th>Hedge Result 5</th>
-                            <th>Hedge Net</th>
+                            <th class="sub-header-green">Date Started</th>
+                            <th class="sub-header-green">Date Ended</th>
+                            <th class="sub-header-green">Status P1</th>
+                            <th class="sub-header-green" style="min-width: 200px;">Account #</th>
+                            <th class="sub-header-green">Hedge Result 1</th>
+                            <th class="sub-header-green">Hedge Result 2</th>
+                            <th class="sub-header-green">Hedge Result 3</th>
+                            <th class="sub-header-green">Hedge Result 4</th>
+                            <th class="sub-header-green">Hedge Result 5</th>
+                            <th class="sub-header-green">Hedge Net</th>
 
                             <!-- FUNDED PHASE (14-34) -->
-                            <th style="min-width: 200px;">Account #</th>
-                            <th>Activation Fee</th>
-                            <th>Date Started</th>
-                            <th>Date Ended</th>
-                            <th>Status</th>
-                            <th>Hedge Result 1</th>
-                            <th>Hedge Result 2</th>
-                            <th>Hedge Result 3</th>
-                            <th>Hedge Result 4</th>
-                            <th>Hedge Result 5</th>
-                            <th>Hedge Result 6</th>
-                            <th>Hedge Result 7</th>
-                            <th>Hedge Net</th>
-                            <th>Payout 1</th>
-                            <th>Date 1</th>
-                            <th>Payout 2</th>
-                            <th>Date 2</th>
-                            <th>Payout 3</th>
-                            <th>Date 3</th>
-                            <th>Payout 4</th>
-                            <th>Date 4</th>
+                            <th class="sub-header-orange" style="min-width: 200px;">Account #</th>
+                            <th class="sub-header-orange">Activation Fee</th>
+                            <th class="sub-header-orange">Date Started</th>
+                            <th class="sub-header-orange">Date Ended</th>
+                            <th class="sub-header-orange">Status</th>
+                            <th class="sub-header-orange">Hedge Result 1</th>
+                            <th class="sub-header-orange">Hedge Result 2</th>
+                            <th class="sub-header-orange">Hedge Result 3</th>
+                            <th class="sub-header-orange">Hedge Result 4</th>
+                            <th class="sub-header-orange">Hedge Result 5</th>
+                            <th class="sub-header-orange">Hedge Result 6</th>
+                            <th class="sub-header-orange">Hedge Result 7</th>
+                            <th class="sub-header-orange">Hedge Net</th>
+                            <th class="sub-header-orange">Payout 1</th>
+                            <th class="sub-header-orange">Date 1</th>
+                            <th class="sub-header-orange">Payout 2</th>
+                            <th class="sub-header-orange">Date 2</th>
+                            <th class="sub-header-orange">Payout 3</th>
+                            <th class="sub-header-orange">Date 3</th>
+                            <th class="sub-header-orange">Payout 4</th>
+                            <th class="sub-header-orange">Date 4</th>
 
                             <!-- FARMING PHASE (35-65) -->
-                            <th>Farming Net</th>
-                            <th>Prop Day 1</th>
-                            <th>Hedge Day 1</th>
-                            <th>Prop Day 2</th>
-                            <th>Hedge Day 2</th>
-                            <th>Prop Day 3</th>
-                            <th>Hedge Day 3</th>
-                            <th>Prop Day 4</th>
-                            <th>Hedge Day 4</th>
-                            <th>Prop Day 5</th>
-                            <th>Hedge Day 5</th>
-                            <th>Prop Day 6</th>
-                            <th>Hedge Day 6</th>
-                            <th>Prop Day 7</th>
-                            <th>Hedge Day 7</th>
-                            <th>Prop Day 8</th>
-                            <th>Hedge Day 8</th>
-                            <th>Prop Day 9</th>
-                            <th>Hedge Day 9</th>
-                            <th>Prop Day 10</th>
-                            <th>Hedge Day 10</th>
-                            <th>Prop Day 11</th>
-                            <th>Hedge Day 11</th>
-                            <th>Prop Day 12</th>
-                            <th>Hedge Day 12</th>
-                            <th>Prop Day 13</th>
-                            <th>Hedge Day 13</th>
-                            <th>Prop Day 14</th>
-                            <th>Hedge Day 14</th>
-                            <th>Prop Day 15</th>
-                            <th>Hedge Day 15</th>
+                            <th class="sub-header-purple">Farming Net</th>
+                            <th class="sub-header-purple">Prop Day 1</th>
+                            <th class="sub-header-purple">Hedge Day 1</th>
+                            <th class="sub-header-purple">Prop Day 2</th>
+                            <th class="sub-header-purple">Hedge Day 2</th>
+                            <th class="sub-header-purple">Prop Day 3</th>
+                            <th class="sub-header-purple">Hedge Day 3</th>
+                            <th class="sub-header-purple">Prop Day 4</th>
+                            <th class="sub-header-purple">Hedge Day 4</th>
+                            <th class="sub-header-purple">Prop Day 5</th>
+                            <th class="sub-header-purple">Hedge Day 5</th>
+                            <th class="sub-header-purple">Prop Day 6</th>
+                            <th class="sub-header-purple">Hedge Day 6</th>
+                            <th class="sub-header-purple">Prop Day 7</th>
+                            <th class="sub-header-purple">Hedge Day 7</th>
+                            <th class="sub-header-purple">Prop Day 8</th>
+                            <th class="sub-header-purple">Hedge Day 8</th>
+                            <th class="sub-header-purple">Prop Day 9</th>
+                            <th class="sub-header-purple">Hedge Day 9</th>
+                            <th class="sub-header-purple">Prop Day 10</th>
+                            <th class="sub-header-purple">Hedge Day 10</th>
+                            <th class="sub-header-purple">Prop Day 11</th>
+                            <th class="sub-header-purple">Hedge Day 11</th>
+                            <th class="sub-header-purple">Prop Day 12</th>
+                            <th class="sub-header-purple">Hedge Day 12</th>
+                            <th class="sub-header-purple">Prop Day 13</th>
+                            <th class="sub-header-purple">Hedge Day 13</th>
+                            <th class="sub-header-purple">Prop Day 14</th>
+                            <th class="sub-header-purple">Hedge Day 14</th>
+                            <th class="sub-header-purple">Prop Day 15</th>
+                            <th class="sub-header-purple">Hedge Day 15</th>
                         </tr>
                     </thead>
                     <tbody id="evaluations-body">
@@ -1170,9 +1241,9 @@
                             // Add temporary flash effect
                             target.style.transition = 'background-color 0.5s';
                             const origBg = target.style.backgroundColor;
-                            target.style.backgroundColor = '#ffff00'; // Flash yellow
+                            target.style.setProperty('background-color', 'rgba(234, 179, 8, 0.5)', 'important'); // Flash gold louder
                             setTimeout(() => {
-                                target.style.backgroundColor = '';
+                                target.style.removeProperty('background-color'); // Remove inline style to fall back to class
                             }, 1500);
                         }
                     }
@@ -1617,36 +1688,36 @@
             // Create modal
             const modal = document.createElement('div');
             modal.id = 'historical-mt5-modal';
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:1000;';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;justify-content:center;align-items:center;z-index:1000;backdrop-filter:blur(5px);';
             
             modal.innerHTML = `
-                <div style="background:white;padding:25px;border-radius:8px;width:400px;max-width:90%;">
-                    <h3 style="margin:0 0 15px 0;color:#1e293b;">📜 Add Previous MT5 Account</h3>
-                    <p style="font-size:12px;color:#64748b;margin-bottom:15px;">Enter the final values from an MT5 account that is no longer in use. These will be added to your current MT5 totals.</p>
+                <div style="background:#1e293b;padding:25px;border-radius:12px;width:400px;max-width:90%;border:1px solid rgba(255,255,255,0.1);box-shadow:0 25px 50px rgba(0,0,0,0.5);">
+                    <h3 style="margin:0 0 15px 0;color:#f8fafc;">📜 Add Previous MT5 Account</h3>
+                    <p style="font-size:12px;color:#94a3b8;margin-bottom:15px;">Enter the final values from an MT5 account that is no longer in use. These will be added to your current MT5 totals.</p>
                     
                     <div style="margin-bottom:12px;">
-                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;">Account Name/ID</label>
-                        <input type="text" id="hist-mt5-name" placeholder="e.g., Old MT5 Account" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:4px;box-sizing:border-box;">
+                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;color:#cbd5e1;">Account Name/ID</label>
+                        <input type="text" id="hist-mt5-name" placeholder="e.g., Old MT5 Account" style="width:100%;padding:10px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;box-sizing:border-box;background:#0f172a;color:white;">
                     </div>
                     
                     <div style="margin-bottom:12px;">
-                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;">Total Deposits ($)</label>
-                        <input type="number" step="0.01" id="hist-mt5-deposits" placeholder="0.00" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:4px;box-sizing:border-box;">
+                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;color:#cbd5e1;">Total Deposits ($)</label>
+                        <input type="number" step="0.01" id="hist-mt5-deposits" placeholder="0.00" style="width:100%;padding:10px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;box-sizing:border-box;background:#0f172a;color:white;">
                     </div>
                     
                     <div style="margin-bottom:12px;">
-                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;">Total Withdrawals ($) <span style="font-weight:normal;color:#94a3b8;">(enter as negative)</span></label>
-                        <input type="number" step="0.01" id="hist-mt5-withdrawals" placeholder="-0.00" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:4px;box-sizing:border-box;">
+                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;color:#cbd5e1;">Total Withdrawals ($) <span style="font-weight:normal;color:#94a3b8;">(enter as negative)</span></label>
+                        <input type="number" step="0.01" id="hist-mt5-withdrawals" placeholder="-0.00" style="width:100%;padding:10px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;box-sizing:border-box;background:#0f172a;color:white;">
                     </div>
                     
                     <div style="margin-bottom:20px;">
-                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;">Final Balance ($)</label>
-                        <input type="number" step="0.01" id="hist-mt5-balance" placeholder="0.00" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:4px;box-sizing:border-box;">
+                        <label style="display:block;font-size:12px;font-weight:500;margin-bottom:4px;color:#cbd5e1;">Final Balance ($)</label>
+                        <input type="number" step="0.01" id="hist-mt5-balance" placeholder="0.00" style="width:100%;padding:10px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;box-sizing:border-box;background:#0f172a;color:white;">
                     </div>
                     
                     <div style="display:flex;justify-content:flex-end;gap:10px;">
-                        <button onclick="closeHistoricalMT5Modal()" style="padding:8px 16px;border:1px solid #e2e8f0;background:white;border-radius:4px;cursor:pointer;">Cancel</button>
-                        <button onclick="saveHistoricalMT5()" style="padding:8px 16px;border:none;background:#3b82f6;color:white;border-radius:4px;cursor:pointer;">💾 Save</button>
+                        <button onclick="closeHistoricalMT5Modal()" style="padding:8px 16px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#94a3b8;border-radius:6px;cursor:pointer;">Cancel</button>
+                        <button onclick="saveHistoricalMT5()" style="padding:8px 16px;border:none;background:linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);color:white;border-radius:6px;cursor:pointer;font-weight:600;">💾 Save</button>
                     </div>
                 </div>
             `;

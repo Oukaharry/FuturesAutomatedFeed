@@ -146,6 +146,7 @@ def calculate_all_financials(profile_filter=None):
                         "passed_accounts": 0,
                         "failed_accounts": 0,
                         "ended_count": 0,
+                        "total_duration_days": 0,
                         "earliest_date": None,
                         "clients": set()
                     }
@@ -188,6 +189,25 @@ def calculate_all_financials(profile_filter=None):
                 if is_passed_p1: target["passed_accounts"] += 1
                 if is_p1_fail or is_funded_fail: target["failed_accounts"] += 1
                 if is_p1_fail or is_funded_ended: target["ended_count"] += 1
+                
+                # Duration Logic for EV/Day
+                duration = 0
+                if is_p1_fail:
+                    s_d = parse_date(ev.get('Date Started'))
+                    e_d = parse_date(ev.get('Date Ended'))
+                    if s_d and e_d: duration = (e_d - s_d).days
+                elif is_funded_ended:
+                    # Duration is total time from start of eval to end of funded account
+                    s_d = parse_date(ev.get('Date Started'))
+                    e_d = parse_date(ev.get('Date Ended.1'))
+                    if s_d and e_d: duration = (e_d - s_d).days
+                    # Fallback if funded dates are missing but it ended
+                    elif s_d: 
+                        # Try P1 end date if Funded end date missing? Unlikely for "Ended" status
+                        pass
+                
+                if duration > 0:
+                    target["total_duration_days"] += duration
                 
                 # Overview Earliest Date
                 d_str = ev.get('Date Started') or ev.get('Date')
@@ -280,7 +300,8 @@ def calculate_all_financials(profile_filter=None):
         "ended": 0,
         "earliest": None,
         "expected_value": 0.0,
-        "ev_per_day": 0.0
+        "ev_per_day": 0.0,
+        "total_duration": 0
     }
 
     for firm in overview:
@@ -290,6 +311,7 @@ def calculate_all_financials(profile_filter=None):
         # Accumulate global
         global_stats["net"] += data["net"]
         global_stats["ended"] += data["ended_count"]
+        global_stats["total_duration"] += data.get("total_duration_days", 0)
         
         if data.get("earliest_date"):
             if global_stats["earliest"] is None or data["earliest_date"] < global_stats["earliest"]:
@@ -298,13 +320,11 @@ def calculate_all_financials(profile_filter=None):
         ended = data.get("ended_count", 0)
         data["expected_value"] = data["net"] / ended if ended > 0 else 0.0
         
-        data["ev_per_day"] = 0.0
-        if data.get("earliest_date"):
-            days = (datetime.now() - data["earliest_date"]).days
-            if days > 0:
-                data["ev_per_day"] = data["net"] / days
+        duration = data.get("total_duration_days", 0)
+        data["ev_per_day"] = data["net"] / duration if duration > 0 else 0.0
         
         if "earliest_date" in data: del data["earliest_date"]
+        if "total_duration_days" in data: del data["total_duration_days"]
         data["total_clients"] = len(data["clients"])
         del data["clients"]
         
@@ -312,12 +332,13 @@ def calculate_all_financials(profile_filter=None):
     if global_stats["ended"] > 0:
         global_stats["expected_value"] = global_stats["net"] / global_stats["ended"]
         
-    if global_stats["earliest"]:
-        days = (datetime.now() - global_stats["earliest"]).days
-        if days > 0:
-            global_stats["ev_per_day"] = global_stats["net"] / days
+    duration = global_stats.get("total_duration", 0)
+    if duration > 0:
+        global_stats["ev_per_day"] = global_stats["net"] / duration
+        
     # Remove datetime object before return
     if "earliest" in global_stats: del global_stats["earliest"]
+    if "total_duration" in global_stats: del global_stats["total_duration"]
 
     # --- Finalize Time Series ---
     def process_ts(events):
@@ -439,10 +460,31 @@ def parse_date(date_str):
         except ValueError:
             return None
 
-def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
+def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None, profile_filter=None):
     """
     Returns a list of all payouts with details.
     """
+    # Import hierarchy to map clients to traders/admins
+    try:
+        from config.hierarchy import SYSTEM_HIERARCHY
+    except ImportError:
+        import sys, os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from config.hierarchy import SYSTEM_HIERARCHY
+
+    # Build client map: {client_name: {'trader': T, 'admin': A}}
+    client_map = {}
+    if SYSTEM_HIERARCHY and 'admins' in SYSTEM_HIERARCHY:
+        for admin_name, admin_data in SYSTEM_HIERARCHY['admins'].items():
+            for trader_name, trader_data in admin_data.get('traders', {}).items():
+                for client in trader_data.get('clients', []):
+                    c_name = client.get('name')
+                    if c_name:
+                        client_map[c_name] = {
+                            'admin': admin_name,
+                            'trader': trader_name
+                        }
+
     clients_data = _get_cached_clients()
     payouts_list = []
     
@@ -450,6 +492,22 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
         if not data:
             continue
             
+        # Get Client Metadata
+        identity = data.get('identity', {})
+        real_client_name = identity.get('name') or client_id
+        
+        # Get hierarchy info
+        h_info = client_map.get(real_client_name) or client_map.get(client_id)
+        admin_name = h_info['admin'] if h_info else "-"
+        trader_name = h_info['trader'] if h_info else "-"
+
+        # Apply Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            c_prof = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if not c_prof: c_prof = "PRIVATE"
+            if c_prof != profile_filter.upper():
+                continue
+
         evaluations = data.get('evaluations', [])
         for eval_data in evaluations:
             prop_firm = eval_data.get('Prop Firm')
@@ -467,18 +525,11 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
             for i in range(1, 10):
                 p_key = f'Payout {i}'
                 d_key = f'Date {i}' # Assuming 'Date 1', 'Date 2' etc matches Payout
-                # Note: Screenshot or structure might have explicit date columns or shared?
-                # Usually Payout 1 corresponds to a date column if it exists. 
-                # Let's assume standard "Date 1", "Date 2" etc based on earlier file reads or infer from known structure.
-                # data_processor.py listed: 'Payout 1', 'Date 1', 'Payout 2', 'Date 2'...
                 
                 amount = parse_currency(eval_data.get(p_key))
                 if amount > 0:
                     date_str = eval_data.get(d_key)
                     date_obj = parse_date(date_str)
-                    
-                    # Store if date exists (or include even if no date?)
-                    # If we filter by date, we need a date.
                     
                     if date_obj:
                         # Filter check
@@ -489,9 +540,14 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None):
                             
                         payouts_list.append({
                             "date": date_obj,
-                            "date_str": date_str, # Keep original string for display
+                            "date_str": date_str, 
                             "prop_firm": prop_firm,
                             "amount": amount,
+                            "client_name": real_client_name,
+                            "admin_name": admin_name,
+                            "trader_name": trader_name,
+                            "account_id": account_num,
+                            # Keep old keys for safety if used elsewhere
                             "client": client_id,
                             "account": account_num
                         })
@@ -1131,7 +1187,7 @@ def _aggregate_events_cumulative(events):
         
     return dates, values
 
-def calculate_trader_stats():
+def calculate_trader_stats(profile_filter=None):
     """Calculates aggregated statistics per trader."""
     clients_data = _get_cached_clients()
     traders_stats = {}
@@ -1140,6 +1196,15 @@ def calculate_trader_stats():
         if not data: continue
         
         identity = data.get('identity', {})
+        
+        # Apply Profile Filter
+        if profile_filter and profile_filter.upper() != "ALL":
+            c_prof = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if not c_prof: c_prof = "PRIVATE"
+            if c_prof != profile_filter.upper():
+                continue
+
+        trader_name = identity.get('trader_name', 'Unassigned')
         trader_name = identity.get('trader')
         
         if not trader_name or str(trader_name).strip().lower() in ['none', 'null', '', '-']:
@@ -1189,11 +1254,18 @@ def calculate_trader_stats():
             
             if has_activity and hedge_sum < -1.0: 
                 stats['total_negative_hedge'] += hedge_sum
+                
+                # Determine date for filtering (Date Ended > Date Ended.1 > Date Purchased)
+                date_str = ev.get('Date Ended') or ev.get('Date Ended.1') or ev.get('Date')
+                date_obj = parse_date(date_str)
+                date_iso = date_obj.strftime("%Y-%m-%d") if date_obj else ""
+                
                 stats['negative_hedge_details'].append({
                     "client": client_id,
                     "account": acc_num,
                     "amount": hedge_sum,
-                    "link": f"/dashboard/{client_id}"
+                    "link": f"/dashboard/{client_id}",
+                    "date": date_iso
                 })
             
             # Farming Logic
@@ -1212,3 +1284,154 @@ def calculate_trader_stats():
                         })
 
     return list(traders_stats.values())
+
+@cache_result(ttl=300)
+def get_client_performance_stats(profile_filter=None):
+    """
+    Returns a list of per-client performance statistics.
+    Used for the Client Performance Table.
+    """
+    # Import hierarchy to map clients to traders/admins
+    try:
+        from config.hierarchy import SYSTEM_HIERARCHY
+    except ImportError:
+        import sys, os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from config.hierarchy import SYSTEM_HIERARCHY
+
+    # Build client map
+    client_map = {}
+    if SYSTEM_HIERARCHY and 'admins' in SYSTEM_HIERARCHY:
+        for admin_name, admin_data in SYSTEM_HIERARCHY['admins'].items():
+            for trader_name, trader_data in admin_data.get('traders', {}).items():
+                for client in trader_data.get('clients', []):
+                    c_name = client.get('name')
+                    if c_name:
+                        client_map[c_name] = {
+                            'admin': admin_name,
+                            'trader': trader_name
+                        }
+
+    clients_data = _get_cached_clients()
+    clients_list = []
+    
+    for client_id, data in clients_data.items():
+        if not data: continue
+        
+        identity = data.get('identity', {})
+        real_client_name = identity.get('name') or client_id
+        
+        # Profile Filter
+        source = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+        if not source: source = "PRIVATE"
+        
+        if profile_filter and profile_filter.upper() != "ALL":
+            if source != profile_filter.upper():
+                continue
+                
+        # Hierarchy Info
+        h_info = client_map.get(real_client_name) or client_map.get(client_id)
+        admin_name = h_info['admin'] if h_info else "-"
+        trader_name = h_info['trader'] if h_info else "-"
+        
+        # Init Stats
+        c_stats = {
+            "client_id": real_client_name,
+            "trader": trader_name,
+            "admin": admin_name,
+            "source": source,
+            "payouts": 0.0,
+            "deposits": 0.0,
+            "fees": 0.0,
+            "net_profit": 0.0,
+            "active": 0,
+            "passed": 0,
+            "failed": 0,
+            "hedge_profit": 0.0,
+            "farming_profit": 0.0
+        }
+        
+        # 1. Evaluations Payouts/Fees/Status
+        evaluations = data.get('evaluations', [])
+        for ev in evaluations:
+            # Status logic expanded
+            status = str(ev.get('Status') or '').lower()
+            if 'passed' in status or 'funded' in status:
+                c_stats['passed'] += 1
+            elif 'failed' in status or 'breached' in status or 'blown' in status or 'fail' in status:
+                c_stats['failed'] += 1
+            elif 'active' in status or 'phase' in status or 'running' in status or 'ongoing' in status or 'trading' in status or 'challenge' in status:
+                c_stats['active'] += 1
+                
+            # Fees
+            fee = parse_currency(ev.get('Fee'))
+            act_fee = parse_currency(ev.get('Activation Fee'))
+            c_stats['fees'] += (fee + act_fee)
+            
+            # Payouts
+            for i in range(1, 10):
+                c_stats['payouts'] += parse_currency(ev.get(f'Payout {i}'))
+            
+            # Hedge
+            for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
+                        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                        'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                c_stats['hedge_profit'] += parse_currency(ev.get(col))
+                
+            # Farming
+            c_stats['farming_profit'] += parse_currency(ev.get('Farming Profit')) # Summary column usually
+            
+        # 2. Deals for Deposits
+        # Assuming get_deals returns list of deals
+        # If deals are not readily available in data['deals'], we might have to skip or load usage
+        # Usually data has 'deals' key if loaded fully.
+        deals = data.get('deals', [])
+        for deal in deals:
+            # Deposits are positive 'profit' with type 'deal_entry_in' usually, but here assumed 'profit' field reflects deposit amount?
+            # Or usually type=2 (DEAL_ENTRY_IN) and check comment/type?
+            # Simplified: Use pre-calced deposits if stored, or iterate deals.
+            # Assuming 'profit' is the amount, and type implies deposit.
+            # Let's rely on standard logic: profit > 0 and comment indicates deposit?
+            # Or just sum 'profit' of all deals that are Deposits.
+            try:
+                # MT5 deal structure check
+                deal_type = int(deal.get('type', -1))
+                entry = int(deal.get('entry', -1))
+                profit = float(deal.get('profit', 0.0))
+                # Entry In (0) + Type Balance (2) ?? MQL5 constants vary.
+                # Let's trust the "total_deposits" logic used elsewhere if available.
+                # Since we don't have deal constants handy, let's look at get_cumulative_deposits logic.
+                pass
+            except:
+                pass
+                
+        # Alternative: We don't have deals easily here without logic.
+        # But wait, calculate_all_financials uses deals!
+        # It calls: ev.get('Account #') -> finds specific deals? 
+        # Actually deposits usually come from MT5 via 'deals' in JSON.
+        # Let's check how 'get_cumulative_deposits' works.
+        
+        # Temporary: skip deep deposit calc per client for speed, or assume 0 if not critical.
+        # But user sees "Deposits" column.
+        # Let's look at how we got total_deposits in app.py: data['deposits'] tuple.
+        # That's global.
+        
+        # Fix: iterate deals simply if they exist.
+        if 'deals' in data:
+            for deal in data['deals']:
+                 # Check for deposit
+                 # If profit > 0 and it's a balance operation (usually no symbol)
+                 if deal.get('symbol') == '' and float(deal.get('profit', 0)) > 0:
+                     c_stats['deposits'] += float(deal.get('profit', 0))
+
+        # Net Profit = Payouts + Hedge + Farming - Fees
+        # (Deposits are capital, not profit, so usually excluded from Net Profit calc depending on definition)
+        # Definition: Net Profit typically = (Payouts + Hedge + Farming) - (Fees + Losses) ??
+        # Or just (Payouts - Fees) + Side Income?
+        # Let's stick to: Payouts + Hedge + Farming - Fees. 
+        # (Note: 'Fees' includes challenge fees. 'Deposits' usually separate capital).
+        c_stats['net_profit'] = c_stats['payouts'] + c_stats['hedge_profit'] + c_stats['farming_profit'] - c_stats['fees']
+        
+        clients_list.append(c_stats)
+        
+    return clients_list

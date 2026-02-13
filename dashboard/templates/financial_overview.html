@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Financial Overview - MT5 Hedging Engine</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* Table Styles inherited from style.css (ballerquotes) */
@@ -37,15 +38,15 @@
             margin-bottom: 30px;
         }
         .summary-card {
-            background: white;
+            background: rgba(30, 41, 59, 0.6);
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .card-label {
             font-size: 0.85rem;
-            color: #64748b;
+            color: #94a3b8;
             text-transform: uppercase;
             font-weight: 600;
             margin-bottom: 8px;
@@ -53,11 +54,11 @@
         .card-value {
             font-size: 1.8rem;
             font-weight: 700;
-            color: #0f172a;
+            color: #f8fafc;
         }
         .badge-count {
-            background: #e2e8f0;
-            color: #475569;
+            background: rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
             padding: 2px 8px;
             border-radius: 12px;
             font-size: 0.75rem;
@@ -70,11 +71,11 @@
             margin-bottom: 30px;
         }
         .chart-card {
-            background: white;
+            background: rgba(30, 41, 59, 0.6);
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             min-height: 350px;
             display: flex;
             flex-direction: column;
@@ -82,7 +83,7 @@
         .chart-title {
             font-size: 1rem;
             font-weight: 600;
-            color: #0f172a;
+            color: #f8fafc;
             margin-bottom: 20px;
             text-align: center;
         }
@@ -176,34 +177,94 @@
         .back-link { color: var(--accent-color) !important; }
         
         /* Charts Backgrounds if transparent, they work. If specific bg set in JS, might need more work. */
+
+        /* Modern Nav - Slate 900 Theme (Added to match Super Admin) */
+        .modern-nav {
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important; /* Blue Gradient */
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 8px; /* var(--radius) fallback */
+            padding: 12px 24px !important;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.6);
+            padding: 6px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .tab-btn {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none; /* Reset */
+        }
+        .tab-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .tab-btn.active {
+            background: #3b82f6 !important; /* Solide Blue */
+            color: #ffffff !important;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            border: none;
+        }
+
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Modern Navigation -->
         <nav class="modern-nav">
-            <div class="brand">
-                <i class="fas fa-chart-pie" style="color: var(--accent-color); margin-right: 10px;"></i>
-                <span>BallerQuotes <span style="font-weight: 400; font-size: 0.9em; opacity: 0.6;">Super Admin</span></span>
+             <div class="brand" style="display: flex; align-items: center;">
+                <!-- Logo with 'App Icon' styling to blend better -->
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
+                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
+                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
+                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
+                </div>
             </div>
             
-            <div style="display: flex; align-items: center; gap: 24px;">
+            <div class="nav-links">
                 <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn active"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+                <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+                <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
                 
-                <div style="height: 32px; width: 1px; background: var(--border-color);"></div>
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
                 
-                <a href="/logout" class="tab-btn" style="padding: 8px 16px; border: 1px solid var(--border-color); border-radius: 8px;">
+                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </a>
             </div>
         </nav>
 
-        <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px;">
+        <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px;">
             <div>
-                <h1 style="font-size: 2rem; margin: 0; color: #fff;">Financial Overview</h1>
-                <p style="color: var(--text-secondary); margin-top: 5px;">Consolidated report across all clients and prop firms</p>
+                <h1 style="font-size: 1.5rem; margin: 0; color: #fff; margin-bottom: 4px;">Financial Overview</h1>
+                <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Consolidated report across all clients and prop firms</p>
+            </div>
+            <!-- Filter Section (Matches Client Performance style) -->
+            <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+                <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
+                <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
+                <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
             </div>
         </div>
 
@@ -213,6 +274,7 @@
             fees=0, act=0, pay=0, net=0, acc=0, clients=0,
             hedge=0, farm=0,
             active=0, passed=0, failed=0, ended=0,
+            ev_per_day_sum=0, firm_count=0,
             top_firm_name="", top_firm_val=0
         ) %}
         
@@ -229,6 +291,11 @@
             {% set ns.passed = ns.passed + data.passed_accounts %}
             {% set ns.failed = ns.failed + data.failed_accounts %}
             {% set ns.ended = ns.ended + data.ended_count %}
+            
+            {% if data.ev_per_day %}
+                {% set ns.ev_per_day_sum = ns.ev_per_day_sum + data.ev_per_day %}
+                {% set ns.firm_count = ns.firm_count + 1 %}
+            {% endif %}
             
             {% if data.total_payouts > ns.top_firm_val %}
                 {% set ns.top_firm_val = data.total_payouts %}
@@ -257,8 +324,8 @@
                     <div style="display: flex; align-items: center; gap: 8px; background: rgba(15, 23, 42, 0.6); padding: 6px 16px; border-radius: 8px; border: 1px solid var(--border-color);">
                         <i class="fas fa-filter" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
                         <span style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 600;">FIRM:</span>
-                        <select id="firmFocusSelect" onchange="updateFirmDisplay()" style="background: transparent; color: #fff; border: none; outline: none; font-family: var(--font-family); font-weight: 500; font-size: 0.9rem; cursor: pointer; min-width: 140px;">
-                            <option value="ALL">All Prop Firms</option>
+                        <select id="firmFocusSelect" onchange="updateFirmDisplay()" style="background: #1e293b; color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; outline: none; font-family: var(--font-family); font-weight: 500; font-size: 0.9rem; cursor: pointer; min-width: 140px;">
+                            <option value="ALL" style="background-color: #1e293b;">All Prop Firms</option>
                             {% for firm in overview.keys()|sort %}
                             <option value="{{ firm }}">{{ firm }}</option>
                             {% endfor %}
@@ -272,41 +339,52 @@
                 
                 <!-- Row 1 -->
                 <!-- Total Payouts -->
-                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 24px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Payouts</div>
-                    <div id="card-payouts" style="font-size: 2rem; font-weight: 800; color: #10b981;">{{ "$%0.2f"|format(ns.pay) }}</div>
+                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #6ee7b7 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Payouts</div>
+                    <div id="card-payouts" style="font-size: 2rem; font-weight: 800; color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">{{ "$%0.2f"|format(ns.pay) }}</div>
                 </div>
 
-                <!-- Total Deposits (Placeholder/Calculated) -->
-                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 24px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Deposits</div>
-                    <!-- Using available global deposit var if exists, else generic -->
-                    <div id="card-deposits" style="font-size: 2rem; font-weight: 800; color: #3b82f6;">{{ "$%0.2f"|format(deposits_values[-1] if deposits_values else 0) }}</div>
+                <!-- Total Deposits -->
+                <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #93c5fd !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Deposits</div>
+                    <div id="card-deposits" style="font-size: 2rem; font-weight: 800; color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">{{ "$%0.2f"|format(deposits_values[-1] if deposits_values else 0) }}</div>
                 </div>
 
                 <!-- Challenge Fees -->
-                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 24px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Challenge Fees</div>
-                    <div id="card-fees" style="font-size: 2rem; font-weight: 800; color: #ef4444;">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
+                <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #fca5a5 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Challenge Fees</div>
+                    <div id="card-fees" style="font-size: 2rem; font-weight: 800; color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
                 </div>
 
                 <!-- Row 2 -->
                 <!-- Net Profit -->
-                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 24px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Net Profit</div>
-                    <div id="card-net" style="font-size: 2rem; font-weight: 800; color: #a855f7;">{{ "$%0.2f"|format(ns.net) }}</div>
+                <div style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #d8b4fe !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Net Profit</div>
+                    <div id="card-net" style="font-size: 2rem; font-weight: 800; color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">{{ "$%0.2f"|format(ns.net) }}</div>
+                </div>
+
+                <!-- Hedging Results -->
+                <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #bae6fd !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Hedging Results</div>
+                    <div id="card-hedge" style="font-size: 2rem; font-weight: 800; color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">{{ "$%0.2f"|format(ns.hedge) }}</div>
+                </div>
+
+                <!-- Farming Results -->
+                <div style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #d9f99d !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Farming Results</div>
+                    <div id="card-farming" style="font-size: 2rem; font-weight: 800; color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">{{ "$%0.2f"|format(ns.farm) }}</div>
                 </div>
 
                 <!-- Expected Value -->
-                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 24px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Expected Value (EV)</div>
-                    <div id="card-ev" style="font-size: 2rem; font-weight: 800; color: #fbbf24;">{{ "$%0.2f"|format(global_stats.expected_value|default(0)) }}</div>
+                <div style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #fde047 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Expected Value (EV)</div>
+                    <div id="card-ev" style="font-size: 2rem; font-weight: 800; color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);">{{ "$%0.2f"|format(global_stats.expected_value|default(0)) }}</div>
                 </div>
 
                 <!-- EV / Day -->
-                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 24px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">EV / Day</div>
-                    <div id="card-ev-day" style="font-size: 2rem; font-weight: 800; color: #fca5a5;">{{ "$%0.2f"|format(global_stats.ev_per_day|default(0)) }}</div>
+                <div style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(131, 24, 67, 0.6) 100%); border: 1px solid rgba(244, 114, 182, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div style="color: #fbcfe8 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">EV / Day</div>
+                    <div id="card-ev-day" style="font-size: 2rem; font-weight: 800; color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">{{ "$%0.2f"|format(global_stats.ev_per_day|default(0)) }}</div>
                 </div>
                 
                 <!-- Active/Passed/Failed Status List -->
@@ -314,15 +392,15 @@
                     <div style="display: flex; gap: 40px; justify-content: start;">
                         <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color: var(--text-secondary);">Active</span>
-                            <span id="stat-active" style="font-weight: 700; color: #fff;">{{ ns.active }}</span>
+                            <span id="stat-active" style="font-weight: 700; color: #fff !important;">{{ ns.active }}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color: var(--text-secondary);">Passed</span>
-                            <span id="stat-passed" style="font-weight: 700; color: #10b981;">{{ ns.passed }}</span>
+                            <span id="stat-passed" style="font-weight: 700; color: #34d399 !important;">{{ ns.passed }}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color: var(--text-secondary);">Failed</span>
-                            <span id="stat-failed" style="font-weight: 700; color: #ef4444;">{{ ns.failed }}</span>
+                            <span id="stat-failed" style="font-weight: 700; color: #f87171 !important;">{{ ns.failed }}</span>
                         </div>
                     </div>
                 </div>
@@ -334,9 +412,9 @@
         <div class="chart-card" style="margin-bottom: 30px; height: 400px;">
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; gap: 15px;">
                 <h3 class="chart-title" style="margin-bottom: 0;">Portfolio Metric:</h3>
-                <select id="chartMetricSelect" onchange="updateGrowthChart(this.value)" style="padding: 8px 16px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 1rem; font-weight: 600; color: #334155; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                    <option value="net_profit">Net Profit (Trading)</option>
-                    <option value="payouts">Total Payouts</option>
+                <select id="chartMetricSelect" onchange="updateGrowthChart(this.value)" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background-color: #0f172a; font-size: 1rem; font-weight: 600; color: #f8fafc; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.2);">
+                    <option value="net_profit" style="background-color: #0f172a; color: #f8fafc;">Net Profit (Trading)</option>
+                    <option value="payouts" style="background-color: #0f172a; color: #f8fafc;">Total Payouts</option>
                     <option value="deposits">Total Deposits</option>
                     <option value="fees">Total Fees Spent</option>
                     <option value="hedge">Hedge Results</option>
@@ -348,26 +426,7 @@
             </div>
         </div>
 
-        <div class="summary-cards">
-            <div class="summary-card">
-                <div class="card-label">Total Payouts</div>
-                <div class="card-value" id="card-payouts" style="color: #10b981;">{{ "$%0.2f"|format(ns.pay) }}</div>
-            </div>
-            <div class="summary-card">
-                <div class="card-label">Net Profit</div>
-                <div class="card-value" id="card-net" style="color: #3b82f6;">{{ "$%0.2f"|format(ns.net) }}</div>
-            </div>
-            
-            <div class="summary-card">
-                <div class="card-label">Top Payer</div>
-                <div class="card-value" id="card-top-name" style="font-size: 1.4rem;">{{ ns.top_firm_name or "-" }}</div>
-                <div id="card-top-val" style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">{{ "$%0.2f"|format(ns.top_firm_val) }} paid out</div>
-            </div>
-            <div class="summary-card">
-                <div class="card-label">Total Fees</div>
-                <div class="card-value" id="card-fees" style="color: #f59e0b;">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
-            </div>
-        </div>
+        <!-- Duplicate Summary Removed -->
         <!-- Charts Section -->
         <div class="charts-container">
             <div class="chart-card">
@@ -431,23 +490,35 @@
                             <div style="font-weight: 600;">{{ firm }}</div>
                             <div style="font-size: 0.8rem; color: #94a3b8;">{{ data.total_clients }} clients</div>
                         </td>
-                        <td style="text-align: center; background-color: #f8fafc;">
+                        <td style="text-align: center; background-color: rgba(255, 255, 255, 0.05);">
                             <span class="badge-count">{{ data.account_count }}</span>
                         </td>
-                        <td style="text-align: center; background-color: #f8fafc; font-weight: 600; color: #3b82f6;">{{ data.active_accounts }}</td>
+                        <td style="text-align: center; background-color: rgba(255, 255, 255, 0.05);">
+                            <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: #60a5fa; padding: 2px 8px; font-weight: 600;">{{ data.active_accounts }}</span>
+                        </td>
                         
-                        <td style="text-align: center; color: #10b981;">{{ data.passed_accounts }}</td>
-                        <td style="text-align: center; color: #ef4444;">{{ data.failed_accounts }}</td>
-                        <td style="text-align: center; font-size: 0.85rem; color: #64748b;">
-                            {{ "%0.1f"|format(pass_rate) }}%
+                        <td style="text-align: center; color: #10b981;">
+                            <span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #34d399; padding: 2px 8px;">{{ data.passed_accounts }}</span>
+                        </td>
+                        <td style="text-align: center; color: #ef4444;">
+                             <span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #f87171; padding: 2px 8px;">{{ data.failed_accounts }}</span>
+                        </td>
+                        <td style="text-align: center; font-size: 0.85rem; font-weight: 500;">
+                            {% if pass_rate >= 40 %}
+                                <span style="color: #34d399;">{{ "%0.1f"|format(pass_rate) }}%</span>
+                            {% elif pass_rate >= 20 %}
+                                <span style="color: #fbbf24;">{{ "%0.1f"|format(pass_rate) }}%</span>
+                            {% else %}
+                                <span style="color: #f87171;">{{ "%0.1f"|format(pass_rate) }}%</span>
+                            {% endif %}
                         </td>
                         
                         <!-- Costs -->
-                        <td style="background-color: #f8fafc;">{{ "$%0.2f"|format(data.total_fees) }}</td>
-                        <td style="background-color: #f8fafc;">{{ "$%0.2f"|format(data.total_activation_fees) }}</td>
+                        <td style="background-color: rgba(255, 255, 255, 0.05); color: #cbd5e1;">{{ "$%0.2f"|format(data.total_fees) }}</td>
+                        <td style="background-color: rgba(255, 255, 255, 0.05); color: #cbd5e1;">{{ "$%0.2f"|format(data.total_activation_fees) }}</td>
                         
                         <!-- Income -->
-                        <td style="font-weight: 600; color: #10b981;">{{ "$%0.2f"|format(data.total_payouts) }}</td>
+                        <td style="font-weight: 600; color: #4ade80; text-shadow: 0 0 10px rgba(74, 222, 128, 0.2);">{{ "$%0.2f"|format(data.total_payouts) }}</td>
                         <td class="{{ 'positive' if data.hedge_results >= 0 else 'negative' }}">
                             {{ "$%0.2f"|format(data.hedge_results) }}
                         </td>
@@ -456,13 +527,13 @@
                         </td>
                         
                         <!-- Net -->
-                        <td class="{{ 'positive' if data.net >= 0 else 'negative' }}" style="font-weight: 700; background-color: #f8fafc;">
+                        <td class="{{ 'positive' if data.net >= 0 else 'negative' }}" style="font-weight: 700; background-color: rgba(255, 255, 255, 0.05); font-size: 1.05rem;">
                             {{ "$%0.2f"|format(data.net) }}
                         </td>
-                        <td style="background-color: #f1f5f9; color: #64748b;">
+                        <td style="background-color: rgba(255, 255, 255, 0.05); color: #cbd5e1;">
                             {{ "$%0.2f"|format(data.expected_value) }}
                         </td>
-                        <td style="background-color: #f1f5f9; color: #64748b;">
+                        <td style="background-color: rgba(255, 255, 255, 0.05); color: #cbd5e1;">
                             {{ "$%0.2f"|format(data.ev_per_day) }}
                         </td>
                     </tr>
@@ -494,7 +565,9 @@
                         <td class="bg-dark" style="color: #cbd5e1;">
                             {{ "$%0.2f"|format(ns.net / ns.ended) if ns.ended > 0 else "-" }}
                         </td>
-                        <td class="bg-dark" style="color: #cbd5e1;">-</td>
+                        <td class="bg-dark" style="color: #cbd5e1;">
+                            {{ "$%0.2f"|format(ns.ev_per_day_sum / ns.firm_count) if ns.firm_count > 0 else "-" }}
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -865,6 +938,34 @@
                 if(document.getElementById('stat-failed')) document.getElementById('stat-failed').textContent = data.failed_accounts;
             }
         }
+    </script>
+    <script>
+        function setFilter(filter) {
+             const url = new URL(window.location);
+             url.searchParams.set('profile', filter);
+             window.location.href = url.toString();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+             // Set active filter button based on server state
+             const currentProfile = "{{ selected_profile|default('ALL') }}";
+             
+             // Map backend value to button text if needed, or just match loose
+             const map = {
+                 'ALL': 'All',
+                 'BEF': 'BEF',
+                 'PRIVATE': 'Private'
+             };
+             
+             const targetText = map[currentProfile.toUpperCase()] || 'All';
+
+             document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.trim() === targetText) {
+                    btn.classList.add('active');
+                }
+             });
+        });
     </script>
 </body>
 </html>

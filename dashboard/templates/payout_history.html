@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payout History - MT5 Hedging Engine</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         /* Chart Styles */
@@ -14,11 +15,11 @@
             margin-bottom: 30px;
         }
         .chart-box {
-            background: white;
+            background: rgba(30, 41, 59, 0.6);
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
             width: 100%;
             max-width: 500px;
             position: relative;
@@ -29,60 +30,69 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
-            background: white;
+            background: rgba(30, 41, 59, 0.6);
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .finance-table th, .finance-table td {
             padding: 10px 12px;
             text-align: right;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             font-size: 0.85rem;
             vertical-align: middle;
+            color: #f8fafc;
         }
         .finance-table th {
             text-align: center;
-            background-color: #f8fafc;
-            color: #475569;
-            font-weight: 600;
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
+            border-bottom: 2px solid #3b82f6 !important;
+            color: #94a3b8;
+            font-weight: 700;
             white-space: nowrap;
             text-transform: uppercase;
             font-size: 0.8rem;
             letter-spacing: 0.05em;
-            border-bottom: 2px solid #e2e8f0;
         }
         .finance-table td:first-child {
             text-align: left;
             font-weight: 600;
-            color: #1e293b;
+            color: #fff !important;
         }
         .finance-table tr:hover {
-            background-color: #f8fafc;
+            background: rgba(59, 130, 246, 0.05) !important;
         }
-        .positive { color: #10b981; font-weight: 500; }
+        .positive { 
+            color: #34d399 !important; 
+            font-weight: 700 !important; 
+            text-shadow: 0 0 10px rgba(52, 211, 153, 0.2);
+        }
+        .val-glow {
+            text-shadow: 0 0 10px rgba(52, 211, 153, 0.4);
+        }
         .negative { color: #ef4444; font-weight: 500; }
         .neutral { color: #94a3b8; }
         .table-responsive {
             overflow-x: auto;
             border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            background: white;
-            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         /* Modern Navigation - Gemini Inspired */
         .modern-nav {
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(15, 23, 42, 0.95);
             backdrop-filter: blur(10px);
             padding: 15px 30px;
             margin-bottom: 40px;
             border-radius: 16px;
-            box-shadow: 0 4px 20px -1px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 20px -1px rgba(0, 0, 0, 0.2);
             display: flex;
             gap: 20px;
             align-items: center;
             justify-content: space-between;
-            border: 1px solid rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .nav-brand {
@@ -91,7 +101,7 @@
             gap: 10px;
             font-weight: 800;
             font-size: 1.1rem;
-            color: #0f172a;
+            color: #f8fafc;
             letter-spacing: -0.02em;
         }
 
@@ -104,14 +114,14 @@
         .nav-links {
             display: flex;
             gap: 8px;
-            background: #f1f5f9;
+            background: rgba(15, 23, 42, 0.6);
             padding: 5px;
             border-radius: 12px;
         }
 
         .nav-item {
             text-decoration: none;
-            color: #64748b;
+            color: #94a3b8;
             font-weight: 600;
             font-size: 0.9rem;
             padding: 8px 16px;
@@ -120,14 +130,14 @@
         }
 
         .nav-item:hover {
-            color: #1e293b;
-            background: rgba(255, 255, 255, 0.5);
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.05);
         }
 
         .nav-item.active {
-            background: white;
-            color: #3b82f6;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
         .nav-actions {
@@ -137,7 +147,7 @@
         }
 
         .action-link {
-            color: #64748b;
+            color: #94a3b8;
             text-decoration: none;
             font-weight: 600;
             font-size: 0.9rem;
@@ -146,7 +156,7 @@
         .action-link:hover { color: #3b82f6; }
 
         .logout-btn-nav {
-            background: #fee2e2;
+            background: rgba(239, 68, 68, 0.2);
             color: #ef4444;
             text-decoration: none;
             padding: 8px 16px;
@@ -175,19 +185,54 @@
             color: var(--text-primary) !important;
         }
 
-        /* Nav */
+        /* Nav - Updated to match Super Admin Theme */
         .modern-nav {
-            background: rgba(30, 41, 59, 0.95) !important;
-            border: 1px solid var(--border-color) !important;
-            color: var(--text-primary) !important;
+            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important; /* Blue Gradient */
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 8px;
+            padding: 12px 24px !important;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* var(--shadow-sm) fallback */
         }
-        .nav-brand, .nav-item, .action-link {
-            color: var(--text-secondary) !important;
+        
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.6);
+            padding: 6px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
-        .nav-item.active {
-            background: rgba(255,255,255,0.05) !important;
-            color: var(--accent-color) !important;
+        
+        /* Replaces .nav-item class styling */
+        .tab-btn {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 8px;
         }
+        .tab-btn:hover {
+            color: #f8fafc;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .tab-btn.active {
+            background: #3b82f6 !important; /* Solide Blue */
+            color: #ffffff !important;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Hide old classes if unused */
+        .nav-brand, .action-link { display: none; }
 
         /* Charts & Containers */
         .chart-box {
@@ -224,34 +269,50 @@
     <div class="container" style="max-width: 1600px; padding: 40px;">
         
         <nav class="modern-nav">
-            <div class="nav-brand">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Baller Quotes" class="brand-logo">
+            <div class="brand" style="display: flex; align-items: center;">
+                <!-- Logo with 'App Icon' styling to blend better -->
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
+                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
+                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
+                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
+                </div>
             </div>
+            
             <div class="nav-links">
-                <a href="/super_admin" class="nav-item">Dashboard</a>
-                <a href="/financial_overview" class="nav-item">Prop Firms</a>
-                <a href="/payout_history" class="nav-item active">Payouts</a>
-                <a href="/client_performance" class="nav-item">Clients</a>
-                <a href="/trader_performance" class="nav-item">Traders</a>
-            </div>
-            <div class="nav-actions">
-                <a href="/super_admin/clients" class="action-link">Manage Clients</a>
-                <a href="/logout" class="logout-btn-nav">Logout</a>
+                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
+                <a href="/payout_history" class="tab-btn active"><i class="fas fa-history"></i> Payouts</a>
+                <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+                <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
+                
+                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
+                
+                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
             </div>
         </nav>
 
-        <header style="margin-bottom: 40px;">
-            <h1 style="font-size: 2rem; color: #0f172a; margin: 0;">Payout History</h1>
-            <div style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">
-                Detailed log of all payouts received
+        <header style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end;">
+            <div>
+                <h1 style="font-size: 1.5rem; color: #f8fafc; margin: 0; margin-bottom: 4px;">Payout History</h1>
+                <div style="color: #64748b; font-size: 0.9rem; margin: 0;">
+                    Detailed log of all payouts received
+                </div>
+            </div>
+             <!-- Filter Section (Matches Client Performance style) -->
+             <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+                <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
+                <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
+                <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
             </div>
         </header>
         
         <form method="get" action="{{ url_for('payout_history') }}" 
-              style="background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 20px; display: flex; align-items: flex-end; gap: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); flex-wrap: wrap;">
+              style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; display: flex; align-items: flex-end; gap: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); flex-wrap: wrap;">
             <div>
-                <label for="prop_firm" style="display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 5px;">Prop Firm</label>
-                <select id="prop_firm" name="prop_firm" style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; min-width: 200px;">
+                <label for="prop_firm" style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 5px;">Prop Firm</label>
+                <select id="prop_firm" name="prop_firm" style="padding: 8px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 0.95rem; min-width: 200px; background: #0f172a; color: #f8fafc;">
                     <option value="">All Prop Firms</option>
                     {% for firm in prop_firms %}
                         <option value="{{ firm }}" {% if selected_prop_firm == firm %}selected{% endif %}>{{ firm }}</option>
@@ -259,12 +320,12 @@
                 </select>
             </div>
             <div>
-                <label for="start_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 5px;">Start Date</label>
+                <label for="start_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 5px;">Start Date</label>
                 <input type="date" id="start_date" name="start_date" value="{{ start_date if start_date else '' }}" 
-                       style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
+                       style="padding: 8px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 0.95rem; background: #0f172a; color: #f8fafc;">
             </div>
             <div>
-                <label for="end_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #64748b; margin-bottom: 5px;">End Date</label>
+                <label for="end_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 5px;">End Date</label>
                 <input type="date" id="end_date" name="end_date" value="{{ end_date if end_date else '' }}"
                        style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
             </div>
@@ -289,13 +350,13 @@
             <table class="finance-table">
                 <thead>
                     <tr>
-                        <th style="text-align: left;">Date</th>
-                        <th style="text-align: left;">Client</th>
-                        <th style="text-align: left;">Admin</th>
-                        <th style="text-align: left;">Trader</th>
-                        <th style="text-align: left;">Account</th>
-                        <th style="text-align: left;">Prop Firm</th>
-                        <th>Amount</th>
+                        <th style="text-align: left; color: #93c5fd !important;">Date</th>
+                        <th style="text-align: left; color: #cbd5e1 !important;">Client</th>
+                        <th style="text-align: left; color: #fbbf24 !important;">Admin</th>
+                        <th style="text-align: left; color: #34d399 !important;">Trader</th>
+                        <th style="text-align: left; color: #a5b4fc !important;">Account</th>
+                        <th style="text-align: left; color: #f87171 !important;">Prop Firm</th>
+                        <th style="color: #6ee7b7 !important;">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -305,17 +366,37 @@
                         <tr>
                             <td style="text-align: left;">
                                 {% if payout.date %}
-                                    {{ payout.date.strftime('%Y-%m-%d') }}
+                                    <span style="color: #93c5fd; font-weight: 500;">{{ payout.date.strftime('%Y-%m-%d') }}</span>
                                 {% else %}
                                     <span class="neutral">-</span>
                                 {% endif %}
                             </td>
-                            <td style="text-align: left;">{{ payout.client_name }}</td>
-                            <td style="text-align: left; font-weight: 500;">{{ payout.admin_name }}</td>
-                            <td style="text-align: left; font-weight: 500;">{{ payout.trader_name }}</td>
-                            <td style="text-align: left;">{{ payout.account_id }}</td>
-                            <td style="text-align: left;">{{ payout.prop_firm }}</td>
-                            <td class="positive">{{ "$%0.2f"|format(payout.amount) }}</td>
+                            <td style="text-align: left; font-weight: 600; color: #f1f5f9;">{{ payout.client_name }}</td>
+                            <td style="text-align: left; font-weight: 500; color: #fde047;">{{ payout.admin_name }}</td>
+                            <td style="text-align: left; font-weight: 500; color: #86efac;">{{ payout.trader_name }}</td>
+                            <td style="text-align: left; font-family: monospace; color: #cbd5e1;">{{ payout.account_id }}</td>
+                            <td style="text-align: left;">
+                                {% set fk = payout.prop_firm|lower|replace(" ", "") %}
+                                {% if 'fundednext' in fk %}
+                                    {% set b_style = "background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #6ee7b7;" %}
+                                {% elif 'tradeify' in fk %}
+                                    {% set b_style = "background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(167, 139, 250, 0.3); color: #c4b5fd;" %}
+                                {% elif 'myfundedfutures' in fk or 'mff' in fk or 'futures' in fk %}
+                                    {% set b_style = "background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(96, 165, 250, 0.3); color: #93c5fd;" %}
+                                {% elif 'topstep' in fk %}
+                                    {% set b_style = "background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(248, 113, 113, 0.3); color: #fca5a5;" %}
+                                {% elif 'quick' in fk or 'tick' in fk %}
+                                    {% set b_style = "background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: #fcd34d;" %}
+                                {% elif 'tradeday' in fk %}
+                                    {% set b_style = "background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(244, 114, 182, 0.3); color: #fbcfe8;" %}
+                                {% else %}
+                                    {% set b_style = "background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(203, 213, 225, 0.3); color: #cbd5e1;" %}
+                                {% endif %}
+                                <span style="{{ b_style }} padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">
+                                    {{ payout.prop_firm }}
+                                </span>
+                            </td>
+                            <td class="positive" style="font-size: 1rem;">{{ "$%0.2f"|format(payout.amount) }}</td>
                         </tr>
                     {% else %}
                         <tr>
@@ -429,6 +510,26 @@
                     });
                 }
             }
+        });
+    </script>
+    <script>
+        function setFilter(filter) {
+             const url = new URL(window.location);
+             url.searchParams.set('profile', filter);
+             window.location.href = url.toString();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+             const currentProfile = "{{ selected_profile|default('ALL') }}";
+             const map = {'ALL': 'All', 'BEF': 'BEF', 'PRIVATE': 'Private'};
+             const targetText = map[currentProfile.toUpperCase()] || 'All';
+             
+             document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.trim() === targetText) {
+                    btn.classList.add('active');
+                }
+             });
         });
     </script>
 </body>
