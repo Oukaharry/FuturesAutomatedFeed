@@ -62,15 +62,11 @@
         }
         
         .logo-img {
-            width: 80px;
-            height: 80px;
+            width: 150px;
+            height: 150px;
             margin-bottom: 20px;
             object-fit: contain;
-            background: rgba(255, 255, 255, 0.05); /* Added for visibility */
-            border-radius: 16px;
-            padding: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            /* background/border removed for transparent logo */
             filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
         }
         
@@ -278,7 +274,7 @@
     <div class="login-container">
         <div class="header">
             <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" class="logo-img">
-            <h1>BallerQuotes</h1>
+            <h1></h1>
             <p>Your go-to virtual assistant</p>
         </div>
         

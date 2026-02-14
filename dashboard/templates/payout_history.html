@@ -190,12 +190,14 @@
             background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important; /* Blue Gradient */
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
             border-radius: 8px;
-            padding: 12px 24px !important;
+            padding: 0 24px !important;
+            height: 80px;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             margin-bottom: 20px;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* var(--shadow-sm) fallback */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            position: relative;
         }
         
         .nav-links {
@@ -269,13 +271,9 @@
     <div class="container" style="max-width: 1600px; padding: 40px;">
         
         <nav class="modern-nav">
-            <div class="brand" style="display: flex; align-items: center;">
+            <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
                 <!-- Logo with 'App Icon' styling to blend better -->
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
-                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
-                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
-                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
-                </div>
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 210px; width: 210px; object-fit: contain;">
             </div>
             
             <div class="nav-links">
@@ -377,6 +375,7 @@
                             <td style="text-align: left; font-family: monospace; color: #cbd5e1;">{{ payout.account_id }}</td>
                             <td style="text-align: left;">
                                 {% set fk = payout.prop_firm|lower|replace(" ", "") %}
+                                {% set common_style = "padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;" %}
                                 {% if 'fundednext' in fk %}
                                     {% set b_style = "background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #6ee7b7;" %}
                                 {% elif 'tradeify' in fk %}
@@ -392,7 +391,8 @@
                                 {% else %}
                                     {% set b_style = "background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(203, 213, 225, 0.3); color: #cbd5e1;" %}
                                 {% endif %}
-                                <span style="{{ b_style }} padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;">
+                                {% set style_attr = 'style="' ~ b_style ~ ' ' ~ common_style ~ '"' %}
+                                <span {{ style_attr|safe }}>
                                     {{ payout.prop_firm }}
                                 </span>
                             </td>

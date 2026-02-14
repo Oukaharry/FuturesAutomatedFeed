@@ -27,7 +27,20 @@ class SimpleCache:
     def clear(self):
         self._cache = {}
 
+
 _overview_cache = SimpleCache()
+
+def col_idx_to_letter(n):
+    """
+    Converts 0-based column index to Excel-style column letters.
+    0 -> A, 1 -> B, 25 -> Z, 26 -> AA, 27 -> AB
+    """
+    res = ""
+    while n >= 0:
+        res = chr(ord('A') + (n % 26)) + res
+        n = (n // 26) - 1
+    return res
+
 
 def cache_result(ttl=300):
     def decorator(func):
@@ -1228,7 +1241,8 @@ def calculate_trader_stats(profile_filter=None):
         stats['sheets_reviewed'] += 1
         
         evaluations = data.get('evaluations', [])
-        for ev in evaluations:
+        for idx, ev in enumerate(evaluations):
+            row_num = idx + 3 # Matches frontend assumption (Row 3 start)
             acc_num = ev.get('Account #') or ev.get('Account #.1') or 'Unknown'
             # Payouts 1-10
             for i in range(1, 11):
@@ -1237,34 +1251,40 @@ def calculate_trader_stats(profile_filter=None):
                 if amt > 0: stats['total_payouts'] += amt
             
             # Negative Hedge Logic
-            hedge_sum = 0.0
-            has_activity = False
             
-            check_list = []
-            for i in range(1, 6):
-                check_list.append(f'Hedge Result {i}')
-                check_list.append(f'Hedge Result {i}.1')
-                check_list.append(f'Hedge Result {i}.2')
+            # 1. Phase 1 Net (Column N)
+            p1_net = parse_currency(ev.get('Hedge Net'))
             
-            for k in check_list:
-                val = parse_currency(ev.get(k))
-                if val != 0:
-                    has_activity = True
-                    hedge_sum += val
-            
-            if has_activity and hedge_sum < -1.0: 
-                stats['total_negative_hedge'] += hedge_sum
+            if p1_net < -1.0:
+                stats['total_negative_hedge'] += p1_net
                 
-                # Determine date for filtering (Date Ended > Date Ended.1 > Date Purchased)
-                date_str = ev.get('Date Ended') or ev.get('Date Ended.1') or ev.get('Date')
+                date_str = ev.get('Date Ended') or ev.get('Date')
                 date_obj = parse_date(date_str)
                 date_iso = date_obj.strftime("%Y-%m-%d") if date_obj else ""
                 
                 stats['negative_hedge_details'].append({
                     "client": client_id,
                     "account": acc_num,
-                    "amount": hedge_sum,
-                    "link": f"/dashboard/{client_id}",
+                    "amount": p1_net,
+                    "link": f"/dashboard/{client_id}?range=N{row_num}",
+                    "date": date_iso
+                })
+
+            # 2. Funded Net (Column AA)
+            fd_net = parse_currency(ev.get('Hedge Net.1'))
+            
+            if fd_net < -1.0:
+                stats['total_negative_hedge'] += fd_net
+                
+                date_str = ev.get('Date Ended.1')
+                date_obj = parse_date(date_str)
+                date_iso = date_obj.strftime("%Y-%m-%d") if date_obj else ""
+                
+                stats['negative_hedge_details'].append({
+                    "client": client_id,
+                    "account": acc_num,
+                    "amount": fd_net,
+                    "link": f"/dashboard/{client_id}?range=AA{row_num}",
                     "date": date_iso
                 })
             
@@ -1277,10 +1297,17 @@ def calculate_trader_stats(profile_filter=None):
                     p_val_raw = ev.get(f'Day {d} Profit')
                     if not p_val_raw or str(p_val_raw).strip() in ['', '-']:
                         stats['farming_missing_notes'] += 1
+                        
+                        # Calculate Prop Day Col
+                        # Prop Day 1 = AK (Index 36)
+                        # Prop Day 2 = AM (Index 38)
+                        col_idx = 36 + (d - 1) * 2
+                        col_let = col_idx_to_letter(col_idx)
+                        
                         stats['farming_warnings'].append({
                             "client": client_id,
                             "day": d,
-                            "link": f"/dashboard/{client_id}"
+                            "link": f"/dashboard/{client_id}?range={col_let}{row_num}"
                         })
 
     return list(traders_stats.values())

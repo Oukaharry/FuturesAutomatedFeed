@@ -183,12 +183,14 @@
             background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important; /* Blue Gradient */
             border: 1px solid rgba(255, 255, 255, 0.08) !important;
             border-radius: 8px; /* var(--radius) fallback */
-            padding: 12px 24px !important;
+            padding: 0 24px !important;
+            height: 80px;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             margin-bottom: 20px;
             box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            position: relative;
         }
         
         .nav-links {
@@ -231,13 +233,9 @@
     <div class="container">
         <!-- Modern Navigation -->
         <nav class="modern-nav">
-             <div class="brand" style="display: flex; align-items: center;">
+             <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
                 <!-- Logo with 'App Icon' styling to blend better -->
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
-                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
-                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
-                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
-                </div>
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 210px; width: 210px; object-fit: contain;">
             </div>
             
             <div class="nav-links">
@@ -693,7 +691,7 @@
         }
         
         function updateGrowthChart(type) {
-            console.log('Updating chart to:', type);
+            // console.log('Updating chart to:', type);
             if (!growthChart) {
                 console.error('growthChart not initialized');
                 return;
@@ -878,18 +876,18 @@
             });
 
             // Capture init values for global
-            const init_payouts = {{ ns.pay }};
-            const init_net = {{ ns.net }};
-            const init_fees = {{ ns.fees + ns.act }};
-            const init_ev = {{ global_stats.expected_value|default(0) }};
-            const init_ev_day = {{ global_stats.ev_per_day|default(0) }};
-            const init_active = {{ ns.active }};
-            const init_passed = {{ ns.passed }};
-            const init_failed = {{ ns.failed }};
-            const init_deposits = {{ deposits_values|sum if deposits_values else 0 }};
+            const init_payouts = Number('{{ ns.pay }}');
+            const init_net = Number('{{ ns.net }}');
+            const init_fees = Number('{{ ns.fees + ns.act }}');
+            const init_ev = Number('{{ global_stats.expected_value|default(0) }}');
+            const init_ev_day = Number('{{ global_stats.ev_per_day|default(0) }}');
+            const init_active = Number('{{ ns.active }}');
+            const init_passed = Number('{{ ns.passed }}');
+            const init_failed = Number('{{ ns.failed }}');
+            const init_deposits = Number('{{ deposits_values|sum if deposits_values else 0 }}');
 
             // Global store
-            window.financialOverviewData = {{ overview|tojson }};
+            window.financialOverviewData = overviewData;
             window.globalDataStore = {
                 payouts: init_payouts,
                 net: init_net,

@@ -49,6 +49,7 @@
             font-size: 1.25rem;
             font-weight: 700;
             background: linear-gradient(90deg, #fff, #94a3b8);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -200,12 +201,13 @@
         .modern-nav {
             background: rgba(15, 23, 42, 0.7);
             backdrop-filter: blur(16px);
-            padding: 16px 32px;
+            padding: 0 32px;
+            height: 80px;
             margin-bottom: 40px;
             border-radius: var(--radius);
             box-shadow: var(--shadow-lg);
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             border: 1px solid rgba(255, 255, 255, 0.05);
             position: sticky; top: 20px; z-index: 99;
@@ -216,9 +218,8 @@
     <div class="container">
         <!-- Modern Nav -->
         <nav class="modern-nav">
-             <div class="brand">
-                <i class="fas fa-chart-pie" style="color: var(--accent-color);"></i>
-                <span>BallerQuotes <span style="font-weight: 400; font-size: 0.9em; opacity: 0.6;">Admin</span></span>
+            <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 210px; width: 210px; object-fit: contain;">
             </div>
             
             <div style="display: flex; align-items: center; gap: 24px;">

@@ -572,12 +572,14 @@
             background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: var(--radius);
-            padding: 16px 24px;
+            padding: 0 24px;
+            height: 80px;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             margin-bottom: 32px;
             box-shadow: var(--shadow-sm);
+            position: relative;
         }
         
         .tab-btn {
@@ -643,12 +645,8 @@
     <div class="container">
         {% if user_type == 'super_admin' %}
         <nav class="modern-nav">
-            <div class="brand" style="display: flex; align-items: center;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 38px; width: 38px; object-fit: contain; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 4px; margin-right: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); border: 1px solid rgba(255,255,255,0.1);">
-                <div style="display: flex; flex-direction: column; justify-content: center; line-height: 1.1;">
-                     <span style="color: #fbbf24; font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">BallerQuotes</span>
-                     <span style="color: #94a3b8; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-left: 1px;">Super Admin</span>
-                </div>
+            <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 210px; width: 210px; object-fit: contain;">
             </div>
             <div class="nav-links">
                 <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
@@ -894,10 +892,17 @@
         </div>
     </div>
 
+
     <script>
         const CLIENT_ID = "{{ client_id }}";
         // @ts-ignore
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
+
+        // Debug Logger
+        function debugLog(msg) {
+            // Debug console removed for production
+        }
+
         let currentData = {};
         let isEditing = false;
         let isDatePickerOpen = false;
@@ -966,7 +971,7 @@
                 }
             });
             
-            console.log('Section positions calculated:', sectionPositions);
+            // console.log('Section positions calculated:', sectionPositions);
         }
         
         function scrollTableBy(amount) {
@@ -1067,6 +1072,18 @@
             });
         }
 
+        function formatCurrencyValue(value) {
+            if (value === null || value === undefined || value === '') return '';
+            const num = parseFloat(String(value).replace(/[^0-9.-]+/g, ''));
+            if (isNaN(num)) return value;
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num);
+        }
+
         function updateDashboard() {
             // Prevent update if user is interacting
             if (document.querySelector('.cell-input:focus')) return;
@@ -1119,6 +1136,7 @@
                         const match = hlRange.match(/([A-Z]+)(\d+)/);
                         if (match && parseInt(match[2]) === currentRowNum) {
                             forceShow = true;
+                            debugLog(`Row ${currentRowNum} force showing for param ${hlRange}`);
                         }
                     }
 
@@ -1152,6 +1170,7 @@
                         let highlightClass = '';
                         if (hlRange && colLetter && `${colLetter}${currentRowNum}` === hlRange) {
                              highlightClass = 'highlight-cell';
+                             debugLog(`TARGET CELL FOUND: ${cellId}`);
                              // Also ensure we are showing the row if filters might hide it?
                              // (Though we handle filter above, usually links go to active things)
                         }
@@ -1190,7 +1209,7 @@
                         ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3'), 'Hedge Result 3')}
                         ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4'), 'Hedge Result 4')}
                         ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5'), 'Hedge Result 5')}
-                        ${cell(getVal('Hedge Net'), 'Hedge Net')}
+                        ${cell(formatCurrencyValue(getVal('Hedge Net')), 'Hedge Net')}
                         
                         ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1'), 'Account #.1')}
                         ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee'), 'Activation Fee')}
@@ -1205,7 +1224,7 @@
                         ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1'), 'Hedge Result 5.1')}
                         ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6'), 'Hedge Result 6')}
                         ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7'), 'Hedge Result 7')}
-                        ${cell(getVal('Hedge Net.1'), 'Hedge Net.1')}
+                        ${cell(formatCurrencyValue(getVal('Hedge Net.1')), 'Hedge Net.1')}
                         
                         ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1'), 'Payout 1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1'), 'Date 1')}
@@ -1230,24 +1249,64 @@
                     noEvalMsg.textContent = "No evaluations found";
                 }
                 
+
                 // Recalculate section positions after table render
                 setTimeout(() => {
                     calculateSectionPositions();
                     // Auto-scroll to highlighted cell if exists
                     if (hlRange) {
-                        const target = document.getElementById(hlRange);
-                        if (target) {
-                            target.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'center'});
-                            // Add temporary flash effect
-                            target.style.transition = 'background-color 0.5s';
-                            const origBg = target.style.backgroundColor;
-                            target.style.setProperty('background-color', 'rgba(234, 179, 8, 0.5)', 'important'); // Flash gold louder
-                            setTimeout(() => {
-                                target.style.removeProperty('background-color'); // Remove inline style to fall back to class
-                            }, 1500);
-                        }
+                        debugLog(`Attempting scroll to: ${hlRange}`);
+                        const attemptScroll = (retries) => {
+                            const target = document.getElementById(hlRange);
+                            if (target) {
+                                debugLog(`Element found! Scrolling to ${hlRange}`);
+                                
+                                // Calculate position relative to container
+                                const container = document.getElementById('eval-table-container');
+                                if (container) {
+                                    // Get header height to offset
+                                    const headerHeight = container.querySelector('thead').offsetHeight || 50;
+                                    
+                                    // Use basic offsetTop logic because scrollIntoView can be flaky with sticky headers and nested scrolls
+                                    // Center Horizontally
+                                    const cellLeft = target.offsetLeft;
+                                    const cellWidth = target.offsetWidth;
+                                    const containerWidth = container.clientWidth;
+                                    
+                                    // Center Vertically - Ensure we offset properly relative to sticky header
+                                    const cellTop = target.offsetTop;
+                                    const cellHeight = target.offsetHeight;
+                                    const containerHeight = container.clientHeight;
+
+                                    // Very forceful scroll
+                                    container.scrollTop = cellTop - (containerHeight / 2) + (cellHeight / 2);
+                                    container.scrollLeft = cellLeft - (containerWidth / 2) + (cellWidth / 2);
+                                    
+                                    // Backup with scrollIntoView
+                                    target.scrollIntoView({block: 'center', inline: 'center'});
+                                } else {
+                                     // Fallback
+                                     target.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'center'});
+                                }
+                                
+                                // Flash Effect
+                                target.style.transition = 'background-color 0.5s';
+                                target.style.setProperty('background-color', 'rgba(234, 179, 8, 0.7)', 'important'); 
+                                setTimeout(() => {
+                                    target.style.transition = 'background-color 1.5s ease-out';
+                                    target.style.removeProperty('background-color');
+                                }, 2000);
+                            } else if (retries > 0) {
+                                debugLog(`Element ${hlRange} not found yet. Retrying... (${retries})`);
+                                // Retry if element not found yet
+                                setTimeout(() => attemptScroll(retries - 1), 500);
+                            } else {
+                                debugLog(`Element ${hlRange} NOT FOUND after retries.`);
+                            }
+                        };
+                        attemptScroll(10); // Try 10 times
                     }
-                }, 100);
+                }, 300); // Increased timeout for stability
             } else {
                 noEvalMsg.style.display = 'block';
             }
@@ -2146,7 +2205,7 @@
                 return response.json();
             })
             .then(data => {
-                console.log('Data saved, version:', data.version);
+                // console.log('Data saved, version:', data.version);
                 isSaving = false;
                 // Brief delay before allowing refresh to ensure DB has updated
                 setTimeout(() => { isEditing = false; }, 300);
@@ -2168,7 +2227,7 @@
                 // Retry logic (up to 3 times with exponential backoff)
                 if (retryCount < 3) {
                     const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-                    console.log(`Retrying save in ${delay}ms (attempt ${retryCount + 1}/3)...`);
+                    // console.log(`Retrying save in ${delay}ms (attempt ${retryCount + 1}/3)...`);
                     showSaveStatus('retrying', retryCount + 1);
                     setTimeout(() => saveData(retryCount + 1), delay);
                     return;
