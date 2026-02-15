@@ -155,7 +155,9 @@
                             <td style="text-align: center;">{{ trader.client_count }}</td>
                             <td style="text-align: right;" class="success">{{ "$%0.2f"|format(trader.total_payouts) }}</td>
                             <td style="text-align: right;" class="{{ 'danger' if trader.total_negative_hedge < -1 else 'neutral' }}">
-                                {{ "$%0.2f"|format(trader.total_negative_hedge) }}
+                                <span id="total-display-{{ loop.index }}" data-initial="{{ trader.total_negative_hedge }}">
+                                    {{ "$%0.2f"|format(trader.total_negative_hedge) }}
+                                </span>
                                 {% if trader.total_negative_hedge < -1 %}
                                     <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 5px; align-items: flex-end;">
                                         <div style="display: flex; gap: 5px;">
@@ -163,7 +165,7 @@
                                                     style="padding: 4px 8px; background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; cursor: pointer; font-size: 0.75rem;">
                                                 Show List
                                             </button>
-                                            <select onchange="filterDetails('details-{{ loop.index }}', this.value)" 
+                                            <select onchange="updateTotalAndFilter('details-{{ loop.index }}', 'total-display-{{ loop.index }}', this.value)" 
                                                     style="padding: 2px 4px; background: #0f172a; color: #cbd5e1; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; font-size: 0.75rem; width: auto; min-width: 80px;">
                                                 <option value="all">All Time</option>
                                                 <option value="today">Today</option>
@@ -175,7 +177,7 @@
 
                                     <div id="details-{{ loop.index }}" style="display: none; margin-top: 8px; font-size: 0.85em; color: #fecaca; font-weight: normal; text-align: left; padding: 8px; background: rgba(239, 68, 68, 0.1); border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.2); max-height: 300px; overflow-y: auto;">
                                         {% for detail in trader.negative_hedge_details %}
-                                            <div data-date="{{ detail.date }}" style="border-bottom: 1px dotted rgba(255,255,255,0.1); padding: 4px 0;">
+                                            <div data-date="{{ detail.date }}" data-amount="{{ detail.amount }}" style="border-bottom: 1px dotted rgba(255,255,255,0.1); padding: 4px 0;">
                                                 {% if detail.link %}
                                                     <a href="{{ detail.link }}" target="_blank" style="text-decoration: none; color: inherit; display: block;" title="View in Sheet">
                                                         <div style="display: flex; justify-content: space-between;">
@@ -260,42 +262,61 @@
             }
         }
 
-        function filterDetails(containerId, range) {
+        function updateTotalAndFilter(containerId, totalDisplayId, range) {
             const container = document.getElementById(containerId);
+            const totalDisplay = document.getElementById(totalDisplayId);
             const items = container.querySelectorAll('div[data-date]');
+            
             const now = new Date();
             // Reset hours for accurate daily comparison
             now.setHours(0,0,0,0);
             
+            let runningTotal = 0.0;
+
             items.forEach(item => {
                 const itemDateStr = item.getAttribute('data-date');
-                if (!itemDateStr) {
-                    item.style.display = range === 'all' ? 'block' : 'none'; 
-                    return;
-                }
-                
-                // Parse date string (YYYY-MM-DD)
-                const parts = itemDateStr.split('-');
-                const itemDate = new Date(parts[0], parts[1]-1, parts[2]); // Month is 0-indexed
+                const itemAmount = parseFloat(item.getAttribute('data-amount') || 0);
                 
                 let show = false;
                 
-                if (range === 'all') {
-                    show = true;
-                } else if (range === 'today') {
-                    show = itemDate.getTime() === now.getTime();
-                } else if (range === '7days') {
-                    const diffTime = Math.abs(now - itemDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                    show = diffDays <= 7;
-                } else if (range === '30days') {
-                    const diffTime = Math.abs(now - itemDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    show = diffDays <= 30;
+                // If no date, usually assumes old/all data, or we could strict filter.
+                // Assuming included in 'all', but excluded from specific dates if missing.
+                if (!itemDateStr) {
+                    show = (range === 'all');
+                } else {
+                    // Parse date string (YYYY-MM-DD)
+                    const parts = itemDateStr.split('-');
+                    const itemDate = new Date(parts[0], parts[1]-1, parts[2]); // Month is 0-indexed
+                    
+                    if (range === 'all') {
+                        show = true;
+                    } else if (range === 'today') {
+                        show = itemDate.getTime() === now.getTime();
+                    } else if (range === '7days') {
+                        const diffTime = Math.abs(now - itemDate);
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                        show = diffDays <= 7;
+                    } else if (range === '30days') {
+                        const diffTime = Math.abs(now - itemDate);
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        show = diffDays <= 30;
+                    }
                 }
                 
                 item.style.display = show ? 'block' : 'none';
+                
+                if (show) {
+                    runningTotal += itemAmount;
+                }
             });
+            
+            // Format Currency
+            const formatter = new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+            });
+            
+            totalDisplay.textContent = formatter.format(runningTotal);
             
             // If hidden, show it automatically when filtering
             if (container.style.display === 'none') {

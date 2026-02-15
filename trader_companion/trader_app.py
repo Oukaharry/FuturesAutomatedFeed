@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -969,13 +969,26 @@ class TraderCompanionApp:
     
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title(f"MT5 Trader Companion v{APP_VERSION}")
-        self.root.geometry("620x700")
-        self.root.configure(bg='#1a1a2e')
+        self.root.title(f"BallerQuotes Capital Trader Companion v{APP_VERSION}")
+        self.root.geometry("620x750")
+        self.root.configure(bg='#0f172a')
         self.root.resizable(False, False)  # Fixed size window
         
+        # Set Window Icon
+        try:
+            if hasattr(sys, '_MEIPASS'):
+                icon_path = os.path.join(sys._MEIPASS, 'logo.png')
+            else:
+                icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
+            
+            if os.path.exists(icon_path):
+                icon = tk.PhotoImage(file=icon_path)
+                self.root.iconphoto(True, icon)
+        except Exception as e:
+            print(f"Error loading icon: {e}")
+        
         # Create canvas for scrolling
-        self.main_canvas = tk.Canvas(self.root, bg='#1a1a2e', highlightthickness=0)
+        self.main_canvas = tk.Canvas(self.root, bg='#0f172a', highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
         self.scrollable_frame = ttk.Frame(self.main_canvas)
         
@@ -1008,38 +1021,60 @@ class TraderCompanionApp:
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Configure styles
-        style.configure('TFrame', background='#1a1a2e')
-        style.configure('TLabel', background='#1a1a2e', foreground='white', font=('Segoe UI', 10))
+        # Configure styles - BallerQuotes Theme (Dark Blue & Gold)
+        bg_color = '#0f172a'
+        fg_color = '#e2e8f0'
+        accent_color = '#fbbf24'
+        
+        style.configure('TFrame', background=bg_color)
+        style.configure('TLabel', background=bg_color, foreground=fg_color, font=('Segoe UI', 10))
+        style.configure('TLabelframe', background=bg_color, foreground=accent_color)
+        style.configure('TLabelframe.Label', background=bg_color, foreground=accent_color, font=('Segoe UI', 11, 'bold'))
         style.configure('TButton', font=('Segoe UI', 10, 'bold'))
-        style.configure('Header.TLabel', font=('Segoe UI', 16, 'bold'), foreground='#667eea')
-        style.configure('Status.TLabel', font=('Segoe UI', 10), foreground='#16a34a')
-        style.configure('Error.TLabel', font=('Segoe UI', 10), foreground='#dc2626')
+        style.configure('Header.TLabel', font=('Segoe UI', 18, 'bold'), foreground=accent_color)
+        style.configure('Status.TLabel', font=('Segoe UI', 10), foreground='#4ade80') # Green
+        style.configure('Error.TLabel', font=('Segoe UI', 10), foreground='#f87171') # Red
         
         # Main container (inside scrollable frame)
-        main_frame = ttk.Frame(self.scrollable_frame, padding=10)
+        main_frame = ttk.Frame(self.scrollable_frame, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Logo
+        try:
+            if hasattr(sys, '_MEIPASS'):
+                logo_path = os.path.join(sys._MEIPASS, 'logo.png')
+            else:
+                logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
+            
+            if os.path.exists(logo_path):
+                img = tk.PhotoImage(file=logo_path)
+                # Simple resize if too large (subsample integer factor)
+                if img.width() > 300:
+                    factor = int(img.width() / 250)
+                    if factor > 1:
+                        img = img.subsample(factor, factor)
+                self.logo_img = img # Keep reference
+                logo_label = ttk.Label(main_frame, image=img)
+                logo_label.pack(pady=(0, 15))
+        except Exception as e:
+            print(f"Error loading logo: {e}")
         
         # Header
-        header = ttk.Label(main_frame, text=f"📊 MT5 Trader Companion v{APP_VERSION}", style='Header.TLabel')
-        header.pack(pady=(0, 10))
+        header = ttk.Label(main_frame, text=f"Trader Companion v{APP_VERSION}", style='Header.TLabel')
+        header.pack(pady=(0, 20))
         
-        # Connection Frame
-        conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
-        conn_frame.pack(fill=tk.X, pady=(0, 8))
+        # Connection Frame (Hidden URL - Hardcoded to BallerQuotes)
+        # conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
+        # conn_frame.pack(fill=tk.X, pady=(0, 8))
         
-        # Dashboard URL (Hardcoded - Read Only)
-        url_frame = ttk.Frame(conn_frame)
-        url_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(url_frame, text="Dashboard URL:", width=15).pack(side=tk.LEFT)
-        self.url_entry = ttk.Entry(url_frame, width=50)
-        self.url_entry.insert(0, "https://www.ballerquotes.com")
-        self.url_entry.configure(state='readonly')  # Hardcoded - no user input needed
-        self.url_entry.pack(side=tk.LEFT, padx=5)
+        # Dashboard URL (Hidden)
+        self.url_entry = ttk.Entry(main_frame)
+        self.url_entry.insert(0, "https://www.ballerquotes.com/") 
+        # Not packing url_entry so it remains hidden but accessible via self.url_entry.get()
         
         # Identity Frame - SIMPLIFIED: Just client email (NO API KEY NEEDED)
-        id_frame = ttk.LabelFrame(main_frame, text="Client Identification (Email Only)", padding=8)
-        id_frame.pack(fill=tk.X, pady=(0, 8))
+        id_frame = ttk.LabelFrame(main_frame, text="Client Identification", padding=15)
+        id_frame.pack(fill=tk.X, pady=(0, 15))
         
         # Client Email
         email_frame = ttk.Frame(id_frame)
@@ -2131,7 +2166,7 @@ class TraderCompanionApp:
     def save_config(self):
         """Save configuration to file."""
         config = {
-            "dashboard_url": "https://www.ballerquotes.com",  # Hardcoded
+            "dashboard_url": self.url_entry.get(),  # Save dynamic URL
             "client_email": self.client_email_entry.get(),
             "sheet_url": self.sheet_url_entry.get(),
             "mt5_login": self.mt5_login.get(),
@@ -2153,20 +2188,27 @@ class TraderCompanionApp:
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                 
-                # URL is hardcoded, no need to load from config
-                # self.url_entry is already set and read-only
+                # Do NOT load dashboard_url - keep hardcoded BallerQuotes
+                # saved_url = config.get('dashboard_url')
+                # if saved_url:
+                #     self.url_entry.delete(0, tk.END)
+                #     self.url_entry.insert(0, saved_url)
                 
-                self.client_email_entry.delete(0, tk.END)
-                self.client_email_entry.insert(0, config.get('client_email', ''))
+                if config.get('client_email'):
+                    self.client_email_entry.delete(0, tk.END)
+                    self.client_email_entry.insert(0, config.get('client_email', ''))
                 
-                self.sheet_url_entry.delete(0, tk.END)
-                self.sheet_url_entry.insert(0, config.get('sheet_url', ''))
+                if config.get('sheet_url'):
+                    self.sheet_url_entry.delete(0, tk.END)
+                    self.sheet_url_entry.insert(0, config.get('sheet_url', ''))
                 
-                self.mt5_login.delete(0, tk.END)
-                self.mt5_login.insert(0, config.get('mt5_login', ''))
+                if config.get('mt5_login'):
+                    self.mt5_login.delete(0, tk.END)
+                    self.mt5_login.insert(0, config.get('mt5_login', ''))
                 
-                self.mt5_server.delete(0, tk.END)
-                self.mt5_server.insert(0, config.get('mt5_server', ''))
+                if config.get('mt5_server'):
+                    self.mt5_server.delete(0, tk.END)
+                    self.mt5_server.insert(0, config.get('mt5_server', ''))
                 
                 self.log("Configuration loaded")
             except Exception as e:

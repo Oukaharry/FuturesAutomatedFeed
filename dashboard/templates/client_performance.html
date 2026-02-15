@@ -241,6 +241,7 @@
 
         let allClientStats = [];
         let currentFilter = 'All';
+        let isFirstLoad = true;
         
         // Sorting State
         let currentSortKey = 'net_profit';
@@ -290,7 +291,7 @@
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
-                    // Update local data
+                    // Update local data immediately to reflect UI change (optimistic update)
                     const client = allClientStats.find(c => c.client_id === clientId);
                     if (client) {
                         client.source = source;
@@ -378,27 +379,45 @@
             });
         }
 
-        // Load data on page load
+        // Load data on page load and start polling
         document.addEventListener('DOMContentLoaded', () => {
             const tbody = document.getElementById('client-stats-body');
-            
             updateSortIcons(); // Init icons
+            
+            // Initial Load
+            fetchClientData();
+
+            // Auto-refresh every 5 seconds
+            setInterval(fetchClientData, 5000);
+        });
+
+        function fetchClientData() {
+            const tbody = document.getElementById('client-stats-body');
             
             fetch('/api/super_admin/totals')
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
                         if (data.clients) {
-                            allClientStats = data.clients;
-                            renderClientTable();
+                            // Check if data changed to avoid unnecessary re-renders (which close dropdowns/cause flicker)
+                            const newData = JSON.stringify(data.clients);
+                            const currentData = JSON.stringify(allClientStats);
+                            
+                            if (newData !== currentData) {
+                                allClientStats = data.clients;
+                                renderClientTable();
+                            }
                         }
                     }
                 })
                 .catch(err => {
                     console.error('Error loading client data:', err);
-                    tbody.innerHTML = '<tr><td colspan="10" style="padding: 20px; text-align: center; color: #dc2626;">Error loading data.</td></tr>';
+                    // Only show error text if table is empty (don't wipe existing stale data on temporary network blip)
+                    if (tbody.children.length === 0 || tbody.children[0].innerText.includes("Loading")) {
+                         tbody.innerHTML = '<tr><td colspan="10" style="padding: 20px; text-align: center; color: #dc2626;">Error loading data. Retrying...</td></tr>';
+                    }
                 });
-        });
+        }
     </script>
 </body>
 </html>

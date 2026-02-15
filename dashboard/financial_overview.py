@@ -1252,10 +1252,18 @@ def calculate_trader_stats(profile_filter=None):
             
             # Negative Hedge Logic
             
+            # Helper to check if any hedging occurred
+            def has_hedging_activity(ev_data, prefix="Hedge Result", count=5):
+                for k in range(1, count + 1):
+                    val = parse_currency(ev_data.get(f"{prefix} {k}"))
+                    if val != 0: return True
+                return False
+
             # 1. Phase 1 Net (Column N)
             p1_net = parse_currency(ev.get('Hedge Net'))
             
-            if p1_net < -1.0:
+            # Only count negative hedge net if actual hedging results exist (not just fees)
+            if p1_net < -1.0 and has_hedging_activity(ev, "Hedge Result", 5):
                 stats['total_negative_hedge'] += p1_net
                 
                 date_str = ev.get('Date Ended') or ev.get('Date')
@@ -1273,7 +1281,18 @@ def calculate_trader_stats(profile_filter=None):
             # 2. Funded Net (Column AA)
             fd_net = parse_currency(ev.get('Hedge Net.1'))
             
-            if fd_net < -1.0:
+            # Check Funded Hedge Results (1.1, 2.1, etc)
+            funded_hedged = False
+            # Check 1.1 explicitly
+            if parse_currency(ev.get("Hedge Result 1.1")) != 0: funded_hedged = True
+            # Check 2.1 - 5.1
+            if not funded_hedged:
+                for k in range(2, 6):
+                    if parse_currency(ev.get(f"Hedge Result {k}.1")) != 0: 
+                        funded_hedged = True
+                        break
+
+            if fd_net < -1.0 and funded_hedged:
                 stats['total_negative_hedge'] += fd_net
                 
                 date_str = ev.get('Date Ended.1')
@@ -1287,6 +1306,7 @@ def calculate_trader_stats(profile_filter=None):
                     "link": f"/dashboard/{client_id}?range=AA{row_num}",
                     "date": date_iso
                 })
+            
             
             # Farming Logic
             for d in range(1, 60):
