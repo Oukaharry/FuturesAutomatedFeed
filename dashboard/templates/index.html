@@ -694,6 +694,7 @@
             <div class="controls" style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; gap: 10px;">
                     <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
+                    <button class="btn-secondary" onclick="openHistoryPanel()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff;">📜 History</button>
                 </div>
                 <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
                     <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()">
@@ -826,6 +827,7 @@
                 <!-- Cards will be injected here -->
             </div>
 
+            <!-- Trade History -->
             <h3>Trade History</h3>
             <table id="history-table">
                 <thead>
@@ -1095,6 +1097,9 @@
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
+                    // Prevent overwriting if user started editing during fetch
+                    if (isEditing || isSaving || document.querySelector('.cell-input:focus')) return;
+
                     currentData = data;
                     document.getElementById('last-updated').textContent = data.last_updated;
                     
@@ -2114,7 +2119,7 @@
                 "Fee": "0"
             });
             renderEvaluationsTable();
-            saveData();
+            saveData('CREATE', 'Added new evaluation account');
         }
 
         async function deleteEvaluation(index) {
@@ -2128,52 +2133,35 @@
             const confirmMsg = `Delete this evaluation?\n\n` +
                 `Row ${index + 1}: ${propFirm} - ${accountSize}` +
                 (accountNum ? `\nAccount: ${accountNum}` : '') +
-                `\n\n⚠️ This will permanently delete the row from the current view.\n` +
-                `✅ You can recover it using Version History (📜 button).`;
+                `\n\n⚠️ This will remove the row from the dashboard.`;
             
             if (!confirm(confirmMsg)) return;
+
+            // Perform local delete immediately to update UI
+            currentData.evaluations.splice(index, 1);
+            renderEvaluationsTable();
             
-            const email = clientEmail || (currentData.identity && currentData.identity.email) || '';
+            // Save immediately using the standard pipeline to avoid race conditions
+            // This ensures the deleted state is what gets persisted relative to other edits
+            const desc = `Deleted row ${index + 1} (${propFirm} ${accountSize})`;
+            saveData('DELETE', desc);
             
-            if (email) {
-                // Use the API endpoint for tracked deletion
-                try {
-                    const response = await fetch('/api/client/delete_evaluation', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email: email, index: index })
-                    });
-                    
-                    const data = await response.json();
-                    if (data.status === 'success') {
-                        // Refresh the dashboard
-                        updateDashboard();
-                        
-                        // Show success message with recovery info
-                        setTimeout(() => {
-                            alert(`✅ Row deleted successfully!\n\nTo recover this data, click "📜 Version History" and restore the previous version.`);
-                        }, 100);
-                    } else {
-                        alert('Error: ' + (data.message || 'Failed to delete'));
-                    }
-                } catch (error) {
-                    console.error('Delete error:', error);
-                    alert('Error deleting row: ' + error.message);
-                }
-            } else {
-                // Fallback: delete locally and save (still tracked via saveData)
-                currentData.evaluations.splice(index, 1);
-                renderEvaluationsTable();
-                saveData();
-                alert(`Row deleted. Use Version History to recover if needed.`);
-            }
+            // Show brief confirmation
+            showSaveStatus('saved');
         }
 
         // Retry queue for failed saves
         let saveRetryQueue = [];
         let isSaving = false;
         
-        function saveData(retryCount = 0) {
+        function saveData(action = 'UPDATE', description = null, retryCount = 0) {
+            // Handle optional arguments shifting if called with just retryCount (legacy calls)
+            if (typeof action === 'number') {
+                retryCount = action;
+                action = 'UPDATE';
+                description = null;
+            }
+
             if (!currentData.identity) {
                 currentData.identity = {};
             }
@@ -2185,12 +2173,17 @@
             isEditing = true;
             isSaving = true;
             
+            // Prepare payload with metadata
+            const payload = { ...currentData };
+            payload.action_type = action;
+            if (description) payload.change_description = description;
+
             fetch('/api/update_data', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(currentData),
+                body: JSON.stringify(payload),
             })
             .then(response => {
                 if (response.status === 401) {

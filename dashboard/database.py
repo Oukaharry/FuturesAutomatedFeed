@@ -162,6 +162,36 @@ def init_database():
                 success INTEGER DEFAULT 0
             )
         ''')
+
+        # Evaluations table (New Dynamic Phase Architecture)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS evaluations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_signature TEXT NOT NULL,
+                phase_number INTEGER NOT NULL,
+                phase_type TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                start_date TEXT,
+                end_date TEXT,
+                reset_id TEXT,
+                parent_id INTEGER,
+                meta_data TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(parent_id) REFERENCES evaluations(id)
+            )
+        ''')
+
+        # Phase Definitions table (Dynamic Rules)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS phase_definitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phase_name TEXT NOT NULL,
+                phase_code TEXT NOT NULL UNIQUE,
+                sequence_order INTEGER NOT NULL,
+                ruleset TEXT DEFAULT '{}',
+                next_phase_code TEXT
+            )
+        ''')
         
         conn.commit()
         print("Database initialized successfully")
@@ -754,13 +784,19 @@ def update_client_field(client_id: str, field: str, value) -> bool:
 
 def get_next_version(client_id: str) -> int:
     """Get the next version number for a client's data history."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT MAX(version) as max_version FROM data_history WHERE client_id = ?
-        ''', (client_id,))
-        row = cursor.fetchone()
-        return (row['max_version'] or 0) + 1
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT MAX(version) as max_version FROM data_history WHERE client_id = ?
+            ''', (client_id,))
+            row = cursor.fetchone()
+            return (row['max_version'] or 0) + 1
+    except Exception as e:
+        print(f"Error getting next version: {e}")
+        # Fallback to local timestamp-based ID or just start at 1 if DB read fails?
+        # If DB read fails, snapshot will likely fail too, but at least we don't crash the app.
+        return 1
 
 def save_data_snapshot(client_id: str, data: dict, action: str, 
                        changed_by: str = None, changed_by_type: str = None,
@@ -782,12 +818,21 @@ def save_data_snapshot(client_id: str, data: dict, action: str,
     Returns:
         The version number of the saved snapshot
     """
-    version = get_next_version(client_id)
-    now = datetime.now().isoformat()
-    
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        try:
+    try:
+        version = get_next_version(client_id)
+        now = datetime.now().isoformat()
+        
+        # Serialize fields safely
+        deals_json = json.dumps(data.get('deals', []))
+        positions_json = json.dumps(data.get('positions', []))
+        account_json = json.dumps(data.get('account', {}))
+        evaluations_json = json.dumps(data.get('evaluations', []))
+        statistics_json = json.dumps(data.get('statistics', {}))
+        dropdown_options_json = json.dumps(data.get('dropdown_options', {}))
+        identity_json = json.dumps(data.get('identity', {}))
+
+        with get_connection() as conn:
+            cursor = conn.cursor()
             cursor.execute('''
                 INSERT INTO data_history (
                     client_id, version, action, changed_by, changed_by_type,
@@ -798,28 +843,22 @@ def save_data_snapshot(client_id: str, data: dict, action: str,
             ''', (
                 client_id, version, action, changed_by, changed_by_type,
                 ip_address, change_source, change_description,
-                json.dumps(data.get('deals', [])),
-                json.dumps(data.get('positions', [])),
-                json.dumps(data.get('account', {})),
-                json.dumps(data.get('evaluations', [])),
-                json.dumps(data.get('statistics', {})),
-                json.dumps(data.get('dropdown_options', {})),
-                json.dumps(data.get('identity', {})),
-                now
+                deals_json, positions_json, account_json, evaluations_json, statistics_json,
+                dropdown_options_json, identity_json, now
             ))
             conn.commit()
             return version
-        except Exception as e:
-            print(f"Error saving data snapshot: {e}")
-            return -1
+    except Exception as e:
+        print(f"Error saving data snapshot: {e}")
+        return -1
 
 def save_client_data_with_history(client_id: str, data: dict, 
-                                   action: str = 'UPDATE',
-                                   changed_by: str = None, 
-                                   changed_by_type: str = None,
-                                   ip_address: str = None, 
-                                   change_source: str = None,
-                                   change_description: str = None) -> tuple:
+                                 action: str = 'UPDATE',
+                                 changed_by: str = None,
+                                 changed_by_type: str = None,
+                                 ip_address: str = None,
+                                 change_source: str = None,
+                                 change_description: str = None) -> tuple:
     """
     Save client data AND create a history snapshot for versioning.
     

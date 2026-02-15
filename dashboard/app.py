@@ -2653,80 +2653,92 @@ def get_data():
 @limiter.limit("60 per minute")
 def update_data():
     """Update client data - supports both session and API key authentication."""
-    data = request.json
-    identity = data.get('identity', {})
-    
-    # Try session authentication first (for dashboard UI)
-    session_token = request.cookies.get('session_token')
-    api_key = request.headers.get('X-API-Key')
-    
-    if session_token:
-        session_info = validate_session(session_token)
-        if session_info:
-            user_type = session_info.get('user_type')
-            user_identifier = session_info.get('user_identifier')
-            
-            # Get client_id from request data
-            client_id = identity.get('client') or data.get('client_id')
-            
-            if not client_id:
-                return jsonify({"status": "error", "message": "Client ID required"}), 400
-            
-            # Check if user can access this client's data
-            if not can_access_client(user_type, user_identifier, client_id):
-                log_action('UPDATE_DENIED', user_type, user_identifier, get_remote_address(), 
-                          f"Tried to update: {client_id}", False)
-                return jsonify({"status": "error", "message": "Access denied"}), 403
-            
-            # Get existing data to preserve fields not being updated
-            existing_data = get_client_data(client_id) or {}
-            
-            # Get evaluations and normalize Account Size values
-            evaluations = data.get("evaluations", existing_data.get("evaluations", []))
-            evaluations = normalize_evaluations(evaluations)
-            
-            # Merge the update data with existing data
-            client_data = {
-                "deals": data.get("deals", existing_data.get("deals", [])),
-                "positions": data.get("positions", existing_data.get("positions", [])),
-                "account": data.get("account", existing_data.get("account", {})),
-                "evaluations": evaluations,
-                "statistics": data.get("statistics", existing_data.get("statistics", {})),
-                "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
-            }
-            
-            # Ensure client ID is in identity
-            if 'client' not in client_data['identity']:
-                client_data['identity']['client'] = client_id
-            
-            # Save with history tracking
-            success, version = save_client_data_with_history(
-                client_id,
-                client_data,
-                action='UPDATE',
-                changed_by=user_identifier,
-                changed_by_type=user_type,
-                ip_address=get_remote_address(),
-                change_source='dashboard_edit',
-                change_description=f'Manual edit from dashboard by {user_type}'
-            )
-            
-            if success:
-                log_action('DATA_UPDATE', user_type, user_identifier, get_remote_address(), 
-                          f"Client: {client_id} (v{version})")
-                return jsonify({"status": "success", "message": "Data updated", "version": version})
+    try:
+        data = request.json
+        identity = data.get('identity', {})
+        
+        # Try session authentication first (for dashboard UI)
+        session_token = request.cookies.get('session_token')
+        api_key = request.headers.get('X-API-Key')
+        
+        if session_token:
+            session_info = validate_session(session_token)
+            if session_info:
+                user_type = session_info.get('user_type')
+                user_identifier = session_info.get('user_identifier')
+                
+                # Get client_id from request data
+                client_id = identity.get('client') or data.get('client_id')
+                
+                if not client_id:
+                    return jsonify({"status": "error", "message": "Client ID required"}), 400
+                
+                # Check if user can access this client's data
+                if not can_access_client(user_type, user_identifier, client_id):
+                    log_action('UPDATE_DENIED', user_type, user_identifier, get_remote_address(), 
+                              f"Tried to update: {client_id}", False)
+                    return jsonify({"status": "error", "message": "Access denied"}), 403
+                
+                # Get existing data to preserve fields not being updated
+                existing_data = get_client_data(client_id) or {}
+                
+                # Get evaluations and normalize Account Size values
+                evaluations = data.get("evaluations", existing_data.get("evaluations", []))
+                evaluations = normalize_evaluations(evaluations)
+                
+                # Merge the update data with existing data
+                client_data = {
+                    "deals": data.get("deals", existing_data.get("deals", [])),
+                    "positions": data.get("positions", existing_data.get("positions", [])),
+                    "account": data.get("account", existing_data.get("account", {})),
+                    "evaluations": evaluations,
+                    "statistics": data.get("statistics", existing_data.get("statistics", {})),
+                    "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
+                    # Persist match log when updating from dashboard
+                    "aggregated_by_comment": existing_data.get("aggregated_by_comment", []),
+                    "comment_summary": existing_data.get("comment_summary", {}),
+                    "identity": data.get("identity", existing_data.get("identity", {}))
+                }
+                
+                # Ensure client ID is in identity
+                if 'client' not in client_data['identity']:
+                    client_data['identity']['client'] = client_id
+                
+                # Allow custom action/description from frontend
+                action_type = data.get('action_type', 'UPDATE')
+                description = data.get('change_description', f'Manual edit from dashboard by {user_type}')
+
+                # Save with history tracking
+                success, version = save_client_data_with_history(
+                    client_id,
+                    client_data,
+                    action=action_type,
+                    changed_by=user_identifier,
+                    changed_by_type=user_type,
+                    ip_address=get_remote_address(),
+                    change_source='dashboard_edit',
+                    change_description=description
+                )
+                
+                if success:
+                    log_action('DATA_UPDATE', user_type, user_identifier, get_remote_address(), 
+                              f"Client: {client_id} (v{version})")
+                    return jsonify({"status": "success", "message": "Data updated", "version": version})
+                else:
+                    return jsonify({"status": "error", "message": "Failed to save data"}), 500
+        
+        # Fall back to API key authentication
+        if api_key:
+            user_info = validate_api_key(api_key)
+            if user_info:
+                return update_data_with_api_key(data, identity, user_info)
             else:
-                return jsonify({"status": "error", "message": "Failed to save data"}), 500
-    
-    # Fall back to API key authentication
-    if api_key:
-        user_info = validate_api_key(api_key)
-        if user_info:
-            return update_data_with_api_key(data, identity, user_info)
-        else:
-            return jsonify({"status": "error", "message": "Invalid API key"}), 403
-    
-    return jsonify({"status": "error", "message": "Authentication required"}), 401
+                return jsonify({"status": "error", "message": "Invalid API key"}), 403
+        
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    except Exception as e:
+        print(f"Error in update_data: {e}")
+        return jsonify({"status": "error", "message": f"Server error: {str(e)}"}), 500
 
 
 def update_data_with_api_key(data, identity, user_info):
@@ -2758,15 +2770,32 @@ def update_data_with_api_key(data, identity, user_info):
         
     evaluations = normalize_evaluations(evaluations)
     
-    # Prepare client data - verify we don't prefer empty lists for other fields if needed,
-    # but usually deals/positions are full snapshots from MT5 so empty is valid there.
+    # Smart merge for statistics (preserve hedging_review if present in existing)
+    incoming_stats = data.get("statistics", {})
+    existing_stats = existing_data.get("statistics", {})
+    
+    # Start with existing stats, update with incoming
+    # This preserves keys like 'hedging_review' that the trader app doesn't send
+    statistics = existing_stats.copy()
+    statistics.update(incoming_stats)
+    
+    # Smart merge for dropdown_options (preserve if incoming is empty)
+    incoming_options = data.get("dropdown_options", {})
+    if not incoming_options:
+        dropdown_options = existing_data.get("dropdown_options", {})
+    else:
+        dropdown_options = incoming_options
+
+    # Prepare client data
     client_data = {
         "deals": data.get("deals", []),
         "positions": data.get("positions", []),
         "account": data.get("account", {}),
         "evaluations": evaluations,
-        "statistics": data.get("statistics", {}),
-        "dropdown_options": data.get("dropdown_options", {}),
+        "statistics": statistics,
+        "dropdown_options": dropdown_options,
+        "aggregated_by_comment": existing_data.get("aggregated_by_comment", []),
+        "comment_summary": existing_data.get("comment_summary", {}),
         "identity": identity
     }
     
