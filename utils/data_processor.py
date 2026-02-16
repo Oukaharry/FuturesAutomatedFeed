@@ -92,6 +92,12 @@ def calculate_derived_metrics(df):
         val = row.get(col)
         return pd.isna(val) or val == '' or str(val).strip() == ''
 
+    # Ensure target columns can hold any data type (prevent strict dtype errors)
+    for col in ['Hedge Net', 'Hedge Net.1']:
+        if col not in df.columns:
+            df[col] = ''
+        df[col] = df[col].astype(object)
+
     for index, row in df.iterrows():
         # --- Column N: Hedge Net ---
         # Formula: =IF(OR(ISBLANK(I3), G3<>"Fail"), "", -D3 + I3 + J3+K3+L3+M3)

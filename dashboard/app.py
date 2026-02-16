@@ -1444,27 +1444,52 @@ def api_client_auth():
     Returns client hierarchy info if email exists in system.
     No API key required - just the client email.
     """
-    email = request.json.get('email', '').strip().lower()
-    
-    if not email:
-        return jsonify({"status": "error", "message": "Email required"}), 400
-    
-    client = get_client_by_email(email)
-    if client:
-        log_action('CLIENT_AUTH', 'client', email, get_remote_address(), 'Email verified')
-        return jsonify({
-            "status": "success",
-            "identity": {
-                "admin": client['admin'],
-                "trader": client['trader'],
-                "client": client['client'],
-                "email": client['email'],
-                "category": client.get('category', '')
-            }
-        })
-    
-    log_action('CLIENT_AUTH_FAILED', 'client', email, get_remote_address(), 'Email not found', False)
-    return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"status": "error", "message": "Invalid JSON or Content-Type"}), 400
+            
+        email = data.get('email', '').strip().lower()
+        
+        if not email:
+            return jsonify({"status": "error", "message": "Email required"}), 400
+        
+        client = get_client_by_email(email)
+        
+        # Safe logging
+        try:
+            remote_addr = get_remote_address()
+        except:
+            remote_addr = "0.0.0.0"
+
+        if client:
+            try:
+                log_action('CLIENT_AUTH', 'client', email, remote_addr, 'Email verified')
+            except Exception as e:
+                print(f"Log action error: {e}", file=sys.stderr)
+                
+            return jsonify({
+                "status": "success",
+                "identity": {
+                    "admin": client['admin'],
+                    "trader": client['trader'],
+                    "client": client['client'],
+                    "email": client['email'],
+                    "category": client.get('category', '')
+                }
+            })
+        
+        try:
+            log_action('CLIENT_AUTH_FAILED', 'client', email, remote_addr, 'Email not found', False)
+        except:
+            pass
+            
+        return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/api/client/push', methods=['POST'])
