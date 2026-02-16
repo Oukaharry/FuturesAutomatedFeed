@@ -160,66 +160,149 @@ def fetch_evaluations(sheet_url):
     """
     Fetches evaluation data from a public Google Sheet CSV export.
     Finds the header row dynamically by looking for 'Prop Firm'.
+    Also handles proper gid (Sheet ID) extraction from URL fragments.
     """
-    try:
-        # Ensure we get CSV format
-        if '/edit' in sheet_url:
-            csv_url = sheet_url.replace('/edit?usp=sharing', '/export?format=csv').replace('/edit', '/export?format=csv')
-        else:
-            csv_url = sheet_url
+    # Ensure we preserve the Sheet ID (gid) if present in fragment or query
+    import urllib.parse
+    
+    # Clean the URL
+    sheet_url = sheet_url.strip()
+    
+    # Check if it's a valid Google Sheets URL
+    if 'docs.google.com/spreadsheets' not in sheet_url:
+        print("Invalid Google Sheets URL")
+        return []
 
-        response = requests.get(csv_url)
+    # Parse URL
+    parsed = urllib.parse.urlparse(sheet_url)
+
+    # Extract Spreadsheet Key
+    # Path usually: /spreadsheets/d/{KEY}/edit...
+    path_parts = parsed.path.split('/')
+    try:
+        if 'd' in path_parts:
+            key_idx = path_parts.index('d')
+            sheet_key = path_parts[key_idx + 1]
+        else:
+            # Maybe it's not structured with /d/ but just has the key? Unlikely for standard URLs but possible.
+            # Let's fallback to regex if path split fails
+            match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_url)
+            if match:
+                sheet_key = match.group(1)
+            else:
+                raise ValueError("Key not found")
+    except (ValueError, IndexError):
+        print("Could not extract sheet key")
+        # Try raw replace if parsing fails
+        csv_url = sheet_url.replace('/edit?usp=sharing', '/export?format=csv').replace('/edit', '/export?format=csv')
+        sheet_key = None # Fallback
+        gid = None
+        
+        print(f"DEBUG: Fetching CSV from: {csv_url}")
+    else:
+        # Extract GID (Sheet ID)
+        gid = None
+        
+        # Check query parameters (gid or lid)
+        query_params = urllib.parse.parse_qs(parsed.query)
+        if 'gid' in query_params:
+            gid = query_params['gid'][0]
+        
+        # Check fragment (often #gid=12345 in browser URL bar)
+        if not gid and parsed.fragment:
+            # Fragment string is like "gid=12345&range=A1" or just "gid=12345"
+            try:
+                # Handle raw query string in fragment
+                frag_str = parsed.fragment
+                if '?' in frag_str:
+                    frag_str = frag_str.split('?')[-1]
+                
+                frag_params = urllib.parse.parse_qs(frag_str)
+                if 'gid' in frag_params:
+                    gid = frag_params['gid'][0]
+            except:
+                pass
+
+        # Construct clean export URL
+        base_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export"
+        params = {'format': 'csv'}
+        if gid:
+            params['gid'] = gid
+            
+        csv_url = base_url + "?" + urllib.parse.urlencode(params)
+
+        print(f"DEBUG: Fetching CSV from: {csv_url}")
+
+    try:
+        response = requests.get(csv_url, timeout=30)
         response.raise_for_status()
         
-        # Read without header first to find the correct row
-        df = pd.read_csv(StringIO(response.text), header=None)
-        
-        # Find the row that contains "Prop Firm" in the first few columns
-        header_idx = -1
-        for i, row in df.head(10).iterrows():
-            # Check first 5 columns for "Prop Firm"
-            if row.astype(str).str.contains('Prop Firm').any():
-                header_idx = i
-                break
-        
-        if header_idx != -1:
-            # Reload with correct header
-            df = pd.read_csv(StringIO(response.text), header=header_idx)
+        # Check if we received HTML (login page or error) instead of CSV
+        if '<html' in response.text.lower() or '<!doctype html' in response.text.lower():
+            print("Received HTML content. The sheet might not be public or the link is incorrect.")
+            return []
             
-            # Clean up columns (remove unnamed, strip whitespace)
-            df.columns = [str(c).strip() for c in df.columns]
-            
-            # Define allowed columns based on the dashboard screenshot/template
-            allowed_columns = [
-                # Evaluation Info
-                'Prop Firm', 'Account Size', 'Date Purchased', 'Fee',
-                
-                # Evaluation Phase
-                'Date Started', 'Date Ended', 'Status P1', 'Account #',
-                'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
-                
-                # Funded Phase (duplicates get .1 suffix)
-                'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
-                'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
-                'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
-                'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
-                
-                # Farming Phase
-                'Farming Net'
-            ]
-            
-            # Add Prop Day / Hedge Day 1-34 (sheet has 34 farming days)
-            for i in range(1, 35):
-                allowed_columns.append(f'Prop Day {i}')
-                allowed_columns.append(f'Hedge Day {i}')
-                
-            # Filter to keep only allowed columns that exist in the dataframe
-            existing_columns = [c for c in df.columns if c in allowed_columns]
-            df = df[existing_columns]
+    except Exception as e:
+        print(f"Error fetching sheet: {e}")
+        # Return empty list instead of raising to allow graceful handling in caller
+        print(f"   URL used: {csv_url}")
+        return []
 
-            # Filter valid rows (where Prop Firm is not empty)
-            if 'Prop Firm' in df.columns:
-                df = df[df['Prop Firm'].notna()]
+    
+    # Read without header first to find the correct row
+
+    try:
+        df = pd.read_csv(StringIO(response.text), header=None)
+    except Exception as e:
+        print(f"Error parsing CSV: {e}")
+        raise ValueError(f"Could not parse sheet content (invalid CSV): {str(e)}")
+    
+    # Find the row that contains "Prop Firm" in the first few columns
+    header_idx = -1
+    for i, row in df.head(10).iterrows():
+        # Check first 5 columns for "Prop Firm"
+        if row.astype(str).str.contains('Prop Firm', case=False, na=False).any():
+            header_idx = i
+            break
+    
+    if header_idx != -1:
+        # Reload with correct header
+        df = pd.read_csv(StringIO(response.text), header=header_idx)
+        
+        # Clean up columns (remove unnamed, strip whitespace)
+        df.columns = [str(c).strip() for c in df.columns]
+        
+        # Define allowed columns based on the dashboard screenshot/template
+        allowed_columns = [
+            # Evaluation Info
+            'Prop Firm', 'Account Size', 'Date Purchased', 'Fee',
+            
+            # Evaluation Phase
+            'Date Started', 'Date Ended', 'Status P1', 'Account #',
+            'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
+            
+            # Funded Phase (duplicates get .1 suffix)
+            'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
+            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
+            'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
+            'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
+            
+            # Farming Phase
+            'Farming Net'
+        ]
+        
+        # Add Prop Day / Hedge Day 1-34 (sheet has 34 farming days)
+        for i in range(1, 35):
+            allowed_columns.append(f'Prop Day {i}')
+            allowed_columns.append(f'Hedge Day {i}')
+            
+        # Filter to keep only allowed columns that exist in the dataframe
+        existing_columns = [c for c in df.columns if c in allowed_columns]
+        df = df[existing_columns]
+
+        # Filter valid rows (where Prop Firm is not empty)
+        if 'Prop Firm' in df.columns:
+            df = df[df['Prop Firm'].notna()]
             
             # Apply derived metrics calculations
             df = calculate_derived_metrics(df)
@@ -233,9 +316,8 @@ def fetch_evaluations(sheet_url):
             return clean_data_structure(raw_data)
             
         return []
-    except Exception as e:
-        print(f"Error fetching sheet: {e}")
-        return []
+        
+    return []
 
 def parse_currency(val):
     """
