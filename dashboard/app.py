@@ -8,6 +8,7 @@ import sys
 from functools import wraps
 import secrets
 import hashlib
+import re
 from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
 
@@ -38,6 +39,7 @@ from dashboard.database import (
     save_client_data_with_history, get_data_history, get_data_version,
     rollback_to_version, compare_versions, get_latest_version
 )
+from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -520,7 +522,200 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
     return None
 
 
-def update_evaluations_from_aggregated_data(evaluations, aggregated_data):
+def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, raw_deals=None):
+    """
+    Update evaluation hedge result fields from aggregated MT5 comment data OR raw deals.
+    
+    If 'raw_deals' is provided, performs server-side aggregation (Session Matching).
+    Otherwise, uses client-provided 'aggregated_data'.
+    
+    Args:
+        evaluations: List of evaluation records
+        aggregated_data: List of aggregated trade data (from client)
+        raw_deals: List of raw MT5 deal objects (from client)
+    
+    Returns:
+        Tuple of (updated_evaluations, match_log)
+    """
+    aggregated_data = aggregated_data or []
+    
+    # -------------------------------------------------------------------------
+    # SERVER-SIDE SESSION MATCHING LOGIC
+    # -------------------------------------------------------------------------
+    if raw_deals:
+        import datetime
+        
+        match_log = ["🔄 Using SERVER-SIDE Session Matching (ignoring client aggregation)"]
+        
+        # Helper: Parse simple comment patterns
+        def parse_comment(c):
+            if not c: return None, None
+            m = re.search(r'_(CH|FD|DD|FA)(\d+)?', c, re.IGNORECASE)
+            if m:
+                return m.group(1).upper(), int(m.group(2)) if m.group(2) else None
+            return None, None
+            
+        def get_ts(d):
+            t = d.get('time')
+            if isinstance(t, (int, float)): return t
+            if isinstance(t, str):
+                try:
+                    return datetime.datetime.fromisoformat(t).timestamp()
+                except:
+                    pass
+            return 0
+
+        # 1. Group by Account Number (from login or comment)
+        # Note: raw_deals usually come from a single login, but might contain history for that login.
+        # But we need the 'Account Number' string (e.g. "208226") which is usually in the content or derived.
+        # The 'deals' from client don't explicitly have 'account_number' field in each deal dict usually, 
+        # unless added by get_deals. 
+        # But we know the push is for ONE account.
+        # We can try to extract 'Account Number' from comments if possible (e.g. MFFU...12345)
+        # Or if available in deal.
+        
+        # Let's assume passed 'aggregated_data' logic was doing groupings.
+        # We will iterate raw_deals, extracting (Phase, TradeNum) from comment.
+        # And Group by Time Gaps (> 7 days) -> New Session.
+        
+        raw_deals.sort(key=get_ts)
+        
+        # Group into sessions strictly by Time Gap
+        sessions = []
+        if raw_deals:
+            current_session = {'deals': [], 'start': get_ts(raw_deals[0]), 'end': get_ts(raw_deals[0]), 'account_guess': None}
+            last_ts = current_session['start']
+            
+            for d in raw_deals:
+                ts = get_ts(d)
+                # 7 Days Gap OR Balance op (Reset)
+                time_gap = ts - last_ts > (7 * 24 * 3600)
+                is_balance_reset = str(d.get('type', '')).upper() == 'BALANCE' and float(d.get('profit', 0)) > 0
+                
+                if (time_gap or is_balance_reset) and current_session['deals']:
+                    sessions.append(current_session)
+                    current_session = {'deals': [], 'start': ts, 'end': ts, 'account_guess': None}
+                
+                current_session['deals'].append(d)
+                current_session['end'] = max(current_session['end'], ts)
+                last_ts = ts
+                
+                # Try to guess account number from comment
+                c = d.get('comment', '')
+                # MFFU...12345_CH1
+                # Regex for account number before _Phase
+                # (Acc)(_Phase)
+                # Usually: [A-Za-z0-9]+_
+                match = re.search(r'([A-Za-z0-9]{4,})_(CH|FD|DD|FA)', c)
+                if match:
+                    current_session['account_guess'] = match.group(1)
+            
+            if current_session['deals']:
+                sessions.append(current_session)
+        
+        match_log.append(f"   Found {len(sessions)} distinct sessions based on 7-day gaps")
+        
+        # Now match each session to an Evaluation
+        updates_made = 0
+        
+        for session in sessions:
+            if not session['account_guess']:
+                continue # Can't match without account number
+                
+            # Aggregate stats for session
+            session_profit = sum(float(d.get('profit', 0)) + float(d.get('commission', 0)) + float(d.get('swap', 0)) for d in session['deals'])
+            
+            # Determine Phase/TradeNum from MOST frequent in session
+            # (To handle noise)
+            phases = {}
+            for d in session['deals']:
+                p, n = parse_comment(d.get('comment', ''))
+                if p:
+                    key = (p, n)
+                    phases[key] = phases.get(key, 0) + 1
+            
+            if not phases:
+                continue
+                
+            best_phase, best_num = max(phases.items(), key=lambda x: x[1])[0]
+            
+            # MATCHING LOGIC
+            acc_num = session['account_guess']
+            start_date_ts = session['start']
+            
+            # Find candidate evaluations
+            # Filter by Account Number
+            candidates = [e for e in evaluations if str(e.get('Account Number', '')).endswith(acc_num) or acc_num.endswith(str(e.get('Account Number', '')))]
+            
+            if not candidates:
+                match_log.append(f"⚠️ No evaluation found for session {acc_num} (Start: {datetime.datetime.fromtimestamp(start_date_ts)})")
+                continue
+            
+            # Filter by Date Purchased
+            # We want Evaluation.DatePurchased <= Session.Start
+            # And closest to it.
+            valid_candidates = []
+            for e in candidates:
+                dp_str = str(e.get('Date Purchased', ''))
+                try:
+                    # Try common formats
+                    # 1/20/25, 2025-01-20, etc.
+                    # Use helper parse_date from global context if available or simple
+                    # Assume parse_date is available (imported)
+                    dp_dt = None
+                    for fmt in ["%m/%d/%y", "%Y-%m-%d", "%m/%d/%Y"]:
+                        try:
+                            dp_dt = datetime.datetime.strptime(dp_str, fmt)
+                            break
+                        except: pass
+                    
+                    if dp_dt:
+                        diff = start_date_ts - dp_dt.timestamp()
+                        # Allow session to start slightly before purchase? (Maybe same day timezone diff?)
+                        # Allow -24h slack.
+                        if diff > -86400:
+                            valid_candidates.append((e, diff))
+                except:
+                    pass
+            
+            if not valid_candidates:
+                # If no dates parse, fallback to last added?
+                # Or try matching by Phase Code?
+                match_log.append(f"⚠️ No valid date match for {acc_num}")
+                continue
+            
+            # Sort by diff (smallest diff is closest match)
+            valid_candidates.sort(key=lambda x: x[1])
+            best_eval, drift = valid_candidates[0]
+            
+            # Determine Field Name
+            # (Reuse existing logic or simplified)
+            field_name = "Hedge Result" # Default?
+            # Actually we usually map CH1 -> Hedge Result, CH2 -> Hedge Result 2
+            # Or use 'get_field_name_for_phase' if available
+            
+            # Let's use simple mapping for now to maintain robustness
+            if best_phase == 'CH':
+                field_name = f"Hedge Result {best_num}" if best_num and best_num > 1 else "Hedge Result"
+            elif best_phase == 'FD':
+                field_name = f"Hedge Result {best_num}" if best_num else "Hedge Result" # ?
+            elif best_phase == 'FA':
+                 # Farming logic is sequential usually
+                 # We can append?
+                 match_log.append("   Matched Farming session - aggregating total")
+                 field_name = "Hedge Result" # Placeholder
+            
+            # Update
+            best_eval[field_name] = session_profit
+            updates_made += 1
+            match_log.append(f"✅ Matched {acc_num} Session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) to Eval {best_eval.get('id')} -> {field_name} = ${session_profit:.2f}")
+
+        return evaluations, match_log
+
+    # -------------------------------------------------------------------------
+    # LEGACY CLIENT-SIDE AGGREGATION LOGIC (Fallback)
+    # -------------------------------------------------------------------------
+
     """
     Update evaluation hedge result fields from aggregated MT5 comment data.
     
@@ -1314,19 +1509,18 @@ def api_client_push():
     # Normalize Account Size values to standard format
     evaluations = normalize_evaluations(evaluations)
     
-    # Check for aggregated comment data (from Push by Comment feature)
+    # Check for aggregated comment data (from Push by Comment feature) OR raw deals
     aggregated_by_comment = data.get("aggregated_by_comment", [])
     comment_summary = data.get("comment_summary", {})
     hedge_match_log = []
     
-    if aggregated_by_comment:
-        app.logger.info(f"📋 Received aggregated comment data: {len(aggregated_by_comment)} groups")
-        app.logger.info(f"   Comment summary: {comment_summary}")
+    if aggregated_by_comment or mt5_deals:
+        app.logger.info(f"📋 Received {len(aggregated_by_comment)} aggregated groups, {len(mt5_deals)} raw deals")
         
-        # Update evaluations with hedge results from aggregated data
+        # Update evaluations with hedge results from aggregated data OR raw deals
         if evaluations:
             app.logger.info(f"🔄 Matching hedge results to evaluations...")
-            evaluations, hedge_match_log = update_evaluations_from_aggregated_data(evaluations, aggregated_by_comment)
+            evaluations, hedge_match_log = update_evaluations_from_aggregated_data(evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals)
             
             for log_line in hedge_match_log:
                 app.logger.info(f"   {log_line}")

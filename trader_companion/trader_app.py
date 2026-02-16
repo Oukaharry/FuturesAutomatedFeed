@@ -201,10 +201,10 @@ class MT5DataPusher:
             pass
 
         if is_fnft:
-            # Override from_timestamp to Local Midnight
-            now = datetime.now()
-            midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            from_timestamp = midnight.timestamp()
+            # Override from_timestamp to 60 days to capture history (for session-based matching)
+            # We no longer hard-limit to "today" because the server side will handle resets.
+            days = 60
+            from_timestamp = time.time() - (days * 24 * 3600)
 
         deals = mt5.history_deals_get(from_timestamp, to_timestamp)
         if deals is None:
@@ -1039,30 +1039,50 @@ class TraderCompanionApp:
         main_frame = ttk.Frame(self.scrollable_frame, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Logo
-        try:
-            if hasattr(sys, '_MEIPASS'):
-                logo_path = os.path.join(sys._MEIPASS, 'logo.png')
-            else:
-                logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
+        # Gradient Header (Canvas)
+        header_canvas = tk.Canvas(main_frame, height=80, bg='#0f172a', highlightthickness=0)
+        header_canvas.pack(fill=tk.X, pady=(0, 20))
+        
+        # Simple Gradient (simulated with rectangles) - Blue (#1e3a8a) to Dark (#0f172a)
+        items = []
+        steps = 40
+        h = 80
+        r1, g1, b1 = 30, 58, 138
+        r2, g2, b2 = 15, 23, 42
+        
+        for i in range(steps):
+             ratio = i / steps
+             r = int(r1 * (1 - ratio) + r2 * ratio)
+             g = int(g1 * (1 - ratio) + g2 * ratio)
+             b = int(b1 * (1 - ratio) + b2 * ratio)
+             color = f'#{r:02x}{g:02x}{b:02x}'
+             y0 = i * (h / steps)
+             y1 = y0 + (h / steps)
+             header_canvas.create_rectangle(0, y0, 1000, y1, fill=color, outline=color, tags="gradient")
+
+        # Responsive width handling
+        def resize_gradient(event):
+            header_canvas.coords("gradient", 0, 0, event.width, 80) # This won't work easily with individual rects
+            # Just draw wide enough to cover fixed window
+            pass 
             
-            if os.path.exists(logo_path):
-                img = tk.PhotoImage(file=logo_path)
-                # Simple resize if too large (subsample integer factor)
-                if img.width() > 300:
-                    factor = int(img.width() / 250)
-                    if factor > 1:
-                        img = img.subsample(factor, factor)
-                self.logo_img = img # Keep reference
-                logo_label = ttk.Label(main_frame, image=img)
-                logo_label.pack(pady=(0, 15))
-        except Exception as e:
-            print(f"Error loading logo: {e}")
+        # Draw Text (Centered)
+        # Assuming fixed width of 620 from init
+        center_x = 310 
         
-        # Header
-        header = ttk.Label(main_frame, text=f"Trader Companion v{APP_VERSION}", style='Header.TLabel')
-        header.pack(pady=(0, 20))
+        header_canvas.create_text(
+            center_x, 35,
+            text="BallerQuotes",
+            font=('Segoe UI', 26, 'bold'),
+            fill='#fbbf24' # Gold
+        )
         
+        header_canvas.create_text(
+            center_x, 65,
+            text="Your Go-To Virtual Assistant",
+            font=('Segoe UI', 11, 'italic'),
+            fill='#cbd5e1' # Lighter Gray
+        )        
         # Connection Frame (Hidden URL - Hardcoded to BallerQuotes)
         # conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
         # conn_frame.pack(fill=tk.X, pady=(0, 8))
