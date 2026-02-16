@@ -12,11 +12,27 @@ def load_hierarchy():
 
 SYSTEM_HIERARCHY = load_hierarchy()
 
+def reload_hierarchy():
+    """Reloads the hierarchy from disk to ensure freshness."""
+    global SYSTEM_HIERARCHY
+    new_data = load_hierarchy()
+    SYSTEM_HIERARCHY.clear()
+    SYSTEM_HIERARCHY.update(new_data)
+    return SYSTEM_HIERARCHY
+
 def save_hierarchy(hierarchy_data):
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(HIERARCHY_FILE), exist_ok=True)
     with open(HIERARCHY_FILE, "w") as f:
         json.dump(hierarchy_data, f, indent=4)
+        
+    # Also update in-memory reference immediately
+    if hierarchy_data is not SYSTEM_HIERARCHY:
+        SYSTEM_HIERARCHY.clear()
+        SYSTEM_HIERARCHY.update(hierarchy_data)
 
 def add_admin(admin_name, email=""):
+    reload_hierarchy() # Ensure we have latest data
     if admin_name not in SYSTEM_HIERARCHY["admins"]:
         SYSTEM_HIERARCHY["admins"][admin_name] = {
             "email": email,
@@ -27,6 +43,7 @@ def add_admin(admin_name, email=""):
     return False
 
 def update_admin_details(admin_name, email):
+    reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
         SYSTEM_HIERARCHY["admins"][admin_name]["email"] = email
         save_hierarchy(SYSTEM_HIERARCHY)
@@ -34,6 +51,7 @@ def update_admin_details(admin_name, email):
     return False
 
 def update_trader_details(admin_name, trader_name, email):
+    reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
         traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
         if trader_name in traders:
@@ -43,6 +61,7 @@ def update_trader_details(admin_name, trader_name, email):
     return False
 
 def update_client_details(admin_name, trader_name, client_name, email):
+    reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
         traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
         if trader_name in traders:
@@ -55,6 +74,7 @@ def update_client_details(admin_name, trader_name, client_name, email):
     return False
 
 def update_client_category(admin_name, trader_name, client_name, category):
+    reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
         traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
         if trader_name in traders:
@@ -65,6 +85,7 @@ def update_client_category(admin_name, trader_name, client_name, category):
                     save_hierarchy(SYSTEM_HIERARCHY)
                     return True
     return False
+
 
 def add_trader(admin_name, trader_name, email=""):
     if admin_name in SYSTEM_HIERARCHY["admins"]:
