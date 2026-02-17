@@ -754,7 +754,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             # Update
             best_eval[field_name] = session_profit
             updates_made += 1
-            match_log.append(f"✅ Matched {acc_num} Session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) to Eval {best_eval.get('id')} -> {field_name} = ${session_profit:.2f}")
+            match_log.append(f"✅ Matched {acc_num} Session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) to Eval {best_eval.get('id')} ({best_eval.get('Account Number', 'N/A')}) -> {field_name} = ${session_profit:.2f}")
 
         return evaluations, match_log
 
