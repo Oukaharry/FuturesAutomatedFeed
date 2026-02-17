@@ -713,6 +713,12 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
             if not candidates:
                 match_log.append(f"⚠️ No evaluation found for session {acc_num} (Start: {datetime.datetime.fromtimestamp(start_date_ts)})")
+                
+                # Debug availability (only once per push to avoid spam)
+                if '_debug_logged_accounts' not in locals():
+                    available_accs = [str(e.get('Account Number', '')) for e in evaluations if e.get('Account Number')]
+                    match_log.append(f"   ℹ️  Available Accounts in Eval: {available_accs[:10]}... (Total {len(available_accs)})")
+                    _debug_logged_accounts = True
                 continue
             
             # Filter by Date Purchased
