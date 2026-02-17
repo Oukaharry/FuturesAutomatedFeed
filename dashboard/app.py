@@ -691,7 +691,25 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
             # Find candidate evaluations
             # Filter by Account Number
-            candidates = [e for e in evaluations if str(e.get('Account Number', '')).endswith(acc_num) or acc_num.endswith(str(e.get('Account Number', '')))]
+            # STRICTER MATCHING: access number must not be empty
+            # And we only match if Account Number matches exactly or ends with
+            def normalize_acc(a): return str(a).strip().upper()
+            
+            candidates = []
+            for e in evaluations:
+                e_acc = normalize_acc(e.get('Account Number', ''))
+                if not e_acc: 
+                    continue # Skip evals with no account number
+                
+                # Check match (e.g. 208226 matches 208226, or MFFU208226 matches 208226?)
+                # Usually acc_num from session is "208226" (digits) or "MFFU...".
+                # Let's check for containment or endswith
+                s_acc = normalize_acc(acc_num)
+                
+                # Logical match: One contained in the other?
+                # But typically we want endswith for MT5 logins vs Full Strings
+                if e_acc.endswith(s_acc) or s_acc.endswith(e_acc):
+                     candidates.append(e)
             
             if not candidates:
                 match_log.append(f"⚠️ No evaluation found for session {acc_num} (Start: {datetime.datetime.fromtimestamp(start_date_ts)})")
