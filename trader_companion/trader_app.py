@@ -1089,9 +1089,9 @@ class TraderCompanionApp:
         
         # Dashboard URL (Hidden)
         self.url_entry = ttk.Entry(main_frame)
-        # Assuming local development - uncomment the live URL for production
-        # self.url_entry.insert(0, "https://www.ballerquotes.com/") 
-        self.url_entry.insert(0, "http://127.0.0.1:5001")
+        # Production URL enabled for release
+        self.url_entry.insert(0, "https://www.ballerquotes.com/") 
+        # self.url_entry.insert(0, "http://127.0.0.1:5001")
         # Not packing url_entry so it remains hidden but accessible via self.url_entry.get()
         
         # Identity Frame - SIMPLIFIED: Just client email (NO API KEY NEEDED)
