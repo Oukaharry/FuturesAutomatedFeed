@@ -580,84 +580,84 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         
         raw_deals.sort(key=get_ts)
         
-            # Group into sessions by Time Gap (24h) OR Phase Change
-            sessions = []
+        # Group into sessions by Time Gap (24h) OR Phase Change
+        sessions = []
+        
+        # Helper to init session
+        def new_session_dict(start_t, acc_guess=None):
+            return {
+                'deals': [], 
+                'start': start_t, 
+                'end': start_t, 
+                'account_guess': acc_guess,
+                'phase_guess': None,
+                'phase_num': None
+            }
+        
+        # Initialize with first deal info
+        first_deal = raw_deals[0]
+        start_ts = get_ts(first_deal)
+        
+        # Extract initial account guess
+        # This is critical because some deals might not have the comment pattern
+        first_acc_guess = None
+        for d in raw_deals:
+             m = re.search(r'([A-Za-z0-9]{4,})_(CH|FD|DD|FA)', d.get('comment', ''))
+             if m:
+                 first_acc_guess = m.group(1)
+                 break
+        
+        current_session = new_session_dict(start_ts, first_acc_guess)
+        last_ts = start_ts
+        
+        # Initial phase guess
+        p_init, n_init = parse_comment(first_deal.get('comment', ''))
+        if p_init:
+            current_session['phase_guess'] = p_init
+            current_session['phase_num'] = n_init
+        
+        for d in raw_deals:
+            ts = get_ts(d)
+            p, n = parse_comment(d.get('comment', ''))
             
-            # Helper to init session
-            def new_session_dict(start_t, acc_guess=None):
-                return {
-                    'deals': [], 
-                    'start': start_t, 
-                    'end': start_t, 
-                    'account_guess': acc_guess,
-                    'phase_guess': None,
-                    'phase_num': None
-                }
+            # Check for Phase Change
+            is_phase_change = False
+            if p and current_session['phase_guess']:
+                if p != current_session['phase_guess'] or n != current_session['phase_num']:
+                    is_phase_change = True
             
-            # Initialize with first deal info
-            first_deal = raw_deals[0]
-            start_ts = get_ts(first_deal)
+            # Check Time Gap (36 hours) - lowered from 7 days
+            time_gap = (ts - last_ts) > (36 * 3600)
             
-            # Extract initial account guess
-            # This is critical because some deals might not have the comment pattern
-            first_acc_guess = None
-            for d in raw_deals:
-                 m = re.search(r'([A-Za-z0-9]{4,})_(CH|FD|DD|FA)', d.get('comment', ''))
-                 if m:
-                     first_acc_guess = m.group(1)
-                     break
+            # Balance Reset
+            is_balance_reset = str(d.get('type', '')).upper() == 'BALANCE' and float(d.get('profit', 0)) > 0
             
-            current_session = new_session_dict(start_ts, first_acc_guess)
-            last_ts = start_ts
-            
-            # Initial phase guess
-            p_init, n_init = parse_comment(first_deal.get('comment', ''))
-            if p_init:
-                current_session['phase_guess'] = p_init
-                current_session['phase_num'] = n_init
-            
-            for d in raw_deals:
-                ts = get_ts(d)
-                p, n = parse_comment(d.get('comment', ''))
+            # Split Session Logic
+            if (time_gap or is_balance_reset or is_phase_change) and current_session['deals']:
+                sessions.append(current_session)
+                # Propagate account guess to new session if it's the same login stream
+                current_session = new_session_dict(ts, current_session['account_guess'])
                 
-                # Check for Phase Change
-                is_phase_change = False
-                if p and current_session['phase_guess']:
-                    if p != current_session['phase_guess'] or n != current_session['phase_num']:
-                        is_phase_change = True
-                
-                # Check Time Gap (36 hours) - lowered from 7 days
-                time_gap = (ts - last_ts) > (36 * 3600)
-                
-                # Balance Reset
-                is_balance_reset = str(d.get('type', '')).upper() == 'BALANCE' and float(d.get('profit', 0)) > 0
-                
-                # Split Session Logic
-                if (time_gap or is_balance_reset or is_phase_change) and current_session['deals']:
-                    sessions.append(current_session)
-                    # Propagate account guess to new session if it's the same login stream
-                    current_session = new_session_dict(ts, current_session['account_guess'])
-                    
-                    if p:
-                        current_session['phase_guess'] = p
-                        current_session['phase_num'] = n
-                
-                current_session['deals'].append(d)
-                current_session['end'] = max(current_session['end'], ts)
-                last_ts = ts
-                
-                # Update tracking
-                if p and not current_session['phase_guess']:
+                if p:
                     current_session['phase_guess'] = p
                     current_session['phase_num'] = n
-                    
-                # Update account guess if found specifically here
-                match = re.search(r'([A-Za-z0-9]{4,})_(CH|FD|DD|FA)', d.get('comment', ''))
-                if match:
-                    current_session['account_guess'] = match.group(1)
             
-            if current_session['deals']:
-                sessions.append(current_session)
+            current_session['deals'].append(d)
+            current_session['end'] = max(current_session['end'], ts)
+            last_ts = ts
+            
+            # Update tracking
+            if p and not current_session['phase_guess']:
+                current_session['phase_guess'] = p
+                current_session['phase_num'] = n
+                
+            # Update account guess if found specifically here
+            match = re.search(r'([A-Za-z0-9]{4,})_(CH|FD|DD|FA)', d.get('comment', ''))
+            if match:
+                current_session['account_guess'] = match.group(1)
+        
+        if current_session['deals']:
+            sessions.append(current_session)
         
         match_log.append(f"   Found {len(sessions)} distinct sessions based on Phase/Time gaps")
         
