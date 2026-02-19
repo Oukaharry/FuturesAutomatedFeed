@@ -212,6 +212,12 @@
                         <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: right; cursor: pointer;" onclick="sortBy('net_profit')">
                             Net Profit <span class="sort-icon" id="sort-net_profit"></span>
                         </th>
+                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: right; cursor: pointer;" onclick="sortBy('hwm')">
+                            HWM (14d) <span class="sort-icon" id="sort-hwm"></span>
+                        </th>
+                        <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: right; cursor: pointer;" onclick="sortBy('lwm')">
+                            LWM (14d) <span class="sort-icon" id="sort-lwm"></span>
+                        </th>
                         <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: center; cursor: pointer;" onclick="sortBy('total_accounts')">
                             Accounts <span class="sort-icon" id="sort-total_accounts"></span>
                         </th>
@@ -366,6 +372,8 @@
                     <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.deposits)}</td>
                     <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.fees)}</td>
                     <td style="padding: 14px 16px; text-align: right; font-weight: 600; color: ${profitColor};">${formatCurrency(c.net_profit)}</td>
+                    <td style="padding: 14px 16px; text-align: right; color: #34d399;">${formatCurrency(c.hwm)}</td>
+                    <td style="padding: 14px 16px; text-align: right; color: #f87171;">${formatCurrency(c.lwm)}</td>
                     <td style="padding: 14px 16px; text-align: center;">
                         <span title="Active" style="color: #34d399; font-weight: bold;">${c.active}</span> / 
                         <span title="Passed" style="color: #60a5fa;">${c.passed}</span> / 

@@ -162,6 +162,105 @@ def calculate_derived_metrics(df):
 
     return df
 
+def fetch_waterlog_history(sheet_url):
+    """
+    Fetches the 'Profitability Waterlog' tab data using a hardcoded GID or URL fragment logic.
+    Assumes the main sheet URL is provided, and we replace the GID with 520289647.
+    Returns: list of dicts [{'date': 'YYYY-MM-DD', 'profit': 123.45}]
+    """
+    import pandas as pd
+    import urllib.parse
+    from io import StringIO
+    
+    # 1. Extract base URL / Sheet Key
+    # sheet_url is e.g. https://docs.google.com/spreadsheets/d/KEY/edit...
+    sheet_url = str(sheet_url).strip()
+    
+    # Simple regex for KEY
+    match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_url)
+    if not match:
+        # print("Invalid Sheet URL for waterlog fetch.")
+        return []
+        
+    sheet_key = match.group(1)
+    waterlog_gid = "520289647" # Hardcoded GID provided by user
+    
+    # Construct Export URL
+    csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export?format=csv&gid={waterlog_gid}"
+    
+    try:
+        response = requests.get(csv_url, timeout=30)
+        # response.raise_for_status() # Don't crash if waterlog missing
+        if response.status_code != 200:
+            return []
+            
+        if '<html' in response.text.lower():
+            return []
+            
+        csv_io = StringIO(response.text)
+        
+        # Read CSV. User screenshot implies headers: Timestamp, Value
+        # But maybe row 1 is header?
+        try:
+            df = pd.read_csv(csv_io)
+        except:
+            return []
+            
+        # Check columns
+        if 'Timestamp' not in df.columns or 'Value' not in df.columns:
+            # Maybe row 2 contains headers (skiprow=1)
+            csv_io.seek(0)
+            try:
+                df = pd.read_csv(csv_io, skiprows=1)
+            except:
+                return []
+            
+        if 'Timestamp' not in df.columns or 'Value' not in df.columns:
+            return []
+            
+        history = []
+        for idx, row in df.iterrows():
+            ts_raw = str(row.get('Timestamp', '')).strip()
+            val_raw = str(row.get('Value', '')).strip()
+            
+            if not ts_raw or ts_raw.lower() == 'nan':
+                continue
+                
+            try:
+                # Parse date
+                dt = pd.to_datetime(ts_raw, errors='coerce')
+                if pd.isna(dt):
+                    continue
+                date_str = dt.strftime('%Y-%m-%d')
+                
+                # Parse Value: "$123.45", "($123.45)" -> float
+                val_clean = val_raw.replace('$', '').replace(',', '').replace(' ', '')
+                if not val_clean or val_clean.lower() in ['-', 'nan', 'null']:
+                     val = 0.0
+                elif val_clean.startswith('(') and val_clean.endswith(')'):
+                     val = -float(val_clean[1:-1])
+                else:
+                     val = float(val_clean)
+                
+                history.append({'date': date_str, 'profit': val})
+            except:
+                pass
+                
+        # Deduplicate same day - keep last entry
+        # But if sorted by timestamp, last is latest.
+        # Use dict to dedupe
+        final = {}
+        for item in history:
+            final[item['date']] = item['profit']
+            
+        # Return list sorted by date
+        sorted_dates = sorted(final.keys())
+        return [{'date': d, 'profit': final[d]} for d in sorted_dates]
+        
+    except Exception as e:
+        print(f"Error fetching waterlog: {e}")
+        return []
+
 def fetch_evaluations(sheet_url):
     """
     Fetches evaluation data from a public Google Sheet CSV export.
@@ -719,7 +818,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         debug_log.append("MT5 Deals: NONE or empty")
     
     # Print debug log to console/logs
-    print("\n🔍 DATA_PROCESSOR DEBUG:")
+    print("\n[DEBUG] DATA_PROCESSOR DEBUG:")
     for line in debug_log:
         print(f"   {line}")
     print()

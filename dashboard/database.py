@@ -151,6 +151,18 @@ def init_database():
             )
         ''')
         
+        # Daily Watermarks table - stores daily snapshots of Net Profit Complete
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_watermarks (
+                client_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                net_profit_complete REAL DEFAULT 0.0,
+                source TEXT DEFAULT 'auto',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (client_id, date)
+            )
+        ''')
+
         # Failed login attempts table (for lockout)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS login_attempts (

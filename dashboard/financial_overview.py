@@ -1,4 +1,5 @@
 from dashboard.database import get_all_clients
+from dashboard.watermark_service import get_bulk_watermarks
 import re
 from datetime import datetime, timedelta
 import json
@@ -1360,6 +1361,7 @@ def get_client_performance_stats(profile_filter=None):
                         }
 
     clients_data = _get_cached_clients()
+    watermarks_map = get_bulk_watermarks(14)
     clients_list = []
     
     for client_id, data in clients_data.items():
@@ -1395,8 +1397,22 @@ def get_client_performance_stats(profile_filter=None):
             "passed": 0,
             "failed": 0,
             "hedge_profit": 0.0,
-            "farming_profit": 0.0
+            "farming_profit": 0.0,
+            "hwm": 0.0,
+            "lwm": 0.0
         }
+        
+        # Populate Watermarks (14 days)
+        if real_client_name in watermarks_map:
+             c_stats['hwm'] = watermarks_map[real_client_name]['high']
+             c_stats['lwm'] = watermarks_map[real_client_name]['low']
+        elif client_id in watermarks_map:
+             c_stats['hwm'] = watermarks_map[client_id]['high']
+             c_stats['lwm'] = watermarks_map[client_id]['low']
+             
+        # Null safety
+        if c_stats['hwm'] is None: c_stats['hwm'] = 0.0
+        if c_stats['lwm'] is None: c_stats['lwm'] = 0.0
         
         # 1. Evaluations Payouts/Fees/Status
         evaluations = data.get('evaluations', [])

@@ -5,6 +5,11 @@ import threading
 import json
 import os
 import sys
+import logging
+
+# Add project root to sys.path to import config and dashboard modules properly
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from functools import wraps
 import secrets
 import hashlib
@@ -12,8 +17,6 @@ import re
 from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
 
-# Add project root to sys.path to import config
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
     update_admin_details, update_trader_details, update_client_details, update_client_category,
@@ -40,6 +43,38 @@ from dashboard.database import (
     rollback_to_version, compare_versions, get_latest_version
 )
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
+
+# Start Midnight Watermark Scheduler
+try:
+    from dashboard.scheduler import start_scheduler
+    start_scheduler()
+    logging.info("Midnight Watermark Scheduler started.")
+except ImportError:
+    logging.warning("Could not start Watermark Scheduler (ImportError).")
+except Exception as e:
+    logging.error(f"Failed to start Watermark Scheduler: {e}")
+
+# Initialize logging to file - RESTART MODE (Overwrite) - WITH AUTO-FLUSH AND FSYNC
+class UnbufferedFileHandler(logging.FileHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.stream.flush()
+        # Force OS to write to disk
+        if hasattr(self.stream, 'fileno'):
+            try:
+                os.fsync(self.stream.fileno())
+            except:
+                pass
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    force=True, # Py3.8+ Override previous configs
+    handlers=[
+        logging.StreamHandler(),
+        UnbufferedFileHandler('dashboard/server.log', mode='w', encoding='utf-8')  # 'w' mode overwrites file on start, utf-8 encoding
+    ]
+)
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -250,7 +285,29 @@ def parse_sheet_date(date_str):
     
     for fmt in formats:
         try:
-            return datetime.strptime(date_str, fmt)
+            val = datetime.strptime(date_str, fmt)
+            # FORCE TO UTC or STRIP TIMEZONE? 
+            # MT5 timestamps are usually UTC or server time (which we convert to timestamps).
+            # If sheet dates are parsed as naive 00:00:00, and we compare to 
+            # trade times which might be later in the day, that's fine.
+            # But if a trade happens at 23:00 on Feb 18 (UTC), and sheet says Feb 18...
+            # The trade timestamp (TS) > Date Purchased TS.
+            # But if timezone is involved, eg. Sheet date is parsed as local time?
+            # datetime.strptime creates NAIVE datetime.
+            
+            # If there's a 1-day difference being observed, it's likely a timezone shift display issue?
+            # Or the dashboard is displaying dates differently?
+            # Or maybe pandas parsing?
+            
+            # User says: "one day difference between the dates on the sheets and the dates on the dashboard"
+            # If Sheet says Feb 18, Dashboard says Feb 17? Or Feb 19?
+            
+            # If date_str is "2/18/26", datetime is 2026-02-18 00:00:00
+            
+            # FIX: Use simple parsing - keep naive dates as imported
+            # If date_str is "2/18/26", datetime is 2026-02-18 00:00:00
+            
+            return val
         except ValueError:
             continue
             
@@ -550,10 +607,29 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         # Helper: Parse simple comment patterns
         def parse_comment(c):
             if not c: return None, None
+            # Standard Pattern: PRE...12345_CH1
             m = re.search(r'_(CH|FD|DD|FA)(\d+)?', c, re.IGNORECASE)
             if m:
                 return m.group(1).upper(), int(m.group(2)) if m.group(2) else None
             return None, None
+
+        def parse_full_comment_structure(c):
+            # Returns (PropPrefix, AccountNum, PhaseStr, PhaseNum)
+            # Example: MFFU...60076_FD1 -> ('MFFU', '60076', 'FD', 1)
+            # Example: V2-...4610_CH2 -> ('V2-', '4610', 'CH', 2)
+            # Example: FNFT...G8326_CH1 -> ('FNFT', 'G8326', 'CH', 1)
+            if not c: return None, None, None, None
+            
+            # Regex for "PREFIX...ALPHANUM_PHASE"
+            # Support prefixes with digits and dashes (e.g. V2-)
+            # 1. Prefix: Letters, Digits, Dashes, min length 2
+            # 2. Filler: non-alphanumeric chars (dots, spaces, etc)
+            # 3. Account: Alphanumeric (Letters + Digits)
+            # 4. Underscore + Phase Code + Num
+            m = re.search(r'^([A-Z0-9\-]+)[^A-Z0-9]+([A-Z0-9]+)_(CH|FD|DD|FA)(\d+)?$', c.strip(), re.IGNORECASE)
+            if m:
+                return m.group(1).upper(), m.group(2).upper(), m.group(3).upper(), int(m.group(4)) if m.group(4) else 1
+            return None, None, None, None
             
         def get_ts(d):
             t = d.get('time')
@@ -565,14 +641,188 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     pass
             return 0
 
+        # Helper: Parse simple comment patterns to extract identifying account number
+        def extract_account_from_comment(c):
+            if not c: return None
+            
+            # Known prefixes logic - moved to TOP priority
+            known_prefixes = ['MFFU', 'AFAD', 'V2', 'FNFT', 'TDFY', 'ELTD', 'TDF']
+            c_upper = c.upper()
+            found_prefix = None
+            for kp in known_prefixes:
+                if kp in c_upper:
+                    found_prefix = kp
+                    break
+            
+            # If we see a known prefix, we want to capture that + the number (or alphanumeric code)
+            if found_prefix:
+                # Try to find the number/alphanum pattern specific to the prefix logic
+                # For FNFT, account numbers can start with G?
+                # Generally look for the part after dots and before _PHASE
+                
+                # Check for Structure: PREFIX...ACCOUNT_PHASE
+                # Grab whatever is between ... and _
+                # Use regex to find alphanumeric chars immediately preceding _PHASE
+                m_phase = re.search(r'([A-Z0-9]+)_(CH|FD|DD|FA)', c, re.IGNORECASE)
+                if m_phase:
+                     # This captures G8326 from ...G8326_CH1
+                     # But we want to prepend prefix if not present?
+                     extracted = m_phase.group(1)
+                     # If extracted matches digits, or starts with G, etc.
+                     # If found_prefix is already in extracted (e.g. FNFT12345), return extracted
+                     if found_prefix in extracted.upper():
+                         return extracted
+                     # Else return PREFIX-ACCOUNT
+                     return f"{found_prefix}-{extracted}"
+
+                # Fallback: Just first number sequence if phase not found (shouldn't happen for valid comments)
+                num_match = re.search(r'(\d+)', c)
+                if num_match:
+                    return f"{found_prefix}-{num_match.group(1)}"
+            
+            # Look for alphanumeric string of length 4+ (including letters) before phase
+            # This covers alphanumeric accounts like "MFFU12345"
+            m = re.search(r'([A-Za-z0-9]{3,})_(CH|FD|DD|FA)', c, re.IGNORECASE)
+            if m:
+                val = m.group(1)
+                # If it's just digits, fine
+                if val.isdigit():
+                    return val
+                
+                # If it has letters, it might contain the prefix already in the group
+                # e.g. MFFU12345
+                return val
+
+            # Fallback: Just look for digits before phase
+            m = re.search(r'(\d+)_(CH|FD|DD|FA)', c, re.IGNORECASE)
+            if m:
+                 return m.group(1)
+            return None
+
         # 1. Group by Account Number (from login or comment)
         # Note: raw_deals usually come from a single login, but might contain history for that login.
-        # But we need the 'Account Number' string (e.g. "208226") which is usually in the content or derived.
-        # The 'deals' from client don't explicitly have 'account_number' field in each deal dict usually, 
-        # unless added by get_deals. 
-        # But we know the push is for ONE account.
-        # We can try to extract 'Account Number' from comments if possible (e.g. MFFU...12345)
-        # Or if available in deal.
+        
+        # --- NEW: Group Deals by Position ID FIRST ---
+        # The user requested "extract data from positions not deals".
+        # We synthesize "Position Objects" from raw deals by grouping on 'position_id'.
+        # This ensures that Exit deals (often comment-less) are linked to Entry deals (with comments).
+        
+        position_map = {}
+        non_position_deals = []
+        
+        # Initial pass to group
+        for d in raw_deals:
+            pos_id = d.get('position_id')
+            # Check if it's a trade deal (not balance/credit) and has valid position_id
+            # Balance ops usually have position_id=0 or are distinct types
+            d_type = str(d.get('type', '')).upper()
+            is_balance = d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']
+            
+            if not is_balance and pos_id and pos_id > 0:
+                if pos_id not in position_map:
+                    position_map[pos_id] = []
+                position_map[pos_id].append(d)
+            else:
+                non_position_deals.append(d)
+                
+        # Synthesize Positions
+        synthesized_deals = []
+        
+        # Add non-position deals (Balance/Credit) directly
+        synthesized_deals.extend(non_position_deals)
+        
+        for pos_id, p_deals in position_map.items():
+            # Create a single 'deal' representing the whole position
+            
+            # 1. Find best comment (from entry usually)
+            # Sort by time to find entry
+            p_deals.sort(key=get_ts)
+            
+            common_comment = ""
+            for pd in p_deals:
+                c = pd.get('comment', '')
+                if c and not common_comment:
+                    common_comment = c
+                # Prefer comments that match our parser pattern
+                if parse_comment(c)[0]: 
+                    common_comment = c
+                    break
+            
+            # 2. Sum Profits
+            total_profit = sum(float(pd.get('profit', 0)) + float(pd.get('commission', 0)) + float(pd.get('swap', 0)) for pd in p_deals)
+            
+            # 3. Create Synthesized Object
+            # Use Entry Time as the time for this position
+            entry_time = get_ts(p_deals[0])
+            
+            syn_deal = {
+                'time': entry_time,
+                'profit': total_profit, # Net result of position
+                'comment': common_comment,
+                'type': 'POSITION',
+                'position_id': pos_id,
+                'deal_count': len(p_deals)
+            }
+            
+            # --- FILTER UNKNOWN FORMATS ---
+            # If we cannot extract an account number OR a valid phase from the comment,
+            # this position is likely "Unknown" and should be ignored as per user request.
+            # We use likelyhood check: if extraction returns None, it's unknown format.
+            ac_check = extract_account_from_comment(common_comment)
+            ph_check, _ = parse_comment(common_comment)
+            
+            if not ac_check and not ph_check:
+                 # logging.debug(f"[FILTER] Skipping position {pos_id} due to unrecognized comment format: '{common_comment}'")
+                 continue
+            
+            synthesized_deals.append(syn_deal)
+            
+        # Replace raw_deals with our improved list
+        raw_deals = synthesized_deals
+        match_log.append(f"🔄 Grouped {len(position_map)} positions from raw deals for accurate P&L tracking")
+        
+        # --- NEW DATE FILTERING LOGIC ---
+        # The user requested to only process trades from "today" (active day)
+        # OR if no trades today, process trades from the "last active day".
+        if raw_deals:
+            # Helper to extract YYYY-MM-DD from timestamp (assuming timestamp is seconds)
+            # syn_deal['time'] is already a timestamp float/int
+            def get_date_str(ts):
+                try:
+                    if isinstance(ts, str):
+                        # Try parsing ISO string
+                        dt = datetime.datetime.fromisoformat(ts)
+                        return dt.strftime('%Y-%m-%d')
+                    return datetime.datetime.fromtimestamp(float(ts)).strftime('%Y-%m-%d')
+                except Exception as e:
+                    logging.warning(f"Failed to parse timestamp {ts}: {e}")
+                    return "1970-01-01"
+            
+            # Identify Today
+            today_date = datetime.datetime.now().strftime('%Y-%m-%d')
+            
+            # Identify all unique dates in the data
+            unique_dates = sorted(list({get_date_str(d['time']) for d in raw_deals}))
+            
+            target_date = None
+            filter_reason = ""
+            
+            # SIMPLIFIED LOGIC: Always take the LATEST date found in the data.
+            # This handles both "Today (if trades exist)" and "Last Active Day (if no trades today)"
+            # without relying on server timezone matching MT5 timezone.
+            if unique_dates:
+                target_date = unique_dates[-1]
+                filter_reason = f"Latest Active Date ({target_date})"
+            
+            if target_date:
+                original_count = len(raw_deals)
+                # Filter raw_deals to keep only those matching target_date
+                raw_deals = [d for d in raw_deals if get_date_str(d['time']) == target_date]
+                match_log.append(f"📅 Filtered trades to {filter_reason}: {len(raw_deals)}/{original_count} positions kept.")
+                logging.info(f"   [DATE FILTER] Keeping trades for {target_date} ONLY ({len(raw_deals)} positions).")
+        # --------------------------------
+        
+        # ---------------------------------------------
         
         # Let's assume passed 'aggregated_data' logic was doing groupings.
         # We will iterate raw_deals, extracting (Phase, TradeNum) from comment.
@@ -598,13 +848,15 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         first_deal = raw_deals[0]
         start_ts = get_ts(first_deal)
         
+        if len(raw_deals) > 0:
+             logging.info(f"[DEBUG] First 20 Raw Comments: {[d.get('comment') for d in raw_deals[:20]]}")
+
         # Extract initial account guess
-        # This is critical because some deals might not have the comment pattern
         first_acc_guess = None
         for d in raw_deals:
-             m = re.search(r'([A-Za-z0-9]{4,})_(CH|FD|DD|FA)', d.get('comment', ''))
-             if m:
-                 first_acc_guess = m.group(1)
+             guess = extract_account_from_comment(d.get('comment', ''))
+             if guess:
+                 first_acc_guess = guess
                  break
         
         current_session = new_session_dict(start_ts, first_acc_guess)
@@ -625,18 +877,34 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             if p and current_session['phase_guess']:
                 if p != current_session['phase_guess'] or n != current_session['phase_num']:
                     is_phase_change = True
+
+            # Check for Account Change
+            is_account_change = False
+            current_account_guess = extract_account_from_comment(d.get('comment', ''))
             
+            # Only trigger change if we had a guess and the new guess is DEFINITELY different
+            if current_account_guess and current_session['account_guess']:
+                if current_account_guess != current_session['account_guess']:
+                    is_account_change = True
+                    logging.debug(f"[SPLIT] Account changed from {current_session['account_guess']} to {current_account_guess}")
+
             # Check Time Gap (36 hours) - lowered from 7 days
             time_gap = (ts - last_ts) > (36 * 3600)
             
             # Balance Reset
             is_balance_reset = str(d.get('type', '')).upper() == 'BALANCE' and float(d.get('profit', 0)) > 0
             
-            # Split Session Logic
-            if (time_gap or is_balance_reset or is_phase_change) and current_session['deals']:
+            # Split Session Logic (Phase, Time, Balance, Account)
+            should_split = (time_gap or is_balance_reset or is_phase_change or is_account_change)
+            
+            if should_split and current_session['deals']:
                 sessions.append(current_session)
-                # Propagate account guess to new session if it's the same login stream
-                current_session = new_session_dict(ts, current_session['account_guess'])
+                
+                # Determine next account guess for the new session
+                next_acc_guess = current_account_guess if current_account_guess else current_session['account_guess']
+                
+                # Create new session
+                current_session = new_session_dict(ts, next_acc_guess)
                 
                 if p:
                     current_session['phase_guess'] = p
@@ -651,22 +919,29 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 current_session['phase_guess'] = p
                 current_session['phase_num'] = n
                 
-            # Update account guess if found specifically here
-            match = re.search(r'([A-Za-z0-9]{4,})_(CH|FD|DD|FA)', d.get('comment', ''))
-            if match:
-                current_session['account_guess'] = match.group(1)
+            # If we don't have an account guess yet (or it's None), see if this comment has one
+            if current_account_guess and not current_session['account_guess']:
+                current_session['account_guess'] = current_account_guess
         
         if current_session['deals']:
             sessions.append(current_session)
         
         match_log.append(f"   Found {len(sessions)} distinct sessions based on Phase/Time gaps")
         
+        # --- NEW: Summary Aggregation Structure ---
+        # { PropFirm: { AccountNumber: { PhaseKey: { profit: 0.0, trades: 0 } } } }
+        trade_summary = {}
+        # ------------------------------------------
+
         # Now match each session to an Evaluation
         updates_made = 0
         
         for session in sessions:
             if not session['account_guess']:
+                logging.warning(f"Session without account guess skipped. Deals: {len(session['deals'])}")
                 continue # Can't match without account number
+
+            logging.info(f"[DEBUG] Processing Session: AccountGuess={session['account_guess']}, Deals={len(session['deals'])}")
                 
             # Aggregate stats for session
             session_profit = sum(float(d.get('profit', 0)) + float(d.get('commission', 0)) + float(d.get('swap', 0)) for d in session['deals'])
@@ -674,10 +949,18 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             # Determine Phase/TradeNum from MOST frequent in session
             # (To handle noise)
             phases = {}
+            full_comment_info = None
+            
             for d in session['deals']:
-                p, n = parse_comment(d.get('comment', ''))
-                if p:
-                    key = (p, n)
+                # Try full structure parse first
+                prefix, acc_part, p, n = parse_full_comment_structure(d.get('comment', ''))
+                if prefix and acc_part:
+                    full_comment_info = (prefix, acc_part, p, n)
+                
+                # Fallback to simple parse for counting
+                p_simple, n_simple = parse_comment(d.get('comment', ''))
+                if p_simple:
+                    key = (p_simple, n_simple)
                     phases[key] = phases.get(key, 0) + 1
             
             if not phases:
@@ -685,53 +968,131 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 
             best_phase, best_num = max(phases.items(), key=lambda x: x[1])[0]
             
-            # MATCHING LOGIC
-            acc_num = session['account_guess']
+            # If we found a full comment structure, prefer that for matching
+            if full_comment_info:
+                 target_prefix, target_acc_part, target_phase, target_num = full_comment_info
+                 # Use the derived phase/num from the full comment if available, or fallback to frequency
+                 if target_phase: 
+                     best_phase = target_phase
+                 if target_num:
+                     best_num = target_num
+                 
+                 acc_num = target_acc_part # Use extracted regex digits as the account number to match
+                 
+                 # NEW: If acc_num is purely digits, but we found a PREFIX, try to append it?
+                 # Or better: Check if appending prefix helps match against verbose DB accounts?
+                 # e.g. TDFY-72031 might be better search key than 72031 if DB is verbose?
+                 # But our matching logic 's_acc in ac1' works better with SHORTER s_acc.
+                 # So keeps '72031'.
+            else:
+                 acc_num = session['account_guess']
+
             start_date_ts = session['start']
             
             # Find candidate evaluations
-            # Filter by Account Number
-            # STRICTER MATCHING: access number must not be empty
-            # And we only match if Account Number matches exactly or ends with
+            # Check match against BOTH Account # and Account #.1
+            
             def normalize_acc(a): return str(a).strip().upper()
             
+            # Strip prefix from s_acc if we are relying on substring matching?
+            # If s_acc is "TDFY-72031", and DB has "TDFYSL...72031", "TDFY-72031" is NOT in it.
+            # But "72031" IS in it.
+            # So we should probably strip known prefixes from s_acc before matching loop if we want flexible matching.
+            
+            s_acc_raw = normalize_acc(acc_num)
+            
+            # If s_acc contains a hyphen, try splitting
+            if '-' in s_acc_raw:
+                # Keep full for strict check, but try short version for loose check?
+                s_acc_short = s_acc_raw.split('-')[-1]
+            else:
+                s_acc_short = s_acc_raw
+            
+            # Use the SHORTER version for candidate finding to maximize hits
+            s_search = s_acc_short
+            
             candidates = []
+            
+            # Determines if we have a strict structural match up front
+            matches_full_strict = (full_comment_info is not None)
+
             for e in evaluations:
-                e_acc = normalize_acc(e.get('Account Number', ''))
-                if not e_acc: 
-                    continue # Skip evals with no account number
+                is_match = False
+                ac1 = normalize_acc(e.get('Account #', ''))
+                ac2 = normalize_acc(e.get('Account #.1', ''))
                 
-                # Check match (e.g. 208226 matches 208226, or MFFU208226 matches 208226?)
-                # Usually acc_num from session is "208226" (digits) or "MFFU...".
-                # Let's check for containment or endswith
-                s_acc = normalize_acc(acc_num)
+                # Use flexible matching against s_search (which is just the trailing number usually)
+                s = s_search 
                 
-                # Logical match: One contained in the other?
-                # But typically we want endswith for MT5 logins vs Full Strings
-                if e_acc.endswith(s_acc) or s_acc.endswith(e_acc):
-                     candidates.append(e)
-            
+                # Check ac1
+                if ac1:
+                    if s == ac1: is_match = True
+                    elif s.endswith(ac1) or ac1.endswith(s): is_match = True
+                    elif len(s) >= 4 and s in ac1: is_match = True
+                    # Also check for "TDFY-72031" vs "TDFYSL...72031"
+                    # If we stripped prefix from 's', it works.
+                
+                # Check ac2
+                if not is_match and ac2:
+                    if s == ac2: is_match = True
+                    elif s.endswith(ac2) or ac2.endswith(s): is_match = True
+                    elif len(s) >= 4 and s in ac2: is_match = True
+                
+                # STRICT PREFIX CHECK:
+                try:
+                    # Use full s_acc_raw for prefix logic (since it might have TDFY- prefix)
+                    if is_match and '-' in s_acc_raw:
+                        # ... original logic using s_acc_raw ...
+                        prefix_part = s_acc_raw.split('-')[0]
+                        pf_val = str(e.get('Prop Firm', '')).upper()
+                        
+                        # Only proceed if we have a valid Prop Firm string to check against
+                        if pf_val and prefix_part not in pf_val and pf_val not in prefix_part:
+                            mapping = {
+                                'MFFU': ['MYFUNDED', 'MFFU'],
+                                'AFAD': ['ALPHA', 'AFAD'],
+                                'V2': ['TOPSTEP', 'V2'],
+                                'FNFT': ['FUNDEDNEXT', 'FNFT'],
+                                'TDFY': ['TRADEIFY', 'TDFY'],
+                                'ELTD': ['TRADEDAY', 'ELTD'],
+                                'TDF': ['TRADEDAY', 'TDF']
+                            }
+                            if prefix_part in mapping:
+                                valid_keywords = mapping[prefix_part]
+                                if not any(k in pf_val for k in valid_keywords):
+                                    is_match = False
+                except Exception as ex:
+                    logging.error(f"Error in Strict Prefix Check for {s_acc_raw}: {ex}")
+
+                if matches_full_strict and is_match:
+                     pass
+
+                if is_match:
+                    candidates.append(e)
+
             if not candidates:
-                match_log.append(f"⚠️ No evaluation found for session {acc_num} (Start: {datetime.datetime.fromtimestamp(start_date_ts)})")
-                
-                # Debug availability (only once per push to avoid spam)
-                if '_debug_logged_accounts' not in locals():
-                    available_accs = [str(e.get('Account Number', '')) for e in evaluations if e.get('Account Number')]
-                    match_log.append(f"   ℹ️  Available Accounts in Eval: {available_accs[:10]}... (Total {len(available_accs)})")
-                    _debug_logged_accounts = True
+                match_log.append(f"⚠️ No evaluation found for session {acc_num} (Start: {str(datetime.datetime.fromtimestamp(start_date_ts))})")
                 continue
-            
+
             # Filter by Date Purchased
             # We want Evaluation.DatePurchased <= Session.Start
-            # And closest to it.
+            # And closest to it
             valid_candidates = []
+            
+            # STRICT MATCH OVERRIDE: If we have a perfectly parsed comment (Structure: PREFIX...ACC_PHASE),
+            # and we found matching accounts, we TRUST the account number match primarily.
+            # We skip date filtering for non-FNFT if we have a structural match.
+            skip_date_filter = matches_full_strict and not ('FNFT' in (full_comment_info[0] or ''))
+
             for e in candidates:
-                dp_str = str(e.get('Date Purchased', ''))
+                if skip_date_filter:
+                     # Trust the account match implicitly
+                     valid_candidates.append((e, 0)) # 0 drift because perfect ID match
+                     continue
+
+                dp_str = str(e.get('Date Started', '')) or str(e.get('Date Purchased', ''))
                 try:
                     # Try common formats
-                    # 1/20/25, 2025-01-20, etc.
-                    # Use helper parse_date from global context if available or simple
-                    # Assume parse_date is available (imported)
                     dp_dt = None
                     for fmt in ["%m/%d/%y", "%Y-%m-%d", "%m/%d/%Y"]:
                         try:
@@ -743,44 +1104,348 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                         diff = start_date_ts - dp_dt.timestamp()
                         # Allow session to start slightly before purchase? (Maybe same day timezone diff?)
                         # Allow -24h slack.
-                        if diff > -86400:
+                        # BUFFER: If strict comment match, assume it's correct even if dates are weird?
+                        # But typically we still want the LATEST one if duplications exist.
+                        # Let's keep date logic but maybe relax it for strict matches?
+                        if diff > -86400 * 2: # 48 hours buffer
                             valid_candidates.append((e, diff))
+                    else:
+                        # If no date found, but we have a STRICT digit match?
+                        # Keep it as a candidate with high drift (unless only one candidate)
+                         valid_candidates.append((e, float('inf')))
                 except:
                     pass
             
+            # Decision Time
             if not valid_candidates:
-                # If no dates parse, fallback to last added?
-                # Or try matching by Phase Code?
-                match_log.append(f"⚠️ No valid date match for {acc_num}")
-                continue
+                # If we had a strict comment match, and no valid dates, maybe just pick the best text match?
+                if matches_full_strict and candidates:
+                     best_eval = candidates[0] # Naive fallback
+                     match_log.append(f"⚠️ Date mismatch but strict ID match for {acc_num}, using first candidate.")
+                else:
+                     match_log.append(f"⚠️ No valid date match for {acc_num}")
+                     continue
+            else:
+                # Sort by diff (smallest diff is closest match)
+                valid_candidates.sort(key=lambda x: x[1])
+                best_eval, drift = valid_candidates[0]
             
-            # Sort by diff (smallest diff is closest match)
-            valid_candidates.sort(key=lambda x: x[1])
-            best_eval, drift = valid_candidates[0]
+            # Determined Field Name
+            field_name = "Hedge Result" # Default
             
-            # Determine Field Name
-            # (Reuse existing logic or simplified)
-            field_name = "Hedge Result" # Default?
-            # Actually we usually map CH1 -> Hedge Result, CH2 -> Hedge Result 2
-            # Or use 'get_field_name_for_phase' if available
+            # Use parsed phase/num from strict match if available
+            if matches_full_strict: 
+                 _, _, best_phase, best_num = full_comment_info
             
-            # Let's use simple mapping for now to maintain robustness
             if best_phase == 'CH':
-                field_name = f"Hedge Result {best_num}" if best_num and best_num > 1 else "Hedge Result"
-            elif best_phase == 'FD':
-                field_name = f"Hedge Result {best_num}" if best_num else "Hedge Result" # ?
-            elif best_phase == 'FA':
-                 # Farming logic is sequential usually
-                 # We can append?
-                 match_log.append("   Matched Farming session - aggregating total")
-                 field_name = "Hedge Result" # Placeholder
-            
-            # Update
-            best_eval[field_name] = session_profit
-            updates_made += 1
-            match_log.append(f"✅ Matched {acc_num} Session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) to Eval {best_eval.get('id')} ({best_eval.get('Account Number', 'N/A')}) -> {field_name} = ${session_profit:.2f}")
+                # CH1 -> Hedge Result 1
+                # CH2 -> Hedge Result 2
+                if best_num and best_num > 1:
+                     field_name = f"Hedge Result {best_num}"
+                else:
+                     field_name = "Hedge Result 1" # Default to 'Hedge Result 1' to match sheet headers
 
-        return evaluations, match_log
+            elif best_phase == 'FD':
+                 # FD1 -> Hedge Result 1.1? Or just Hedge Result?
+                 # User provided logic: "last part is the cell to put the data in" (CH2 -> HR2)
+                 # Wait, for FD, existing logic says "Hedge Result 1.1" usually.
+                 # Let's check get_field_name_for_phase implementation again if possible, or replicate:
+                 if best_num is not None:
+                      # MFFU logic: FD0->1.1, FD1->2.1? Or FD1->1.1?
+                      # Standard implementation elsewhere:
+                      # FD -> 1.1 usually means "Funded Account 1"
+                      # Let's assume matches 1:1 if possible?
+                      # Logic in get_field_name_for_phase (read earlier):
+                      # "MFFU accounts: FD0->HR1.1, FD1->HR2.1"
+                      # "Other: FD0/1 -> HR1.1"
+                      
+                      # Re-implement simplified version here:
+                      normalized_prefix = (target_prefix or '').upper()
+                      if 'MFFU' in normalized_prefix:
+                           # MFFU Logic
+                           # FD0 -> 1.1 ?? Wait, previous code said FD0->1.1, FD1->2.1
+                           # Let's safer assume user wants mapped to *.1
+                           # Map FD1 -> Hedge Result 1.1
+                           # FD2 -> Hedge Result 2.1
+                           if best_num == 0: field_name = "Hedge Result 1.1" # FD0 match
+                           else: field_name = f"Hedge Result {best_num}.1"
+                      else:
+                           # Standard FD
+                           field_name = f"Hedge Result {best_num}.1"
+
+            elif best_phase == 'DD':
+                 field_name = f"Hedge Result {best_num}.1"
+
+            elif best_phase == 'FA':
+                 match_log.append("   Matched Farming session - Finding next available column")
+                 # Farming logic: Find first EMPTY Hedge Day slot (or update existing if same day?)
+                 
+                 # List of potential columns for Farming (Hedge Day 1 to 100)
+                 # We need to preserve the DATE of the value to know if it's the same day.
+                 # But the evaluation dict only stores values (e.g. "$500").
+                 # Problem: We don't store metadata in sheet directly.
+                 # Strategy:
+                 # 1. Use '_farming_sessions' on the eval object (transient) to track what we've processed IN THIS PUSH.
+                 # 2. But we need to know about PREVIOUS pushes too?
+                 #    If we re-push history, we recalculate everything.
+                 #    So if we clear all Farming columns and re-fill them based on session dates, that works for full history pushes.
+                 #    If partial push, we might duplicate.
+                 #    User says "incase a user pushes data to the dashboard more than once a day".
+                 #    This implies re-pushing same data.
+                 #    If we assume FULL HISTORY push, simpler: Clear fields, Fill sequentially by date.
+                 
+                 # Let's try to map FA1 -> Hedge Day 1, FA2 -> Hedge Day 2 first?
+                 # No, user said "enter on the next available farme hedge column".
+                 # This implies dynamic filling.
+                 
+                 # If we use strict index from comment (FA1, FA2), we don't need "next available", we use specific column.
+                 # But farming comments usually don't increment (all might be FA1 or just FA).
+                 # If comment has number (FA1, FA2), use it?
+                 if best_num and best_num > 1:
+                     field_name = f"Hedge Day {best_num}"
+                 else:
+                     # If just FA or FA1, use Next Available logic.
+                     # We need to find the first Hedge Day X that is empty OR matches this session's date/value?
+                     # Since we can't easily store metadata in the simple key-value structure of 'best_eval' without modifying DB schema deeply,
+                     # we will rely on strict mapping if possible, OR sequential filling for this session.
+                     
+                     # BETTER APPROACH for "Next Available":
+                     # 1. Collect all farming sessions for this account.
+                     # 2. Sort them by Date.
+                     # 3. Assign them to columns sequentially: Session 1 -> HD1, Session 2 -> HD2, etc.
+                     # This guarantees that re-pushing the same history results in the same mapping.
+                     # We can do this by deferring the assignment?
+                     # OR, since we are processing sessions in a loop, are they sorted?
+                     # The sessions list 'sessions' is sorted by start time?
+                     # Line 926: sessions.sort(key=lambda x: x['start'])
+                     # YES! They are sorted by time.
+                     
+                     # So if we maintain a counter on the best_eval object, we can assign sequentially.
+                     if '_farming_counter' not in best_eval:
+                         best_eval['_farming_counter'] = 0
+                     
+                     # Increment counter
+                     best_eval['_farming_counter'] += 1
+                     cnt = best_eval['_farming_counter']
+                     field_name = f"Hedge Day {cnt}"
+                     
+                     # Create a tracking key to avoid re-adding if we loop multiple times?
+                     # But we are iterating sessions once.
+                     # The only risk is if OLD data exists in these columns from previous pushes.
+                     # If we are doing a full re-push (which generates all sessions), we will overwrite HD1, HD2...
+                     # This effectively "clears" old data by overwriting it with the sorted session data.
+                     # This satisfies "avoid duplicate" because the same session (historical) always maps to the same index (e.g. 1st session -> HD1).
+                     
+                     pass
+
+            
+            # Update Logic: ACCUMULATE profit for this push
+            # Since we are processing all history in this push, we should sum up sessions for the same eval/field.
+            # But be careful not to sum with existing OLD values from DB if we are replacing them?
+            # Actually, update_evaluations... is called on the existing 'evaluations' list from DB.
+            # If we just add, we might double count if we run this multiple times?
+            # No, 'evaluations' object is transient for this request (loaded from DB/Sheet).
+            # The 'session_profit' is from the NEW deals being pushed.
+            # Users usually push ALL history.
+            # So we should probably clear the field first if it's the first time we touch it IN THIS REQUEST?
+            # Or just assume we are recalculating from scratch for these deals.
+            
+            # For robustness: valid numeric check (handle $ formatting)
+            try:
+                raw_val = str(best_eval.get(field_name, 0) or 0)
+                clean_val = raw_val.replace('$', '').replace(',', '').strip()
+                current_val = float(clean_val) if clean_val else 0.0
+            except:
+                current_val = 0.0
+                
+            # SPECIAL CASE: FundedNext (or others) where multiple evals share account?
+            # The user said: "one account number belongs to several prop firm evaluations, this only happens for funded next"
+            # "The rest should just push directly" 
+            # If we touch the same field multiple times in this loop (multiple sessions for same eval), we MUST accumulate.
+            # If the eval field already has value from previous pushes (DB), and we are pushing partial data?
+            # Usually pushes contain full history.
+            # Let's assume we accumulate.
+            
+            # However, if this is the FIRST time we are updating this specific field IN THIS BATCH,
+            # and we want to overwrite old DB data with new calculation?
+            # The 'evaluations' list comes from DB.
+            # If we want to replace the old 'Hedge Result' with the new value from this push,
+            # We should probably track which fields we've updated.
+            
+            # Key to track uniqueness: (Eval Index, Field Name)
+            update_key = (candidates.index(best_eval) if best_eval in candidates else -1, field_name)
+            
+            # This is tricky because we don't have unique IDs easily accessible here without strict indexing
+            # Let's rely on the object identity `id(best_eval)`
+            
+            eval_id = id(best_eval)
+            
+            # Simple aggregation logic: If it's the first time we see this field for this eval in THIS REQUEST,
+            # we overwrite it (assuming full push). Subsequent sessions add to it.
+            if '_updated_fields' not in best_eval:
+                best_eval['_updated_fields'] = set()
+            
+            if field_name not in best_eval['_updated_fields']:
+                new_val = session_profit
+                best_eval['_updated_fields'].add(field_name)
+            else:
+                new_val = current_val + session_profit
+            
+            # FORMAT WITH DOLLAR SIGN FOR PUSH
+            best_eval[field_name] = f"${new_val:.2f}"
+            updates_made += 1
+            if 'Match Log' not in best_eval:
+                 best_eval['Match Log'] = []
+            best_eval['Match Log'].append(f"Matched matched session (start {datetime.datetime.fromtimestamp(start_date_ts)}) -> {field_name}: ${float(session_profit):.2f} (Total: ${float(new_val):.2f})")
+            
+            # Add explicit cell confirmation log
+            current_row_idx = evaluations.index(best_eval) + 2
+            match_log.append(f"✅ Matched session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) -> Column: [{field_name}] | Row: {current_row_idx} | New Value: ${new_val:.2f}")
+
+            # --- AGGREGATE SUMMARY STATS ---
+            try:
+                # 1. Prop Firm
+                # Uses col "Prop Firm" if exists, or guess from prefix
+                p_firm = best_eval.get('Prop Firm') 
+                if not p_firm:
+                     # Try to guess from account number prefix or comments
+                     guesser = normalize_acc(acc_num)
+                     # Also check comments in session for clues if account number is ambiguous
+                     session_comments = " ".join([d.get('comment', '') for d in session['deals'][:5]])
+                     
+                     if 'MFF' in guesser or 'MFF' in session_comments.upper(): p_firm = 'MyFundedFX'
+                     elif 'V2' in guesser or 'V2' in session_comments.upper(): p_firm = 'Topstep'
+                     elif 'FN' in guesser or 'FNFT' in session_comments.upper(): p_firm = 'FundedNext'
+                     elif 'AF' in guesser or 'AFAD' in session_comments.upper(): p_firm = 'Alpha Futures'
+                     else: p_firm = 'Unknown Firm'
+                
+                # 2. Account Number (Use the one from the evaluation record if possible for consistency)
+                # "Account #" for Challenge or "Account #.1" for Funded
+                # Or just use the Evaluation Index/Name to be clearer? 
+                # User asked for "Account Number"
+                report_acc = best_eval.get('Account #') or best_eval.get('Account #.1') or acc_num
+                
+                # 3. Phase Key (e.g. CH1, FD1)
+                phase_label = f"{best_phase}{best_num or ''}"
+                
+                # InitDicts
+                if p_firm not in trade_summary: trade_summary[p_firm] = {}
+                if report_acc not in trade_summary[p_firm]: trade_summary[p_firm][report_acc] = {}
+                if phase_label not in trade_summary[p_firm][report_acc]: 
+                     trade_summary[p_firm][report_acc][phase_label] = {
+                         'profit': 0.0, 
+                         'trades': 0,
+                         'source_accounts': set(), # The raw account number from mt5/comment
+                         'comments': set(),        # Sample comments used for classification
+                         'target_field': field_name,
+                         'detailed_trades': [],    # List of specific trade details
+                         'row_index': -1           # Will be set below
+                     }
+                
+                # Add
+                summary_node = trade_summary[p_firm][report_acc][phase_label]
+                
+                # Find row index (Add 2 because Sheet usually has headers, Python list is 0-indexed)
+                try:
+                    row_idx = evaluations.index(best_eval) + 2
+                    summary_node['row_index'] = row_idx
+                except:
+                    summary_node['row_index'] = '??'
+
+                summary_node['profit'] += float(session_profit)
+                
+                # We need to count synthesized "deals" (which are actually positions) as 1 trade each
+                summary_node['trades'] += len(session['deals'])
+                summary_node['source_accounts'].add(str(acc_num))
+                
+                # Add detailed trade info
+                for d in session['deals']:
+                    t_profit = float(d.get('profit', 0))
+                    t_comment = d.get('comment', '')
+                    t_acc = extract_account_from_comment(t_comment) or "N/A"
+                    
+                    # Format timestamp
+                    t_ts = get_ts(d)
+                    t_time_str = "Unknown Time"
+                    if t_ts > 0:
+                        t_time_str = datetime.datetime.fromtimestamp(t_ts).strftime('%Y-%m-%d %H:%M:%S')
+
+                    # Add to list (limit size if needed, but user asked for detail)
+                    summary_node['detailed_trades'].append(f"[{t_time_str}] [{t_comment}] {t_acc} -> ${t_profit:.2f}")
+
+                # Add sample comments (limit to 3 unique ones per phase to avoid spam)
+                current_comments = [d.get('comment', '') for d in session['deals'] if d.get('comment')]
+                for c in current_comments:
+                    if len(summary_node['comments']) < 3:
+                        summary_node['comments'].add(c)
+                
+            except Exception as e:
+                logging.error(f"Error accumulating stats: {e}")
+            # -------------------------------
+
+        # CLEANUP: Remove temporary tracking fields before returning
+        for ev in evaluations:
+            if '_updated_fields' in ev:
+                del ev['_updated_fields']
+            if 'Match Log' in ev:
+                del ev['Match Log']
+
+        # --- LOG SUMMARY ---
+        # "Group for me all trades under a specific propfirm, like topstep 2 trades etc, break it even further interms of the account number and phases"
+        logging.info("="*30)
+        logging.info(" TRADE PROCESSING SUMMARY")
+        logging.info("="*30)
+        
+        # Sort firms
+        sorted_firms = sorted(trade_summary.keys())
+        for firm in sorted_firms:
+             firm_data = trade_summary[firm]
+             # Total trades for firm
+             total_firm_trades = 0
+             for acc_data in firm_data.values():
+                 for stats in acc_data.values():
+                     total_firm_trades += stats['trades']
+                     
+             logging.info(f"📂 {firm} ({total_firm_trades} trades)")
+             
+             sorted_accs = sorted(firm_data.keys(), key=lambda x: str(x))
+             for acc in sorted_accs:
+                  acc_data = firm_data[acc]
+                  # Total trades for account
+                  total_acc_trades = sum(item['trades'] for item in acc_data.values())
+                  logging.info(f"   └── 👤 Dashboard Account: {acc} ({total_acc_trades} trades)")
+                  
+                  sorted_phases = sorted(acc_data.keys())
+                  for phase in sorted_phases:
+                       stats = acc_data[phase]
+                       profit_str = f"${stats['profit']:,.2f}"
+                       trades_count = stats['trades']
+                       target_field = stats.get('target_field', 'Unknown')
+                       
+                       # Format comments and source accounts
+                       sources_str = ", ".join(sorted(list(stats['source_accounts'])))
+                       
+                       row_idx = stats.get('row_index', '??')
+                       
+                       logging.info(f"       └── 🏷️  Phase {phase} -> [{target_field}] (Row #{row_idx})")
+                       logging.info(f"           - Profit: {profit_str}")
+                       logging.info(f"           - Trades: {trades_count}")
+                       
+                       # Detailed Trade Listing
+                       count = 0
+                       for t_detail in stats.get('detailed_trades', []):
+                           logging.info(f"             - {t_detail}")
+                           count += 1
+                           if count > 50: # Safety limit
+                               logging.info(f"             ... and {trades_count - 50} more")
+                               break
+                       
+                       logging.info(f"           - Source ID(s): {sources_str}")
+        logging.info("="*30)
+        # -------------------
+
+        # Return the computed sessions so they can be saved as 'aggregated_by_comment'
+        return evaluations, match_log, sessions
 
     # -------------------------------------------------------------------------
     # LEGACY CLIENT-SIDE AGGREGATION LOGIC (Fallback)
@@ -797,7 +1462,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         Tuple of (updated_evaluations, match_log)
     """
     if not evaluations or not aggregated_data:
-        return evaluations, ["No evaluations or aggregated data to process"]
+        # If no server-side matching occurred (raw_deals was None), just return None for sessions
+        return evaluations, ["No evaluations or aggregated data to process"], None
     
     match_log = []
     updates_made = 0
@@ -921,6 +1587,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             continue
 
         eval_idx, matched_account = match
+        logging.info(f"MATCHED: MT5 Account {account_number} -> Dashboard Account {matched_account}")
         
         # Determine field to update
         field_name = None
@@ -976,7 +1643,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         match_log.append(f"✅ [Accumulated] → Eval #{eval_idx} [{field_name}] = ${total_profit:.2f}")
     
     match_log.append(f"\n📈 Total updates: {updates_made}/{len(aggregated_data)}")
-    return evaluations, match_log
+    return evaluations, match_log, None
 
 # Initialize admin password if not exists
 def init_admin_password():
@@ -1436,6 +2103,13 @@ def get_super_admin_totals():
     
     # Add Client Performance Stats used by client_performance.html
     response_data['clients'] = get_client_performance_stats(profile_filter)
+
+    # 4. Global Watermarks (14 days)
+    # Import here to avoid circular
+    from dashboard.watermark_service import get_aggregate_watermarks
+    global_watermarks = get_aggregate_watermarks(14)
+    response_data['totals']['total_hwm'] = round(global_watermarks.get('hwm', 0.0), 2)
+    response_data['totals']['total_lwm'] = round(global_watermarks.get('lwm', 0.0), 2)
     
     return jsonify(response_data)
 
@@ -1626,7 +2300,12 @@ def api_client_push():
         # Update evaluations with hedge results from aggregated data OR raw deals
         if evaluations:
             app.logger.info(f"🔄 Matching hedge results to evaluations...")
-            evaluations, hedge_match_log = update_evaluations_from_aggregated_data(evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals)
+            evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals)
+            
+            # If server-side aggregation occurred, use THAT instead of the client's.
+            if generated_sessions:
+                aggregated_by_comment = generated_sessions
+                app.logger.info(f"✅ Replaced client aggregation with {len(generated_sessions)} server-side sessions")
             
             for log_line in hedge_match_log:
                 app.logger.info(f"   {log_line}")
@@ -1662,7 +2341,7 @@ def api_client_push():
             
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
-            app.logger.info(f"✅ Stats calculated:")
+            app.logger.info(f"Stats calculated:")
             app.logger.info(f"   - Current balance: ${hr.get('current_balance', 0):.2f}")
             app.logger.info(f"   - Total deposits: ${hr.get('total_deposits', 0):.2f}")
             app.logger.info(f"   - Total withdrawals: ${hr.get('total_withdrawals', 0):.2f}")
@@ -1698,7 +2377,7 @@ def api_client_push():
     
     # Final verification before save
     hr_final = statistics.get('hedging_review', {})
-    app.logger.info(f"📦 FINAL DATA TO SAVE for {client_id}:")
+    app.logger.info(f"FINAL DATA TO SAVE for {client_id}:")
     app.logger.info(f"   - hedging_review.total_deposits: ${hr_final.get('total_deposits', 0):.2f}")
     app.logger.info(f"   - hedging_review.total_withdrawals: ${hr_final.get('total_withdrawals', 0):.2f}")
     app.logger.info(f"   - hedging_review.current_balance: ${hr_final.get('current_balance', 0):.2f}")
@@ -1780,11 +2459,20 @@ def api_migrate_sheet():
     # Fetch data from Google Sheets
     try:
         # Import the data processor
-        from utils.data_processor import fetch_evaluations, calculate_statistics
-        
+        from utils.data_processor import fetch_evaluations, calculate_statistics, fetch_waterlog_history
+        from dashboard.watermark_service import bulk_save_history
+
         evaluations = fetch_evaluations(sheet_url)
         if not evaluations:
-            return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public."}), 400
+            return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public. (Evaluations Tab)"}), 400
+        
+        # Determine Waterlog GID (Default hardcoded or from params)
+        # Using hardcoded GID '520289647' inside fetch_waterlog_history as requested logic
+        waterlog_history = fetch_waterlog_history(sheet_url)
+        waterlog_count = 0
+        if waterlog_history:
+            bulk_save_history(client_id, waterlog_history)
+            waterlog_count = len(waterlog_history)
         
         # Calculate statistics without MT5 data (discrepancy will be 0)
         statistics = calculate_statistics(evaluations, None, None)
@@ -1825,12 +2513,12 @@ def api_migrate_sheet():
         add_client(admin_id, trader_id, client_id)
         
         log_action('SHEET_MIGRATION', 'client', email, get_remote_address(), 
-                   f"Migrated {len(evaluations)} records from Google Sheets for {client_id} (v{version})")
+                   f"Migrated {len(evaluations)} records + {waterlog_count} waterlog entries from Google Sheets for {client_id} (v{version})")
         
         # Return statistics for verification
         return jsonify({
             "status": "success", 
-            "message": f"Successfully migrated {len(evaluations)} evaluation records",
+            "message": f"Successfully migrated {len(evaluations)} records and {waterlog_count} waterlog entries",
             "records_imported": len(evaluations),
             "version": version,
             "statistics": statistics,  # Include stats for client-side verification
@@ -1845,6 +2533,56 @@ def api_migrate_sheet():
         log_action('SHEET_MIGRATION_FAILED', 'client', email, get_remote_address(), str(e), False)
         return jsonify({"status": "error", "message": f"Migration failed: {str(e)}"}), 500
 
+
+@app.route('/api/client/watermark_history/<client_id>')
+@require_session
+def api_get_watermark_history(client_id):
+    """
+    Get daily watermark history for a client.
+    Restricted: Clients can only see their own waterlog history.
+    """
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_id = session_user.get('user_identifier')
+    
+    # Handle URL encoding spaces if necessary (Flask usually decodes)
+    # Check authorization
+    is_authorized = False
+    if user_type in ['super_admin', 'admin', 'trader']:
+        is_authorized = True
+    elif user_type == 'client':
+        # Check specific client ownership
+        if user_id == client_id:
+            is_authorized = True
+        else:
+            # Check if email matches (some systems use email as identifier)
+            # Or if user_id is the email and client_id is the name?
+            # 'client_id' in URL is the NAME (e.g. Jiang Quang Huang)
+            # 'user_identifier' in session for client is usually the EMAIL.
+            # We need to resolve email -> client_id
+            client_by_email = get_client_by_email(user_id)
+            if client_by_email and client_by_email['client'] == client_id:
+                is_authorized = True
+    
+    if not is_authorized:
+        return jsonify({"status": "error", "message": "Unauthorized access to client waterlog"}), 403
+
+    try:
+        from dashboard.watermark_service import get_watermark_history, get_lower_watermark
+        # Get history for the requested period (now configured to 14 days for consistency with watermarks)
+        # User requested: "both all and high water mark should check the last 14 days"
+        history = get_watermark_history(client_id, days=14)
+        
+        # Get lower watermark (last 14 days min)
+        low_watermark = get_lower_watermark(client_id, days=14)
+        
+        return jsonify({
+            "status": "success",
+            "history": history,
+            "low_watermark": low_watermark
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
 @limiter.limit("10 per minute")
@@ -2991,6 +3729,9 @@ def update_data():
                     "deals": data.get("deals", existing_data.get("deals", [])),
                     "positions": data.get("positions", existing_data.get("positions", [])),
                     "account": data.get("account", existing_data.get("account", {})),
+                    "hedge_accounts": data.get("hedge_accounts", existing_data.get("hedge_accounts", [])),
+                    "prop_accounts": data.get("prop_accounts", existing_data.get("prop_accounts", [])),
+                    "vps_accounts": data.get("vps_accounts", existing_data.get("vps_accounts", [])),
                     "evaluations": evaluations,
                     "statistics": data.get("statistics", existing_data.get("statistics", {})),
                     "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
