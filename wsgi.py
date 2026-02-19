@@ -70,10 +70,10 @@ if '/ready' not in [rule.rule for rule in app.url_map.iter_rules()]:
 
 if __name__ == '__main__':
     # Run development server
-    port = int(os.getenv('PORT', 5000))
+    port = int(os.getenv('PORT', 5001))
     debug = os.getenv('FLASK_ENV') == 'development'
     
-    print(f"🚀 Starting MT5 Dashboard in {'development' if debug else 'production'} mode")
+    print(f"Starting MT5 Dashboard in {'development' if debug else 'production'} mode")
     print(f"   URL: http://localhost:{port}")
     
     app.run(

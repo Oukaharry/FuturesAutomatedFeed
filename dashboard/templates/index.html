@@ -687,6 +687,39 @@
             <button class="tab-btn" onclick="openTab('hedge')">Hedge Accounts</button>
             <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
             <button class="tab-btn" onclick="openTab('vps')">VPS</button>
+            <button class="tab-btn" onclick="openTab('waterlog')">Profitability Waterlog</button>
+        </div>
+
+        <!-- Profitability Waterlog Tab -->
+        <div id="waterlog" class="tab-content">
+            <div class="card" style="margin-top: 20px;">
+                <h3 style="color: #60a5fa; margin-bottom: 20px;">Profitability Watermark Tracker</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                    <div style="background: rgba(30, 41, 59, 0.5); padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                         <div style="font-size: 0.9em; color: #94a3b8;">High Watermark (Last 14 Days)</div>
+                         <div id="high-watermark-val" style="font-size: 1.8em; font-weight: bold; color: #4ade80;">Loading...</div>
+                         <div id="high-watermark-date" style="font-size: 0.8em; color: #94a3b8;">-</div>
+                    </div>
+                    <div style="background: rgba(30, 41, 59, 0.5); padding: 15px; border-radius: 8px; border-left: 4px solid #ef4444;">
+                         <div style="font-size: 0.9em; color: #94a3b8;">Low Watermark (Last 14 Days)</div>
+                         <div id="low-watermark-val" style="font-size: 1.8em; font-weight: bold; color: #f87171;">Loading...</div>
+                         <div id="low-watermark-date" style="font-size: 0.8em; color: #94a3b8;">-</div>
+                    </div>
+                </div>
+                
+                <table class="data-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">Date</th>
+                            <th style="text-align: right;">Net Profit Complete</th>
+                            <th style="text-align: center;">Change</th>
+                        </tr>
+                    </thead>
+                    <tbody id="waterlog-body">
+                        <tr><td colspan="3" style="text-align: center;">Select a client to view waterlog</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
 
         <!-- Evaluations Tab -->
@@ -697,7 +730,7 @@
                     <button class="btn-secondary" onclick="openHistoryPanel()" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff;">📜 History</button>
                 </div>
                 <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
-                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()">
+                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()" checked>
                     Show Active Only
                 </label>
             </div>
@@ -849,9 +882,32 @@
             <div id="no-history-msg" class="no-data">Waiting for data...</div>
         </div>
 
-        <!-- Hedge Accounts Tab (Using previous Open Positions here) -->
+        <!-- Hedge Accounts Tab -->
         <div id="hedge" class="tab-content">
-            <h3>Open Positions</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3>Hedge Accounts Configuration</h3>
+                <button class="btn-primary" onclick="addHedgeAccount()">+ Add Hedge Account</button>
+            </div>
+            
+            <table id="hedge-accounts-table">
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">Broker</th>
+                        <th style="width: 10%;">Platform</th>
+                        <th style="width: 15%;">Login</th>
+                        <th style="width: 15%;">Password</th>
+                        <th style="width: 20%;">Server</th>
+                        <th style="width: 15%;">Name</th>
+                        <th style="width: 10%;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="hedge-accounts-body"></tbody>
+            </table>
+            <div id="no-hedge-accounts-msg" class="no-data">No hedge accounts configured. Add one to get started.</div>
+            
+            <hr style="margin: 30px 0; border-top: 1px solid #334155;">
+
+            <h3>Open Positions (Live)</h3>
             <table id="positions-table">
                 <thead>
                     <tr>
@@ -875,12 +931,51 @@
 
         <!-- Prop Firm Accounts Tab -->
         <div id="prop" class="tab-content">
-            <div class="no-data">Prop Firm Accounts Module - Coming Soon</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3>Prop Firm Configuration</h3>
+                <button class="btn-primary" onclick="addPropAccount()">+ Add Prop Account</button>
+            </div>
+            
+            <div class="table-container">
+            <table id="prop-accounts-table">
+                <thead>
+                    <tr>
+                        <th style="min-width: 150px;">Prop Firm</th>
+                        <th style="min-width: 150px;">Login</th>
+                        <th style="min-width: 150px;">Password</th>
+                        <th style="min-width: 200px;">Notes</th>
+                        <th style="min-width: 150px;">Discount Codes</th>
+                        <th style="min-width: 150px;">Tradovate User</th>
+                        <th style="min-width: 150px;">Tradovate Pass</th>
+                        <th style="width: 50px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="prop-accounts-body"></tbody>
+            </table>
+            </div>
+            <div id="no-prop-accounts-msg" class="no-data">No prop firm accounts configured. Add one to get started.</div>
         </div>
 
         <!-- VPS Tab -->
         <div id="vps" class="tab-content">
-            <div class="no-data">VPS Management Module - Coming Soon</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3>VPS Management</h3>
+                <button class="btn-primary" onclick="addVPSAccount()">+ Add VPS</button>
+            </div>
+            
+            <table id="vps-accounts-table">
+                <thead>
+                    <tr>
+                        <th style="width: 20%;">IP Address</th>
+                        <th style="width: 20%;">Username</th>
+                        <th style="width: 20%;">Password</th>
+                        <th style="width: 30%;">Notes</th>
+                        <th style="width: 10%;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="vps-accounts-body"></tbody>
+            </table>
+            <div id="no-vps-accounts-msg" class="no-data">No VPS details configured. Add one to get started.</div>
         </div>
     </div>
 
@@ -1106,6 +1201,9 @@
                     renderEvaluationsTable();
                     renderStats(data);
                     renderPositions(data);
+                    renderHedgeAccounts(data);
+                    renderPropAccounts(data);
+                    renderVPSAccounts(data);
                     renderHistory(data);
                     
                     // Update Dropdown Options if available
@@ -1147,8 +1245,16 @@
 
                     // Filter Logic
                     if (showActiveOnly && !forceShow) {
-                        const status = String(ev['Status'] || ev['Status P1'] || '').toLowerCase();
-                        if (status.includes('fail') || status.includes('breach') || status.includes('delete') || status.includes('closed') || status.includes('completed')) {
+                        const statusP1 = String(ev['Status P1'] || '').toLowerCase();
+                        const statusFunded = String(ev['Status'] || '').toLowerCase();
+                        
+                        // Check Status P1
+                        if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('delete') || statusP1.includes('closed') || statusP1.includes('completed')) {
+                             return;
+                        }
+
+                        // Check Status (Funded)
+                        if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('delete') || statusFunded.includes('closed') || statusFunded.includes('completed')) {
                              return;
                         }
                     }
@@ -1594,6 +1700,303 @@
                 noPosMsg.style.display = 'block';
                 posTable.style.display = 'none';
             }
+        }
+
+        function renderHedgeAccounts(data) {
+            const body = document.getElementById('hedge-accounts-body');
+            const noDataMsg = document.getElementById('no-hedge-accounts-msg');
+            const table = document.getElementById('hedge-accounts-table');
+            
+            if (!body || !noDataMsg || !table) return;
+
+            body.innerHTML = '';
+            const accounts = data.hedge_accounts || [];
+
+            if (accounts.length > 0) {
+                noDataMsg.style.display = 'none';
+                table.style.display = 'table';
+                
+                accounts.forEach((acc, index) => {
+                    const row = document.createElement('tr');
+                    
+                    const brokers = ['plexytrade', 'icmarkets', 'pepperstone', 'roboforex', 'other'];
+                    const types = ['MT5', 'MT4'];
+                    
+                    // Broker Select
+                    let brokerOptions = brokers.map(b => 
+                        `<option value="${b}" ${acc.broker === b ? 'selected' : ''}>${b}</option>`
+                    ).join('');
+                    
+                    // Type Select
+                    let typeOptions = types.map(t => 
+                        `<option value="${t}" ${acc.platform === t ? 'selected' : ''}>${t}</option>`
+                    ).join('');
+
+                    row.innerHTML = `
+                        <td>
+                            <select class="cell-input" style="width:100%" onchange="updateHedgeAccount(${index}, 'broker', this.value)">
+                                <option value="">Select Broker</option>
+                                ${brokerOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <select class="cell-input" style="width:100%" onchange="updateHedgeAccount(${index}, 'platform', this.value)">
+                                ${typeOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.login || ''}" 
+                                   placeholder="Login ID"
+                                   onchange="updateHedgeAccount(${index}, 'login', this.value)">
+                        </td>
+                        <td>
+                            <input type="password" class="cell-input" style="width:100%" 
+                                   value="${acc.password || ''}" 
+                                   placeholder="Password"
+                                   onchange="updateHedgeAccount(${index}, 'password', this.value)">
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.server || ''}" 
+                                   placeholder="Server Name"
+                                   onchange="updateHedgeAccount(${index}, 'server', this.value)">
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.name || ''}" 
+                                   placeholder="Account Name"
+                                   onchange="updateHedgeAccount(${index}, 'name', this.value)">
+                        </td>
+                        <td style="text-align:center;">
+                            <button onclick="deleteHedgeAccount(${index})" class="btn-delete" title="Remove Account">🗑️</button>
+                        </td>
+                    `;
+                    body.appendChild(row);
+                });
+            } else {
+                noDataMsg.style.display = 'block';
+                table.style.display = 'none';
+            }
+        }
+
+        function renderPropAccounts(data) {
+            const body = document.getElementById('prop-accounts-body');
+            const noDataMsg = document.getElementById('no-prop-accounts-msg');
+            const table = document.getElementById('prop-accounts-table');
+            
+            if (!body || !noDataMsg || !table) return;
+
+            body.innerHTML = '';
+            const accounts = data.prop_accounts || [];
+
+            if (accounts.length > 0) {
+                noDataMsg.style.display = 'none';
+                table.parentElement.style.display = 'block'; // Show container
+                
+                // Predefined Prop Firms
+                const firms = [
+                    'My Funded Futures', 'Funding Ticks', 'Trade Day', 
+                    'FundedNext', 'Top Step', 'Tradeify', 'Alpha Futures', 'Other'
+                ];
+
+                accounts.forEach((acc, index) => {
+                    const row = document.createElement('tr');
+                    
+                    // Prop Firm Select
+                    let firmOptions = firms.map(f => 
+                        `<option value="${f}" ${acc.prop_firm === f ? 'selected' : ''}>${f}</option>`
+                    ).join('');
+
+                    row.innerHTML = `
+                        <td>
+                            <select class="cell-input" style="width:100%" onchange="updatePropAccount(${index}, 'prop_firm', this.value)">
+                                <option value="">Select Firm</option>
+                                ${firmOptions}
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.login || ''}" 
+                                   placeholder="Login ID"
+                                   onchange="updatePropAccount(${index}, 'login', this.value)">
+                        </td>
+                        <td>
+                            <input type="password" class="cell-input" style="width:100%" 
+                                   value="${acc.password || ''}" 
+                                   placeholder="Password"
+                                   onchange="updatePropAccount(${index}, 'password', this.value)">
+                        </td>
+                        <td>
+                            <textarea class="cell-input" style="width:100%; min-height: 2em; resize: vertical;" 
+                                      placeholder="Notes..."
+                                      onchange="updatePropAccount(${index}, 'notes', this.value)">${acc.notes || ''}</textarea>
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.discount_codes || ''}" 
+                                   placeholder="Codes"
+                                   onchange="updatePropAccount(${index}, 'discount_codes', this.value)">
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.tradovate_username || ''}" 
+                                   placeholder="Username"
+                                   onchange="updatePropAccount(${index}, 'tradovate_username', this.value)">
+                        </td>
+                        <td>
+                            <input type="password" class="cell-input" style="width:100%" 
+                                   value="${acc.tradovate_password || ''}" 
+                                   placeholder="Password"
+                                   onchange="updatePropAccount(${index}, 'tradovate_password', this.value)">
+                        </td>
+                        <td style="text-align:center;">
+                            <button onclick="deletePropAccount(${index})" class="btn-delete" title="Remove Account">🗑️</button>
+                        </td>
+                    `;
+                    body.appendChild(row);
+                });
+            } else {
+                noDataMsg.style.display = 'block';
+                if (table.parentElement) table.parentElement.style.display = 'none';
+                else table.style.display = 'none';
+            }
+        }
+
+        function updatePropAccount(index, key, value) {
+            if (!currentData.prop_accounts) return;
+            isEditing = true;
+            currentData.prop_accounts[index][key] = value;
+            saveData();
+        }
+
+        function addPropAccount() {
+            if (!currentData.prop_accounts) currentData.prop_accounts = [];
+            currentData.prop_accounts.push({
+                prop_firm: 'My Funded Futures',
+                login: '',
+                password: '',
+                notes: '',
+                discount_codes: '',
+                tradovate_username: '',
+                tradovate_password: ''
+            });
+            renderPropAccounts(currentData);
+            saveData('CREATE', 'Added new prop account');
+        }
+
+        function deletePropAccount(index) {
+            if (!confirm('Are you sure you want to remove this prop firm account configuration?')) return;
+            currentData.prop_accounts.splice(index, 1);
+            renderPropAccounts(currentData);
+            saveData('DELETE', 'Removed prop account');
+        }
+
+        function renderVPSAccounts(data) {
+            const body = document.getElementById('vps-accounts-body');
+            const noDataMsg = document.getElementById('no-vps-accounts-msg');
+            const table = document.getElementById('vps-accounts-table');
+            
+            if (!body || !noDataMsg || !table) return;
+
+            body.innerHTML = '';
+            const accounts = data.vps_accounts || [];
+
+            if (accounts.length > 0) {
+                noDataMsg.style.display = 'none';
+                table.style.display = 'table';
+                
+                accounts.forEach((acc, index) => {
+                    const row = document.createElement('tr');
+                    
+                    row.innerHTML = `
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.ip_address || ''}" 
+                                   placeholder="IP:Port"
+                                   onchange="updateVPSAccount(${index}, 'ip_address', this.value)">
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.username || ''}" 
+                                   placeholder="Administrator"
+                                   onchange="updateVPSAccount(${index}, 'username', this.value)">
+                        </td>
+                        <td>
+                            <input type="password" class="cell-input" style="width:100%" 
+                                   value="${acc.password || ''}" 
+                                   placeholder="Password"
+                                   onchange="updateVPSAccount(${index}, 'password', this.value)">
+                        </td>
+                        <td>
+                            <textarea class="cell-input" style="width:100%; min-height: 2em; resize: vertical;" 
+                                      placeholder="Notes..."
+                                      onchange="updateVPSAccount(${index}, 'notes', this.value)">${acc.notes || ''}</textarea>
+                        </td>
+                        <td style="text-align:center;">
+                            <button onclick="deleteVPSAccount(${index})" class="btn-delete" title="Remove VPS">🗑️</button>
+                        </td>
+                    `;
+                    body.appendChild(row);
+                });
+            } else {
+                noDataMsg.style.display = 'block';
+                table.style.display = 'none';
+            }
+        }
+
+        function updateVPSAccount(index, key, value) {
+            if (!currentData.vps_accounts) return;
+            isEditing = true;
+            currentData.vps_accounts[index][key] = value;
+            saveData();
+        }
+
+        function addVPSAccount() {
+            if (!currentData.vps_accounts) currentData.vps_accounts = [];
+            currentData.vps_accounts.push({
+                ip_address: '',
+                username: 'Administrator',
+                password: '',
+                notes: ''
+            });
+            renderVPSAccounts(currentData);
+            saveData('CREATE', 'Added new VPS account');
+        }
+
+        function deleteVPSAccount(index) {
+            if (!confirm('Are you sure you want to remove this VPS configuration?')) return;
+            currentData.vps_accounts.splice(index, 1);
+            renderVPSAccounts(currentData);
+            saveData('DELETE', 'Removed VPS account');
+        }
+
+        function updateHedgeAccount(index, key, value) {
+            if (!currentData.hedge_accounts) return;
+            isEditing = true;
+            currentData.hedge_accounts[index][key] = value;
+            saveData();
+        }
+
+        function addHedgeAccount() {
+            if (!currentData.hedge_accounts) currentData.hedge_accounts = [];
+            currentData.hedge_accounts.push({
+                broker: 'plexytrade',
+                platform: 'MT5',
+                login: '',
+                password: '',
+                server: '',
+                name: ''
+            });
+            renderHedgeAccounts(currentData);
+            saveData('CREATE', 'Added new hedge account');
+        }
+
+        function deleteHedgeAccount(index) {
+            if (!confirm('Are you sure you want to remove this hedge account configuration?')) return;
+            currentData.hedge_accounts.splice(index, 1);
+            renderHedgeAccounts(currentData);
+            saveData('DELETE', 'Removed hedge account');
         }
 
         function renderHistory(data) {
@@ -2277,6 +2680,8 @@
         let previewMode = false;
         let originalData = null;
         let clientEmail = "{{ client_email|default('') }}";
+        // GLOBAL CLIENT ID from Template
+        const clientId = "{{ client_id|default('') }}";
 
         function openHistoryPanel() {
             document.getElementById('history-panel').classList.add('open');
@@ -2493,28 +2898,18 @@
             fetch('/api/client/rollback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email, version: version })
+                body: JSON.stringify({
+                    email: email, 
+                    rollback_version: version // Field name expected by backend: rollback_version
+                })
             })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert(`✅ Successfully restored to Version ${version}!\n\nNew version ${data.new_version} created.`);
-                    
-                    // Exit preview mode if active
-                    if (previewMode) {
-                        previewMode = false;
-                        originalData = null;
-                        document.getElementById('preview-banner').classList.remove('show');
-                    }
-                    
-                    // Refresh data
-                    selectedVersion = null;
-                    updateDashboard();
-                    
-                    // Reload history
-                    loadVersionHistory();
+                    // alert(`✅ Successfully restored to Version ${version}!`);
+                    location.reload(); 
                 } else {
-                    alert('Error restoring version: ' + data.message);
+                    alert('Error restoring version: ' + (data.message || 'Unknown error'));
                 }
             })
             .catch(err => {
@@ -2522,6 +2917,111 @@
                 alert('Error restoring version');
             });
         }
+        
+        // --- Waterlog Tab Functions ---
+        let waterlogLoaded = false;
+        
+        function loadWaterlogData() {
+            if (waterlogLoaded || !clientId) return;
+            
+            const tbody = document.getElementById('waterlog-body');
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading...</td></tr>';
+            
+            // Format formatter
+            const fmt = (n) => {
+                if (n === null || n === undefined) return '-';
+                const s = n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+                return n < 0 ? `<span style="color: #ef4444;">${s}</span>` : `<span style="color: #4ade80;">${s}</span>`;
+            };
+            
+            fetch(`/api/client/watermark_history/${clientId}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Render High/Low Cards
+                        const history = data.history || [];
+                        const low = data.low_watermark;
+                        
+                        // Calculate High Watermark (last 180 days from data)
+                        let high = null;
+                        if (history.length > 0) {
+                             high = history.reduce((max, obj) => (obj.profit > max.profit ? obj : max), history[0]);
+                        }
+                        
+                        document.getElementById('high-watermark-val').innerHTML = fmt(high ? high.profit : 0);
+                        document.getElementById('high-watermark-date').textContent = high ? high.date : '-';
+                        
+                        document.getElementById('low-watermark-val').innerHTML = fmt(low ? low.profit : 0);
+                        document.getElementById('low-watermark-date').textContent = low ? low.date : '-';
+                        
+                        // Render Table
+                        if (history.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No watermark history available.</td></tr>';
+                            waterlogLoaded = true;
+                            return;
+                        }
+                        
+                        // Sort descending by date for table
+                        const sorted = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+                        let html = '';
+                        
+                        sorted.forEach((item, idx) => {
+                            // Calculate daily change
+                            let change = 0;
+                            // Find next item (which is previous date)
+                            if (idx < sorted.length - 1) {
+                                change = item.profit - sorted[idx+1].profit;
+                            }
+                            
+                            const changeStr = change === 0 ? '-' : fmt(change);
+                            
+                            html += `
+                                <tr>
+                                    <td style="text-align: left;">${item.date}</td>
+                                    <td style="text-align: right; font-weight: bold;">${fmt(item.profit)}</td>
+                                    <td style="text-align: center;">${changeStr}</td>
+                                </tr>
+                            `;
+                        });
+                        
+                        tbody.innerHTML = html;
+                        waterlogLoaded = true;
+                    } else {
+                         tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Error: ${data.message}</td></tr>`;
+                    }
+                })
+                .catch(err => {
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Failed to load data.</td></tr>`;
+                    console.error(err);
+                });
+        }
+        
+        // Hook into openTab to load data when tab is opened
+        const originalOpenTab = window.openTab;
+        window.openTab = function(tabName) {
+            // Call original
+             var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+                tabcontent[i].classList.remove("active");
+            }
+            tablinks = document.getElementsByClassName("tab-btn");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].classList.remove("active");
+            }
+            document.getElementById(tabName).style.display = "block";
+            document.getElementById(tabName).classList.add("active");
+            
+            // Find the button and make active
+            // (Simple way without complex logic - assumption: button onclick calls this)
+             const buttons = document.querySelectorAll(`.tab-btn[onclick="openTab('${tabName}')"]`);
+             buttons.forEach(btn => btn.classList.add('active'));
+
+            if (tabName === 'waterlog') {
+                loadWaterlogData();
+            }
+        };
 
         // Keyboard shortcut: Ctrl+H to open history
         document.addEventListener('keydown', function(e) {
@@ -2545,7 +3045,11 @@
             const date = new Date(dateStr);
             if (isNaN(date.getTime())) return dateStr;
             
-            return date.toISOString().split('T')[0];
+            // Use local date components to avoid timezone shifts (e.g. Midnight -> Previous Day)
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         }
 
         // Initialize Dashboard

@@ -20,16 +20,21 @@ print(f"Header row index: {header_idx}")
 # Reload with header
 df = pd.read_csv(StringIO(response.text), header=header_idx)
 
-print(f"\nTotal columns: {len(df.columns)}")
-print(f"Total rows: {len(df)}")
+# Search for the missing IDs ANYWHERE in the entire dataframe
+missing_ids = ['74020', '74018', '80594', '66787', '74019', '32229', '32479', '53986', '74013', '98765']
+print(f"\nSearching for missing IDs: {missing_ids}")
 
-print("\n=== ALL COLUMNS ===")
-for i, col in enumerate(df.columns):
-    print(f"  {i}: {col}")
-
-# Check first 5 data rows for key columns
-print("\n=== SAMPLE DATA ===")
-key_cols = ['Prop Firm', 'Fee', 'Status P1', 'Status', 'Hedge Result 1', 'Hedge Net', 'Payout 1']
-for col in key_cols:
-    if col in df.columns:
-        print(f"{col}: {df[col].head(3).tolist()}")
+for search_id in missing_ids:
+    # Convert all columns to string and search
+    mask = df.astype(str).apply(lambda x: x.str.contains(search_id, case=False, na=False)).any(axis=1)
+    if mask.any():
+        print(f"\n✅ Found {search_id} in {mask.sum()} rows:")
+        found_rows = df[mask]
+        for idx, row in found_rows.iterrows():
+            # Print which column contains it
+            for col in df.columns:
+                val = str(row[col])
+                if search_id in val:
+                    print(f"   Row {idx}: Column '{col}' = '{val}'")
+    else:
+        print(f"FAILED to find {search_id}")
