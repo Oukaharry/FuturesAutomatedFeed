@@ -1087,12 +1087,20 @@ class TraderCompanionApp:
         # conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
         # conn_frame.pack(fill=tk.X, pady=(0, 8))
         
-        # Dashboard URL (Hidden)
-        self.url_entry = ttk.Entry(main_frame)
-        # Production URL enabled for release
-        self.url_entry.insert(0, "https://www.ballerquotes.com/") 
-        # self.url_entry.insert(0, "http://127.0.0.1:5001")
-        # Not packing url_entry so it remains hidden but accessible via self.url_entry.get()
+        # Dashboard URL (Hidden but editable via config if needed, or we can expose it)
+        # User requested: "make this editable but ballerquotes by default"
+        # So we will expose it in a small frame at the bottom or top, or just use the existing hidden structure but make it visible?
+        # Let's add a "Settings" toggle or just expose it.
+        
+        conn_frame = ttk.LabelFrame(main_frame, text="Connection Settings", padding=8)
+        conn_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        ttk.Label(conn_frame, text="Dashboard URL:").pack(side=tk.LEFT, padx=(0, 5))
+        self.url_entry = ttk.Entry(conn_frame)
+        self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Production URL default
+        self.url_entry.insert(0, "https://www.ballerquotes.com/")
         
         # Identity Frame - SIMPLIFIED: Just client email (NO API KEY NEEDED)
         id_frame = ttk.LabelFrame(main_frame, text="Client Identification", padding=15)
