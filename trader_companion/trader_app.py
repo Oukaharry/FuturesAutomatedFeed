@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -1092,12 +1092,12 @@ class TraderCompanionApp:
         # So we will expose it in a small frame at the bottom or top, or just use the existing hidden structure but make it visible?
         # Let's add a "Settings" toggle or just expose it.
         
-        conn_frame = ttk.LabelFrame(main_frame, text="Connection Settings", padding=8)
-        conn_frame.pack(fill=tk.X, pady=(0, 8))
+        # conn_frame = ttk.LabelFrame(main_frame, text="Connection Settings", padding=8)
+        # conn_frame.pack(fill=tk.X, pady=(0, 8))
         
-        ttk.Label(conn_frame, text="Dashboard URL:").pack(side=tk.LEFT, padx=(0, 5))
-        self.url_entry = ttk.Entry(conn_frame)
-        self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # ttk.Label(conn_frame, text="Dashboard URL:").pack(side=tk.LEFT, padx=(0, 5))
+        self.url_entry = ttk.Entry(main_frame)
+        # self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         # Production URL default
         self.url_entry.insert(0, "https://www.ballerquotes.com/")
