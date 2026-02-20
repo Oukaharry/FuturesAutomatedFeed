@@ -476,6 +476,8 @@ class MT5DataPusher:
         """Push all data to the dashboard."""
         if not self.api_key:
             return False, "API key not set"
+            
+        print(f"--- Client {client_name} Info Start ---")
         
         account = self.get_account_info()
         positions = self.get_positions()
@@ -511,17 +513,22 @@ class MT5DataPusher:
             
             if response.status_code == 200:
                 data = response.json()
+                print(f"--- Client {client_name} Info End ---")
                 if data.get('status') == 'success':
                     return True, f"Data pushed successfully for {client_name}"
                 return False, data.get('message', 'Unknown error')
             else:
+                print(f"--- Client {client_name} Info End (Failed) ---")
                 return False, f"HTTP {response.status_code}: {response.text}"
                 
         except requests.exceptions.ConnectionError:
+            print(f"--- Client {client_name} Info End (Connection Error) ---")
             return False, f"Cannot connect to dashboard at {self.dashboard_url}"
         except requests.exceptions.Timeout:
+            print(f"--- Client {client_name} Info End (Timeout) ---")
             return False, "Request timed out"
         except Exception as e:
+            print(f"--- Client {client_name} Info End (Error) ---")
             return False, str(e)
     
     def parse_deal_comment(self, comment):
