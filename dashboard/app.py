@@ -2108,8 +2108,13 @@ def get_super_admin_totals():
     # Import here to avoid circular
     from dashboard.watermark_service import get_aggregate_watermarks
     global_watermarks = get_aggregate_watermarks(14)
-    response_data['totals']['total_hwm'] = round(global_watermarks.get('hwm', 0.0), 2)
-    response_data['totals']['total_lwm'] = round(global_watermarks.get('lwm', 0.0), 2)
+    
+    # Ensure values are non-negative
+    hwm = global_watermarks.get('hwm', 0.0)
+    lwm = global_watermarks.get('lwm', 0.0)
+    
+    response_data['totals']['total_hwm'] = round(max(0.0, float(hwm)), 2)
+    response_data['totals']['total_lwm'] = round(max(0.0, float(lwm)), 2)
     
     return jsonify(response_data)
 

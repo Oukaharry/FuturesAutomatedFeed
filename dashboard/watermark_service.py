@@ -142,13 +142,17 @@ def get_aggregate_watermarks(days=14):
             daily_totals = []
             for row in rows:
                 try:
-                    val = row['total_profit']
+                    raw_val = row['total_profit']
                 except:
-                    val = row[1]
+                    raw_val = row[1]
                 
                 # Only count values above 0
-                if val is not None and val > 0:
-                    daily_totals.append(val)
+                try:
+                    val = float(raw_val) if raw_val is not None else 0.0
+                    if val > 0:
+                        daily_totals.append(val)
+                except (ValueError, TypeError):
+                    continue
             
             if not daily_totals:
                 return {'hwm': 0.0, 'lwm': 0.0}
