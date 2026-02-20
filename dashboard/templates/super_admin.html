@@ -807,13 +807,13 @@
 
                          if(type === 'client') {
                              btns += `<a href="${r.url}" style="color:#fbbf24; text-decoration:none; margin-right:10px; font-weight:bold;">Dash</a>`;
-                             btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="deleteUserList('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
                              btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}')" style="${editStyle}">Edit</button>`;
                          } else if (type === 'trader') {
-                             btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="deleteUserList('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
                              btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
                          } else {
-                             btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="deleteUserList('admin', '${safeName}')" style="${delStyle}">Del</button>`;
                              btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}')" style="${editStyle}">Edit</button>`;
                          }
 
@@ -920,7 +920,14 @@
         async function deleteUser(type, name, parent1, parent2) {
             if(event) event.stopPropagation(); // Prevent card click
             const cleanName = name.replace(/\\'/g, "'");
-            if (!confirm(`Are you sure you want to delete ${type} "${cleanName}"?\nThis cannot be undone.`)) return;
+            
+            // Safer confirmation
+            const userInput = prompt(`To DELETE ${type} "${cleanName}" and ALL associated data (stats, evaluations, notes), please type "${cleanName}" below:\n\nWARNING: This action is permanent and cannot be undone.`);
+            if (userInput !== cleanName) {
+                if (userInput !== null) alert("Deletion cancelled. Name did not match.");
+                return;
+            }
+
             // ... (rest of deleteUser)
             
             const payload = {
@@ -950,10 +957,17 @@
             }
         }
 
-        async function deleteUser(type, name, parent1, parent2) {
+        async function deleteUserList(type, name, parent1, parent2) {
             const cleanName = name.replace(/\\'/g, "'");
-            if (!confirm(`Are you sure you want to delete ${type} "${cleanName}"?\nThis cannot be undone.`)) return;
             
+            // Safer confirmation
+            const userInput = prompt(`To DELETE ${type} "${cleanName}" and ALL associated data (stats, evaluations, notes), please type "${cleanName}" below:\n\nWARNING: This action is permanent and cannot be undone.`);
+            if (userInput !== cleanName) {
+                if (userInput !== null) alert("Deletion cancelled. Name did not match.");
+                return;
+            }
+            
+
             const payload = {
                 type: type,
                 name: cleanName,

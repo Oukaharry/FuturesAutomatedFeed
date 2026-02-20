@@ -741,6 +741,33 @@ def save_client_data(client_id: str, data: dict) -> bool:
             print(f"Error saving client data: {e}")
             return False
 
+def delete_client_data(client_id: str) -> bool:
+    """
+    Deletes all data associated with a client.
+    """
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Delete from main data store
+            cursor .execute("DELETE FROM clients_data WHERE client_id = ?", (client_id,))
+            
+            # Delete from history
+            cursor.execute("DELETE FROM data_history WHERE client_id = ?", (client_id,))
+            
+            # Delete notes
+            cursor.execute("DELETE FROM cell_notes WHERE client_id = ?", (client_id,))
+            
+            # Delete watermarks
+            cursor.execute("DELETE FROM daily_watermarks WHERE client_id = ?", (client_id,))
+            
+            conn.commit()
+            return True
+            
+    except Exception as e:
+        print(f"Error deleting client data for {client_id}: {e}")
+        return False
+
 def get_client_data(client_id: str) -> dict:
     """Get client data from database."""
     with get_connection() as conn:

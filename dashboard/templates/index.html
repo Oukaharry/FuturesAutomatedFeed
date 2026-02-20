@@ -1053,13 +1053,56 @@
         </div>
     </div>
 
-    <div id="note-editor" class="note-editor">
-        <h4>Edit Note</h4>
-        <textarea id="note-text" placeholder="Enter note..."></textarea>
-        <div class="note-editor-buttons">
-            <button class="btn-xs btn-delete" onclick="deleteNote()">Delete</button>
-            <button class="btn-xs btn-cancel" onclick="closeNoteEditor()">Cancel</button>
-            <button class="btn-xs btn-save" onclick="saveNote()">Save</button>
+    <style>
+        .note-modal-overlay {
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100vw; height: 100vh; 
+            background: rgba(0,0,0,0.6); 
+            z-index: 20000; 
+            justify-content: center; 
+            align-items: center;
+            backdrop-filter: blur(2px);
+        }
+        .note-modal-content {
+            background: #1e293b; 
+            padding: 24px; 
+            border-radius: 12px; 
+            width: 90%; max-width: 500px; 
+            border: 1px solid rgba(255,255,255,0.2); 
+            box-shadow: 0 0 50px rgba(0,0,0,0.8); 
+            z-index: 20001; 
+            pointer-events: auto;
+        }
+    </style>
+
+    <div id="note-modal" class="note-modal-overlay">
+        <!-- Modal Content Container -->
+        <div id="note-modal-content" class="note-modal-content">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px;">Cell Note</h3>
+                <button onclick="closeNoteModal()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 24px;">&times;</button>
+            </div>
+            
+            <!-- View Mode -->
+            <div id="note-view-mode">
+                <div id="note-text-display" style="white-space: pre-wrap; margin-bottom: 20px; line-height: 1.5; min-height: 60px; color: var(--text-primary);"></div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                     <button id="btn-edit-note" class="btn-primary" onclick="enableNoteEdit()">Edit</button>
+                     <button id="btn-delete-note" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;" onclick="deleteNote()">Delete</button>
+                </div>
+            </div>
+            
+            <!-- Edit Mode -->
+            <div id="note-edit-mode" style="display: none;">
+                <textarea id="note-textarea" style="width: 100%; height: 150px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: var(--text-primary); padding: 12px; border-radius: 8px; margin-bottom: 16px; resize: vertical;" placeholder="Enter note..."></textarea>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="closeNoteModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveNote()">Save Note</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1080,6 +1123,261 @@
         let isDatePickerOpen = false;
         let currentNoteTarget = null; // { index, key }
         let sheetHedgingResults = 0; // Store for recalculation
+        
+        // Wraps openNoteEditor for left-click interaction (View Only unless shift-click?)
+        function handleCellClick(event, index, key) {
+             // ... (View Only)
+             const hasNote = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key];
+             if (!hasNote) return;
+
+             // If clicking an editable input, prioritize editing the cell value
+             if (event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) {
+                 return;
+             }
+             
+             // Open Note View
+             openNoteEditor(event, index, key);
+        }
+
+        // --- Note Logic ---
+        function openNoteEditor(event, index, key) {
+             console.log(`Open Note Editor invoked for cell (${index}, ${key})`, event ? event.type : 'manual');
+             
+             if (event && event.preventDefault) event.preventDefault(); // Block standard menu
+             
+             // Ensure Modal Exists
+             const modal = document.getElementById('note-modal');
+             if (!modal) {
+                 console.error("ERROR: #note-modal not found!");
+                 alert("UI Error: Note popup missing. Please refresh.");
+                 return;
+             }
+             
+             // Debug State
+             console.log("Current Modal State before OPEN:", modal.style.display, modal.style.zIndex);
+
+             // Use global USER_TYPE if available, else derive from template
+             let userType = "client";
+             try {
+                 if (typeof USER_TYPE !== 'undefined') userType = USER_TYPE;
+                 else userType = "{{ user_type }}";
+             } catch(e) {
+                 console.error("User type check failed", e);
+             }
+
+             const isClient = (userType === "client");
+             // Force Admin for debugging if needed:
+             // const isClient = false; 
+
+             console.log("User Type:", userType, "Is Client:", isClient);
+             
+             // Find current note content
+             let currentContent = '';
+             let hasContent = false;
+             
+             try {
+                // Check if notes exist safely
+                if (currentData && currentData.evaluations && currentData.evaluations[index]) {
+                    if (currentData.evaluations[index]._notes && 
+                        currentData.evaluations[index]._notes[key]) {
+                        currentContent = currentData.evaluations[index]._notes[key];
+                        hasContent = true;
+                    }
+                }
+             } catch (e) { console.error("Error accessing note data", e); }
+             
+             currentNoteTarget = { index, key };
+             
+             // Setup Modal
+             // const modal = document.getElementById('note-modal'); // Already defined above
+             if (!modal) {
+                 console.error("Note modal not found!");
+                 return;
+             }
+
+             // Ensure modal is attached to body
+             if (modal.parentElement !== document.body) {
+                 document.body.appendChild(modal);
+             }
+             
+             // Force styles for visibility
+             modal.style.display = 'flex';
+             modal.style.zIndex = '20000';
+             modal.style.visibility = 'visible';
+             modal.style.opacity = '1';
+             
+             const viewMode = document.getElementById('note-view-mode');
+             const editMode = document.getElementById('note-edit-mode');
+             const textDisplay = document.getElementById('note-text-display');
+             const textArea = document.getElementById('note-textarea');
+             const btnEdit = document.getElementById('btn-edit-note');
+             const btnDelete = document.getElementById('btn-delete-note');
+             
+             // Reset Internal UI Element Displays
+             if (viewMode) viewMode.style.display = 'none';
+             if (editMode) editMode.style.display = 'none';
+             if (btnEdit) btnEdit.style.display = 'none'; 
+             if (btnDelete) btnDelete.style.display = 'none';
+             
+             console.log("Has content:", hasContent);
+
+             // 1. Client Logic
+             if (isClient) {
+                 if (!hasContent) {
+                     // Ensure modal is hidden
+                     modal.style.display = 'none';
+                     return; 
+                 }
+                 
+                 viewMode.style.display = 'block';
+                 editMode.style.display = 'none'; // Explicit
+                 textDisplay.textContent = currentContent;
+             } 
+             // 2. Admin/Trader Logic
+             else {
+                 if (hasContent) {
+                     // View Mode
+                     console.log("Admin viewing existing note -> View Mode");
+                     viewMode.style.display = 'block';
+                     editMode.style.display = 'none'; // Explicit
+                     textDisplay.textContent = currentContent;
+                     if (btnEdit) btnEdit.style.display = 'inline-block';
+                     if (btnDelete) btnDelete.style.display = 'inline-block';
+                 } else {
+                     // Edit Mode (New Note)
+                     console.log("Admin creating new note -> Edit Mode");
+                     viewMode.style.display = 'none'; // Explicit
+                     editMode.style.display = 'block';
+                     
+                     // Clear previous value
+                     if(textArea) textArea.value = '';
+                     setTimeout(() => { if(textArea) textArea.focus(); }, 100);
+                 }
+             }
+             
+             modal.style.display = 'flex';
+             
+             // Force display flex directly
+             modal.style.display = 'flex';
+             modal.style.opacity = '1';
+             console.log("Modal state set to flex/visible. Z-Index:", modal.style.zIndex);
+             
+             // Focus textarea if in edit mode
+             if (editMode.style.display === 'block') {
+                 setTimeout(() => { 
+                     if(textArea) {
+                         console.log("Focusing textarea");
+                         textArea.focus(); 
+                     }
+                 }, 100);
+             }
+        }
+        
+        function enableNoteEdit() {
+             const viewMode = document.getElementById('note-view-mode');
+             const editMode = document.getElementById('note-edit-mode');
+             const textDisplay = document.getElementById('note-text-display');
+             const textArea = document.getElementById('note-textarea');
+             
+             textArea.value = textDisplay.textContent;
+             viewMode.style.display = 'none';
+             editMode.style.display = 'block';
+             textArea.focus();
+        }
+
+        
+        function closeNoteModal() {
+             var modal = document.getElementById('note-modal');
+             if(modal) {
+                 modal.style.display = 'none';
+                 // Re-enable body scroll if we disabled it
+                 document.body.style.overflow = '';
+             }
+             currentNoteTarget = null;
+        }
+        
+        function saveNote() {
+             if (!currentNoteTarget) return;
+             const content = document.getElementById('note-textarea').value;
+             const { index, key } = currentNoteTarget;
+             const clientId = "{{ client_id }}";
+             
+             // Client-side optimistic update
+             if (!currentData.evaluations[index]._notes) currentData.evaluations[index]._notes = {};
+             currentData.evaluations[index]._notes[key] = content;
+             
+             // Re-render specifically this cell or whole table? Whole table is safer but heavier. 
+             // Ideally we just update the cell attributes.
+             renderEvaluationsTable(); 
+             
+             closeNoteModal();
+             
+             // API Call
+             fetch('/api/notes', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     client_id: clientId,
+                     row_index: index,
+                     column_key: key,
+                     content: content
+                 })
+             }).then(res => res.json())
+               .then(data => {
+                   if(data.status !== 'success') alert('Failed to save note');
+               });
+        }
+        
+        function deleteNote() {
+             if (!confirm("Delete this note?")) return;
+             if (!currentNoteTarget) return;
+             const { index, key } = currentNoteTarget;
+             const clientId = "{{ client_id }}";
+             
+             if (currentData.evaluations[index]._notes) {
+                 delete currentData.evaluations[index]._notes[key];
+             }
+             renderEvaluationsTable();
+             closeNoteModal();
+             
+             fetch('/api/notes/delete', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     client_id: clientId,
+                     row_index: index,
+                     column_key: key
+                 })
+             });
+        }
+
+
+        // Left-click handler for viewing notes on cells with notes (Clients Only or Read-Only mode)
+        document.addEventListener('click', function(e) {
+            // Check if clicked element is inside a cell with a note
+            let target = e.target;
+            
+            // Climb up to find the TD
+            while (target && target.tagName !== 'TD' && target.tagName !== 'BODY' && target !== document) {
+                target = target.parentElement;
+            }
+            // Check if we found a TD with a note
+            if (target && target.tagName === 'TD' && target.classList.contains('has-note')) {
+                 // Check if we are clicking an input that is editable (don't block editing)
+                 if (e.target.tagName === 'INPUT' && !e.target.readOnly) {
+                     return; 
+                 }
+                 
+                 // Instead of calling logic here, let the onclick handler on TD handle it if it exists.
+                 // But wait, the TD onclick handler calls openNoteEditor directly.
+                 // So we don't need this global listener anymore if we added onclick to TD.
+                 // The previous implementation had an empty if block here.
+                 // Let's remove it entirely to avoid confusion/performance cost.
+            }
+        }); 
+
+
+
         
         // Track date input interactions to prevent auto-refresh
         document.addEventListener('click', function(e) {
@@ -1247,94 +1545,10 @@
         // --- Note Editing Logic ---
         let activeNote = null; // { index, key, content }
 
-        function openNoteEditor(event, index, key) {
-            event.preventDefault();
-            event.stopPropagation();
-            
-            // Check if user is authorized (simple frontend check, backend enforces)
-            if (USER_TYPE === 'client') return; // Clients can't edit
-            
-            const ev = currentData.evaluations[index];
-            const content = (ev._notes && ev._notes[key]) || '';
-            
-            activeNote = { index, key, content };
-            
-            const modal = document.getElementById('note-modal');
-            modal.style.display = 'flex';
-            
-            const displayText = document.getElementById('note-text-display');
-            displayText.textContent = content || '(No note)';
-            displayText.style.opacity = content ? '1' : '0.5';
-            
-            document.getElementById('note-textarea').value = content;
-            
-            const editMode = document.getElementById('note-edit-mode');
-            const viewMode = document.getElementById('note-view-mode');
-            
-            // If no content, jump straight to edit mode
-            if (!content) {
-                viewMode.style.display = 'none';
-                editMode.style.display = 'block';
-                setTimeout(() => document.getElementById('note-textarea').focus(), 100);
-            } else {
-                viewMode.style.display = 'block';
-                editMode.style.display = 'none';
-            }
-        }
+        // (Removed duplicate openNoteEditor)
+
         
-        function enableNoteEdit() {
-            document.getElementById('note-view-mode').style.display = 'none';
-            const editMode = document.getElementById('note-edit-mode');
-            editMode.style.display = 'block';
-            const textarea = document.getElementById('note-textarea');
-            textarea.value = activeNote.content;
-            textarea.focus();
-        }
-        
-        function closeNoteModal() {
-            document.getElementById('note-modal').style.display = 'none';
-            activeNote = null;
-        }
-        
-        function saveNote() {
-            if (!activeNote) return;
-            const content = document.getElementById('note-textarea').value.trim();
-            
-            // Optimistic Update
-            if (!currentData.evaluations[activeNote.index]._notes) {
-                currentData.evaluations[activeNote.index]._notes = {};
-            }
-            if (content) {
-                currentData.evaluations[activeNote.index]._notes[activeNote.key] = content;
-            } else {
-                delete currentData.evaluations[activeNote.index]._notes[activeNote.key];
-            }
-            
-            // Re-render cell to show/hide indicator
-            renderEvaluationsTable(); 
-            
-            fetch('/api/notes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    client_id: CLIENT_ID, // Global var in index.html? If not, need to extract
-                    row_index: activeNote.index,
-                    column_key: activeNote.key,
-                    content: content
-                })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if(data.status === 'error') alert(data.message);
-            });
-            
-            closeNoteModal();
-        }
-        
-        function deleteNote() {
-            document.getElementById('note-textarea').value = '';
-            saveNote();
-        }
+// (Removed duplicate helpers)
 
         // Close modal on outside click
         window.onclick = function(event) {
@@ -1425,12 +1639,26 @@
                         const statusP1 = String(ev['Status P1'] || '').toLowerCase();
                         const statusFunded = String(ev['Status'] || '').toLowerCase();
                         
-                        // Check Status P1
-                        if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('delete') || statusP1.includes('closed') || statusP1.includes('completed')) {
+                        // Check Status P1 (exclude failed/breached/deleted/closed)
+                        // Allow 'completed' if the account is active in next phase (implied by non-failed funded status)
+                        if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('delete') || statusP1.includes('closed')) {
                              return;
                         }
+                        
+                        // If P1 is completed, check if Funded is also failed/closed/completed
+                        if (statusP1.includes('completed')) {
+                             if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('delete') || statusFunded.includes('closed') || statusFunded.includes('completed')) {
+                                  return;
+                             }
+                        } else {
+                            // If P1 is NOT completed (e.g. Active), then keep it unless P1 is failed (checked above)
+                            // But usually if P1 is Active, Funded status is empty.
+                        }
 
-                        // Check Status (Funded)
+                        // Check Status (Funded) directly? 
+                        // If P1 is Active, Funded is usually empty.
+                        // If P1 is Completed, Funded is Active (show) or Failed (hide).
+                        
                         if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('delete') || statusFunded.includes('closed') || statusFunded.includes('completed')) {
                              return;
                         }
@@ -1466,7 +1694,12 @@
                         // Combine classes
                         const classes = [hasNoteClass, highlightClass].filter(Boolean).join(' ');
 
-                        return `<td ${cellId} class="${classes}" oncontextmenu="openNoteEditor(event, ${index}, '${key}')" ${noteAttrs}>${content}</td>`;
+                        // Determine if click triggers view (If note exists)
+                        // Ideally we attach handler, but inline for now is easiest
+                        return `<td ${cellId} class="${classes}" 
+                                   oncontextmenu="openNoteEditor(event, ${index}, '${key}')" 
+                                   onclick="handleCellClick(event, ${index}, '${key}')"
+                                   ${noteAttrs}>${content}</td>`;
                     };
 
                     // Date Purchased Logic: 
@@ -1489,7 +1722,7 @@
                         
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started'), 'Date Started')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended'), 'Date Ended')}
-                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status', index, 'Status P1'), 'Status P1')}
+                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1'), 'Status P1')}
                         ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #'), 'Account #')}
                         
                         ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1'), 'Hedge Result 1')}
@@ -2473,16 +2706,17 @@
         const dropdownOptions = {
             'Prop Firm': ['MFFU', 'MFFU_Flex', 'Funded Next', 'FundingTicks', 'TopStep', 'Lucid', 'TradeDay', 'AlphaFutures', 'Tradeify', 'Other'],
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
-            'Status': ['Not Started', 'In Progress', 'TP', 'FAIL', 'PASS', 'COMPLETE', 'PAYOUT']
+            'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Deleted', 'Hit TP 2', 'Hit SL 1', 'Hit TP 3'],
+            'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit SL1', 'Deleted', 'Completed']
         };
 
         function getDropdownHtml(value, type, index, key, readOnly = false) {
             if (readOnly) {
                 let colorStyle = "";
-                if (type === 'Status') {
+                if (type === 'Status' || type === 'Status P1') {
                     const v = (value || '').toLowerCase();
                     if (v.includes('active') || v.includes('progress') || v.includes('pass')) colorStyle = "color: #27ae60;"; // Greenish
-                    else if (v.includes('fail') || v.includes('breach')) colorStyle = "color: #c0392b;"; // Red
+                    else if (v.includes('fail') || v.includes('breach') || v.includes('sl')) colorStyle = "color: #c0392b;"; // Red
                     else if (v.includes('tp') || v.includes('payout')) colorStyle = "color: #f39c12;"; // Orange
                     else if (v.includes('complete')) colorStyle = "color: #8e44ad;"; // Purple
                 }
@@ -2493,10 +2727,10 @@
             const items = options.map(opt => `<div class="dropdown-item" data-val="${opt}" data-idx="${index}" data-k="${key}">${opt}</div>`).join('');
             
             let colorStyle = "";
-            if (type === 'Status') {
+            if (type === 'Status' || type === 'Status P1') {
                 const v = (value || '').toLowerCase();
                 if (v.includes('active') || v.includes('progress') || v.includes('pass')) colorStyle = "color: #27ae60;";
-                else if (v.includes('fail') || v.includes('breach')) colorStyle = "color: #c0392b;";
+                else if (v.includes('fail') || v.includes('breach') || v.includes('sl')) colorStyle = "color: #c0392b;";
                 else if (v.includes('tp') || v.includes('payout')) colorStyle = "color: #f39c12;";
                 else if (v.includes('complete')) colorStyle = "color: #8e44ad;";
             }

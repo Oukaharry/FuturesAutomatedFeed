@@ -310,6 +310,42 @@
             })
             .catch(err => console.error('Error updating source:', err));
         }
+
+        async function confirmDeleteClient(name, admin, trader) {
+            if (!confirm(`Are you sure you want to delete client "${name}"?\nThis cannot be undone.`)) return;
+
+            const confirmText = prompt(`Type "DELETE" to confirm deletion of ${name}:`);
+            if (confirmText !== "DELETE") {
+                if (confirmText !== null) alert("Deletion cancelled. Input did not match 'DELETE'.");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/delete_user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        type: 'client',
+                        name: name,
+                        admin: admin, // parent1
+                        trader: trader // parent2
+                    })
+                });
+
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert('Client deleted successfully');
+                    // Remove from local list and re-render
+                    allClientStats = allClientStats.filter(c => c.client_id !== name);
+                    renderClientTable();
+                } else {
+                    alert('Error deleting client: ' + (data.message || 'Unknown error'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Request failed');
+            }
+        }
         
         function renderClientTable() {
             const tbody = document.getElementById('client-stats-body');
@@ -380,7 +416,8 @@
                         <span title="Failed" style="color: #f87171;">${c.failed}</span>
                     </td>
                     <td style="padding: 14px 16px; text-align: center;">
-                       <a href="/dashboard/${c.client_id}" class="btn-xs" style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none;">View</a>
+                       <a href="/dashboard/${c.client_id}" class="btn-xs" style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; margin-right: 5px;">View</a>
+                       <button onclick="confirmDeleteClient('${c.client_id.replace(/'/g, "\\'")}', '${(c.admin||'').replace(/'/g, "\\'")}', '${(c.trader||'').replace(/'/g, "\\'")}')" class="btn-xs" style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; border: none; cursor: pointer;">Del</button>
                     </td>
                 `;
                 tbody.appendChild(tr);

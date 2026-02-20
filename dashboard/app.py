@@ -40,7 +40,8 @@ from dashboard.database import (
     find_user_by_identifier, verify_user_by_identifier,
     # History management
     save_client_data_with_history, get_data_history, get_data_version,
-    rollback_to_version, compare_versions, get_latest_version
+    rollback_to_version, compare_versions, get_latest_version, 
+    delete_client_data
 )
 from dashboard.notes_service import (
     get_client_notes, save_client_note, delete_client_note
@@ -3048,17 +3049,47 @@ def api_delete_user():
         
     result = False
     if user_type == 'admin':
+        # Clean up database data for all clients under this admin
+        if name in SYSTEM_HIERARCHY["admins"]:
+            traders = SYSTEM_HIERARCHY["admins"][name].get("traders", {})
+            for t_name, t_data in traders.items():
+                for client in t_data.get("clients", []):
+                    # Delete client data from DB
+                    delete_client_data(client["name"])
+                    # Delete credentials for client
+                    delete_user_credential(client["name"], 'client')
+                # Delete credential for trader
+                delete_user_credential(t_name, 'trader')
+                
         result = remove_admin(name)
+        # Delete credential for admin
         delete_user_credential(name, 'admin')
             
     elif user_type == 'trader':
         if not admin: return jsonify({"status": "error", "message": "Admin parent required"}), 400
+        
+        # Clean up database data for all clients under this trader
+        if admin in SYSTEM_HIERARCHY["admins"]:
+            traders = SYSTEM_HIERARCHY["admins"][admin].get("traders", {})
+            if name in traders:
+                for client in traders[name].get("clients", []):
+                    # Delete client data from DB
+                    delete_client_data(client["name"])
+                    # Delete credentials for client
+                    delete_user_credential(client["name"], 'client')
+
         result = remove_trader(admin, name)
+        # Delete credential for trader
         delete_user_credential(name, 'trader')
             
     elif user_type == 'client':
         if not admin or not trader: return jsonify({"status": "error", "message": "Parents required"}), 400
+        
+        # Clean up database data for this client
+        delete_client_data(name)
+        
         result = remove_client(admin, trader, name)
+        # Delete credential for client
         delete_user_credential(name, 'client')
     
     if result:
@@ -3646,14 +3677,25 @@ def get_data():
     # Check authentication
     session_token = request.cookies.get('session_token')
     if not session_token:
-        return jsonify({"status": "error", "message": "Authentication required"}), 401
+        # Also check API Key for trader apps
+        api_key = request.headers.get('X-API-Key')
+        if not api_key:
+             return jsonify({"status": "error", "message": "Authentication required"}), 401
+        
+        # Validate API Key
+        key_info = validate_api_key(api_key)
+        if not key_info:
+             return jsonify({"status": "error", "message": "Invalid API Key"}), 401
+        
+        user_type = 'api'
+        user_identifier = key_info.get('owner') 
+    else:
+        session_info = validate_session(session_token)
+        if not session_info:
+            return jsonify({"status": "error", "message": "Invalid session"}), 401
     
-    session_info = validate_session(session_token)
-    if not session_info:
-        return jsonify({"status": "error", "message": "Invalid session"}), 401
-    
-    user_type = session_info.get('user_type')
-    user_identifier = session_info.get('user_identifier')
+        user_type = session_info.get('user_type')
+        user_identifier = session_info.get('user_identifier')
     
     if client_id:
         # Check if user can access this client's data
@@ -3746,6 +3788,45 @@ def update_note():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============ Session-based Update (for Dashboard UI) ============
+
+@app.route('/api/notes', methods=['POST'])
+@require_session
+def save_note():
+    data = request.json
+    client_id = data.get('client_id')
+    row_index = data.get('row_index')
+    column_key = data.get('column_key')
+    note_content = data.get('content', '')
+    
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    
+    # Clients cannot save notes
+    if user_type == 'client':
+        return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
+        
+    if not client_id or row_index is None or not column_key:
+        return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+    if save_client_note(client_id, row_index, column_key, note_content, session_user.get('user_identifier')):
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Database error"}), 500
+
+@app.route('/api/notes/delete', methods=['POST'])
+@require_session
+def delete_note():
+    data = request.json
+    client_id = data.get('client_id')
+    row_index = data.get('row_index')
+    column_key = data.get('column_key')
+    
+    session_user = request.session_user
+    if session_user.get('user_type') == 'client':
+        return jsonify({"status": "error", "message": "Clients cannot delete notes"}), 403
+        
+    if delete_client_note(client_id, row_index, column_key):
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Database error"}), 500
 
 @app.route('/api/update_data', methods=['POST'])
 @limiter.limit("60 per minute")
