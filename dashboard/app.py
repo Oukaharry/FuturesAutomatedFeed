@@ -3936,6 +3936,9 @@ def update_data_with_api_key(data, identity, user_info):
     admin_id = identity.get('admin', 'Admin1')
     trader_id = identity.get('trader', 'Trader1')
     client_id = identity.get('client', 'Client1')
+    
+    print(f"--- Client {client_id} Info Start ---")
+    
     email = identity.get('email', '')
     
     # Get existing data to prevent overwriting evaluations with empty list
@@ -3999,6 +4002,7 @@ def update_data_with_api_key(data, identity, user_info):
     add_client(admin_id, trader_id, client_id)
     
     log_action('DATA_UPDATE', 'trader', trader_id, get_remote_address(), f"Client: {client_id} (v{version})")
+    print(f"--- Client {client_id} Info End ---")
     return jsonify({"status": "success", "message": "Data updated", "version": version})
 
 # ============ API Key Management (Admin only) ============
