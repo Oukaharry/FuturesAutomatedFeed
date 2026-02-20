@@ -116,51 +116,41 @@ def get_bulk_watermarks(days=14):
 
 def get_aggregate_watermarks(days=14):
     """
-    Returns the High and Low Watermarks for the aggregated portfolio (sum of all clients)
+    Returns the SUM of High and Low Watermarks for all clients (where individual values > 0)
     over the last X days.
     Returns: {'hwm': float, 'lwm': float}
     """
     try:
+        # Re-using get_bulk_watermarks to get individual HWM/LWM per client
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            # Sum profit for each day
-            cursor.execute('''
-                SELECT date, SUM(net_profit_complete) as total_profit
-                FROM daily_watermarks
-                WHERE date >= ?
-                GROUP BY date
-                ORDER BY date ASC
-            ''', (cutoff_date,))
-            rows = cursor.fetchall()
+        bulk_data = get_bulk_watermarks(days)
+        
+        sum_hwm = 0.0
+        sum_lwm = 0.0
+        
+        for client_id, metrics in bulk_data.items():
+            h = metrics.get('high')
+            l = metrics.get('low')
             
-            if not rows:
-                return {'hwm': 0.0, 'lwm': 0.0}
-
-            # rows is list of tuples/Rows
-            # Extract daily totals
-            daily_totals = []
-            for row in rows:
-                try:
-                    raw_val = row['total_profit']
-                except:
-                    raw_val = row[1]
+            # Convert to float and filter > 0
+            try:
+                h_val = float(h) if h is not None else 0.0
+            except: h_val = 0.0
+            
+            try:
+                l_val = float(l) if l is not None else 0.0
+            except: l_val = 0.0
+            
+            if h_val > 0:
+                sum_hwm += h_val
                 
-                # Only count values above 0
-                try:
-                    val = float(raw_val) if raw_val is not None else 0.0
-                    if val > 0:
-                        daily_totals.append(val)
-                except (ValueError, TypeError):
-                    continue
-            
-            if not daily_totals:
-                return {'hwm': 0.0, 'lwm': 0.0}
-
-            return {
-                'hwm': max(daily_totals),
-                'lwm': min(daily_totals)
-            }
+            if l_val > 0:
+                sum_lwm += l_val
+                
+        return {
+            'hwm': sum_hwm,
+            'lwm': sum_lwm
+        }
     except Exception as e:
         logging.error(f"Error getting aggregate watermarks: {e}")
         return {'hwm': 0.0, 'lwm': 0.0}
