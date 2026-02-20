@@ -151,6 +151,20 @@ def init_database():
             )
         ''')
         
+        # Cell Notes table (For client evaluations)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cell_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                row_index INTEGER NOT NULL,
+                column_key TEXT NOT NULL,
+                note_content TEXT,
+                created_by TEXT,
+                updated_at TEXT,
+                UNIQUE(client_id, row_index, column_key)
+            )
+        ''')
+        
         # Daily Watermarks table - stores daily snapshots of Net Profit Complete
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS daily_watermarks (

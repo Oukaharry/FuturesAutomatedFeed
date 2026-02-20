@@ -42,6 +42,9 @@ from dashboard.database import (
     save_client_data_with_history, get_data_history, get_data_version,
     rollback_to_version, compare_versions, get_latest_version
 )
+from dashboard.notes_service import (
+    get_client_notes, save_client_note, delete_client_note
+)
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
 # Start Midnight Watermark Scheduler
@@ -3660,6 +3663,17 @@ def get_data():
         
         data = get_client_data(client_id)
         if data:
+            # Inject Visual Notes
+            if 'evaluations' in data:
+                try:
+                    notes = get_client_notes(client_id)
+                    # notes is { row_index: { col: text } }
+                    for i, ev in enumerate(data['evaluations']):
+                        if i in notes:
+                            ev['_notes'] = notes[i]
+                except Exception as e:
+                    logging.error(f"Error injecting notes: {e}")
+
             # Add historical MT5 values to hedging_review totals
             if 'statistics' in data and 'hedging_review' in data['statistics']:
                 hr = data['statistics']['hedging_review']
@@ -3689,6 +3703,47 @@ def get_data():
         "evaluations": [], "statistics": {}, "dropdown_options": {}, 
         "last_updated": "Never"
     })
+
+@app.route('/api/notes', methods=['POST'])
+@require_session
+def update_note():
+    """Update or Delete a cell note."""
+    try:
+        session_user = request.session_user
+        user_type = session_user.get('user_type')
+        user_identifier = session_user.get('user_identifier')
+        
+        # Requirement: Clients should not be able to edit notes
+        if user_type == 'client':
+            return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
+
+        data = request.json
+        client_id = data.get('client_id')
+        row_index = data.get('row_index')
+        column_key = data.get('column_key')
+        content = data.get('content')
+        
+        if not client_id or row_index is None or not column_key:
+            return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+        # Ensure user has access
+        if not can_access_client(user_type, user_identifier, client_id):
+            log_action('ACCESS_DENIED', user_type, user_identifier, get_remote_address(), f"Note access denied: {client_id}", False)
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        if content:
+            save_client_note(client_id, row_index, column_key, content, user_identifier)
+            action = 'UPDATE_NOTE'
+        else:
+            # Empty content means delete
+            delete_client_note(client_id, row_index, column_key)
+            action = 'DELETE_NOTE'
+            
+        log_action(action, user_type, user_identifier, get_remote_address(), f"Note on {client_id} row {row_index} col {column_key}", True)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logging.error(f"Error updating note: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============ Session-based Update (for Dashboard UI) ============
 
