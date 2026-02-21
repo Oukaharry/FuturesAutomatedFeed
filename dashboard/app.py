@@ -1296,18 +1296,26 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      if not is_duplicate and '_farming_counter' in best_eval and best_eval['_farming_counter'] > 0:
                          last_field = f"Hedge Day {best_eval['_farming_counter']}"
                          last_val_raw = str(best_eval.get(last_field, "")).replace('$', '').replace(',', '').strip()
-                         try:
-                             last_val_float = float(last_val_raw)
-                             if abs(last_val_float - float(session_profit)) < 0.001:
-                                 # Likely a duplicate of the last push
-                                 is_duplicate = True
-                                 is_duplicate_value = True
-                                 field_name = last_field
-                                 match_log.append(f"⚠️ Duplicate Value Match: {field_name} has matching profit ${last_val_float:.2f}. Assuming duplicate of {s_date_str}. Skipping.")
-                                 
-                                 # Backfill note for future safety? Maybe not, since we use timestamp now and don't have it for old slot easily.
-                         except:
-                             pass
+                         
+                         # Check date of last slot if available
+                         last_note = best_eval.get('_notes', {}).get(last_field, "")
+                         last_date_match = last_note.startswith(s_date_str) if last_note else False
+                         
+                         # Only consider value-duplicate if dates match OR if we have no date info
+                         # Use stricter check: If we have a date on the last slot and it's DIFFERENT, it's definitely NOT a duplicate
+                         if last_note and not last_date_match:
+                             pass # Different dates -> Different trades
+                         else:
+                             try:
+                                 last_val_float = float(last_val_raw)
+                                 if abs(last_val_float - float(session_profit)) < 0.001:
+                                     # Likely a duplicate of the last push
+                                     is_duplicate = True
+                                     is_duplicate_value = True
+                                     field_name = last_field
+                                     match_log.append(f"⚠️ Duplicate Value Match: {field_name} has matching profit ${last_val_float:.2f}. Assuming duplicate of {s_date_str}. Skipping.")
+                             except:
+                                 pass
 
                      if not is_duplicate:
                         # New Date -> New Slot
@@ -1433,14 +1441,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     
                     updates_made += 1
 
-            
-            if 'Match Log' not in best_eval:
-                 best_eval['Match Log'] = []
-            best_eval['Match Log'].append(f"Matched matched session (start {datetime.datetime.fromtimestamp(start_date_ts)}) -> {field_name}: ${float(session_profit):.2f} (Total: ${float(new_val):.2f})")
-            
-            # Add explicit cell confirmation log
-            current_row_idx = evaluations.index(best_eval) + 2
-            match_log.append(f"✅ Matched session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) -> Column: [{field_name}] | Row: {current_row_idx} | New Value: ${new_val:.2f}")
+                if 'Match Log' not in best_eval:
+                    best_eval['Match Log'] = []
+                best_eval['Match Log'].append(f"Matched matched session (start {datetime.datetime.fromtimestamp(start_date_ts)}) -> {field_name}: ${float(session_profit):.2f} (Total: ${float(new_val):.2f})")
+                
+                # Add explicit cell confirmation log
+                current_row_idx = evaluations.index(best_eval) + 2
+                match_log.append(f"✅ Matched session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) -> Column: [{field_name}] | Row: {current_row_idx} | New Value: ${new_val:.2f}")
 
             # --- AGGREGATE SUMMARY STATS ---
             try:
