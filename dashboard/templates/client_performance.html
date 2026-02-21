@@ -40,6 +40,27 @@
             font-weight: 600;
             color: #f8fafc;
         }
+        .finance-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 15; /* Above normal cells but below nav if any */
+            background-color: #0f172a; /* Solid dark background */
+        }
+        
+        .finance-table td:first-child, .finance-table th:first-child {
+            position: sticky;
+            left: 0;
+            background-color: #1e293b; /* Match table bg to cover content behind */
+            background-color: var(--card-bg); 
+            z-index: 10; /* Ensure it stays on top of scrolled content */
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1); 
+        }
+
+        .finance-table th:first-child {
+             background-color: #0f172a; /* Match header bg */
+             z-index: 25; /* Highest z-index for the top-left corner */
+        }
+
         .finance-table tr:hover {
             background-color: rgba(255, 255, 255, 0.05);
         }

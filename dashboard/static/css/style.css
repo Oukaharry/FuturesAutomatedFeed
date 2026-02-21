@@ -1077,9 +1077,18 @@ button:hover {
     border-spacing: 0;
 }
 
-/* Group Headers (Top Row) */
+/* 
+ * ----------------------------------------
+ * STICKY TABLE CONFIGURATION (Client View)
+ * ----------------------------------------
+ */
+
+/* 1. Group Headers (Top Row) - Sticky to Top */
 .wide-table thead tr:first-child th {
-    height: 40px; /* Fixed height for sticky calc */
+    position: sticky;
+    top: 0;
+    z-index: 50; /* Above body cells, below corner */
+    height: 40px; 
     padding: 8px 16px;
     font-size: 0.8rem;
     letter-spacing: 0.05em;
@@ -1087,7 +1096,41 @@ button:hover {
     color: white;
     text-shadow: 0 1px 2px rgba(0,0,0,0.15);
     border: none;
-    z-index: 20;
+}
+
+/* 2. Sub-headers (Second Row) - Sticky to Top (offset 40px) */
+.wide-table thead tr:nth-child(2) th {
+    position: sticky !important;
+    top: 40px !important; /* Matches height of first row */
+    z-index: 45; /* Below top row header, above body */
+    font-size: 0.75rem;
+    padding: 10px 14px;
+    font-weight: 600;
+    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.05);
+}
+
+/* 3. Sticky Row Numbers - Sticky to Left */
+.wide-table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 40 !important; /* Above regular cells, below headers */
+    background-color: var(--card-bg) !important;
+    border-right: 1px solid var(--border-color);
+    box-shadow: 2px 0 5px rgba(0,0,0,0.3);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* 4. Top-Left Corner (# Header) - Sticky to Both Top and Left */
+.wide-table thead tr:first-child th:first-child {
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 60 !important; /* Highest priority: Top-Left Intersection */
+    background-color: var(--card-bg) !important;
+    border-right: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
 }
 
 /* Specific Group Colors */
@@ -1110,8 +1153,6 @@ button:hover {
 
 /* Sub-headers (Second Row) - Sticky Positioning */
 .wide-table thead tr:nth-child(2) th {
-    position: sticky;
-    top: 56px; /* 40px (header) + 16px (padding) approximation, let's play safe */
     z-index: 15;
     font-size: 0.75rem;
     padding: 10px 14px;
@@ -1125,7 +1166,7 @@ button:hover {
    height ~= 19 + 32 = 51px.
    Let's set top to 52px.
 */
-.wide-table thead tr:nth-child(2) th { top: 52px; }
+/*.wide-table thead tr:nth-child(2) th { top: 52px; }*/
 
 /* Sub-header Color Themes (Updated for Dark Theme) */
 /* Eval Info (Cols 1-4) */
@@ -1157,16 +1198,81 @@ button:hover {
     backdrop-filter: blur(8px);
 }
 
-/* Sticky Corners (# and Trash) */
-.wide-table thead tr:first-child th:first-child,
-.wide-table thead tr:first-child th:nth-child(2) {
-    background: var(--card-bg) !important;
+/* Sticky Corners & Row Numbers (#) */
+/* Reset any top-sticky behavior */
+.wide-table thead tr:first-child th:first-child {
+    position: sticky;
+    left: 0;
+    top: auto; /* Allow to scroll up */
+    z-index: 60 !important; 
+    background-color: var(--card-bg) !important;
     color: var(--text-secondary);
-    z-index: 50 !important;
     border-right: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);
-    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    box-shadow: 2px 0 5px rgba(0,0,0,0.3);
 }
+
+/* Sticky Data Column (# Row Numbers in Body) */
+.wide-table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 40 !important; /* Above regular cells */
+    background-color: var(--card-bg) !important;
+    border-right: 1px solid var(--border-color);
+    box-shadow: 2px 0 5px rgba(0,0,0,0.3);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* 
+ * ----------------------------------------
+ * STICKY TABLE CONFIGURATION (Client View)
+ * ----------------------------------------
+ * User Request: "both of them should be sticky"
+ */
+
+/* 1. Group Headers (Top Row) - Sticky to Top */
+.wide-table thead tr:first-child th {
+    position: sticky;
+    top: 0;
+    z-index: 50; /* Above body cells, below corner */
+}
+
+/* 2. Sub-headers (Second Row) - Sticky to Top (offset 40px estimated) */
+.wide-table thead tr:nth-child(2) th {
+    position: sticky !important;
+    top: 40px !important;
+    z-index: 45; /* Below top header, above body */
+    box-shadow: 0 2px 4px -2px rgba(0,0,0,0.05);
+}
+
+/* 3. Sticky Corner (# Header) - Sticky to Top Left Intersection */
+.wide-table thead tr:first-child th:first-child {
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: 60 !important; /* Highest priority */
+    background-color: var(--card-bg) !important;
+}
+
+/* Optional: Sticky Trash Icon (2nd Column) - If user desires, uncomment */
+/*
+.wide-table thead tr:first-child th:nth-child(2) {
+    position: sticky;
+    left: 40px; 
+    top: 0;
+    z-index: 60 !important;
+    background: var(--card-bg) !important;
+}
+.wide-table tbody td:nth-child(2) {
+    position: sticky;
+    left: 40px;
+    z-index: 40 !important;
+    background: var(--card-bg) !important;
+}
+*/
+
+/* Removed previous incorrect block targeting both simultaneously without position */
 
 /* Column Background Persistence (Matching Headers - Dark Theme Tweaks) */
 

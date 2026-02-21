@@ -508,7 +508,7 @@ class MT5DataPusher:
                 f"{self.dashboard_url}/api/update_data",
                 json=payload,
                 headers=headers,
-                timeout=30
+                timeout=120
             )
             
             if response.status_code == 200:
@@ -1311,7 +1311,7 @@ class TraderCompanionApp:
                 f"{dashboard_url}/api/client/auth",
                 json={"email": email},
                 headers={"Content-Type": "application/json"},
-                timeout=15
+                timeout=60
             )
             
             if response.status_code == 200:
@@ -1463,7 +1463,7 @@ class TraderCompanionApp:
                 f"{dashboard_url}/api/client/push",
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=30
+                timeout=120
             )
             
             if response.status_code == 200:
@@ -1566,7 +1566,7 @@ class TraderCompanionApp:
                 f"{dashboard_url}/api/client/push",
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=30
+                timeout=120
             )
             
             self.log(f"\n📡 Server response: HTTP {response.status_code}")
@@ -1695,7 +1695,7 @@ class TraderCompanionApp:
             response = requests.get(
                 f"{dashboard_url}/api/data?client_id={client_name}",
                 cookies=self.session_cookies if hasattr(self, 'session_cookies') else {},
-                timeout=30
+                timeout=60
             )
             
             if response.status_code != 200:
@@ -1764,7 +1764,7 @@ class TraderCompanionApp:
                 f"{dashboard_url}/api/client/push",
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=30
+                timeout=120
             )
             
             if response.status_code == 200:
@@ -2076,7 +2076,7 @@ class TraderCompanionApp:
                 f"{dashboard_url}/api/client/push",
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=30
+                timeout=120
             )
             
             if response.status_code == 200:

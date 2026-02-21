@@ -234,7 +234,7 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         
         # Strict prefix check applies to partial matches below
         if prefix_mismatch:
-             logging.debug(f"[MATCH] Rejected partial match due to prefix mismatch: {target_prefix} vs {eval_account}")
+             # logging.debug(f"[MATCH] Rejected partial match due to prefix mismatch: {target_prefix} vs {eval_account}")
              continue
 
         if target_last5 and len(target_last5) >= 4:
@@ -1225,22 +1225,97 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      # YES! They are sorted by time.
                      
                      # So if we maintain a counter on the best_eval object, we can assign sequentially.
+                     # Initialize counter by PRESERVING GAPS (Append Logic)
                      if '_farming_counter' not in best_eval:
-                         best_eval['_farming_counter'] = 0
+                         max_n = 0
+                         # Scan for highest occupied Hedge Day slot
+                         for i in range(1, 60): # Check up to 60 days
+                             val = best_eval.get(f"Hedge Day {i}")
+                             if val and str(val).strip():
+                                 max_n = i
+                             # We do NOT break on empty slots.
+                             # This ensures if Day 1,2,4 are full, max_n is 4.
+                             # Next trade goes to 5.
+                         
+                         best_eval['_farming_counter'] = max_n
+
+                     # ----------------------------------------------------------------
+                     # DUPLICATE DETECTION via TIMESTAMP in NOTES
+                     # ----------------------------------------------------------------
+                     # Get session unique ID based on timestamp
+                     s_ts = session.get('start', 0)
+                     s_date_str = datetime.datetime.fromtimestamp(s_ts).strftime('%Y-%m-%d')
+                     s_time_str = datetime.datetime.fromtimestamp(s_ts).strftime('%H:%M:%S')
                      
-                     # Increment counter
-                     best_eval['_farming_counter'] += 1
-                     cnt = best_eval['_farming_counter']
-                     field_name = f"Hedge Day {cnt}"
+                     # Unique Token for this session: "2023-10-27 14:30:00"
+                     s_token = f"{s_date_str} {s_time_str}"
                      
-                     # Create a tracking key to avoid re-adding if we loop multiple times?
-                     # But we are iterating sessions once.
-                     # The only risk is if OLD data exists in these columns from previous pushes.
-                     # If we are doing a full re-push (which generates all sessions), we will overwrite HD1, HD2...
-                     # This effectively "clears" old data by overwriting it with the sorted session data.
-                     # This satisfies "avoid duplicate" because the same session (historical) always maps to the same index (e.g. 1st session -> HD1).
+                     is_duplicate = False
+                     is_duplicate_value = False  # Reset explicitly for each session
                      
-                     pass
+                     # Check if ANY "Hedge Day X" slot already has this EXACT TIMESTAMP in its note
+                     existing_notes = best_eval.get('_notes', {})
+                     for k, v in existing_notes.items():
+                         if not k.startswith("Hedge Day"): continue
+                         
+                         note_text = str(v or "").strip()
+                         
+                         # Check 1: EXACT TOKEN MATCH (Same Trade) -> SKIP
+                         if s_token in note_text:
+                             # CHECK IF CELL IS EMPTY before assuming duplicate (User Request: "push it back... do not ignore an empty cell")
+                             existing_val_str = str(best_eval.get(k, "")).replace('$', '').replace(',', '').strip()
+                             try:
+                                 existing_val_float = float(existing_val_str) if existing_val_str else 0.0
+                             except:
+                                 existing_val_float = 0.0
+
+                             if existing_val_float == 0.0:
+                                 # Cell is empty/zero -> Allow Re-Push (Treat as update to existing slot)
+                                 is_duplicate = True 
+                                 is_duplicate_value = False # Do NOT skip
+                                 field_name = k
+                                 match_log.append(f"ℹ️ EXACT TOKEN MATCH but Empty/Zero Cell: {field_name}. Repushing value ${session_profit:.2f}.")
+                             else:
+                                 is_duplicate = True
+                                 is_duplicate_value = True # Force Skip
+                                 field_name = k
+                                 match_log.append(f"ℹ️ EXACT TRADE MATCH: {field_name} note contains '{s_token}'. Skipping duplicate push.")
+                             
+                             break
+                             
+                         # Check 2: SAME DAY (Different Time) -> ACCUMULATE
+                         if note_text.startswith(s_date_str):
+                             is_duplicate = True
+                             field_name = k
+                             # Same day, different time -> Accumulate
+                             match_log.append(f"ℹ️ New Trade ({s_time_str}) on Same Day ({s_date_str}). Accumulating in {field_name}.")
+                             break
+                     
+                     # FALLBACK: If note check failed, check if LAST slot value matches EXACTLY (Heuristic for old data)
+                     # ONLY do this if we didn't find a note match above.
+                     if not is_duplicate and '_farming_counter' in best_eval and best_eval['_farming_counter'] > 0:
+                         last_field = f"Hedge Day {best_eval['_farming_counter']}"
+                         last_val_raw = str(best_eval.get(last_field, "")).replace('$', '').replace(',', '').strip()
+                         try:
+                             last_val_float = float(last_val_raw)
+                             if abs(last_val_float - float(session_profit)) < 0.001:
+                                 # Likely a duplicate of the last push
+                                 is_duplicate = True
+                                 is_duplicate_value = True
+                                 field_name = last_field
+                                 match_log.append(f"⚠️ Duplicate Value Match: {field_name} has matching profit ${last_val_float:.2f}. Assuming duplicate of {s_date_str}. Skipping.")
+                                 
+                                 # Backfill note for future safety? Maybe not, since we use timestamp now and don't have it for old slot easily.
+                         except:
+                             pass
+
+                     if not is_duplicate:
+                        # New Date -> New Slot
+                        best_eval['_farming_counter'] += 1
+                        cnt = best_eval['_farming_counter']
+                        field_name = f"Hedge Day {cnt}"
+                        
+                        # We will set the note later when we write the value
 
             
             # Update Logic: ACCUMULATE profit for this push
@@ -1289,15 +1364,76 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             if '_updated_fields' not in best_eval:
                 best_eval['_updated_fields'] = set()
             
-            if field_name not in best_eval['_updated_fields']:
-                new_val = session_profit
-                best_eval['_updated_fields'].add(field_name)
-            else:
-                new_val = current_val + session_profit
+            # IGNORE RE-PUSH OF IDENTICAL VALUE (Strict Duplicate)
+            # If we detected a duplicate based on VALUE match (in FA logic fallback), we skip.
+            # But if we detected duplicate DATE but DIFFERENT value (or just matched date), 
+            # we should ACCUMULATE as per user request ("Add new push to existing value").
             
-            # FORMAT WITH DOLLAR SIGN FOR PUSH
-            best_eval[field_name] = f"${new_val:.2f}"
-            updates_made += 1
+            should_skip = False
+            if 'is_duplicate_value' in locals() and is_duplicate_value:
+                 should_skip = True
+            
+            if should_skip:
+                updates_made += 0
+                match_log.append(f"⏩ Skipping update for {field_name} (Duplicate value detected: ${session_profit:.2f})")
+            else:
+                # NOTE: Ensure we have the exact timestamp token for the note
+                # We utilize the s_token (Date + Time) to uniquely identify trades and allow accumulation on same day.
+                note_token_val = ""
+                try: 
+                    # If this is a farming session, we have s_token from above
+                    if 's_token' in locals():
+                        note_token_val = s_token
+                    elif 's_date_str' in locals():
+                        note_token_val = s_date_str # Fallback to date only if token missing
+                    else:
+                        t_ts = session.get('start', 0)
+                        s_d = datetime.datetime.fromtimestamp(t_ts).strftime('%Y-%m-%d')
+                        s_t = datetime.datetime.fromtimestamp(t_ts).strftime('%H:%M:%S')
+                        note_token_val = f"{s_d} {s_t}"
+                except:
+                    pass
+
+                # Initialize _notes if missing
+                if '_notes' not in best_eval: best_eval['_notes'] = {}
+
+                # If this field is brand new for this request -> Set Value
+                if field_name not in best_eval['_updated_fields']:
+                    
+                    if 'is_duplicate' in locals() and is_duplicate:
+                        # Matched existing slot by Date (Accumulation mode).
+                        # New Value = Old Value + Session Profit
+                        new_val = current_val + session_profit
+                        
+                        # Append the new token to the existing note
+                        existing_note = best_eval['_notes'].get(field_name, "")
+                        if note_token_val and note_token_val not in existing_note:
+                            best_eval['_notes'][field_name] = f"{existing_note}\n{note_token_val}".strip()
+                    else:
+                        # New Slot. Overwrite (Start fresh).
+                        new_val = session_profit
+                        # Set the initial note
+                        if note_token_val:
+                            best_eval['_notes'][field_name] = note_token_val
+                    
+                    best_eval['_updated_fields'].add(field_name)
+                    best_eval[field_name] = f"${new_val:.2f}"
+                    updates_made += 1
+                    
+                else:
+                    # Already updated in this request (Multi-session day) -> Accumulate
+                    # This happens if the loop runs twice for the same eval/field in one push
+                    new_val = current_val + session_profit
+                    best_eval[field_name] = f"${new_val:.2f}"
+                    
+                    # Also append note if not present
+                    existing_note = best_eval['_notes'].get(field_name, "")
+                    if note_token_val and note_token_val not in existing_note:
+                         best_eval['_notes'][field_name] = f"{existing_note}\n{note_token_val}".strip()
+                    
+                    updates_made += 1
+
+            
             if 'Match Log' not in best_eval:
                  best_eval['Match Log'] = []
             best_eval['Match Log'].append(f"Matched matched session (start {datetime.datetime.fromtimestamp(start_date_ts)}) -> {field_name}: ${float(session_profit):.2f} (Total: ${float(new_val):.2f})")
@@ -2309,9 +2445,15 @@ def api_client_push():
         # Update evaluations with hedge results from aggregated data OR raw deals
         if evaluations:
             app.logger.info(f"🔄 Matching hedge results to evaluations...")
-            evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals)
+            # FORCE USING CLIENT-SIDE AGGREGATION ONLY: Pass raw_deals=None to prevent server-side override
+            # The client (trader_app.py) now has the correct logic for sequential farming days.
+            evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(
+                evaluations, 
+                aggregated_data=aggregated_by_comment, 
+                raw_deals=mt5_deals  # RE-ENABLE SERVER-SIDE AGGREGATION for logs
+            )
             
-            # If server-side aggregation occurred, use THAT instead of the client's.
+            # If server-side aggregation occurred (it shouldn't now), use THAT instead.
             if generated_sessions:
                 aggregated_by_comment = generated_sessions
                 app.logger.info(f"✅ Replaced client aggregation with {len(generated_sessions)} server-side sessions")
