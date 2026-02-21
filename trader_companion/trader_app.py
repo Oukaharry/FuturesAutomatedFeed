@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -713,6 +713,14 @@ class MT5DataPusher:
         # Step 3: Process each aggregated trade group
         updates_made = 0
         
+        # Sort aggregated groups by date to ensure chronological order for farming days
+        # This fixes the issue where days might be filled out of order or overwrite the same day
+        aggregated.sort(key=lambda x: str(x.get('farming_date') or ''))
+        
+        # Track farming day slots for each account to ensure sequential filling
+        # Maps account_number -> {date_str: slot_number}
+        account_farming_slots = {}
+        
         for agg in aggregated:
             account_number = agg.get('account_number', '')
             phase_code = agg.get('phase_code', '')
@@ -728,9 +736,30 @@ class MT5DataPusher:
                 match_log.append(f"⚠️ No match: {account_number}_{phase_code}{trade_number or ''} = ${net_profit:.2f}")
                 continue
             
+            # Special handling for Farming phase to ensure sequential day filling
+            forced_day_num = None
+            if phase_code == 'FA' and farming_date:
+                # Initialize slot tracker for this account if needed
+                if account_number not in account_farming_slots:
+                    account_farming_slots[account_number] = {'__next_slot': 1}
+                
+                # Check if we already assigned a slot for this date
+                date_str = str(farming_date)
+                if date_str in account_farming_slots[account_number]:
+                    forced_day_num = account_farming_slots[account_number][date_str]
+                else:
+                    # Assign next available slot
+                    slot = account_farming_slots[account_number]['__next_slot']
+                    account_farming_slots[account_number][date_str] = slot
+                    account_farming_slots[account_number]['__next_slot'] += 1
+                    forced_day_num = slot
+
             # Determine which field to update based on phase
             # Use first match to determine field name logic
-            field_name = self._get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_matches[0][0])
+            field_name = self._get_field_name_for_phase(
+                phase_code, trade_number, farming_date, evaluations, eval_matches[0][0],
+                forced_day_num=forced_day_num
+            )
             
             if not field_name:
                 match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
@@ -778,7 +807,7 @@ class MT5DataPusher:
         
         return []
     
-    def _get_field_name_for_phase(self, phase_code, trade_number, farming_date, evaluations, eval_idx):
+    def _get_field_name_for_phase(self, phase_code, trade_number, farming_date, evaluations, eval_idx, forced_day_num=None):
         """
         Determine the correct field name to update based on phase.
         
@@ -812,9 +841,13 @@ class MT5DataPusher:
                  return f"Hedge Result {trade_number}.1"
         
         elif phase_code == 'FA':
-            # Farming: Use date to determine day number
+            # Farming: Use date to determine day number (using forced sequence if available)
+            if forced_day_num:
+                return f"Hedge Day {forced_day_num}"
+                
             if farming_date:
                 # Calculate which farming day this is based on the date
+                # Legacy fallback if no forced sequence
                 day_number = self._calculate_farming_day(farming_date, evaluations, eval_idx)
                 if day_number and 1 <= day_number <= 34:
                     return f"Hedge Day {day_number}"
@@ -1094,11 +1127,7 @@ class TraderCompanionApp:
         # conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
         # conn_frame.pack(fill=tk.X, pady=(0, 8))
         
-        # Dashboard URL (Hidden but editable via config if needed, or we can expose it)
-        # User requested: "make this editable but ballerquotes by default"
-        # So we will expose it in a small frame at the bottom or top, or just use the existing hidden structure but make it visible?
-        # Let's add a "Settings" toggle or just expose it.
-        
+        # Dashboard URL (Hidden but editable via config if needed)
         # conn_frame = ttk.LabelFrame(main_frame, text="Connection Settings", padding=8)
         # conn_frame.pack(fill=tk.X, pady=(0, 8))
         
@@ -1106,8 +1135,10 @@ class TraderCompanionApp:
         self.url_entry = ttk.Entry(main_frame)
         # self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Production URL default
+        # Production URL default - BallerQuotes
+        self.url_entry.delete(0, tk.END)
         self.url_entry.insert(0, "https://www.ballerquotes.com/")
+
         
         # Identity Frame - SIMPLIFIED: Just client email (NO API KEY NEEDED)
         id_frame = ttk.LabelFrame(main_frame, text="Client Identification", padding=15)
