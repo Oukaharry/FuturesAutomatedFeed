@@ -1229,33 +1229,24 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      # YES! They are sorted by time.
                      
                      # So if we maintain a counter on the best_eval object, we can assign sequentially.
-                     # Initialize counter by scanning for the first available slot or highest index?
-                     # CHANGE: User wants to fill gaps (e.g. if Hedge Day 2 is empty, fill it).
-                     # So we should find the FIRST empty slot, OR check safely before writing.
+                     # Initialize counter by scanning for the highest occupied index.
+                     # REVERT: User confirmed they want "Highest Index" logic, not "Fill Gaps".
+                     # FIX: The issue was that empty cells (deleted data) were being treated as full.
+                     # We need to ensure we strip whitespace and check for actual content.
                      
                      if '_farming_counter' not in best_eval:
-                         # Default to 0, meaning next is 1
-                         current_max = 0
-                         
-                         # Check for the highest occupied consecutive slot?
-                         # Or just find the first empty slot to start filling from?
-                         # User issue: "skipped to place the hedge day results hedge day 2and instead placed them on hedge result 3, when hedge day 2 is empty"
-                         # This implies previous logic (max_n) saw something in 3? Or just skipped because max_n doesn't handle gaps.
-                         
-                         # NEW LOGIC: We set '_farming_counter' such that the NEXT increment (counter + 1) lands on an EMPTY slot.
-                         # We iterate to find the first gap.
-                         
-                         for i in range(1, 60):
+                         max_n = 0
+                         # Scan for highest occupied Hedge Day slot
+                         for i in range(1, 60): # Check up to 60 days
                              val = best_eval.get(f"Hedge Day {i}")
-                             if not val or not str(val).strip():
-                                 # Found empty slot at i
-                                 current_max = i - 1
-                                 break
-                             else:
-                                 # Slot is full, keep going
-                                 current_max = i
+                             # Robust check: Must be non-None, non-empty string, and not just whitespace
+                             if val and str(val).strip() and str(val).strip() != '$':
+                                 max_n = i
+                             # We do NOT break on empty slots.
+                             # This ensures if Day 1,2,4 are full, max_n is 4.
+                             # Next trade goes to 5.
                          
-                         best_eval['_farming_counter'] = current_max
+                         best_eval['_farming_counter'] = max_n
 
                      # ----------------------------------------------------------------
                      # DUPLICATE DETECTION via TIMESTAMP in NOTES
