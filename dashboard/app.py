@@ -1020,6 +1020,10 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             # Determines if we have a strict structural match up front
             matches_full_strict = (full_comment_info is not None)
 
+            # RESET Duplicate Flags for each session iteration to prevent leakage
+            is_duplicate = False
+            is_duplicate_value = False
+            
             for e in evaluations:
                 is_match = False
                 ac1 = normalize_acc(e.get('Account #', ''))
@@ -1303,9 +1307,14 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                          
                          # Only consider value-duplicate if dates match OR if we have no date info
                          # Use stricter check: If we have a date on the last slot and it's DIFFERENT, it's definitely NOT a duplicate
-                         if last_note and not last_date_match:
-                             pass # Different dates -> Different trades
-                         else:
+                         
+                         # LOGIC UPDATE: If last_note is missing (old data), value match is too aggressive for Farming strategies.
+                         # We should only skip if we are SURE it's a duplicate (i.e. dates match).
+                         # If date is missing on old slot, we'd rather duplicate than skip valid profit.
+                         # So we REQUIRE last_date_match to be True to consider it a duplicate by value.
+                         
+                         if last_note and last_date_match:
+                             # Dates match, check value
                              try:
                                  last_val_float = float(last_val_raw)
                                  if abs(last_val_float - float(session_profit)) < 0.001:
@@ -1313,9 +1322,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                                      is_duplicate = True
                                      is_duplicate_value = True
                                      field_name = last_field
-                                     match_log.append(f"⚠️ Duplicate Value Match: {field_name} has matching profit ${last_val_float:.2f}. Assuming duplicate of {s_date_str}. Skipping.")
+                                     match_log.append(f"⚠️ Duplicate Value Match with Matching Date: {field_name} has matching profit ${last_val_float:.2f}. Assuming duplicate of {s_date_str}. Skipping.")
                              except:
                                  pass
+                         elif not last_note:
+                             # If no note exists on the previous cell, we assume it's a valid previous trade.
+                             # We do NOT skip based on value alone anymore, as that causes issues with recurring fixed-size trades.
+                             pass
 
                      if not is_duplicate:
                         # New Date -> New Slot
