@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.0.7"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import tkinter as tk
-    from tkinter import ttk, messagebox, scrolledtext
+    from tkinter import ttk, messagebox, scrolledtext, simpledialog
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
@@ -1127,17 +1127,59 @@ class TraderCompanionApp:
         # conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
         # conn_frame.pack(fill=tk.X, pady=(0, 8))
         
-        # Dashboard URL (Hidden but editable via config if needed)
-        # conn_frame = ttk.LabelFrame(main_frame, text="Connection Settings", padding=8)
-        # conn_frame.pack(fill=tk.X, pady=(0, 8))
+        # Dashboard URL Selection
+        conn_frame = ttk.LabelFrame(main_frame, text="Connection Target", padding=8)
+        conn_frame.pack(fill=tk.X, pady=(0, 15))
         
-        # ttk.Label(conn_frame, text="Dashboard URL:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(conn_frame, text="Target:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.target_var = tk.StringVar()
+        
+        # Mapping for easy lookup
+        # Use lists to maintain order for Combobox
+        self.url_keys = ["BallerQuotes (Production)", "Localhost (Development)"]
+        self.url_values = {
+            "BallerQuotes (Production)": "https://www.ballerquotes.com",
+            "Localhost (Development)": "http://127.0.0.1:5001"
+        }
+        
+        self.url_selector = ttk.Combobox(conn_frame, textvariable=self.target_var, state="readonly", width=30)
+        self.url_selector['values'] = self.url_keys
+        self.url_selector.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Default to Production
+        self.url_selector.current(0)
+        
+        # Hidden entry for backward compatibility with existing code that uses self.url_entry.get()
         self.url_entry = ttk.Entry(main_frame)
-        # self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.url_entry.insert(0, self.url_values["BallerQuotes (Production)"])
+        # self.url_entry.pack() # Keep hidden but updated
         
-        # Production URL default - BallerQuotes
-        self.url_entry.delete(0, tk.END)
-        self.url_entry.insert(0, "https://www.ballerquotes.com/")
+        def on_target_change(event):
+            selection = self.target_var.get()
+            
+            if "Localhost" in selection:
+                # Require password for Localhost
+                password = simpledialog.askstring("Developer Access", "Enter password for local development:", show='*')
+                
+                if password == "ballerquotes@123":
+                    self.url_entry.delete(0, tk.END)
+                    self.url_entry.insert(0, self.url_values[selection])
+                    self.log(f"Switched to Localhost: {self.url_values[selection]}")
+                    self.status_var.set("Target: Localhost (Dev Mode)")
+                else:
+                    messagebox.showerror("Access Denied", "Incorrect password.")
+                    self.url_selector.current(0) # Revert to Prod
+                    self.url_entry.delete(0, tk.END)
+                    self.url_entry.insert(0, self.url_values["BallerQuotes (Production)"])
+            else:
+                # Production - no password needed
+                self.url_entry.delete(0, tk.END)
+                self.url_entry.insert(0, self.url_values[selection])
+                self.log(f"Switched to Production: {self.url_values[selection]}")
+                self.status_var.set("Target: Production")
+
+        self.url_selector.bind("<<ComboboxSelected>>", on_target_change)
 
         
         # Identity Frame - SIMPLIFIED: Just client email (NO API KEY NEEDED)
