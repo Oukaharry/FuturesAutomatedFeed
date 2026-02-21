@@ -738,21 +738,38 @@ class MT5DataPusher:
             
             # Special handling for Farming phase to ensure sequential day filling
             forced_day_num = None
-            if phase_code == 'FA' and farming_date:
+            if phase_code == 'FA':
                 # Initialize slot tracker for this account if needed
                 if account_number not in account_farming_slots:
                     account_farming_slots[account_number] = {'__next_slot': 1}
                 
-                # Check if we already assigned a slot for this date
-                date_str = str(farming_date)
-                if date_str in account_farming_slots[account_number]:
-                    forced_day_num = account_farming_slots[account_number][date_str]
+                # If we have a date, use it for consistency.
+                # If no date (legacy FA comment without date), we treat each aggregation as a new day?
+                # Or just lump them? Without date we can't key by date.
+                # Assuming date exists, or we use trade_number as secondary key if present.
+                if farming_date:
+                    date_str = str(farming_date)
+                    if date_str in account_farming_slots[account_number]:
+                        forced_day_num = account_farming_slots[account_number][date_str]
+                    else:
+                        # Assign next available slot
+                        slot = account_farming_slots[account_number]['__next_slot']
+                        account_farming_slots[account_number][date_str] = slot
+                        account_farming_slots[account_number]['__next_slot'] += 1
+                        forced_day_num = slot
                 else:
-                    # Assign next available slot
-                    slot = account_farming_slots[account_number]['__next_slot']
-                    account_farming_slots[account_number][date_str] = slot
-                    account_farming_slots[account_number]['__next_slot'] += 1
-                    forced_day_num = slot
+                    # No date - if trade_number is present use it as day num
+                    if trade_number and trade_number > 0:
+                        forced_day_num = trade_number
+                    else:
+                         # Fallback: Just assign next slot for this unknown group?
+                         # This might be risky if we run multiple times.
+                         # But 'FA' without date or number is rare/legacy.
+                         slot = account_farming_slots[account_number]['__next_slot']
+                         account_farming_slots[account_number]['FA_legacy'] = slot # weak key
+                         account_farming_slots[account_number]['__next_slot'] += 1
+                         forced_day_num = slot
+
 
             # Determine which field to update based on phase
             # Use first match to determine field name logic
