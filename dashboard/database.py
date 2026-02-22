@@ -262,16 +262,27 @@ def init_database():
                 print("⚠️ Skipping default admin creation (hash_password not ready)")
                 
         # Check BEF Admin
-        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'bef_admin'")
-        if not cursor.fetchone():
-            try:
-                pw_hash, salt = hash_password('bef_admin_123') 
-                now = datetime.now().isoformat()
+        try:
+            # Force update password to ensure consistency (BEFAdmin@123)
+            # This handles both "doesn't exist" and "wrong password" cases
+            cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'bef_admin'")
+            exists = cursor.fetchone()
+            
+            pw_hash, salt = hash_password('BEFAdmin@123') 
+            now = datetime.now().isoformat()
+            
+            if not exists:
                 cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
                               ('bef_admin', pw_hash, salt, now))
                 print("✅ Created default bef_admin account")
-            except NameError:
-                pass
+            else:
+                cursor.execute("UPDATE admin_passwords SET password_hash = ?, salt = ?, updated_at = ? WHERE username = 'bef_admin'",
+                              (pw_hash, salt, now))
+                print("✅ Reset bef_admin password (BEFAdmin@123)")
+
+        except (NameError, Exception) as e:
+            print(f"⚠️ Error ensuring bef_admin account: {e}")
+            pass
             
         conn.commit()
         print("Database initialized successfully")
