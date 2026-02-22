@@ -189,6 +189,29 @@ def init_database():
             )
         ''')
 
+        # Seeding Default Admins if missing
+        # Check Super Admin
+        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'super_admin'")
+        if not cursor.fetchone():
+            # Default password 'ballerquotes' (should represent secure config)
+            # In production this should be changed immediately
+            pw_hash, salt = hash_password('ballerquotes') 
+            now = datetime.now().isoformat()
+            cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
+                          ('super_admin', pw_hash, salt, now))
+            print("✅ Created default super_admin account")
+            
+        # Check BEF Admin
+        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'bef_admin'")
+        if not cursor.fetchone():
+            pw_hash, salt = hash_password('bef_admin_123') 
+            now = datetime.now().isoformat()
+            cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
+                          ('bef_admin', pw_hash, salt, now))
+            print("✅ Created default bef_admin account")
+            
+        conn.commit()
+
         # Evaluations table (New Dynamic Phase Architecture)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS evaluations (
@@ -219,6 +242,37 @@ def init_database():
             )
         ''')
         
+        # Seeding Default Admins if missing (MUST BE AFTER hash_password is defined, but init_database calls run later)
+        # Actually this works because init_database() is called at end of file.
+        
+        # Check Super Admin
+        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'super_admin'")
+        if not cursor.fetchone():
+            # Default password 'ballerquotes' (should represent secure config)
+            # In production this should be changed immediately
+            # Use local import or definition if not available
+            try:
+                pw_hash, salt = hash_password('ballerquotes') 
+                now = datetime.now().isoformat()
+                cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
+                              ('super_admin', pw_hash, salt, now))
+                print("✅ Created default super_admin account")
+            except NameError:
+                # If hash_password not defined yet (circular/scope), skip
+                print("⚠️ Skipping default admin creation (hash_password not ready)")
+                
+        # Check BEF Admin
+        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'bef_admin'")
+        if not cursor.fetchone():
+            try:
+                pw_hash, salt = hash_password('bef_admin_123') 
+                now = datetime.now().isoformat()
+                cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
+                              ('bef_admin', pw_hash, salt, now))
+                print("✅ Created default bef_admin account")
+            except NameError:
+                pass
+            
         conn.commit()
         print("Database initialized successfully")
 
