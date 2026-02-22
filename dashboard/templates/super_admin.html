@@ -439,6 +439,14 @@
                     <div style="display:flex; gap:8px; margin-bottom:8px;">
                         <select id="trader-select-client" class="form-dark"></select>
                     </div>
+                    {% if not is_bef_admin %}
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                        <select id="new-client-category" class="form-dark">
+                            <option value="Private" selected>Private</option>
+                            <option value="BEF">BEF</option>
+                        </select>
+                    </div>
+                    {% endif %}
                     <div style="display:flex;">
                         <input type="text" id="new-client-name" placeholder="Name" class="form-dark" style="border-radius: 8px 0 0 8px; border-right: none;">
                         <button onclick="addClient()" class="btn-gold" style="width:auto; padding: 0 16px; border-radius: 0 8px 8px 0; background: var(--accent-color); border: none; color: #000; font-weight: bold; cursor: pointer;">+</button>
@@ -709,8 +717,18 @@
             const emailInput = document.getElementById('new-client-email');
             const email = emailInput ? emailInput.value : '';
             
+            // Handle Category
+            let category = "BEF"; // Default (for BEF Admin)
+            const catSelect = document.getElementById('new-client-category');
+            if (catSelect) {
+                category = catSelect.value;
+            } else if (!IS_BEF_ADMIN) {
+                // Fallback for Super Admin if element missing for some reason
+                category = "Private";
+            }
+            
             if(!trader || !name) return alert('Trader and Name required');
-            apiCall('/api/admin/create_user', { username: name, user_type: 'client', parent_user: trader, email: email });
+            apiCall('/api/admin/create_user', { username: name, user_type: 'client', parent_user: trader, email: email, category: category });
         }
         
         // Modal Logic

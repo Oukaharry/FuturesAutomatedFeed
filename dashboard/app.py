@@ -3094,6 +3094,7 @@ def api_create_user():
         elif user_type == 'client':
             if not hierarchy_exists:
                 p_trader = data.get('parent_user') or parent_trader
+                category = data.get('category') or ""
                 # We need to find the admin for this trader to call add_client(admin, trader, client)
                 # Search hierarchy for the trader
                 found_admin = None
@@ -3103,7 +3104,26 @@ def api_create_user():
                             found_admin = adm
                             break
                 if found_admin and p_trader:
-                    add_client(found_admin, p_trader, username, email)
+                    add_client(found_admin, p_trader, username, email, category)
+                    
+                    # Ensure Clients Data is initialized with Category
+                    try:
+                        if not get_client_data(username):
+                             initial_data = {
+                                "identity": {
+                                    "name": username,
+                                    "email": email,
+                                    "category": category,
+                                    "profile": category,
+                                    "source": category or "Private",
+                                    "admin": found_admin,
+                                    "trader": p_trader,
+                                    "client": username
+                                }
+                            }
+                             save_client_data(username, initial_data)
+                    except Exception as ex:
+                        print(f"Error initializing client data in create_user: {ex}")
     except Exception as e:
         print(f"Hierarchy update failed: {e}")
         # Continue, as user was created in DB
