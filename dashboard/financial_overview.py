@@ -97,6 +97,10 @@ def parse_currency(value_str):
     except ValueError:
         return 0.0
 
+def clear_financial_cache():
+    """Invalidate the financial overview cache."""
+    _overview_cache.clear()
+
 @cache_result(ttl=300)
 def calculate_all_financials(profile_filter=None):
     """

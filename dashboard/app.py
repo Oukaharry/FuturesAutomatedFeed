@@ -15,7 +15,8 @@ import secrets
 import hashlib
 import re
 from datetime import datetime, timedelta
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats, clear_financial_cache
+
 
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
@@ -1961,7 +1962,13 @@ def financial_overview():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
     
-    profile_filter = request.args.get('profile', 'ALL')
+    # Restrict BEF Admin
+    user_id = session_user.get('user_identifier')
+    forced_profile = None
+    if user_id == 'bef_admin':
+        forced_profile = 'BEF'
+    
+    profile_filter = forced_profile if forced_profile else request.args.get('profile', 'ALL')
     
     # NEW: Use optimized single-pass aggregator
     all_data = calculate_all_financials(profile_filter=profile_filter)
@@ -2002,6 +2009,12 @@ def payout_history():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
 
+    # Restrict BEF Admin
+    user_id = session_user.get('user_identifier')
+    forced_profile = None
+    if user_id == 'bef_admin':
+        forced_profile = 'BEF'
+
     # Filter dates
     start_date_str = request.args.get('start_date')
     end_date_str = request.args.get('end_date')
@@ -2021,7 +2034,7 @@ def payout_history():
             pass
 
     prop_firm_filter = request.args.get('prop_firm')
-    profile_filter = request.args.get('profile', 'ALL')
+    profile_filter = forced_profile if forced_profile else request.args.get('profile', 'ALL')
     
     # We need overview data just to get the list of prop firms for the dropdown
     overview_data = calculate_propfirm_overview()
@@ -2202,18 +2215,23 @@ def get_super_admin_totals():
         return jsonify({"status": "error", "message": "Authentication required"}), 401
     
     # Check session
-    # ... (auth check logic is fine, keeping it implicitly via context if needed or re-implementing if I replace the whole function body)
-    # The snippet below replaces the body.
-    
     session_info = validate_session(session_token)
     if not session_info or session_info.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Super admin access required"}), 403
     
-    profile_filter = request.args.get('profile', 'ALL').upper()
+    # Restrict BEF Admin
+    user_id = session_info.get('user_identifier')
+    forced_profile = None
+    if user_id == 'bef_admin':
+        forced_profile = 'BEF'
+    
+    # Use forced profile if set, otherwise use query param
+    profile_filter = forced_profile if forced_profile else request.args.get('profile', 'ALL').upper()
 
     # Use the centralized financial calculation
     data = calculate_all_financials(profile_filter)
     stats = data['global_stats']
+
     overview = data['overview']
     
     # Calculate Deposits separately if not in global_stats
@@ -2291,6 +2309,11 @@ def update_client_source():
     if session_user.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
         
+    # Check for restricted admin
+    user_id = session_user.get('user_identifier')
+    if user_id == 'bef_admin':
+        return jsonify({"status": "error", "message": "Changes not allowed for this account"}), 403
+
     data = request.json
     client_id = data.get('client_id')
     source = data.get('source')
@@ -2314,6 +2337,9 @@ def update_client_source():
         if profile:
             update_client_category(profile['admin'], profile['trader'], client_id, source)
     
+        # Invalidate the cache to reflect changes immediately
+        clear_financial_cache()
+        
         log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), f"To: {source}")
         return jsonify({"status": "success"})
         
@@ -2787,13 +2813,30 @@ def api_admin_login():
     if not password:
         return jsonify({"status": "error", "message": "Password required"}), 400
     
+    # Check Super Admin
     if verify_admin_password('super_admin', password):
-        session_token = create_session('admin', 'super_admin', client_ip)
-        log_action('ADMIN_LOGIN', 'admin', 'super_admin', client_ip, 'Successful login')
+        # User Type MUST be 'super_admin' for access to super admin routes
+        session_token = create_session('super_admin', 'super_admin', client_ip)
+        log_action('ADMIN_LOGIN', 'super_admin', 'super_admin', client_ip, 'Successful login')
         
         response = jsonify({"status": "success", "redirect": "/super_admin"})
         response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
         return response
+
+    # Check BEF Admin
+    if verify_admin_password('bef_admin', password):
+        # User Type 'bef_admin' treated as restricted super_admin??
+        # If routes require 'super_admin', we must use 'super_admin' type but distinguish by identifier
+        session_token = create_session('super_admin', 'bef_admin', client_ip)
+        log_action('ADMIN_LOGIN', 'super_admin', 'bef_admin', client_ip, 'Successful login')
+        
+        response = jsonify({"status": "success", "redirect": "/super_admin"})
+        response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
+        return response
+    
+    log_action('ADMIN_LOGIN_FAILED', 'admin', 'unknown', client_ip, 'Invalid password', False)
+    return jsonify({"status": "error", "message": "Invalid password"}), 401
+
 
 @app.route('/logout')
 def logout():
@@ -3205,6 +3248,10 @@ def api_add_admin():
 @app.route('/api/delete_user', methods=['POST'])
 @require_role('super_admin')
 def api_delete_user():
+    # Restrict special admin
+    if request.session_user.get('user_identifier') == 'bef_admin':
+        return jsonify({"status": "error", "message": "Permission denied"}), 403
+
     data = request.json
     user_type = data.get('type')
     name = data.get('name')
