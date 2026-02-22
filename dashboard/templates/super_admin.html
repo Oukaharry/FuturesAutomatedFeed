@@ -453,11 +453,13 @@
                 
                 <!-- Financial Header with Filter -->
                 <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: -12px;">
+                    {% if not is_bef_admin %}
                     <div class="toggle-group" style="background: rgba(15, 23, 42, 0.6); padding: 4px; border-radius: 8px; display: inline-flex; border: 1px solid var(--border-color);">
                         <button onclick="changeProfile('ALL')" id="btn-profile-all" class="toggle-btn active" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">ALL</button>
                         <button onclick="changeProfile('BEF')" id="btn-profile-bef" class="toggle-btn" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">BEF</button>
                         <button onclick="changeProfile('PRIVATE')" id="btn-profile-private" class="toggle-btn" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">PRV</button>
                     </div>
+                    {% endif %}
                 </div>
 
                 <!-- Financial Cards -->
@@ -609,13 +611,18 @@
                 <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Email</label>
                 <input type="email" id="editUserEmail" class="form-input" placeholder="user@example.com" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
             </div>
-             <div class="form-group" style="margin-top: 15px; display:none;" id="editClientCategoryGroup">
+             <div class="form-group" style="margin-top: 15px;" {{ 'hidden' if is_bef_admin else '' }} id="editClientCategoryGroup">
                 <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Category/Profile</label>
                 <select id="editUserCategory" class="form-input" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
+                     {% if not is_bef_admin %}
                      <option value="Private">Private</option>
                      <option value="Retail">Retail</option>
                      <option value="Institutional">Institutional</option>
                      <option value="PropFirm">Prop Firm</option>
+                     <option value="BEF">BEF</option>
+                     {% else %}
+                     <option value="BEF" selected>BEF</option>
+                     {% endif %}
                 </select>
             </div>
             
@@ -632,6 +639,9 @@
     </div>
 
     <script>
+        // --- CONSTANTS ---
+        const IS_BEF_ADMIN = "{{ 'true' if is_bef_admin else 'false' }}" === "true";
+
         // --- DEBUGGER ---
         function debugLog(msg, type='info') {
             if (type === 'error') console.error(msg);
@@ -998,7 +1008,7 @@
 
         // --- Core Logic ---
         let hierarchyData = {};
-        let currentProfile = 'ALL';
+        let currentProfile = IS_BEF_ADMIN ? 'BEF' : 'ALL';
         
         // Glue code for new buttons
         function setFilter(profile) {
@@ -1011,12 +1021,17 @@
         }
         
         function changeProfile(profile) {
+            if (IS_BEF_ADMIN && profile !== 'BEF') return; // Enforce restriction
             currentProfile = profile;
             // Update UI
             document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
-            if(profile === 'ALL') document.getElementById('btn-profile-all').classList.add('active');
-            if(profile === 'BEF') document.getElementById('btn-profile-bef').classList.add('active');
-            if(profile === 'PRIVATE') document.getElementById('btn-profile-private').classList.add('active');
+            const btnAll = document.getElementById('btn-profile-all');
+            const btnBef = document.getElementById('btn-profile-bef');
+            const btnPrv = document.getElementById('btn-profile-private');
+            
+            if(profile === 'ALL' && btnAll) btnAll.classList.add('active');
+            if(profile === 'BEF' && btnBef) btnBef.classList.add('active');
+            if(profile === 'PRIVATE' && btnPrv) btnPrv.classList.add('active');
             
             // Reload Data
             loadData();

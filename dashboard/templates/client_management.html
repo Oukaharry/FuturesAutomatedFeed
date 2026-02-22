@@ -70,7 +70,9 @@
                 <tr>
                     <th>Name</th>
                     <th>Email</th>
+                    {% if not is_bef_admin %}
                     <th>Category</th>
+                    {% endif %}
                     <th>Admin</th>
                     <th>Trader</th>
                     <th>Actions</th>
@@ -104,6 +106,7 @@
                     <label>Email</label>
                     <input type="email" id="clientEmail">
                 </div>
+                {% if not is_bef_admin %}
                 <div class="form-group">
                     <label>Category</label>
                     <select id="clientCategory">
@@ -112,6 +115,9 @@
                         <option value="Private">Private</option>
                     </select>
                 </div>
+                {% else %}
+                <input type="hidden" id="clientCategory" value="BEF">
+                {% endif %}
                 <button type="submit" class="btn">Add Client</button>
             </form>
         </div>
@@ -131,6 +137,7 @@
                     <label>Client Name: <span id="editNameDisplay" style="font-weight:bold;"></span></label>
                 </div>
                 
+                {% if not is_bef_admin %}
                 <div class="form-group">
                     <label>Category (Profile)</label>
                     <select id="editCategory">
@@ -138,12 +145,17 @@
                         <option value="PRIVATE">Private</option>
                     </select>
                 </div>
+                {% else %}
+                <input type="hidden" id="editCategory" value="BEF">
+                {% endif %}
                 <button type="submit" class="btn">Save Changes</button>
             </form>
         </div>
     </div>
 
     <script>
+        const IS_BEF_ADMIN = "{{ 'true' if is_bef_admin else 'false' }}" === "true";
+
         // Load Clients
         fetch('/api/hierarchy')
             .then(res => res.json())
@@ -170,10 +182,16 @@
                         clients.forEach(client => {
                             const row = tbody.insertRow();
                             const profile = client.category || client.profile || 'PRIVATE';
+                            
+                            let categoryCell = `<td>${profile}</td>`;
+                            if (IS_BEF_ADMIN) {
+                                categoryCell = ''; // Don't render category cell for BEF admin
+                            }
+
                             row.innerHTML = `
                                 <td>${client.name}</td>
                                 <td>${client.email || ''}</td>
-                                <td>${profile}</td>
+                                ${categoryCell}
                                 <td>${adminName}</td>
                                 <td>${traderName}</td>
                                 <td>

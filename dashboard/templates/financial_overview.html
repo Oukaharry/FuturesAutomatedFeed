@@ -259,11 +259,13 @@
                 <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Consolidated report across all clients and prop firms</p>
             </div>
             <!-- Filter Section (Matches Client Performance style) -->
+            {% if not is_bef_admin %}
             <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
                 <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
                 <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
                 <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
             </div>
+            {% endif %}
         </div>
 
         

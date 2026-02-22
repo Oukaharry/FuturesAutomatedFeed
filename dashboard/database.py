@@ -473,7 +473,16 @@ def find_user_by_identifier(identifier: str) -> dict:
     Returns user info including user_type if found.
     Also checks if identifier matches super_admin.
     """
-    # Check if it's super_admin
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Check if it's super_admin or special admin in admin_passwords
+        cursor.execute('SELECT username FROM admin_passwords WHERE username = ?', (identifier,))
+        admin_row = cursor.fetchone()
+        if admin_row:
+            return {'user_type': 'super_admin', 'username': admin_row['username']}
+    
+    # Check if it's super_admin hardcoded aliases
     if identifier.lower() in ['super_admin', 'superadmin', 'admin']:
         return {'user_type': 'super_admin', 'username': 'super_admin'}
     

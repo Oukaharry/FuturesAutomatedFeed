@@ -198,11 +198,13 @@
 
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h1 style="font-size: 1.5rem; color: #f8fafc; margin: 0;">Client Performance Details</h1>
+            {% if not is_bef_admin %}
             <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
                 <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
                 <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
                 <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
             </div>
+            {% endif %}
         </div>
         
         <div style="overflow-x: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; background: #1e293b;">
@@ -218,9 +220,11 @@
                         <th style="padding: 14px 16px; font-weight: 600; color: #94a3b8; text-align: left; cursor: pointer;" onclick="sortBy('admin')">
                             Admin <span class="sort-icon" id="sort-admin"></span>
                         </th>
+                        {% if not is_bef_admin %}
                         <th style="padding: 14px 16px; font-weight: 600; color: #94a3b8; text-align: left; cursor: pointer;" onclick="sortBy('source')">
                             Source <span class="sort-icon" id="sort-source"></span>
                         </th>
+                        {% endif %}
                         <th style="padding: 14px 16px; font-weight: 600; color: #6b7280; text-align: right; cursor: pointer;" onclick="sortBy('payouts')">
                             Payouts <span class="sort-icon" id="sort-payouts"></span>
                         </th>
@@ -269,6 +273,7 @@
         let allClientStats = [];
         let currentFilter = 'All';
         let isFirstLoad = true;
+        const IS_BEF_ADMIN = "{{ 'true' if is_bef_admin else 'false' }}" === "true";
         
         // Sorting State
         let currentSortKey = 'net_profit';
@@ -424,7 +429,7 @@
                     </td>
                     <td style="padding: 14px 16px; color: #cbd5e1;">${c.trader || '-'}</td>
                     <td style="padding: 14px 16px; color: #cbd5e1;">${c.admin || '-'}</td>
-                    <td style="padding: 14px 16px;">${sourceHtml}</td>
+                    ${ !IS_BEF_ADMIN ? `<td style="padding: 14px 16px;">${sourceHtml}</td>` : '' }
                     <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.payouts)}</td>
                     <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.deposits)}</td>
                     <td style="padding: 14px 16px; text-align: right; color: #cbd5e1;">${formatCurrency(c.fees)}</td>

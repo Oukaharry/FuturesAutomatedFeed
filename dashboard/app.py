@@ -1938,9 +1938,15 @@ def index():
 @app.route('/super_admin')
 @require_session
 def super_admin():
-    if request.session_user.get('user_type') != 'super_admin':
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
         return redirect('/')
-    return render_template('super_admin.html')
+    
+    # Pass user_id to template to allow conditional UI
+    user_id = session_user.get('user_identifier', '')
+    is_bef_admin = (user_id == 'bef_admin')
+    
+    return render_template('super_admin.html', user_id=user_id, is_bef_admin=is_bef_admin)
 
 @app.route('/admin/<admin_name>')
 @require_session
@@ -1967,6 +1973,7 @@ def financial_overview():
     forced_profile = None
     if user_id == 'bef_admin':
         forced_profile = 'BEF'
+    is_bef_admin = (user_id == 'bef_admin')
     
     profile_filter = forced_profile if forced_profile else request.args.get('profile', 'ALL')
     
@@ -1987,6 +1994,7 @@ def financial_overview():
                            overview=overview_data,
                            global_stats=global_stats,
                            selected_profile=profile_filter,
+                           is_bef_admin=is_bef_admin,
                            growth_dates=growth_dates,
                            growth_values=growth_values,
                            payouts_dates=payouts_dates,
@@ -2014,6 +2022,7 @@ def payout_history():
     forced_profile = None
     if user_id == 'bef_admin':
         forced_profile = 'BEF'
+    is_bef_admin = (user_id == 'bef_admin')
 
     # Filter dates
     start_date_str = request.args.get('start_date')
@@ -2048,7 +2057,8 @@ def payout_history():
                            end_date=end_date_str,
                            selected_prop_firm=prop_firm_filter,
                            selected_profile=profile_filter,
-                           prop_firms=sorted_prop_firms)
+                           prop_firms=sorted_prop_firms,
+                           is_bef_admin=is_bef_admin)
 
 @app.route('/client_performance')
 @require_session
@@ -2056,7 +2066,9 @@ def client_performance():
     session_user = request.session_user
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
-    return render_template('client_performance.html')
+    user_id = session_user.get('user_identifier')
+    is_bef_admin = (user_id == 'bef_admin')
+    return render_template('client_performance.html', is_bef_admin=is_bef_admin)
 
 @app.route('/trader_performance')
 @require_session
@@ -2067,7 +2079,11 @@ def trader_performance():
          
     profile_filter = request.args.get('profile', 'ALL')
     traders_data = calculate_trader_stats(profile_filter=profile_filter)
-    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter)
+    
+    user_id = session_user.get('user_identifier')
+    is_bef_admin = (user_id == 'bef_admin')
+    
+    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter, is_bef_admin=is_bef_admin)
 
 
 @app.route('/trader/<trader_name>')
@@ -2120,6 +2136,54 @@ def get_filtered_hierarchy(user_type, user_identifier):
     full_hierarchy = hierarchy
     
     if user_type == 'super_admin':
+        # Special Case: BEF Admin restriction
+        if user_identifier == 'bef_admin':
+            # Filter hierarchy to ONLY show BEF clients
+            bef_hierarchy = {'admins': {}}
+            
+            for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
+                admin_copy = {'email': admin_data.get('email', ''), 'traders': {}}
+                has_bef_clients = False
+                
+                for trader_name, trader_data in admin_data.get('traders', {}).items():
+                    trader_copy = {'email': trader_data.get('email', ''), 'clients': []}
+                    
+                    clients = trader_data.get('clients', [])
+                    if isinstance(clients, dict):
+                         # Handle dict format
+                         filtered_clients = []
+                         for c_name, c_data in clients.items():
+                             cat = c_data.get('category', c_data.get('profile', 'PRIVATE')).upper()
+                             if cat == 'BEF':
+                                 c_data['name'] = c_name # Ensure name present
+                                 filtered_clients.append(c_data)
+                         
+                         if filtered_clients:
+                             trader_copy['clients'] = filtered_clients
+                             admin_copy['traders'][trader_name] = trader_copy
+                             has_bef_clients = True
+                             
+                    elif isinstance(clients, list):
+                        # Handle list format
+                        filtered_clients = []
+                        for client in clients:
+                            if isinstance(client, dict):
+                                cat = client.get('category', client.get('profile', 'PRIVATE')).upper()
+                                if cat == 'BEF':
+                                    filtered_clients.append(client)
+                            # String clients are legacy/assumed private? Or check string? 
+                            # Usually strings are just names. Assuming private if just string unless overridden.
+                        
+                        if filtered_clients:
+                            trader_copy['clients'] = filtered_clients
+                            admin_copy['traders'][trader_name] = trader_copy
+                            has_bef_clients = True
+                
+                if has_bef_clients:
+                    bef_hierarchy['admins'][admin_name] = admin_copy
+                    
+            return bef_hierarchy
+            
         return full_hierarchy
     
     if user_type == 'admin':
@@ -2907,10 +2971,13 @@ def unified_login():
         if not password:
             return jsonify({"status": "error", "message": "Password is required for Super Admin"}), 400
         
-        if verify_admin_password('super_admin', password):
-            session_token = create_session('super_admin', 'super_admin', client_ip)
-            record_login_attempt('super_admin', 'super_admin', client_ip, True)
-            log_action('LOGIN_SUCCESS', 'super_admin', 'super_admin', client_ip)
+        # Use the actual username (e.g. bef_admin) or fallback to super_admin
+        admin_username = username if username else 'super_admin'
+        
+        if verify_admin_password(admin_username, password):
+            session_token = create_session('super_admin', admin_username, client_ip)
+            record_login_attempt(admin_username, 'super_admin', client_ip, True)
+            log_action('LOGIN_SUCCESS', 'super_admin', admin_username, client_ip)
             
             max_age = 30 * 24 * 60 * 60 if remember else 86400  # 30 days or 24 hours
             response = jsonify({
@@ -2922,8 +2989,8 @@ def unified_login():
             response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Lax', max_age=max_age)
             return response
         
-        record_login_attempt('super_admin', 'super_admin', client_ip, False)
-        log_action('LOGIN_FAILED', 'super_admin', 'super_admin', client_ip, 'Invalid password', False)
+        record_login_attempt(admin_username, 'super_admin', client_ip, False)
+        log_action('LOGIN_FAILED', 'super_admin', admin_username, client_ip, 'Invalid password', False)
         return jsonify({"status": "error", "message": "Invalid password"}), 403
     
     # Handle Admin/Trader/Client login - NO PASSWORD REQUIRED (email only)
@@ -3651,9 +3718,12 @@ def api_move_trader():
 @app.route('/super_admin/clients')
 @require_session
 def client_management():
-    if request.session_user.get('user_type') != 'super_admin':
+    session_user = request.session_user
+    if session_user.get('user_type') != 'super_admin':
         return redirect('/')
-    return render_template('client_management.html')
+    user_id = session_user.get('user_identifier')
+    is_bef_admin = (user_id == 'bef_admin')
+    return render_template('client_management.html', is_bef_admin=is_bef_admin)
 
 # ============ Data API with Role-Based Access Control ============
 
