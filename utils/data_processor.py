@@ -162,10 +162,80 @@ def calculate_derived_metrics(df):
 
     return df
 
+def _fetch_gid_for_tab(sheet_key, tab_name_fragment):
+    """
+    Attempts to fetch the spreadsheet editor HTML to find the GID for a given tab name.
+    Uses regex scanning around the tab name.
+    """
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/edit"
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            return None
+            
+        content = response.text
+        
+        # Regex to find the GID (quoted digits) shortly before the tab name
+        # We look for the tab name, then scan backwards.
+        # But regex can do this in one pass:
+        # Pattern: "GID" ... (not containing "GID") ... "Tab Name"
+        
+        # We look for a pattern like: "12345", [...] "Profitability Waterlog"
+        # The intervening characters are usually JSON structure.
+        
+        # Using a relatively safe window search
+        # Find all occurrences of the tab name
+        # For each occurrence, look at the preceding ~200 chars for a GID candidate
+        import re
+        
+        # Escape the tab name for regex safety
+        safe_name = re.escape(tab_name_fragment)
+        
+        matches = [m.start() for m in re.finditer(safe_name, content)]
+        for m in matches:
+            # Look at a window before the match
+            start = max(0, m - 300)
+            window = content[start:m]
+            
+            # Find all quoted digit strings that are NOT followed by a colon (to avoid JSON keys)
+            # Pattern: "(\d+)"(?!\s*:)
+            # Note: In raw HTML of Google Sheets, the JSON is often stringified, so quotes are escaped as \"
+            # We should look for both \"123\" and "123" just in case.
+            
+            # Debugging: Print window if not found
+            # print(f"DEBUG WINDOW: {window}")
+            
+            candidates = []
+            # specific pattern for stringified JSON GID: \"12345\"
+            # structure: [integer, integer, "GID", ...
+            
+            # Simple digit extraction of reasonable length (8-10 digits usually)
+            # Filter for numbers that look like GIDs (usually > 100000)
+            
+            raw_nums = re.findall(r'(\d{8,12})', window)
+            
+            # Also try the specific quoted format
+            quoted_matches = re.findall(r'\\?"(\d+)\\?"(?!\s*:)', window)
+            
+            # Filter candidates
+            valid_gids = []
+            for num in quoted_matches:
+                 if len(num) > 5: # GIDs are usually long
+                     valid_gids.append(num)
+                     
+            if valid_gids:
+                return valid_gids[-1]
+                
+        return None
+    except Exception as e:
+        print(f"Error fetching GID for {tab_name_fragment}: {e}")
+        return None
+
 def fetch_waterlog_history(sheet_url):
     """
-    Fetches the 'Profitability Waterlog' tab data using a hardcoded GID or URL fragment logic.
-    Assumes the main sheet URL is provided, and we replace the GID with 520289647.
+    Fetches the 'Profitability Waterlog' tab data using dynamic GID discovery.
+    Falls back to hardcoded GID if dynamic fetch fails.
+    Assumes the main sheet URL is provided.
     Returns: list of dicts [{'date': 'YYYY-MM-DD', 'profit': 123.45}]
     """
     import pandas as pd
@@ -183,7 +253,16 @@ def fetch_waterlog_history(sheet_url):
         return []
         
     sheet_key = match.group(1)
-    waterlog_gid = "520289647" # Hardcoded GID provided by user
+    
+    # Attempt to find dynamic GID
+    waterlog_gid = _fetch_gid_for_tab(sheet_key, "Profitability Waterlog")
+    
+    if not waterlog_gid:
+        print("Warning: Could not find dynamic GID for 'Profitability Waterlog', trying fallback.")
+        waterlog_gid = "520289647" # Hardcoded GID fallback
+    else:
+        # print(f"Found dynamic GID for Profitability Waterlog: {waterlog_gid}")
+        pass
     
     # Construct Export URL
     csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export?format=csv&gid={waterlog_gid}"
