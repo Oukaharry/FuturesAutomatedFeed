@@ -1305,6 +1305,9 @@ def api_migrate_sheet():
             change_description=f"Imported {len(evaluations)} records from Google Sheets"
         )
         
+        # Clear financial cache to reflect changes immediately
+        clear_financial_cache()
+
         # Update Hierarchy
         add_admin(admin_id)
         add_trader(admin_id, trader_id)

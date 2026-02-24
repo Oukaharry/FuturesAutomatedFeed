@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.0.7"
+APP_VERSION = "1.0.8"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -1250,7 +1250,13 @@ class TraderCompanionApp:
         self.push_btn = ttk.Button(btn_frame, text="📤 Push Data", command=self.push_data)
         self.push_btn.pack(side=tk.LEFT, padx=5)
         
-        self.auto_btn = ttk.Button(btn_frame, text="🔄 Auto-Push", command=self.toggle_auto_push)
+        # Style for the auto-push button
+        style = ttk.Style()
+        style.configure("AutoPush.TButton", foreground="black", background="#3b82f6")  # Default blue
+        # Note: Tkinter ttk map for active state if needed, or just configure
+        style.map("AutoPush.TButton", background=[("active", "#2563eb")])
+        
+        self.auto_btn = ttk.Button(btn_frame, text="🔄 Auto-Push", command=self.toggle_auto_push, style="AutoPush.TButton")
         self.auto_btn.pack(side=tk.LEFT, padx=5)
         
         ttk.Button(btn_frame, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
@@ -1284,6 +1290,11 @@ class TraderCompanionApp:
         self.status_label = ttk.Label(main_frame, textvariable=self.status_var, style='Status.TLabel')
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
         
+        # State for smart auto-push
+        self.last_deal_ticket = 0
+        self.last_deal_count = 0
+        self.auto_push_thread = None
+
     def log(self, message, level="INFO"):
         """Add a message to the log."""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -2267,25 +2278,80 @@ class TraderCompanionApp:
         
     def toggle_auto_push(self):
         """Toggle automatic data pushing."""
+        style = ttk.Style()
         if self.auto_push_enabled:
             self.auto_push_enabled = False
-            self.auto_btn.configure(text="🔄 Start Auto-Push (5min)")
+            self.auto_btn.configure(text="🔄 Start Auto-Push")
+            style.configure("AutoPush.TButton", background="#3b82f6") # Reset
             self.log("Auto-push stopped")
         else:
             if not self.client_info:
                 messagebox.showerror("Error", "Please lookup the client first")
                 return
+            
+            # Initialize state
+            self.last_deal_count = 0
+            self.last_deal_ticket = 0
+            
             self.auto_push_enabled = True
-            self.auto_btn.configure(text="⏹ Stop Auto-Push")
-            self.log("Auto-push started (every 5 minutes)")
+            self.auto_btn.config(text="⏹ Stop Auto-Push (Smart)")
+            style.configure("AutoPush.TButton", background="lightblue") 
+
+            self.log("Smart Auto-push started (Checking for new trades...)")
             self.auto_push_thread = threading.Thread(target=self.auto_push_loop, daemon=True)
             self.auto_push_thread.start()
+
+    def check_and_push_update(self):
+        """Check if new trades exist and push update if so."""
+        if not self.auto_push_enabled: return
+        
+        try:
+            # Silent check to avoid spamming log
+            # Use pusher to get deals (consistent with push_data)
+            deals = self.pusher.get_deals(days=30)
             
+            if not deals:
+                return
+
+            current_count = len(deals)
+            last_deal = deals[-1]
+            current_ticket = last_deal.get('ticket')
+            
+            # Logic: If count changed OR last ticket changed
+            # Also push immediately if this is the first check (last_deal_count == 0)
+            if self.last_deal_count == 0:
+                 self.last_deal_count = current_count
+                 self.last_deal_ticket = current_ticket
+                 self.log(f"Auto-push active. Initial scan: {current_count} deals.")
+                 # Don't push immediately on toggle unless needed? 
+                 # Usually users toggle it ON to verify it works, so let's push once.
+                 self.push_data()
+                 return
+
+            if current_count > self.last_deal_count or current_ticket != self.last_deal_ticket:
+                self.log(f"⚡ New trade detected! (Ticket: {current_ticket}) Pushing update...")
+                
+                # Update state
+                self.last_deal_count = current_count
+                self.last_deal_ticket = current_ticket
+                
+                # Perform the push
+                self.push_data()
+            else:
+                # No change
+                pass
+                
+        except Exception as e:
+            print(f"Auto-push check error: {e}")
+
     def auto_push_loop(self):
-        """Background loop for auto-pushing."""
+        """Background loop for smart auto-pushing."""
         while self.auto_push_enabled:
-            self.root.after(0, self.push_data)
-            for _ in range(300):  # 5 minutes in seconds
+            # Schedule check on main thread
+            self.root.after(0, self.check_and_push_update)
+            
+            # Check frequently (every 10s)
+            for _ in range(10):
                 if not self.auto_push_enabled:
                     break
                 time.sleep(1)

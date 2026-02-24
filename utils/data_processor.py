@@ -443,19 +443,37 @@ def fetch_evaluations(sheet_url):
     
     # Find the row that contains "Prop Firm" in the first few columns
     header_idx = -1
+    found_via = None
+    
     for i, row in df.head(10).iterrows():
-        # Check first 5 columns for "Prop Firm"
-        if row.astype(str).str.contains('Prop Firm', case=False, na=False).any():
+        # Check first columns for "Prop Firm"
+        row_str = row.astype(str)
+        if row_str.str.contains('Prop Firm', case=False, na=False).any():
             header_idx = i
+            found_via = 'Prop Firm'
+            break
+        # Fallback: Check for "Account Size" (common alternative if Prop Firm header is missing/empty)
+        elif row_str.str.contains('Account Size', case=False, na=False).any():
+            header_idx = i
+            found_via = 'Account Size'
             break
     
     if header_idx != -1:
         # Reload with correct header
+        print(f"DEBUG: Found header row at index {header_idx} via '{found_via}'")
         df = pd.read_csv(StringIO(response.text), header=header_idx)
         
         # Clean up columns (remove unnamed, strip whitespace)
+        # If found via Account Size but Prop Firm is missing (common with empty first col header), rename index 0
         df.columns = [str(c).strip() for c in df.columns]
         
+        if found_via == 'Account Size' and 'Prop Firm' not in df.columns:
+            # Assuming first column is the Prop Firm column if it's unnamed
+            # Check if first column is likely unnamed
+            if df.columns[0].startswith('Unnamed:') or df.columns[0] == 'nan':
+                print("DEBUG: Renaming first column to 'Prop Firm'")
+                df.rename(columns={df.columns[0]: 'Prop Firm'}, inplace=True)
+
         # Define allowed columns based on the dashboard screenshot/template
         allowed_columns = [
             # Evaluation Info

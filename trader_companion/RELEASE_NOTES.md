@@ -1,5 +1,18 @@
 # MT5 Trader Companion - Release Notes
 
+## Version 1.0.8 (2026-02-23)
+
+### New Features
+- **Smart Auto-Push**: The auto-push system now intelligently polls MT5 deal history every 10 seconds but *only* transmits data if a new trade is detected.
+- **Active State Indicator**: The Auto-Push button now changes color to Light Blue/Green when monitoring is active.
+- **Bandwidth Optimization**: Silent polling reduces unnecessary API calls when no trading activity occurs.
+
+### Changes
+- Updated protocol for consistent communication with backend.
+- Minor stability improvements in data parsing.
+
+## Version 1.0.7 (2026-02-15)
+
 ## Version 1.0.1 (2026-02-02)
 
 ### Overview
