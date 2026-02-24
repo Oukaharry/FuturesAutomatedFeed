@@ -2944,9 +2944,9 @@
 
             if (type === 'Status' || type === 'Status P1') {
                 const v = (value || '').toLowerCase();
-                if (v.includes('active') || v.includes('progress') || v.includes('pass') || v.includes('funded')) colorStyle = "color: #27ae60;"; // Greenish
+                if (v.includes('active') || v.includes('pass') || v.includes('funded')) colorStyle = "color: #27ae60;"; // Greenish
                 else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) colorStyle = "color: #c0392b;"; // Red
-                else if (v.includes('tp') || v.includes('payout')) colorStyle = "color: #f39c12;"; // Orange
+                else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) colorStyle = "color: #f39c12;"; // Orange
                 else if (v.includes('complete')) colorStyle = "color: #8e44ad;"; // Purple
                 else if (v.includes('not started') || v.includes('ready')) colorStyle = "color: #3b82f6;"; // Blue
             } else if (type === 'Prop Firm') {
@@ -2975,11 +2975,11 @@
                 } else if (type === 'Status' || type === 'Status P1') {
                     // Apply color coding to Status dropdown items
                     const v = (opt || '').toLowerCase();
-                    if (v.includes('active') || v.includes('progress') || v.includes('pass') || v.includes('funded')) {
+                    if (v.includes('active') || v.includes('pass') || v.includes('funded')) {
                         itemStyle = "color: #27ae60; font-weight: 500;"; // Greenish
                     } else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) {
                         itemStyle = "color: #c0392b; font-weight: 500;"; // Red
-                    } else if (v.includes('tp') || v.includes('payout')) {
+                    } else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) {
                         itemStyle = "color: #f39c12; font-weight: 500;"; // Orange
                     } else if (v.includes('complete')) {
                         itemStyle = "color: #8e44ad; font-weight: 500;"; // Purple
@@ -3065,13 +3065,48 @@
                         if (key.includes('Status')) {
                             const v = value.toLowerCase();
                             let color = "";
-                            if (v.includes('active') || v.includes('progress') || v.includes('pass') || v.includes('funded')) color = "#27ae60";
-                            else if (v.includes('fail') || v.includes('breach')) color = "#c0392b";
-                            else if (v.includes('tp') || v.includes('payout')) color = "#f39c12";
+                            if (v.includes('active') || v.includes('pass') || v.includes('funded')) color = "#27ae60";
+                            else if (v.includes('fail') || v.includes('breach') || v.includes('closed') || v.includes('sl')) color = "#c0392b";
+                            else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) color = "#f39c12";
                             else if (v.includes('complete')) color = "#8e44ad";
                             else if (v.includes('not started') || v.includes('ready')) color = "#3b82f6"; // Blue
                             
                             activeDropdownTrigger.style.color = color;
+                            
+                            // --- Update Row Background Immediately ---
+                            const row = activeDropdownTrigger.closest('tr');
+                            if (row) {
+                                // Remove old classes
+                                row.classList.remove('row-pass', 'row-fail', 'row-tp', 'row-complete', 'row-not-started', 'row-deleted');
+                                
+                                // Add new class based on logic
+                                // Note: This simplistic check might not cover the dual-status logic fully (Wait, do we need to check the OTHER status too?)
+                                // The initial render checks both s1 (Status P1) and s2 (Status).
+                                // Ideally we should read the OTHER status from the row to re-evaluate the full logic.
+                                // Let's try to do that.
+                                
+                                const getRowVal = (k) => {
+                                    // Find cell by column index? No, too hard with dynamic columns.
+                                    // But we know 'Status P1' is arguably cell index... no, sticky columns complicate.
+                                    // Better to just apply the class for THIS status, assuming it dominates?
+                                    // Or try to find the other value.
+                                    // Actually, let's just apply the dominant class for the selected status.
+                                    // If we switch to "Fail", it should be red. If "Pass", green.
+                                    // The only complex case is if one is Fail and we switch the other to Pass, it should stay Fail.
+                                    // But we can't easily see the other value without parsing the specific cell.
+                                    // Let's implement a 'safe enough' version that just applies the class associated with the NEW value.
+                                    
+                                    // Re-evaluating just based on the new value is usually fine for immediate feedback.
+                                    if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) row.classList.add('row-fail');
+                                    else if (v.includes('complete')) row.classList.add('row-complete');
+                                    else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) row.classList.add('row-tp');
+                                    else if (v.includes('not started') || v.includes('ready')) row.classList.add('row-not-started');
+                                    else if (v.includes('delete')) row.classList.add('row-deleted');
+                                    else if (v.includes('pass') || v.includes('active') || v.includes('funded')) row.classList.add('row-pass');
+                                }
+                                getRowVal();
+                            }
+                            // ----------------------------------------
                         } 
                         // Update style if Prop Firm
                         else if (key === 'Prop Firm') {
