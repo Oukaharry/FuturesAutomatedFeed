@@ -2932,6 +2932,18 @@
                         // Inherit the pill style directly
                         itemStyle = pillStyle + " box-shadow: 0 1px 3px rgba(0,0,0,0.2);";
                     }
+                } else if (type === 'Status' || type === 'Status P1') {
+                    // Apply color coding to Status dropdown items
+                    const v = (opt || '').toLowerCase();
+                    if (v.includes('active') || v.includes('progress') || v.includes('pass') || v.includes('funded')) {
+                        itemStyle = "color: #27ae60; font-weight: 500;"; // Greenish
+                    } else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) {
+                        itemStyle = "color: #c0392b; font-weight: 500;"; // Red
+                    } else if (v.includes('tp') || v.includes('payout')) {
+                        itemStyle = "color: #f39c12; font-weight: 500;"; // Orange
+                    } else if (v.includes('complete')) {
+                        itemStyle = "color: #8e44ad; font-weight: 500;"; // Purple
+                    }
                 }
                 return `<div class="dropdown-item" data-val="${opt}" data-idx="${index}" data-k="${key}"><span style="${itemStyle}">${opt}</span></div>`;
             }).join('');
