@@ -1147,26 +1147,48 @@
     </div>
 
     <style>
-        .note-modal-overlay {
-            display: none; 
-            position: fixed; 
-            top: 0; left: 0; 
-            width: 100vw; height: 100vh; 
-            background: rgba(0,0,0,0.6); 
-            z-index: 20000; 
-            justify-content: center; 
-            align-items: center;
-            backdrop-filter: blur(2px);
+        .table-container thead th {
+             position: sticky;
+             top: 0;
+             /* background: #1e293b; Remove fixed background */
+             background: var(--card-bg, #1e293b); /* Use variable */
+             z-index: 20;
+             /* ... existing styles ... */
         }
-        .note-modal-content {
-            background: #1e293b; 
-            padding: 24px; 
-            border-radius: 12px; 
-            width: 90%; max-width: 500px; 
-            border: 1px solid rgba(255,255,255,0.2); 
-            box-shadow: 0 0 50px rgba(0,0,0,0.8); 
-            z-index: 20001; 
-            pointer-events: auto;
+        
+        /* Row Status Color Overrides */
+        tr.row-fail td {
+            background-color: rgba(220, 38, 38, 0.15) !important; /* Red 600 with opacity */
+            box-shadow: inset 3px 0 0 0 #dc2626; /* Left border indicator */
+        }
+        tr.row-fail td:nth-child(1), tr.row-fail td:nth-child(2) {
+             /* Sticky columns need solid background to hide scroll content */
+             /* We mix the base color with the red tint */
+             background-color: #2b1d1d !important; /* Dark Red-ish Slate */
+        }
+
+        tr.row-pass td {
+            background-color: rgba(22, 163, 74, 0.15) !important; /* Green 600 with opacity */
+            box-shadow: inset 3px 0 0 0 #16a34a;
+        }
+        tr.row-pass td:nth-child(1), tr.row-pass td:nth-child(2) {
+             background-color: #1a2e23 !important; /* Dark Green-ish Slate */
+        }
+
+        tr.row-tp td {
+            background-color: rgba(234, 179, 8, 0.15) !important; /* Yellow 500 with opacity */
+            box-shadow: inset 3px 0 0 0 #eab308;
+        }
+        tr.row-tp td:nth-child(1), tr.row-tp td:nth-child(2) {
+             background-color: #2e2a1d !important; /* Dark Gold-ish Slate */
+        }
+        
+        tr.row-deleted td {
+            background-color: rgba(148, 163, 184, 0.1) !important; /* Slate 400 */
+            color: #64748b !important;
+        }
+        tr.row-deleted td:nth-child(1), tr.row-deleted td:nth-child(2) {
+             background-color: #1e293b !important;
         }
     </style>
 
@@ -1777,11 +1799,32 @@
                 // Render ALL rows at once
                 const fragment = document.createDocumentFragment();
                 
+
                 rowsToRender.forEach(({ item: ev, originalIndex: index, rowNum: currentRowNum }) => {
                     const row = document.createElement('tr');
                     const getVal = (key) => ev[key] || '';
                     
-                    // Helper to add note attributes
+                    // --- Status Row Styling ---
+                    const s1 = (getVal('Status P1') || '').toString().toLowerCase();
+                    const s2 = (getVal('Status') || '').toString().toLowerCase();
+
+                    if (s1.includes('fail') || s1.includes('breach') || s1.includes('sl') ||
+                        s2.includes('fail') || s2.includes('breach') || s2.includes('sl')) {
+                        row.classList.add('row-fail');
+                    } else if (s2.includes('tp') || s2.includes('payout')) {
+                        row.classList.add('row-tp');
+                    } else if (s2.includes('delete')) {
+                        row.classList.add('row-deleted');
+                    } else if (s2.includes('pass') || s2.includes('active') || s2.includes('funded')) {
+                         row.classList.add('row-pass');
+                    } else if (s1.includes('pass')) {
+                         // Passed Phase 1
+                         row.classList.add('row-pass');
+                    }
+                    // For explicitly "In Progress", we keep default or add subtle tint if requested.
+                    // --------------------------
+
+                    // Helper to adding note attributes
                     const addNoteAttrs = (key) => {
                        const note = ev._notes && ev._notes[key] ? ev._notes[key] : '';
                        return note ? `data-has-note="true" title="${note}"` : '';
