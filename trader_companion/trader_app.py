@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.0.8"
+APP_VERSION = "1.0.9"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -1157,7 +1157,8 @@ class TraderCompanionApp:
         self.url_keys = ["BallerQuotes (Production)", "Localhost (Development)"]
         self.url_values = {
             "BallerQuotes (Production)": "https://www.ballerquotes.com",
-            "Localhost (Development)": "http://127.0.0.1:5001"
+            # Updated to 5002 to avoid port conflict
+            "Localhost (Development)": "http://127.0.0.1:5002"
         }
         
         self.url_selector = ttk.Combobox(conn_frame, textvariable=self.target_var, state="readonly", width=30)
@@ -2148,7 +2149,12 @@ class TraderCompanionApp:
             # Step 1: Fetch and calculate locally first
             from utils.data_processor import fetch_evaluations, calculate_statistics
             
-            evaluations = fetch_evaluations(sheet_url)
+            res = fetch_evaluations(sheet_url)
+            if isinstance(res, tuple):
+                evaluations, _ = res
+            else:
+                evaluations = res
+                
             if not evaluations:
                 self.log("❌ Could not fetch data from sheet. Make sure it's public.", "ERROR")
                 messagebox.showerror("Error", "Could not fetch data from sheet. Make sure it's public.")

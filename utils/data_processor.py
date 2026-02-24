@@ -1,10 +1,24 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, date, time
 import pandas as pd
 import requests
 from io import StringIO
+import io
 import math
 import re
+try:
+    import openpyxl
+    OPENPYXL_AVAILABLE = True
+except ImportError:
+    OPENPYXL_AVAILABLE = False
+
+if not OPENPYXL_AVAILABLE:
+    # Try once more just in case environment changed (e.g. pip install)
+    try:
+        import openpyxl
+        OPENPYXL_AVAILABLE = True
+    except ImportError:
+        pass
 
 def clean_float(val):
     """
@@ -58,6 +72,7 @@ def normalize_account_size(value):
 def clean_data_structure(data):
     """
     Recursively cleans a data structure (dict or list) to replace NaN/Inf with None.
+    Also converts datetime objects to ISO format strings for JSON compatibility.
     """
     if isinstance(data, dict):
         return {k: clean_data_structure(v) for k, v in data.items()}
@@ -67,6 +82,8 @@ def clean_data_structure(data):
         if math.isnan(data) or math.isinf(data):
             return None
         return data
+    elif hasattr(data, 'isoformat'):
+        return data.isoformat()
     return data
 
 def calculate_derived_metrics(df):
@@ -345,9 +362,10 @@ def fetch_evaluations(sheet_url):
     Fetches evaluation data from a public Google Sheet CSV export.
     Finds the header row dynamically by looking for 'Prop Firm'.
     Also handles proper gid (Sheet ID) extraction from URL fragments.
+    Fetches CSV (values) and XLSX (comments) in parallel for performance.
     """
-    # Ensure we preserve the Sheet ID (gid) if present in fragment or query
     import urllib.parse
+    import concurrent.futures
     
     # Clean the URL
     sheet_url = sheet_url.strip()
@@ -355,21 +373,18 @@ def fetch_evaluations(sheet_url):
     # Check if it's a valid Google Sheets URL
     if 'docs.google.com/spreadsheets' not in sheet_url:
         print("Invalid Google Sheets URL")
-        return []
+        return [], {}
 
     # Parse URL
     parsed = urllib.parse.urlparse(sheet_url)
 
     # Extract Spreadsheet Key
-    # Path usually: /spreadsheets/d/{KEY}/edit...
-    path_parts = parsed.path.split('/')
     try:
+        path_parts = parsed.path.split('/')
         if 'd' in path_parts:
             key_idx = path_parts.index('d')
             sheet_key = path_parts[key_idx + 1]
         else:
-            # Maybe it's not structured with /d/ but just has the key? Unlikely for standard URLs but possible.
-            # Let's fallback to regex if path split fails
             match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_url)
             if match:
                 sheet_key = match.group(1)
@@ -378,148 +393,155 @@ def fetch_evaluations(sheet_url):
     except (ValueError, IndexError):
         print("Could not extract sheet key")
         # Try raw replace if parsing fails
-        csv_url = sheet_url.replace('/edit?usp=sharing', '/export?format=csv').replace('/edit', '/export?format=csv')
-        sheet_key = None # Fallback
-        gid = None
-        
-        print(f"DEBUG: Fetching CSV from: {csv_url}")
-    else:
-        # Extract GID (Sheet ID)
-        gid = None
-        
-        # Check query parameters (gid or lid)
-        query_params = urllib.parse.parse_qs(parsed.query)
-        if 'gid' in query_params:
-            gid = query_params['gid'][0]
-        
-        # Check fragment (often #gid=12345 in browser URL bar)
-        if not gid and parsed.fragment:
-            # Fragment string is like "gid=12345&range=A1" or just "gid=12345"
-            try:
-                # Handle raw query string in fragment
-                frag_str = parsed.fragment
-                if '?' in frag_str:
-                    frag_str = frag_str.split('?')[-1]
-                
-                frag_params = urllib.parse.parse_qs(frag_str)
-                if 'gid' in frag_params:
-                    gid = frag_params['gid'][0]
-            except:
-                pass
+        # Fallback to single threaded CSV-only fetch if key extraction fails
+        return [], {}
 
-        # Construct clean export URL
+    # Extract GID (Sheet ID)
+    gid = None
+    query_params = urllib.parse.parse_qs(parsed.query)
+    if 'gid' in query_params:
+        gid = query_params['gid'][0]
+    
+    if not gid and parsed.fragment:
+        try:
+            frag_str = parsed.fragment
+            if '?' in frag_str: frag_str = frag_str.split('?')[-1]
+            frag_params = urllib.parse.parse_qs(frag_str)
+            if 'gid' in frag_params: gid = frag_params['gid'][0]
+        except:
+            pass
+
+    # --- Helper Functions for Parallel Execution ---
+
+    def _fetch_xlsx_comments():
+        notes = {}
+        global OPENPYXL_AVAILABLE
+        if not OPENPYXL_AVAILABLE:
+            return notes
+
+        try:
+            base_url_xlsx = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export"
+            params_xlsx = {'format': 'xlsx'}
+            if gid: params_xlsx['gid'] = gid
+            
+            xlsx_url = base_url_xlsx + "?" + urllib.parse.urlencode(params_xlsx)
+            # print(f"DEBUG: Fetching XLSX for comments from: {xlsx_url}")
+            
+            resp = requests.get(xlsx_url, timeout=45)
+            if resp.status_code == 200:
+                wb = openpyxl.load_workbook(filename=io.BytesIO(resp.content), data_only=True)
+                ws = wb.active
+                
+                header_idx = -1 
+                col_map = {}
+                
+                # Scan first 20 rows
+                for r_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=20, values_only=False)):
+                    row_vals = [str(c.value).strip() if c.value else '' for c in row]
+                    if any('Prop Firm' in str(v) for v in row_vals):
+                        header_idx = r_idx
+                        col_map = {idx: str(h).strip() for idx, h in enumerate(row_vals) if h}
+                        break
+                    elif any('Account Size' in str(v) for v in row_vals):
+                        header_idx = r_idx
+                        col_map = {idx: str(h).strip() for idx, h in enumerate(row_vals) if h}
+                        if 0 in col_map and not col_map[0]: col_map[0] = 'Prop Firm'
+                        break
+                
+                if header_idx != -1:
+                    data_row_counter = 0
+                    for row_cells in ws.iter_rows(min_row=header_idx+2, values_only=False):
+                        # Determine if row is valid (Prop Firm check)
+                        is_valid = False
+                        for c_idx, cell in enumerate(row_cells):
+                            if c_idx in col_map and col_map[c_idx] == 'Prop Firm':
+                                if cell.value and str(cell.value).strip():
+                                    is_valid = True
+                                break
+                        
+                        if is_valid:
+                            for c_idx, cell in enumerate(row_cells):
+                                if c_idx in col_map and cell.comment:
+                                    c_name = col_map[c_idx]
+                                    if data_row_counter not in notes: notes[data_row_counter] = {}
+                                    notes[data_row_counter][c_name] = cell.comment.text.strip()
+                            data_row_counter += 1
+            return notes
+        except Exception as e:
+            print(f"XLSX fetch failed (ignoring): {e}")
+            return notes
+
+    def _fetch_csv_data():
         base_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export"
         params = {'format': 'csv'}
-        if gid:
-            params['gid'] = gid
-            
+        if gid: params['gid'] = gid
         csv_url = base_url + "?" + urllib.parse.urlencode(params)
+        # print(f"DEBUG: Fetching CSV from: {csv_url}")
 
-        print(f"DEBUG: Fetching CSV from: {csv_url}")
-
-    try:
-        response = requests.get(csv_url, timeout=30)
-        response.raise_for_status()
-        
-        # Check if we received HTML (login page or error) instead of CSV
-        if '<html' in response.text.lower() or '<!doctype html' in response.text.lower():
-            print("Received HTML content. The sheet might not be public or the link is incorrect.")
-            return []
+        try:
+            response = requests.get(csv_url, timeout=30)
+            if response.status_code != 200: return []
+            if '<html' in response.text.lower(): return []
             
-    except Exception as e:
-        print(f"Error fetching sheet: {e}")
-        # Return empty list instead of raising to allow graceful handling in caller
-        print(f"   URL used: {csv_url}")
-        return []
-
-    
-    # Read without header first to find the correct row
-
-    try:
-        df = pd.read_csv(StringIO(response.text), header=None)
-    except Exception as e:
-        print(f"Error parsing CSV: {e}")
-        raise ValueError(f"Could not parse sheet content (invalid CSV): {str(e)}")
-    
-    # Find the row that contains "Prop Firm" in the first few columns
-    header_idx = -1
-    found_via = None
-    
-    for i, row in df.head(10).iterrows():
-        # Check first columns for "Prop Firm"
-        row_str = row.astype(str)
-        if row_str.str.contains('Prop Firm', case=False, na=False).any():
-            header_idx = i
-            found_via = 'Prop Firm'
-            break
-        # Fallback: Check for "Account Size" (common alternative if Prop Firm header is missing/empty)
-        elif row_str.str.contains('Account Size', case=False, na=False).any():
-            header_idx = i
-            found_via = 'Account Size'
-            break
-    
-    if header_idx != -1:
-        # Reload with correct header
-        print(f"DEBUG: Found header row at index {header_idx} via '{found_via}'")
-        df = pd.read_csv(StringIO(response.text), header=header_idx)
-        
-        # Clean up columns (remove unnamed, strip whitespace)
-        # If found via Account Size but Prop Firm is missing (common with empty first col header), rename index 0
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        if found_via == 'Account Size' and 'Prop Firm' not in df.columns:
-            # Assuming first column is the Prop Firm column if it's unnamed
-            # Check if first column is likely unnamed
-            if df.columns[0].startswith('Unnamed:') or df.columns[0] == 'nan':
-                print("DEBUG: Renaming first column to 'Prop Firm'")
-                df.rename(columns={df.columns[0]: 'Prop Firm'}, inplace=True)
-
-        # Define allowed columns based on the dashboard screenshot/template
-        allowed_columns = [
-            # Evaluation Info
-            'Prop Firm', 'Account Size', 'Date Purchased', 'Fee',
+            df = pd.read_csv(StringIO(response.text), header=None)
             
-            # Evaluation Phase
-            'Date Started', 'Date Ended', 'Status P1', 'Account #',
-            'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
+            header_idx = -1
+            found_via = None
+            for i, row in df.head(10).iterrows():
+                row_str = row.astype(str)
+                if row_str.str.contains('Prop Firm', case=False, na=False).any():
+                    header_idx = i; found_via = 'Prop Firm'
+                    break
+                elif row_str.str.contains('Account Size', case=False, na=False).any():
+                    header_idx = i; found_via = 'Account Size'
+                    break
             
-            # Funded Phase (duplicates get .1 suffix)
-            'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
-            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
-            'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
-            'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
-            
-            # Farming Phase
-            'Farming Net'
-        ]
-        
-        # Add Prop Day / Hedge Day 1-34 (sheet has 34 farming days)
-        for i in range(1, 35):
-            allowed_columns.append(f'Prop Day {i}')
-            allowed_columns.append(f'Hedge Day {i}')
-            
-        # Filter to keep only allowed columns that exist in the dataframe
-        existing_columns = [c for c in df.columns if c in allowed_columns]
-        df = df[existing_columns]
-
-        # Filter valid rows (where Prop Firm is not empty)
-        if 'Prop Firm' in df.columns:
-            df = df[df['Prop Firm'].notna()]
-            
-            # Apply derived metrics calculations
-            df = calculate_derived_metrics(df)
-            
-            # Normalize Account Size values to standard format
-            if 'Account Size' in df.columns:
-                df['Account Size'] = df['Account Size'].apply(normalize_account_size)
+            if header_idx != -1:
+                df = pd.read_csv(StringIO(response.text), header=header_idx)
+                cleaned_cols = [str(c).strip() for c in df.columns]
                 
-            # Convert to list of dicts and clean recursively
-            raw_data = df.to_dict(orient='records')
-            return clean_data_structure(raw_data)
-            
-        return []
+                if found_via == 'Account Size' and 'Prop Firm' not in cleaned_cols:
+                    if not cleaned_cols[0] or cleaned_cols[0].lower() == 'nan' or cleaned_cols[0].startswith('Unnamed:'):
+                        cleaned_cols[0] = 'Prop Firm'
+                df.columns = cleaned_cols
+                
+                allowed_columns = [
+                    'Prop Firm', 'Account Size', 'Date Purchased', 'Fee',
+                    'Date Started', 'Date Ended', 'Status P1', 'Account #',
+                    'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
+                    'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
+                    'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
+                    'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
+                    'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
+                    'Farming Net'
+                ]
+                for i in range(1, 35):
+                    allowed_columns.append(f'Prop Day {i}')
+                    allowed_columns.append(f'Hedge Day {i}')
+                
+                existing_columns = [c for c in df.columns if c in allowed_columns]
+                df = df[existing_columns]
+                
+                if 'Prop Firm' in df.columns:
+                    df = df[df['Prop Firm'].notna()]
+                    df = calculate_derived_metrics(df)
+                    if 'Account Size' in df.columns:
+                        df['Account Size'] = df['Account Size'].apply(normalize_account_size)
+                    return clean_data_structure(df.to_dict(orient='records'))
+            return []
+        except Exception as e:
+            print(f"CSV fetch failed: {e}")
+            return []
+
+    # --- Execute Parallel Fetch ---
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future_xlsx = executor.submit(_fetch_xlsx_comments)
+        future_csv = executor.submit(_fetch_csv_data)
         
-    return []
+        xlsx_notes = future_xlsx.result()
+        raw_data = future_csv.result()
+
+    return raw_data, xlsx_notes
 
 def parse_currency(val):
     """

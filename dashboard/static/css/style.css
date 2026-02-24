@@ -1303,13 +1303,20 @@ button:hover {
     background-color: rgba(124, 45, 18, 0.2) !important;
 }
 
-/* Farming Phase (Cols 38+) - Very Light Purple */
+/* Farming Phase (Cols 38+) - Deep Luxury Purple */
 .wide-table tbody td:nth-child(n+38) {
-    background-color: #faf5ff;
-    border-right: 1px solid rgba(139, 92, 246, 0.05);
+    background-color: rgba(59, 7, 100, 0.25) !important; /* Force uniform color */
+    border-right: 1px solid rgba(139, 92, 246, 0.1);
+    color: var(--text-primary);
 }
+/* Disable alternating row brightness filter for these columns to keep them uniform */
+.wide-table tbody tr:nth-child(even) td:nth-child(n+38) {
+    filter: none !important;
+    background-color: rgba(59, 7, 100, 0.25) !important;
+}
+
 .wide-table tbody tr:hover td:nth-child(n+38) {
-    background-color: #f3e8ff !important;
+    background-color: rgba(59, 7, 100, 0.4) !important;
 }
 
 /* Override alternating row colors to respect column themes */

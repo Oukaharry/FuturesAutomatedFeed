@@ -2703,6 +2703,13 @@ def api_migrate_sheet():
     Public endpoint - migrate data from Google Sheets using client email.
     Fetches data from Google Sheet and pushes it to the dashboard.
     """
+    # Force reload of data_processor to pick up openpyxl changes if needed
+    import sys
+    if 'utils.data_processor' in sys.modules:
+        import importlib
+        import utils.data_processor
+        importlib.reload(utils.data_processor)
+        
     data = request.json
     email = data.get('email', '').strip().lower()
     sheet_url = data.get('sheet_url', '').strip()
@@ -2727,11 +2734,32 @@ def api_migrate_sheet():
         # Import the data processor
         from utils.data_processor import fetch_evaluations, calculate_statistics, fetch_waterlog_history
         from dashboard.watermark_service import bulk_save_history
+        from dashboard.notes_service import save_client_note
 
-        evaluations = fetch_evaluations(sheet_url)
+        res = fetch_evaluations(sheet_url)
+        if isinstance(res, tuple):
+            evaluations, notes = res
+        else:
+            evaluations = res
+            notes = {}
+            
         if not evaluations:
             return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public. (Evaluations Tab)"}), 400
-        
+            
+        # Save imported notes
+        if notes:
+            try:
+                # notes structure: {row_index: {column_key: content}}
+                for row_idx, row_notes in notes.items():
+                    for col_key, content in row_notes.items():
+                        # We use 'system' or the client's email as creator? 
+                        # Let's use 'sheet_import' or similar to indicate source
+                        if content:
+                            save_client_note(client_id, row_idx, col_key, content, 'sheet_import')
+                app.logger.info(f"Imported notes for {len(notes)} rows")
+            except Exception as e:
+                app.logger.error(f"Error saving imported notes: {e}")
+
         # Determine Waterlog GID (Default hardcoded or from params)
         # Using hardcoded GID '520289647' inside fetch_waterlog_history as requested logic
         waterlog_history = fetch_waterlog_history(sheet_url)

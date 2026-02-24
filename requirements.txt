@@ -4,4 +4,4 @@ pandas
 flask
 flask-limiter
 requests
-python-dotenv
+python-dotenvopenpyxl
