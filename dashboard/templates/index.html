@@ -1190,6 +1190,36 @@
         tr.row-deleted td:nth-child(1), tr.row-deleted td:nth-child(2) {
              background-color: #1e293b !important;
         }
+
+        tr.row-not-started td {
+            background-color: rgba(59, 130, 246, 0.2) !important; /* Blue 500 slightly stronger */
+            box-shadow: inset 3px 0 0 0 #3b82f6;
+        }
+        tr.row-not-started td:nth-child(1), tr.row-not-started td:nth-child(2) {
+             background-color: #172033 !important; /* Approx blue-tinted slate */
+        }
+        
+        tr.row-complete td {
+            background-color: rgba(142, 68, 173, 0.2) !important; /* Purple 500 */
+            box-shadow: inset 3px 0 0 0 #8e44ad;
+        }
+        tr.row-complete td:nth-child(1), tr.row-complete td:nth-child(2) {
+             background-color: #2c1a36 !important; /* Dark Purple-ish Slate */
+        }
+
+        /* Enhanced Hover Effects - brighten the background instead of replacing */
+        tr.row-fail:hover td { background-color: rgba(220, 38, 38, 0.25) !important; }
+        tr.row-pass:hover td { background-color: rgba(22, 163, 74, 0.25) !important; }
+        tr.row-tp:hover td { background-color: rgba(234, 179, 8, 0.25) !important; }
+        tr.row-not-started:hover td { background-color: rgba(59, 130, 246, 0.3) !important; }
+        tr.row-complete:hover td { background-color: rgba(142, 68, 173, 0.3) !important; }
+        
+        /* Ensure sticky columns on hover match the row hover (approximate or explicit) */
+        tr.row-fail:hover td:nth-child(1), tr.row-fail:hover td:nth-child(2) { background-color: #382424 !important; }
+        tr.row-pass:hover td:nth-child(1), tr.row-pass:hover td:nth-child(2) { background-color: #1f3629 !important; }
+        tr.row-tp:hover td:nth-child(1), tr.row-tp:hover td:nth-child(2) { background-color: #3b3524 !important; }
+        tr.row-not-started:hover td:nth-child(1), tr.row-not-started:hover td:nth-child(2) { background-color: #1e2a42 !important; }
+        tr.row-complete:hover td:nth-child(1), tr.row-complete:hover td:nth-child(2) { background-color: #372044 !important; }
     </style>
 
     <div id="note-modal" class="note-modal-overlay">
@@ -1811,17 +1841,22 @@
                     if (s1.includes('fail') || s1.includes('breach') || s1.includes('sl') ||
                         s2.includes('fail') || s2.includes('breach') || s2.includes('sl')) {
                         row.classList.add('row-fail');
+                    } else if (s2.includes('complete')) {
+                        // Purple
+                        row.classList.add('row-complete');
                     } else if (s2.includes('tp') || s2.includes('payout')) {
                         row.classList.add('row-tp');
-                    } else if (s2.includes('delete')) {
+                    } else if (s2.includes('delete') || s2.includes('closed')) {
                         row.classList.add('row-deleted');
+                    } else if (s2.includes('not started') || s2.includes('ready')) {
+                         // Higher priority than Pass? User requested distinct look
+                         row.classList.add('row-not-started');
                     } else if (s2.includes('pass') || s2.includes('active') || s2.includes('funded')) {
                          row.classList.add('row-pass');
                     } else if (s1.includes('pass')) {
                          // Passed Phase 1
                          row.classList.add('row-pass');
                     }
-                    // For explicitly "In Progress", we keep default or add subtle tint if requested.
                     // --------------------------
 
                     // Helper to adding note attributes
@@ -2905,10 +2940,11 @@
 
             if (type === 'Status' || type === 'Status P1') {
                 const v = (value || '').toLowerCase();
-                if (v.includes('active') || v.includes('progress') || v.includes('pass')) colorStyle = "color: #27ae60;"; // Greenish
-                else if (v.includes('fail') || v.includes('breach') || v.includes('sl')) colorStyle = "color: #c0392b;"; // Red
+                if (v.includes('active') || v.includes('progress') || v.includes('pass') || v.includes('funded')) colorStyle = "color: #27ae60;"; // Greenish
+                else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) colorStyle = "color: #c0392b;"; // Red
                 else if (v.includes('tp') || v.includes('payout')) colorStyle = "color: #f39c12;"; // Orange
                 else if (v.includes('complete')) colorStyle = "color: #8e44ad;"; // Purple
+                else if (v.includes('not started') || v.includes('ready')) colorStyle = "color: #3b82f6;"; // Blue
             } else if (type === 'Prop Firm') {
                 containerStyle = getPropFirmStyle(value);
             }
@@ -2943,6 +2979,8 @@
                         itemStyle = "color: #f39c12; font-weight: 500;"; // Orange
                     } else if (v.includes('complete')) {
                         itemStyle = "color: #8e44ad; font-weight: 500;"; // Purple
+                    } else if (v.includes('not started') || v.includes('ready')) {
+                        itemStyle = "color: #3b82f6; font-weight: 500;"; // Blue
                     }
                 }
                 return `<div class="dropdown-item" data-val="${opt}" data-idx="${index}" data-k="${key}"><span style="${itemStyle}">${opt}</span></div>`;
@@ -3023,10 +3061,11 @@
                         if (key.includes('Status')) {
                             const v = value.toLowerCase();
                             let color = "";
-                            if (v.includes('active') || v.includes('progress') || v.includes('pass')) color = "#27ae60";
+                            if (v.includes('active') || v.includes('progress') || v.includes('pass') || v.includes('funded')) color = "#27ae60";
                             else if (v.includes('fail') || v.includes('breach')) color = "#c0392b";
                             else if (v.includes('tp') || v.includes('payout')) color = "#f39c12";
                             else if (v.includes('complete')) color = "#8e44ad";
+                            else if (v.includes('not started') || v.includes('ready')) color = "#3b82f6"; // Blue
                             
                             activeDropdownTrigger.style.color = color;
                         } 
