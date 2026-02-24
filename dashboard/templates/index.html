@@ -1841,24 +1841,25 @@
                     const s1 = (getVal('Status P1') || '').toString().toLowerCase();
                     const s2 = (getVal('Status') || '').toString().toLowerCase();
 
+                    // Priority Logic: Fail > Deleted > Complete > TP/Progress > Not Started > Pass
                     if (s1.includes('fail') || s1.includes('breach') || s1.includes('sl') ||
                         s2.includes('fail') || s2.includes('breach') || s2.includes('sl')) {
                         row.classList.add('row-fail');
+                    } else if (s2.includes('delete') || s2.includes('closed') || s1.includes('delete')) {
+                        row.classList.add('row-deleted');
                     } else if (s2.includes('complete')) {
-                        // Purple
                         row.classList.add('row-complete');
                     } else if (s2.includes('tp') || s2.includes('payout') || s2.includes('progress')) {
                         // TP1/Progress -> Yellow/Gold
                         row.classList.add('row-tp');
-                    } else if (s2.includes('delete') || s2.includes('closed')) {
-                        row.classList.add('row-deleted');
+                    } else if (s1.includes('progress')) {
+                        // Also catch P1 progress -> Yellow/Gold
+                        row.classList.add('row-tp');
                     } else if (s2.includes('not started') || s2.includes('ready')) {
-                         // Higher priority than Pass? User requested distinct look
                          row.classList.add('row-not-started');
                     } else if (s2.includes('pass') || s2.includes('active') || s2.includes('funded')) {
                          row.classList.add('row-pass');
                     } else if (s1.includes('pass')) {
-                         // Passed Phase 1
                          row.classList.add('row-pass');
                     }
                     // --------------------------
@@ -3097,11 +3098,11 @@
                                     // Let's implement a 'safe enough' version that just applies the class associated with the NEW value.
                                     
                                     // Re-evaluating just based on the new value is usually fine for immediate feedback.
-                                    if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) row.classList.add('row-fail');
+                                    if (v.includes('delete')) row.classList.add('row-deleted');
+                                    else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) row.classList.add('row-fail');
                                     else if (v.includes('complete')) row.classList.add('row-complete');
                                     else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) row.classList.add('row-tp');
                                     else if (v.includes('not started') || v.includes('ready')) row.classList.add('row-not-started');
-                                    else if (v.includes('delete')) row.classList.add('row-deleted');
                                     else if (v.includes('pass') || v.includes('active') || v.includes('funded')) row.classList.add('row-pass');
                                 }
                                 getRowVal();
