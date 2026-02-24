@@ -951,8 +951,12 @@
             
             // Safer confirmation
             const userInput = prompt(`To DELETE ${type} "${cleanName}" and ALL associated data (stats, evaluations, notes), please type "${cleanName}" below:\n\nWARNING: This action is permanent and cannot be undone.`);
-            if (userInput !== cleanName) {
-                if (userInput !== null) alert("Deletion cancelled. Name did not match.");
+            
+            if (userInput === null) return;
+            
+            // Lenient comparison (trim to fix trailing spaces)
+            if (userInput.trim() !== cleanName.trim()) {
+                alert("Deletion cancelled. Name did not match.");
                 return;
             }
 
@@ -990,8 +994,12 @@
             
             // Safer confirmation
             const userInput = prompt(`To DELETE ${type} "${cleanName}" and ALL associated data (stats, evaluations, notes), please type "${cleanName}" below:\n\nWARNING: This action is permanent and cannot be undone.`);
-            if (userInput !== cleanName) {
-                if (userInput !== null) alert("Deletion cancelled. Name did not match.");
+            
+            if (userInput === null) return;
+
+            // Lenient comparison (trim to fix trailing spaces)
+            if (userInput.trim() !== cleanName.trim()) {
+                alert("Deletion cancelled. Name did not match.");
                 return;
             }
             
