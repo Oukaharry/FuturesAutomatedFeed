@@ -1184,11 +1184,12 @@
         }
         
         tr.row-deleted td {
-            background-color: rgba(148, 163, 184, 0.1) !important; /* Slate 400 */
-            color: #64748b !important;
+            background-color: rgba(220, 38, 38, 0.4) !important; /* Red 600 much stronger (More red than Fail) */
+            box-shadow: inset 3px 0 0 0 #991b1b;
+            color: #fca5a5 !important;
         }
         tr.row-deleted td:nth-child(1), tr.row-deleted td:nth-child(2) {
-             background-color: #1e293b !important;
+             background-color: #450a0a !important; /* Extremely dark red slate */
         }
 
         tr.row-not-started td {
@@ -1213,6 +1214,7 @@
         tr.row-tp:hover td { background-color: rgba(234, 179, 8, 0.25) !important; }
         tr.row-not-started:hover td { background-color: rgba(59, 130, 246, 0.3) !important; }
         tr.row-complete:hover td { background-color: rgba(142, 68, 173, 0.3) !important; }
+        tr.row-deleted:hover td { background-color: rgba(220, 38, 38, 0.5) !important; }
         
         /* Ensure sticky columns on hover match the row hover (approximate or explicit) */
         tr.row-fail:hover td:nth-child(1), tr.row-fail:hover td:nth-child(2) { background-color: #382424 !important; }
@@ -1220,6 +1222,7 @@
         tr.row-tp:hover td:nth-child(1), tr.row-tp:hover td:nth-child(2) { background-color: #3b3524 !important; }
         tr.row-not-started:hover td:nth-child(1), tr.row-not-started:hover td:nth-child(2) { background-color: #1e2a42 !important; }
         tr.row-complete:hover td:nth-child(1), tr.row-complete:hover td:nth-child(2) { background-color: #372044 !important; }
+        tr.row-deleted:hover td:nth-child(1), tr.row-deleted:hover td:nth-child(2) { background-color: #581c1c !important; }
     </style>
 
     <div id="note-modal" class="note-modal-overlay">
@@ -1844,7 +1847,8 @@
                     } else if (s2.includes('complete')) {
                         // Purple
                         row.classList.add('row-complete');
-                    } else if (s2.includes('tp') || s2.includes('payout')) {
+                    } else if (s2.includes('tp') || s2.includes('payout') || s2.includes('progress')) {
+                        // TP1/Progress -> Yellow/Gold
                         row.classList.add('row-tp');
                     } else if (s2.includes('delete') || s2.includes('closed')) {
                         row.classList.add('row-deleted');
@@ -2179,12 +2183,12 @@
                             </div>
 
                             <!-- Evaluation Data Table -->
-                            <div class="table-container">
+                            <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
                                 <div class="card-header success">EVALUATION DATA</div>
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th>Prop Firm</th>
+                                            <th style="position: sticky; left: 0; z-index: 15; background: var(--card-bg);">Prop Firm</th>
                                             <th>Total Running</th>
                                             <th>Not Started</th>
                                             <th>Ongoing</th>
@@ -2199,7 +2203,7 @@
                                             const d = s.evaluation_data[firm];
                                             return `
                                             <tr>
-                                                <td>${firm}</td>
+                                                <td style="position: sticky; left: 0; z-index: 15; background: var(--card-bg); font-weight: 600;">${firm}</td>
                                                 <td>${d.total_running}</td>
                                                 <td>${d.not_started}</td>
                                                 <td>${d.ongoing}</td>
@@ -2210,7 +2214,7 @@
                                             </tr>`;
                                         }).join('')}
                                         <tr class="font-bold" style="background:rgba(255, 255, 255, 0.05);">
-                                            <td>Totals</td>
+                                            <td style="position: sticky; left: 0; z-index: 15; background: inherit;">Totals</td>
                                             <td>${s.eval_totals.total_running}</td>
                                             <td>${s.eval_totals.not_started}</td>
                                             <td>${s.eval_totals.ongoing}</td>
@@ -2224,12 +2228,12 @@
                             </div>
 
                             <!-- Funded Data Table -->
-                            <div class="table-container">
+                            <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
                                 <div class="card-header danger">FUNDED DATA</div>
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th>Prop Firm</th>
+                                            <th style="position: sticky; left: 0; z-index: 15; background: var(--card-bg);">Prop Firm</th>
                                             <th>Not Started</th>
                                             <th>Ongoing</th>
                                             <th>Failed</th>
@@ -2244,7 +2248,7 @@
                                             const d = s.funded_data[firm];
                                             return `
                                             <tr>
-                                                <td>${firm}</td>
+                                                <td style="position: sticky; left: 0; z-index: 15; background: var(--card-bg); font-weight: 600;">${firm}</td>
                                                 <td>${d.not_started}</td>
                                                 <td>${d.ongoing}</td>
                                                 <td>${d.failed}</td>
