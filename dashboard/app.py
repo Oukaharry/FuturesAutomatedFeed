@@ -42,7 +42,7 @@ from dashboard.database import (
     # History management
     save_client_data_with_history, get_data_history, get_data_version,
     rollback_to_version, compare_versions, get_latest_version, 
-    delete_client_data
+    delete_client_data, get_connection
 )
 from dashboard.notes_service import (
     get_client_notes, save_client_note, delete_client_note
@@ -2866,12 +2866,12 @@ def api_get_watermark_history(client_id):
 
     try:
         from dashboard.watermark_service import get_watermark_history, get_lower_watermark
-        # Get history for the requested period (now configured to 14 days for consistency with watermarks)
-        # User requested: "both all and high water mark should check the last 14 days"
-        history = get_watermark_history(client_id, days=14)
+        # Get history for the requested period (now configured to bi-weekly period)
+        # User requested: "profitbaility water log should check the last two weeks not 14 days"
+        history = get_watermark_history(client_id, days='bi-weekly')
         
-        # Get lower watermark (last 14 days min)
-        low_watermark = get_lower_watermark(client_id, days=14)
+        # Get lower watermark (current bi-weekly period min)
+        low_watermark = get_lower_watermark(client_id, days='bi-weekly')
         
         return jsonify({
             "status": "success",
