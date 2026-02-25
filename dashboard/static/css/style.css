@@ -1282,7 +1282,7 @@ button:hover {
     border-right: 1px solid rgba(59, 130, 246, 0.1);
 }
 .wide-table tbody tr:hover td:nth-child(n+3):nth-child(-n+6) {
-    background-color: rgba(30, 58, 138, 0.2) !important;
+    /* background-color: rgba(30, 58, 138, 0.2) !important; */
 }
 
 /* Eval Phase (Cols 7-16) */
@@ -1291,7 +1291,7 @@ button:hover {
     border-right: 1px solid rgba(16, 185, 129, 0.1);
 }
 .wide-table tbody tr:hover td:nth-child(n+7):nth-child(-n+16) {
-    background-color: rgba(6, 78, 59, 0.2) !important;
+    /* background-color: rgba(6, 78, 59, 0.2) !important; */
 }
 
 /* Funded Phase (Cols 17-37) */
@@ -1300,7 +1300,7 @@ button:hover {
     border-right: 1px solid rgba(249, 115, 22, 0.1);
 }
 .wide-table tbody tr:hover td:nth-child(n+17):nth-child(-n+37) {
-    background-color: rgba(124, 45, 18, 0.2) !important;
+    /* background-color: rgba(124, 45, 18, 0.2) !important; */
 }
 
 /* Farming Phase (Cols 38+) - Deep Luxury Purple */
@@ -1316,7 +1316,7 @@ button:hover {
 }
 
 .wide-table tbody tr:hover td:nth-child(n+38) {
-    background-color: rgba(59, 7, 100, 0.4) !important;
+    /* background-color: rgba(59, 7, 100, 0.4) !important; */
 }
 
 /* Override alternating row colors to respect column themes */

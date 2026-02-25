@@ -1317,26 +1317,17 @@
         
         /* Apply a transparent highlight (outline/border) to the whole row on hover */
         /* REMOVED: brightness filter to avoid color changes */
-        tr:hover td {
-             /* STRICTLY NO COLOR CHANGE or FILL OVERLAY */
-             /* Just a top and bottom border to frame the row */
-             border-top: 1px solid rgba(255,255,255,0.5) !important;
-             border-bottom: 1px solid rgba(255,255,255,0.5) !important;
-             /* Remove box-shadow overlay */
+        /* tr:hover td {
              box-shadow: none !important;
-        }
+        } */
 
         /* Prevent background color reset on generic hover */
         /* IMPORTANT: Do not set background-color on tr:hover td! It overrides the specific row colors. */
 
         /* Border Highlight for the row */
-        tr:hover td:first-child {
-            /* Keep left border indicator + top/bottom border */
-             border-top: 1px solid rgba(255,255,255,0.5) !important;
-             border-bottom: 1px solid rgba(255,255,255,0.5) !important;
-             /* Only left border is using box-shadow now to avoid layout shift */
+        /* tr:hover td:first-child {
              box-shadow: inset 3px 0 0 0 #fff !important; 
-        }
+        } */
         
         /* Ensure sticky columns on hover match the row hover (no color change needed if using filter) */
         /* We remove the explicit bg color overrides for hover since filter handles it */
