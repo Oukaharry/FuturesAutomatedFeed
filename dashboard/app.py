@@ -1060,11 +1060,11 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                             mapping = {
                                 'MFFU': ['MYFUNDED', 'MFFU'],
                                 'AFAD': ['ALPHA', 'AFAD'],
-                                'V2': ['TOPSTEP', 'V2'],
+                                'V2': ['TOP STEP', 'TOPSTEP', 'V2'],
                                 'FNFT': ['FUNDEDNEXT', 'FNFT'],
                                 'TDFY': ['TRADEIFY', 'TDFY'],
-                                'ELTD': ['TRADEDAY', 'ELTD'],
-                                'TDF': ['TRADEDAY', 'TDF']
+                                'ELTD': ['TRADE DAY', 'TRADEDAY', 'ELTD'],
+                                'TDF': ['TRADE DAY', 'TRADEDAY', 'TDF']
                             }
                             if prefix_part in mapping:
                                 valid_keywords = mapping[prefix_part]
@@ -1480,7 +1480,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      session_comments = " ".join([d.get('comment', '') for d in session['deals'][:5]])
                      
                      if 'MFF' in guesser or 'MFF' in session_comments.upper(): p_firm = 'MyFundedFX'
-                     elif 'V2' in guesser or 'V2' in session_comments.upper(): p_firm = 'Topstep'
+                     elif 'V2' in guesser or 'V2' in session_comments.upper(): p_firm = 'Top Step'
                      elif 'FN' in guesser or 'FNFT' in session_comments.upper(): p_firm = 'FundedNext'
                      elif 'AF' in guesser or 'AFAD' in session_comments.upper(): p_firm = 'Alpha Futures'
                      else: p_firm = 'Unknown Firm'

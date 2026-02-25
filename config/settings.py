@@ -25,3 +25,7 @@ MT5_SYMBOL = os.getenv("MT5_SYMBOL", "USTECH")
 # Google Sheets Configuration
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1vtuGcTe8ys44wHCJGJr6VoImeh8q0beaKkZMt0hd3VU/edit?usp=sharing"
 
+# Feature flags
+# Enable GPT-5 mini for all clients by default. Can be overridden with ENV var.
+ENABLE_GPT5_MINI = os.getenv("ENABLE_GPT5_MINI", "true").lower() == "true"
+

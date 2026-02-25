@@ -89,6 +89,10 @@ class Config:
     # File Upload Limits
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
 
+    # Feature flags
+    # Toggle to enable GPT-5 mini for clients. Default true; can be overridden via ENV.
+    ENABLE_GPT5_MINI = os.getenv('ENABLE_GPT5_MINI', 'true').lower() == 'true'
+
 
 class DevelopmentConfig(Config):
     """Development configuration."""

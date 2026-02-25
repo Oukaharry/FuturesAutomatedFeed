@@ -379,19 +379,23 @@
                                 {% set fk = payout.prop_firm|lower|replace(" ", "") %}
                                 {% set common_style = "padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 600;" %}
                                 {% if 'fundednext' in fk %}
-                                    {% set b_style = "background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #6ee7b7;" %}
+                                    {% set b_style = "background-color: #6a0dad; color: white;" %}
                                 {% elif 'tradeify' in fk %}
-                                    {% set b_style = "background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(167, 139, 250, 0.3); color: #c4b5fd;" %}
+                                    {% set b_style = "background-color: #000000; color: white;" %}
                                 {% elif 'myfundedfutures' in fk or 'mff' in fk or 'futures' in fk %}
-                                    {% set b_style = "background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(96, 165, 250, 0.3); color: #93c5fd;" %}
+                                    {% set b_style = "background-color: #FFD700; color: black;" %}
                                 {% elif 'topstep' in fk %}
-                                    {% set b_style = "background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(248, 113, 113, 0.3); color: #fca5a5;" %}
-                                {% elif 'quick' in fk or 'tick' in fk %}
-                                    {% set b_style = "background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: #fcd34d;" %}
+                                    {% set b_style = "background-color: #FFFF00; color: black;" %}
+                                {% elif 'lucid' in fk %}
+                                    {% set b_style = "background-color: #808080; color: white;" %}
+                                {% elif 'alpha' in fk %}
+                                    {% set b_style = "background-color: #27ae60; color: white;" %}
+                                {% elif 'quick' in fk or 'tick' in fk or 'funding' in fk %}
+                                    {% set b_style = "background-color: #ffcc99; color: black;" %}
                                 {% elif 'tradeday' in fk %}
-                                    {% set b_style = "background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(244, 114, 182, 0.3); color: #fbcfe8;" %}
+                                    {% set b_style = "background-color: #FFFFFF; color: black; border: 1px solid #ccc;" %}
                                 {% else %}
-                                    {% set b_style = "background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(203, 213, 225, 0.3); color: #cbd5e1;" %}
+                                    {% set b_style = "background-color: #334155; color: #cbd5e1;" %}
                                 {% endif %}
                                 {% set style_attr = 'style="' ~ b_style ~ ' ' ~ common_style ~ '"' %}
                                 <span {{ style_attr|safe }}>

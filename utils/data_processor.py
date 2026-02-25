@@ -974,7 +974,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'MFFU', 'MFFU_Flex', 'Funded Next', 'FundingTicks', 'TopStep', 'Lucid', 'TradeDay', 'AlphaFutures', 'Tradeify', 'Other'},
+        'Prop Firm': {'MFFU', 'MFFU_Flex', 'Funded Next', 'Funding Ticks', 'Top Step', 'Lucid', 'Trade Day', 'Alpha Futures', 'Tradeify', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }

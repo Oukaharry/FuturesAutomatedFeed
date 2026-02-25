@@ -175,13 +175,13 @@ class MT5CommentParser:
             "DD": "Double Dip",
             "FA": "Consistency"
         },
-        "FundingTicks": {
+        "Funding Ticks": {
             "CH": "Challenge trades",
             "FD": "Payout",
             "DD": "Double Dip",
             "FA": "Farming (6 days)"
         },
-        "AlphaFutures": {
+        "Alpha Futures": {
             "CH": "Challenge trades",
             "FD": "Payout",
             "DD": "Double Dip",
