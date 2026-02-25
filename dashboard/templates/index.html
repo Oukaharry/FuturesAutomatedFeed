@@ -470,14 +470,15 @@
         }
 
         /* Ensure row highlight doesn't break sticky backgrounds */
+        /*
         tr:hover td:first-child,
         tr:hover td:nth-child(2) {
-            background-color: #1e293b !important; /* Keep sticky cells opaque on hover */
+            background-color: #1e293b !important; 
         } 
+        */
         
-        tr:hover {
-            background-color: rgba(255, 255, 255, 0.05); /* Highlight non-sticky cells */
-        }
+        /* Remove the generic hover effect that changes background color */
+        /* tr:hover { background-color: rgba(255, 255, 255, 0.05); } */
         
         /* Sticky Columns Fix */
         /* Ensure the table container handles the scroll, not the table itself */
@@ -502,18 +503,31 @@
         }
 
         /* 3. Sticky Headers (Vertical) */
-        #evaluations-table thead th {
+        
+        /* FIRST ROW (Group Headers + Rowspan Cells) */
+        #evaluations-table thead tr:first-child th {
             position: sticky !important;
             top: 0;
             z-index: 1000 !important;
-            background-color: #1e293b !important; /* Force opaque background */
-            box-shadow: 0 1px 0 rgba(255,255,255,0.1); /* Separator */
+            height: 55px; /* Locked height for calculation */
+            /* Backgrounds are handled by specific header classes (blue, green etc) */
+            box-shadow: 0 1px 0 rgba(255,255,255,0.1); 
+        }
+
+        /* SECOND ROW (Sub Headers) */
+        #evaluations-table thead tr:nth-child(2) th {
+            position: sticky !important;
+            top: 55px !important; /* Stick below the first row */
+            z-index: 999 !important; /* Slightly below the main headers */
+            background-color: #1e293b !important; /* Ensure opaque background */
+            box-shadow: 0 1px 0 rgba(255,255,255,0.1);
+            height: 45px; /* Consistent height for sub-headers */
         }
 
         /* 4. Sticky Columns (Horizontal) - Left Edge */
         /* First Column (#) */
         #evaluations-table thead tr:first-child th:nth-child(1),
-        #evaluations-table tbody td:nth-child(1) {
+        #evaluations-table tbody td.sticky-col-1 {
             position: sticky !important;
             left: 0 !important;
             z-index: 1005 !important; /* Above normal headers */
@@ -529,10 +543,18 @@
             display: table-cell !important;
             vertical-align: middle !important;
         }
+
+        /* CORNER CASE: The top-left cell (#) is both sticky top AND sticky left */
+        #evaluations-table thead tr:first-child th:nth-child(1) {
+            z-index: 1010 !important; /* Highest priority */
+            top: 0 !important;
+            left: 0 !important;
+            height: auto !important; /* Let rowspan handle it */
+        }
         
         /* Second Column (Trash) */
         #evaluations-table thead tr:first-child th:nth-child(2),
-        #evaluations-table tbody td:nth-child(2) {
+        #evaluations-table tbody td.sticky-col-2 {
             position: sticky !important;
             left: 50px !important;
             z-index: 1005 !important; /* Above normal headers */
@@ -544,6 +566,61 @@
             padding: 0 !important;
             text-align: center !important;
             vertical-align: middle !important;
+        }
+
+        /* CORNER CASE: The second top-left cell (Trash) */
+        #evaluations-table thead tr:first-child th:nth-child(2) {
+            z-index: 1010 !important;
+            top: 0 !important;
+        }
+
+        /* --------------------------------------------------------- */
+        /* STICKY COLUMN 3: PROP FIRM */
+        /* --------------------------------------------------------- */
+        
+        /* 1. The Group Header (Row 1, "EVAL INFO") */
+        #evaluations-table thead tr:first-child th.group-header-blue.sticky-prop-firm-header {
+            position: sticky !important;
+            left: 90px !important; /* After # (50px) + Trash (40px) */
+            top: 0 !important;
+            z-index: 2000 !important; /* Substantially Higher than Data Cells */
+            width: 180px !important; /* Fixed width for stability */
+            min-width: 180px !important;
+            /* Box shadow to match the glowing header style + right separator */
+            box-shadow: inset 0 -10px 20px -10px rgba(59, 130, 246, 0.3), 2px 0 5px rgba(0,0,0,0.2) !important;
+            background-color: #0f172a !important; /* Fallback opaque background */
+            /* Re-apply gradient if needed, but opaque is safer for sticky */
+            background: linear-gradient(135deg, #1e3a8a, #0f172a) !important;
+        }
+
+        /* 2. The Sub Header (Row 2, "Prop Firm") */
+        /* Since Row 1 has rowspan=2 for cols 1&2, the first th in Row 2 corresponds to visual Col 3 */
+        #evaluations-table thead tr:nth-child(2) th:nth-child(1) {
+            position: sticky !important;
+            left: 90px !important;
+            top: 55px !important; /* Below Row 1 */
+            z-index: 1050 !important; /* Higher than data cells, lower than group header */
+            background-color: #1e293b !important;
+            width: 180px;
+            min-width: 180px;
+            border-right: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 2px 0 5px rgba(0,0,0,0.2); 
+        }
+
+        /* 3. The Data Cells (Column 3) */
+        #evaluations-table tbody td.sticky-col-3 {
+            position: sticky !important;
+            left: 90px !important;
+            z-index: 100 !important; /* Lower than headers */
+            background-color: #1e293b !important; /* Opaque background */
+            border-right: 1px solid rgba(255,255,255,0.1);
+             /* Add shadow for depth */
+            box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+        }
+        
+        /* Ensure hover doesn't break background */
+        #evaluations-table tbody tr:hover td.sticky-col-3 {
+            background-color: #1e293b !important;
         }
 
         /* 5. Sticky Corners (Intersection of Header + Sticky Col) */
@@ -589,7 +666,8 @@
         /* Ensure table container allows sticky positioning */
         .table-container {
             overflow: auto !important; /* Override 'hidden' from style.css */
-            contain: paint; /* Helps with rendering performance */
+            max-height: calc(100vh - 180px); /* Limit height to viewport minus header space */
+            border-bottom: 1px solid rgba(255,255,255,0.1); /* visual boundary */
         }
 
 
@@ -628,7 +706,7 @@
         h1, h2, h3, h4, h5, h6 { color: var(--text-primary) !important; }
         
         .version-badge {
-            background: rgba(251, 191, 36, 0.2) !important;
+            /* background removed heavily transparent */
             color: #fbbf24 !important;
         }
 
@@ -855,13 +933,13 @@
             <div class="header-content">
                 <a href="javascript:history.back()" class="back-link">←</a>
                 <h1>Trading Performance Dashboard</h1>
-                <span class="version-badge">v3.0 USA <span class="flag-icon flag-icon-us"></span></span>
                 {% if client_id %}
-                <span class="client-badge">{{ client_id }}</span>
+                <span class="version-badge">{{ client_id }} <span class="flag-icon flag-icon-us"></span></span>
+                {% else %}
+                <span class="version-badge">USA <span class="flag-icon flag-icon-us"></span></span>
                 {% endif %}
             </div>
             <div class="status" style="display: flex; align-items: center; gap: 15px;">
-                <span>Last Updated: <span id="last-updated" class="last-updated-text">Never</span></span>
                 <button class="history-header-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
                     📜 Version History
                 </button>
@@ -926,7 +1004,7 @@
             
             <!-- Scroll Controls -->
             <div class="table-scroll-wrapper">
-                <div class="scroll-controls" style="justify-content: flex-end;">
+                <div class="scroll-controls">
                     <div class="scroll-buttons">
                         <button class="scroll-btn" onclick="scrollToSection('eval-info')" title="Evaluation Info">📋 Info</button>
                         <button class="scroll-btn" onclick="scrollToSection('eval-phase')" title="Evaluation Phase">📊 Eval</button>
@@ -941,14 +1019,17 @@
                         <tr>
                             <th rowspan="2">#</th>
                             <th rowspan="2" style="width: 30px;">🗑️</th>
-                            <th colspan="4" class="group-header group-header-blue">EVALUATION INFO</th>
+                            <!-- Sticky Group Header for Prop Firm -->
+                            <th class="group-header group-header-blue sticky-prop-firm-header" style="border-right: 1px solid rgba(255,255,255,0.1);">EVAL INFO</th>
+                            <!-- Scrolling Group Header for the rest -->
+                            <th colspan="3" class="group-header group-header-blue">EVALUATION INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
-                            <th colspan="31" class="group-header group-header-purple">FARMING PHASE</th>
+                            <th colspan="91" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
                         <tr>
                             <!-- EVALUATION INFO (0-3) -->
-                            <th class="sub-header-blue">Prop Firm</th>
+                            <th class="sub-header-blue sticky-prop-firm-col">Prop Firm</th>
                             <th class="sub-header-blue">Account Size</th>
                             <th class="sub-header-blue">Date Purchased</th>
                             <th class="sub-header-blue" style="min-width: 100px;">Fee</th>
@@ -988,10 +1069,9 @@
                             <th class="sub-header-orange">Payout 4</th>
                             <th class="sub-header-orange">Date 4</th>
 
-                            <!-- FARMING PHASE (35-65) -->
+                            <!-- FARMING PHASE (35-65 -> 35-125) -->
                             <th class="sub-header-purple">Farming Net</th>
-                            <!-- Dynamic Day Columns Header Script? No, hardcoded to 15 days -->
-                            <!-- Replaced with loop or manual entry -->
+                            <!-- Dynamic Day Columns Header Script? No, hardcoded to 30 days now -->
                             <th class="sub-header-purple">Prop Day 1</th><th class="sub-header-purple">Prop Progress 1</th><th class="sub-header-purple">Hedge Day 1</th>
                             <th class="sub-header-purple">Prop Day 2</th><th class="sub-header-purple">Prop Progress 2</th><th class="sub-header-purple">Hedge Day 2</th>
                             <th class="sub-header-purple">Prop Day 3</th><th class="sub-header-purple">Prop Progress 3</th><th class="sub-header-purple">Hedge Day 3</th>
@@ -1007,6 +1087,21 @@
                             <th class="sub-header-purple">Prop Day 13</th><th class="sub-header-purple">Prop Progress 13</th><th class="sub-header-purple">Hedge Day 13</th>
                             <th class="sub-header-purple">Prop Day 14</th><th class="sub-header-purple">Prop Progress 14</th><th class="sub-header-purple">Hedge Day 14</th>
                             <th class="sub-header-purple">Prop Day 15</th><th class="sub-header-purple">Prop Progress 15</th><th class="sub-header-purple">Hedge Day 15</th>
+                            <th class="sub-header-purple">Prop Day 16</th><th class="sub-header-purple">Prop Progress 16</th><th class="sub-header-purple">Hedge Day 16</th>
+                            <th class="sub-header-purple">Prop Day 17</th><th class="sub-header-purple">Prop Progress 17</th><th class="sub-header-purple">Hedge Day 17</th>
+                            <th class="sub-header-purple">Prop Day 18</th><th class="sub-header-purple">Prop Progress 18</th><th class="sub-header-purple">Hedge Day 18</th>
+                            <th class="sub-header-purple">Prop Day 19</th><th class="sub-header-purple">Prop Progress 19</th><th class="sub-header-purple">Hedge Day 19</th>
+                            <th class="sub-header-purple">Prop Day 20</th><th class="sub-header-purple">Prop Progress 20</th><th class="sub-header-purple">Hedge Day 20</th>
+                            <th class="sub-header-purple">Prop Day 21</th><th class="sub-header-purple">Prop Progress 21</th><th class="sub-header-purple">Hedge Day 21</th>
+                            <th class="sub-header-purple">Prop Day 22</th><th class="sub-header-purple">Prop Progress 22</th><th class="sub-header-purple">Hedge Day 22</th>
+                            <th class="sub-header-purple">Prop Day 23</th><th class="sub-header-purple">Prop Progress 23</th><th class="sub-header-purple">Hedge Day 23</th>
+                            <th class="sub-header-purple">Prop Day 24</th><th class="sub-header-purple">Prop Progress 24</th><th class="sub-header-purple">Hedge Day 24</th>
+                            <th class="sub-header-purple">Prop Day 25</th><th class="sub-header-purple">Prop Progress 25</th><th class="sub-header-purple">Hedge Day 25</th>
+                            <th class="sub-header-purple">Prop Day 26</th><th class="sub-header-purple">Prop Progress 26</th><th class="sub-header-purple">Hedge Day 26</th>
+                            <th class="sub-header-purple">Prop Day 27</th><th class="sub-header-purple">Prop Progress 27</th><th class="sub-header-purple">Hedge Day 27</th>
+                            <th class="sub-header-purple">Prop Day 28</th><th class="sub-header-purple">Prop Progress 28</th><th class="sub-header-purple">Hedge Day 28</th>
+                            <th class="sub-header-purple">Prop Day 29</th><th class="sub-header-purple">Prop Progress 29</th><th class="sub-header-purple">Hedge Day 29</th>
+                            <th class="sub-header-purple">Prop Day 30</th><th class="sub-header-purple">Prop Progress 30</th><th class="sub-header-purple">Hedge Day 30</th>
                         </tr>
                     </thead>
                     <tbody id="evaluations-body">
@@ -1209,20 +1304,46 @@
         }
 
         /* Enhanced Hover Effects - brighten the background instead of replacing */
-        tr.row-fail:hover td { background-color: rgba(220, 38, 38, 0.25) !important; }
-        tr.row-pass:hover td { background-color: rgba(22, 163, 74, 0.25) !important; }
-        tr.row-tp:hover td { background-color: rgba(234, 179, 8, 0.25) !important; }
-        tr.row-not-started:hover td { background-color: rgba(59, 130, 246, 0.3) !important; }
-        tr.row-complete:hover td { background-color: rgba(142, 68, 173, 0.3) !important; }
-        tr.row-deleted:hover td { background-color: rgba(220, 38, 38, 0.5) !important; }
+        /* User request: "highlight without changing color" -> Use brightness filter or outline instead of bg color change */
+        tr.row-fail:hover td,
+        tr.row-pass:hover td,
+        tr.row-tp:hover td,
+        tr.row-not-started:hover td,
+        tr.row-complete:hover td,
+        tr.row-deleted:hover td {
+            /* Remove background color change */
+             position: relative; /* Ensure z-index works for border/shadow if needed */
+        }
         
-        /* Ensure sticky columns on hover match the row hover (approximate or explicit) */
+        /* Apply a transparent highlight (outline/border) to the whole row on hover */
+        /* REMOVED: brightness filter to avoid color changes */
+        tr:hover td {
+             /* STRICTLY NO COLOR CHANGE or FILL OVERLAY */
+             /* Just a top and bottom border to frame the row */
+             border-top: 1px solid rgba(255,255,255,0.5) !important;
+             border-bottom: 1px solid rgba(255,255,255,0.5) !important;
+             /* Remove box-shadow overlay */
+             box-shadow: none !important;
+        }
+
+        /* Prevent background color reset on generic hover */
+        /* IMPORTANT: Do not set background-color on tr:hover td! It overrides the specific row colors. */
+
+        /* Border Highlight for the row */
+        tr:hover td:first-child {
+            /* Keep left border indicator + top/bottom border */
+             border-top: 1px solid rgba(255,255,255,0.5) !important;
+             border-bottom: 1px solid rgba(255,255,255,0.5) !important;
+             /* Only left border is using box-shadow now to avoid layout shift */
+             box-shadow: inset 3px 0 0 0 #fff !important; 
+        }
+        
+        /* Ensure sticky columns on hover match the row hover (no color change needed if using filter) */
+        /* We remove the explicit bg color overrides for hover since filter handles it */
+        /*
         tr.row-fail:hover td:nth-child(1), tr.row-fail:hover td:nth-child(2) { background-color: #382424 !important; }
-        tr.row-pass:hover td:nth-child(1), tr.row-pass:hover td:nth-child(2) { background-color: #1f3629 !important; }
-        tr.row-tp:hover td:nth-child(1), tr.row-tp:hover td:nth-child(2) { background-color: #3b3524 !important; }
-        tr.row-not-started:hover td:nth-child(1), tr.row-not-started:hover td:nth-child(2) { background-color: #1e2a42 !important; }
-        tr.row-complete:hover td:nth-child(1), tr.row-complete:hover td:nth-child(2) { background-color: #372044 !important; }
-        tr.row-deleted:hover td:nth-child(1), tr.row-deleted:hover td:nth-child(2) { background-color: #581c1c !important; }
+        ...
+        */
     </style>
 
     <div id="note-modal" class="note-modal-overlay">
@@ -1881,8 +2002,15 @@
                              highlightClass = 'highlight-cell';
                         }
                         
-                        const classes = [hasNoteClass, highlightClass].filter(Boolean).join(' ');
+                        // FIX: Only add sticky class if this is the "Prop Firm" column
+                        let stickyClass = '';
+                        if (key === 'Prop Firm') {
+                            stickyClass = 'sticky-col-3';
+                        }
 
+                        const classes = [hasNoteClass, highlightClass, stickyClass].filter(Boolean).join(' ');
+
+                        // Return CELL HTML
                         return `<td ${cellId} class="${classes}" 
                                    oncontextmenu="openNoteEditor(event, ${index}, '${key}')" 
                                    onclick="handleCellClick(event, ${index}, '${key}')"
@@ -1894,8 +2022,8 @@
                     const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased');
 
                     row.innerHTML = `
-                        <td>${index + 1}</td>
-                        <td style="text-align:center;padding:2px;">
+                        <td class="sticky-col-1">${index + 1}</td>
+                        <td class="sticky-col-2" style="text-align:center;padding:2px;">
                              <button onclick="deleteEvaluation(${index})" 
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
                                      title="Delete this row">🗑️</button>
@@ -2012,7 +2140,7 @@
 
         function generateDayColumns(ev, cell, index, currentRowNum) {
             let html = '';
-            for (let i = 1; i <= 15; i++) {
+            for (let i = 1; i <= 30; i++) {
                 const propDayKey = `Prop Day ${i}`;
                 const hedgeDayKey = `Hedge Day ${i}`;
                 
