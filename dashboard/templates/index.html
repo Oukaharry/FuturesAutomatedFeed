@@ -2916,29 +2916,29 @@
                 const v = (firmName || '').toLowerCase().replace(/[^a-z]/g, '');
                 
                 if (v.includes('myfunded') || v.includes('mffu')) {
-                    // Dark Grey/Black (MyFundedFutures)
-                    return "background-color: #333333; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                    // Gold (MyFundedFutures)
+                    return "background-color: #FFD700; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 } else if (v.includes('funding')) {
                     // Peach/Orange (FundingTicks) - Black text for better contrast
                     return "background-color: #ffcc99; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 } else if (v.includes('tradeday')) {
-                    // Light Blue (TradeDay) - Black text for contrast
-                    return "background-color: #99ccff; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                    // White (TradeDay)
+                    return "background-color: #FFFFFF; color: black; border: 1px solid #ccc; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 } else if (v.includes('topstep')) {
-                    // Red (Topstep)
-                    return "background-color: #cc0000; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                    // Yellow (TopStep)
+                    return "background-color: #FFFF00; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 } else if (v.includes('alpha')) {
-                    // Navy Blue (Alpha Futures)
-                    return "background-color: #2c3e50; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
-                } else if (v.includes('tradeify')) {
-                    // Green (Tradeify)
+                    // Green (Alpha Futures)
                     return "background-color: #27ae60; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                } else if (v.includes('tradeify')) {
+                    // Black (Tradeify)
+                    return "background-color: #000000; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 } else if (v.includes('fundednext')) {
                     // Purple (FundedNext)
                     return "background-color: #6a0dad; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 } else if (v.includes('lucid')) {
-                    // Teal/Cyan (Lucid)
-                    return "background-color: #1abc9c; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                    // Grey (Lucid)
+                    return "background-color: #808080; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 }
                 return "";
             };
@@ -3114,14 +3114,14 @@
                             // Re-apply style logic (duplicate from getPropFirmStyle unfortunately, or expose it)
                             const getStyle = (firmName) => {
                                 const v = (firmName || '').toLowerCase().replace(/[^a-z]/g, '');
-                                if (v.includes('myfunded') || v.includes('mffu')) return "background-color: #333333; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('myfunded') || v.includes('mffu')) return "background-color: #FFD700; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('funding')) return "background-color: #ffcc99; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
-                                if (v.includes('tradeday')) return "background-color: #99ccff; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
-                                if (v.includes('topstep')) return "background-color: #cc0000; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
-                                if (v.includes('alpha')) return "background-color: #2c3e50; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
-                                if (v.includes('tradeify')) return "background-color: #27ae60; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('tradeday')) return "background-color: #FFFFFF; color: black; border: 1px solid #ccc; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('topstep')) return "background-color: #FFFF00; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('alpha')) return "background-color: #27ae60; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('tradeify')) return "background-color: #000000; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('fundednext')) return "background-color: #6a0dad; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
-                                if (v.includes('lucid')) return "background-color: #1abc9c; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('lucid')) return "background-color: #808080; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 return "";
                             };
                             
