@@ -501,6 +501,12 @@
             position: static; 
             z-index: auto;
         }
+        
+        /* Force all header texts to be white and left-aligned */
+        #evaluations-table th {
+            color: white !important;
+            text-align: left !important;
+        }
 
         /* 3. Sticky Headers (Vertical) */
         
@@ -536,12 +542,17 @@
             width: 50px !important;
             min-width: 50px !important;
             /* Fix content visibility issues */
-            padding: 0 !important;
-            text-align: center !important;
-            color: #fbbf24 !important; /* Gold text for row numbers */
+            padding: 0 0 0 8px !important; /* Add left padding for left alignment */
+            text-align: left !important;
+            color: white !important; /* Force white text for header, rows might inherit or override below */
             font-weight: bold;
             display: table-cell !important;
             vertical-align: middle !important;
+        }
+        
+        /* Specific override for row numbers (keep gold color but align left to match header) */
+        #evaluations-table tbody td.sticky-col-1 {
+             color: #fbbf24 !important;
         }
 
         /* CORNER CASE: The top-left cell (#) is both sticky top AND sticky left */
@@ -749,7 +760,8 @@
         }
         th {
             background: rgba(15, 23, 42, 0.8) !important;
-            color: var(--text-secondary) !important;
+            color: white !important;
+            text-align: left !important;
             border-bottom: 1px solid var(--border-color) !important;
         }
         td {
@@ -1918,13 +1930,21 @@
                             const statusP1 = String(ev['Status P1'] || '').toLowerCase();
                             const statusFunded = String(ev['Status'] || '').toLowerCase();
                             
-                            if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('delete') || statusP1.includes('closed')) return;
+                            // 1. Check Eval Phase Status
+                            // If Eval is explicitly failed/closed/deleted, hide it.
+                            if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('delete') || statusP1.includes('closed') || statusP1.includes('sl')) return;
                             
-                            if (statusP1.includes('completed')) {
-                                 if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('delete') || statusFunded.includes('closed') || statusFunded.includes('completed')) return;
-                            }
+                            // 2. Check Funded Phase Status
+                            // If Funded is explicitly failed/closed/deleted/completed, hide it.
+                            // Note: 'completed' often means moved to next stage or finished, but user requested to hide it from Active list.
+                            if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('delete') || statusFunded.includes('closed') || statusFunded.includes('sl') || statusFunded.includes('complete')) return;
                             
-                            if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('delete') || statusFunded.includes('closed') || statusFunded.includes('completed')) return;
+                            // 3. Special Case: Eval Completed but Funded Not Started (or just created)
+                            // If P1 is completed, we rely on Funded status.
+                            // If P1 is NOT completed, we rely on P1 status.
+                            // But wait, if P1 is Active, and Funded is Empty, it shows. Correct.
+                            // If P1 is Completed, and Funded is Active, it shows. Correct.
+                            // If P1 is Completed, and Funded is Fail, it hides. Correct.
                         }
                         
                         // Add to list
@@ -3369,6 +3389,16 @@
             
             currentData.evaluations[index][key] = value;
             saveData();
+            
+            // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
+            const showActiveOnly = document.getElementById('activeFilter').checked;
+            if (showActiveOnly && (key === 'Status' || key === 'Status P1')) {
+                const v = (value || '').toLowerCase();
+                const inactiveKeywords = ['fail', 'breach', 'sl', 'closed', 'delete', 'complete'];
+                if (inactiveKeywords.some(kw => v.includes(kw))) {
+                    renderEvaluationsTable();
+                }
+            }
         }
 
         function addAccount() {
