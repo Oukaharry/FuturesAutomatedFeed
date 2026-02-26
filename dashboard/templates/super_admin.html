@@ -439,14 +439,6 @@
                     <div style="display:flex; gap:8px; margin-bottom:8px;">
                         <select id="trader-select-client" class="form-dark"></select>
                     </div>
-                    {% if not is_bef_admin %}
-                    <div style="display:flex; gap:8px; margin-bottom:8px;">
-                        <select id="new-client-category" class="form-dark">
-                            <option value="Private" selected>Private</option>
-                            <option value="BEF">BEF</option>
-                        </select>
-                    </div>
-                    {% endif %}
                     <div style="display:flex;">
                         <input type="text" id="new-client-name" placeholder="Name" class="form-dark" style="border-radius: 8px 0 0 8px; border-right: none;">
                         <button onclick="addClient()" class="btn-gold" style="width:auto; padding: 0 16px; border-radius: 0 8px 8px 0; background: var(--accent-color); border: none; color: #000; font-weight: bold; cursor: pointer;">+</button>
@@ -461,13 +453,11 @@
                 
                 <!-- Financial Header with Filter -->
                 <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: -12px;">
-                    {% if not is_bef_admin %}
                     <div class="toggle-group" style="background: rgba(15, 23, 42, 0.6); padding: 4px; border-radius: 8px; display: inline-flex; border: 1px solid var(--border-color);">
                         <button onclick="changeProfile('ALL')" id="btn-profile-all" class="toggle-btn active" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">ALL</button>
                         <button onclick="changeProfile('BEF')" id="btn-profile-bef" class="toggle-btn" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">BEF</button>
                         <button onclick="changeProfile('PRIVATE')" id="btn-profile-private" class="toggle-btn" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">PRV</button>
                     </div>
-                    {% endif %}
                 </div>
 
                 <!-- Financial Cards -->
@@ -619,18 +609,13 @@
                 <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Email</label>
                 <input type="email" id="editUserEmail" class="form-input" placeholder="user@example.com" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
             </div>
-             <div class="form-group" style="margin-top: 15px;" {{ 'hidden' if is_bef_admin else '' }} id="editClientCategoryGroup">
+             <div class="form-group" style="margin-top: 15px; display:none;" id="editClientCategoryGroup">
                 <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Category/Profile</label>
                 <select id="editUserCategory" class="form-input" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
-                     {% if not is_bef_admin %}
                      <option value="Private">Private</option>
                      <option value="Retail">Retail</option>
                      <option value="Institutional">Institutional</option>
                      <option value="PropFirm">Prop Firm</option>
-                     <option value="BEF">BEF</option>
-                     {% else %}
-                     <option value="BEF" selected>BEF</option>
-                     {% endif %}
                 </select>
             </div>
             
@@ -647,9 +632,6 @@
     </div>
 
     <script>
-        // --- CONSTANTS ---
-        const IS_BEF_ADMIN = "{{ 'true' if is_bef_admin else 'false' }}" === "true";
-
         // --- DEBUGGER ---
         function debugLog(msg, type='info') {
             if (type === 'error') console.error(msg);
@@ -717,18 +699,8 @@
             const emailInput = document.getElementById('new-client-email');
             const email = emailInput ? emailInput.value : '';
             
-            // Handle Category
-            let category = "BEF"; // Default (for BEF Admin)
-            const catSelect = document.getElementById('new-client-category');
-            if (catSelect) {
-                category = catSelect.value;
-            } else if (!IS_BEF_ADMIN) {
-                // Fallback for Super Admin if element missing for some reason
-                category = "Private";
-            }
-            
             if(!trader || !name) return alert('Trader and Name required');
-            apiCall('/api/admin/create_user', { username: name, user_type: 'client', parent_user: trader, email: email, category: category });
+            apiCall('/api/admin/create_user', { username: name, user_type: 'client', parent_user: trader, email: email });
         }
         
         // Modal Logic
@@ -835,13 +807,13 @@
 
                          if(type === 'client') {
                              btns += `<a href="${r.url}" style="color:#fbbf24; text-decoration:none; margin-right:10px; font-weight:bold;">Dash</a>`;
-                             btns += `<button onclick="deleteUserList('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
                              btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}')" style="${editStyle}">Edit</button>`;
                          } else if (type === 'trader') {
-                             btns += `<button onclick="deleteUserList('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
                              btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
                          } else {
-                             btns += `<button onclick="deleteUserList('admin', '${safeName}')" style="${delStyle}">Del</button>`;
+                             btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
                              btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}')" style="${editStyle}">Edit</button>`;
                          }
 
@@ -948,18 +920,7 @@
         async function deleteUser(type, name, parent1, parent2) {
             if(event) event.stopPropagation(); // Prevent card click
             const cleanName = name.replace(/\\'/g, "'");
-            
-            // Safer confirmation
-            const userInput = prompt(`To DELETE ${type} "${cleanName}" and ALL associated data (stats, evaluations, notes), please type "${cleanName}" below:\n\nWARNING: This action is permanent and cannot be undone.`);
-            
-            if (userInput === null) return;
-            
-            // Lenient comparison (trim to fix trailing spaces)
-            if (userInput.trim() !== cleanName.trim()) {
-                alert("Deletion cancelled. Name did not match.");
-                return;
-            }
-
+            if (!confirm(`Are you sure you want to delete ${type} "${cleanName}"?\nThis cannot be undone.`)) return;
             // ... (rest of deleteUser)
             
             const payload = {
@@ -989,21 +950,10 @@
             }
         }
 
-        async function deleteUserList(type, name, parent1, parent2) {
+        async function deleteUser(type, name, parent1, parent2) {
             const cleanName = name.replace(/\\'/g, "'");
+            if (!confirm(`Are you sure you want to delete ${type} "${cleanName}"?\nThis cannot be undone.`)) return;
             
-            // Safer confirmation
-            const userInput = prompt(`To DELETE ${type} "${cleanName}" and ALL associated data (stats, evaluations, notes), please type "${cleanName}" below:\n\nWARNING: This action is permanent and cannot be undone.`);
-            
-            if (userInput === null) return;
-
-            // Lenient comparison (trim to fix trailing spaces)
-            if (userInput.trim() !== cleanName.trim()) {
-                alert("Deletion cancelled. Name did not match.");
-                return;
-            }
-            
-
             const payload = {
                 type: type,
                 name: cleanName,
@@ -1034,7 +984,7 @@
 
         // --- Core Logic ---
         let hierarchyData = {};
-        let currentProfile = IS_BEF_ADMIN ? 'BEF' : 'ALL';
+        let currentProfile = 'ALL';
         
         // Glue code for new buttons
         function setFilter(profile) {
@@ -1047,17 +997,12 @@
         }
         
         function changeProfile(profile) {
-            if (IS_BEF_ADMIN && profile !== 'BEF') return; // Enforce restriction
             currentProfile = profile;
             // Update UI
             document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
-            const btnAll = document.getElementById('btn-profile-all');
-            const btnBef = document.getElementById('btn-profile-bef');
-            const btnPrv = document.getElementById('btn-profile-private');
-            
-            if(profile === 'ALL' && btnAll) btnAll.classList.add('active');
-            if(profile === 'BEF' && btnBef) btnBef.classList.add('active');
-            if(profile === 'PRIVATE' && btnPrv) btnPrv.classList.add('active');
+            if(profile === 'ALL') document.getElementById('btn-profile-all').classList.add('active');
+            if(profile === 'BEF') document.getElementById('btn-profile-bef').classList.add('active');
+            if(profile === 'PRIVATE') document.getElementById('btn-profile-private').classList.add('active');
             
             // Reload Data
             loadData();

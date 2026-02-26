@@ -15,8 +15,7 @@ import secrets
 import hashlib
 import re
 from datetime import datetime, timedelta
-from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats, clear_financial_cache
-
+from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
 
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
@@ -41,8 +40,7 @@ from dashboard.database import (
     find_user_by_identifier, verify_user_by_identifier,
     # History management
     save_client_data_with_history, get_data_history, get_data_version,
-    rollback_to_version, compare_versions, get_latest_version, 
-    delete_client_data, get_connection
+    rollback_to_version, compare_versions, get_latest_version
 )
 from dashboard.notes_service import (
     get_client_notes, save_client_note, delete_client_note
@@ -235,7 +233,7 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
         
         # Strict prefix check applies to partial matches below
         if prefix_mismatch:
-             # logging.debug(f"[MATCH] Rejected partial match due to prefix mismatch: {target_prefix} vs {eval_account}")
+             logging.debug(f"[MATCH] Rejected partial match due to prefix mismatch: {target_prefix} vs {eval_account}")
              continue
 
         if target_last5 and len(target_last5) >= 4:
@@ -1021,10 +1019,6 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             # Determines if we have a strict structural match up front
             matches_full_strict = (full_comment_info is not None)
 
-            # RESET Duplicate Flags for each session iteration to prevent leakage
-            is_duplicate = False
-            is_duplicate_value = False
-            
             for e in evaluations:
                 is_match = False
                 ac1 = normalize_acc(e.get('Account #', ''))
@@ -1060,11 +1054,11 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                             mapping = {
                                 'MFFU': ['MYFUNDED', 'MFFU'],
                                 'AFAD': ['ALPHA', 'AFAD'],
-                                'V2': ['TOP STEP', 'TOPSTEP', 'V2'],
+                                'V2': ['TOPSTEP', 'V2'],
                                 'FNFT': ['FUNDEDNEXT', 'FNFT'],
                                 'TDFY': ['TRADEIFY', 'TDFY'],
-                                'ELTD': ['TRADE DAY', 'TRADEDAY', 'ELTD'],
-                                'TDF': ['TRADE DAY', 'TRADEDAY', 'TDF']
+                                'ELTD': ['TRADEDAY', 'ELTD'],
+                                'TDF': ['TRADEDAY', 'TDF']
                             }
                             if prefix_part in mapping:
                                 valid_keywords = mapping[prefix_part]
@@ -1230,119 +1224,22 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      # YES! They are sorted by time.
                      
                      # So if we maintain a counter on the best_eval object, we can assign sequentially.
-                     # Initialize counter by scanning for the highest occupied index.
-                     # REVERT: User confirmed they want "Highest Index" logic, not "Fill Gaps".
-                     # FIX: The issue was that empty cells (deleted data) were being treated as full.
-                     # We need to ensure we strip whitespace and check for actual content.
-                     
                      if '_farming_counter' not in best_eval:
-                         max_n = 0
-                         # Scan for highest occupied Hedge Day slot
-                         for i in range(1, 60): # Check up to 60 days
-                             val = best_eval.get(f"Hedge Day {i}")
-                             # Robust check: Must be non-None, non-empty string, and not just whitespace
-                             if val and str(val).strip() and str(val).strip() != '$':
-                                 max_n = i
-                             # We do NOT break on empty slots.
-                             # This ensures if Day 1,2,4 are full, max_n is 4.
-                             # Next trade goes to 5.
-                         
-                         best_eval['_farming_counter'] = max_n
-
-                     # ----------------------------------------------------------------
-                     # DUPLICATE DETECTION via TIMESTAMP in NOTES
-                     # ----------------------------------------------------------------
-                     # Get session unique ID based on timestamp
-                     s_ts = session.get('start', 0)
-                     s_date_str = datetime.datetime.fromtimestamp(s_ts).strftime('%Y-%m-%d')
-                     s_time_str = datetime.datetime.fromtimestamp(s_ts).strftime('%H:%M:%S')
+                         best_eval['_farming_counter'] = 0
                      
-                     # Unique Token for this session: "2023-10-27 14:30:00"
-                     s_token = f"{s_date_str} {s_time_str}"
+                     # Increment counter
+                     best_eval['_farming_counter'] += 1
+                     cnt = best_eval['_farming_counter']
+                     field_name = f"Hedge Day {cnt}"
                      
-                     is_duplicate = False
-                     is_duplicate_value = False  # Reset explicitly for each session
+                     # Create a tracking key to avoid re-adding if we loop multiple times?
+                     # But we are iterating sessions once.
+                     # The only risk is if OLD data exists in these columns from previous pushes.
+                     # If we are doing a full re-push (which generates all sessions), we will overwrite HD1, HD2...
+                     # This effectively "clears" old data by overwriting it with the sorted session data.
+                     # This satisfies "avoid duplicate" because the same session (historical) always maps to the same index (e.g. 1st session -> HD1).
                      
-                     # Check if ANY "Hedge Day X" slot already has this EXACT TIMESTAMP in its note
-                     existing_notes = best_eval.get('_notes', {})
-                     for k, v in existing_notes.items():
-                         if not k.startswith("Hedge Day"): continue
-                         
-                         note_text = str(v or "").strip()
-                         
-                         # Check 1: EXACT TOKEN MATCH (Same Trade) -> SKIP
-                         if s_token in note_text:
-                             # CHECK IF CELL IS EMPTY before assuming duplicate (User Request: "push it back... do not ignore an empty cell")
-                             existing_val_str = str(best_eval.get(k, "")).replace('$', '').replace(',', '').strip()
-                             try:
-                                 existing_val_float = float(existing_val_str) if existing_val_str else 0.0
-                             except:
-                                 existing_val_float = 0.0
-
-                             if existing_val_float == 0.0:
-                                 # Cell is empty/zero -> Allow Re-Push (Treat as update to existing slot)
-                                 is_duplicate = True 
-                                 is_duplicate_value = False # Do NOT skip
-                                 field_name = k
-                                 match_log.append(f"ℹ️ EXACT TOKEN MATCH but Empty/Zero Cell: {field_name}. Repushing value ${session_profit:.2f}.")
-                             else:
-                                 is_duplicate = True
-                                 is_duplicate_value = True # Force Skip
-                                 field_name = k
-                                 match_log.append(f"ℹ️ EXACT TRADE MATCH: {field_name} note contains '{s_token}'. Skipping duplicate push.")
-                             
-                             break
-                             
-                         # Check 2: SAME DAY (Different Time) -> ACCUMULATE
-                         if note_text.startswith(s_date_str):
-                             is_duplicate = True
-                             field_name = k
-                             # Same day, different time -> Accumulate
-                             match_log.append(f"ℹ️ New Trade ({s_time_str}) on Same Day ({s_date_str}). Accumulating in {field_name}.")
-                             break
-                     
-                     # FALLBACK: If note check failed, check if LAST slot value matches EXACTLY (Heuristic for old data)
-                     # ONLY do this if we didn't find a note match above.
-                     if not is_duplicate and '_farming_counter' in best_eval and best_eval['_farming_counter'] > 0:
-                         last_field = f"Hedge Day {best_eval['_farming_counter']}"
-                         last_val_raw = str(best_eval.get(last_field, "")).replace('$', '').replace(',', '').strip()
-                         
-                         # Check date of last slot if available
-                         last_note = best_eval.get('_notes', {}).get(last_field, "")
-                         last_date_match = last_note.startswith(s_date_str) if last_note else False
-                         
-                         # Only consider value-duplicate if dates match OR if we have no date info
-                         # Use stricter check: If we have a date on the last slot and it's DIFFERENT, it's definitely NOT a duplicate
-                         
-                         # LOGIC UPDATE: If last_note is missing (old data), value match is too aggressive for Farming strategies.
-                         # We should only skip if we are SURE it's a duplicate (i.e. dates match).
-                         # If date is missing on old slot, we'd rather duplicate than skip valid profit.
-                         # So we REQUIRE last_date_match to be True to consider it a duplicate by value.
-                         
-                         if last_note and last_date_match:
-                             # Dates match, check value
-                             try:
-                                 last_val_float = float(last_val_raw)
-                                 if abs(last_val_float - float(session_profit)) < 0.001:
-                                     # Likely a duplicate of the last push
-                                     is_duplicate = True
-                                     is_duplicate_value = True
-                                     field_name = last_field
-                                     match_log.append(f"⚠️ Duplicate Value Match with Matching Date: {field_name} has matching profit ${last_val_float:.2f}. Assuming duplicate of {s_date_str}. Skipping.")
-                             except:
-                                 pass
-                         elif not last_note:
-                             # If no note exists on the previous cell, we assume it's a valid previous trade.
-                             # We do NOT skip based on value alone anymore, as that causes issues with recurring fixed-size trades.
-                             pass
-
-                     if not is_duplicate:
-                        # New Date -> New Slot
-                        best_eval['_farming_counter'] += 1
-                        cnt = best_eval['_farming_counter']
-                        field_name = f"Hedge Day {cnt}"
-                        
-                        # We will set the note later when we write the value
+                     pass
 
             
             # Update Logic: ACCUMULATE profit for this push
@@ -1391,82 +1288,22 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             if '_updated_fields' not in best_eval:
                 best_eval['_updated_fields'] = set()
             
-            # IGNORE RE-PUSH OF IDENTICAL VALUE (Strict Duplicate)
-            # If we detected a duplicate based on VALUE match (in FA logic fallback), we skip.
-            # But if we detected duplicate DATE but DIFFERENT value (or just matched date), 
-            # we should ACCUMULATE as per user request ("Add new push to existing value").
-            
-            should_skip = False
-            if 'is_duplicate_value' in locals() and is_duplicate_value:
-                 should_skip = True
-            
-            if should_skip:
-                updates_made += 0
-                match_log.append(f"⏩ Skipping update for {field_name} (Duplicate value detected: ${session_profit:.2f})")
+            if field_name not in best_eval['_updated_fields']:
+                new_val = session_profit
+                best_eval['_updated_fields'].add(field_name)
             else:
-                # NOTE: Ensure we have the exact timestamp token for the note
-                # We utilize the s_token (Date + Time) to uniquely identify trades and allow accumulation on same day.
-                note_token_val = ""
-                try: 
-                    # If this is a farming session, we have s_token from above
-                    if 's_token' in locals():
-                        note_token_val = s_token
-                    elif 's_date_str' in locals():
-                        note_token_val = s_date_str # Fallback to date only if token missing
-                    else:
-                        t_ts = session.get('start', 0)
-                        s_d = datetime.datetime.fromtimestamp(t_ts).strftime('%Y-%m-%d')
-                        s_t = datetime.datetime.fromtimestamp(t_ts).strftime('%H:%M:%S')
-                        note_token_val = f"{s_d} {s_t}"
-                except:
-                    pass
-
-                # Initialize _notes if missing
-                if '_notes' not in best_eval: best_eval['_notes'] = {}
-
-                # If this field is brand new for this request -> Set Value
-                if field_name not in best_eval['_updated_fields']:
-                    
-                    if 'is_duplicate' in locals() and is_duplicate:
-                        # Matched existing slot by Date (Accumulation mode).
-                        # New Value = Old Value + Session Profit
-                        new_val = current_val + session_profit
-                        
-                        # Append the new token to the existing note
-                        existing_note = best_eval['_notes'].get(field_name, "")
-                        if note_token_val and note_token_val not in existing_note:
-                            best_eval['_notes'][field_name] = f"{existing_note}\n{note_token_val}".strip()
-                    else:
-                        # New Slot. Overwrite (Start fresh).
-                        new_val = session_profit
-                        # Set the initial note
-                        if note_token_val:
-                            best_eval['_notes'][field_name] = note_token_val
-                    
-                    best_eval['_updated_fields'].add(field_name)
-                    best_eval[field_name] = f"${new_val:.2f}"
-                    updates_made += 1
-                    
-                else:
-                    # Already updated in this request (Multi-session day) -> Accumulate
-                    # This happens if the loop runs twice for the same eval/field in one push
-                    new_val = current_val + session_profit
-                    best_eval[field_name] = f"${new_val:.2f}"
-                    
-                    # Also append note if not present
-                    existing_note = best_eval['_notes'].get(field_name, "")
-                    if note_token_val and note_token_val not in existing_note:
-                         best_eval['_notes'][field_name] = f"{existing_note}\n{note_token_val}".strip()
-                    
-                    updates_made += 1
-
-                if 'Match Log' not in best_eval:
-                    best_eval['Match Log'] = []
-                best_eval['Match Log'].append(f"Matched matched session (start {datetime.datetime.fromtimestamp(start_date_ts)}) -> {field_name}: ${float(session_profit):.2f} (Total: ${float(new_val):.2f})")
-                
-                # Add explicit cell confirmation log
-                current_row_idx = evaluations.index(best_eval) + 2
-                match_log.append(f"✅ Matched session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) -> Column: [{field_name}] | Row: {current_row_idx} | New Value: ${new_val:.2f}")
+                new_val = current_val + session_profit
+            
+            # FORMAT WITH DOLLAR SIGN FOR PUSH
+            best_eval[field_name] = f"${new_val:.2f}"
+            updates_made += 1
+            if 'Match Log' not in best_eval:
+                 best_eval['Match Log'] = []
+            best_eval['Match Log'].append(f"Matched matched session (start {datetime.datetime.fromtimestamp(start_date_ts)}) -> {field_name}: ${float(session_profit):.2f} (Total: ${float(new_val):.2f})")
+            
+            # Add explicit cell confirmation log
+            current_row_idx = evaluations.index(best_eval) + 2
+            match_log.append(f"✅ Matched session (Start {datetime.datetime.fromtimestamp(start_date_ts)}) -> Column: [{field_name}] | Row: {current_row_idx} | New Value: ${new_val:.2f}")
 
             # --- AGGREGATE SUMMARY STATS ---
             try:
@@ -1480,7 +1317,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      session_comments = " ".join([d.get('comment', '') for d in session['deals'][:5]])
                      
                      if 'MFF' in guesser or 'MFF' in session_comments.upper(): p_firm = 'MyFundedFX'
-                     elif 'V2' in guesser or 'V2' in session_comments.upper(): p_firm = 'Top Step'
+                     elif 'V2' in guesser or 'V2' in session_comments.upper(): p_firm = 'Topstep'
                      elif 'FN' in guesser or 'FNFT' in session_comments.upper(): p_firm = 'FundedNext'
                      elif 'AF' in guesser or 'AFAD' in session_comments.upper(): p_firm = 'Alpha Futures'
                      else: p_firm = 'Unknown Firm'
@@ -1938,15 +1775,9 @@ def index():
 @app.route('/super_admin')
 @require_session
 def super_admin():
-    session_user = request.session_user
-    if session_user.get('user_type') != 'super_admin':
+    if request.session_user.get('user_type') != 'super_admin':
         return redirect('/')
-    
-    # Pass user_id to template to allow conditional UI
-    user_id = session_user.get('user_identifier', '')
-    is_bef_admin = (user_id == 'bef_admin')
-    
-    return render_template('super_admin.html', user_id=user_id, is_bef_admin=is_bef_admin)
+    return render_template('super_admin.html')
 
 @app.route('/admin/<admin_name>')
 @require_session
@@ -1968,14 +1799,7 @@ def financial_overview():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
     
-    # Restrict BEF Admin
-    user_id = session_user.get('user_identifier')
-    forced_profile = None
-    if user_id == 'bef_admin':
-        forced_profile = 'BEF'
-    is_bef_admin = (user_id == 'bef_admin')
-    
-    profile_filter = forced_profile if forced_profile else request.args.get('profile', 'ALL')
+    profile_filter = request.args.get('profile', 'ALL')
     
     # NEW: Use optimized single-pass aggregator
     all_data = calculate_all_financials(profile_filter=profile_filter)
@@ -1994,7 +1818,6 @@ def financial_overview():
                            overview=overview_data,
                            global_stats=global_stats,
                            selected_profile=profile_filter,
-                           is_bef_admin=is_bef_admin,
                            growth_dates=growth_dates,
                            growth_values=growth_values,
                            payouts_dates=payouts_dates,
@@ -2017,13 +1840,6 @@ def payout_history():
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
 
-    # Restrict BEF Admin
-    user_id = session_user.get('user_identifier')
-    forced_profile = None
-    if user_id == 'bef_admin':
-        forced_profile = 'BEF'
-    is_bef_admin = (user_id == 'bef_admin')
-
     # Filter dates
     start_date_str = request.args.get('start_date')
     end_date_str = request.args.get('end_date')
@@ -2043,7 +1859,7 @@ def payout_history():
             pass
 
     prop_firm_filter = request.args.get('prop_firm')
-    profile_filter = forced_profile if forced_profile else request.args.get('profile', 'ALL')
+    profile_filter = request.args.get('profile', 'ALL')
     
     # We need overview data just to get the list of prop firms for the dropdown
     overview_data = calculate_propfirm_overview()
@@ -2057,8 +1873,7 @@ def payout_history():
                            end_date=end_date_str,
                            selected_prop_firm=prop_firm_filter,
                            selected_profile=profile_filter,
-                           prop_firms=sorted_prop_firms,
-                           is_bef_admin=is_bef_admin)
+                           prop_firms=sorted_prop_firms)
 
 @app.route('/client_performance')
 @require_session
@@ -2066,9 +1881,7 @@ def client_performance():
     session_user = request.session_user
     if session_user.get('user_type') != 'super_admin':
          return redirect('/')
-    user_id = session_user.get('user_identifier')
-    is_bef_admin = (user_id == 'bef_admin')
-    return render_template('client_performance.html', is_bef_admin=is_bef_admin)
+    return render_template('client_performance.html')
 
 @app.route('/trader_performance')
 @require_session
@@ -2079,11 +1892,7 @@ def trader_performance():
          
     profile_filter = request.args.get('profile', 'ALL')
     traders_data = calculate_trader_stats(profile_filter=profile_filter)
-    
-    user_id = session_user.get('user_identifier')
-    is_bef_admin = (user_id == 'bef_admin')
-    
-    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter, is_bef_admin=is_bef_admin)
+    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter)
 
 
 @app.route('/trader/<trader_name>')
@@ -2136,54 +1945,6 @@ def get_filtered_hierarchy(user_type, user_identifier):
     full_hierarchy = hierarchy
     
     if user_type == 'super_admin':
-        # Special Case: BEF Admin restriction
-        if user_identifier == 'bef_admin':
-            # Filter hierarchy to ONLY show BEF clients
-            bef_hierarchy = {'admins': {}}
-            
-            for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
-                admin_copy = {'email': admin_data.get('email', ''), 'traders': {}}
-                has_bef_clients = False
-                
-                for trader_name, trader_data in admin_data.get('traders', {}).items():
-                    trader_copy = {'email': trader_data.get('email', ''), 'clients': []}
-                    
-                    clients = trader_data.get('clients', [])
-                    if isinstance(clients, dict):
-                         # Handle dict format
-                         filtered_clients = []
-                         for c_name, c_data in clients.items():
-                             cat = c_data.get('category', c_data.get('profile', 'PRIVATE')).upper()
-                             if cat == 'BEF':
-                                 c_data['name'] = c_name # Ensure name present
-                                 filtered_clients.append(c_data)
-                         
-                         if filtered_clients:
-                             trader_copy['clients'] = filtered_clients
-                             admin_copy['traders'][trader_name] = trader_copy
-                             has_bef_clients = True
-                             
-                    elif isinstance(clients, list):
-                        # Handle list format
-                        filtered_clients = []
-                        for client in clients:
-                            if isinstance(client, dict):
-                                cat = client.get('category', client.get('profile', 'PRIVATE')).upper()
-                                if cat == 'BEF':
-                                    filtered_clients.append(client)
-                            # String clients are legacy/assumed private? Or check string? 
-                            # Usually strings are just names. Assuming private if just string unless overridden.
-                        
-                        if filtered_clients:
-                            trader_copy['clients'] = filtered_clients
-                            admin_copy['traders'][trader_name] = trader_copy
-                            has_bef_clients = True
-                
-                if has_bef_clients:
-                    bef_hierarchy['admins'][admin_name] = admin_copy
-                    
-            return bef_hierarchy
-            
         return full_hierarchy
     
     if user_type == 'admin':
@@ -2279,23 +2040,18 @@ def get_super_admin_totals():
         return jsonify({"status": "error", "message": "Authentication required"}), 401
     
     # Check session
+    # ... (auth check logic is fine, keeping it implicitly via context if needed or re-implementing if I replace the whole function body)
+    # The snippet below replaces the body.
+    
     session_info = validate_session(session_token)
     if not session_info or session_info.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Super admin access required"}), 403
     
-    # Restrict BEF Admin
-    user_id = session_info.get('user_identifier')
-    forced_profile = None
-    if user_id == 'bef_admin':
-        forced_profile = 'BEF'
-    
-    # Use forced profile if set, otherwise use query param
-    profile_filter = forced_profile if forced_profile else request.args.get('profile', 'ALL').upper()
+    profile_filter = request.args.get('profile', 'ALL').upper()
 
     # Use the centralized financial calculation
     data = calculate_all_financials(profile_filter)
     stats = data['global_stats']
-
     overview = data['overview']
     
     # Calculate Deposits separately if not in global_stats
@@ -2373,11 +2129,6 @@ def update_client_source():
     if session_user.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
         
-    # Check for restricted admin
-    user_id = session_user.get('user_identifier')
-    if user_id == 'bef_admin':
-        return jsonify({"status": "error", "message": "Changes not allowed for this account"}), 403
-
     data = request.json
     client_id = data.get('client_id')
     source = data.get('source')
@@ -2401,9 +2152,6 @@ def update_client_source():
         if profile:
             update_client_category(profile['admin'], profile['trader'], client_id, source)
     
-        # Invalidate the cache to reflect changes immediately
-        clear_financial_cache()
-        
         log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), f"To: {source}")
         return jsonify({"status": "success"})
         
@@ -2560,15 +2308,9 @@ def api_client_push():
         # Update evaluations with hedge results from aggregated data OR raw deals
         if evaluations:
             app.logger.info(f"🔄 Matching hedge results to evaluations...")
-            # FORCE USING CLIENT-SIDE AGGREGATION ONLY: Pass raw_deals=None to prevent server-side override
-            # The client (trader_app.py) now has the correct logic for sequential farming days.
-            evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(
-                evaluations, 
-                aggregated_data=aggregated_by_comment, 
-                raw_deals=mt5_deals  # RE-ENABLE SERVER-SIDE AGGREGATION for logs
-            )
+            evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals)
             
-            # If server-side aggregation occurred (it shouldn't now), use THAT instead.
+            # If server-side aggregation occurred, use THAT instead of the client's.
             if generated_sessions:
                 aggregated_by_comment = generated_sessions
                 app.logger.info(f"✅ Replaced client aggregation with {len(generated_sessions)} server-side sessions")
@@ -2703,13 +2445,6 @@ def api_migrate_sheet():
     Public endpoint - migrate data from Google Sheets using client email.
     Fetches data from Google Sheet and pushes it to the dashboard.
     """
-    # Force reload of data_processor to pick up openpyxl changes if needed
-    import sys
-    if 'utils.data_processor' in sys.modules:
-        import importlib
-        import utils.data_processor
-        importlib.reload(utils.data_processor)
-        
     data = request.json
     email = data.get('email', '').strip().lower()
     sheet_url = data.get('sheet_url', '').strip()
@@ -2734,32 +2469,11 @@ def api_migrate_sheet():
         # Import the data processor
         from utils.data_processor import fetch_evaluations, calculate_statistics, fetch_waterlog_history
         from dashboard.watermark_service import bulk_save_history
-        from dashboard.notes_service import save_client_note
 
-        res = fetch_evaluations(sheet_url)
-        if isinstance(res, tuple):
-            evaluations, notes = res
-        else:
-            evaluations = res
-            notes = {}
-            
+        evaluations = fetch_evaluations(sheet_url)
         if not evaluations:
             return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public. (Evaluations Tab)"}), 400
-            
-        # Save imported notes
-        if notes:
-            try:
-                # notes structure: {row_index: {column_key: content}}
-                for row_idx, row_notes in notes.items():
-                    for col_key, content in row_notes.items():
-                        # We use 'system' or the client's email as creator? 
-                        # Let's use 'sheet_import' or similar to indicate source
-                        if content:
-                            save_client_note(client_id, row_idx, col_key, content, 'sheet_import')
-                app.logger.info(f"Imported notes for {len(notes)} rows")
-            except Exception as e:
-                app.logger.error(f"Error saving imported notes: {e}")
-
+        
         # Determine Waterlog GID (Default hardcoded or from params)
         # Using hardcoded GID '520289647' inside fetch_waterlog_history as requested logic
         waterlog_history = fetch_waterlog_history(sheet_url)
@@ -2801,9 +2515,6 @@ def api_migrate_sheet():
             change_description=f"Imported {len(evaluations)} records from Google Sheets"
         )
         
-        # Clear financial cache to reflect changes immediately
-        clear_financial_cache()
-
         # Update Hierarchy
         add_admin(admin_id)
         add_trader(admin_id, trader_id)
@@ -2866,12 +2577,12 @@ def api_get_watermark_history(client_id):
 
     try:
         from dashboard.watermark_service import get_watermark_history, get_lower_watermark
-        # Get history for the requested period (now configured to bi-weekly period)
-        # User requested: "profitbaility water log should check the last two weeks not 14 days"
-        history = get_watermark_history(client_id, days='bi-weekly')
+        # Get history for the requested period (now configured to 14 days for consistency with watermarks)
+        # User requested: "both all and high water mark should check the last 14 days"
+        history = get_watermark_history(client_id, days=14)
         
-        # Get lower watermark (current bi-weekly period min)
-        low_watermark = get_lower_watermark(client_id, days='bi-weekly')
+        # Get lower watermark (last 14 days min)
+        low_watermark = get_lower_watermark(client_id, days=14)
         
         return jsonify({
             "status": "success",
@@ -2908,30 +2619,13 @@ def api_admin_login():
     if not password:
         return jsonify({"status": "error", "message": "Password required"}), 400
     
-    # Check Super Admin
     if verify_admin_password('super_admin', password):
-        # User Type MUST be 'super_admin' for access to super admin routes
-        session_token = create_session('super_admin', 'super_admin', client_ip)
-        log_action('ADMIN_LOGIN', 'super_admin', 'super_admin', client_ip, 'Successful login')
+        session_token = create_session('admin', 'super_admin', client_ip)
+        log_action('ADMIN_LOGIN', 'admin', 'super_admin', client_ip, 'Successful login')
         
         response = jsonify({"status": "success", "redirect": "/super_admin"})
         response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
         return response
-
-    # Check BEF Admin
-    if verify_admin_password('bef_admin', password):
-        # User Type 'bef_admin' treated as restricted super_admin??
-        # If routes require 'super_admin', we must use 'super_admin' type but distinguish by identifier
-        session_token = create_session('super_admin', 'bef_admin', client_ip)
-        log_action('ADMIN_LOGIN', 'super_admin', 'bef_admin', client_ip, 'Successful login')
-        
-        response = jsonify({"status": "success", "redirect": "/super_admin"})
-        response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
-        return response
-    
-    log_action('ADMIN_LOGIN_FAILED', 'admin', 'unknown', client_ip, 'Invalid password', False)
-    return jsonify({"status": "error", "message": "Invalid password"}), 401
-
 
 @app.route('/logout')
 def logout():
@@ -3002,13 +2696,10 @@ def unified_login():
         if not password:
             return jsonify({"status": "error", "message": "Password is required for Super Admin"}), 400
         
-        # Use the actual username (e.g. bef_admin) or fallback to super_admin
-        admin_username = username if username else 'super_admin'
-        
-        if verify_admin_password(admin_username, password):
-            session_token = create_session('super_admin', admin_username, client_ip)
-            record_login_attempt(admin_username, 'super_admin', client_ip, True)
-            log_action('LOGIN_SUCCESS', 'super_admin', admin_username, client_ip)
+        if verify_admin_password('super_admin', password):
+            session_token = create_session('super_admin', 'super_admin', client_ip)
+            record_login_attempt('super_admin', 'super_admin', client_ip, True)
+            log_action('LOGIN_SUCCESS', 'super_admin', 'super_admin', client_ip)
             
             max_age = 30 * 24 * 60 * 60 if remember else 86400  # 30 days or 24 hours
             response = jsonify({
@@ -3020,8 +2711,8 @@ def unified_login():
             response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Lax', max_age=max_age)
             return response
         
-        record_login_attempt(admin_username, 'super_admin', client_ip, False)
-        log_action('LOGIN_FAILED', 'super_admin', admin_username, client_ip, 'Invalid password', False)
+        record_login_attempt('super_admin', 'super_admin', client_ip, False)
+        log_action('LOGIN_FAILED', 'super_admin', 'super_admin', client_ip, 'Invalid password', False)
         return jsonify({"status": "error", "message": "Invalid password"}), 403
     
     # Handle Admin/Trader/Client login - NO PASSWORD REQUIRED (email only)
@@ -3125,7 +2816,6 @@ def api_create_user():
         elif user_type == 'client':
             if not hierarchy_exists:
                 p_trader = data.get('parent_user') or parent_trader
-                category = data.get('category') or ""
                 # We need to find the admin for this trader to call add_client(admin, trader, client)
                 # Search hierarchy for the trader
                 found_admin = None
@@ -3135,26 +2825,7 @@ def api_create_user():
                             found_admin = adm
                             break
                 if found_admin and p_trader:
-                    add_client(found_admin, p_trader, username, email, category)
-                    
-                    # Ensure Clients Data is initialized with Category
-                    try:
-                        if not get_client_data(username):
-                             initial_data = {
-                                "identity": {
-                                    "name": username,
-                                    "email": email,
-                                    "category": category,
-                                    "profile": category,
-                                    "source": category or "Private",
-                                    "admin": found_admin,
-                                    "trader": p_trader,
-                                    "client": username
-                                }
-                            }
-                             save_client_data(username, initial_data)
-                    except Exception as ex:
-                        print(f"Error initializing client data in create_user: {ex}")
+                    add_client(found_admin, p_trader, username, email)
     except Exception as e:
         print(f"Hierarchy update failed: {e}")
         # Continue, as user was created in DB
@@ -3366,10 +3037,6 @@ def api_add_admin():
 @app.route('/api/delete_user', methods=['POST'])
 @require_role('super_admin')
 def api_delete_user():
-    # Restrict special admin
-    if request.session_user.get('user_identifier') == 'bef_admin':
-        return jsonify({"status": "error", "message": "Permission denied"}), 403
-
     data = request.json
     user_type = data.get('type')
     name = data.get('name')
@@ -3381,47 +3048,17 @@ def api_delete_user():
         
     result = False
     if user_type == 'admin':
-        # Clean up database data for all clients under this admin
-        if name in SYSTEM_HIERARCHY["admins"]:
-            traders = SYSTEM_HIERARCHY["admins"][name].get("traders", {})
-            for t_name, t_data in traders.items():
-                for client in t_data.get("clients", []):
-                    # Delete client data from DB
-                    delete_client_data(client["name"])
-                    # Delete credentials for client
-                    delete_user_credential(client["name"], 'client')
-                # Delete credential for trader
-                delete_user_credential(t_name, 'trader')
-                
         result = remove_admin(name)
-        # Delete credential for admin
         delete_user_credential(name, 'admin')
             
     elif user_type == 'trader':
         if not admin: return jsonify({"status": "error", "message": "Admin parent required"}), 400
-        
-        # Clean up database data for all clients under this trader
-        if admin in SYSTEM_HIERARCHY["admins"]:
-            traders = SYSTEM_HIERARCHY["admins"][admin].get("traders", {})
-            if name in traders:
-                for client in traders[name].get("clients", []):
-                    # Delete client data from DB
-                    delete_client_data(client["name"])
-                    # Delete credentials for client
-                    delete_user_credential(client["name"], 'client')
-
         result = remove_trader(admin, name)
-        # Delete credential for trader
         delete_user_credential(name, 'trader')
             
     elif user_type == 'client':
         if not admin or not trader: return jsonify({"status": "error", "message": "Parents required"}), 400
-        
-        # Clean up database data for this client
-        delete_client_data(name)
-        
         result = remove_client(admin, trader, name)
-        # Delete credential for client
         delete_user_credential(name, 'client')
     
     if result:
@@ -3769,12 +3406,9 @@ def api_move_trader():
 @app.route('/super_admin/clients')
 @require_session
 def client_management():
-    session_user = request.session_user
-    if session_user.get('user_type') != 'super_admin':
+    if request.session_user.get('user_type') != 'super_admin':
         return redirect('/')
-    user_id = session_user.get('user_identifier')
-    is_bef_admin = (user_id == 'bef_admin')
-    return render_template('client_management.html', is_bef_admin=is_bef_admin)
+    return render_template('client_management.html')
 
 # ============ Data API with Role-Based Access Control ============
 
@@ -4271,9 +3905,6 @@ def update_data_with_api_key(data, identity, user_info):
     admin_id = identity.get('admin', 'Admin1')
     trader_id = identity.get('trader', 'Trader1')
     client_id = identity.get('client', 'Client1')
-    
-    print(f"--- Client {client_id} Info Start ---")
-    
     email = identity.get('email', '')
     
     # Get existing data to prevent overwriting evaluations with empty list
@@ -4337,7 +3968,6 @@ def update_data_with_api_key(data, identity, user_info):
     add_client(admin_id, trader_id, client_id)
     
     log_action('DATA_UPDATE', 'trader', trader_id, get_remote_address(), f"Client: {client_id} (v{version})")
-    print(f"--- Client {client_id} Info End ---")
     return jsonify({"status": "success", "message": "Data updated", "version": version})
 
 # ============ API Key Management (Admin only) ============
@@ -4678,6 +4308,40 @@ def change_admin_password():
         return jsonify({"status": "success", "message": "Password changed successfully"})
     
     return jsonify({"status": "error", "message": "Failed to change password"}), 500
+
+# ============ Sheet Data Endpoints ============
+try:
+    from dashboard.utils.sheet_helper import fetch_stats_data, fetch_waterlog_data
+except ImportError:
+    # Fallback if utils package structure is wacky
+    try:
+        from utils.sheet_helper import fetch_stats_data, fetch_waterlog_data
+    except ImportError:
+        logging.error("Could not import sheet_helper")
+
+@app.route('/api/sheet/stats')
+@require_session
+def get_stats_sheet_data():
+    """Fetches stats data directly from the Google Sheet."""
+    try:
+        data = fetch_stats_data()
+        if data:
+            return jsonify({"status": "success", "data": data})
+        return jsonify({"status": "error", "message": "Failed to fetch stats data"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/sheet/waterlog')
+@require_session
+def get_waterlog_sheet_data():
+    """Fetches waterlog data directly from the Google Sheet."""
+    try:
+        data = fetch_waterlog_data()
+        if data:
+            return jsonify({"status": "success", "data": data})
+        return jsonify({"status": "error", "message": "Failed to fetch waterlog data"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============ Main Entry Point ============
 

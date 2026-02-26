@@ -860,6 +860,15 @@
             display: flex;
             gap: 8px;
         }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+
+        .no-data-hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -990,13 +999,13 @@
                 <table class="data-table" style="width: 100%;">
                     <thead>
                         <tr>
-                            <th style="text-align: left;">Date</th>
-                            <th style="text-align: right;">Net Profit Complete</th>
-                            <th style="text-align: center;">Change</th>
+                            <th style="text-align: left; padding-left: 20px;">Date</th>
+                            <th style="text-align: right; padding-right: 20px;">Net Profit (Completed)</th>
+                            <th style="text-align: right; padding-right: 20px;">Daily Change</th>
                         </tr>
                     </thead>
                     <tbody id="waterlog-body">
-                        <tr><td colspan="3" style="text-align: center;">Select a client to view waterlog</td></tr>
+                        <tr><td colspan="3" style="text-align: center;">Loading daily profit records...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1380,10 +1389,10 @@
 
 
     <script>
-        const CLIENT_ID = "{{ client_id }}";
+        const CLIENT_ID = {{ client_id|tojson|safe }};
         const USER_TYPE = "{{ user_type }}";
         // @ts-ignore
-        const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
+        const canEditHedging = {{ can_edit_hedging|tojson|safe }};
 
         // Debug Logger
         function debugLog(msg) {
@@ -1851,7 +1860,20 @@
             if (isEditing) return;
             if (isDatePickerOpen) return;
 
-            const url = CLIENT_ID ? `/api/data?client_id=${CLIENT_ID}` : '/api/data';
+            // Show loading indicator immediately before fetch
+            const evalBody = document.getElementById('evaluations-body');
+            if (evalBody) {
+                evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center; padding:30px; color:#94a3b8;">
+                    <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite;">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                        </svg>
+                        <span style="font-size:1em;">Evaluations loading, please wait&hellip;</span>
+                    </div>
+                </td></tr>`;
+            }
+
+            const url = CLIENT_ID ? `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}` : '/api/data';
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
@@ -1859,6 +1881,7 @@
                     if (isEditing || isSaving || document.querySelector('.cell-input:focus')) return;
 
                     currentData = data;
+                    dataLoaded = true; // mark data as ready
                     
                     // Normalize legacy Prop Firm names
                     if (currentData.evaluations) {
@@ -1890,6 +1913,7 @@
 
         // Global variables for rendering
         let pendingEvaluations = [];
+        let dataLoaded = false; // true after first successful fetch
 
         function renderEvaluationsTable() {
             const evalBody = document.getElementById('evaluations-body');
@@ -1952,11 +1976,29 @@
                     });
                 }
                 
+                // Sort by Date Purchased (Latest First)
+                rowsToRender.sort((a, b) => {
+                    const dateA = new Date(a.item['Date Purchased'] || 0);
+                    const dateB = new Date(b.item['Date Purchased'] || 0);
+                    return dateB - dateA; // Descending
+                });
+                
                 // Active count check
                 if (rowsToRender.length === 0) {
-                     noEvalMsg.textContent = showActiveOnly ? "No active accounts found." : "No evaluations found";
-                     noEvalMsg.style.display = 'block';
-                     return;
+                    if (!dataLoaded) {
+                        // Data not yet fetched — keep the loading spinner visible
+                        evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center; padding:30px; color:#94a3b8;">
+                            <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                                <span style="font-size:1em;">Evaluations loading, please wait&hellip;</span>
+                            </div>
+                        </td></tr>`;
+                        noEvalMsg.style.display = 'none';
+                    } else {
+                        noEvalMsg.textContent = showActiveOnly ? "No active accounts found." : "No evaluations found";
+                        noEvalMsg.style.display = 'block';
+                    }
+                    return;
                 }
                 
                 noEvalMsg.style.display = 'none';
@@ -2230,11 +2272,30 @@
 
         function renderStats(data) {
             const statsContainer = document.getElementById('stats-summary');
-            if (data.statistics) {
-                const s = data.statistics;
-                // Store sheet hedging results for recalculation
-                sheetHedgingResults = s.hedging_review.sheet_hedging_results || 0;
-                statsContainer.innerHTML = `
+            if (!statsContainer) return;
+
+            try {
+                if (data.statistics) {
+                    const s = data.statistics;
+                    // --- Safety Checks ---
+                    s.hedging_review = s.hedging_review || {};
+                    s.profitability_completed = s.profitability_completed || {};
+                    s.expected_value = s.expected_value || 0;
+                    s.cashflow_inprogress = s.cashflow_inprogress || {};
+                    s.evaluation_data = s.evaluation_data || {};
+                    s.eval_totals = s.eval_totals || { total_running: 0, not_started: 0, ongoing: 0, total_passed: 0, total_failed: 0, avg_net_failed: 0, funded_rate: 0 };
+                    s.funded_data = s.funded_data || {};
+                    s.funded_totals = s.funded_totals || { not_started: 0, ongoing: 0, failed: 0, completed: 0, avg_net_failed: 0, avg_net_completed: 0, total_funding: 0 };
+
+                    // Helper for safe rate formatting
+                    const fmtRate = (val) => {
+                        const n = parseFloat(val);
+                        return (isNaN(n) ? 0 : n).toFixed(0);
+                    };
+
+                    // Store sheet hedging results for recalculation
+                    sheetHedgingResults = s.hedging_review.sheet_hedging_results || 0;
+                    statsContainer.innerHTML = `
                             <div class="stats-grid">
                                 <!-- Profitability - Completed -->
                                 <div class="card">
@@ -2340,7 +2401,7 @@
                                     </thead>
                                     <tbody>
                                         ${Object.keys(s.evaluation_data).map(firm => {
-                                            const d = s.evaluation_data[firm];
+                                            const d = s.evaluation_data[firm] || {};
                                             return `
                                             <tr>
                                                 <td style="position: sticky; left: 0; z-index: 15; background: var(--card-bg); font-weight: 600;">${firm}</td>
@@ -2350,7 +2411,7 @@
                                                 <td>${d.total_passed}</td>
                                                 <td>${d.total_failed}</td>
                                                 <td>${formatMoney(d.avg_net_failed)}</td>
-                                                <td>${d.funded_rate.toFixed(0)}%</td>
+                                                <td>${fmtRate(d.funded_rate)}%</td>
                                             </tr>`;
                                         }).join('')}
                                         <tr class="font-bold" style="background:rgba(255, 255, 255, 0.05);">
@@ -2361,7 +2422,7 @@
                                             <td>${s.eval_totals.total_passed}</td>
                                             <td>${s.eval_totals.total_failed}</td>
                                             <td>${formatMoney(s.eval_totals.avg_net_failed)}</td>
-                                            <td>${s.eval_totals.funded_rate.toFixed(0)}%</td>
+                                            <td>${fmtRate(s.eval_totals.funded_rate)}%</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -2412,6 +2473,10 @@
                                 </table>
                             </div>
                         `;
+                }
+            } catch (e) {
+                console.error('Render Stats Error:', e);
+                if (statsContainer) statsContainer.innerHTML = `<div style="padding:20px;text-align:center;color:#ef4444;">Error loading stats: ${e.message}</div>`;
             }
         }
 
@@ -3040,7 +3105,7 @@
         }
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'Funded Next', 'Funding Ticks', 'Top Step', 'Lucid', 'Trade Day', 'Alpha Futures', 'Tradeify', 'Other'],
+            'Prop Firm': ['My Funded Futures', 'Funded Next', 'FundingTicks', 'TopStep', 'Lucid', 'TradeDay', 'AlphaFutures', 'Tradeify', 'Other'],
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Deleted', 'Hit TP 2', 'Hit SL 1', 'Hit TP 3'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit SL1', 'Deleted', 'Completed']
@@ -3810,76 +3875,78 @@
         let waterlogLoaded = false;
         
         function loadWaterlogData() {
-            if (waterlogLoaded || !clientId) return;
+            if (waterlogLoaded) return;
             
             const tbody = document.getElementById('waterlog-body');
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading...</td></tr>';
+
+            if (!CLIENT_ID) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No client selected.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading daily profit records...</td></tr>';
             
-            // Format formatter
-            const fmt = (n) => {
-                if (n === null || n === undefined) return '-';
-                const s = n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-                return n < 0 ? `<span style="color: #ef4444;">${s}</span>` : `<span style="color: #4ade80;">${s}</span>`;
-            };
-            
-            fetch(`/api/client/watermark_history/${clientId}`)
+            fetch(`/api/client/watermark_history/${encodeURIComponent(CLIENT_ID)}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        // Render High/Low Cards
                         const history = data.history || [];
-                        const low = data.low_watermark;
-                        
-                        // Calculate High Watermark (last 180 days from data)
-                        let high = null;
+                        const lowWm = data.low_watermark;
+
+                        // Populate high/low watermark cards
                         if (history.length > 0) {
-                             high = history.reduce((max, obj) => (obj.profit > max.profit ? obj : max), history[0]);
+                            const highWm = history.reduce((a, b) => a.profit > b.profit ? a : b);
+                            document.getElementById('high-watermark-val').textContent = '$' + highWm.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            document.getElementById('high-watermark-date').textContent = highWm.date;
+                        } else {
+                            document.getElementById('high-watermark-val').textContent = '—';
+                            document.getElementById('high-watermark-date').textContent = 'No data yet';
                         }
-                        
-                        document.getElementById('high-watermark-val').innerHTML = fmt(high ? high.profit : 0);
-                        document.getElementById('high-watermark-date').textContent = high ? high.date : '-';
-                        
-                        document.getElementById('low-watermark-val').innerHTML = fmt(low ? low.profit : 0);
-                        document.getElementById('low-watermark-date').textContent = low ? low.date : '-';
-                        
-                        // Render Table
+
+                        if (lowWm) {
+                            document.getElementById('low-watermark-val').textContent = '$' + lowWm.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            document.getElementById('low-watermark-date').textContent = lowWm.date;
+                        } else {
+                            document.getElementById('low-watermark-val').textContent = '—';
+                            document.getElementById('low-watermark-date').textContent = 'No data yet';
+                        }
+
                         if (history.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No watermark history available.</td></tr>';
+                            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No daily profit records found yet. Records are saved automatically at midnight each day.</td></tr>';
                             waterlogLoaded = true;
                             return;
                         }
-                        
-                        // Sort descending by date for table
-                        const sorted = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                        // Render rows newest first
+                        const rows = [...history].reverse();
                         let html = '';
-                        
-                        sorted.forEach((item, idx) => {
-                            // Calculate daily change
-                            let change = 0;
-                            // Find next item (which is previous date)
-                            if (idx < sorted.length - 1) {
-                                change = item.profit - sorted[idx+1].profit;
+                        rows.forEach((item, idx) => {
+                            const prevProfit = (idx < rows.length - 1) ? rows[idx + 1].profit : null;
+                            let changeHtml = '<span style="color: #64748b;">—</span>';
+                            if (prevProfit !== null) {
+                                const change = item.profit - prevProfit;
+                                const color = change >= 0 ? '#4ade80' : '#f87171';
+                                const sign = change >= 0 ? '+' : '';
+                                changeHtml = `<span style="color: ${color};">${sign}$${change.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
                             }
-                            
-                            const changeStr = change === 0 ? '-' : fmt(change);
-                            
+                            const profitColor = item.profit >= 0 ? '#4ade80' : '#f87171';
                             html += `
                                 <tr>
-                                    <td style="text-align: left;">${item.date}</td>
-                                    <td style="text-align: right; font-weight: bold;">${fmt(item.profit)}</td>
-                                    <td style="text-align: center;">${changeStr}</td>
+                                    <td style="text-align: left; padding-left: 20px;">${item.date}</td>
+                                    <td style="text-align: right; padding-right: 20px; color: ${profitColor};">$${item.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td style="text-align: right; padding-right: 20px;">${changeHtml}</td>
                                 </tr>
                             `;
                         });
-                        
+
                         tbody.innerHTML = html;
                         waterlogLoaded = true;
                     } else {
-                         tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Error: ${data.message}</td></tr>`;
+                        tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Error: ${data.message}</td></tr>`;
                     }
                 })
                 .catch(err => {
-                    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Failed to load data.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Failed to load waterlog data.</td></tr>`;
                     console.error(err);
                 });
         }
@@ -3908,6 +3975,12 @@
 
             if (tabName === 'waterlog') {
                 loadWaterlogData();
+            }
+            if (tabName === 'stats') {
+                // Ensure stats are up to date from currentData
+                if (currentData) {
+                    renderStats(currentData);
+                }
             }
         };
 

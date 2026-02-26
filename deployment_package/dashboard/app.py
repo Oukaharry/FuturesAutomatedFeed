@@ -1081,12 +1081,19 @@ def api_client_push():
     trader_id = client_info['trader']
     client_id = client_info['client']
     
-    # Get MT5 data from push
-    mt5_deals = data.get("deals", [])
-    mt5_account = data.get("account", {})
-    
     # Get existing data to merge evaluations if needed
     existing_data = get_client_data(client_id) or {}
+    
+    # Get MT5 data from push (preserve existing if not provided)
+    if "deals" in data:
+        mt5_deals = data["deals"]
+    else:
+        mt5_deals = existing_data.get("deals", [])
+        
+    if "account" in data:
+        mt5_account = data["account"]
+    else:
+        mt5_account = existing_data.get("account", {})
     
     # Only use new evaluations if explicitly provided and not empty
     # If "evaluations" key is missing or None, preserve existing data

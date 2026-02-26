@@ -625,79 +625,83 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 35)]
 
     for ev in evaluations:
-        firm = ev.get('Prop Firm', 'Unknown')
-        status_p1 = str(ev.get('Status P1', '')).strip()
-        status_funded = str(ev.get('Status', '')).strip()
-        
-        # Normalize for comparison (but keep original for exact match)
-        status_p1_lower = status_p1.lower()
-        status_funded_lower = status_funded.lower()
-        
-        # Skip deleted accounts
-        if 'deleted' in status_p1_lower or 'deleted' in status_funded_lower:
+        try:
+            firm = ev.get('Prop Firm', 'Unknown')
+            status_p1 = str(ev.get('Status P1', '')).strip()
+            status_funded = str(ev.get('Status', '')).strip()
+            
+            # Normalize for comparison (but keep original for exact match)
+            status_p1_lower = status_p1.lower()
+            status_funded_lower = status_funded.lower()
+            
+            # Skip deleted accounts
+            if 'deleted' in status_p1_lower or 'deleted' in status_funded_lower:
+                continue
+            
+            # === CALCULATE VALUES USING EXACT SHEET SUMIF LOGIC ===
+            
+            # Get individual hedge results (NOT the calculated Hedge Net columns)
+            p1_hedges = sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS)
+            funded_hedges = sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
+            hedge_days = sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS)
+            
+            fee = parse_currency(ev.get('Fee'))
+            activation_fee = parse_currency(ev.get('Activation Fee'))
+            farming_net = parse_currency(ev.get('Farming Net'))
+            payouts = sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 5))
+            
+            # For sheet_hedge_total tracking
+            hedge_net = parse_currency(ev.get('Hedge Net')) + parse_currency(ev.get('Hedge Net.1'))
+            p1_hedge_net = parse_currency(ev.get('Hedge Net'))
+            funded_hedge_net = parse_currency(ev.get('Hedge Net.1'))
+            sheet_hedge_total += hedge_net
+            
+            # === PROFITABILITY - COMPLETED (exact SUMIF logic from sheet) ===
+            # Challenge Fees formula: (SUMIF(Fee,P1="Fail") + SUMIF(Fee,Status="Completed") + SUMIF(Fee,Status="Fail")) * -1
+            # We store as positive, the display will show as negative
+            
+            # Hedging Results Completed formula:
+            # Part 1: P1 hedges (J-N) where Status P1 = "Fail"
+            # Part 2: Funded hedges (U-AA) where Status = "Fail" or "Completed"  
+            # Part 3: P1 hedges (J-N) where Status = "Fail" or "Completed"
+            
+            # Farming Results Completed formula:
+            # Sum of Hedge Day columns (AM,AO,AQ...) where Status = "Completed" ONLY
+            
+            is_p1_fail = status_p1 == 'Fail'
+            is_funded_fail = status_funded == 'Fail'
+            is_funded_completed = status_funded == 'Completed'
+            is_funded_ended = is_funded_fail or is_funded_completed
+            
+            # Challenge Fees Completed: Fee where P1=Fail OR Status=Fail OR Status=Completed
+            if is_p1_fail:
+                stats["profitability_completed"]["challenge_fees"] += fee
+            if is_funded_fail:
+                stats["profitability_completed"]["challenge_fees"] += fee
+            if is_funded_completed:
+                stats["profitability_completed"]["challenge_fees"] += fee
+                
+            # Hedging Results Completed
+            if is_p1_fail:
+                stats["profitability_completed"]["hedging_results"] += p1_hedges
+            if is_funded_ended:
+                stats["profitability_completed"]["hedging_results"] += funded_hedges + p1_hedges
+                
+            # Farming Results Completed: Hedge Days ONLY where Status=Completed
+            if is_funded_completed:
+                stats["profitability_completed"]["farming_results"] += hedge_days
+                
+            # Payouts Completed: where Status=Completed or Status=Fail
+            if is_funded_ended:
+                stats["profitability_completed"]["payouts"] += payouts
+                
+            # Activation Fee for Completed (B25 in Net Profit formula)
+            # Track activation fee for accounts that have ended
+            if is_p1_fail or is_funded_ended:
+                stats["profitability_completed"]["activation_fee"] += activation_fee
+        except Exception as e:
+            print(f"Error processing evaluation row: {e}")
             continue
-        
-        # === CALCULATE VALUES USING EXACT SHEET SUMIF LOGIC ===
-        
-        # Get individual hedge results (NOT the calculated Hedge Net columns)
-        p1_hedges = sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS)
-        funded_hedges = sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
-        hedge_days = sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS)
-        
-        fee = parse_currency(ev.get('Fee'))
-        activation_fee = parse_currency(ev.get('Activation Fee'))
-        farming_net = parse_currency(ev.get('Farming Net'))
-        payouts = sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 5))
-        
-        # For sheet_hedge_total tracking
-        hedge_net = parse_currency(ev.get('Hedge Net')) + parse_currency(ev.get('Hedge Net.1'))
-        p1_hedge_net = parse_currency(ev.get('Hedge Net'))
-        funded_hedge_net = parse_currency(ev.get('Hedge Net.1'))
-        sheet_hedge_total += hedge_net
-        
-        # === PROFITABILITY - COMPLETED (exact SUMIF logic from sheet) ===
-        # Challenge Fees formula: (SUMIF(Fee,P1="Fail") + SUMIF(Fee,Status="Completed") + SUMIF(Fee,Status="Fail")) * -1
-        # We store as positive, the display will show as negative
-        
-        # Hedging Results Completed formula:
-        # Part 1: P1 hedges (J-N) where Status P1 = "Fail"
-        # Part 2: Funded hedges (U-AA) where Status = "Fail" or "Completed"  
-        # Part 3: P1 hedges (J-N) where Status = "Fail" or "Completed"
-        
-        # Farming Results Completed formula:
-        # Sum of Hedge Day columns (AM,AO,AQ...) where Status = "Completed" ONLY
-        
-        is_p1_fail = status_p1 == 'Fail'
-        is_funded_fail = status_funded == 'Fail'
-        is_funded_completed = status_funded == 'Completed'
-        is_funded_ended = is_funded_fail or is_funded_completed
-        
-        # Challenge Fees Completed: Fee where P1=Fail OR Status=Fail OR Status=Completed
-        if is_p1_fail:
-            stats["profitability_completed"]["challenge_fees"] += fee
-        if is_funded_fail:
-            stats["profitability_completed"]["challenge_fees"] += fee
-        if is_funded_completed:
-            stats["profitability_completed"]["challenge_fees"] += fee
-            
-        # Hedging Results Completed
-        if is_p1_fail:
-            stats["profitability_completed"]["hedging_results"] += p1_hedges
-        if is_funded_ended:
-            stats["profitability_completed"]["hedging_results"] += funded_hedges + p1_hedges
-            
-        # Farming Results Completed: Hedge Days ONLY where Status=Completed
-        if is_funded_completed:
-            stats["profitability_completed"]["farming_results"] += hedge_days
-            
-        # Payouts Completed: where Status=Completed or Status=Fail
-        if is_funded_ended:
-            stats["profitability_completed"]["payouts"] += payouts
-            
-        # Activation Fee for Completed (B25 in Net Profit formula)
-        # Track activation fee for accounts that have ended
-        if is_p1_fail or is_funded_ended:
-            stats["profitability_completed"]["activation_fee"] += activation_fee
         
         # === CASHFLOW - IN PROGRESS (TOTALS of ALL records - no status filtering) ===
         # Formula from sheet:

@@ -189,29 +189,6 @@ def init_database():
             )
         ''')
 
-        # Seeding Default Admins if missing
-        # Check Super Admin
-        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'super_admin'")
-        if not cursor.fetchone():
-            # Default password 'ballerquotes' (should represent secure config)
-            # In production this should be changed immediately
-            pw_hash, salt = hash_password('ballerquotes') 
-            now = datetime.now().isoformat()
-            cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
-                          ('super_admin', pw_hash, salt, now))
-            print("✅ Created default super_admin account")
-            
-        # Check BEF Admin
-        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'bef_admin'")
-        if not cursor.fetchone():
-            pw_hash, salt = hash_password('bef_admin_123') 
-            now = datetime.now().isoformat()
-            cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
-                          ('bef_admin', pw_hash, salt, now))
-            print("✅ Created default bef_admin account")
-            
-        conn.commit()
-
         # Evaluations table (New Dynamic Phase Architecture)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS evaluations (
@@ -242,48 +219,6 @@ def init_database():
             )
         ''')
         
-        # Seeding Default Admins if missing (MUST BE AFTER hash_password is defined, but init_database calls run later)
-        # Actually this works because init_database() is called at end of file.
-        
-        # Check Super Admin
-        cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'super_admin'")
-        if not cursor.fetchone():
-            # Default password 'ballerquotes' (should represent secure config)
-            # In production this should be changed immediately
-            # Use local import or definition if not available
-            try:
-                pw_hash, salt = hash_password('ballerquotes') 
-                now = datetime.now().isoformat()
-                cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
-                              ('super_admin', pw_hash, salt, now))
-                print("✅ Created default super_admin account")
-            except NameError:
-                # If hash_password not defined yet (circular/scope), skip
-                print("⚠️ Skipping default admin creation (hash_password not ready)")
-                
-        # Check BEF Admin
-        try:
-            # Force update password to ensure consistency (BEFAdmin@123)
-            # This handles both "doesn't exist" and "wrong password" cases
-            cursor.execute("SELECT 1 FROM admin_passwords WHERE username = 'bef_admin'")
-            exists = cursor.fetchone()
-            
-            pw_hash, salt = hash_password('BEFAdmin@123') 
-            now = datetime.now().isoformat()
-            
-            if not exists:
-                cursor.execute("INSERT INTO admin_passwords (username, password_hash, salt, created_at) VALUES (?, ?, ?, ?)", 
-                              ('bef_admin', pw_hash, salt, now))
-                print("✅ Created default bef_admin account")
-            else:
-                cursor.execute("UPDATE admin_passwords SET password_hash = ?, salt = ?, updated_at = ? WHERE username = 'bef_admin'",
-                              (pw_hash, salt, now))
-                print("✅ Reset bef_admin password (BEFAdmin@123)")
-
-        except (NameError, Exception) as e:
-            print(f"⚠️ Error ensuring bef_admin account: {e}")
-            pass
-            
         conn.commit()
         print("Database initialized successfully")
 
@@ -538,16 +473,7 @@ def find_user_by_identifier(identifier: str) -> dict:
     Returns user info including user_type if found.
     Also checks if identifier matches super_admin.
     """
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        
-        # Check if it's super_admin or special admin in admin_passwords
-        cursor.execute('SELECT username FROM admin_passwords WHERE username = ?', (identifier,))
-        admin_row = cursor.fetchone()
-        if admin_row:
-            return {'user_type': 'super_admin', 'username': admin_row['username']}
-    
-    # Check if it's super_admin hardcoded aliases
+    # Check if it's super_admin
     if identifier.lower() in ['super_admin', 'superadmin', 'admin']:
         return {'user_type': 'super_admin', 'username': 'super_admin'}
     
@@ -814,33 +740,6 @@ def save_client_data(client_id: str, data: dict) -> bool:
         except Exception as e:
             print(f"Error saving client data: {e}")
             return False
-
-def delete_client_data(client_id: str) -> bool:
-    """
-    Deletes all data associated with a client.
-    """
-    try:
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            
-            # Delete from main data store
-            cursor .execute("DELETE FROM clients_data WHERE client_id = ?", (client_id,))
-            
-            # Delete from history
-            cursor.execute("DELETE FROM data_history WHERE client_id = ?", (client_id,))
-            
-            # Delete notes
-            cursor.execute("DELETE FROM cell_notes WHERE client_id = ?", (client_id,))
-            
-            # Delete watermarks
-            cursor.execute("DELETE FROM daily_watermarks WHERE client_id = ?", (client_id,))
-            
-            conn.commit()
-            return True
-            
-    except Exception as e:
-        print(f"Error deleting client data for {client_id}: {e}")
-        return False
 
 def get_client_data(client_id: str) -> dict:
     """Get client data from database."""

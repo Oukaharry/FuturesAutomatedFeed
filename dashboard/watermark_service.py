@@ -26,35 +26,13 @@ def save_daily_profit(client_id, net_profit, date_str=None, source='auto'):
         logging.error(f"Error saving daily profit: {e}")
         return False
 
-def get_current_biweekly_start_date():
-    """Calculates the start date of the current bi-weekly period based on Jan 1, 2024 reference."""
-    ref_date = datetime(2024, 1, 1) # Monday
-    today = datetime.now()
-    
-    # Calculate days since reference
-    delta = today - ref_date
-    days_diff = delta.days
-    
-    # Calculate number of 14-day periods elapsed
-    periods = days_diff // 14
-    
-    # Start of current periods
-    current_start = ref_date + timedelta(days=periods * 14)
-    return current_start.strftime('%Y-%m-%d')
-
 def get_watermark_history(client_id, days=30):
     """
     Returns list of dicts: [{'date': 'YYYY-MM-DD', 'profit': 123.45}, ...]
     Sorted by date.
-    
-    If days='bi-weekly', uses calendar-based 2-week periods.
     """
     try:
-        if days == 'bi-weekly':
-            cutoff_date = get_current_biweekly_start_date()
-        else:
-            cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-            
+        cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
