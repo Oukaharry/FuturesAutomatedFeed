@@ -2624,7 +2624,7 @@ def api_admin_login():
         log_action('ADMIN_LOGIN', 'admin', 'super_admin', client_ip, 'Successful login')
         
         response = jsonify({"status": "success", "redirect": "/super_admin"})
-        response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Strict')
+        response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Strict')
         return response
 
 @app.route('/logout')
@@ -2708,7 +2708,7 @@ def unified_login():
                 "redirect": "/super_admin",
                 "must_change_password": False
             })
-            response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Lax', max_age=max_age)
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
             return response
         
         record_login_attempt('super_admin', 'super_admin', client_ip, False)
@@ -2736,7 +2736,7 @@ def unified_login():
         "redirect": redirect_url,
         "must_change_password": False
     })
-    response.set_cookie('session_token', session_token, httponly=True, secure=True, samesite='Lax', max_age=max_age)
+    response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
     return response
 
 # ============ User Management Endpoints (Admin only) ============
@@ -3673,6 +3673,9 @@ def get_data():
             return jsonify({"status": "error", "message": "Access denied"}), 403
         
         data = get_client_data(client_id)
+        if data is None:
+            return jsonify({"status": "error", "message": f"No data found for client '{client_id}'. The client may not exist or has no saved data yet."}), 404
+
         if data:
             # Inject Visual Notes
             if 'evaluations' in data:
@@ -3706,10 +3709,12 @@ def get_data():
                     hr['actual_hedging_results'] = hr['current_balance'] - net_deposits
                     hr['discrepancy'] = hr['actual_hedging_results'] - hr.get('sheet_hedging_results', 0)
             
+            data['status'] = 'success'
             return jsonify(data)
     
     # If no client specified, return empty
     return jsonify({
+        "status": "success",
         "deals": [], "positions": [], "account": {}, 
         "evaluations": [], "statistics": {}, "dropdown_options": {}, 
         "last_updated": "Never"

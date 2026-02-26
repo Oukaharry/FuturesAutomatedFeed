@@ -1050,7 +1050,7 @@
                     <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
                 </div>
                 <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
-                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()" checked>
+                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()">
                     Show Active Only
                 </label>
             </div>
@@ -1902,12 +1902,36 @@
                 evalBody.innerHTML = evalSpinnerHTML();
             }
 
-            const url = CLIENT_ID ? `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}` : '/api/data';
+            if (!CLIENT_ID) {
+                const evalBody = document.getElementById('evaluations-body');
+                if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">No client selected. Please log in again.</td></tr>`;
+                return;
+            }
+
+            const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}`;
             fetch(url)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok && response.status === 401) {
+                        // Session expired – redirect to login
+                        window.location.href = '/';
+                        throw new Error('Session expired');
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     // Prevent overwriting if user started editing during fetch
                     if (isEditing || isSaving || document.querySelector('.cell-input:focus')) return;
+
+                    // Handle API-level errors
+                    if (data.status === 'error') {
+                        const evalBody = document.getElementById('evaluations-body');
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">
+                            Error loading data: ${data.message || 'Unknown error'}.<br>
+                            <small style="color:#94a3b8;">Try refreshing the page or logging out and back in.</small>
+                        </td></tr>`;
+                        dataLoaded = true;
+                        return;
+                    }
 
                     currentData = data;
                     dataLoaded = true; // mark data as ready
@@ -1924,20 +1948,38 @@
 
                     document.getElementById('last-updated').textContent = data.last_updated;
                     
-                    renderEvaluationsTable();
-                    renderStats(data);
-                    renderPositions(data);
-                    renderHedgeAccounts(data);
-                    renderPropAccounts(data);
-                    renderVPSAccounts(data);
-                    renderHistory(data);
+                    try { renderEvaluationsTable(); } catch(e) {
+                        console.error('renderEvaluationsTable error:', e);
+                        const evalBody = document.getElementById('evaluations-body');
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">
+                            Render error: ${e.message}. Check console for details.
+                        </td></tr>`;
+                    }
+                    try { renderStats(data); } catch(e) { console.error('renderStats error:', e); }
+                    try { renderPositions(data); } catch(e) { console.error('renderPositions error:', e); }
+                    try { renderHedgeAccounts(data); } catch(e) { console.error('renderHedgeAccounts error:', e); }
+                    try { renderPropAccounts(data); } catch(e) { console.error('renderPropAccounts error:', e); }
+                    try { renderVPSAccounts(data); } catch(e) { console.error('renderVPSAccounts error:', e); }
+                    try { renderHistory(data); } catch(e) { console.error('renderHistory error:', e); }
                     
                     // Update Dropdown Options if available
                     if (data.dropdown_options) {
                         Object.assign(dropdownOptions, data.dropdown_options);
                     }
                 })
-                .catch(error => console.error('Error fetching data:', error));
+                .catch(error => {
+                    if (error.message === 'Session expired') return;
+                    console.error('Error fetching data:', error);
+                    // Only show fetch error if data hasn't loaded yet (don't overwrite rendered table)
+                    if (!dataLoaded) {
+                        const evalBody = document.getElementById('evaluations-body');
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">
+                            Failed to load data: ${error.message}.<br>
+                            <small style="color:#94a3b8;">Check your connection or try refreshing.</small>
+                        </td></tr>`;
+                        dataLoaded = true;
+                    }
+                });
         }
 
         function evalSpinnerHTML() {
