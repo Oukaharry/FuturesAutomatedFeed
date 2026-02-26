@@ -1955,6 +1955,15 @@
                             Render error: ${e.message}. Check console for details.
                         </td></tr>`;
                     }
+
+                    // Safety retry: if tbody has no rows but data exists, re-render after a tick
+                    setTimeout(() => {
+                        const eb = document.getElementById('evaluations-body');
+                        if (eb && eb.rows.length === 0 && currentData.evaluations && currentData.evaluations.length > 0) {
+                            console.warn('Evaluations empty after first render – retrying...');
+                            try { renderEvaluationsTable(); } catch(e) { console.error('Retry render error:', e); }
+                        }
+                    }, 150);
                     try { renderStats(data); } catch(e) { console.error('renderStats error:', e); }
                     try { renderPositions(data); } catch(e) { console.error('renderPositions error:', e); }
                     try { renderHedgeAccounts(data); } catch(e) { console.error('renderHedgeAccounts error:', e); }
@@ -2002,7 +2011,8 @@
             const urlParams = new URLSearchParams(window.location.search);
             const hlRange = urlParams.get('range');
 
-            evalBody.innerHTML = '';
+            // NOTE: Do NOT clear evalBody here - we keep the spinner until rows are ready.
+            // evalBody is only cleared right before we actually insert rows (see below).
                 
                 // Process Data
                 let rowsToRender = [];
@@ -2058,10 +2068,12 @@
                 // Active count check
                 if (rowsToRender.length === 0) {
                     if (!dataLoaded) {
-                        // Data not yet fetched — keep the loading spinner visible
+                        // Data not yet fetched — keep or restore the loading spinner
                         evalBody.innerHTML = evalSpinnerHTML();
                         noEvalMsg.style.display = 'none';
                     } else {
+                        // Data loaded but no rows match - clear whatever was there
+                        evalBody.innerHTML = '';
                         noEvalMsg.textContent = showActiveOnly ? "No active accounts found." : "No evaluations found";
                         noEvalMsg.style.display = 'block';
                     }
@@ -2070,7 +2082,7 @@
                 
                 noEvalMsg.style.display = 'none';
                 
-                // Render ALL rows at once
+                // Build all rows first, THEN atomically replace DOM in one shot
                 const fragment = document.createDocumentFragment();
                 
 
@@ -2196,6 +2208,8 @@
                     fragment.appendChild(row);
                 });
                 
+                // Atomically swap: clear old content and insert new rows in one operation
+                evalBody.innerHTML = '';
                 evalBody.appendChild(fragment);
 
                 // Recalculate positions after full render
