@@ -1000,12 +1000,28 @@
                     <thead>
                         <tr>
                             <th style="text-align: left; padding-left: 20px;">Date</th>
-                            <th style="text-align: right; padding-right: 20px;">Net Profit (Completed)</th>
-                            <th style="text-align: right; padding-right: 20px;">Daily Change</th>
+                            <th style="text-align: left; padding-left: 20px;">Net Profit (Completed)</th>
+                            <th style="text-align: left; padding-left: 20px;">Daily Change</th>
                         </tr>
                     </thead>
                     <tbody id="waterlog-body">
                         <tr><td colspan="3" style="text-align: center;">Loading daily profit records...</td></tr>
+                    </tbody>
+                </table>
+
+                <h3 style="color: #60a5fa; margin: 30px 0 15px;">Profit Share History</h3>
+                <table class="data-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left; padding-left: 20px;">From</th>
+                            <th style="text-align: left; padding-left: 20px;">To</th>
+                            <th style="text-align: left; padding-left: 20px;">Low</th>
+                            <th style="text-align: left; padding-left: 20px;">High</th>
+                            <th style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.18); color: #fbbf24;">Profit Split</th>
+                        </tr>
+                    </thead>
+                    <tbody id="profitshare-body">
+                        <tr><td colspan="5" style="text-align: center;">Loading profit share history...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1153,7 +1169,7 @@
                         <th>Symbol</th>
                         <th>Type</th>
                         <th>Volume</th>
-                        <th>Time</th>
+                        <th id="history-time-th" style="cursor: pointer; user-select: none; white-space: nowrap;" onclick="toggleHistorySort()">Time &#x25BC;</th>
                         <th>Price</th>
                         <th>Entry</th>
                         <th>Swap</th>
@@ -1400,6 +1416,7 @@
         }
 
         let currentData = {};
+        let histSortAsc = false; // false = newest first (default)
         let isEditing = false;
         let isDatePickerOpen = false;
         let currentNoteTarget = null; // { index, key }
@@ -1919,18 +1936,12 @@
             const evalBody = document.getElementById('evaluations-body');
             const noEvalMsg = document.getElementById('no-evaluations-msg');
             const showActiveOnly = document.getElementById('activeFilter').checked;
-            
-            // Show loading state for potential long renders
-            evalBody.innerHTML = '<tr><td colspan="100%" style="text-align:center; padding:20px;">Loading data...</td></tr>';
-            
-            // Use setTimeout to allow the browser to paint the "Loading..." message before blocking
-            setTimeout(() => {
-                // Check for deep link parameters
-                const urlParams = new URLSearchParams(window.location.search);
-                const hlRange = urlParams.get('range');
-                
-                // Clear loading message
-                evalBody.innerHTML = '';
+
+            // Check for deep link parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const hlRange = urlParams.get('range');
+
+            evalBody.innerHTML = '';
                 
                 // Process Data
                 let rowsToRender = [];
@@ -2134,11 +2145,7 @@
                 // Recalculate positions after full render
                 setTimeout(() => {
                     calculateSectionPositions();
-                    if (hlRange) { 
-                       // ... scroll logic (optional, keep default behavior) ...
-                    }
                 }, 100);
-            }, 50); // Small delay to let UI show "Loading..."
         }
         
         function getColumnLetterForKey(key) {
@@ -2816,25 +2823,64 @@
             const histTable = document.getElementById('history-table');
             
             histBody.innerHTML = '';
-            if (data.deals && data.deals.length > 0) {
+            renderHistoryTable();
+        }
+
+        function parseDealTime(raw) {
+            if (!raw || raw === '-') return 0;
+            const n = typeof raw === 'number' ? raw : Number(raw);
+            if (!isNaN(n) && n > 1000000000) return n * 1000; // Unix seconds → ms
+            const d = new Date(raw);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
+        }
+
+        function formatDealTime(raw) {
+            if (!raw || raw === '-') return '—';
+            const ms = parseDealTime(raw);
+            if (!ms) return String(raw);
+            const d = new Date(ms);
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+
+        function toggleHistorySort() {
+            histSortAsc = !histSortAsc;
+            const th = document.getElementById('history-time-th');
+            if (th) th.innerHTML = 'Time ' + (histSortAsc ? '&#x25B2;' : '&#x25BC;');
+            renderHistoryTable();
+        }
+
+        function renderHistoryTable() {
+            const histBody = document.getElementById('history-body');
+            const noHistMsg = document.getElementById('no-history-msg');
+            const histTable = document.getElementById('history-table');
+            const deals = (currentData && currentData.deals) ? currentData.deals : [];
+
+            histBody.innerHTML = '';
+            if (deals.length > 0) {
                 noHistMsg.style.display = 'none';
                 histTable.style.display = 'table';
-                data.deals.forEach((deal, index) => {
-                    // Handle different field names from MT5
+
+                const sorted = [...deals].sort((a, b) => {
+                    const ta = parseDealTime(a.time || a.open_time);
+                    const tb = parseDealTime(b.time || b.open_time);
+                    return histSortAsc ? ta - tb : tb - ta;
+                });
+
+                sorted.forEach((deal, index) => {
                     const profit = deal.profit || deal.net_profit || 0;
                     const profitClass = parseFloat(profit) >= 0 ? 'profit-positive' : 'profit-negative';
-                    const displayTime = deal.time || deal.open_time || '-';
+                    const displayTime = formatDealTime(deal.time || deal.open_time);
                     const displayPrice = deal.price || deal.open_price || '-';
                     const ticketId = deal.ticket || deal.position_id || '-';
-                    
-                    row = document.createElement('tr');
+                    const row = document.createElement('tr');
                     row.innerHTML = `
                         <td>${index + 1}</td>
                         <td>${ticketId}</td>
                         <td>${deal.symbol || '-'}</td>
                         <td>${deal.type || '-'}</td>
                         <td>${deal.volume || '-'}</td>
-                        <td>${displayTime}</td>
+                        <td style="white-space: nowrap;">${displayTime}</td>
                         <td>${displayPrice}</td>
                         <td>${deal.entry || '-'}</td>
                         <td>${deal.swap || 0}</td>
@@ -3933,8 +3979,8 @@
                             html += `
                                 <tr>
                                     <td style="text-align: left; padding-left: 20px;">${item.date}</td>
-                                    <td style="text-align: right; padding-right: 20px; color: ${profitColor};">$${item.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                    <td style="text-align: right; padding-right: 20px;">${changeHtml}</td>
+                                    <td style="text-align: left; padding-left: 20px; color: ${profitColor};">$${item.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    <td style="text-align: left; padding-left: 20px;">${changeHtml}</td>
                                 </tr>
                             `;
                         });
@@ -3948,6 +3994,47 @@
                 .catch(err => {
                     tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Failed to load waterlog data.</td></tr>`;
                     console.error(err);
+                });
+
+            // --- Load profit share from Google Sheet ---
+            const psBody = document.getElementById('profitshare-body');
+            fetch('/api/sheet/waterlog')
+                .then(res => res.json())
+                .then(psData => {
+                    if (psData.status === 'success') {
+                        const today = new Date(); today.setHours(0,0,0,0);
+                        const parseDate = s => { const p = s.split('/'); return p.length===3 ? new Date(parseInt(p[2]), parseInt(p[0])-1, parseInt(p[1])) : null; };
+                        let rows = (psData.data || []).filter(r => {
+                            if (!r.from_date || r.from_date === 'nan' || !r.from_date.trim()) return false;
+                            const d = parseDate(r.from_date.trim());
+                            return d && d <= today;
+                        });
+                        // Sort newest first
+                        rows.sort((a, b) => { const da = parseDate(a.from_date.trim()), db = parseDate(b.from_date.trim()); return db - da; });
+                        if (!rows.length) {
+                            psBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
+                            return;
+                        }
+                        let psHtml = '';
+                        rows.forEach(r => {
+                            const psRaw = (r.profit_split || '').trim();
+                            const psNum = parseFloat(psRaw.replace(/[^0-9.-]/g, '')) || 0;
+                            const psStyle = `text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psNum > 0 ? '#fbbf24' : '#94a3b8'};`;
+                            psHtml += `<tr>
+                                <td style="text-align: left; padding-left: 20px;">${r.from_date}</td>
+                                <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
+                                <td style="text-align: left; padding-left: 20px;">${r.low || '$0.00'}</td>
+                                <td style="text-align: left; padding-left: 20px;">${r.high || '$0.00'}</td>
+                                <td style="${psStyle}">${psRaw || '$0'}</td>
+                            </tr>`;
+                        });
+                        psBody.innerHTML = psHtml;
+                    } else {
+                        psBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
+                    }
+                })
+                .catch(() => {
+                    psBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
                 });
         }
         
