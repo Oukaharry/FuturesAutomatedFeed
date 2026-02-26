@@ -2470,7 +2470,11 @@ def api_migrate_sheet():
         from utils.data_processor import fetch_evaluations, calculate_statistics, fetch_waterlog_history
         from dashboard.watermark_service import bulk_save_history
 
-        evaluations = fetch_evaluations(sheet_url)
+        eval_result = fetch_evaluations(sheet_url)
+        if isinstance(eval_result, tuple):
+            evaluations, _ = eval_result
+        else:
+            evaluations = eval_result
         if not evaluations:
             return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public. (Evaluations Tab)"}), 400
         
@@ -2503,7 +2507,7 @@ def api_migrate_sheet():
             "migrated_at": datetime.now().isoformat()
         }
         
-        # Save to database WITH history tracking
+        # Save to database WITH history tracking - full overwrite (import replaces all existing data)
         success, version = save_client_data_with_history(
             client_id, 
             client_data,
@@ -2512,7 +2516,8 @@ def api_migrate_sheet():
             changed_by_type='client',
             ip_address=get_remote_address(),
             change_source='sheet_migration',
-            change_description=f"Imported {len(evaluations)} records from Google Sheets"
+            change_description=f"Imported {len(evaluations)} records from Google Sheets",
+            overwrite=True
         )
         
         # Update Hierarchy

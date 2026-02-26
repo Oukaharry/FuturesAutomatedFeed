@@ -675,40 +675,51 @@ def delete_api_key(key_prefix: str) -> bool:
 
 # ============ Client Data Management ============
 
-def save_client_data(client_id: str, data: dict) -> bool:
-    """Save client data to database - Merges updates instead of overwriting."""
+def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> bool:
+    """Save client data to database.
+    
+    If overwrite=True, replaces all existing data with the provided data (used for sheet imports).
+    If overwrite=False (default), merges: new values take precedence but missing keys fall back to existing.
+    """
     now = datetime.now().isoformat()
     
     with get_connection() as conn:
         cursor = conn.cursor()
         try:
-            # First, get existing data to merge with
-            cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
-            row = cursor.fetchone()
-            
-            existing_data = {}
-            if row:
-                existing_data = {
-                    'deals': json.loads(row['deals']),
-                    'positions': json.loads(row['positions']),
-                    'account': json.loads(row['account']),
-                    'evaluations': json.loads(row['evaluations']),
-                    'statistics': json.loads(row['statistics']),
-                    'dropdown_options': json.loads(row['dropdown_options']),
-                    'identity': json.loads(row['identity'])
-                }
-            
-            # Merge existing data with new data (new data takes precedence)
-            # This ensures that if we only update one field (e.g. account), we don't wipe out others (e.g. deals)
-            # if the caller didn't provide them.
-            
-            merged_deals = data.get('deals', existing_data.get('deals', []))
-            merged_positions = data.get('positions', existing_data.get('positions', []))
-            merged_account = data.get('account', existing_data.get('account', {}))
-            merged_evaluations = data.get('evaluations', existing_data.get('evaluations', []))
-            merged_statistics = data.get('statistics', existing_data.get('statistics', {}))
-            merged_dropdown_options = data.get('dropdown_options', existing_data.get('dropdown_options', {}))
-            merged_identity = data.get('identity', existing_data.get('identity', {}))
+            if overwrite:
+                # Full replacement - use provided data as-is, defaulting missing fields to empty
+                merged_deals = data.get('deals', [])
+                merged_positions = data.get('positions', [])
+                merged_account = data.get('account', {})
+                merged_evaluations = data.get('evaluations', [])
+                merged_statistics = data.get('statistics', {})
+                merged_dropdown_options = data.get('dropdown_options', {})
+                merged_identity = data.get('identity', {})
+            else:
+                # Merge: get existing data so missing keys fall back gracefully
+                cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
+                row = cursor.fetchone()
+                
+                existing_data = {}
+                if row:
+                    existing_data = {
+                        'deals': json.loads(row['deals']),
+                        'positions': json.loads(row['positions']),
+                        'account': json.loads(row['account']),
+                        'evaluations': json.loads(row['evaluations']),
+                        'statistics': json.loads(row['statistics']),
+                        'dropdown_options': json.loads(row['dropdown_options']),
+                        'identity': json.loads(row['identity'])
+                    }
+                
+                # Merge existing data with new data (new data takes precedence)
+                merged_deals = data.get('deals', existing_data.get('deals', []))
+                merged_positions = data.get('positions', existing_data.get('positions', []))
+                merged_account = data.get('account', existing_data.get('account', {}))
+                merged_evaluations = data.get('evaluations', existing_data.get('evaluations', []))
+                merged_statistics = data.get('statistics', existing_data.get('statistics', {}))
+                merged_dropdown_options = data.get('dropdown_options', existing_data.get('dropdown_options', {}))
+                merged_identity = data.get('identity', existing_data.get('identity', {}))
 
             cursor.execute('''
                 INSERT INTO clients_data (
@@ -884,7 +895,8 @@ def save_client_data_with_history(client_id: str, data: dict,
                                  changed_by_type: str = None,
                                  ip_address: str = None,
                                  change_source: str = None,
-                                 change_description: str = None) -> tuple:
+                                 change_description: str = None,
+                                 overwrite: bool = False) -> tuple:
     """
     Save client data AND create a history snapshot for versioning.
     
@@ -898,7 +910,7 @@ def save_client_data_with_history(client_id: str, data: dict,
     )
     
     # Then save the current data
-    success = save_client_data(client_id, data)
+    success = save_client_data(client_id, data, overwrite=overwrite)
     
     return (success, version)
 

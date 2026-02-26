@@ -1157,8 +1157,7 @@ class TraderCompanionApp:
         self.url_keys = ["BallerQuotes (Production)", "Localhost (Development)"]
         self.url_values = {
             "BallerQuotes (Production)": "https://www.ballerquotes.com",
-            # Updated to 5002 to avoid port conflict
-            "Localhost (Development)": "http://127.0.0.1:5002"
+            "Localhost (Development)": "http://127.0.0.1:5001"
         }
         
         self.url_selector = ttk.Combobox(conn_frame, textvariable=self.target_var, state="readonly", width=30)
