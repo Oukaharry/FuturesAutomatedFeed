@@ -62,8 +62,8 @@
         }
         
         .logo-img {
-            width: 150px;
-            height: 150px;
+            width: 200px;
+            height: 200px;
             margin-bottom: 20px;
             object-fit: contain;
             /* background/border removed for transparent logo */
@@ -113,7 +113,8 @@
             top: 50%;
             transform: translateY(-50%);
             color: #64748b;
-            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
             transition: color 0.3s;
         }
         
@@ -147,7 +148,8 @@
             transform: translateY(-50%);
             cursor: pointer;
             color: #64748b;
-            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
             user-select: none;
             transition: color 0.2s;
         }
@@ -286,18 +288,17 @@
                 <div class="form-group">
                     <label>Email</label>
                     <div class="input-wrapper">
-                        <span class="icon">👤</span>
+                        <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></span>
                         <input type="text" id="identifier" placeholder="Enter your email" required autocomplete="username" oninput="checkIfSuperAdmin()">
                     </div>
-                    <small id="email-hint" style="color: #94a3b8; margin-top: 5px; display: block;">Admins, Traders & Clients: Email only</small>
                 </div>
                 
                 <div class="form-group" id="password-group" style="display: none;">
                     <label>Password</label>
                     <div class="input-wrapper">
-                        <span class="icon">🔒</span>
+                        <span class="icon"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
                         <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password">
-                        <span class="password-toggle" onclick="togglePassword()">👁️</span>
+                        <span class="password-toggle" onclick="togglePassword()"><svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
                     </div>
                 </div>
                 
@@ -321,47 +322,59 @@
     </div>
 
     <script>
-        // Super admin identifiers that require password
-        const superAdminIdentifiers = ['super_admin', 'superadmin', 'admin@baller.com', 'bef_admin'];
-        
-        function checkIfSuperAdmin() {
-            const identifier = document.getElementById('identifier').value.trim().toLowerCase();
+        const SVG_EYE = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+        const SVG_EYE_OFF = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10 10 0 0 1 12 20C5 20 1 12 1 12a18 18 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9 9 0 0 1 12 4c7 0 11 8 11 8a18 18 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+        const SVG_CHECK = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+        const SVG_X = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+
+        let isSuperAdmin = false;
+
+        async function checkIfSuperAdmin() {
+            const identifier = document.getElementById('identifier').value.trim();
             const passwordGroup = document.getElementById('password-group');
             const passwordInput = document.getElementById('password');
-            const hint = document.getElementById('email-hint');
-            
-            // Check if this is a super admin identifier
-            const isSuperAdmin = superAdminIdentifiers.includes(identifier);
-            
+            if (!identifier) {
+                passwordGroup.style.display = 'none';
+                passwordInput.required = false;
+                isSuperAdmin = false;
+                return;
+            }
+            try {
+                const res = await fetch('/api/auth/check-admin', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({identifier})
+                });
+                const data = await res.json();
+                isSuperAdmin = data.requires_password || false;
+            } catch(e) {
+                isSuperAdmin = false;
+            }
             if (isSuperAdmin) {
                 passwordGroup.style.display = 'block';
                 passwordInput.required = true;
-                hint.textContent = 'Super Admin: Password required';
-                hint.style.color = '#fbbf24'; // Gold for important hint
             } else {
                 passwordGroup.style.display = 'none';
                 passwordInput.required = false;
                 passwordInput.value = '';
-                hint.textContent = 'Admins, Traders & Clients: Email only';
-                hint.style.color = '#64748b';
             }
         }
-        
+
         function togglePassword() {
             const input = document.getElementById('password');
             const toggle = document.querySelector('.password-toggle');
             if (input.type === 'password') {
                 input.type = 'text';
-                toggle.textContent = '🙈';
+                toggle.innerHTML = SVG_EYE_OFF;
             } else {
                 input.type = 'password';
-                toggle.textContent = '👁️';
+                toggle.innerHTML = SVG_EYE;
             }
         }
-        
+
         function showMessage(text, type) {
             const msg = document.getElementById('message');
-            msg.innerHTML = `<span>${type === 'error' ? '❌' : '✅'}</span><span>${text}</span>`;
+            msg.innerHTML = `<span>${type === 'error' ? SVG_X : SVG_CHECK}</span><span>${text}</span>`;
             msg.className = `message ${type} show`;
         }
         
@@ -386,8 +399,6 @@
             const identifier = document.getElementById('identifier').value.trim();
             const password = document.getElementById('password').value;
             const remember = document.getElementById('remember').checked;
-            const isSuperAdmin = superAdminIdentifiers.includes(identifier.toLowerCase());
-            
             if (!identifier) {
                 showMessage('Please enter your email', 'error');
                 return;

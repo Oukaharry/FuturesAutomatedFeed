@@ -2657,6 +2657,20 @@ def api_logout():
 
 # ============ Unified Authentication Endpoint ============
 
+@app.route('/api/auth/check-admin', methods=['POST'])
+@limiter.limit("20 per minute")
+def check_admin_identifier():
+    """Returns whether the given identifier belongs to a super_admin (requires password)."""
+    data = request.json or {}
+    identifier = data.get('identifier', '').strip()
+    if not identifier:
+        return jsonify({"requires_password": False})
+    user = find_user_by_identifier(identifier)
+    if not user and '@' in identifier:
+        user = get_user_by_email(identifier)
+    requires_password = bool(user and user.get('user_type') == 'super_admin')
+    return jsonify({"requires_password": requires_password})
+
 @app.route('/api/auth/login', methods=['POST'])
 @limiter.limit("10 per minute")
 def unified_login():
