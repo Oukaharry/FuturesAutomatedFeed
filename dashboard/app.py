@@ -2581,18 +2581,39 @@ def api_get_watermark_history(client_id):
         return jsonify({"status": "error", "message": "Unauthorized access to client waterlog"}), 403
 
     try:
-        from dashboard.watermark_service import get_watermark_history, get_lower_watermark
-        # Get history for the requested period (now configured to 14 days for consistency with watermarks)
-        # User requested: "both all and high water mark should check the last 14 days"
+        from dashboard.watermark_service import get_watermark_history, get_lower_watermark, save_daily_profit
+        from dashboard.database import get_client_data
+
+        # --- Always snapshot today's live net profit so the Low Watermark is current ---
+        today_str = __import__('datetime').datetime.now().strftime('%Y-%m-%d')
+        try:
+            client_data = get_client_data(client_id)
+            if client_data and client_data.get('evaluations'):
+                try:
+                    from dashboard.utils.data_processor import calculate_statistics as _cs
+                except ImportError:
+                    from utils.data_processor import calculate_statistics as _cs
+                stats = _cs(client_data['evaluations'])
+                live_net = stats['profitability_completed']['net_profit']
+                save_daily_profit(client_id, live_net, today_str, source='live')
+        except Exception as snap_err:
+            logging.warning(f"Live watermark snapshot failed for {client_id}: {snap_err}")
+
+        # Get history for the requested period (14 days)
         history = get_watermark_history(client_id, days=14)
-        
-        # Get lower watermark (last 14 days min)
-        low_watermark = get_lower_watermark(client_id, days=14)
-        
+
+        # Low watermark among previous days only (exclude today so live value is shown separately)
+        prev_history = [h for h in history if h['date'] < today_str]
+        low_watermark = min(prev_history, key=lambda x: x['profit']) if prev_history else None
+
+        # Today's live entry
+        today_entry = next((h for h in history if h['date'] == today_str), None)
+
         return jsonify({
             "status": "success",
             "history": history,
-            "low_watermark": low_watermark
+            "low_watermark": low_watermark,
+            "today": today_entry
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

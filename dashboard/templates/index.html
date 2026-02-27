@@ -3979,14 +3979,16 @@
 
             tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading daily profit records...</td></tr>';
             
-            fetch(`/api/client/watermark_history/${encodeURIComponent(CLIENT_ID)}`)
+            function loadWatermarkData() {
+                fetch(`/api/client/watermark_history/${encodeURIComponent(CLIENT_ID)}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
                         const history = data.history || [];
                         const lowWm = data.low_watermark;
+                        const todayEntry = data.today;
 
-                        // Populate high/low watermark cards
+                        // High watermark: max of all history
                         if (history.length > 0) {
                             const highWm = history.reduce((a, b) => a.profit > b.profit ? a : b);
                             document.getElementById('high-watermark-val').textContent = '$' + highWm.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -3996,9 +3998,11 @@
                             document.getElementById('high-watermark-date').textContent = 'No data yet';
                         }
 
-                        if (lowWm) {
-                            document.getElementById('low-watermark-val').textContent = '$' + lowWm.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                            document.getElementById('low-watermark-date').textContent = lowWm.date;
+                        // Low watermark: today's live net profit (real-time)
+                        const liveLow = todayEntry || lowWm;
+                        if (liveLow) {
+                            document.getElementById('low-watermark-val').textContent = '$' + liveLow.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            document.getElementById('low-watermark-date').textContent = liveLow.date;
                         } else {
                             document.getElementById('low-watermark-val').textContent = '—';
                             document.getElementById('low-watermark-date').textContent = 'No data yet';
@@ -4042,6 +4046,11 @@
                     tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Failed to load waterlog data.</td></tr>`;
                     console.error(err);
                 });
+            } // end loadWatermarkData
+
+            // Initial load + poll every 60s to keep Low Watermark live
+            loadWatermarkData();
+            setInterval(loadWatermarkData, 60000);
 
             // --- Load profit share from Google Sheet ---
             const psBody = document.getElementById('profitshare-body');
