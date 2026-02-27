@@ -385,23 +385,10 @@
             transform: scale(0.98);
         }
         
-        .scroll-indicator {
-            font-size: 11px;
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-shrink: 0;
-            margin: 0 24px; /* Added spacing to prevent crowding */
-        }
-        
-        .scroll-position {
-            background: rgba(255,255,255,0.1);
-            padding: 3px 8px;
-            border-radius: 10px;
-            font-weight: 500;
-            font-size: 11px;
-            white-space: nowrap;
+        .scroll-btn.active-section {
+            background: rgba(251,191,36,0.15);
+            border-color: rgba(251,191,36,0.5);
+            color: #fbbf24;
         }
         
         .scroll-hint {
@@ -742,7 +729,7 @@
             padding: 12px 16px !important;
             border: 1px solid var(--border-color) !important;
             border-radius: 12px !important;
-            overflow: hidden !important;
+            overflow: clip !important;
             color: var(--text-primary) !important;
         }
         
@@ -1039,13 +1026,10 @@
                 <!-- Section Jump Controls -->
                 <div class="scroll-controls">
                     <div class="scroll-buttons">
-                        <button class="scroll-btn" onclick="scrollToSection('eval-info')">📋 Info</button>
-                        <button class="scroll-btn" onclick="scrollToSection('eval-phase')">📊 Eval</button>
-                        <button class="scroll-btn" onclick="scrollToSection('funded-phase')">💰 Funded</button>
-                        <button class="scroll-btn" onclick="scrollToSection('farming-phase')">🌱 Farm</button>
-                    </div>
-                    <div class="scroll-indicator">
-                        <span class="scroll-position" id="scroll-position">📋 Info</span>
+                        <button class="scroll-btn active-section" id="scroll-btn-info" onclick="scrollToSection('eval-info')">📋 Info</button>
+                        <button class="scroll-btn" id="scroll-btn-eval" onclick="scrollToSection('eval-phase')">📊 Eval</button>
+                        <button class="scroll-btn" id="scroll-btn-funded" onclick="scrollToSection('funded-phase')">💰 Funded</button>
+                        <button class="scroll-btn" id="scroll-btn-farm" onclick="scrollToSection('farming-phase')">🌱 Farm</button>
                     </div>
                     <div class="scroll-buttons" style="margin-left: auto;">
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; cursor: pointer; white-space: nowrap; margin-right: 6px;">
@@ -1154,9 +1138,6 @@
                 </div>
             </div>
             <div id="no-evaluations-msg" class="no-data no-data-hidden">No evaluations found</div>
-            <div class="controls" style="margin-top: 20px;">
-                <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
-            </div>
         </div>
 
         <!-- Stats Tab -->
@@ -1782,20 +1763,17 @@
             tableContainer.classList.toggle('can-scroll-left', scrollLeft > 10);
             tableContainer.classList.toggle('can-scroll-right', scrollLeft < scrollMax - 10);
             
-            // Update position label based on which section is visible
-            const positionLabel = document.getElementById('scroll-position');
-            if (positionLabel) {
-                // Determine which section is currently visible (using left edge + offset)
-                if (visiblePosition < sectionPositions['eval-phase']) {
-                    positionLabel.textContent = '📋 Evaluation Info';
-                } else if (visiblePosition < sectionPositions['funded-phase']) {
-                    positionLabel.textContent = '📊 Evaluation Phase';
-                } else if (visiblePosition < sectionPositions['farming-phase']) {
-                    positionLabel.textContent = '💰 Funded Phase';
-                } else {
-                    positionLabel.textContent = '🌱 Farming Phase';
-                }
-            }
+            // Highlight active scroll section button
+            const btnMap = {
+                'scroll-btn-info':   visiblePosition < sectionPositions['eval-phase'],
+                'scroll-btn-eval':   visiblePosition >= sectionPositions['eval-phase']   && visiblePosition < sectionPositions['funded-phase'],
+                'scroll-btn-funded': visiblePosition >= sectionPositions['funded-phase'] && visiblePosition < sectionPositions['farming-phase'],
+                'scroll-btn-farm':   visiblePosition >= sectionPositions['farming-phase'],
+            };
+            Object.entries(btnMap).forEach(([id, active]) => {
+                const btn = document.getElementById(id);
+                if (btn) btn.classList.toggle('active-section', active);
+            });
         }
         
         // Initialize scroll listener
@@ -2323,23 +2301,26 @@
                  currentData.evaluations[index]._notes = {};
              }
              
-             // Update model
+             // Update local model immediately for responsive UI
              currentData.evaluations[index]._notes[key] = newValue;
              
-             // Save immediately - this will trigger a full backend save
-             // Note: Depending on implementation, 'saveData' refreshes the table.
-             // If refreshing, the input focus might be lost.
-             // We want smooth editing.
-             
-             // Let's call saveData but perhaps with a flag to NOT re-render immediately if possible?
-             // Looking at saveData implementation (not fully visible here but assuming standard)
-             // Usually it calls renderEvaluationsTable().
-             
-             // For now, let's just save. If focus is lost, we'll need to address that.
-             // Given the user wants "smooth" experience, losing focus on every keystroke/blur is annoying.
-             // But onchange fires only on blur/enter. That is acceptable.
-             
-             saveData('UPDATE', `Updated progress note for ${key}`);
+             // Save to the notes API so it persists correctly via cell_notes table
+             const clientId = "{{ client_id }}";
+             fetch('/api/notes', {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     client_id: clientId,
+                     row_index: index,
+                     column_key: key,
+                     content: newValue
+                 })
+             }).then(res => res.json())
+               .then(data => {
+                   if (data.status !== 'success') {
+                       console.error('Failed to save progress note:', data.message);
+                   }
+               }).catch(err => console.error('Error saving progress note:', err));
         }
 
         function renderStats(data) {

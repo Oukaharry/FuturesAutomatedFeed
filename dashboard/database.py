@@ -90,9 +90,19 @@ def init_database():
                 statistics TEXT DEFAULT '{}',
                 dropdown_options TEXT DEFAULT '{}',
                 identity TEXT DEFAULT '{}',
-                last_updated TEXT NOT NULL
+                last_updated TEXT NOT NULL,
+                hedge_accounts TEXT DEFAULT '[]',
+                prop_accounts TEXT DEFAULT '[]',
+                vps_accounts TEXT DEFAULT '[]'
             )
         ''')
+
+        # Migration: add hedge_accounts, prop_accounts, vps_accounts columns to existing databases
+        for _col, _default in [('hedge_accounts', "'[]'"), ('prop_accounts', "'[]'"), ('vps_accounts', "'[]'")]:
+            try:
+                cursor.execute(f"ALTER TABLE clients_data ADD COLUMN {_col} TEXT DEFAULT {_default}")
+            except Exception:
+                pass  # Column already exists
         
         # Audit log table
         cursor.execute('''
@@ -695,6 +705,9 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_statistics = data.get('statistics', {})
                 merged_dropdown_options = data.get('dropdown_options', {})
                 merged_identity = data.get('identity', {})
+                merged_hedge_accounts = data.get('hedge_accounts', [])
+                merged_prop_accounts = data.get('prop_accounts', [])
+                merged_vps_accounts = data.get('vps_accounts', [])
             else:
                 # Merge: get existing data so missing keys fall back gracefully
                 cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
@@ -709,7 +722,10 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                         'evaluations': json.loads(row['evaluations']),
                         'statistics': json.loads(row['statistics']),
                         'dropdown_options': json.loads(row['dropdown_options']),
-                        'identity': json.loads(row['identity'])
+                        'identity': json.loads(row['identity']),
+                        'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
+                        'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
+                        'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
                     }
                 
                 # Merge existing data with new data (new data takes precedence)
@@ -720,12 +736,23 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_statistics = data.get('statistics', existing_data.get('statistics', {}))
                 merged_dropdown_options = data.get('dropdown_options', existing_data.get('dropdown_options', {}))
                 merged_identity = data.get('identity', existing_data.get('identity', {}))
+                merged_hedge_accounts = data.get('hedge_accounts', existing_data.get('hedge_accounts', []))
+                merged_prop_accounts = data.get('prop_accounts', existing_data.get('prop_accounts', []))
+                merged_vps_accounts = data.get('vps_accounts', existing_data.get('vps_accounts', []))
+
+            # Strip _notes from evaluations — notes are stored separately in cell_notes table
+            clean_evaluations = [
+                {k: v for k, v in ev.items() if k != '_notes'}
+                if isinstance(ev, dict) else ev
+                for ev in merged_evaluations
+            ]
 
             cursor.execute('''
                 INSERT INTO clients_data (
                     client_id, deals, positions, account, evaluations,
-                    statistics, dropdown_options, identity, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    statistics, dropdown_options, identity, last_updated,
+                    hedge_accounts, prop_accounts, vps_accounts
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     deals = excluded.deals,
                     positions = excluded.positions,
@@ -734,17 +761,23 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                     statistics = excluded.statistics,
                     dropdown_options = excluded.dropdown_options,
                     identity = excluded.identity,
-                    last_updated = excluded.last_updated
+                    last_updated = excluded.last_updated,
+                    hedge_accounts = excluded.hedge_accounts,
+                    prop_accounts = excluded.prop_accounts,
+                    vps_accounts = excluded.vps_accounts
             ''', (
                 client_id,
                 json.dumps(merged_deals),
                 json.dumps(merged_positions),
                 json.dumps(merged_account),
-                json.dumps(merged_evaluations),
+                json.dumps(clean_evaluations),
                 json.dumps(merged_statistics),
                 json.dumps(merged_dropdown_options),
                 json.dumps(merged_identity),
-                now
+                now,
+                json.dumps(merged_hedge_accounts),
+                json.dumps(merged_prop_accounts),
+                json.dumps(merged_vps_accounts),
             ))
             conn.commit()
             return True
@@ -768,7 +801,10 @@ def get_client_data(client_id: str) -> dict:
                 'statistics': json.loads(row['statistics']),
                 'dropdown_options': json.loads(row['dropdown_options']),
                 'identity': json.loads(row['identity']),
-                'last_updated': row['last_updated']
+                'last_updated': row['last_updated'],
+                'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
+                'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
+                'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
             }
         
         return None
@@ -794,7 +830,8 @@ def get_clients_count() -> int:
 
 def update_client_field(client_id: str, field: str, value) -> bool:
     """Update a specific field for a client."""
-    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options']
+    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options',
+                    'hedge_accounts', 'prop_accounts', 'vps_accounts']
     if field not in valid_fields:
         return False
     

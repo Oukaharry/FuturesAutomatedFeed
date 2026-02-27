@@ -219,10 +219,10 @@ h1 {
     background: var(--card-bg);
     padding: 0;
     border-radius: var(--radius);
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: visible;
     box-shadow: var(--shadow-sm);
     margin-bottom: 30px;
-    overflow-x: auto;
     border: 1px solid var(--border-color);
 }
 

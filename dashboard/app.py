@@ -3748,15 +3748,17 @@ def update_note():
         user_type = session_user.get('user_type')
         user_identifier = session_user.get('user_identifier')
         
-        # Requirement: Clients should not be able to edit notes
-        if user_type == 'client':
-            return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
-
         data = request.json
         client_id = data.get('client_id')
         row_index = data.get('row_index')
         column_key = data.get('column_key')
         content = data.get('content')
+
+        # Clients can only save their own prop-progress notes (Prop Day N columns)
+        if user_type == 'client':
+            import re as _re
+            if not (column_key and _re.match(r'^Prop Day \d+$', column_key)):
+                return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
         
         if not client_id or row_index is None or not column_key:
             return jsonify({"status": "error", "message": "Missing required fields"}), 400
@@ -3779,31 +3781,6 @@ def update_note():
     except Exception as e:
         logging.error(f"Error updating note: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
-# ============ Session-based Update (for Dashboard UI) ============
-
-@app.route('/api/notes', methods=['POST'])
-@require_session
-def save_note():
-    data = request.json
-    client_id = data.get('client_id')
-    row_index = data.get('row_index')
-    column_key = data.get('column_key')
-    note_content = data.get('content', '')
-    
-    session_user = request.session_user
-    user_type = session_user.get('user_type')
-    
-    # Clients cannot save notes
-    if user_type == 'client':
-        return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
-        
-    if not client_id or row_index is None or not column_key:
-        return jsonify({"status": "error", "message": "Missing required fields"}), 400
-
-    if save_client_note(client_id, row_index, column_key, note_content, session_user.get('user_identifier')):
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Database error"}), 500
 
 @app.route('/api/notes/delete', methods=['POST'])
 @require_session
