@@ -53,14 +53,14 @@ body {
     background-attachment: fixed;
     color: var(--text-primary);
     margin: 0;
-    padding: 20px;
+    padding: 12px 16px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
 }
 
 .container {
-    max-width: 1600px;
-    margin: 0 auto;
+    max-width: 100%;
+    margin: 0;
     padding: 0;
 }
 
@@ -68,13 +68,12 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 30px;
-    background: rgba(30, 41, 59, 0.8);
+    margin-bottom: 16px;
+    background: var(--card-bg, #1e293b);
     padding: 12px 20px;
     border-radius: var(--radius);
     box-shadow: var(--shadow-md);
-    border: 1px solid rgba(255, 255, 255, 0.05); /* Subtle white border for glass effect */
-    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     transition: all 0.3s ease;
 }
 

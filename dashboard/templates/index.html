@@ -485,6 +485,7 @@
         /* Ensure the table container handles the scroll, not the table itself */
         .table-container {
             overflow-x: auto !important;
+            overflow-y: visible !important;
             position: relative;
             z-index: 1;
         }
@@ -493,7 +494,8 @@
         
         /* 1. Ensure Table Container allows scrolling but doesn't clip sticky */
         .table-container {
-            overflow: auto !important;
+            overflow-x: auto !important;
+            overflow-y: visible !important;
             /* contain: paint;  <-- REMOVED because it can break sticky behavior in some browsers */
         }
 
@@ -543,8 +545,8 @@
             width: 50px !important;
             min-width: 50px !important;
             /* Fix content visibility issues */
-            padding: 0 0 0 8px !important; /* Add left padding for left alignment */
-            text-align: left !important;
+            padding: 0 !important;
+            text-align: center !important;
             color: white !important; /* Force white text for header, rows might inherit or override below */
             font-weight: bold;
             display: table-cell !important;
@@ -599,7 +601,7 @@
             width: 180px !important; /* Fixed width for stability */
             min-width: 180px !important;
             /* Box shadow to match the glowing header style + right separator */
-            box-shadow: inset 0 -10px 20px -10px rgba(59, 130, 246, 0.3), 2px 0 5px rgba(0,0,0,0.2) !important;
+            box-shadow: inset 0 -10px 20px -10px rgba(59, 130, 246, 0.3) !important;
             background-color: #0f172a !important; /* Fallback opaque background */
             /* Re-apply gradient if needed, but opaque is safer for sticky */
             background: linear-gradient(135deg, #1e3a8a, #0f172a) !important;
@@ -616,7 +618,6 @@
             width: 180px;
             min-width: 180px;
             border-right: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 2px 0 5px rgba(0,0,0,0.2); 
         }
 
         /* 3. The Data Cells (Column 3) */
@@ -626,8 +627,6 @@
             z-index: 100 !important; /* Lower than headers */
             background-color: #1e293b !important; /* Opaque background */
             border-right: 1px solid rgba(255,255,255,0.1);
-             /* Add shadow for depth */
-            box-shadow: 2px 0 5px rgba(0,0,0,0.2);
         }
         
         /* Ensure hover doesn't break background */
@@ -643,19 +642,7 @@
              background-color: #1e293b !important;
         }
         
-        /* 6. Tunnel Effect Shadow on Right Edge of 2nd Column */
-        #evaluations-table thead tr:first-child th:nth-child(2)::after,
-        #evaluations-table tbody td:nth-child(2)::after {
-            content: "";
-            position: absolute;
-            top: 0;
-            right: -20px; /* Extend shadow outwards to the right */
-            bottom: 0;
-            width: 20px;
-            background: linear-gradient(to right, rgba(0,0,0,0.8) 0%, transparent 100%);
-            pointer-events: none;
-            z-index: 1006; /* Above the cell but below the cell content if needed */
-        }
+        /* 6. Tunnel Effect Shadow on Right Edge of 2nd Column - REMOVED */
 
         /* 7. Hover Handling */
         tr:hover td:first-child,
@@ -677,8 +664,8 @@
         
         /* Ensure table container allows sticky positioning */
         .table-container {
-            overflow: auto !important; /* Override 'hidden' from style.css */
-            max-height: calc(100vh - 180px); /* Limit height to viewport minus header space */
+            overflow-x: auto !important; /* horizontal scroll for wide table */
+            overflow-y: visible !important; /* let the page scroll vertically */
             border-bottom: 1px solid rgba(255,255,255,0.1); /* visual boundary */
         }
 
@@ -722,13 +709,15 @@
             color: #fbbf24 !important;
         }
 
-        /* Tabs */
+        /* Tabs — now living inside the header bar */
         .tabs {
-            border-bottom: 1px solid var(--border-color) !important;
-            background: var(--card-bg) !important;
-            padding: 0 20px !important;
-            border-radius: 12px 12px 0 0 !important; /* Actually attach to container below? */
+            background: none !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
             margin-bottom: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            gap: 2px !important;
         }
         
         .tab-btn {
@@ -736,22 +725,24 @@
             color: var(--text-secondary) !important;
             border: none !important;
             border-bottom: 2px solid transparent !important;
-            padding: 15px 20px !important;
+            padding: 8px 14px !important;
+            text-align: center !important;
+            border-radius: 6px !important;
         }
-        .tab-btn:hover { background: rgba(255,255,255,0.05) !important; }
+        .tab-btn:hover { background: rgba(255,255,255,0.07) !important; color: var(--text-primary) !important; }
         .tab-btn.active {
             color: var(--accent-color) !important;
+            background: rgba(251, 191, 36, 0.1) !important;
             border-bottom-color: var(--accent-color) !important;
-            background: rgba(251, 191, 36, 0.05) !important;
         }
 
         /* Tables & Content */
         .tab-content {
             background: var(--card-bg) !important;
-            padding: 24px !important;
+            padding: 12px 16px !important;
             border: 1px solid var(--border-color) !important;
-            border-top: none !important;
-            border-radius: 0 0 12px 12px !important;
+            border-radius: 12px !important;
+            overflow: hidden !important;
             color: var(--text-primary) !important;
         }
         
@@ -971,6 +962,14 @@
             <div class="header-content">
                 <h1>Trading Performance Dashboard</h1>
             </div>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
+                <button class="tab-btn" onclick="openTab('stats')">Stats</button>
+                <button class="tab-btn" onclick="openTab('waterlog')">Profitability Waterlog</button>
+                <button class="tab-btn" onclick="openTab('hedge')">Hedge Accounts</button>
+                <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
+                <button class="tab-btn" onclick="openTab('vps')">VPS</button>
+            </div>
             <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
                 {% if user_type in ('admin', 'super_admin') %}
                 <button class="header-action-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
@@ -985,15 +984,6 @@
                 </a>
             </div>
         </header>
-        
-        <div class="tabs">
-            <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
-            <button class="tab-btn" onclick="openTab('stats')">Stats</button>
-            <button class="tab-btn" onclick="openTab('waterlog')">Profitability Waterlog</button>
-            <button class="tab-btn" onclick="openTab('hedge')">Hedge Accounts</button>
-            <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
-            <button class="tab-btn" onclick="openTab('vps')">VPS</button>
-        </div>
 
         <!-- Profitability Waterlog Tab -->
         <div id="waterlog" class="tab-content">
@@ -1045,18 +1035,8 @@
 
         <!-- Evaluations Tab -->
         <div id="evaluations" class="tab-content active">
-            <div class="controls" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
-                </div>
-                <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
-                    <input type="checkbox" id="activeFilter" checked onchange="renderEvaluationsTable()">
-                    Show Active Only
-                </label>
-            </div>
-            
-            <!-- Scroll Controls -->
             <div class="table-scroll-wrapper">
+                <!-- Section Jump Controls -->
                 <div class="scroll-controls">
                     <div class="scroll-buttons">
                         <button class="scroll-btn" onclick="scrollToSection('eval-info')" title="Evaluation Info">📋 Info</button>
@@ -1064,18 +1044,25 @@
                         <button class="scroll-btn" onclick="scrollToSection('funded-phase')" title="Funded Phase">💰 Funded</button>
                         <button class="scroll-btn" onclick="scrollToSection('farming-phase')" title="Farming Phase">🌱 Farm</button>
                     </div>
+                    <div class="scroll-indicator">
+                        <span class="scroll-position" id="scroll-position">📋 Info</span>
+                    </div>
+                    <div class="scroll-buttons" style="margin-left: auto;">
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; cursor: pointer; white-space: nowrap; margin-right: 6px;">
+                            <input type="checkbox" id="activeFilter" checked onchange="renderEvaluationsTable()">
+                            Active Only
+                        </label>
+                        <button class="scroll-btn" onclick="addAccount()" style="background: rgba(217,119,6,0.25); border-color: rgba(217,119,6,0.5); color: #fbbf24; font-weight: 600;">+ Add</button>
+                    </div>
                 </div>
-                
                 <div class="table-container" id="eval-table-container">
                     <table id="evaluations-table" class="wide-table">
                     <thead>
                         <tr>
                             <th rowspan="2">#</th>
                             <th rowspan="2" style="width: 30px;">🗑️</th>
-                            <!-- Sticky Group Header for Prop Firm -->
-                            <th class="group-header group-header-blue sticky-prop-firm-header" style="border-right: 1px solid rgba(255,255,255,0.1);">EVAL INFO</th>
-                            <!-- Scrolling Group Header for the rest -->
-                            <th colspan="3" class="group-header group-header-blue">EVALUATION INFO</th>
+                            <!-- Scrolling Group Headers -->
+                            <th colspan="4" class="group-header group-header-blue sticky-prop-firm-header" style="border-right: 1px solid rgba(255,255,255,0.1);">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
                             <th colspan="91" class="group-header group-header-purple">FARMING PHASE</th>
@@ -1327,11 +1314,11 @@
         }
 
         tr.row-tp td {
-            background-color: rgba(234, 179, 8, 0.15) !important; /* Yellow 500 with opacity */
-            box-shadow: inset 3px 0 0 0 #eab308;
+            background-color: rgba(249, 115, 22, 0.12) !important; /* Orange 500 with opacity */
+            box-shadow: inset 3px 0 0 0 #f97316;
         }
         tr.row-tp td:nth-child(1), tr.row-tp td:nth-child(2) {
-             background-color: #2e2a1d !important; /* Dark Gold-ish Slate */
+             background-color: #2d1e0f !important; /* Dark Orange-ish Slate */
         }
         
         tr.row-deleted td {
@@ -1731,34 +1718,33 @@
             'farming-phase': 4500
         };
         
-        // Calculate actual section positions based on rendered header cells
+        // Calculate actual section positions based on rendered sub-header cells
         function calculateSectionPositions() {
             const table = document.getElementById('evaluations-table');
-            if (!table) return;
+            if (!table || !tableContainer) return;
             
-            // Get the group header row (first row with colspan headers)
-            const headerRow = table.querySelector('thead tr:first-child');
-            if (!headerRow) return;
+            const containerRect = tableContainer.getBoundingClientRect();
             
-            const headers = headerRow.querySelectorAll('th');
+            // Helper: get scroll target for a given th element
+            const getPos = (th) => {
+                if (!th) return null;
+                const rect = th.getBoundingClientRect();
+                return Math.max(0, rect.left - containerRect.left + tableContainer.scrollLeft);
+            };
             
-            // Find positions by measuring actual cell offsets
-            headers.forEach((th) => {
-                const headerText = th.textContent.trim().toUpperCase();
-                const cellLeft = th.offsetLeft;
-                
-                if (headerText.includes('EVALUATION INFO')) {
-                    sectionPositions['eval-info'] = cellLeft;
-                } else if (headerText.includes('EVALUATION PHASE')) {
-                    sectionPositions['eval-phase'] = cellLeft;
-                } else if (headerText.includes('FUNDED PHASE')) {
-                    sectionPositions['funded-phase'] = cellLeft;
-                } else if (headerText.includes('FARMING PHASE')) {
-                    sectionPositions['farming-phase'] = cellLeft;
-                }
-            });
+            // Info  → "Account Size": first blue sub-header that is NOT the sticky Prop Firm col
+            const infoTh = table.querySelector('thead tr:nth-child(2) th.sub-header-blue:not(.sticky-prop-firm-col)');
+            // Eval  → first green sub-header = "Date Started" (eval phase)
+            const evalTh = table.querySelector('thead tr:nth-child(2) th.sub-header-green');
+            // Funded → first orange sub-header = "Account #" (funded phase)
+            const fundedTh = table.querySelector('thead tr:nth-child(2) th.sub-header-orange');
+            // Farm  → first purple sub-header = "Farming Net"
+            const farmTh = table.querySelector('thead tr:nth-child(2) th.sub-header-purple');
             
-            // console.log('Section positions calculated:', sectionPositions);
+            if (infoTh)   sectionPositions['eval-info']     = getPos(infoTh);
+            if (evalTh)   sectionPositions['eval-phase']    = getPos(evalTh);
+            if (fundedTh) sectionPositions['funded-phase']  = getPos(fundedTh);
+            if (farmTh)   sectionPositions['farming-phase'] = getPos(farmTh);
         }
         
         function scrollTableBy(amount) {
@@ -2105,8 +2091,8 @@
                         row.classList.add('row-deleted');
                     } else if (s2.includes('complete')) {
                         row.classList.add('row-complete');
-                    } else if (s2.includes('tp') || s2.includes('payout') || s2.includes('progress')) {
-                        // TP1/Progress -> Yellow/Gold
+                    } else if (s2.includes('tp') || s2.includes('payout') || s2.includes('progress') || s1.includes('tp')) {
+                        // TP1/Progress -> Orange
                         row.classList.add('row-tp');
                     } else if (s1.includes('progress')) {
                         // Also catch P1 progress -> Yellow/Gold
