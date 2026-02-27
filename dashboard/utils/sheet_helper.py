@@ -27,6 +27,13 @@ def fetch_waterlog_data():
         # Read the CSV into a pandas DataFrame
         df = pd.read_csv(io.StringIO(csv_content))
         
+        def _parse_currency(val):
+            """Convert '$4,128.02' or '4128.02' to float, 0.0 on failure."""
+            try:
+                return float(str(val).replace(',', '').replace('$', '').strip())
+            except Exception:
+                return 0.0
+
         data = []
         for index, row in df.iterrows():
             # Handle potential column name mismatches or extra spaces
@@ -39,7 +46,6 @@ def fetch_waterlog_data():
             to_date = row.get('To', '')
             low = row.get('Low', '')
             high = row.get('High', '')
-            profit_split = row.get('Profit Split', '')
             
             entry = {
                 'timestamp': str(timestamp) if pd.notna(timestamp) else '',
@@ -48,10 +54,33 @@ def fetch_waterlog_data():
                 'to_date': str(to_date) if pd.notna(to_date) else '',
                 'low': str(low) if pd.notna(low) else '',
                 'high': str(high) if pd.notna(high) else '',
-                'profit_split': str(profit_split) if pd.notna(profit_split) else ''
+                '_low_num': _parse_currency(low) if pd.notna(low) else 0.0,
             }
             data.append(entry)
-            
+
+        # Calculate Profit Split:
+        # Compare each row's Low to the previous row's Low.
+        # If the difference is positive → profit split = 50% of that difference.
+        # Otherwise → $0.
+        for i, entry in enumerate(data):
+            current_low = entry.pop('_low_num')
+            prev_low = data[i - 1]['_low_prev'] if i > 0 else 0.0
+            diff = current_low - prev_low
+            if current_low > 0 and prev_low > 0 and diff > 0:
+                # Both positive and current beat previous → split on the difference
+                profit_split = diff * 0.5
+            elif current_low > 0 and prev_low <= 0:
+                # Previous was zero/negative, current is positive → split on full current value
+                profit_split = current_low * 0.5
+            else:
+                profit_split = 0.0
+            entry['profit_split'] = f"${profit_split:,.0f}" if profit_split > 0 else '$0'
+            entry['_low_prev'] = current_low
+
+        # Clean up temp key
+        for entry in data:
+            entry.pop('_low_prev', None)
+
         return data
     except Exception as e:
         logging.error(f"Error parsing Waterlog data: {e}")
