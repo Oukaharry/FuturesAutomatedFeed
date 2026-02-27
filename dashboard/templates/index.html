@@ -969,21 +969,20 @@
         {% endif %}
         <header>
             <div class="header-content">
-                <a href="javascript:history.back()" class="back-link">←</a>
-                <h1>Trading Performance Dashboard</h1>
-                {% if client_id %}
-                <span class="version-badge">{{ client_id }} <span class="flag-icon flag-icon-us"></span></span>
-                {% else %}
-                <span class="version-badge">USA <span class="flag-icon flag-icon-us"></span></span>
-                {% endif %}
+                <h1>Performance Dashboard</h1>
             </div>
-            <div class="status" style="display: flex; align-items: center; gap: 15px;">
+            <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
                 <span style="font-size:0.78em; color:#94a3b8;">Last Updated: <span id="last-updated" class="last-updated-text">-</span></span>
-                <button class="history-header-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
-                    📜 Version History
+                {% if user_type in ('admin', 'super_admin') %}
+                <button class="header-action-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
+                    <i class="fas fa-history"></i> Version History
                 </button>
-                <a href="/logout" class="logout-btn history-header-btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);">
-                    Logout
+                {% endif %}
+                {% if client_id %}
+                <span class="header-user-badge">{{ client_id }}</span>
+                {% endif %}
+                <a href="/logout" class="header-action-btn header-action-btn--danger">
+                    <i class="fas fa-sign-out-alt"></i> Logout
                 </a>
             </div>
         </header>

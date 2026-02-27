@@ -70,7 +70,7 @@ header {
     align-items: center;
     margin-bottom: 30px;
     background: rgba(30, 41, 59, 0.8);
-    padding: 24px 32px;
+    padding: 12px 20px;
     border-radius: var(--radius);
     box-shadow: var(--shadow-md);
     border: 1px solid rgba(255, 255, 255, 0.05); /* Subtle white border for glass effect */
@@ -78,17 +78,13 @@ header {
     transition: all 0.3s ease;
 }
 
-header:hover {
-    box-shadow: var(--shadow-glow);
-    border-color: rgba(251, 191, 36, 0.2); /* Gold border on hover */
-    transform: translateY(-2px);
-}
+/* header hover removed — hover effects reserved for interactive elements */
 
 h1 {
     margin: 0;
-    font-weight: 800;
-    font-size: 1.8rem;
-    letter-spacing: -0.02em;
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: -0.01em;
     background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%); /* Gold Text */
     background-clip: text;
     -webkit-background-clip: text;
@@ -792,18 +788,51 @@ button:hover {
 .logout-btn:hover { background: #fee2e2; transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .header-content { display: flex; align-items: center; gap: 12px; }
 
-.back-link {
-    text-decoration: none;
-    color: var(--text-secondary);
-    font-size: 1.1rem;
-    margin-right: 12px;
-    transition: all 0.2s;
+/* .back-link removed */
+
+/* Uniform header action buttons (Version History, Logout) */
+.header-action-btn {
     display: inline-flex;
     align-items: center;
-    padding: 8px;
-    border-radius: 8px;
+    gap: 6px;
+    padding: 7px 14px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(30,41,59,0.9);
+    color: #cbd5e1;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
 }
-.back-link:hover { color: var(--text-primary); background: #f1f5f9; }
+.header-action-btn:hover {
+    background: rgba(51,65,85,0.95);
+    border-color: rgba(255,255,255,0.2);
+    color: #f8fafc;
+}
+.header-action-btn--danger {
+    border-color: rgba(239,68,68,0.35);
+    color: #fca5a5;
+}
+.header-action-btn--danger:hover {
+    background: rgba(127,29,29,0.5);
+    border-color: rgba(239,68,68,0.6);
+    color: #fecaca;
+}
+
+/* Username chip shown next to logout */
+.header-user-badge {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #fbbf24;
+    background: rgba(251,191,36,0.08);
+    border: 1px solid rgba(251,191,36,0.2);
+    padding: 5px 10px;
+    border-radius: 6px;
+    letter-spacing: 0.02em;
+}
 
 /* --- Brand / Logo Styling --- */
 .brand {
