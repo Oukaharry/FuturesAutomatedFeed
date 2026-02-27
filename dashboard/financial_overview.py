@@ -146,6 +146,8 @@ def calculate_all_financials(profile_filter=None):
         # --- 1. Process Evaluations (Sheet Data) ---
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # Prop Firm Overview Logic
             raw_prop_firm = ev.get('Prop Firm')
             if raw_prop_firm and raw_prop_firm != "-" and str(raw_prop_firm).lower() != "prop firm":
@@ -598,6 +600,8 @@ def get_payouts_growth_data(profile_filter=None):
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # Payouts Only
             for i in range(1, 10):
                 date_str = ev.get(f'Date {i}')
@@ -758,6 +762,8 @@ def get_cumulative_trading_profit(profile_filter=None):
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # Match filtering logic from calculate_propfirm_overview
             raw_prop_firm = ev.get('Prop Firm')
             if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
@@ -861,6 +867,8 @@ def get_portfolio_growth_data(profile_filter=None):
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # 1. Payouts (Positive)
             for i in range(1, 10):
                 date_str = ev.get(f'Date {i}')
@@ -1096,6 +1104,8 @@ def get_cumulative_fees_data(profile_filter=None):
         
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # 1. Fees (Negative, but usually shown as positive 'Spent' on card. 
             # Graph should likely show cumulative SPEND (positive slope) or cumulative CASHFLOW (negative slope)?
             # The card says "Total Fees Spent: $1.1M". Correct graph would probably be strictly increasing cost.
@@ -1133,6 +1143,8 @@ def get_cumulative_hedge_data(profile_filter=None):
             
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # Dates
             date_started = parse_date(ev.get('Date Started'))
             date_ended = parse_date(ev.get('Date Ended'))
@@ -1167,6 +1179,8 @@ def get_cumulative_farming_data(profile_filter=None):
             
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # Dates
             date_started = parse_date(ev.get('Date Started'))
             date_ended = parse_date(ev.get('Date Ended'))
@@ -1247,6 +1261,8 @@ def calculate_trader_stats(profile_filter=None):
         
         evaluations = data.get('evaluations', [])
         for idx, ev in enumerate(evaluations):
+            if not isinstance(ev, dict):
+                continue
             row_num = idx + 3 # Matches frontend assumption (Row 3 start)
             acc_num = ev.get('Account #') or ev.get('Account #.1') or 'Unknown'
             # Payouts 1-10
@@ -1421,6 +1437,8 @@ def get_client_performance_stats(profile_filter=None):
         # 1. Evaluations Payouts/Fees/Status
         evaluations = data.get('evaluations', [])
         for ev in evaluations:
+            if not isinstance(ev, dict):
+                continue
             # Status logic expanded
             status = str(ev.get('Status') or '').lower()
             if 'passed' in status or 'funded' in status:
