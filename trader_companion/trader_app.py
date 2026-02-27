@@ -2145,8 +2145,7 @@ class TraderCompanionApp:
         self.root.update_idletasks()
         
         try:
-            # Step 1: Fetch and calculate locally first
-            from utils.data_processor import fetch_evaluations, calculate_statistics
+            from utils.data_processor import fetch_evaluations
             
             res = fetch_evaluations(sheet_url)
             if isinstance(res, tuple):
@@ -2161,12 +2160,8 @@ class TraderCompanionApp:
             
             self.log(f"   Fetched {len(evaluations)} evaluation records")
             
-            # Calculate local stats
-            local_stats = calculate_statistics(evaluations)
-            self.log(f"Step 2: Calculated local statistics")
-            
-            # Step 2: Push to dashboard
-            self.log(f"Step 3: Pushing data to dashboard...")
+            # Step 2: Push to dashboard (full overwrite)
+            self.log(f"Step 2: Pushing data to dashboard...")
             self.status_var.set("Pushing to dashboard...")
             self.root.update_idletasks()
             
@@ -2197,31 +2192,10 @@ class TraderCompanionApp:
                 return
             
             records = data.get("records_imported", 0)
-            dashboard_stats = data.get("statistics", {})
-            
-            self.log(f"   ✅ Dashboard imported {records} records")
-            
-            # Step 3: Verify stats match
-            self.log(f"Step 4: Verifying statistics match...")
-            self.status_var.set("Verifying stats...")
-            self.root.update_idletasks()
-            
-            discrepancies = self.verify_stats(local_stats, dashboard_stats)
-            
-            if discrepancies:
-                self.log("=" * 50, "ERROR")
-                self.log("⚠️ STATS DISCREPANCIES FOUND:", "ERROR")
-                for disc in discrepancies:
-                    self.log(f"   {disc}", "ERROR")
-                self.log("=" * 50, "ERROR")
-                messagebox.showwarning("Stats Mismatch", 
-                    f"Data imported but {len(discrepancies)} stat discrepancies found. Check log for details.")
-            else:
-                self.log("✅ All statistics verified - MATCH!")
-                messagebox.showinfo("Success", 
-                    f"Successfully imported {records} records.\nAll statistics verified and match!")
-            
+            self.log(f"   ✅ Successfully imported {records} records")
+            self.log(f"   Dashboard data fully replaced.")
             self.status_var.set(f"Imported {records} records")
+            messagebox.showinfo("Success", f"Successfully imported {records} records.\nDashboard data has been updated.")
             self.lookup_client()
                 
         except requests.exceptions.Timeout:

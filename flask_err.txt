@@ -1,0 +1,101 @@
+[2026-02-26 17:49:51,068] INFO in _internal: [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5001
+ * Running on http://172.20.10.2:5001
+[2026-02-26 17:49:51,090] INFO in _internal: [33mPress CTRL+C to quit[0m
+[2026-02-26 17:49:51,115] INFO in _internal:  * Restarting with stat
+[2026-02-26 17:49:53,042] WARNING in _internal:  * Debugger is active!
+[2026-02-26 17:49:53,068] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 17:50:10,519] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:50:10] "POST /api/auth/login HTTP/1.1" 200 -
+[2026-02-26 17:50:20,965] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:50:20] "POST /api/auth/login HTTP/1.1" 200 -
+[2026-02-26 17:50:21,086] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:50:21] "[33mGET /api/data?client_id=Chris HTTP/1.1[0m" 404 -
+[2026-02-26 17:50:40,010] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\show_clients.py', reloading
+[2026-02-26 17:50:40,140] INFO in _internal:  * Restarting with stat
+[2026-02-26 17:50:41,673] WARNING in _internal:  * Debugger is active!
+[2026-02-26 17:50:41,700] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 17:51:00,902] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:51:00] "POST /api/auth/login HTTP/1.1" 200 -
+[2026-02-26 17:51:01,120] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:51:01] "GET /api/data?client_id=Ed HTTP/1.1" 200 -
+[2026-02-26 17:51:22,051] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:51:22] "POST /api/auth/login HTTP/1.1" 200 -
+[2026-02-26 17:51:22,313] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:51:22] "GET /api/data?client_id=Ed HTTP/1.1" 200 -
+[2026-02-26 17:51:38,292] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:51:38] "GET / HTTP/1.1" 200 -
+[2026-02-26 17:51:38,550] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:51:38] "GET /static/images/logo.png HTTP/1.1" 200 -
+[2026-02-26 17:51:38,797] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:51:38] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+[2026-02-26 17:52:29,576] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:29] "[32mGET /dashboard/Ed HTTP/1.1[0m" 302 -
+[2026-02-26 17:52:29,660] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:29] "GET / HTTP/1.1" 200 -
+[2026-02-26 17:52:42,182] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:42] "[36mGET /static/images/logo.png HTTP/1.1[0m" 304 -
+[2026-02-26 17:52:48,141] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:48] "POST /api/auth/login HTTP/1.1" 200 -
+[2026-02-26 17:52:49,313] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:49] "GET /super_admin HTTP/1.1" 200 -
+[2026-02-26 17:52:49,555] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:49] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[2026-02-26 17:52:49,853] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:49] "[36mGET /static/images/logo.png HTTP/1.1[0m" 304 -
+[2026-02-26 17:52:50,497] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:50] "GET /api/hierarchy HTTP/1.1" 200 -
+[2026-02-26 17:52:51,126] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:51] "GET /api/super_admin/totals HTTP/1.1" 200 -
+[2026-02-26 17:52:54,807] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:54] "GET /dashboard/Ed HTTP/1.1" 200 -
+[2026-02-26 17:52:55,058] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[2026-02-26 17:52:55,434] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:55] "[36mGET /static/images/logo.png HTTP/1.1[0m" 304 -
+[2026-02-26 17:52:55,564] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 17:52:55] "GET /api/data?client_id=Ed HTTP/1.1" 200 -
+[2026-02-26 18:02:03,977] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:02:03] "GET / HTTP/1.1" 200 -
+[2026-02-26 18:05:05,327] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:05:05] "GET /dashboard/Ed HTTP/1.1" 200 -
+[2026-02-26 18:05:05,510] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:05:05] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[2026-02-26 18:05:05,511] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:05:05] "[36mGET /static/images/logo.png HTTP/1.1[0m" 304 -
+[2026-02-26 18:05:06,104] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:05:06] "GET /api/data?client_id=Ed HTTP/1.1" 200 -
+[2026-02-26 18:20:38,362] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:20:38] "GET /dashboard/Ed HTTP/1.1" 200 -
+[2026-02-26 18:20:51,232] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:20:51] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[2026-02-26 18:20:51,259] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:20:51] "[36mGET /static/images/logo.png HTTP/1.1[0m" 304 -
+[2026-02-26 18:20:51,793] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:20:51] "GET /api/data?client_id=Ed HTTP/1.1" 200 -
+[2026-02-26 18:32:37,641] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\dashboard\\app.py', reloading
+[2026-02-26 18:32:38,690] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:32:41,854] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:32:41,884] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:32:57,449] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\dashboard\\app.py', reloading
+[2026-02-26 18:32:57,627] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:32:59,770] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:32:59,796] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:36:31,848] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\trader_app.py', reloading
+[2026-02-26 18:36:32,177] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:36:34,612] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:36:34,638] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:36:40,154] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\trader_app.py', reloading
+[2026-02-26 18:36:40,417] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:36:42,959] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:36:42,990] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:40:56,614] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:40:56] "POST /api/client/auth HTTP/1.1" 200 -
+[2026-02-26 18:41:20,733] DEBUG in connectionpool: Starting new HTTPS connection (1): docs.google.com:443
+[2026-02-26 18:41:20,733] DEBUG in connectionpool: Starting new HTTPS connection (1): docs.google.com:443
+[2026-02-26 18:41:22,400] DEBUG in connectionpool: https://docs.google.com:443 "GET /spreadsheets/d/1ivVtySJKJveJHNg9Hs4kH8fTqWDgMQMOxkYCPxIMtQM/export?format=csv HTTP/1.1" 307 None
+[2026-02-26 18:41:22,405] DEBUG in connectionpool: https://docs.google.com:443 "GET /spreadsheets/d/1ivVtySJKJveJHNg9Hs4kH8fTqWDgMQMOxkYCPxIMtQM/export?format=xlsx HTTP/1.1" 307 None
+[2026-02-26 18:41:22,449] DEBUG in connectionpool: Starting new HTTPS connection (1): doc-00-4k-sheets.googleusercontent.com:443
+[2026-02-26 18:41:22,492] DEBUG in connectionpool: Starting new HTTPS connection (1): doc-00-4k-sheets.googleusercontent.com:443
+[2026-02-26 18:41:26,337] DEBUG in connectionpool: https://doc-00-4k-sheets.googleusercontent.com:443 "GET /export/54bogvaave6cua4cdnls17ksc4/3d4pknh5geohv8dl02vttko9nc/1772120480000/101533788058334479043/*/1ivVtySJKJveJHNg9Hs4kH8fTqWDgMQMOxkYCPxIMtQM?format=csv HTTP/1.1" 200 None
+[2026-02-26 18:41:28,201] DEBUG in connectionpool: https://doc-00-4k-sheets.googleusercontent.com:443 "GET /export/54bogvaave6cua4cdnls17ksc4/3d4pknh5geohv8dl02vttko9nc/1772120480000/101533788058334479043/*/1ivVtySJKJveJHNg9Hs4kH8fTqWDgMQMOxkYCPxIMtQM?format=xlsx HTTP/1.1" 200 None
+[2026-02-26 18:41:33,344] DEBUG in connectionpool: Starting new HTTPS connection (1): docs.google.com:443
+[2026-02-26 18:41:34,373] DEBUG in connectionpool: https://docs.google.com:443 "GET /spreadsheets/d/1ivVtySJKJveJHNg9Hs4kH8fTqWDgMQMOxkYCPxIMtQM/edit HTTP/1.1" 200 None
+[2026-02-26 18:41:34,790] DEBUG in connectionpool: Starting new HTTPS connection (1): docs.google.com:443
+[2026-02-26 18:41:35,751] DEBUG in connectionpool: https://docs.google.com:443 "GET /spreadsheets/d/1ivVtySJKJveJHNg9Hs4kH8fTqWDgMQMOxkYCPxIMtQM/export?format=csv&gid=206426091 HTTP/1.1" 307 None
+[2026-02-26 18:41:35,778] DEBUG in connectionpool: Starting new HTTPS connection (1): doc-00-4k-sheets.googleusercontent.com:443
+[2026-02-26 18:41:36,823] DEBUG in connectionpool: https://doc-00-4k-sheets.googleusercontent.com:443 "GET /export/54bogvaave6cua4cdnls17ksc4/8rdboo63lf6kd5d72pn59r6l1s/1772120495000/101533788058334479043/*/1ivVtySJKJveJHNg9Hs4kH8fTqWDgMQMOxkYCPxIMtQM?format=csv&gid=206426091 HTTP/1.1" 200 None
+[2026-02-26 18:41:37,625] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:41:37] "POST /api/client/migrate_sheet HTTP/1.1" 200 -
+[2026-02-26 18:41:44,616] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:41:44] "POST /api/client/auth HTTP/1.1" 200 -
+[2026-02-26 18:45:01,058] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\dashboard\\database.py', reloading
+[2026-02-26 18:45:02,810] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:45:05,416] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:45:05,443] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:45:14,194] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\dashboard\\app.py', reloading
+[2026-02-26 18:45:14,380] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:45:16,233] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:45:16,261] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:52:53,356] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:52:53] "GET /dashboard/Ed HTTP/1.1" 200 -
+[2026-02-26 18:52:53,816] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:52:53] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+[2026-02-26 18:52:53,818] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:52:53] "[36mGET /static/images/logo.png HTTP/1.1[0m" 304 -
+[2026-02-26 18:52:54,418] INFO in _internal: 127.0.0.1 - - [26/Feb/2026 18:52:54] "GET /api/data?client_id=Ed HTTP/1.1" 200 -
+[2026-02-26 18:56:04,660] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\trader_app.py', reloading
+[2026-02-26 18:56:05,186] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:56:07,621] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:56:07,652] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:57:14,828] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\trader_app.py', reloading
+[2026-02-26 18:57:15,049] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:57:17,222] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:57:17,247] INFO in _internal:  * Debugger PIN: 327-425-714
+[2026-02-26 18:57:31,511] INFO in _internal:  * Detected change in 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\trader_app.py', reloading
+[2026-02-26 18:57:31,687] INFO in _internal:  * Restarting with stat
+[2026-02-26 18:57:33,688] WARNING in _internal:  * Debugger is active!
+[2026-02-26 18:57:33,714] INFO in _internal:  * Debugger PIN: 327-425-714
