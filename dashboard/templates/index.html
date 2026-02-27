@@ -969,20 +969,19 @@
         {% endif %}
         <header>
             <div class="header-content">
-                <h1>Performance Dashboard</h1>
+                <h1>Trading Performance Dashboard</h1>
             </div>
             <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
-                <span style="font-size:0.78em; color:#94a3b8;">Last Updated: <span id="last-updated" class="last-updated-text">-</span></span>
                 {% if user_type in ('admin', 'super_admin') %}
                 <button class="header-action-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
                     <i class="fas fa-history"></i> Version History
                 </button>
                 {% endif %}
                 {% if client_id %}
-                <span class="header-user-badge">{{ client_id }}</span>
+                <span class="header-user-badge">{{ client_id }} <span class="flag-icon flag-icon-us"></span></span>
                 {% endif %}
-                <a href="/logout" class="header-action-btn header-action-btn--danger">
-                    <i class="fas fa-sign-out-alt"></i> Logout
+                <a href="/logout" class="header-logout-pill">
+                    Logout
                 </a>
             </div>
         </header>
@@ -3716,6 +3715,7 @@
         
         function showSaveStatus(status, detail = '') {
             const statusEl = document.getElementById('last-updated');
+            if (!statusEl) return;
             const originalText = statusEl.dataset.originalText || statusEl.textContent;
             statusEl.dataset.originalText = originalText;
             

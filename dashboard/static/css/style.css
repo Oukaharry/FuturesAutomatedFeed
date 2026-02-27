@@ -822,6 +822,27 @@ button:hover {
     color: #fecaca;
 }
 
+/* Logout pill button */
+.header-logout-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 18px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    border-radius: 99px;
+    border: none;
+    background: #ef4444;
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+.header-logout-pill:hover {
+    background: #dc2626;
+    color: #fff;
+}
+
 /* Username chip shown next to logout */
 .header-user-badge {
     font-size: 0.78rem;
