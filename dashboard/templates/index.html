@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Client Dashboard - MT5 Hedging Engine</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/css/flag-icon.min.css" rel="stylesheet">
     <style>
@@ -977,6 +978,7 @@
                 {% endif %}
             </div>
             <div class="status" style="display: flex; align-items: center; gap: 15px;">
+                <span style="font-size:0.78em; color:#94a3b8;">Last Updated: <span id="last-updated" class="last-updated-text">-</span></span>
                 <button class="history-header-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
                     📜 Version History
                 </button>
@@ -1050,7 +1052,7 @@
                     <button class="btn-primary" onclick="addAccount()">+ Add New Account</button>
                 </div>
                 <label style="display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer;">
-                    <input type="checkbox" id="activeFilter" onchange="renderEvaluationsTable()">
+                    <input type="checkbox" id="activeFilter" checked onchange="renderEvaluationsTable()">
                     Show Active Only
                 </label>
             </div>
@@ -1946,7 +1948,8 @@
                         });
                     }
 
-                    document.getElementById('last-updated').textContent = data.last_updated;
+                    const lastUpdatedEl = document.getElementById('last-updated');
+                    if (lastUpdatedEl) lastUpdatedEl.textContent = data.last_updated;
                     
                     try { renderEvaluationsTable(); } catch(e) {
                         console.error('renderEvaluationsTable error:', e);
@@ -2005,7 +2008,9 @@
         function renderEvaluationsTable() {
             const evalBody = document.getElementById('evaluations-body');
             const noEvalMsg = document.getElementById('no-evaluations-msg');
-            const showActiveOnly = document.getElementById('activeFilter').checked;
+            const showActiveOnly = document.getElementById('activeFilter')?.checked ?? false;
+
+            if (!evalBody) return; // DOM not ready yet
 
             // Check for deep link parameters
             const urlParams = new URLSearchParams(window.location.search);
@@ -2070,23 +2075,23 @@
                     if (!dataLoaded) {
                         // Data not yet fetched — keep or restore the loading spinner
                         evalBody.innerHTML = evalSpinnerHTML();
-                        noEvalMsg.style.display = 'none';
+                        if (noEvalMsg) noEvalMsg.style.display = 'none';
                     } else {
                         // Data loaded but no rows match - clear whatever was there
                         evalBody.innerHTML = '';
-                        noEvalMsg.textContent = showActiveOnly ? "No active accounts found." : "No evaluations found";
-                        noEvalMsg.style.display = 'block';
+                        if (noEvalMsg) { noEvalMsg.textContent = showActiveOnly ? "No active accounts found." : "No evaluations found"; noEvalMsg.style.display = 'block'; }
                     }
                     return;
                 }
                 
-                noEvalMsg.style.display = 'none';
+                if (noEvalMsg) noEvalMsg.style.display = 'none';
                 
                 // Build all rows first, THEN atomically replace DOM in one shot
                 const fragment = document.createDocumentFragment();
-                
+                let rowsBuilt = 0;
 
                 rowsToRender.forEach(({ item: ev, originalIndex: index, rowNum: currentRowNum }) => {
+                  try {
                     const row = document.createElement('tr');
                     const getVal = (key) => ev[key] || '';
                     
@@ -2206,8 +2211,14 @@
                         ${generateDayColumns(ev, cell, index, currentRowNum)}
                     `;
                     fragment.appendChild(row);
+                    rowsBuilt++;
+                  } catch(rowErr) {
+                    console.error('Row build error (index', index, '):', rowErr);
+                  }
                 });
-                
+
+                console.log(`[Evaluations] filtered=${rowsToRender.length}, built=${rowsBuilt}, showActive=${showActiveOnly}`);
+
                 // Atomically swap: clear old content and insert new rows in one operation
                 evalBody.innerHTML = '';
                 evalBody.appendChild(fragment);
@@ -3223,8 +3234,8 @@
         const dropdownOptions = {
             'Prop Firm': ['My Funded Futures', 'Funded Next', 'FundingTicks', 'TopStep', 'Lucid', 'TradeDay', 'AlphaFutures', 'Tradeify', 'Other'],
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
-            'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Deleted', 'Hit TP 2', 'Hit SL 1', 'Hit TP 3'],
-            'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit SL1', 'Deleted', 'Completed']
+            'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted'],
+            'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted', 'Completed']
         };
 
         function getDropdownHtml(value, type, index, key, readOnly = false) {

@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
