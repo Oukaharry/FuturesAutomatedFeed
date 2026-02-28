@@ -965,7 +965,7 @@
         {% if user_type == 'super_admin' %}
         <nav class="modern-nav">
             <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="height: 105px; width: 105px; object-fit: contain;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
             </div>
             <div class="nav-links">
                 <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
@@ -984,7 +984,7 @@
             <div class="header-content" style="display: flex; align-items: center; gap: 16px;">
                 {% if user_type != 'super_admin' %}
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
-                     style="width: 200px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
+                     style="width: 100px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
                 {% endif %}
                 <h1>Trading Performance Dashboard</h1>
             </div>
