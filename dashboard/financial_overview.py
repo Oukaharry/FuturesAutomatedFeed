@@ -530,6 +530,8 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None, p
 
         evaluations = data.get('evaluations', [])
         for eval_data in evaluations:
+            if not isinstance(eval_data, dict):
+                continue
             prop_firm = eval_data.get('Prop Firm')
             if not prop_firm or prop_firm == "-": continue
             
