@@ -28,7 +28,7 @@
             content: '';
             position: fixed;
             inset: 0;
-            background: url("{{ url_for('static', filename='images/logo.png') }}") center/cover no-repeat;
+            background: url("{{ url_for('static', filename='images/logo_original.png') }}") center/cover no-repeat;
             filter: blur(18px) brightness(0.18);
             transform: scale(1.05); /* prevent blur edge bleed */
             z-index: 0;
@@ -426,7 +426,7 @@
 <body>
 
     <!-- ── LOGO ── -->
-    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" class="logo-img">
+    <img src="{{ url_for('static', filename='images/logo_original.png') }}" alt="TradeOpss" class="logo-img">
 
     <!-- ── RIGHT PANEL ── -->
     <div class="right-panel">

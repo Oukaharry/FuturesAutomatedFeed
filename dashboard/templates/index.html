@@ -683,10 +683,11 @@
             background: rgba(15, 23, 42, 0.7) !important;
             backdrop-filter: blur(16px) !important;
             border-bottom: 1px solid rgba(255,255,255,0.05) !important;
-            padding: 20px 32px !important;
+            padding: 8px 32px !important;
             border-radius: 16px !important;
-            margin-bottom: 24px !important;
+            margin-bottom: 16px !important;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+            overflow: visible !important;
         }
         
         h1, h2, h3, h4, h5, h6 { color: var(--text-primary) !important; }
@@ -980,7 +981,11 @@
         </nav>
         {% endif %}
         <header>
-            <div class="header-content">
+            <div class="header-content" style="display: flex; align-items: center; gap: 16px;">
+                {% if user_type != 'super_admin' %}
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
+                     style="width: 200px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
+                {% endif %}
                 <h1>Trading Performance Dashboard</h1>
             </div>
             <div class="tabs">
