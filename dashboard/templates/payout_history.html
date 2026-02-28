@@ -265,6 +265,31 @@
         .finance-table tr:hover {
             background: rgba(255,255,255,0.05) !important;
         }
+
+        /* ── MOBILE RESPONSIVE ── */
+        @media (max-width: 768px) {
+            .modern-nav {
+                height: auto !important;
+                flex-wrap: wrap;
+                padding: 10px 12px;
+                gap: 6px;
+                justify-content: center;
+                margin-bottom: 16px;
+            }
+            .modern-nav .brand {
+                position: static !important;
+                transform: none !important;
+                width: 100%;
+                display: flex;
+                justify-content: center;
+            }
+            .modern-nav .brand img {
+                width: 70px !important;
+                height: 70px !important;
+            }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 4px; }
+            .tab-btn { font-size: 0.78rem !important; padding: 6px 9px !important; }
+        }
     </style>
 </head>
 <body style="background-color: #f8fafc;">
