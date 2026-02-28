@@ -1026,7 +1026,7 @@ class TraderCompanionApp:
     
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title(f"BallerQuotes Capital Trader Companion v{APP_VERSION}")
+        self.root.title(f"TradeOpps Trader Companion v{APP_VERSION}")
         self.root.geometry("620x750")
         self.root.configure(bg='#0f172a')
         self.root.resizable(False, False)  # Fixed size window
@@ -1078,7 +1078,7 @@ class TraderCompanionApp:
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Configure styles - BallerQuotes Theme (Dark Blue & Gold)
+        # Configure styles - TradeOpps Theme (Dark Blue & Gold)
         bg_color = '#0f172a'
         fg_color = '#e2e8f0'
         accent_color = '#fbbf24'
@@ -1129,7 +1129,7 @@ class TraderCompanionApp:
         
         header_canvas.create_text(
             center_x, 35,
-            text="BallerQuotes",
+            text="TradeOpps",
             font=('Segoe UI', 26, 'bold'),
             fill='#fbbf24' # Gold
         )
@@ -1140,7 +1140,7 @@ class TraderCompanionApp:
             font=('Segoe UI', 11, 'italic'),
             fill='#cbd5e1' # Lighter Gray
         )        
-        # Connection Frame (Hidden URL - Hardcoded to BallerQuotes)
+        # Connection Frame (Hidden URL - Hardcoded to TradeOpps)
         # conn_frame = ttk.LabelFrame(main_frame, text="Dashboard Connection", padding=8)
         # conn_frame.pack(fill=tk.X, pady=(0, 8))
         
@@ -1154,9 +1154,9 @@ class TraderCompanionApp:
         
         # Mapping for easy lookup
         # Use lists to maintain order for Combobox
-        self.url_keys = ["BallerQuotes (Production)", "Localhost (Development)"]
+        self.url_keys = ["TradeOpps (Production)", "Localhost (Development)"]
         self.url_values = {
-            "BallerQuotes (Production)": "https://www.ballerquotes.com",
+            "TradeOpps (Production)": "https://www.tradeopss.com",
             "Localhost (Development)": "http://127.0.0.1:5001"
         }
         
@@ -1169,7 +1169,7 @@ class TraderCompanionApp:
         
         # Hidden entry for backward compatibility with existing code that uses self.url_entry.get()
         self.url_entry = ttk.Entry(main_frame)
-        self.url_entry.insert(0, self.url_values["BallerQuotes (Production)"])
+        self.url_entry.insert(0, self.url_values["TradeOpps (Production)"])
         # self.url_entry.pack() # Keep hidden but updated
         
         def on_target_change(event):
@@ -1179,7 +1179,7 @@ class TraderCompanionApp:
                 # Require password for Localhost
                 password = simpledialog.askstring("Developer Access", "Enter password for local development:", show='*')
                 
-                if password == "ballerquotes@123":
+                if password == "tradeopss@123":
                     self.url_entry.delete(0, tk.END)
                     self.url_entry.insert(0, self.url_values[selection])
                     self.log(f"Switched to Localhost: {self.url_values[selection]}")
@@ -1188,7 +1188,7 @@ class TraderCompanionApp:
                     messagebox.showerror("Access Denied", "Incorrect password.")
                     self.url_selector.current(0) # Revert to Prod
                     self.url_entry.delete(0, tk.END)
-                    self.url_entry.insert(0, self.url_values["BallerQuotes (Production)"])
+                    self.url_entry.insert(0, self.url_values["TradeOpps (Production)"])
             else:
                 # Production - no password needed
                 self.url_entry.delete(0, tk.END)
@@ -2360,7 +2360,7 @@ class TraderCompanionApp:
                 with open(config_path, 'r') as f:
                     config = json.load(f)
                 
-                # Do NOT load dashboard_url - keep hardcoded BallerQuotes
+                # Do NOT load dashboard_url - keep hardcoded TradeOpps
                 # saved_url = config.get('dashboard_url')
                 # if saved_url:
                 #     self.url_entry.delete(0, tk.END)

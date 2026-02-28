@@ -3,7 +3,7 @@ import sys
 import shutil
 import subprocess
 
-# --- Build Script for BallerQuotes Trader Companion ---
+# --- Build Script for TradeOpps Trader Companion ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 TRADER_APP = os.path.join(PROJECT_ROOT, 'trader_companion', 'trader_app.py')
 LOGO_SRC = os.path.join(PROJECT_ROOT, 'trader_companion', 'logo.png')
@@ -20,7 +20,7 @@ def get_version():
     return '1.0.0'
 
 VERSION = get_version()
-BUILD_NAME = f'BallerQuotes_Trader_Companion_v{VERSION}'
+BUILD_NAME = f'TradeOpps_Trader_Companion_v{VERSION}'
 
 # 1. Clean previous builds
 print("Cleaning build directories...")

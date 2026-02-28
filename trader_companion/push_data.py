@@ -91,7 +91,7 @@ def migrate_sheet(url, email, sheet_url):
 
 def main():
     parser = argparse.ArgumentParser(description='Push MT5 data to Trading Dashboard (No API Key Required!)')
-    parser.add_argument('--url', default='https://ballerquotes.pythonanywhere.com', help='Dashboard URL')
+    parser.add_argument('--url', default='https://www.tradeopss.com', help='Dashboard URL')
     parser.add_argument('--email', required=True, help='Your registered client email')
     parser.add_argument('--sheet', help='Google Sheet URL to migrate data from')
     parser.add_argument('--mt5-login', help='MT5 account login')
