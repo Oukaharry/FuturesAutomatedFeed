@@ -4,7 +4,7 @@ import os
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.2.0"
 """
 MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -1026,7 +1026,7 @@ class TraderCompanionApp:
     
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title(f"TradeOpps Trader Companion v{APP_VERSION}")
+        self.root.title(f"Trader Companion v{APP_VERSION}")
         self.root.geometry("620x750")
         self.root.configure(bg='#0f172a')
         self.root.resizable(False, False)  # Fixed size window
@@ -1129,8 +1129,8 @@ class TraderCompanionApp:
         
         header_canvas.create_text(
             center_x, 35,
-            text="TradeOpps",
-            font=('Segoe UI', 26, 'bold'),
+            text="Trader Companion",
+            font=('Segoe UI', 22, 'bold'),
             fill='#fbbf24' # Gold
         )
         

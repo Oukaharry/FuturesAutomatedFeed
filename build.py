@@ -20,7 +20,7 @@ def get_version():
     return '1.0.0'
 
 VERSION = get_version()
-BUILD_NAME = f'TradeOpps_Trader_Companion_v{VERSION}'
+BUILD_NAME = f'Trader_Companion_v{VERSION}'
 
 # 1. Clean previous builds
 print("Cleaning build directories...")
