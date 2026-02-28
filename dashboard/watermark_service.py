@@ -173,3 +173,132 @@ def bulk_save_history(client_id, history_data):
     except Exception as e:
         logging.error(f"Error bulk saving history: {e}")
         return False
+
+
+def save_waterlog_periods(client_id, periods):
+    """
+    Stores the bi-weekly period schedule for a client.
+    periods: list of (from_date_str, to_date_str) in 'YYYY-MM-DD' format.
+    Existing periods for this client are replaced.
+    """
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            # Clear existing schedule for this client then insert fresh
+            cursor.execute('DELETE FROM waterlog_periods WHERE client_id = ?', (client_id,))
+            for (from_d, to_d) in periods:
+                cursor.execute(
+                    'INSERT OR REPLACE INTO waterlog_periods (client_id, from_date, to_date) VALUES (?, ?, ?)',
+                    (client_id, from_d, to_d)
+                )
+            conn.commit()
+            logging.info(f"Saved {len(periods)} waterlog periods for {client_id}")
+            return True
+    except Exception as e:
+        logging.error(f"Error saving waterlog periods: {e}")
+        return False
+
+
+def get_waterlog_periods(client_id):
+    """
+    Returns the stored bi-weekly period schedule for a client.
+    Returns: list of (from_date_str, to_date_str) sorted ascending.
+    """
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT from_date, to_date FROM waterlog_periods WHERE client_id = ? ORDER BY from_date ASC',
+                (client_id,)
+            )
+            return [(row['from_date'], row['to_date']) for row in cursor.fetchall()]
+    except Exception as e:
+        logging.error(f"Error getting waterlog periods: {e}")
+        return []
+
+
+def get_all_daily_watermarks(client_id):
+    """
+    Returns ALL daily watermark rows for a client (no date cutoff).
+    Returns: list of (date_obj, float)
+    """
+    from datetime import datetime as _dt
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT date, net_profit_complete FROM daily_watermarks WHERE client_id = ? ORDER BY date ASC',
+                (client_id,)
+            )
+            result = []
+            for row in cursor.fetchall():
+                try:
+                    d = _dt.strptime(row['date'], '%Y-%m-%d').date()
+                    result.append((d, float(row['net_profit_complete'])))
+                except Exception:
+                    pass
+            return result
+    except Exception as e:
+        logging.error(f"Error getting all daily watermarks: {e}")
+        return []
+
+
+def compute_waterlog_from_db(client_id):
+    """
+    Computes the Profit Share History table entirely from DB data:
+      - Bi-weekly periods from waterlog_periods table
+      - Daily net-profit readings from daily_watermarks table
+
+    Returns list of dicts (same shape as fetch_waterlog_data) or None if no
+    periods are stored yet (triggers fall-back to sheet on first load).
+    """
+    from datetime import datetime as _dt
+
+    periods = get_waterlog_periods(client_id)
+    if not periods:
+        return None  # No schedule stored — caller falls back to sheet
+
+    daily = get_all_daily_watermarks(client_id)  # [(date_obj, float)]
+
+    def _fmt_date(d):
+        return f"{d.month}/{d.day}/{d.year}"
+
+    def _fmt_currency(v):
+        if v < 0:
+            return f"-${abs(v):,.2f}"
+        return f"${v:,.2f}"
+
+    result = []
+    hwm_low = 0.0
+
+    for (from_str, to_str) in periods:
+        try:
+            from_d = _dt.strptime(from_str, '%Y-%m-%d').date()
+            to_d   = _dt.strptime(to_str,   '%Y-%m-%d').date()
+        except Exception:
+            continue
+
+        in_range = [v for (d, v) in daily if from_d <= d <= to_d]
+
+        if in_range:
+            period_low  = min(in_range)
+            period_high = max(in_range)
+        else:
+            period_low  = 0.0
+            period_high = 0.0
+
+        if period_low > hwm_low:
+            profit_split = (period_low - hwm_low) / 4
+            hwm_low = period_low
+        else:
+            profit_split = 0.0
+
+        result.append({
+            'from_date':    _fmt_date(from_d),
+            'to_date':      _fmt_date(to_d),
+            'low':          _fmt_currency(period_low),
+            'high':         _fmt_currency(period_high),
+            'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
+        })
+
+    return result

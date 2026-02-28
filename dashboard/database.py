@@ -187,6 +187,16 @@ def init_database():
             )
         ''')
 
+        # Bi-weekly waterlog period schedule per client
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS waterlog_periods (
+                client_id TEXT NOT NULL,
+                from_date TEXT NOT NULL,
+                to_date TEXT NOT NULL,
+                PRIMARY KEY (client_id, from_date)
+            )
+        ''')
+
         # Failed login attempts table (for lockout)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS login_attempts (
@@ -793,6 +803,7 @@ def get_client_data(client_id: str) -> dict:
         row = cursor.fetchone()
         
         if row:
+            identity = json.loads(row['identity'])
             return {
                 'deals': json.loads(row['deals']),
                 'positions': json.loads(row['positions']),
@@ -800,7 +811,8 @@ def get_client_data(client_id: str) -> dict:
                 'evaluations': json.loads(row['evaluations']),
                 'statistics': json.loads(row['statistics']),
                 'dropdown_options': json.loads(row['dropdown_options']),
-                'identity': json.loads(row['identity']),
+                'identity': identity,
+                'sheet_url': identity.get('sheet_url'),
                 'last_updated': row['last_updated'],
                 'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
                 'prop_accounts': json.loads(row['prop_accounts'] or '[]'),

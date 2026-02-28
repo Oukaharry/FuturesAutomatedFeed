@@ -7,10 +7,12 @@ from datetime import datetime
 SHEET_ID = "10eGsivGm5GOaH0orB2AAbjpXzDwDkYY1gIZgux9nIjI"
 STATS_GID = "839895136"
 WATERLOG_GID = "520289647"
+WATERLOG_TAB_NAME = "Profitability Waterlog"
 
-def get_sheet_csv(gid):
+def get_sheet_csv(gid, sheet_id=None):
+    sid = sheet_id or SHEET_ID
     try:
-        url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}"
+        url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         return response.content.decode('utf-8')
@@ -18,20 +20,60 @@ def get_sheet_csv(gid):
         logging.error(f"Error fetching sheet CSV (gid={gid}): {e}")
         return None
 
-def fetch_waterlog_data():
-    """
-    Fetches and computes the Profitability Waterlog table.
+def _extract_sheet_id(sheet_url):
+    """Extract the spreadsheet key from a Google Sheets URL."""
+    import re
+    if not sheet_url:
+        return None
+    m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_url)
+    return m.group(1) if m else None
 
-    Sheet structure (gid=206426091):
-      Col A/B : Daily log — Timestamp, Value (net profit that day)
-      Col D/E : Bi-weekly period table — From, To (pre-defined date ranges)
-      Col F   : Low  = MIN(daily Value) for readings within [From, To]
-      Col G   : High = MAX(daily Value) for readings within [From, To]
-      Col H   : Profit Split = MAX(0, (Low_i − MAX(Low_1..Low_{i-1})) × 50%)
-                i.e. 50% of any new high-water mark reached by the Low column.
-                (Original sheet divides by 4; we use 50% as configured.)
+def _discover_waterlog_gid(sheet_id):
+    """Try to discover the Profitability Waterlog GID from the sheet's HTML."""
+    import re
+    try:
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            return None
+        content = resp.text
+        safe_name = re.escape(WATERLOG_TAB_NAME)
+        for m in re.finditer(safe_name, content):
+            window = content[max(0, m.start() - 300):m.start()]
+            candidates = re.findall(r'\\?"(\d+)\\?"(?!\s*:)', window)
+            valid = [c for c in candidates if len(c) > 5]
+            if valid:
+                return valid[-1]
+        return None
+    except Exception as e:
+        logging.error(f"Error discovering waterlog GID: {e}")
+        return None
+
+def fetch_waterlog_data(sheet_url=None):
     """
-    csv_content = get_sheet_csv(WATERLOG_GID)
+    Fetches the Profitability Waterlog table directly from the sheet.
+
+    If sheet_url is provided the sheet ID (and GID) are resolved dynamically
+    from that URL so each client sees data from their own sheet.
+    Falls back to the hardcoded SHEET_ID / WATERLOG_GID when not supplied.
+
+    Sheet structure (Profitability Waterlog tab):
+      Col D/E : Bi-weekly period table — From, To
+      Col F   : Low  (computed by Google Sheets from live trading data)
+      Col G   : High (computed by Google Sheets from live trading data)
+
+    Low and High are read directly from columns F/G.  Profit Split is
+    recomputed using the HWM/4 formula that matches the reference sheet.
+    """
+    # Resolve sheet-ID and GID
+    sid = _extract_sheet_id(sheet_url) if sheet_url else None
+    if sid:
+        gid = _discover_waterlog_gid(sid) or WATERLOG_GID
+    else:
+        sid = None          # use default SHEET_ID inside get_sheet_csv
+        gid = WATERLOG_GID
+
+    csv_content = get_sheet_csv(gid, sheet_id=sid)
     if not csv_content:
         return None
 
@@ -40,62 +82,49 @@ def fetch_waterlog_data():
 
         def _parse_currency(val):
             try:
-                return float(str(val).replace(',', '').replace('$', '').strip())
+                s = str(val).replace(',', '').replace('$', '').strip()
+                return float(s) if s not in ('', 'nan') else 0.0
             except Exception:
                 return 0.0
 
         def _parse_date(val):
-            """Return a date object or None."""
             if pd.isna(val) or str(val).strip() in ('', 'nan'):
                 return None
             try:
-                return pd.to_datetime(str(val).strip(), errors='coerce').date()
+                d = pd.to_datetime(str(val).strip(), errors='coerce').date()
+                if d is None or d.year < 2000 or d.year > 2100:
+                    return None
+                return d
             except Exception:
                 return None
 
-        # ── 1. Build daily series: list of (date, value) from col A/B ──────────
-        daily_readings = []  # list of (date, float)
-        for _, row in df.iterrows():
-            ts = _parse_date(row.get('Timestamp', ''))
-            val = _parse_currency(row.get('Value', ''))
-            if ts is not None:
-                daily_readings.append((ts, val))
-
-        # ── 2. Parse bi-weekly periods from col D/E ───────────────────────────
-        # 'From ' sometimes has a trailing space in CSV exports
-        from_col = 'From ' if 'From ' in df.columns else 'From'
-        to_col   = 'To'
-
-        periods = []  # list of (from_date, to_date)
-        for _, row in df.iterrows():
-            fd = _parse_date(row.get(from_col, ''))
-            td = _parse_date(row.get(to_col, ''))
-            if fd is not None and td is not None:
-                periods.append((fd, td))
-
-        # ── 3. For each period compute Low and High from daily data ───────────
         def _fmt_date(d):
             return f"{d.month}/{d.day}/{d.year}"
 
         def _fmt_currency(v):
-            return f"${v:,.2f}" if v else '$0.00'
+            if v < 0:
+                return f"-${abs(v):,.2f}"
+            return f"${v:,.2f}"
+
+        # Column names — 'From ' sometimes has a trailing space in CSV exports
+        from_col = 'From ' if 'From ' in df.columns else 'From'
 
         result = []
-        hwm_low = 0.0  # high-water mark on the Low column (across all periods)
+        hwm_low = 0.0  # running high-water mark on the Low column
 
-        for (from_date, to_date) in periods:
-            # Readings that fall within [from_date, to_date] inclusive
-            in_range = [v for (d, v) in daily_readings if from_date <= d <= to_date]
+        for _, row in df.iterrows():
+            from_date = _parse_date(row.get(from_col, ''))
+            to_date   = _parse_date(row.get('To', ''))
 
-            if in_range:
-                period_low  = min(in_range)
-                period_high = max(in_range)
-            else:
-                period_low  = 0.0
-                period_high = 0.0
+            # Only include rows that have a valid period
+            if from_date is None or to_date is None:
+                continue
 
-            # Profit Split: 50% of increment above previous high-water mark on Low
-            # Only applies when current Low is positive and beats the running maximum
+            # Read Low and High directly from the sheet's own formula columns
+            period_low  = _parse_currency(row.get('Low', 0))
+            period_high = _parse_currency(row.get('High', 0))
+
+            # Profit Split: MAX(0, (Low_i − HWM) / 4)
             if period_low > hwm_low:
                 profit_split = (period_low - hwm_low) / 4
                 hwm_low = period_low
@@ -115,6 +144,51 @@ def fetch_waterlog_data():
     except Exception as e:
         logging.error(f"Error computing Waterlog data: {e}")
         return None
+
+
+def fetch_waterlog_periods_from_sheet(sheet_url=None):
+    """
+    Reads the bi-weekly period schedule (columns D/E: From, To) from the sheet.
+    Returns list of (from_date_str, to_date_str) in 'YYYY-MM-DD' format,
+    filtered to valid dates (year 2000-2100).
+    Used once during import to seed the waterlog_periods DB table.
+    """
+    sid = _extract_sheet_id(sheet_url) if sheet_url else None
+    if sid:
+        gid = _discover_waterlog_gid(sid) or WATERLOG_GID
+    else:
+        sid = None
+        gid = WATERLOG_GID
+
+    csv_content = get_sheet_csv(gid, sheet_id=sid)
+    if not csv_content:
+        return []
+
+    try:
+        df = pd.read_csv(io.StringIO(csv_content))
+
+        def _parse_date(val):
+            if pd.isna(val) or str(val).strip() in ('', 'nan'):
+                return None
+            try:
+                d = pd.to_datetime(str(val).strip(), errors='coerce').date()
+                if d is None or d.year < 2000 or d.year > 2100:
+                    return None
+                return d
+            except Exception:
+                return None
+
+        from_col = 'From ' if 'From ' in df.columns else 'From'
+        periods = []
+        for _, row in df.iterrows():
+            fd = _parse_date(row.get(from_col, ''))
+            td = _parse_date(row.get('To', ''))
+            if fd and td:
+                periods.append((fd.strftime('%Y-%m-%d'), td.strftime('%Y-%m-%d')))
+        return periods
+    except Exception as e:
+        logging.error(f"Error fetching waterlog periods from sheet: {e}")
+        return []
 
 
 def fetch_stats_data():

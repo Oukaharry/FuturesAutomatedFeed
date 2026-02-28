@@ -1392,10 +1392,9 @@
 
 
     <script>
-        const CLIENT_ID = {{ client_id|tojson|safe }};
+        const CLIENT_ID = "{{ client_id }}";
         const USER_TYPE = "{{ user_type }}";
-        // @ts-ignore
-        const canEditHedging = {{ can_edit_hedging|tojson|safe }};
+        const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
 
         // Debug Logger
         function debugLog(msg) {
@@ -3988,25 +3987,8 @@
                         const lowWm = data.low_watermark;
                         const todayEntry = data.today;
 
-                        // High watermark: max of all history
-                        if (history.length > 0) {
-                            const highWm = history.reduce((a, b) => a.profit > b.profit ? a : b);
-                            document.getElementById('high-watermark-val').textContent = '$' + highWm.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                            document.getElementById('high-watermark-date').textContent = highWm.date;
-                        } else {
-                            document.getElementById('high-watermark-val').textContent = '—';
-                            document.getElementById('high-watermark-date').textContent = 'No data yet';
-                        }
-
-                        // Low watermark: today's live net profit (real-time)
-                        const liveLow = todayEntry || lowWm;
-                        if (liveLow) {
-                            document.getElementById('low-watermark-val').textContent = '$' + liveLow.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                            document.getElementById('low-watermark-date').textContent = liveLow.date;
-                        } else {
-                            document.getElementById('low-watermark-val').textContent = '—';
-                            document.getElementById('low-watermark-date').textContent = 'No data yet';
-                        }
+                        // High/Low watermark cards are driven by the sheet's bi-weekly
+                        // period data (loaded below). Skip updating them here.
 
                         if (history.length === 0) {
                             tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No daily profit records found yet. Records are saved automatically at midnight each day.</td></tr>';
@@ -4054,13 +4036,31 @@
 
             // --- Load profit share from Google Sheet ---
             const psBody = document.getElementById('profitshare-body');
-            fetch('/api/sheet/waterlog')
+            const sheetUrl = (currentData && currentData.identity && currentData.identity.sheet_url) ? currentData.identity.sheet_url : ((currentData && currentData.sheet_url) ? currentData.sheet_url : '');
+            fetch(`/api/sheet/waterlog?client_id=${encodeURIComponent(clientId)}&sheet_url=${encodeURIComponent(sheetUrl)}`)
                 .then(res => res.json())
                 .then(psData => {
                     if (psData.status === 'success') {
                         const today = new Date(); today.setHours(0,0,0,0);
                         const parseDate = s => { const p = s.split('/'); return p.length===3 ? new Date(parseInt(p[2]), parseInt(p[0])-1, parseInt(p[1])) : null; };
-                        let rows = (psData.data || []).filter(r => {
+
+                        // ── Update High / Low Watermark cards from the current bi-weekly period ──
+                        const allPeriods = psData.data || [];
+                        const currentPeriod = allPeriods.find(r => {
+                            if (!r.from_date || !r.to_date) return false;
+                            const fd = parseDate(r.from_date.trim()), td = parseDate(r.to_date.trim());
+                            return fd && td && fd <= today && today <= td;
+                        });
+                        if (currentPeriod) {
+                            // Strip formatting to get a displayable signed value
+                            const fmtWm = v => v && v !== '$0.00' ? v : '—';
+                            document.getElementById('high-watermark-val').textContent = fmtWm(currentPeriod.high);
+                            document.getElementById('high-watermark-date').textContent = currentPeriod.from_date + ' – ' + currentPeriod.to_date;
+                            document.getElementById('low-watermark-val').textContent  = fmtWm(currentPeriod.low);
+                            document.getElementById('low-watermark-date').textContent = currentPeriod.from_date + ' – ' + currentPeriod.to_date;
+                        }
+
+                        let rows = allPeriods.filter(r => {
                             if (!r.from_date || r.from_date === 'nan' || !r.from_date.trim()) return false;
                             const d = parseDate(r.from_date.trim());
                             return d && d <= today;

@@ -2478,13 +2478,30 @@ def api_migrate_sheet():
         if not evaluations:
             return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public. (Evaluations Tab)"}), 400
         
-        # Determine Waterlog GID (Default hardcoded or from params)
-        # Using hardcoded GID '520289647' inside fetch_waterlog_history as requested logic
+        # Fetch and save daily waterlog history
         waterlog_history = fetch_waterlog_history(sheet_url)
         waterlog_count = 0
         if waterlog_history:
             bulk_save_history(client_id, waterlog_history)
             waterlog_count = len(waterlog_history)
+
+        # Fetch and save the bi-weekly period schedule so future profit-split
+        # calculations run entirely from our DB (no sheet access needed after this)
+        try:
+            from utils.sheet_helper import fetch_waterlog_periods_from_sheet
+        except ImportError:
+            try:
+                from dashboard.utils.sheet_helper import fetch_waterlog_periods_from_sheet
+            except ImportError:
+                fetch_waterlog_periods_from_sheet = None
+        try:
+            from dashboard.watermark_service import save_waterlog_periods
+        except ImportError:
+            from watermark_service import save_waterlog_periods
+        if fetch_waterlog_periods_from_sheet:
+            wl_periods = fetch_waterlog_periods_from_sheet(sheet_url)
+            if wl_periods:
+                save_waterlog_periods(client_id, wl_periods)
         
         # Calculate statistics without MT5 data (discrepancy will be 0)
         statistics = calculate_statistics(evaluations, None, None)
@@ -2501,7 +2518,8 @@ def api_migrate_sheet():
                 "admin": admin_id,
                 "trader": trader_id,
                 "client": client_id,
-                "email": email
+                "email": email,
+                "sheet_url": sheet_url
             },
             "sheet_url": sheet_url,
             "migrated_at": datetime.now().isoformat()
@@ -4356,9 +4374,40 @@ def get_stats_sheet_data():
 @app.route('/api/sheet/waterlog')
 @require_session
 def get_waterlog_sheet_data():
-    """Fetches waterlog data directly from the Google Sheet."""
+    """Returns the Profit Share History table.
+
+    Priority:
+      1. Compute from DB (daily_watermarks + waterlog_periods) — fully offline,
+         updates automatically as daily data is snapshotted.
+      2. Fall back to live Google Sheet fetch only if no period schedule is
+         stored yet (i.e. before the first import).
+
+    Query params:
+      ?client_id=<id>   — required to identify whose schedule/daily data to use
+      ?sheet_url=<url>  — fallback sheet URL for pre-import clients
+    """
     try:
-        data = fetch_waterlog_data()
+        from dashboard.watermark_service import compute_waterlog_from_db
+    except ImportError:
+        from watermark_service import compute_waterlog_from_db
+
+    try:
+        client_id_param = request.args.get('client_id')
+        sheet_url = request.args.get('sheet_url') or None
+
+        # ── 1. Try fully-offline DB computation ──────────────────────────────
+        if client_id_param:
+            data = compute_waterlog_from_db(client_id_param)
+            if data is not None:  # None means no periods stored yet
+                return jsonify({"status": "success", "data": data})
+
+        # ── 2. First-time / pre-import fall-back: read live from the sheet ──
+        if client_id_param:
+            client_data = get_client_data(client_id_param)
+            if client_data:
+                sheet_url = client_data.get('sheet_url') or sheet_url
+
+        data = fetch_waterlog_data(sheet_url=sheet_url)
         if data:
             return jsonify({"status": "success", "data": data})
         return jsonify({"status": "error", "message": "Failed to fetch waterlog data"}), 500
