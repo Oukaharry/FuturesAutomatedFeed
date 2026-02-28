@@ -803,7 +803,10 @@ def get_client_data(client_id: str) -> dict:
         row = cursor.fetchone()
         
         if row:
-            identity = json.loads(row['identity'])
+            try:
+                identity = json.loads(row['identity'] or '{}') or {}
+            except Exception:
+                identity = {}
             return {
                 'deals': json.loads(row['deals']),
                 'positions': json.loads(row['positions']),
@@ -812,7 +815,7 @@ def get_client_data(client_id: str) -> dict:
                 'statistics': json.loads(row['statistics']),
                 'dropdown_options': json.loads(row['dropdown_options']),
                 'identity': identity,
-                'sheet_url': identity.get('sheet_url'),
+                'sheet_url': identity.get('sheet_url') if isinstance(identity, dict) else None,
                 'last_updated': row['last_updated'],
                 'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
                 'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
