@@ -1,7 +1,7 @@
 ﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-    /* BallerQuotes Theme - Dark Luxury */
+    /* TradeOpss Theme - Dark Luxury */
     --bg-color: #0f172a; /* Slate 900 - Deep Navy Background */
     --card-bg: #1e293b; /* Slate 800 - Card Background */
     --text-primary: #f8fafc; /* Slate 50 - Primary Text */
@@ -1423,7 +1423,7 @@ button:hover {
 
 /* End of styles - Legacy */
 
-/* --- BallerQuotes Luxury Tables (Global) --- */
+/* --- TradeOpss Luxury Tables (Global) --- */
 
 .finance-table, .wide-table, .user-list-table {
     width: 100%;

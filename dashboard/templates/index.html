@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Client Dashboard - MT5 Hedging Engine</title>
+    <title>Client Dashboard - TradeOpss</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -657,7 +657,7 @@
         }
 
 
-        /* --- Dark Theme Overrides (BallerQuotes) --- */
+        /* --- Dark Theme Overrides (TradeOpss) --- */
         :root {
             --bg-dark: #0f172a;
             --card-bg: #1e293b;
@@ -930,7 +930,7 @@
         {% if user_type == 'super_admin' %}
         <nav class="modern-nav">
             <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="BallerQuotes" style="height: 210px; width: 210px; object-fit: contain;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="height: 210px; width: 210px; object-fit: contain;">
             </div>
             <div class="nav-links">
                 <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
