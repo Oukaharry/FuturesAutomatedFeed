@@ -964,6 +964,8 @@ def calculate_propfirm_overview(profile_filter=None):
             continue
             
         for eval_data in evaluations:
+            if not isinstance(eval_data, dict):
+                continue
             raw_prop_firm = eval_data.get('Prop Firm')
             
             # Skip if no prop firm name or if it's header/invalid

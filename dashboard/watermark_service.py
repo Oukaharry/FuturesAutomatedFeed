@@ -13,6 +13,14 @@ def save_daily_profit(client_id, net_profit, date_str=None, source='auto'):
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
+            # Skip write if value hasn't changed for this date
+            cursor.execute(
+                'SELECT net_profit_complete FROM daily_watermarks WHERE client_id = ? AND date = ?',
+                (client_id, date_str)
+            )
+            existing = cursor.fetchone()
+            if existing and abs(float(existing['net_profit_complete']) - float(net_profit)) < 0.005:
+                return True  # Unchanged — skip write
             # Use SQLite's upsert capability (INSERT OR REPLACE)
             # Since we defined PRIMARY KEY (client_id, date)
             cursor.execute('''
