@@ -656,33 +656,19 @@
             border-bottom: 1px solid rgba(255,255,255,0.1); /* visual boundary */
         }
 
-        /* Floating phase indicator badge */
-        #phase-indicator {
-            position: sticky;
-            left: 8px;
-            top: 8px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 12px;
-            border-radius: 6px;
-            font-size: 0.72rem;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: #fff;
-            pointer-events: none;
-            z-index: 900;
-            transition: background 0.25s, box-shadow 0.25s;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-            white-space: nowrap;
-            width: fit-content;
-            margin-bottom: -32px; /* float over table without pushing it down */
+        /* Sticky horizontal section headers
+           Stick at left:270px (after fixed cols: # 50px + trash 40px + prop firm 180px).
+           Each header sticks until its colspan width scrolls fully past, then the next takes over. */
+        #evaluations-table thead tr:first-child th.group-header-green,
+        #evaluations-table thead tr:first-child th.group-header-orange,
+        #evaluations-table thead tr:first-child th.group-header-purple {
+            position: sticky !important;
+            left: 270px !important;
+            top: 0 !important;
+            z-index: 1500 !important;
+            text-align: left !important;
+            padding-left: 16px !important;
         }
-        #phase-indicator.phase-eval-info   { background: linear-gradient(90deg,#1e3a8a,#1e40af); }
-        #phase-indicator.phase-eval        { background: linear-gradient(90deg,#065f46,#047857); }
-        #phase-indicator.phase-funded      { background: linear-gradient(90deg,#9f1239,#be123c); }
-        #phase-indicator.phase-farming     { background: linear-gradient(90deg,#581c87,#7e22ce); }
 
 
         /* --- Dark Theme Overrides (TradeOpss) --- */
@@ -1106,7 +1092,6 @@
                         <button class="scroll-btn" onclick="addAccount()" style="background: rgba(217,119,6,0.25); border-color: rgba(217,119,6,0.5); color: #fbbf24; font-weight: 600;">+ Add</button>
                     </div>
                 </div>
-                <div id="phase-indicator" class="phase-eval-info">EVAL INFO</div>
                 <div class="table-container" id="eval-table-container">
                     <table id="evaluations-table" class="wide-table">
                     <thead>
@@ -1842,22 +1827,7 @@
                 if (btn) btn.classList.toggle('active-section', active);
             });
 
-            // Update floating phase indicator badge
-            const indicator = document.getElementById('phase-indicator');
-            if (indicator) {
-                let phaseClass, phaseLabel;
-                if (visiblePosition < sectionPositions['eval-phase']) {
-                    phaseClass = 'phase-eval-info'; phaseLabel = 'Eval Info';
-                } else if (visiblePosition < sectionPositions['funded-phase']) {
-                    phaseClass = 'phase-eval'; phaseLabel = 'Evaluation Phase';
-                } else if (visiblePosition < sectionPositions['farming-phase']) {
-                    phaseClass = 'phase-funded'; phaseLabel = 'Funded Phase';
-                } else {
-                    phaseClass = 'phase-farming'; phaseLabel = 'Farming Phase';
-                }
-                indicator.className = phaseClass;
-                indicator.textContent = phaseLabel;
-            }
+
         }
         
         // Initialize scroll listener
