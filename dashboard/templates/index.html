@@ -656,25 +656,17 @@
             border-bottom: 1px solid rgba(255,255,255,0.1); /* visual boundary */
         }
 
-        /* Section phase pill — fixed overlay, positioned by JS */
-        #phase-pill {
-            position: fixed;
-            z-index: 9999;
-            display: none;
-            align-items: center;
-            padding: 0 14px;
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: #fff;
-            pointer-events: none;
-            white-space: nowrap;
-            border-left: 3px solid rgba(255,255,255,0.4);
+        /* Phase group headers also sticky left — they act as inline phase indicators
+           that glide into view as you scroll horizontally, replacing the old JS pill.
+           left: 270px = col-1(50) + col-2(40) + EVAL INFO col(180) */
+        #evaluations-table thead tr:first-child th.group-header-green,
+        #evaluations-table thead tr:first-child th.group-header-orange,
+        #evaluations-table thead tr:first-child th.group-header-purple {
+            left: 270px !important;
+            z-index: 1500 !important;
+            text-align: left !important;
+            padding-left: 14px !important;
         }
-        #phase-pill.phase-eval   { background: #065f46; }
-        #phase-pill.phase-funded { background: #9f1239; }
-        #phase-pill.phase-farm   { background: #581c87; }
 
 
         /* --- Dark Theme Overrides (TradeOpss) --- */
@@ -1837,61 +1829,7 @@
                 if (btn) btn.classList.toggle('active-section', active);
             });
 
-            updatePhasePill();
         }
-
-        function updatePhasePill() {
-            const pill = document.getElementById('phase-pill');
-            const container = document.getElementById('eval-table-container');
-            if (!pill || !container) return;
-
-            const headerRow = document.querySelector('#evaluations-table thead tr:first-child');
-            if (!headerRow) return;
-            const rowRect = headerRow.getBoundingClientRect();
-
-            // Hide if header row is off screen vertically
-            if (rowRect.bottom <= 0 || rowRect.top >= window.innerHeight) {
-                pill.style.display = 'none';
-                return;
-            }
-
-            // Anchor to the right edge of the EVAL INFO sticky header
-            const evalInfoTh = document.querySelector('#evaluations-table thead tr:first-child .sticky-prop-firm-header');
-            if (!evalInfoTh) return;
-            const anchorLeft = evalInfoTh.getBoundingClientRect().right;
-
-            // Determine current phase by which section <th> left edge has crossed the anchor
-            const greenTh  = document.querySelector('#evaluations-table thead tr:first-child .group-header-green');
-            const orangeTh = document.querySelector('#evaluations-table thead tr:first-child .group-header-orange');
-            const purpleTh = document.querySelector('#evaluations-table thead tr:first-child .group-header-purple');
-
-            let cls, txt;
-            if (purpleTh && purpleTh.getBoundingClientRect().left <= anchorLeft) {
-                cls = 'phase-farm';   txt = 'FARMING PHASE';
-            } else if (orangeTh && orangeTh.getBoundingClientRect().left <= anchorLeft) {
-                cls = 'phase-funded'; txt = 'FUNDED PHASE';
-            } else if (greenTh && greenTh.getBoundingClientRect().left <= anchorLeft) {
-                cls = 'phase-eval';   txt = 'EVALUATION PHASE';
-            } else {
-                pill.style.display = 'none';
-                return;
-            }
-
-            pill.className = cls;
-            pill.textContent = txt;
-            pill.style.left   = anchorLeft + 'px';
-            pill.style.top    = rowRect.top + 'px';
-            pill.style.height = rowRect.height + 'px';
-            pill.style.display = 'flex';
-        }
-
-        // rAF loop — runs every frame so pill always tracks the header perfectly
-        // regardless of horizontal OR vertical scrolling speed/source
-        function pillLoop() {
-            updatePhasePill();
-            requestAnimationFrame(pillLoop);
-        }
-        requestAnimationFrame(pillLoop);
 
         // Initialize scroll listener
         if (tableContainer) {
@@ -4280,6 +4218,5 @@
         // Disable automatic polling (was 30 seconds)
         // setInterval(updateDashboard, 30000);
     </script>
-    <div id="phase-pill"></div>
 </body>
 </html>
