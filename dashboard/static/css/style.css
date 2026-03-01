@@ -45,12 +45,10 @@
 }
 
 html {
-    overflow-x: hidden; /* prevent horizontal scrollbar caused by zoom compensation */
+    overflow-x: hidden;
 }
 
 body {
-    zoom: 0.75;
-    width: calc(100% / 0.75); /* compensate so content fills full viewport at 75% zoom */
     font-family: var(--font-family);
     background-color: var(--bg-color);
     background-image: 
@@ -72,8 +70,8 @@ body {
 
 header {
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
     margin-bottom: 16px;
     background: var(--card-bg, #1e293b);
     padding: 0;
@@ -84,6 +82,14 @@ header {
     position: sticky;
     top: 0;
     z-index: 50;
+}
+
+.header-combined-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 20px;
+    width: 100%;
 }
 
 .header-title-bar {
