@@ -977,7 +977,7 @@
         {% if user_type == 'super_admin' %}
         <nav class="modern-nav">
             <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 300px; height: auto; object-fit: contain;">
             </div>
             <div class="nav-links">
                 <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
@@ -993,15 +993,13 @@
         </nav>
         {% endif %}
         <header>
-            <div class="header-title-bar">
+            <div class="header-combined-bar">
                 {% if user_type != 'super_admin' %}
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
-                     style="width: 100px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
+                     style="width: 120px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
                 {% endif %}
-                <h1>Trading Performance Dashboard</h1>
-            </div>
-            <div class="header-controls-bar">
-                <div class="tabs">
+                <h1 style="flex-shrink:0;">Trading Performance Dashboard</h1>
+                <div class="tabs" style="margin-bottom:0; flex:1; display:flex; justify-content:center;">
                     <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
                     <button class="tab-btn" onclick="openTab('stats')">Stats</button>
                     <button class="tab-btn" onclick="openTab('waterlog')">Profitability Waterlog</button>
@@ -1009,7 +1007,7 @@
                     <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
                     <button class="tab-btn" onclick="openTab('vps')">VPS</button>
                 </div>
-                <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
+                <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; flex-shrink:0;">
                     {% if user_type in ('admin', 'super_admin') %}
                     <button class="header-action-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
                         <i class="fas fa-history"></i> Version History
