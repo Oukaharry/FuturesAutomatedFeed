@@ -1538,6 +1538,868 @@ Cookie: session_token=...
 
 
 # ─────────────────────────────────────────────
+#  CHAPTERS 11-17  (Function Reference)
+# ─────────────────────────────────────────────
+
+def build_ch11_file_inventory(story):
+    story += chapter("Chapter 11: Complete File Inventory", "ch11")
+
+    story.append(section("11.1  Backend — Core Modules"))
+    story.append(data_table(
+        ["File", "Lines", "Purpose"],
+        [
+            ["dashboard/app.py",               "~4 434", "Flask application — all routes, auth decorators, business logic"],
+            ["dashboard/database.py",           "~1 303", "All DB operations — CRUD, sessions, API keys, history, rollback"],
+            ["dashboard/financial_overview.py", "~1 400", "Analytics engine — P&L, payout, deposit, fee, hedge calculations"],
+            ["dashboard/scheduler.py",          "~80",   "Background thread that records midnight watermarks daily"],
+            ["dashboard/notes_service.py",      "~70",   "Inline cell note CRUD backed by SQLite notes table"],
+            ["dashboard/watermark_service.py",  "~280",  "Watermark + waterlog period persistence and aggregation"],
+            ["dashboard/phase_manager.py",      "~250",  "Phase lifecycle management — create, complete, chain phases"],
+            ["dashboard/email_service.py",      "~—",    "Email notification helper (SMTP)"],
+        ],
+        col_widths=[6.5*cm, 2*cm, 7.5*cm]
+    ))
+
+    story.append(section("11.2  Backend — Utility Modules"))
+    story.append(data_table(
+        ["File", "Purpose"],
+        [
+            ["dashboard/utils/trade_matcher.py",  "UnifiedTradeMatcher class — segment deals into sessions and match to eval rows"],
+            ["dashboard/utils/sheet_helper.py",   "Helper functions for spreadsheet column mapping and formula replication"],
+            ["dashboard/api_client.py",            "Internal API client helper used by some admin scripts"],
+            ["dashboard/calc_like_sheet.py",       "Replicates spreadsheet financial formulas in Python for verification"],
+            ["dashboard/financial_overview.py",    "SimpleCache, cache_result decorator, and all analytics functions"],
+        ],
+        col_widths=[6*cm, 10*cm]
+    ))
+
+    story.append(section("11.3  Config Modules"))
+    story.append(data_table(
+        ["File", "Purpose"],
+        [
+            ["config/hierarchy.py",  "Load/save/mutate the 4-tier admin→trader→client JSON hierarchy; also holds SYSTEM_HIERARCHY global"],
+            ["config/hierarchy.json","Persistent JSON file storing the entire user/client organisational tree"],
+            ["config/settings.py",   "Application-level settings (DB path, secret key, rate limits)"],
+            ["config/production.py", "Production overrides (PostgreSQL URL, Gunicorn workers, etc.)"],
+        ],
+        col_widths=[4.5*cm, 11.5*cm]
+    ))
+
+    story.append(section("11.4  Desktop Application"))
+    story.append(data_table(
+        ["File", "Purpose"],
+        [
+            ["trader_companion/trader_app.py", "~2 400 lines — MT5DataPusher class + TraderCompanionApp Tkinter UI"],
+        ],
+        col_widths=[6.5*cm, 9.5*cm]
+    ))
+
+    story.append(section("11.5  Frontend Templates & Static Assets"))
+    story.append(data_table(
+        ["File", "Purpose"],
+        [
+            ["dashboard/templates/index.html",          "~4 300 lines — main single-page dashboard (evaluations, stats, hedging, history)"],
+            ["dashboard/templates/login.html",           "Login page for all user types"],
+            ["dashboard/templates/super_admin.html",     "Super-admin management panel"],
+            ["dashboard/templates/admin_dashboard.html", "Admin view — trader + client management"],
+            ["dashboard/templates/financial_overview.html","Financial overview charts (Chart.js)"],
+            ["dashboard/static/css/style.css",           "Full dark-theme design system (~1 000 lines)"],
+        ],
+        col_widths=[7.5*cm, 8.5*cm]
+    ))
+
+    story.append(section("11.6  Build & Deployment Scripts"))
+    story.append(data_table(
+        ["File", "Purpose"],
+        [
+            ["wsgi.py",                  "Gunicorn WSGI entry point"],
+            ["gunicorn.conf.py",         "Gunicorn worker, timeout, and logging config"],
+            ["deploy.sh",               "Linux production deployment shell script"],
+            ["deploy.ps1",              "Windows deployment PowerShell script"],
+            ["build.py",                "Helper script to trigger PyInstaller builds"],
+            ["migrations.py",           "Database schema migration runner"],
+            ["prepare_deployment.py",   "Copies files into deployment_package/ folder"],
+            ["requirements.txt",        "Development Python dependencies"],
+            ["requirements-production.txt", "Production Python dependencies (no debug packages)"],
+            ["Trader_Companion_v1.2.0.spec", "PyInstaller spec for the desktop app"],
+        ],
+        col_widths=[6*cm, 10*cm]
+    ))
+
+    story.append(section("11.7  Debugging & Utility Scripts"))
+    story.append(data_table(
+        ["Script", "Purpose"],
+        [
+            ["debug_fetch.py",          "Test /api/get_data against a running server and print result"],
+            ["debug_fetch_test.py",     "Extended fetch debugging with header/cookie inspection"],
+            ["debug_ev.py",             "Inspect evaluation matching for a specific account number"],
+            ["debug_phase_logic.py",    "Trace phase-transition detection with sample data"],
+            ["debug_compare.py",        "Diff two client data JSON snapshots field-by-field"],
+            ["debug_waterlog.py",       "Inspect watermark records for a client from DB"],
+            ["debug_json.py",           "Pretty-print raw JSON from the dashboard DB"],
+            ["debug_db_match.py",       "Check DB for account-match candidates"],
+            ["debug_parser.py",         "Run deal comment parser against sample comments"],
+            ["debug_show_eval.py",      "Print evaluation rows with computed account signatures"],
+            ["debug_find_account.py",   "Search all clients for a given MT5 account number"],
+            ["debug_publish.py",        "Force-push a data payload to the dashboard API"],
+            ["check_audit.py",          "Print recent audit log entries from DB"],
+            ["check_db_details.py",     "Show full DB record for a specific client"],
+            ["check_db_table.py",       "Dump any SQLite table to stdout"],
+            ["check_watermarks.py",     "Print watermark records for all clients"],
+            ["check_fees.py",           "Verify fee calculations against spreadsheet formulas"],
+            ["reproduce_match.py",      "Reproduce an account-matching result with test data"],
+            ["reproduction_script.py",  "Full reproduction of data pipeline with sample input"],
+            ["quick_test.py",           "Run lightweight sanity checks against the server"],
+            ["manage_users.py",         "CLI script to create/list/delete users in the DB"],
+            ["migrate_data.py",         "One-time migration of data between DB schemas"],
+            ["trigger_migration.py",    "Trigger pending migrations programmatically"],
+            ["update_hierarchy_data.py","Sync hierarchy.json with DB user_credentials table"],
+        ],
+        col_widths=[5*cm, 11*cm]
+    ))
+
+
+def build_ch12_app_functions(story):
+    story += chapter("Chapter 12: app.py — Complete Function Reference", "ch12")
+
+    story.append(section("12.1  Helper & Utility Functions"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_account_signature(account_number)", "100", "Extract first-4+last-4 digits signature; handles PREFIX...SUFFIX truncated format"],
+            ["get_last_n_digits(account, n=5)",       "133", "Extract last N digits from an account number string using regex"],
+            ["match_account_to_evaluation(account_number, evaluations, phase_code)", "156", "Return list of (eval_index, matched_account) for all matching eval rows"],
+            ["parse_sheet_date(date_str)",             "271", "Parse date strings in M/D/YYYY, YYYY-MM-DD, and ISO8601 formats"],
+            ["filter_matches_by_date(matches, evaluations, trade_timestamp, phase_code, trade_number)", "320", "Filter candidate eval matches by comparing trade date against eval start date"],
+            ["normalize_account_size(value)",          "481", "Normalise account size strings: strip '$','K','k' and convert to float"],
+            ["normalize_evaluations(evaluations)",     "519", "Apply normalize_account_size to the 'Account Size' field of every eval row"],
+            ["get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)", "531", "Determine which column (Prop Day N / Trade N / Funded Profit) to update for a given trade"],
+            ["update_evaluations_from_aggregated_data(evaluations, aggregated_data, raw_deals)", "585", "Core matching engine: walk aggregated deal groups and write profit values into eval rows"],
+            ["init_admin_password()",                  "1652", "Seed the super_admin password from environment on first boot"],
+            ["get_filtered_hierarchy(user_type, user_identifier)", "1937", "Return hierarchy subtree visible to the calling user based on their role"],
+            ["can_manage_user(manager_type, manager_identifier, target_username, target_user_type)", "2894", "Check if a manager is allowed to reset/deactivate a target user"],
+            ["can_access_client(user_type, user_identifier, target_client)", "3473", "Return True if the caller is allowed to read/write data for target_client"],
+            ["get_accessible_clients(user_type, user_identifier)",           "3497", "Return list of all client IDs the caller can access"],
+            ["update_data_with_api_key(data, identity, user_info)",          "3935", "Handle /api/update_data when called with API-key instead of session cookie"],
+            ["run_dashboard()",                                               "4419", "Start Flask development server (called from wsgi.py)"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("12.2  Auth Decorators"))
+    story.append(data_table(
+        ["Decorator", "Line", "Description"],
+        [
+            ["require_api_key(f)",         "1664", "Validate X-API-Key header; inject request.api_user; log access"],
+            ["require_admin_password(f)",  "1686", "Validate admin_password in body or X-Admin-Password header"],
+            ["require_role(*allowed_roles)","1711", "Session-cookie gate; check user_type against whitelist; return 403 if denied"],
+            ["require_session(f)",         "1736", "Session-cookie gate for HTML pages; redirect to / if not logged in"],
+        ],
+        col_widths=[5*cm, 1.2*cm, 9.8*cm]
+    ))
+
+    story.append(section("12.3  Web (HTML) Routes"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Auth", "Returns"],
+        [
+            ["GET /  →  index()",                          "1756", "None",           "login.html or redirect to dashboard"],
+            ["GET /super_admin  →  super_admin()",         "1777", "Session",        "super_admin.html"],
+            ["GET /admin/<name>  →  admin_dashboard()",    "1784", "Session",        "admin_dashboard.html"],
+            ["GET /financial_overview  →  financial_overview()", "1796", "Session (super_admin)", "financial_overview.html with chart data"],
+            ["GET /payout_history  →  payout_history()",  "1838", "Session",        "payout_history.html"],
+            ["GET /client_performance  →  client_performance()", "1880", "Session",  "client_performance.html"],
+            ["GET /trader_performance  →  trader_performance()", "1888", "Session",  "trader_performance.html"],
+            ["GET /trader/<name>  →  trader_dashboard()",  "1900", "Session",        "index.html (trader view)"],
+            ["GET /dashboard/<id>  →  client_dashboard()", "1915", "Session",        "index.html (client view)"],
+            ["GET /super_admin/clients  →  client_management()", "3466", "Session",  "client management template"],
+            ["GET /change-password  →  change_password_page()", "3033", "Session",   "change_password.html"],
+            ["GET /logout  →  logout()",                   "2675", "None",           "Deletes session cookie, redirects to /"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 3.5*cm, 4.8*cm]
+    ))
+
+    story.append(section("12.4  Authentication API Routes"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Description"],
+        [
+            ["POST /api/login  →  api_login()",                       "2641", "Username+password login for admin/trader; sets session cookie"],
+            ["POST /api/admin_login  →  api_admin_login()",           "2658", "Legacy admin-only login endpoint"],
+            ["POST /api/auth/login  →  unified_login()",              "2715", "Unified login for all roles; detects user type automatically"],
+            ["POST /api/auth/check-admin  →  check_admin_identifier()","2701","Check if a username exists as an admin (pre-login hint)"],
+            ["POST /api/logout  →  api_logout()",                     "2687", "Invalidate session token in DB"],
+            ["POST /api/auth/change_password  →  api_change_password()","3040","Change own password (requires current password + new password)"],
+            ["POST /api/admin/change_password  →  change_admin_password()","4339","Super-admin reset password for any user (legacy)"],
+            ["POST /api/user/reset_password  →  api_reset_password_rbac()","2941","RBAC-aware password reset (admin can reset traders; trader can reset clients)"],
+            ["POST /api/admin/reset_password  →  api_reset_password()","2982","Force-reset a user's password to a random value"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("12.5  User Management API Routes"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Description"],
+        [
+            ["POST /api/admin/create_user  →  api_create_user()",  "2805", "Create a new user (any type) with initial password"],
+            ["GET  /api/admin/list_users  →  api_list_users()",    "2933", "Return all users visible to the caller's role"],
+            ["POST /api/admin/deactivate_user  →  api_deactivate_user()", "3014", "Soft-deactivate a user account (is_active=0)"],
+            ["POST /api/add_admin  →  api_add_admin()",            "3085", "Add admin to hierarchy.json and DB"],
+            ["POST /api/add_trader  →  api_add_trader()",          "3173", "Add trader under a given admin"],
+            ["POST /api/add_client  →  api_add_client()",          "3194", "Add client under a given trader"],
+            ["POST /api/update_admin  →  api_update_admin()",      "3129", "Update admin name/email in hierarchy"],
+            ["POST /api/update_trader  →  api_update_trader()",    "3141", "Update trader name/email in hierarchy"],
+            ["POST /api/update_client  →  api_update_client()",    "3154", "Update client name/email/category in hierarchy"],
+            ["POST /api/update_client_profile  →  api_update_client_profile()", "3295", "Update client dashboard-visible profile fields"],
+            ["POST /api/remove_admin  →  api_remove_admin()",      "3333", "Remove admin and all subordinates from hierarchy"],
+            ["POST /api/remove_trader  →  api_remove_trader()",    "3343", "Remove trader and all subordinate clients"],
+            ["POST /api/remove_client  →  api_remove_client()",    "3354", "Remove client from hierarchy"],
+            ["POST /api/delete_user  →  api_delete_user()",        "3097", "Hard-delete user credential from DB"],
+            ["POST /api/move_client  →  api_move_client()",        "3449", "Move client to a different trader/admin"],
+            ["POST /api/move_trader  →  api_move_trader()",        "3457", "Move trader to a different admin"],
+            ["POST /api/move_user  →  api_move_user()",            "3234", "Generic user move with hierarchy validation"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("12.6  Data API Routes"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Description"],
+        [
+            ["GET  /api/data  →  get_data()",                           "3700", "Fetch client JSON data; supports session + API-key auth; injects notes"],
+            ["POST /api/update_data  →  update_data()",                 "3842", "Push new data snapshot; merge with existing; save versioned history"],
+            ["POST /api/notes  →  update_note()",                       "3783", "Save or blank-delete an inline cell note for a row/column"],
+            ["POST /api/notes/delete  →  delete_note()",                "3826", "Hard-delete an inline cell note"],
+            ["GET  /api/hierarchy  →  get_hierarchy()",                  "2004", "Return filtered hierarchy tree for the caller"],
+            ["GET  /api/super_admin/totals  →  get_super_admin_totals()","2035", "Aggregate totals (accounts, balances, P&L) across all clients"],
+            ["POST /api/client/update_source  →  update_client_source()","2126", "Update the data source tag for a client"],
+            ["POST /api/client/lookup  →  api_client_lookup()",         "2181", "Look up a client by email for the desktop app login flow"],
+            ["POST /api/client/auth  →  api_client_auth()",             "2204", "Authenticate a client from the desktop app"],
+            ["POST /api/client/push  →  api_client_push()",             "2260", "Large push endpoint used by Trader Companion (evaluations + deals + positions)"],
+            ["POST /api/client/migrate_sheet  →  api_migrate_sheet()",  "2443", "Import a Google Sheet CSV export into the client's evaluation table"],
+            ["GET  /api/client/watermark_history/<id>  →  api_get_watermark_history()", "2570", "Return daily watermark records for an eval index"],
+            ["POST /api/hedging_review/<id>  →  update_hedging_review()","3533", "Save/update the hedging review section (deposits, withdrawals, hedge result)"],
+            ["POST /api/historical_mt5/<id>  →  manage_historical_mt5()","3592", "Add, update, or delete historical MT5 account records"],
+            ["POST /api/client/delete_evaluation  →  api_delete_evaluation()","3381","Soft-delete (or hard-delete) individual evaluation row"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("12.7  Version History & Rollback Routes"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Description"],
+        [
+            ["POST /api/client/history  →  api_get_client_history()",       "4134", "List all version snapshots for a client (id, version, action, changed_by, timestamp)"],
+            ["POST /api/client/version  →  api_get_client_version()",       "4164", "Fetch the full JSON snapshot for a specific version number"],
+            ["POST /api/client/rollback  →  api_rollback_client_data()",    "4207", "Restore client data to a past version; creates new version N+1"],
+            ["POST /api/client/compare_versions  →  api_compare_versions()","4261", "Return diff summary between two versions"],
+            ["GET  /api/admin/all_history  →  api_get_all_history()",       "4297", "Return history records across ALL clients (admin+ only)"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("12.8  API Key Management Routes"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Description"],
+        [
+            ["POST /api/admin/generate_key  →  api_generate_key()", "4018", "Generate a new API key scoped to a trader+client pair"],
+            ["GET  /api/admin/list_keys  →  api_list_keys()",        "4043", "List all active API keys (prefixes only, not full keys)"],
+            ["POST /api/admin/revoke_key  →  api_revoke_key()",      "4051", "Revoke an API key by its prefix"],
+            ["GET  /api/admin/audit_log  →  api_audit_log()",        "4068", "Return last N audit log entries, filterable by action type"],
+        ],
+        col_widths=[6*cm, 1.2*cm, 8.8*cm]
+    ))
+
+    story.append(section("12.9  Trader Push Routes (Granular)"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Description"],
+        [
+            ["POST /api/trader/push_account  →  push_account_data()", "4081", "Push just the account summary object for a client"],
+            ["POST /api/trader/push_positions  →  push_positions()",  "4094", "Push just the open positions array"],
+            ["POST /api/trader/push_deals  →  push_deals()",          "4107", "Push just the closed deals history array"],
+            ["POST /api/trader/push_evaluations  →  push_evaluations()","4120","Push just the evaluations array (replaces existing)"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("12.10  System / Stats Routes"))
+    story.append(data_table(
+        ["Route / Function", "Line", "Description"],
+        [
+            ["GET /health | /api/health  →  health_check()",  "4326", "Return {'status': 'healthy'} plus DB and key counts — used by load balancer probes"],
+            ["GET /api/sheet/stats  →  get_stats_sheet_data()","4364","Return account statistics formatted for the Stats sheet tab"],
+            ["GET /api/sheet/waterlog  →  get_waterlog_sheet_data()","4376","Return waterlog period data for all clients"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+
+def build_ch13_db_functions(story):
+    story += chapter("Chapter 13: database.py — Complete Function Reference", "ch13")
+
+    story.append(section("13.1  Connection & Initialisation"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_db_path() → str",    "16", "Return DB file path from DATABASE_URL env var or default dashboard.db"],
+            ["get_connection() →",     "20", "Context manager returning a sqlite3/psycopg2 connection with Row factory"],
+            ["init_database()",        "29", "Create all 15+ tables if not exist; run column migrations; seed super_admin"],
+        ],
+        col_widths=[5*cm, 1.2*cm, 9.8*cm]
+    ))
+
+    story.append(section("13.2  Password & Admin"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["hash_password(password, salt=None) → (hash, salt)",  "247", "PBKDF2-SHA256, 100 000 iterations; generate salt if not provided"],
+            ["verify_password(password, stored_hash, salt) → bool","262", "Recompute hash and compare with secrets.compare_digest (timing-safe)"],
+            ["set_admin_password(username, password) → bool",      "269", "Upsert hashed password for a super_admin or admin user"],
+            ["verify_admin_password(username, password) → bool",   "291", "Verify password for admin accounts specifically"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("13.3  User CRUD"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["create_user(username, password, user_type, email, parent_admin, parent_trader) → bool", "308", "Insert new user_credentials row; idempotent (returns False if exists)"],
+            ["verify_user_password(username, user_type, password) → dict|None",                       "332", "Verify credentials; stamp last_login; return user dict or None"],
+            ["verify_client_login(email, password) → dict|None",                                      "367", "Verify client by email (clients log in with email, not username)"],
+            ["update_user_password(username, user_type, new_password) → bool",                        "402", "Hash and store a new password; set must_change_password=0"],
+            ["get_user(username, user_type) → dict|None",                                             "417", "Fetch a user record without password verification"],
+            ["list_users(user_type=None) → list",                                                     "430", "List all (or type-filtered) users; excludes password fields"],
+            ["deactivate_user(username, user_type) → bool",                                           "449", "Set is_active=0 (soft delete — user cannot log in but record preserved)"],
+            ["activate_user(username, user_type) → bool",                                             "460", "Re-enable a deactivated user"],
+            ["reset_user_password(username, user_type) → str",                                        "471", "Generate random 12-char password, hash and store it, return plaintext"],
+            ["find_user_by_identifier(identifier) → dict|None",                                       "490", "Search by username or email across all user types"],
+            ["verify_user_by_identifier(identifier, password) → dict|None",                           "512", "Flexible login using email or username"],
+            ["delete_user_credential(username, user_type) → bool",                                    "551", "Hard-delete a user credential row"],
+            ["update_user_email(username, user_type, new_email) → bool",                              "562", "Update the email address for a user"],
+            ["user_exists(username, user_type) → bool",                                               "574", "Quick existence check without fetching the full record"],
+        ],
+        col_widths=[8.5*cm, 1.2*cm, 6.3*cm]
+    ))
+
+    story.append(section("13.4  Brute-Force Protection"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["record_login_attempt(username, user_type, ip_address, success)",  "584", "Insert a row into login_attempts with current timestamp"],
+            ["get_failed_login_count(username, user_type, minutes=15) → int",   "594", "Count failed attempts within the last N minutes"],
+            ["is_account_locked(username, user_type, max_attempts=5) → bool",   "608", "Return True if failed count >= max_attempts in last 15 min"],
+        ],
+        col_widths=[7*cm, 1.2*cm, 7.8*cm]
+    ))
+
+    story.append(section("13.5  API Key Management"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["hash_api_key(api_key) → str",                          "614", "SHA-256 hash a key for storage (raw key never stored)"],
+            ["generate_api_key(admin, trader, client='') → str",     "618", "Generate 64-char hex key; store hash + metadata; return plaintext"],
+            ["validate_api_key(api_key) → dict|None",                "638", "Hash incoming key and look up in DB; return metadata or None"],
+            ["list_api_keys() → list",                               "667", "Return all API key records (prefix + metadata, no raw keys)"],
+            ["revoke_api_key(key_prefix) → bool",                    "677", "Set is_active=0 for key matching prefix"],
+            ["delete_api_key(key_prefix) → bool",                    "688", "Hard-delete API key record"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("13.6  Client Data Storage"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["save_client_data(client_id, data, overwrite=False) → bool", "698", "Upsert full client JSON blob to clients_data; each field stored in separate column"],
+            ["get_client_data(client_id) → dict|None",                    "798", "Fetch and deserialise all JSON columns for a client"],
+            ["get_all_clients() → dict",                                  "827", "Return {client_id: data} mapping for every client in DB"],
+            ["get_clients_count() → int",                                 "838", "Return total number of clients in DB"],
+            ["update_client_field(client_id, field, value) → bool",       "846", "Update a single field (column) in clients_data without touching others"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("13.7  Version History"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_next_version(client_id) → int",                                              "874", "Return max(version)+1 for a client from data_history"],
+            ["save_data_snapshot(client_id, data, action, changed_by, ...) → int",            "890", "Write a new version row to data_history; return version number"],
+            ["save_client_data_with_history(client_id, data, action, ...) → (bool, int)",     "944", "save_client_data + save_data_snapshot in one atomic call"],
+            ["get_data_history(client_id, limit=50) → list",                                  "969", "Return list of version metadata dicts (newest first)"],
+            ["get_data_version(client_id, version) → dict|None",                              "988", "Fetch and deserialise a specific snapshot from data_history"],
+            ["rollback_to_version(client_id, version, changed_by, ...) → (bool, int)",        "1022","Fetch target snapshot and save it as new version N+1"],
+            ["compare_versions(client_id, version1, version2) → dict",                        "1051","Return field-level diff between two snapshots"],
+            ["get_latest_version(client_id) → int",                                           "1103","Return the current highest version number for a client"],
+            ["cleanup_old_history(client_id=None, keep_versions=100) → int",                  "1113","Delete old snapshots beyond keep_versions threshold; return count deleted"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("13.8  Audit Log"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["log_action(action, user_type, user_identifier, ip_address, description='', success=True)", "1160", "Insert a row into audit_log with current timestamp"],
+            ["get_audit_log(limit=100, action_filter=None) → list",                                      "1179", "Return recent audit log rows, optionally filtered by action type"],
+        ],
+        col_widths=[8*cm, 1.2*cm, 6.8*cm]
+    ))
+
+    story.append(section("13.9  Session Management"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["create_session(user_type, user_identifier, ip_address, user_agent) → str", "1200", "Insert session row; return 64-char hex token as HttpOnly cookie value"],
+            ["validate_session(session_token) → dict|None",                              "1217", "Look up session token; check expiry; return user info or None"],
+            ["delete_session(session_token)",                                             "1241", "Remove session row (logout)"],
+            ["cleanup_expired_sessions()",                                               "1248", "Delete all sessions older than 24 hours (run periodically)"],
+        ],
+        col_widths=[7*cm, 1.2*cm, 7.8*cm]
+    ))
+
+    story.append(section("13.10  Migration Utility"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["migrate_from_json(api_keys_file, data_file)", "1260", "One-time import of legacy JSON-file data into SQLite tables"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+
+def build_ch14_financial_functions(story):
+    story += chapter("Chapter 14: financial_overview.py — Function Reference", "ch14")
+
+    story.append(section("14.1  Infrastructure / Cache"))
+    story.append(data_table(
+        ["Function / Class", "Line", "Description"],
+        [
+            ["class SimpleCache",             "10",  "Thread-safe TTL cache backed by a dict; used to memoize expensive aggregations"],
+            ["cache_result(ttl=300)",         "46",  "Decorator factory — wraps a function with cache lookup and 5-min TTL"],
+            ["_get_cached_clients()",         "65",  "Return all client data from DB, memoized for 60 s to avoid repeated DB reads"],
+            ["clear_financial_cache()",       "100", "Invalidate all entries in the SimpleCache instance"],
+            ["col_idx_to_letter(n)",          "34",  "Convert 0-based column index to Excel-style letter(s): 0→A, 26→AA, etc."],
+        ],
+        col_widths=[5*cm, 1.2*cm, 9.8*cm]
+    ))
+
+    story.append(section("14.2  Data Normalisation Helpers"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["parse_currency(value_str)",           "73",  "Strip '$', ',', 'K' and convert to float; return 0.0 on failure"],
+            ["normalize_prop_firm_name(name)",      "418", "Map raw firm name strings to canonical names: 'ftmo', 'topstep', 'lucid', etc."],
+            ["parse_date(date_str)",                "469", "Parse date strings from multiple format patterns; return datetime or None"],
+            ["_aggregate_events_cumulative(events)","1201","Sort events by date and compute running cumulative sum"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+    story.append(section("14.3  Payout & Growth Functions"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_payouts_history(start_date, end_date, prop_firm_filter, profile_filter) → list", "483",  "Scan all client evaluations for payout entries; return sorted event list"],
+            ["get_payouts_growth_data(profile_filter) → list",                                     "582",  "Return time-series of cumulative payout value"],
+            ["get_portfolio_growth_data(profile_filter) → list",                                   "847",  "Combine payout + trading profit + deposit into running portfolio value"],
+        ],
+        col_widths=[8*cm, 1.2*cm, 6.8*cm]
+    ))
+
+    story.append(section("14.4  MT5 Deal Data Functions"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_mt5_deals_data(profile_filter) → list",             "642",  "Return all closed deals across all clients with parsed profit/commission/swap"],
+            ["get_cumulative_deposits(profile_filter) → list",        "708",  "Time-series of running total deposits from MT5 deal history"],
+            ["get_cumulative_trading_profit(profile_filter) → list",  "741",  "Time-series of running realised P&L from closed trades"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("14.5  Overhead & Hedge Functions"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_cumulative_fees_data(profile_filter) → list",     "1094", "Time-series of running evaluation fees paid across all prop firms"],
+            ["get_cumulative_hedge_data(profile_filter) → list",    "1131", "Time-series of running hedge account P&L vs sheet-stated hedge result"],
+            ["get_cumulative_farming_data(profile_filter) → list",  "1171", "Time-series of running farming phase profit"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("14.6  Aggregate Overview Functions"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["calculate_propfirm_overview(profile_filter) → dict",  "933",  "Aggregate per-firm: active accounts, total deposits, total payouts, net P&L, ROI"],
+            ["calculate_trader_stats(profile_filter) → list",       "1226", "Per-trader breakdown: win rate, average trade, max DD, Sharpe-like ratio"],
+            ["get_client_performance_stats(profile_filter) → list", "1361", "Per-client breakdown: funded phases, payouts, current balance"],
+            ["calculate_all_financials(profile_filter) → dict",     "105",  "Master wrapper: calls all calculation functions; returns combined dict"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("14.7  Data Access Helper"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_cached_clients_dataset()", "65", "Return memoized dataset of all client data from DB (shortcut used by most analytics functions)"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+
+def build_ch15_trader_functions(story):
+    story += chapter("Chapter 15: Trader Companion — Full Function Reference", "ch15")
+
+    story.append(section("15.1  MT5DataPusher Class"))
+    story.append(body(
+        "<b>MT5DataPusher</b> (line 58) is the data-layer class responsible for all MT5 "
+        "interactions and server communication. It is instantiated by TraderCompanionApp "
+        "and lives for the lifetime of the application session."
+    ))
+    story.append(data_table(
+        ["Method", "Line", "Description"],
+        [
+            ["__init__(self, dashboard_url, api_key)",                                 "61",  "Store server URL and API key; initialise MT5 connection state"],
+            ["connect_mt5(self, login, password, server, terminal_path) → (bool, str)","68",  "Call mt5.initialize() + mt5.login(); return (success, message)"],
+            ["disconnect_mt5(self)",                                                   "105", "Call mt5.shutdown() and clear connection state"],
+            ["get_account_info(self) → dict",                                          "112", "Fetch account summary via mt5.account_info(); serialise NamedTuple to dict"],
+            ["get_positions(self) → list",                                             "156", "Fetch open positions via mt5.positions_get(); convert each to dict"],
+            ["get_deals(self, days=30) → list",                                        "184", "Fetch deal history from (now-days) to now; convert to JSON-serialisable list"],
+            ["_deal_type_to_string(self, deal_type) → str",                            "235", "Convert MT5 deal type enum int to string: 'BUY', 'SELL', 'BALANCE', etc."],
+            ["_entry_to_string(self, entry) → str",                                    "240", "Convert MT5 deal entry enum to 'IN', 'OUT', 'INOUT', 'OUT_BY'"],
+            ["calculate_statistics(self, deals) → dict",                               "244", "Compute win_rate, avg_profit, total_profit, drawdown from deal list"],
+            ["parse_deal_comment_v2(self, comment) → dict",                            "272", "Parse MT5 comment string into {phase_code, account_num, trade_num, date_str}"],
+            ["aggregate_deals_by_comment_v2(self, deals) → list",                     "296", "Group deals by parsed comment key; sum profits per group"],
+            ["get_deals_grouped_by_phase(self, days=365) → dict",                     "310", "Partition deals into {'challenge':[], 'funded':[], 'hedge':[], 'farming':[]}"],
+            ["parse_deal_comment(self, comment) → dict",                               "361", "Legacy comment parser — original regex-based implementation"],
+            ["aggregate_deals_by_account(self, deals) → dict",                        "423", "Group deals by account number key; compute totals per account"],
+            ["push_to_dashboard(self, client_name, admin_name, trader_name) → dict",  "475", "Build full payload (account+deals+positions+evaluations+stats) and POST to server"],
+            ["extract_account_core(self, account_num) → str",                         "598", "Extract core identifier from account number for matching"],
+            ["process_deals_for_evaluations(self, deals, evaluations) → list",        "623", "Orchestrator: choose new or legacy parser based on comment format"],
+            ["_process_deals_with_new_parser(self, deals, evaluations) → list",       "653", "New V2 parser pipeline: parse → segment → match → write to eval rows"],
+            ["_find_evaluation_match(self, account_number, phase_code, eval_lookup) → int|None","804","Lookup eval row index from pre-built account/phase map"],
+            ["_get_field_name_for_phase(self, phase_code, trade_number, farming_date, evaluations, eval_idx, forced_day_num) → str|None","827","Return column key (e.g. 'Prop Day 3', 'Trade 2') for a given phase+trade combo"],
+            ["_calculate_farming_day(self, farming_date_str, evaluations, eval_idx) → int|None","878","Compute which Prop Day N column the farming trade belongs to"],
+            ["_process_deals_legacy(self, deals, evaluations) → list",                "917", "Legacy matching pipeline using the original phase-code approach"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("15.2  TraderCompanionApp Class"))
+    story.append(body(
+        "<b>TraderCompanionApp</b> (line 1024) is the Tkinter GUI class. "
+        "It owns the window, all widgets, the auto-push timer, and delegates "
+        "data operations to an <b>MT5DataPusher</b> instance."
+    ))
+    story.append(data_table(
+        ["Method", "Line", "Description"],
+        [
+            ["__init__(self)",                     "1027", "Create root Tk window; init MT5DataPusher; load config; call setup_ui()"],
+            ["setup_ui(self)",                     "1076", "Build all Tkinter widgets: gradient header, server selector, MT5 login form, log area, buttons"],
+            ["log(self, message, level='INFO')",   "1298", "Append timestamped message to the scrolled log TextWidget"],
+            ["lookup_client(self)",                "1306", "POST to /api/client/lookup with entered email; populate client fields on success"],
+            ["toggle_mt5_connection(self)",        "1371", "Connect or disconnect MT5 based on current state; update button label"],
+            ["push_data(self)",                    "1387", "Full data push: get_account_info → get_deals → process_deals_for_evaluations → push_to_dashboard"],
+            ["push_mt5_only(self)",                "1503", "Push only account+deals+positions without evaluation processing"],
+            ["show_deal_comments(self)",           "1620", "Open popup window listing all deal comments found in MT5 history"],
+            ["sync_hedge_results(self)",           "1674", "Fetch current evaluations from server → find hedge deals → update hedge fields → push back"],
+            ["analyze_comments_v2(self)",          "1800", "Run V2 comment parser on all deals and display analysis in popup"],
+            ["show_aggregated_data(self)",         "1906", "Show popup table of deals aggregated by comment/account"],
+            ["push_by_comment(self)",              "1971", "Advanced push: group deals by comment, match to eval rows, push result"],
+            ["migrate_from_sheet(self)",           "2125", "POST sheet CSV to /api/client/migrate_sheet to import evaluation data"],
+            ["verify_stats(self, local_stats, dashboard_stats) → list","2210","Compare locally computed stats with server-stored stats; return list of differences"],
+            ["toggle_auto_push(self)",             "2258", "Enable/disable the auto-push background loop thread"],
+            ["check_and_push_update(self)",        "2283", "Compare current MT5 data hash with last-pushed hash; push only if changed"],
+            ["auto_push_loop(self)",               "2326", "Background thread function: sleep → check_and_push_update → repeat"],
+            ["save_config(self)",                  "2338", "Persist server URL, client, trader, admin, API key to trader_config.json"],
+            ["load_config(self)",                  "2355", "Load saved config from trader_config.json and populate UI fields"],
+            ["run(self)",                          "2389", "Enter Tkinter mainloop; called by main()"],
+        ],
+        col_widths=[6*cm, 1.2*cm, 8.8*cm]
+    ))
+
+    story.append(section("15.3  Module-Level Functions"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["main()", "2394", "Entry point: create TraderCompanionApp and call run()"],
+        ],
+        col_widths=[3*cm, 1.2*cm, 11.8*cm]
+    ))
+
+
+def build_ch16_supporting_modules(story):
+    story += chapter("Chapter 16: Supporting Modules — Function Reference", "ch16")
+
+    story.append(section("16.1  dashboard/scheduler.py"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["run_scheduler()",                 "10", "Infinite loop: sleep until next midnight UTC, then call update_all_clients_watermarks()"],
+            ["update_all_clients_watermarks()", "34", "Iterate all clients; for each active evaluation compute today's balance watermark and write to DB"],
+            ["start_scheduler()",               "64", "Spawn run_scheduler() in a daemon background thread; called once on Flask app startup"],
+        ],
+        col_widths=[5*cm, 1.2*cm, 9.8*cm]
+    ))
+
+    story.append(section("16.2  dashboard/notes_service.py"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["get_client_notes(client_id) → dict",                                    "4",  "Return {row_index: {col_key: text}} mapping of all notes for a client"],
+            ["save_client_note(client_id, row_index, column_key, content, user)",     "39", "Upsert a note for a specific row+column; record who last edited it"],
+            ["delete_client_note(client_id, row_index, column_key) → bool",           "56", "Delete a specific note cell from the notes table"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("16.3  dashboard/watermark_service.py"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["save_daily_profit(client_id, net_profit, date_str, source) → bool",  "5",   "Upsert daily net profit for a client in daily_profits table"],
+            ["get_watermark_history(client_id, days=30) → list",                   "37",  "Return last N days of balance watermark records for a client"],
+            ["get_lower_watermark(client_id, days=14) → float",                    "58",  "Return the minimum balance seen in the last N days"],
+            ["get_high_watermark(client_id, days=14) → float",                     "71",  "Return the maximum balance seen in the last N days"],
+            ["get_bulk_watermarks(days=14) → dict",                                "84",  "Return {client_id: {high, low, current}} for all clients"],
+            ["get_aggregate_watermarks(days=14) → dict",                           "125", "Aggregate watermarks across all clients into a single summary"],
+            ["bulk_save_history(client_id, history_data)",                         "166", "Batch insert watermark records from a list of {date, balance} dicts"],
+            ["save_waterlog_periods(client_id, periods)",                          "186", "Persist array of waterlog period objects (start/end/peak/trough/max_dd)"],
+            ["get_waterlog_periods(client_id) → list",                             "210", "Fetch all waterlog period records for a client"],
+            ["get_all_daily_watermarks(client_id) → list",                         "228", "Return every daily watermark row ever recorded for a client"],
+            ["compute_waterlog_from_db(client_id) → dict",                         "254", "Re-derive waterlog periods from raw daily watermark history in DB"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("16.4  dashboard/utils/trade_matcher.py — UnifiedTradeMatcher"))
+    story.append(data_table(
+        ["Method", "Line", "Description"],
+        [
+            ["__init__(self, evaluations)",               "13",  "Store evaluations list; call _build_account_map()"],
+            ["_build_account_map(self)",                  "24",  "Index evaluations by account number + phase for fast lookup during matching"],
+            ["_add_to_lookup(self, lookup, account_str, idx, date, acct_type)", "51", "Normalise and insert one account entry into the lookup dict"],
+            ["_parse_date(self, date_str) → datetime|None","74",  "Parse date from eval row using multiple format attempts"],
+            ["process_deals(self, deals) → list",         "92",  "Main entry: parse comments → segment → match → apply; return updated evaluations"],
+            ["_segment_into_sessions(self, deals) → list","162",  "Group consecutive deals with same account+phase into trading sessions"],
+            ["_find_best_row_match(self, account_num, session_date) → int|None","209","Return eval row index with best account+date overlap"],
+            ["_apply_session_to_row(self, row_idx, session_deals) → bool","277",  "Compute P&L for the session and write into the correct column of the eval row"],
+            ["_get_field_name(self, phase, number) → str","311",  "Map (phase_code, trade_number) pair to column key string"],
+            ["_parse_deal_comment(self, deal) → dict",    "323",  "Regex-parse MT5 deal comment string into structured {phase, acct, num, date} dict"],
+            ["_parse_iso(self, date_str) → datetime|None","356",  "Parse ISO 8601 timestamps with and without timezone"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("16.5  dashboard/phase_manager.py — PhaseManager"))
+    story.append(data_table(
+        ["Method", "Line", "Description"],
+        [
+            ["initialize_default_phases()",                          "13",  "@staticmethod — populate phase_definitions table with default Challenge/Funded/DoubleDip/Farming phases"],
+            ["create_evaluation(account_signature, firm, phase_code, start_date, ...)", "70", "Insert a new evaluations row with all metadata; return evaluation_id"],
+            ["complete_phase(evaluation_id, status, end_date) → int|None", "116", "Mark phase as passed/failed; if passed, automatically create next-phase row and return its ID"],
+            ["find_evaluation_for_trade(account_signature, trade_date_str) → dict|None","194","Look up active evaluation row that matches account + trade date window"],
+            ["get_phase_chain(latest_evaluation_id) → list",        "226", "Traverse prev_evaluation_id Links to return the full phase chain for an account"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+    story.append(section("16.6  config/hierarchy.py"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["load_hierarchy() → dict",                                 "7",  "Read hierarchy.json from disk; return parsed dict"],
+            ["reload_hierarchy()",                                      "15", "Re-read hierarchy.json and update SYSTEM_HIERARCHY global in-place"],
+            ["save_hierarchy(hierarchy_data)",                          "23", "Write hierarchy dict back to hierarchy.json atomically"],
+            ["add_admin(admin_name, email='') → bool",                 "—",  "Append admin entry to hierarchy; save"],
+            ["update_admin_details(admin_name, email)",                "—",  "Update admin email in hierarchy; save"],
+            ["update_trader_details(admin_name, trader_name, email)",  "—",  "Update trader email; save"],
+            ["update_client_details(admin, trader, client, email)",    "—",  "Update client email; save"],
+            ["update_client_category(admin, trader, client, category)","—",  "Set client category (e.g. 'vip', 'standard'); save"],
+            ["add_trader(admin_name, trader_name, email='') → bool",   "—",  "Append trader under admin; save"],
+            ["add_client(admin, trader, client, email='', category='')"," —","Append client under trader; save"],
+            ["remove_admin(admin_name) → bool",                        "—",  "Remove admin and all subordinates; save"],
+            ["remove_trader(admin_name, trader_name) → bool",          "—",  "Remove trader and clients; save"],
+            ["remove_client(admin, trader, client) → bool",            "—",  "Remove client entry; save"],
+            ["move_client(client, old_admin, old_trader, new_admin, new_trader) → bool","—","Move client to different trader/admin; save"],
+            ["move_trader(trader_name, old_admin, new_admin) → bool",  "—",  "Move trader with all clients to a different admin; save"],
+            ["get_client_profile(client_name) → dict|None",            "—",  "Return single client metadata dict from hierarchy"],
+            ["get_client_by_email(email) → dict|None",                 "—",  "Search hierarchy by client email; return client profile"],
+            ["get_all_clients() → list",                               "—",  "Flatten hierarchy to list of all client dicts"],
+            ["get_user_by_email(email) → dict|None",                   "—",  "Find any user (admin/trader/client) by email"],
+        ],
+        col_widths=[7.5*cm, 1.2*cm, 7.3*cm]
+    ))
+
+
+def build_ch17_js_functions(story):
+    story += chapter("Chapter 17: JavaScript Functions — index.html Reference", "ch17")
+
+    story.append(body(
+        "All JavaScript in the dashboard lives in a single <code>&lt;script&gt;</code> block "
+        "inside <b>dashboard/templates/index.html</b>. The ~2 800-line script block is "
+        "organised into logical groups below."
+    ))
+
+    story.append(section("17.1  Initialisation & Data Loading"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["updateDashboard()",              "1949", "Fetch /api/data?client_id=…, store in currentData, call all render functions"],
+            ["openTab(tabName)",               "1908", "Switch visible tab (Evaluations / Stats / Positions / History / Hedging / Settings)"],
+            ["debugLog(msg)",                  "1471", "Write message to browser console when debug mode enabled"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+    story.append(section("17.2  Evaluations Table"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["renderEvaluationsTable(resetPage=true)",      "2063", "Full table rebuild: filter deleted rows, sort desc by originalIndex, paginate, build HTML, insert into DOM"],
+            ["loadMoreEvaluations()",                        "2318", "Increment evalPage and call renderEvaluationsTable(false) to append next 50 rows"],
+            ["generateDayColumns(ev, cell, index, rowNum)",  "2376", "Generate HTML cells for Prop Day 1…N columns including inline input and formula value"],
+            ["getColumnLetterForKey(key) → string",          "2326", "Map column key name to spreadsheet letter (A, B, AA, etc.) for formula display"],
+            ["getColLetter(n) → string",                     "2366", "Convert 0-based index to Excel-style column letter"],
+            ["addAccount()",                                 "3693", "Append a blank evaluation row to currentData.evaluations and re-render"],
+            ["deleteEvaluation(index)",                      "3705", "Soft-delete evaluation row (set _deleted=true), save, re-render"],
+            ["updatePropProgress(input, index, key)",        "2428", "Handle inline input change on Prop Day column; call handleInputChange"],
+            ["evalSpinnerHTML() → string",                   "2052", "Return HTML string for the loading spinner overlay"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("17.3  Cell Editing & Input Helpers"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["handleCellClick(event, index, key)",    "1485", "Distinguish note cells from editable cells; route to correct handler"],
+            ["handleInputChange(index, key, value)",  "3668", "Update currentData.evaluations[index][key] and debounce saveData()"],
+            ["getInputHtml(value, type, index, key, readOnly)", "3441", "Return HTML for a text/number/date/checkbox input cell based on column type"],
+            ["getDropdownHtml(value, type, index, key, readOnly)", "3338", "Return HTML for a <select> dropdown cell with all options populated"],
+            ["toggleMenu(e, dropdown)",               "3614", "Show/hide a custom dropdown menu; position it relative to the trigger element"],
+            ["selectItem(e, item, index, key)",       "3639", "Handle option selection from custom dropdown; update data + re-render"],
+            ["closeGlobalMenu()",                     "3584", "Hide any open custom dropdown menu"],
+            ["updateGlobalMenuPosition()",            "3595", "Recompute dropdown position on scroll/resize"],
+            ["formatCurrencyValue(value) → string",   "1937", "Format a number as a currency string with commas and 2 decimal places"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("17.4  Inline Notes System"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["openNoteEditor(event, index, key)",  "1500", "Show the note modal for a cell; populate with existing note text if any"],
+            ["enableNoteEdit()",                   "1633", "Switch note modal from read-only to edit mode"],
+            ["closeNoteModal()",                   "1646", "Hide the note modal and reset state"],
+            ["saveNote()",                         "1656", "POST /api/notes with {client_id, row_index, column_key, content}; hide modal"],
+            ["deleteNote()",                       "1688", "POST /api/notes/delete; re-render cell without note indicator"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+    story.append(section("17.5  Scroll & Section Navigation"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["calculateSectionPositions()",      "1775", "Measure and cache the X-offset of each section group header in the table"],
+            ["scrollTableBy(amount)",             "1807", "Scroll the .table-wrapper div by a relative pixel amount"],
+            ["scrollTableTo(position)",           "1813", "Scroll the .table-wrapper div to an absolute X position"],
+            ["scrollToSection(section)",          "1822", "Scroll to the start X of the named section ('eval-info', 'funded-phase', etc.)"],
+            ["updateScrollIndicator()",           "1829", "Update the floating section pill label based on which group header is centred in view"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+    story.append(section("17.6  Stats, Positions & Accounts"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["renderStats(data)",             "2458", "Populate the Stats tab with account balance, win rate, drawdown, and phase counts"],
+            ["renderPositions(data)",         "2668", "Render open MT5 positions table in the Positions tab"],
+            ["renderHedgeAccounts(data)",     "2701", "Render hedge account rows (login, balance, deposits, withdrawals, P&L)"],
+            ["renderPropAccounts(data)",      "2779", "Render prop account rows with inline editing"],
+            ["renderVPSAccounts(data)",       "2891", "Render VPS account rows with inline editing"],
+            ["updateHedgeAccount(index, key, value)", "2970", "Update a hedge account field in currentData and debounce save"],
+            ["addHedgeAccount()",             "2977", "Append blank hedge account to currentData.hedge_accounts; re-render"],
+            ["deleteHedgeAccount(index)",     "2991", "Remove hedge account at index; re-render; save"],
+            ["updatePropAccount(index, key, value)",  "2862", "Update prop account field in currentData"],
+            ["addPropAccount()",              "2869", "Append blank prop account"],
+            ["deletePropAccount(index)",      "2884", "Remove prop account at index"],
+            ["updateVPSAccount(index, key, value)",   "2944", "Update VPS account field"],
+            ["addVPSAccount()",               "2951", "Append blank VPS account"],
+            ["deleteVPSAccount(index)",       "2963", "Remove VPS account at index"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("17.7  Trade History Tab"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["renderHistory(data)",       "2998", "Populate the History tab with the MT5 deals list"],
+            ["parseDealTime(raw) → int",  "3007", "Parse MT5 deal timestamp (Unix int or ISO string) to milliseconds"],
+            ["formatDealTime(raw) → str", "3015", "Format a deal timestamp as a human-readable string"],
+            ["toggleHistorySort()",       "3024", "Toggle sort direction on the history table and re-render"],
+            ["renderHistoryTable()",      "3031", "Build and insert HTML for the deals history table using current sort order"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+    story.append(section("17.8  Hedging Review Tab"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["formatMoney(value) → str",                       "3075", "Locale-formatted currency string with sign (e.g. '+$1,234.56')"],
+            ["updateHedgingCalc()",                            "3081", "Recompute derived hedging fields (actual result, discrepancy) from input values"],
+            ["saveHedgingReview(retryCount=0)",                "3099", "async — POST /api/hedging_review/<id> with current hedging section data; retry on 429"],
+            ["renderHistoricalMT5List(accounts)",              "3151", "Render the list of historical (closed) MT5 accounts in the hedging panel"],
+            ["showAddHistoricalMT5Modal()",                    "3189", "Show modal form to add a historical MT5 account record"],
+            ["closeHistoricalMT5Modal()",                      "3231", "Hide and reset the historical MT5 modal"],
+            ["saveHistoricalMT5(retryCount=0)",                "3236", "async — POST /api/historical_mt5/<id> to add a new historical account"],
+            ["deleteHistoricalMT5(index, retryCount=0)",       "3290", "async — POST /api/historical_mt5/<id> with action='delete' and index"],
+        ],
+        col_widths=[6.5*cm, 1.2*cm, 8.3*cm]
+    ))
+
+    story.append(section("17.9  Save, Version History & Rollback"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["saveData(action='UPDATE', description, retryCount=0)", "3734", "Debounced 600 ms — POST /api/update_data with full currentData; show status; retry on 429"],
+            ["showSaveStatus(status, detail='')",                    "3812", "Display a coloured status badge (Saved ✓ / Saving… / Error) in the header"],
+            ["openHistoryPanel()",                                   "3861", "Slide the history panel into view; call loadVersionHistory()"],
+            ["closeHistoryPanel()",                                  "3867", "Hide the history panel"],
+            ["loadVersionHistory()",                                 "3872", "Fetch /api/client/history and store in historyVersions"],
+            ["renderHistoryList()",                                  "3922", "Build the version list UI (version number, timestamp, action, user)"],
+            ["selectHistoryVersion(version, idx)",                   "3976", "Highlight selected version in list; enable preview/restore buttons"],
+            ["previewSelectedVersion()",                             "3988", "Fetch snapshot for selected version and enter preview mode"],
+            ["enterPreviewMode(versionData, versionInfo)",           "4012", "Swap currentData with snapshot data; show orange 'PREVIEW' banner"],
+            ["exitPreviewMode()",                                    "4040", "Restore original currentData; hide preview banner"],
+            ["restoreFromPreview()",                                 "4055", "Call restoreVersion() with the currently previewed version"],
+            ["restoreSelectedVersion()",                             "4060", "Call restoreVersion() with the selected version from the list"],
+            ["restoreVersion(version)",                              "4070", "POST /api/client/rollback; on success reload data and close panel"],
+        ],
+        col_widths=[7*cm, 1.2*cm, 7.8*cm]
+    ))
+
+    story.append(section("17.10  Waterlog / Watermark Tab"))
+    story.append(data_table(
+        ["Function", "Line", "Description"],
+        [
+            ["loadWaterlogData()",      "4099", "Fetch /api/sheet/waterlog and render waterlog period table"],
+            ["loadWatermarkData()",     "4111", "Fetch /api/client/watermark_history/<client_id> and render daily watermark chart"],
+            ["formatDateForInput(dateStr) → str", "4272", "Convert ISO date string to YYYY-MM-DD format for <input type=date>"],
+        ],
+        col_widths=[5.5*cm, 1.2*cm, 9.3*cm]
+    ))
+
+
+# ─────────────────────────────────────────────
 #  MAIN BUILD
 # ─────────────────────────────────────────────
 def build_pdf():
@@ -1575,6 +2437,13 @@ def build_pdf():
     build_ch8_security(story)
     build_ch9_workflows(story)
     build_ch10_api(story)
+    build_ch11_file_inventory(story)
+    build_ch12_app_functions(story)
+    build_ch13_db_functions(story)
+    build_ch14_financial_functions(story)
+    build_ch15_trader_functions(story)
+    build_ch16_supporting_modules(story)
+    build_ch17_js_functions(story)
 
     # ── Final page ────────────────────────────
     story.append(PageBreak())
