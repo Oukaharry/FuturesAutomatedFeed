@@ -2747,13 +2747,10 @@
                                    onchange="updateHedgeAccount(${index}, 'login', this.value)">
                         </td>
                         <td>
-                            <div style="display:flex;align-items:center;gap:2px;">
-                                <input type="password" class="cell-input" style="flex:1;min-width:0" 
+                            <input type="text" class="cell-input" style="width:100%" 
                                    value="${acc.password || ''}" 
                                    placeholder="Password"
                                    onchange="updateHedgeAccount(${index}, 'password', this.value)">
-                                ${USER_TYPE !== 'client' ? `<button type="button" onclick="tglPw(this)" title="Show/Hide" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">👁</button><button type="button" onclick="cpPw(this)" title="Copy" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">📋</button>` : ''}
-                            </div>
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
@@ -2821,13 +2818,10 @@
                                    onchange="updatePropAccount(${index}, 'login', this.value)">
                         </td>
                         <td>
-                            <div style="display:flex;align-items:center;gap:2px;">
-                                <input type="password" class="cell-input" style="flex:1;min-width:0" 
+                            <input type="text" class="cell-input" style="width:100%" 
                                    value="${acc.password || ''}" 
                                    placeholder="Password"
                                    onchange="updatePropAccount(${index}, 'password', this.value)">
-                                ${USER_TYPE !== 'client' ? `<button type="button" onclick="tglPw(this)" title="Show/Hide" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">👁</button><button type="button" onclick="cpPw(this)" title="Copy" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">📋</button>` : ''}
-                            </div>
                         </td>
                         <td>
                             <textarea class="cell-input" style="width:100%; min-height: 2em; resize: vertical;" 
@@ -2847,13 +2841,10 @@
                                    onchange="updatePropAccount(${index}, 'tradovate_username', this.value)">
                         </td>
                         <td>
-                            <div style="display:flex;align-items:center;gap:2px;">
-                                <input type="password" class="cell-input" style="flex:1;min-width:0" 
+                            <input type="text" class="cell-input" style="width:100%" 
                                    value="${acc.tradovate_password || ''}" 
                                    placeholder="Password"
                                    onchange="updatePropAccount(${index}, 'tradovate_password', this.value)">
-                                ${USER_TYPE !== 'client' ? `<button type="button" onclick="tglPw(this)" title="Show/Hide" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">👁</button><button type="button" onclick="cpPw(this)" title="Copy" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">📋</button>` : ''}
-                            </div>
                         </td>
                         <td style="text-align:center;">
                             <button onclick="deletePropAccount(${index})" class="btn-delete" title="Remove Account">🗑️</button>
@@ -2913,7 +2904,7 @@
                 
                 accounts.forEach((acc, index) => {
                     const row = document.createElement('tr');
-                    
+
                     row.innerHTML = `
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
@@ -2928,13 +2919,10 @@
                                    onchange="updateVPSAccount(${index}, 'username', this.value)">
                         </td>
                         <td>
-                            <div style="display:flex;align-items:center;gap:2px;">
-                                <input type="password" class="cell-input" style="flex:1;min-width:0" 
+                            <input type="text" class="cell-input" style="width:100%" 
                                    value="${acc.password || ''}" 
                                    placeholder="Password"
                                    onchange="updateVPSAccount(${index}, 'password', this.value)">
-                                ${USER_TYPE !== 'client' ? `<button type="button" onclick="tglPw(this)" title="Show/Hide" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">👁</button><button type="button" onclick="cpPw(this)" title="Copy" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#94a3b8;padding:1px 4px;font-size:14px;">📋</button>` : ''}
-                            </div>
                         </td>
                         <td>
                             <textarea class="cell-input" style="width:100%; min-height: 2em; resize: vertical;" 
@@ -4304,30 +4292,6 @@
         // Disable automatic polling (was 30 seconds)
         // setInterval(updateDashboard, 30000);
 
-        // ── Password show/hide & copy helpers ──────────────────────────────
-        function tglPw(btn) {
-            const inp = btn.parentElement.querySelector('input');
-            if (!inp) return;
-            inp.type = inp.type === 'password' ? 'text' : 'password';
-            btn.textContent = inp.type === 'text' ? '🙈' : '👁';
-        }
-        function cpPw(btn) {
-            const inp = btn.parentElement.querySelector('input');
-            if (!inp || !inp.value) return;
-            const orig = btn.textContent;
-            const done = () => { btn.textContent = '✓'; setTimeout(() => { btn.textContent = orig; }, 1500); };
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(inp.value).then(done).catch(done);
-            } else {
-                const ta = document.createElement('textarea');
-                ta.value = inp.value;
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                done();
-            }
-        }
     </script>
 </body>
 </html>
