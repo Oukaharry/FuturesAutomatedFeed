@@ -1084,23 +1084,6 @@
                         <button class="scroll-btn" id="scroll-btn-funded" onclick="scrollToSection('funded-phase')">💰 Funded</button>
                         <button class="scroll-btn" id="scroll-btn-farm" onclick="scrollToSection('farming-phase')">🌱 Farm</button>
                     </div>
-                    <!-- Section indicator pill - updates live as table scrolls -->
-                    <div id="section-label-wrapper" style="display: flex; flex-direction: column; align-items: center; gap: 1px; margin: 0 12px;">
-                        <span style="font-size: 9px; letter-spacing: 0.08em; opacity: 0.45; text-transform: uppercase; color: #94a3b8;">section</span>
-                        <span id="section-sticky-label" style="
-                            display: inline-flex; align-items: center; gap: 5px;
-                            background: rgba(59,130,246,0.15);
-                            color: #60a5fa;
-                            border: 1px solid rgba(59,130,246,0.35);
-                            border-radius: 99px;
-                            padding: 2px 12px;
-                            font-size: 11px;
-                            font-weight: 700;
-                            letter-spacing: 0.04em;
-                            white-space: nowrap;
-                            transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
-                        ">📋 EVAL INFO</span>
-                    </div>
                     <div class="scroll-buttons" style="margin-left: auto;">
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; cursor: pointer; white-space: nowrap; margin-right: 6px;">
                             <input type="checkbox" id="activeFilter" checked onchange="renderEvaluationsTable()">
@@ -1116,7 +1099,24 @@
                             <th rowspan="2">#</th>
                             <th rowspan="2" style="width: 30px;">🗑️</th>
                             <!-- Scrolling Group Headers -->
-                            <th colspan="4" class="group-header group-header-blue sticky-prop-firm-header" style="border-right: 1px solid rgba(255,255,255,0.1);">EVAL INFO</th>
+                            <th colspan="4" class="group-header group-header-blue sticky-prop-firm-header" style="border-right: 1px solid rgba(255,255,255,0.1); position: relative; overflow: visible;">
+                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px;">
+                                    <span style="font-size: 9px; letter-spacing: 0.08em; opacity: 0.5; text-transform: uppercase;">section</span>
+                                    <span id="section-sticky-label" style="
+                                        display: inline-flex; align-items: center; gap: 5px;
+                                        background: rgba(59,130,246,0.15);
+                                        color: #60a5fa;
+                                        border: 1px solid rgba(59,130,246,0.35);
+                                        border-radius: 99px;
+                                        padding: 2px 10px;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.04em;
+                                        white-space: nowrap;
+                                        transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+                                    ">📋 EVAL INFO</span>
+                                </div>
+                            </th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
                             <th colspan="91" class="group-header group-header-purple">FARMING PHASE</th>
