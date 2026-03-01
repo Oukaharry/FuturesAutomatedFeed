@@ -2119,12 +2119,8 @@
                     });
                 }
                 
-                // Sort by Date Purchased (Latest First)
-                rowsToRender.sort((a, b) => {
-                    const dateA = new Date(a.item['Date Purchased'] || 0);
-                    const dateB = new Date(b.item['Date Purchased'] || 0);
-                    return dateB - dateA; // Descending
-                });
+                // Sort by original row number (highest first = latest added at top)
+                rowsToRender.sort((a, b) => b.originalIndex - a.originalIndex);
                 
                 // Active count check
                 if (rowsToRender.length === 0) {
