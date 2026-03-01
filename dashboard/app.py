@@ -2151,7 +2151,11 @@ def update_client_source():
         profile = get_client_profile(client_id)
         if profile:
             update_client_category(profile['admin'], profile['trader'], client_id, source)
-    
+
+        # Bust the 5-minute analytics cache so the next poll returns fresh data
+        from dashboard.financial_overview import clear_financial_cache
+        clear_financial_cache()
+
         log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), f"To: {source}")
         return jsonify({"status": "success"})
         
