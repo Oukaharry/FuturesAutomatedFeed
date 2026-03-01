@@ -2097,6 +2097,9 @@
                             const statusP1 = String(ev['Status P1'] || '').toLowerCase();
                             const statusFunded = String(ev['Status'] || '').toLowerCase();
                             
+                            // Hide soft-deleted rows
+                            if (ev._deleted) return;
+                            
                             // 1. Check Eval Phase Status
                             // If Eval is explicitly failed/closed/deleted, hide it.
                             if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('delete') || statusP1.includes('closed') || statusP1.includes('sl')) return;
@@ -2114,7 +2117,8 @@
                             // If P1 is Completed, and Funded is Fail, it hides. Correct.
                         }
                         
-                        // Add to list
+                        // Add to list — skip soft-deleted rows always
+                        if (ev._deleted) return;
                         rowsToRender.push({ item: ev, originalIndex: index, rowNum: currentRowNum });
                     });
                 }
@@ -3713,17 +3717,14 @@
             
             if (!confirm(confirmMsg)) return;
 
-            // Perform local delete immediately to update UI
-            currentData.evaluations.splice(index, 1);
+            // Soft delete: mark as _deleted instead of splicing
+            // This prevents any concurrent sync from restoring the row
+            currentData.evaluations[index]._deleted = true;
             renderEvaluationsTable();
             
-            // Save immediately using the standard pipeline to avoid race conditions
-            // This ensures the deleted state is what gets persisted relative to other edits
+            // Save — showSaveStatus is handled inside saveData on success/failure
             const desc = `Deleted row ${index + 1} (${propFirm} ${accountSize})`;
             saveData('DELETE', desc);
-            
-            // Show brief confirmation
-            showSaveStatus('saved');
         }
 
         // Retry queue for failed saves
@@ -4074,7 +4075,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     email: email, 
-                    rollback_version: version // Field name expected by backend: rollback_version
+                    version: version  // backend expects 'version'
                 })
             })
             .then(res => res.json())

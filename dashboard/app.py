@@ -4211,7 +4211,7 @@ def api_rollback_client_data():
     """
     data = request.json
     email = data.get('email', '').strip().lower()
-    version = data.get('version')
+    version = data.get('version') or data.get('rollback_version')  # support both field names
     
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
