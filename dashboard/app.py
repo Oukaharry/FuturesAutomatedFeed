@@ -3903,6 +3903,10 @@ def update_data():
                 action_type = data.get('action_type', 'UPDATE')
                 description = data.get('change_description', f'Manual edit from dashboard by {user_type}')
 
+                # Clients are view+edit only — block add/delete of evaluations
+                if user_type == 'client' and action_type in ('CREATE', 'DELETE'):
+                    return jsonify({"status": "error", "message": "Clients cannot add or delete evaluations"}), 403
+
                 # Save with history tracking
                 success, version = save_client_data_with_history(
                     client_id,

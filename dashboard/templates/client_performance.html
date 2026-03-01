@@ -300,6 +300,11 @@
         let isFirstLoad = true;
         const IS_BEF_ADMIN = "{{ 'true' if is_bef_admin else 'false' }}" === "true";
         
+        // Lock map: prevents poll from overwriting a source the user just changed.
+        // Key = client_id, Value = { source, lockedUntil }
+        // This handles multi-worker production where cache clearing only affects one worker.
+        const pendingSourceUpdates = new Map();
+        
         // Sorting State
         let currentSortKey = 'net_profit';
         let currentSortDir = 'desc';
@@ -340,6 +345,13 @@
         }
         
         function updateClientSource(clientId, source) {
+            // Lock this client's source for 35 seconds so polls from any
+            // Gunicorn worker serving stale cache cannot flip it back.
+            pendingSourceUpdates.set(clientId, {
+                source: source,
+                lockedUntil: Date.now() + 35000
+            });
+
             fetch('/api/client/update_source', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -348,18 +360,22 @@
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
-                    // Update local data immediately to reflect UI change (optimistic update)
+                    // Optimistic: update local array too
                     const client = allClientStats.find(c => c.client_id === clientId);
                     if (client) {
                         client.source = source;
-                        // Re-render to reflect changes (and possibly filter out row)
                         renderClientTable();
                     }
                 } else {
+                    // Roll back lock on failure so the poll can restore the real value
+                    pendingSourceUpdates.delete(clientId);
                     alert('Failed to update source: ' + data.message);
                 }
             })
-            .catch(err => console.error('Error updating source:', err));
+            .catch(err => {
+                pendingSourceUpdates.delete(clientId);
+                console.error('Error updating source:', err);
+            });
         }
 
         async function confirmDeleteClient(name, admin, trader) {
@@ -495,7 +511,22 @@
                 .then(data => {
                     if (data.status === 'success') {
                         if (data.clients) {
-                            // Check if data changed to avoid unnecessary re-renders (which close dropdowns/cause flicker)
+                            // Patch any source values the user recently changed before
+                            // comparing, so stale responses from other Gunicorn workers
+                            // don't flip the dropdown back.
+                            const now = Date.now();
+                            data.clients.forEach(c => {
+                                const pending = pendingSourceUpdates.get(c.client_id);
+                                if (pending) {
+                                    if (now < pending.lockedUntil) {
+                                        c.source = pending.source; // override stale value
+                                    } else {
+                                        pendingSourceUpdates.delete(c.client_id); // lock expired
+                                    }
+                                }
+                            });
+
+                            // Check if data changed to avoid unnecessary re-renders
                             const newData = JSON.stringify(data.clients);
                             const currentData = JSON.stringify(allClientStats);
                             

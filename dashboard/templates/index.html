@@ -1089,7 +1089,7 @@
                             <input type="checkbox" id="activeFilter" checked onchange="renderEvaluationsTable()">
                             Active Only
                         </label>
-                        <button class="scroll-btn" onclick="addAccount()" style="background: rgba(217,119,6,0.25); border-color: rgba(217,119,6,0.5); color: #fbbf24; font-weight: 600;">+ Add</button>
+                        {% if user_type != 'client' %}<button class="scroll-btn" onclick="addAccount()" style="background: rgba(217,119,6,0.25); border-color: rgba(217,119,6,0.5); color: #fbbf24; font-weight: 600;">+ Add</button>{% endif %}
                     </div>
                 </div>
                 <div class="table-container" id="eval-table-container">
@@ -1097,7 +1097,7 @@
                     <thead>
                         <tr>
                             <th rowspan="2">#</th>
-                            <th rowspan="2" style="width: 30px;">🗑️</th>
+                            <th rowspan="2" style="width: 30px;">{% if user_type != 'client' %}🗑️{% endif %}</th>
                             <!-- Scrolling Group Headers -->
                             <th colspan="4" class="group-header group-header-blue sticky-prop-firm-header" style="border-right: 1px solid rgba(255,255,255,0.1); position: relative; overflow: visible;">
                                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px;">
@@ -2218,9 +2218,9 @@
                     row.innerHTML = `
                         <td class="sticky-col-1">${index + 1}</td>
                         <td class="sticky-col-2" style="text-align:center;padding:2px;">
-                             <button onclick="deleteEvaluation(${index})" 
+                             ${USER_TYPE !== 'client' ? `<button onclick="deleteEvaluation(${index})" 
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
-                                     title="Delete this row">🗑️</button>
+                                     title="Delete this row">🗑️</button>` : ''}
                         </td>
                         ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm'), 'Prop Firm')}
                         ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size'), 'Account Size')}
