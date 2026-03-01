@@ -1010,23 +1010,6 @@
                     <button class="tab-btn" onclick="openTab('vps')">VPS</button>
                 </div>
                 <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
-                    <!-- Section indicator - only visible on evaluations tab -->
-                    <div id="section-label-wrapper" style="display: none; flex-direction: column; align-items: flex-end; gap: 2px;">
-                        <span style="font-size: 9px; letter-spacing: 0.08em; opacity: 0.45; text-transform: uppercase; color: #94a3b8;">section</span>
-                        <span id="section-sticky-label" style="
-                            display: inline-flex; align-items: center; gap: 5px;
-                            background: rgba(59,130,246,0.15);
-                            color: #60a5fa;
-                            border: 1px solid rgba(59,130,246,0.35);
-                            border-radius: 99px;
-                            padding: 2px 12px;
-                            font-size: 11px;
-                            font-weight: 700;
-                            letter-spacing: 0.04em;
-                            white-space: nowrap;
-                            transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
-                        ">📋 EVAL INFO</span>
-                    </div>
                     {% if user_type in ('admin', 'super_admin') %}
                     <button class="header-action-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
                         <i class="fas fa-history"></i> Version History
@@ -1100,6 +1083,23 @@
                         <button class="scroll-btn" id="scroll-btn-eval" onclick="scrollToSection('eval-phase')">📊 Eval</button>
                         <button class="scroll-btn" id="scroll-btn-funded" onclick="scrollToSection('funded-phase')">💰 Funded</button>
                         <button class="scroll-btn" id="scroll-btn-farm" onclick="scrollToSection('farming-phase')">🌱 Farm</button>
+                    </div>
+                    <!-- Section indicator pill - updates live as table scrolls -->
+                    <div id="section-label-wrapper" style="display: flex; flex-direction: column; align-items: center; gap: 1px; margin: 0 12px;">
+                        <span style="font-size: 9px; letter-spacing: 0.08em; opacity: 0.45; text-transform: uppercase; color: #94a3b8;">section</span>
+                        <span id="section-sticky-label" style="
+                            display: inline-flex; align-items: center; gap: 5px;
+                            background: rgba(59,130,246,0.15);
+                            color: #60a5fa;
+                            border: 1px solid rgba(59,130,246,0.35);
+                            border-radius: 99px;
+                            padding: 2px 12px;
+                            font-size: 11px;
+                            font-weight: 700;
+                            letter-spacing: 0.04em;
+                            white-space: nowrap;
+                            transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+                        ">📋 EVAL INFO</span>
                     </div>
                     <div class="scroll-buttons" style="margin-left: auto;">
                         <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; cursor: pointer; white-space: nowrap; margin-right: 6px;">
@@ -1873,9 +1873,6 @@
             setTimeout(() => {
                 calculateSectionPositions();
                 updateScrollIndicator();
-                // Show section pill on initial load (evaluations is default active tab)
-                const sectionWrapper = document.getElementById('section-label-wrapper');
-                if (sectionWrapper) sectionWrapper.style.display = 'flex';
             }, 500);
 
             // Recalculate on window resize
@@ -1914,11 +1911,6 @@
                     btn.classList.add('active');
                 }
             });
-            // Show section pill only on evaluations tab
-            const sectionWrapper = document.getElementById('section-label-wrapper');
-            if (sectionWrapper) {
-                sectionWrapper.style.display = tabName === 'evaluations' ? 'flex' : 'none';
-            }
         }
 
         // --- Note Editing Logic ---
