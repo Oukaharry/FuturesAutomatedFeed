@@ -1208,6 +1208,7 @@
                 </div>
             </div>
             <div id="no-evaluations-msg" class="no-data no-data-hidden">No evaluations found</div>
+            <div id="eval-load-more-bar" style="display:none; align-items:center; justify-content:center; gap:16px; padding:16px 0; border-top: 1px solid rgba(255,255,255,0.07); margin-top:8px;"></div>
         </div>
 
         <!-- Stats Tab -->
@@ -1472,6 +1473,8 @@
         }
 
         let currentData = {};
+        let evalPage = 1;
+        const EVAL_PAGE_SIZE = 50;
         let histSortAsc = false; // false = newest first (default)
         let isEditing = false;
         let isDatePickerOpen = false;
@@ -2057,7 +2060,8 @@
         let pendingEvaluations = [];
         let dataLoaded = false; // true after first successful fetch
 
-        function renderEvaluationsTable() {
+        function renderEvaluationsTable(resetPage = true) {
+            if (resetPage) evalPage = 1;
             const evalBody = document.getElementById('evaluations-body');
             const noEvalMsg = document.getElementById('no-evaluations-msg');
             const showActiveOnly = document.getElementById('activeFilter')?.checked ?? false;
@@ -2142,7 +2146,8 @@
                 const fragment = document.createDocumentFragment();
                 let rowsBuilt = 0;
 
-                rowsToRender.forEach(({ item: ev, originalIndex: index, rowNum: currentRowNum }) => {
+                const pageRows = rowsToRender.slice(0, evalPage * EVAL_PAGE_SIZE);
+                pageRows.forEach(({ item: ev, originalIndex: index, rowNum: currentRowNum }) => {
                   try {
                     const row = document.createElement('tr');
                     const getVal = (key) => ev[key] || '';
@@ -2269,16 +2274,53 @@
                   }
                 });
 
-                console.log(`[Evaluations] filtered=${rowsToRender.length}, built=${rowsBuilt}, showActive=${showActiveOnly}`);
+                console.log(`[Evaluations] filtered=${rowsToRender.length}, shown=${pageRows.length}, built=${rowsBuilt}, showActive=${showActiveOnly}`);
 
                 // Atomically swap: clear old content and insert new rows in one operation
                 evalBody.innerHTML = '';
                 evalBody.appendChild(fragment);
 
+                // Update load-more bar
+                const loadMoreBar = document.getElementById('eval-load-more-bar');
+                const shown = pageRows.length;
+                if (loadMoreBar) {
+                    if (shown < rowsToRender.length) {
+                        const remaining = rowsToRender.length - shown;
+                        const nextBatch = Math.min(EVAL_PAGE_SIZE, remaining);
+                        loadMoreBar.innerHTML = `
+                            <span style="color:#94a3b8;font-size:13px;">Showing <strong style="color:#f8fafc;">${shown}</strong> of <strong style="color:#f8fafc;">${rowsToRender.length}</strong> accounts</span>
+                            <button onclick="loadMoreEvaluations()" style="
+                                background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.35);
+                                color: #fbbf24; border-radius: 99px; padding: 6px 20px;
+                                font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s ease;
+                            " onmouseover="this.style.background='rgba(251,191,36,0.25)'" 
+                               onmouseout="this.style.background='rgba(251,191,36,0.15)'">
+                                Show next ${nextBatch} ▼
+                            </button>
+                        `;
+                        loadMoreBar.style.display = 'flex';
+                    } else {
+                        if (rowsToRender.length > EVAL_PAGE_SIZE) {
+                            loadMoreBar.innerHTML = `<span style="color:#4ade80;font-size:13px;">✓ All <strong>${rowsToRender.length}</strong> accounts loaded</span>`;
+                            loadMoreBar.style.display = 'flex';
+                        } else {
+                            loadMoreBar.style.display = 'none';
+                        }
+                    }
+                }
+
                 // Recalculate positions after full render
                 setTimeout(() => {
                     calculateSectionPositions();
                 }, 100);
+        }
+
+        function loadMoreEvaluations() {
+            evalPage++;
+            renderEvaluationsTable(false);
+            // Scroll to bottom of table so user sees new rows
+            const tc = document.getElementById('eval-table-container');
+            if (tc) setTimeout(() => tc.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
         }
         
         function getColumnLetterForKey(key) {
