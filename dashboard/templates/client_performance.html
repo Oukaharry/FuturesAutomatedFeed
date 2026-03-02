@@ -363,7 +363,7 @@
                     // Optimistic: update local array too
                     const client = allClientStats.find(c => c.client_id === clientId);
                     if (client) {
-                        client.source = source;
+                        client.source = source.toUpperCase();
                         renderClientTable();
                     }
                 } else {
@@ -420,7 +420,7 @@
             
             const filteredClients = allClientStats.filter(c => {
                 if (currentFilter === 'All') return true;
-                return c.source === currentFilter;
+                return c.source.toUpperCase() === currentFilter.toUpperCase();
             });
             
             if (filteredClients.length === 0) {
