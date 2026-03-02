@@ -2129,37 +2129,41 @@ def update_client_source():
     if session_user.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
         
-    data = request.json
+    data = request.get_json(silent=True) or {}
     client_id = data.get('client_id')
     source = data.get('source')
+    allowed = ['BEF', 'Private']
+
+    if not client_id or source not in allowed:
+        return jsonify({"status": "error", "message": "Invalid data"}), 400
     
-    if not client_id or not source:
-        return jsonify({"status": "error", "message": "Missing fields"}), 400
-        
     # Update Database
     client_data = get_client_data(client_id)
-    if client_data:
-        identity = client_data.get('identity', {})
-        # Update all relevant fields for consistency
-        identity['profile'] = source
-        identity['category'] = source
-        identity['source'] = source
-        update_client_field(client_id, 'identity', identity)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client not found"}), 404
         
-        # Also update Hierarchy.json if possible
+    identity = client_data.get('identity', {}) or {}
+    # Update all relevant fields for consistency
+    identity['profile'] = source
+    identity['category'] = source
+    identity['source'] = source
+    update_client_field(client_id, 'identity', identity)
+
+    # clear cache
+    from dashboard.financial_overview import clear_financial_cache
+    clear_financial_cache()
+    
+    # Also update Hierarchy.json if possible
+    try:
         from config.hierarchy import get_client_profile, update_client_category
         profile = get_client_profile(client_id)
         if profile:
             update_client_category(profile['admin'], profile['trader'], client_id, source)
-
-        # Bust the 5-minute analytics cache so the next poll returns fresh data
-        from dashboard.financial_overview import clear_financial_cache
-        clear_financial_cache()
-
-        log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), f"To: {source}")
-        return jsonify({"status": "success"})
-        
-    return jsonify({"status": "error", "message": "Client not found"}), 404
+    except Exception as e:
+        log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), str(e), success=False)
+    
+    log_action('UPDATE_CLIENT_SOURCE', 'super_admin', client_id, get_remote_address(), f"To: {source}")
+    return jsonify({"status": "success"})
 
 @app.route('/api/client/lookup', methods=['POST'])
 @require_api_key

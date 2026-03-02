@@ -1478,6 +1478,7 @@
     <script>
         const CLIENT_ID = "{{ client_id }}";
         const USER_TYPE = "{{ user_type }}";
+        const IS_CLIENT = USER_TYPE === 'client';
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
 
         // Debug Logger
@@ -2235,45 +2236,45 @@
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
                                      title="Delete this row">🗑️</button>` : ''}
                         </td>
-                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm'), 'Prop Firm')}
-                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size'), 'Account Size')}
+                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', IS_CLIENT), 'Prop Firm')}
+                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', IS_CLIENT), 'Account Size')}
                         ${cell(datePurchasedContent, 'Date Purchased')}
-                        ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee'), 'Fee')}
+                        ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee', IS_CLIENT), 'Fee')}
                         
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started'), 'Date Started')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended'), 'Date Ended')}
-                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1'), 'Status P1')}
-                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #'), 'Account #')}
+                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1', IS_CLIENT), 'Status P1')}
+                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #', IS_CLIENT), 'Account #')}
                         
-                        ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1'), 'Hedge Result 1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2'), 'Hedge Result 2')}
-                        ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3'), 'Hedge Result 3')}
-                        ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4'), 'Hedge Result 4')}
-                        ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5'), 'Hedge Result 5')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1', IS_CLIENT), 'Hedge Result 1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2', IS_CLIENT), 'Hedge Result 2')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3', IS_CLIENT), 'Hedge Result 3')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4', IS_CLIENT), 'Hedge Result 4')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5', IS_CLIENT), 'Hedge Result 5')}
                         ${cell(formatCurrencyValue(getVal('Hedge Net')), 'Hedge Net')}
                         
-                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1'), 'Account #.1')}
-                        ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee'), 'Activation Fee')}
+                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1', IS_CLIENT), 'Account #.1')}
+                        ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee', IS_CLIENT), 'Activation Fee')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1'), 'Date Started.1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1'), 'Date Ended.1')}
-                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status'), 'Status')}
+                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', IS_CLIENT), 'Status')}
                         
-                        ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1'), 'Hedge Result 1.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1'), 'Hedge Result 2.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1'), 'Hedge Result 3.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 4.1'), 'text', index, 'Hedge Result 4.1'), 'Hedge Result 4.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1'), 'Hedge Result 5.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6'), 'Hedge Result 6')}
-                        ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7'), 'Hedge Result 7')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1', IS_CLIENT), 'Hedge Result 1.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1', IS_CLIENT), 'Hedge Result 2.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1', IS_CLIENT), 'Hedge Result 3.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4.1'), 'text', index, 'Hedge Result 4.1', IS_CLIENT), 'Hedge Result 4.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1', IS_CLIENT), 'Hedge Result 5.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6', IS_CLIENT), 'Hedge Result 6')}
+                        ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7', IS_CLIENT), 'Hedge Result 7')}
                         ${cell(formatCurrencyValue(getVal('Hedge Net.1')), 'Hedge Net.1')}
                         
-                        ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1'), 'Payout 1')}
+                        ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1', IS_CLIENT), 'Payout 1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1'), 'Date 1')}
-                        ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2'), 'Payout 2')}
+                        ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2', IS_CLIENT), 'Payout 2')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2'), 'Date 2')}
-                        ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3'), 'Payout 3')}
+                        ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3', IS_CLIENT), 'Payout 3')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3'), 'Date 3')}
-                        ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4'), 'Payout 4')}
+                        ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4', IS_CLIENT), 'Payout 4')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4'), 'Date 4')}
 
                         ${cell(getVal('Farming Net'), 'Farming Net')}
