@@ -44,10 +44,6 @@
     --gradient-card: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.7) 100%);
 }
 
-html {
-    overflow-x: hidden;
-}
-
 body {
     font-family: var(--font-family);
     background-color: var(--bg-color);
