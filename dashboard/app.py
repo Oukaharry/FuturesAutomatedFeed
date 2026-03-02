@@ -2160,25 +2160,6 @@ def update_client_source():
         return jsonify({"status": "success"})
         
     return jsonify({"status": "error", "message": "Client not found"}), 404
-    
-    if not client_id or source not in ['BEF', 'Private']:
-        return jsonify({"status": "error", "message": "Invalid data"}), 400
-        
-    client_data = get_client_data(client_id)
-    if not client_data:
-        return jsonify({"status": "error", "message": "Client not found"}), 404
-        
-    if 'identity' not in client_data:
-        client_data['identity'] = {}
-        
-    client_data['identity']['source'] = source
-    
-    # Save using update_client_field to persist changes
-    # We ideally should create a new history version but for metadata direct update might be okay?
-    # Actually update_client_field handles persistence
-    update_client_field(client_id, 'identity', client_data['identity'])
-    
-    return jsonify({"status": "success"})
 
 @app.route('/api/client/lookup', methods=['POST'])
 @require_api_key

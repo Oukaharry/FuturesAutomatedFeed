@@ -101,7 +101,7 @@ def clear_financial_cache():
     """Invalidate the financial overview cache."""
     _overview_cache.clear()
 
-@cache_result(ttl=300)
+@cache_result(ttl=30)
 def calculate_all_financials(profile_filter=None):
     """
     Optimized aggregator that computes all financial metrics in a single pass.
