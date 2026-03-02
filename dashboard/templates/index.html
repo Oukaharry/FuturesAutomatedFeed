@@ -4,6 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Client Dashboard - TradeOpss</title>
+    <script>
+        // Apply zoom: 0.75 only when browser zoom > 75%; if already <= 75% leave it alone
+        (function applyZoom() {
+            function check() {
+                var bz = window.outerWidth / window.innerWidth;
+                document.documentElement.style.zoom = (bz > 0.75) ? '0.75' : '';
+            }
+            check();
+            window.addEventListener('resize', check);
+        })();
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -996,7 +1007,7 @@
             <div class="header-combined-bar">
                 {% if user_type != 'super_admin' %}
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
-                     style="width: 120px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
+                     style="width: 40px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
                 {% endif %}
                 <h1 style="flex-shrink:0;">Trading Performance Dashboard</h1>
                 <div class="tabs" style="margin-bottom:0; flex:1; display:flex; justify-content:center;">
