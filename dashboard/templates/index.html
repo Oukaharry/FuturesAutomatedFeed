@@ -5,15 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Client Dashboard - TradeOpss</title>
     <script>
-        // Apply zoom: 0.75 only when browser zoom > 75%; if already <= 75% leave it alone
-        (function applyZoom() {
-            function check() {
-                var bz = window.outerWidth / window.innerWidth;
-                document.documentElement.style.zoom = (bz > 0.75) ? '0.75' : '';
+        // Default zoom: 0.75. If content is narrower than viewport at 0.75, step up until it fills.
+        function autoFitZoom() {
+            var root = document.documentElement;
+            var z = 0.75;
+            root.style.zoom = z;
+            // Step up in 0.05 increments if content doesn't fill the full width, max 1.0
+            while (root.scrollWidth < window.innerWidth && z < 1.0) {
+                z = Math.round((z + 0.05) * 100) / 100;
+                root.style.zoom = z;
             }
-            check();
-            window.addEventListener('resize', check);
-        })();
+        }
+        window.addEventListener('DOMContentLoaded', autoFitZoom);
+        window.addEventListener('resize', autoFitZoom);
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
