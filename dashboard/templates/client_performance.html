@@ -363,7 +363,7 @@
                     // Optimistic: update local array too
                     const client = allClientStats.find(c => c.client_id === clientId);
                     if (client) {
-                        client.source = source.toUpperCase();
+                        client.source = source; // keep original case (e.g. 'Private', 'BEF')
                         renderClientTable();
                     }
                 } else {
@@ -420,7 +420,7 @@
             
             const filteredClients = allClientStats.filter(c => {
                 if (currentFilter === 'All') return true;
-                return c.source.toUpperCase() === currentFilter.toUpperCase();
+                return (c.source || '').toUpperCase() === currentFilter.toUpperCase();
             });
             
             if (filteredClients.length === 0) {
@@ -454,7 +454,7 @@
                 const profitColor = c.net_profit >= 0 ? '#34d399' : '#f87171';
                 
                 // Source Selector HTML
-                const isBEF = c.source === 'BEF';
+                const isBEF = (c.source || '').toUpperCase() === 'BEF';
                 // Dark theme select with light text
                 const sourceHtml = `
                     <select onchange="updateClientSource('${c.client_id}', this.value)" 
