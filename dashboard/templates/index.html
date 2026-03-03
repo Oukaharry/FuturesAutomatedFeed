@@ -671,16 +671,25 @@
             border-bottom: 1px solid rgba(255,255,255,0.1); /* visual boundary */
         }
 
-        /* Phase group headers are sticky TOP only (vertical scroll).
-           They must NOT be sticky left — each has a different natural left position
-           and stacking them all at the same left causes overlap when scrolling. */
+        /* Phase group headers are sticky BOTH TOP and LEFT (resist being swallowed).
+           They stick to the right edge of the prop firm column (90px) and stay visible
+           until completely scrolled away. */
         #evaluations-table thead tr:first-child th.group-header-green,
         #evaluations-table thead tr:first-child th.group-header-orange,
         #evaluations-table thead tr:first-child th.group-header-purple {
-            left: unset !important;
-            z-index: 1000 !important;
+            position: sticky !important;
+            left: 90px !important;
+            z-index: 2100 !important; /* Higher than blue header (2000) so phase text appears on top */
             text-align: left !important;
             padding-left: 14px !important;
+            top: 0 !important; /* Maintain vertical stickiness */
+            /* Ensure opaque background so nothing shows through */
+            background-clip: border-box !important;
+        }
+
+        /* Purple header needs even higher z-index to resist blue column overlap */
+        #evaluations-table thead tr:first-child th.group-header-purple {
+            z-index: 2150 !important;
         }
 
 
