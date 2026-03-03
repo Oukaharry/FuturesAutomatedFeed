@@ -2231,14 +2231,30 @@ def api_check_email():
         return jsonify({"status": "error", "message": "email parameter required"}), 400
 
     from dashboard.database import find_user_by_identifier
-    user = find_user_by_identifier(email)
+    from config.hierarchy import reload_hierarchy
 
-    # Only match clients — traders/admins are not exposed via this endpoint
-    if user and user.get('user_type') == 'client':
+    def _find_client_email(search_email):
+        """Check both user_credentials (DB) and hierarchy.json for a client with this email."""
+        search_email_lower = search_email.lower()
+        # 1. Check DB
+        user = find_user_by_identifier(search_email)
+        if user and user.get('user_type') == 'client':
+            return {'username': user.get('username'), 'source': 'db'}
+        # 2. Check hierarchy.json
+        h = reload_hierarchy()
+        for admin_data in h.get('admins', {}).values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    if (client.get('email') or '').lower() == search_email_lower:
+                        return {'username': client.get('name', ''), 'source': 'hierarchy'}
+        return None
+
+    found = _find_client_email(email)
+    if found:
         return jsonify({
             "exists": True,
-            "user_type": user.get('user_type'),
-            "username": user.get('username')
+            "user_type": "client",
+            "username": found['username']
         })
 
     return jsonify({"exists": False})
@@ -2286,6 +2302,32 @@ def api_list_emails():
         return jsonify({"status": "error", "message": "Invalid API key"}), 403
 
     from dashboard.database import list_users, find_user_by_identifier
+    from config.hierarchy import reload_hierarchy
+
+    def _all_hierarchy_clients():
+        """Return all clients from hierarchy.json as a list of {email, username} dicts."""
+        results = []
+        h = reload_hierarchy()
+        for admin_data in h.get('admins', {}).values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    email = (client.get('email') or '').strip()
+                    if email:
+                        results.append({'email': email, 'username': client.get('name', '')})
+        return results
+
+    def _find_client_email(search_email):
+        search_email_lower = search_email.lower()
+        user = find_user_by_identifier(search_email)
+        if user and user.get('user_type') == 'client':
+            return {'username': user.get('username')}
+        h = reload_hierarchy()
+        for admin_data in h.get('admins', {}).values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    if (client.get('email') or '').lower() == search_email_lower:
+                        return {'username': client.get('name', '')}
+        return None
 
     # ── POST: bulk existence check ──────────────────────────────────────────
     if request.method == 'POST':
@@ -2299,14 +2341,13 @@ def api_list_emails():
             email = str(email).strip()
             if not email:
                 continue
-            found = find_user_by_identifier(email)
-            # Only match clients
-            if found and found.get('user_type') == 'client':
+            found = _find_client_email(email)
+            if found:
                 results.append({
                     "email": email,
                     "exists": True,
-                    "user_type": found.get('user_type'),
-                    "username": found.get('username')
+                    "user_type": "client",
+                    "username": found['username']
                 })
             else:
                 results.append({"email": email, "exists": False})
@@ -2315,25 +2356,25 @@ def api_list_emails():
                    f"bulk_check_emails: {len(results)} checked")
         return jsonify({"results": results})
 
-    # ── GET: return all client emails ────────────────────────────────────────
-    # Always filter to clients only; user_type param cannot override this
-    user_type_filter = 'client'
+    # ── GET: return all client emails (DB + hierarchy.json) ─────────────────
     active_only = request.args.get('active_only', 'true').lower() != 'false'
 
-    users = list_users(user_type=user_type_filter)
-
+    # Collect from DB
+    seen_emails = set()
     results = []
-    for u in users:
+    for u in list_users(user_type='client'):
         if active_only and not u.get('is_active'):
             continue
-        email = u.get('email', '').strip()
+        email = (u.get('email') or '').strip()
         if email:
-            results.append({
-                "email": email,
-                "username": u.get('username'),
-                "user_type": u.get('user_type'),
-                "exists": True
-            })
+            seen_emails.add(email.lower())
+            results.append({'email': email, 'username': u.get('username'), 'user_type': 'client', 'exists': True})
+
+    # Also collect from hierarchy.json (clients not in DB)
+    for c in _all_hierarchy_clients():
+        if c['email'].lower() not in seen_emails:
+            seen_emails.add(c['email'].lower())
+            results.append({'email': c['email'], 'username': c['username'], 'user_type': 'client', 'exists': True})
 
     log_action('API_ACCESS', 'reader', user_info.get('trader', 'unknown'), client_ip,
                f"list_emails: {len(results)} returned")
