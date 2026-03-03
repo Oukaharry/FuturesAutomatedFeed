@@ -2233,7 +2233,8 @@ def api_check_email():
     from dashboard.database import find_user_by_identifier
     user = find_user_by_identifier(email)
 
-    if user:
+    # Only match clients — traders/admins are not exposed via this endpoint
+    if user and user.get('user_type') == 'client':
         return jsonify({
             "exists": True,
             "user_type": user.get('user_type'),
@@ -2299,7 +2300,8 @@ def api_list_emails():
             if not email:
                 continue
             found = find_user_by_identifier(email)
-            if found:
+            # Only match clients
+            if found and found.get('user_type') == 'client':
                 results.append({
                     "email": email,
                     "exists": True,
@@ -2313,8 +2315,9 @@ def api_list_emails():
                    f"bulk_check_emails: {len(results)} checked")
         return jsonify({"results": results})
 
-    # ── GET: return all emails in system ────────────────────────────────────
-    user_type_filter = request.args.get('user_type', '').strip() or None
+    # ── GET: return all client emails ────────────────────────────────────────
+    # Always filter to clients only; user_type param cannot override this
+    user_type_filter = 'client'
     active_only = request.args.get('active_only', 'true').lower() != 'false'
 
     users = list_users(user_type=user_type_filter)
