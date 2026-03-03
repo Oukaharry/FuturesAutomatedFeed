@@ -2186,6 +2186,42 @@ def api_client_lookup():
     
     return jsonify({"status": "error", "message": "Email not found in system"}), 404
 
+
+@app.route('/api/check_email', methods=['GET', 'POST'])
+@require_api_key
+def api_check_email():
+    """
+    Check whether an email (or username) exists in the system.
+
+    Accepts both GET (?email=...) and POST (JSON body: {"email": "..."}).
+    Requires X-API-Key header.
+
+    Response (200):
+        {"exists": true,  "user_type": "client", "username": "John Doe"}
+        {"exists": false}
+    """
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        email = data.get('email', '').strip()
+    else:
+        email = request.args.get('email', '').strip()
+
+    if not email:
+        return jsonify({"status": "error", "message": "email parameter required"}), 400
+
+    from dashboard.database import find_user_by_identifier
+    user = find_user_by_identifier(email)
+
+    if user:
+        return jsonify({
+            "exists": True,
+            "user_type": user.get('user_type'),
+            "username": user.get('username')
+        })
+
+    return jsonify({"exists": False})
+
+
 # ============ PUBLIC CLIENT API (No API Key Required) ============
 
 @app.route('/api/client/auth', methods=['POST'])
