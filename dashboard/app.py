@@ -2243,6 +2243,65 @@ def api_check_email():
     return jsonify({"exists": False})
 
 
+@app.route('/api/list_emails', methods=['GET', 'OPTIONS'], strict_slashes=False)
+def api_list_emails():
+    """
+    Return all emails registered in the system.
+
+    Requires X-API-Key header (accepts both 'full' and 'readonly' scoped keys).
+
+    Optional query params:
+        ?user_type=client|trader|admin   — filter by role (default: all)
+        ?active_only=true                — only include active accounts (default: true)
+
+    Response (200):
+        {
+            "count": 3,
+            "emails": [
+                {"email": "john@example.com", "username": "John", "user_type": "client"},
+                ...
+            ]
+        }
+    """
+    if request.method == 'OPTIONS':
+        response = jsonify({"status": "ok"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        return response, 200
+
+    # Validate key — accepts readonly and full scopes
+    api_key = request.headers.get('X-API-Key')
+    client_ip = get_remote_address()
+    if not api_key:
+        return jsonify({"status": "error", "message": "API key required"}), 401
+    user_info = validate_api_key(api_key)
+    if not user_info:
+        log_action('API_ACCESS_DENIED', 'unknown', api_key[:12], client_ip, 'Invalid API key on list_emails', False)
+        return jsonify({"status": "error", "message": "Invalid API key"}), 403
+
+    user_type_filter = request.args.get('user_type', '').strip() or None
+    active_only = request.args.get('active_only', 'true').lower() != 'false'
+
+    from dashboard.database import list_users
+    users = list_users(user_type=user_type_filter)
+
+    results = []
+    for u in users:
+        if active_only and not u.get('is_active'):
+            continue
+        email = u.get('email', '').strip()
+        if email:
+            results.append({
+                "email": email,
+                "username": u.get('username'),
+                "user_type": u.get('user_type')
+            })
+
+    log_action('API_ACCESS', 'reader', user_info.get('trader', 'unknown'), client_ip, f"list_emails: {len(results)} returned")
+    return jsonify({"count": len(results), "emails": results})
+
+
 # ============ PUBLIC CLIENT API (No API Key Required) ============
 
 @app.route('/api/client/auth', methods=['POST'])
