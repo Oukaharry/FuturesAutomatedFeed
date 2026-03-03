@@ -183,10 +183,13 @@ def bulk_save_history(client_id, history_data):
         return False
 
 
-def save_waterlog_periods(client_id, periods):
+def save_waterlog_periods(client_id, periods, period_values=None):
     """
     Stores the bi-weekly period schedule for a client.
     periods: list of (from_date_str, to_date_str) in 'YYYY-MM-DD' format.
+    period_values: optional dict keyed by from_date_str -> {'low': float, 'high': float}
+                   If provided, stores the sheet's actual Low/High per period so
+                   compute_waterlog_from_db() uses them directly instead of recomputing.
     Existing periods for this client are replaced.
     """
     try:
@@ -195,9 +198,14 @@ def save_waterlog_periods(client_id, periods):
             # Clear existing schedule for this client then insert fresh
             cursor.execute('DELETE FROM waterlog_periods WHERE client_id = ?', (client_id,))
             for (from_d, to_d) in periods:
+                vals = (period_values or {}).get(from_d, {})
                 cursor.execute(
-                    'INSERT OR REPLACE INTO waterlog_periods (client_id, from_date, to_date) VALUES (?, ?, ?)',
-                    (client_id, from_d, to_d)
+                    '''INSERT OR REPLACE INTO waterlog_periods
+                       (client_id, from_date, to_date, period_low, period_high)
+                       VALUES (?, ?, ?, ?, ?)''',
+                    (client_id, from_d, to_d,
+                     vals.get('low'),   # None if not provided
+                     vals.get('high'))  # None if not provided
                 )
             conn.commit()
             logging.info(f"Saved {len(periods)} waterlog periods for {client_id}")
@@ -222,6 +230,25 @@ def get_waterlog_periods(client_id):
             return [(row['from_date'], row['to_date']) for row in cursor.fetchall()]
     except Exception as e:
         logging.error(f"Error getting waterlog periods: {e}")
+        return []
+
+
+def get_waterlog_periods_with_values(client_id):
+    """
+    Returns the stored bi-weekly periods including sheet-imported Low/High.
+    Returns: list of dicts with from_date, to_date, period_low, period_high
+    """
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''SELECT from_date, to_date, period_low, period_high
+                   FROM waterlog_periods WHERE client_id = ? ORDER BY from_date ASC''',
+                (client_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        logging.error(f"Error getting waterlog periods with values: {e}")
         return []
 
 
@@ -253,17 +280,22 @@ def get_all_daily_watermarks(client_id):
 
 def compute_waterlog_from_db(client_id):
     """
-    Computes the Profit Share History table entirely from DB data:
-      - Bi-weekly periods from waterlog_periods table
-      - Daily net-profit readings from daily_watermarks table
+    Computes the Profit Share History table entirely from DB data.
+
+    For each period:
+      - If period_low/period_high were stored at import time (from the sheet),
+        those exact values are used — this keeps historical data identical to
+        the Google Sheet.
+      - For periods without stored values (new periods after import), Low/High
+        are computed from daily_watermarks as min/max.
 
     Returns list of dicts (same shape as fetch_waterlog_data) or None if no
     periods are stored yet (triggers fall-back to sheet on first load).
     """
     from datetime import datetime as _dt
 
-    periods = get_waterlog_periods(client_id)
-    if not periods:
+    periods_with_vals = get_waterlog_periods_with_values(client_id)
+    if not periods_with_vals:
         return None  # No schedule stored — caller falls back to sheet
 
     daily = get_all_daily_watermarks(client_id)  # [(date_obj, float)]
@@ -277,26 +309,26 @@ def compute_waterlog_from_db(client_id):
         return f"${v:,.2f}"
 
     # CRITICAL: periods must be sorted oldest-first for correct HWM calculation
-    sorted_periods = sorted(periods, key=lambda p: p[0])
+    periods_with_vals.sort(key=lambda p: p['from_date'])
 
     result = []
     hwm_low = 0.0
 
-    for (from_str, to_str) in sorted_periods:
+    for p in periods_with_vals:
         try:
-            from_d = _dt.strptime(from_str, '%Y-%m-%d').date()
-            to_d   = _dt.strptime(to_str,   '%Y-%m-%d').date()
+            from_d = _dt.strptime(p['from_date'], '%Y-%m-%d').date()
+            to_d   = _dt.strptime(p['to_date'],   '%Y-%m-%d').date()
         except Exception:
             continue
 
-        in_range = [v for (d, v) in daily if from_d <= d <= to_d]
-
-        if in_range:
-            period_low  = min(in_range)
-            period_high = max(in_range)
+        # Use sheet-imported values if available; otherwise recompute from daily data
+        if p['period_low'] is not None and p['period_high'] is not None:
+            period_low  = float(p['period_low'])
+            period_high = float(p['period_high'])
         else:
-            period_low  = 0.0
-            period_high = 0.0
+            in_range = [v for (d, v) in daily if from_d <= d <= to_d]
+            period_low  = min(in_range) if in_range else 0.0
+            period_high = max(in_range) if in_range else 0.0
 
         if period_low > hwm_low:
             profit_split = (period_low - hwm_low) / 4

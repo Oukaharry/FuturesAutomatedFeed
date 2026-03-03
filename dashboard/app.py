@@ -2669,20 +2669,56 @@ def api_migrate_sheet():
             bulk_save_history(client_id, waterlog_history)
             waterlog_count = len(waterlog_history)
 
-        # Fetch and save the bi-weekly period schedule so future profit-split
-        # calculations run entirely from our DB (no sheet access needed after this)
+        # Fetch and save the bi-weekly period schedule WITH Low/High values
+        # from the sheet so compute_waterlog_from_db() returns identical data.
         try:
-            from utils.sheet_helper import fetch_waterlog_periods_from_sheet
+            from utils.sheet_helper import fetch_waterlog_data, fetch_waterlog_periods_from_sheet
         except ImportError:
             try:
-                from dashboard.utils.sheet_helper import fetch_waterlog_periods_from_sheet
+                from dashboard.utils.sheet_helper import fetch_waterlog_data, fetch_waterlog_periods_from_sheet
             except ImportError:
+                fetch_waterlog_data = None
                 fetch_waterlog_periods_from_sheet = None
         try:
             from dashboard.watermark_service import save_waterlog_periods
         except ImportError:
             from watermark_service import save_waterlog_periods
-        if fetch_waterlog_periods_from_sheet:
+
+        if fetch_waterlog_data:
+            wl_full = fetch_waterlog_data(sheet_url)  # list of {from_date, to_date, low, high, profit_split}
+            if wl_full:
+                from datetime import datetime as _wldt
+                import re as _re
+
+                def _parse_currency_str(s):
+                    try:
+                        return float(_re.sub(r'[^0-9.\-]', '', str(s))) if s else None
+                    except Exception:
+                        return None
+
+                def _to_iso(date_str):
+                    """Convert M/D/YYYY to YYYY-MM-DD."""
+                    try:
+                        return _wldt.strptime(date_str.strip(), '%m/%d/%Y').strftime('%Y-%m-%d')
+                    except Exception:
+                        return None
+
+                wl_periods = []
+                wl_values  = {}
+                for row in wl_full:
+                    fd = _to_iso(row.get('from_date', ''))
+                    td = _to_iso(row.get('to_date', ''))
+                    if fd and td:
+                        wl_periods.append((fd, td))
+                        low  = _parse_currency_str(row.get('low'))
+                        high = _parse_currency_str(row.get('high'))
+                        if low is not None or high is not None:
+                            wl_values[fd] = {'low': low, 'high': high}
+
+                if wl_periods:
+                    save_waterlog_periods(client_id, wl_periods, period_values=wl_values)
+        elif fetch_waterlog_periods_from_sheet:
+            # Fallback: save dates only (no Low/High)
             wl_periods = fetch_waterlog_periods_from_sheet(sheet_url)
             if wl_periods:
                 save_waterlog_periods(client_id, wl_periods)

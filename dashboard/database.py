@@ -199,9 +199,17 @@ def init_database():
                 client_id TEXT NOT NULL,
                 from_date TEXT NOT NULL,
                 to_date TEXT NOT NULL,
+                period_low REAL DEFAULT NULL,
+                period_high REAL DEFAULT NULL,
                 PRIMARY KEY (client_id, from_date)
             )
         ''')
+        # Migration: add period_low/period_high to existing databases
+        for col in ['period_low', 'period_high']:
+            try:
+                cursor.execute(f"ALTER TABLE waterlog_periods ADD COLUMN {col} REAL DEFAULT NULL")
+            except Exception:
+                pass  # Column already exists
 
         # Failed login attempts table (for lockout)
         cursor.execute('''
