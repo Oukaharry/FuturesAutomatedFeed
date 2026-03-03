@@ -109,21 +109,24 @@ def fetch_waterlog_data(sheet_url=None):
         # Column names — 'From ' sometimes has a trailing space in CSV exports
         from_col = 'From ' if 'From ' in df.columns else 'From'
 
-        result = []
-        hwm_low = 0.0  # running high-water mark on the Low column
-
+        # Parse all valid rows first, then sort oldest→newest before HWM calc
+        parsed_rows = []
         for _, row in df.iterrows():
             from_date = _parse_date(row.get(from_col, ''))
             to_date   = _parse_date(row.get('To', ''))
-
-            # Only include rows that have a valid period
             if from_date is None or to_date is None:
                 continue
-
-            # Read Low and High directly from the sheet's own formula columns
             period_low  = _parse_currency(row.get('Low', 0))
             period_high = _parse_currency(row.get('High', 0))
+            parsed_rows.append((from_date, to_date, period_low, period_high))
 
+        # CRITICAL: HWM must be computed oldest-first regardless of CSV order
+        parsed_rows.sort(key=lambda x: x[0])
+
+        result = []
+        hwm_low = 0.0  # running high-water mark on the Low column
+
+        for (from_date, to_date, period_low, period_high) in parsed_rows:
             # Profit Split: MAX(0, (Low_i − HWM) / 4)
             if period_low > hwm_low:
                 profit_split = (period_low - hwm_low) / 4
@@ -139,6 +142,8 @@ def fetch_waterlog_data(sheet_url=None):
                 'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
             })
 
+        # Return newest-first for display
+        result.reverse()
         return result
 
     except Exception as e:

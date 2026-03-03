@@ -276,10 +276,13 @@ def compute_waterlog_from_db(client_id):
             return f"-${abs(v):,.2f}"
         return f"${v:,.2f}"
 
+    # CRITICAL: periods must be sorted oldest-first for correct HWM calculation
+    sorted_periods = sorted(periods, key=lambda p: p[0])
+
     result = []
     hwm_low = 0.0
 
-    for (from_str, to_str) in periods:
+    for (from_str, to_str) in sorted_periods:
         try:
             from_d = _dt.strptime(from_str, '%Y-%m-%d').date()
             to_d   = _dt.strptime(to_str,   '%Y-%m-%d').date()
