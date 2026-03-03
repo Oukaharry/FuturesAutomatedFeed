@@ -2192,7 +2192,7 @@ def api_client_lookup():
     return jsonify({"status": "error", "message": "Email not found in system"}), 404
 
 
-@app.route('/api/check_email', methods=['GET', 'POST'])
+@app.route('/api/check_email', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
 def api_check_email():
     """
     Check whether an email (or username) exists in the system.
@@ -2204,6 +2204,14 @@ def api_check_email():
         {"exists": true,  "user_type": "client", "username": "John Doe"}
         {"exists": false}
     """
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        response = jsonify({"status": "ok"})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        return response, 200
+
     # Manual key validation — accepts both 'full' and 'readonly' scope
     api_key = request.headers.get('X-API-Key')
     client_ip = get_remote_address()
