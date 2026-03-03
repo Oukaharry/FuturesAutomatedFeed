@@ -1677,6 +1677,11 @@ def require_api_key(f):
             log_action('API_ACCESS_DENIED', 'unknown', api_key[:12], client_ip, 'Invalid API key', False)
             return jsonify({"status": "error", "message": "Invalid API key"}), 403
         
+        # Reject read-only keys from full-access endpoints
+        if user_info.get('scope') == 'readonly':
+            log_action('API_ACCESS_DENIED', 'unknown', api_key[:12], client_ip, 'Readonly key on full-access endpoint', False)
+            return jsonify({"status": "error", "message": "This API key is read-only and cannot access this endpoint"}), 403
+        
         # Add user info to request context
         request.api_user = user_info
         log_action('API_ACCESS', 'trader', user_info.get('trader', 'unknown'), client_ip, f"Endpoint: {request.endpoint}")
@@ -2188,18 +2193,26 @@ def api_client_lookup():
 
 
 @app.route('/api/check_email', methods=['GET', 'POST'])
-@require_api_key
 def api_check_email():
     """
     Check whether an email (or username) exists in the system.
 
     Accepts both GET (?email=...) and POST (JSON body: {"email": "..."}).
-    Requires X-API-Key header.
+    Requires X-API-Key header (accepts both 'full' and 'readonly' scoped keys).
 
     Response (200):
         {"exists": true,  "user_type": "client", "username": "John Doe"}
         {"exists": false}
     """
+    # Manual key validation — accepts both 'full' and 'readonly' scope
+    api_key = request.headers.get('X-API-Key')
+    client_ip = get_remote_address()
+    if not api_key:
+        return jsonify({"status": "error", "message": "API key required"}), 401
+    user_info = validate_api_key(api_key)
+    if not user_info:
+        log_action('API_ACCESS_DENIED', 'unknown', api_key[:12], client_ip, 'Invalid API key on check_email', False)
+        return jsonify({"status": "error", "message": "Invalid API key"}), 403
     if request.method == 'POST':
         data = request.get_json(silent=True) or {}
         email = data.get('email', '').strip()

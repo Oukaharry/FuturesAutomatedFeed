@@ -40,11 +40,17 @@ def init_database():
                 admin TEXT NOT NULL,
                 trader TEXT NOT NULL,
                 client TEXT DEFAULT '',
+                scope TEXT DEFAULT 'full',
                 created_at TEXT NOT NULL,
                 last_used TEXT,
                 is_active INTEGER DEFAULT 1
             )
         ''')
+        # Migration: add scope column to existing databases
+        try:
+            cursor.execute("ALTER TABLE api_keys ADD COLUMN scope TEXT DEFAULT 'full'")
+        except Exception:
+            pass  # Column already exists
         
         # Admin passwords table - stores hashed passwords (for super_admin)
         cursor.execute('''
@@ -615,8 +621,11 @@ def hash_api_key(api_key: str) -> str:
     """Hash an API key using SHA-256."""
     return hashlib.sha256(api_key.encode('utf-8')).hexdigest()
 
-def generate_api_key(admin: str, trader: str, client: str = '') -> str:
-    """Generate a new API key and store its hash."""
+def generate_api_key(admin: str, trader: str, client: str = '', scope: str = 'full') -> str:
+    """Generate a new API key and store its hash.
+    
+    scope: 'full' for full access, 'readonly' for read-only endpoints only.
+    """
     api_key = 'tk_' + secrets.token_urlsafe(32)
     key_hash = hash_api_key(api_key)
     key_prefix = api_key[:12]  # Store prefix for identification
@@ -626,9 +635,9 @@ def generate_api_key(admin: str, trader: str, client: str = '') -> str:
         cursor = conn.cursor()
         try:
             cursor.execute('''
-                INSERT INTO api_keys (key_hash, key_prefix, admin, trader, client, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (key_hash, key_prefix, admin, trader, client, now))
+                INSERT INTO api_keys (key_hash, key_prefix, admin, trader, client, scope, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (key_hash, key_prefix, admin, trader, client, scope, now))
             conn.commit()
             return api_key  # Return the actual key (only time it's visible)
         except Exception as e:
@@ -636,13 +645,13 @@ def generate_api_key(admin: str, trader: str, client: str = '') -> str:
             return None
 
 def validate_api_key(api_key: str) -> dict:
-    """Validate an API key and return user info if valid."""
+    """Validate an API key and return user info if valid. Includes 'scope' in the result."""
     key_hash = hash_api_key(api_key)
     
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT admin, trader, client, created_at FROM api_keys 
+            SELECT admin, trader, client, scope, created_at FROM api_keys 
             WHERE key_hash = ? AND is_active = 1
         ''', (key_hash,))
         row = cursor.fetchone()
@@ -659,6 +668,7 @@ def validate_api_key(api_key: str) -> dict:
                 'admin': row['admin'],
                 'trader': row['trader'],
                 'client': row['client'],
+                'scope': row['scope'] or 'full',
                 'created': row['created_at']
             }
         
@@ -669,7 +679,7 @@ def list_api_keys() -> list:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT key_prefix, admin, trader, client, created_at, last_used, is_active
+            SELECT key_prefix, admin, trader, client, scope, created_at, last_used, is_active
             FROM api_keys ORDER BY created_at DESC
         ''')
         return [dict(row) for row in cursor.fetchall()]
