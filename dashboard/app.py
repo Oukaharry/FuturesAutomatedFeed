@@ -2243,30 +2243,34 @@ def api_check_email():
     return jsonify({"exists": False})
 
 
-@app.route('/api/list_emails', methods=['GET', 'OPTIONS'], strict_slashes=False)
+@app.route('/api/list_emails', methods=['GET', 'POST', 'OPTIONS'], strict_slashes=False)
 def api_list_emails():
     """
-    Return all emails registered in the system.
+    GET  — Return all emails registered in the system (each entry includes exists: true).
+    POST — Bulk check: pass {"emails": ["a@b.com", ...]} and get back exists true/false per email.
 
     Requires X-API-Key header (accepts both 'full' and 'readonly' scoped keys).
 
-    Optional query params:
+    GET query params:
         ?user_type=client|trader|admin   — filter by role (default: all)
         ?active_only=true                — only include active accounts (default: true)
 
-    Response (200):
-        {
-            "count": 3,
-            "emails": [
-                {"email": "john@example.com", "username": "John", "user_type": "client"},
-                ...
-            ]
-        }
+    GET response:
+        {"count": 2, "emails": [
+            {"email": "john@example.com", "username": "John", "user_type": "client", "exists": true},
+            ...
+        ]}
+
+    POST response:
+        {"results": [
+            {"email": "john@example.com", "exists": true,  "user_type": "client", "username": "John"},
+            {"email": "unknown@x.com",    "exists": false}
+        ]}
     """
     if request.method == 'OPTIONS':
         response = jsonify({"status": "ok"})
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         return response, 200
 
@@ -2280,10 +2284,39 @@ def api_list_emails():
         log_action('API_ACCESS_DENIED', 'unknown', api_key[:12], client_ip, 'Invalid API key on list_emails', False)
         return jsonify({"status": "error", "message": "Invalid API key"}), 403
 
+    from dashboard.database import list_users, find_user_by_identifier
+
+    # ── POST: bulk existence check ──────────────────────────────────────────
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        emails_to_check = data.get('emails', [])
+        if not isinstance(emails_to_check, list):
+            return jsonify({"status": "error", "message": "'emails' must be a list"}), 400
+
+        results = []
+        for email in emails_to_check:
+            email = str(email).strip()
+            if not email:
+                continue
+            found = find_user_by_identifier(email)
+            if found:
+                results.append({
+                    "email": email,
+                    "exists": True,
+                    "user_type": found.get('user_type'),
+                    "username": found.get('username')
+                })
+            else:
+                results.append({"email": email, "exists": False})
+
+        log_action('API_ACCESS', 'reader', user_info.get('trader', 'unknown'), client_ip,
+                   f"bulk_check_emails: {len(results)} checked")
+        return jsonify({"results": results})
+
+    # ── GET: return all emails in system ────────────────────────────────────
     user_type_filter = request.args.get('user_type', '').strip() or None
     active_only = request.args.get('active_only', 'true').lower() != 'false'
 
-    from dashboard.database import list_users
     users = list_users(user_type=user_type_filter)
 
     results = []
@@ -2295,10 +2328,12 @@ def api_list_emails():
             results.append({
                 "email": email,
                 "username": u.get('username'),
-                "user_type": u.get('user_type')
+                "user_type": u.get('user_type'),
+                "exists": True
             })
 
-    log_action('API_ACCESS', 'reader', user_info.get('trader', 'unknown'), client_ip, f"list_emails: {len(results)} returned")
+    log_action('API_ACCESS', 'reader', user_info.get('trader', 'unknown'), client_ip,
+               f"list_emails: {len(results)} returned")
     return jsonify({"count": len(results), "emails": results})
 
 
