@@ -1077,10 +1077,11 @@
                             <th style="text-align: left; padding-left: 20px;">Low</th>
                             <th style="text-align: left; padding-left: 20px;">High</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.18); color: #fbbf24;">Profit Split</th>
+                            <th style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.15); color: #93c5fd;">Split %</th>
                         </tr>
                     </thead>
                     <tbody id="profitshare-body">
-                        <tr><td colspan="5" style="text-align: center;">Loading profit share history...</td></tr>
+                        <tr><td colspan="6" style="text-align: center;">Loading profit share history...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -4212,7 +4213,7 @@
                         // Sort newest first
                         rows.sort((a, b) => { const da = parseDate(a.from_date.trim()), db = parseDate(b.from_date.trim()); return db - da; });
                         if (!rows.length) {
-                            psBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
+                            psBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
                             return;
                         }
                         let psHtml = '';
@@ -4220,21 +4221,23 @@
                             const psRaw = (r.profit_split || '').trim();
                             const psNum = parseFloat(psRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const psStyle = `text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psNum > 0 ? '#fbbf24' : '#94a3b8'};`;
+                            const splitPct = r.split_pct != null ? r.split_pct : 50;
                             psHtml += `<tr>
                                 <td style="text-align: left; padding-left: 20px;">${r.from_date}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.low || '$0.00'}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.high || '$0.00'}</td>
                                 <td style="${psStyle}">${psRaw || '$0'}</td>
+                                <td style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.10); color: #93c5fd;">${splitPct}%</td>
                             </tr>`;
                         });
                         psBody.innerHTML = psHtml;
                     } else {
-                        psBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
+                        psBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
                     }
                 })
                 .catch(() => {
-                    psBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
+                    psBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
                 });
         }
         

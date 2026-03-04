@@ -2713,7 +2713,11 @@ def api_migrate_sheet():
                         low  = _parse_currency_str(row.get('low'))
                         high = _parse_currency_str(row.get('high'))
                         if low is not None or high is not None:
-                            wl_values[fd] = {'low': low, 'high': high}
+                            wl_values[fd] = {
+                                'low':       low,
+                                'high':      high,
+                                'split_pct': row.get('split_pct', 25),
+                            }
 
                 if wl_periods:
                     save_waterlog_periods(client_id, wl_periods, period_values=wl_values)

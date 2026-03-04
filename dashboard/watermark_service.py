@@ -187,8 +187,9 @@ def save_waterlog_periods(client_id, periods, period_values=None):
     """
     Stores the bi-weekly period schedule for a client.
     periods: list of (from_date_str, to_date_str) in 'YYYY-MM-DD' format.
-    period_values: optional dict keyed by from_date_str -> {'low': float, 'high': float}
-                   If provided, stores the sheet's actual Low/High per period so
+    period_values: optional dict keyed by from_date_str ->
+                   {'low': float, 'high': float, 'split_pct': int}
+                   If provided, stores the sheet's actual Low/High/split_pct per period so
                    compute_waterlog_from_db() uses them directly instead of recomputing.
     Existing periods for this client are replaced.
     """
@@ -201,11 +202,12 @@ def save_waterlog_periods(client_id, periods, period_values=None):
                 vals = (period_values or {}).get(from_d, {})
                 cursor.execute(
                     '''INSERT OR REPLACE INTO waterlog_periods
-                       (client_id, from_date, to_date, period_low, period_high)
-                       VALUES (?, ?, ?, ?, ?)''',
+                       (client_id, from_date, to_date, period_low, period_high, split_pct)
+                       VALUES (?, ?, ?, ?, ?, ?)''',
                     (client_id, from_d, to_d,
-                     vals.get('low'),   # None if not provided
-                     vals.get('high'))  # None if not provided
+                     vals.get('low'),        # None if not provided
+                     vals.get('high'),       # None if not provided
+                     vals.get('split_pct'))  # None → defaults to 50 in DB
                 )
             conn.commit()
             logging.info(f"Saved {len(periods)} waterlog periods for {client_id}")
@@ -235,14 +237,14 @@ def get_waterlog_periods(client_id):
 
 def get_waterlog_periods_with_values(client_id):
     """
-    Returns the stored bi-weekly periods including sheet-imported Low/High.
-    Returns: list of dicts with from_date, to_date, period_low, period_high
+    Returns the stored bi-weekly periods including sheet-imported Low/High/split_pct.
+    Returns: list of dicts with from_date, to_date, period_low, period_high, split_pct
     """
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                '''SELECT from_date, to_date, period_low, period_high
+                '''SELECT from_date, to_date, period_low, period_high, split_pct
                    FROM waterlog_periods WHERE client_id = ? ORDER BY from_date ASC''',
                 (client_id,)
             )
@@ -330,8 +332,17 @@ def compute_waterlog_from_db(client_id):
             period_low  = min(in_range) if in_range else 0.0
             period_high = max(in_range) if in_range else 0.0
 
+        # Determine split percentage: use stored value if available, else
+        # 50% for new (post-import) periods, 25 for legacy fallback.
+        raw_split_pct = p.get('split_pct')
+        if raw_split_pct is not None:
+            split_pct = int(raw_split_pct)
+        else:
+            # Period not yet imported from sheet — default to 50%
+            split_pct = 50
+
         if period_low > hwm_low:
-            profit_split = (period_low - hwm_low) / 4
+            profit_split = (period_low - hwm_low) * split_pct / 100
             hwm_low = period_low
         else:
             profit_split = 0.0
@@ -342,6 +353,7 @@ def compute_waterlog_from_db(client_id):
             'low':          _fmt_currency(period_low),
             'high':         _fmt_currency(period_high),
             'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
+            'split_pct':    split_pct,
         })
 
     return result

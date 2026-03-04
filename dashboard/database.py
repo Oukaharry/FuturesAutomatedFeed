@@ -201,13 +201,14 @@ def init_database():
                 to_date TEXT NOT NULL,
                 period_low REAL DEFAULT NULL,
                 period_high REAL DEFAULT NULL,
+                split_pct INTEGER DEFAULT 50,
                 PRIMARY KEY (client_id, from_date)
             )
         ''')
-        # Migration: add period_low/period_high to existing databases
-        for col in ['period_low', 'period_high']:
+        # Migration: add period_low/period_high/split_pct to existing databases
+        for col, default in [('period_low', 'NULL'), ('period_high', 'NULL'), ('split_pct', '50')]:
             try:
-                cursor.execute(f"ALTER TABLE waterlog_periods ADD COLUMN {col} REAL DEFAULT NULL")
+                cursor.execute(f"ALTER TABLE waterlog_periods ADD COLUMN {col} {'REAL' if col != 'split_pct' else 'INTEGER'} DEFAULT {default}")
             except Exception:
                 pass  # Column already exists
 

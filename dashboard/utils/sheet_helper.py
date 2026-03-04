@@ -108,6 +108,8 @@ def fetch_waterlog_data(sheet_url=None):
 
         # Column names — 'From ' sometimes has a trailing space in CSV exports
         from_col = 'From ' if 'From ' in df.columns else 'From'
+        # 'Profit Split' column may carry the sheet's actual formula result
+        ps_col = next((c for c in df.columns if c.strip() == 'Profit Split'), None)
 
         # Parse all valid rows first, then sort oldest→newest before HWM calc
         parsed_rows = []
@@ -118,7 +120,9 @@ def fetch_waterlog_data(sheet_url=None):
                 continue
             period_low  = _parse_currency(row.get('Low', 0))
             period_high = _parse_currency(row.get('High', 0))
-            parsed_rows.append((from_date, to_date, period_low, period_high))
+            # Read the sheet's own Profit Split value if available
+            sheet_ps    = _parse_currency(row[ps_col]) if ps_col else 0.0
+            parsed_rows.append((from_date, to_date, period_low, period_high, sheet_ps))
 
         # CRITICAL: HWM must be computed oldest-first regardless of CSV order
         parsed_rows.sort(key=lambda x: x[0])
@@ -126,10 +130,25 @@ def fetch_waterlog_data(sheet_url=None):
         result = []
         hwm_low = 0.0  # running high-water mark on the Low column
 
-        for (from_date, to_date, period_low, period_high) in parsed_rows:
-            # Profit Split: MAX(0, (Low_i − HWM) / 4)
-            if period_low > hwm_low:
-                profit_split = (period_low - hwm_low) / 4
+        for (from_date, to_date, period_low, period_high, sheet_ps) in parsed_rows:
+            gain = period_low - hwm_low if period_low > hwm_low else 0.0
+
+            # Detect split % by comparing sheet value to the period gain.
+            # Ratio ≈ 0.25 → 25% (/4),  ratio ≈ 0.50 → 50% (/2).
+            # Default to 25 for historical rows; new (unset) periods use 50.
+            if gain > 0 and sheet_ps > 0:
+                ratio = sheet_ps / gain
+                if 0.40 <= ratio <= 0.60:
+                    split_pct = 50
+                elif 0.15 <= ratio <= 0.35:
+                    split_pct = 25
+                else:
+                    split_pct = 25  # safe historical default
+            else:
+                split_pct = 25  # no gain to detect from — keep historical default
+
+            if gain > 0:
+                profit_split = gain * split_pct / 100
                 hwm_low = period_low
             else:
                 profit_split = 0.0
@@ -140,6 +159,7 @@ def fetch_waterlog_data(sheet_url=None):
                 'low':          _fmt_currency(period_low),
                 'high':         _fmt_currency(period_high),
                 'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
+                'split_pct':    split_pct,
             })
 
         # Return newest-first for display
