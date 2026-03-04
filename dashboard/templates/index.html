@@ -501,6 +501,14 @@
             /* contain: paint;  <-- REMOVED because it can break sticky behavior in some browsers */
         }
 
+        /* EVALUATIONS TABLE: bounded height so it owns BOTH scroll axes.
+           sticky thead is fully scoped inside — cannot escape div#evaluations. */
+        #eval-table-container {
+            overflow: auto !important;
+            height: calc(100vh - 160px);
+            height: calc(100dvh - 160px);
+        }
+
         /* 2. Reset Everything first */
         #evaluations-table th, #evaluations-table td {
             position: static; 
@@ -728,6 +736,8 @@
             margin-bottom: 16px !important;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
             overflow: visible !important;
+            /* Must stay above ALL sticky table headers (max z-index 10001) */
+            z-index: 10010 !important;
         }
         
         h1, h2, h3, h4, h5, h6 { color: var(--text-primary) !important; }
