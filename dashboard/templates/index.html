@@ -4228,13 +4228,17 @@
                             const psNum = parseFloat(psRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const psStyle = `text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psNum > 0 ? '#fbbf24' : '#94a3b8'};`;
                             const splitPct = r.split_pct != null ? r.split_pct : 50;
+                            const splitDisplay = psNum > 0 ? `${splitPct}%` : '—';
+                            const splitStyle = psNum > 0
+                                ? 'text-align: left; padding-left: 20px; background: rgba(96,165,250,0.10); color: #93c5fd;'
+                                : 'text-align: left; padding-left: 20px; color: #475569;';
                             psHtml += `<tr>
                                 <td style="text-align: left; padding-left: 20px;">${r.from_date}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.low || '$0.00'}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.high || '$0.00'}</td>
                                 <td style="${psStyle}">${psRaw || '$0'}</td>
-                                <td style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.10); color: #93c5fd;">${splitPct}%</td>
+                                <td style="${splitStyle}">${splitDisplay}</td>
                             </tr>`;
                         });
                         psBody.innerHTML = psHtml;
