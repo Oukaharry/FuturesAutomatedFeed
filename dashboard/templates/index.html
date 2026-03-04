@@ -529,7 +529,7 @@
         #evaluations-table thead tr:nth-child(2) th {
             position: sticky !important;
             top: 55px !important; /* Stick below the first row */
-            z-index: 999 !important; /* Slightly below the main headers */
+            z-index: 1200 !important; /* Slightly below the main headers */
             background-color: #1e293b !important; /* Ensure opaque background */
             box-shadow: 0 1px 0 rgba(255,255,255,0.1);
             height: 45px; /* Consistent height for sub-headers */
@@ -562,10 +562,12 @@
 
         /* CORNER CASE: The top-left cell (#) is both sticky top AND sticky left */
         #evaluations-table thead tr:first-child th:nth-child(1) {
-            z-index: 1010 !important; /* Highest priority */
+            z-index: 10000 !important; /* Must beat purple */
             top: 0 !important;
             left: 0 !important;
-            height: auto !important; /* Let rowspan handle it */
+            height: auto !important;
+            background-color: #1e293b !important;
+            background-clip: padding-box !important;
         }
         
         /* Second Column (Trash) */
@@ -586,8 +588,10 @@
 
         /* CORNER CASE: The second top-left cell (Trash) */
         #evaluations-table thead tr:first-child th:nth-child(2) {
-            z-index: 1010 !important;
+            z-index: 10001 !important; /* Slightly above # */
             top: 0 !important;
+            background-color: #1e293b !important;
+            background-clip: padding-box !important;
         }
 
         /* --------------------------------------------------------- */
@@ -638,12 +642,16 @@
 
         /* 5. Sticky Corners (Intersection of Header + Sticky Col) */
         /* Need higher Z-index to stay on top of both vertical and horizontal scrolling content */
+/* 5. Sticky Corners (Intersection of Header + Sticky Col)
+   MUST be above phase headers (purple is 2150) */
         #evaluations-table thead tr:first-child th:nth-child(1),
         #evaluations-table thead tr:first-child th:nth-child(2) {
-             z-index: 1010 !important; /* Topmost (Higher than 1005/1000) */
-             background-color: #1e293b !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 50000 !important;          /* beats 2150 always */
+            background-color: #1e293b !important;
+            background-clip: padding-box !important;
         }
-        
         /* 6. Tunnel Effect Shadow on Right Edge of 2nd Column - REMOVED */
 
         /* 7. Hover Handling */
@@ -659,11 +667,6 @@
 
 
         /* Higher Z-index for Headers to stay on top of body cells during vertical scroll */
-        #evaluations-table thead tr:first-child th:nth-child(1),
-        #evaluations-table thead tr:first-child th:nth-child(2) {
-             z-index: 60;
-        }
-        
         /* Ensure table container allows sticky positioning */
         .table-container {
             overflow-x: auto !important; /* horizontal scroll for wide table */
@@ -671,16 +674,26 @@
             border-bottom: 1px solid rgba(255,255,255,0.1); /* visual boundary */
         }
 
-        /* Phase group headers are sticky TOP only (vertical scroll).
-           They must NOT be sticky left — each has a different natural left position
-           and stacking them all at the same left causes overlap when scrolling. */
+        /* Phase group headers are sticky BOTH TOP and LEFT (resist being swallowed).
+           They stick to the right edge of the prop firm column (90px) and stay visible
+           until completely scrolled away. */
+        #evaluations-table thead tr:first-child th.group-header-blue,
         #evaluations-table thead tr:first-child th.group-header-green,
         #evaluations-table thead tr:first-child th.group-header-orange,
         #evaluations-table thead tr:first-child th.group-header-purple {
-            left: unset !important;
-            z-index: 1000 !important;
+            position: sticky !important;
+            left: 90px !important;
+            z-index: 1000 !important; /* Higher than blue header (2000) so phase text appears on top */
             text-align: left !important;
             padding-left: 14px !important;
+            top: 0 !important; /* Maintain vertical stickiness */
+            /* Ensure opaque background so nothing shows through */
+            background-clip: border-box !important;
+        }
+
+        /* Purple header needs even higher z-index to resist blue column overlap */
+        #evaluations-table thead tr:first-child th.group-header-purple {
+            z-index: 2500 !important;
         }
 
 
@@ -1113,27 +1126,10 @@
                             <th rowspan="2">#</th>
                             <th rowspan="2" style="width: 30px;">{% if user_type != 'client' %}🗑️{% endif %}</th>
                             <!-- Scrolling Group Headers -->
-                            <th colspan="4" class="group-header group-header-blue sticky-prop-firm-header" style="border-right: 1px solid rgba(255,255,255,0.1); position: relative; overflow: visible;">
-                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px;">
-                                    <span style="font-size: 9px; letter-spacing: 0.08em; opacity: 0.5; text-transform: uppercase;">section</span>
-                                    <span id="section-sticky-label" style="
-                                        display: inline-flex; align-items: center; gap: 5px;
-                                        background: rgba(59,130,246,0.15);
-                                        color: #60a5fa;
-                                        border: 1px solid rgba(59,130,246,0.35);
-                                        border-radius: 99px;
-                                        padding: 2px 10px;
-                                        font-size: 11px;
-                                        font-weight: 700;
-                                        letter-spacing: 0.04em;
-                                        white-space: nowrap;
-                                        transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
-                                    ">📋 EVAL INFO</span>
-                                </div>
-                            </th>
+                            <th colspan="4" class="group-header group-header-blue">INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
-                            <th colspan="91" class="group-header group-header-purple">FARMING PHASE</th>
+                            <th colspan="35" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
                         <tr>
                             <!-- EVALUATION INFO (0-3) -->
@@ -1213,7 +1209,7 @@
                         </tr>
                     </thead>
                     <tbody id="evaluations-body">
-                        <tr class="eval-spinner-row"><td colspan="100%"><div class="spinner-inner">
+                        <tr class="eval-spinner-row"><td colspan="128"><div class="spinner-inner">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                             Loading evaluations&hellip;
                         </div></td></tr>
@@ -1976,7 +1972,7 @@
 
             if (!CLIENT_ID) {
                 const evalBody = document.getElementById('evaluations-body');
-                if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">No client selected. Please log in again.</td></tr>`;
+                if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">No client selected. Please log in again.</td></tr>`;
                 return;
             }
 
@@ -1997,7 +1993,7 @@
                     // Handle API-level errors
                     if (data.status === 'error') {
                         const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
                             Error loading data: ${data.message || 'Unknown error'}.<br>
                             <small style="color:#94a3b8;">Try refreshing the page or logging out and back in.</small>
                         </td></tr>`;
@@ -2024,7 +2020,7 @@
                     try { renderEvaluationsTable(); } catch(e) {
                         console.error('renderEvaluationsTable error:', e);
                         const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
                             Render error: ${e.message}. Check console for details.
                         </td></tr>`;
                     }
@@ -2055,7 +2051,7 @@
                     // Only show fetch error if data hasn't loaded yet (don't overwrite rendered table)
                     if (!dataLoaded) {
                         const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="100%" style="text-align:center;padding:30px;color:#f87171;">
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
                             Failed to load data: ${error.message}.<br>
                             <small style="color:#94a3b8;">Check your connection or try refreshing.</small>
                         </td></tr>`;
@@ -2065,7 +2061,7 @@
         }
 
         function evalSpinnerHTML() {
-            return `<tr class="eval-spinner-row"><td colspan="100%"><div class="spinner-inner">
+            return `<tr class="eval-spinner-row"><td colspan="128"><div class="spinner-inner">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                 Loading evaluations&hellip;
             </div></td></tr>`;
