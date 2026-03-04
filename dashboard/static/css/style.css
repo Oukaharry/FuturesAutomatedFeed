@@ -255,6 +255,7 @@ h1 {
     box-shadow: var(--shadow-sm);
     margin-bottom: 30px;
     border: 1px solid var(--border-color);
+    min-width: 0;  /* Allow flex children to shrink below content size */
 }
 
 table {
@@ -1155,6 +1156,7 @@ button:hover {
 .wide-table {
     border-collapse: separate;
     border-spacing: 0;
+    table-layout: auto;  /* Allow columns to expand based on content and min-width */
 }
 
 /* 
@@ -1167,7 +1169,7 @@ button:hover {
 .wide-table thead tr:first-child th {
     position: sticky;
     top: 0;
-    z-index: 50; /* Above body cells, below corner */
+    z-index: 40; /* Above sub-headers and body cells */
     height: 40px; 
     padding: 8px 16px;
     font-size: 0.8rem;
@@ -1182,7 +1184,7 @@ button:hover {
 .wide-table thead tr:nth-child(2) th {
     position: sticky !important;
     top: 40px !important; /* Matches height of first row */
-    z-index: 45; /* Below top row header, above body */
+    z-index: 35; /* Below group headers, above body */
     font-size: 0.75rem;
     padding: 10px 14px;
     font-weight: 600;
@@ -1193,7 +1195,7 @@ button:hover {
 .wide-table tbody td:first-child {
     position: sticky;
     left: 0;
-    z-index: 40 !important; /* Above regular cells, below headers */
+    z-index: 20 !important; /* Above regular cells, below headers */
     background-color: var(--card-bg) !important;
     border-right: 1px solid var(--border-color);
     box-shadow: 2px 0 5px rgba(0,0,0,0.3);
@@ -1428,6 +1430,20 @@ button:hover {
     text-overflow: ellipsis;
 }
 
+/* Farming Phase First Column - Farming Net (Col 38) */
+.wide-table th:nth-child(38), .wide-table td:nth-child(38) {
+    min-width: 100px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* Farming Phase Day Columns (Cols 39+) - Set proper widths for all Day/Progress/Hedge columns */
+.wide-table th:nth-child(n+39), .wide-table td:nth-child(n+39) {
+    min-width: 85px;  /* Ensure columns don't collapse */
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 8px;  /* Slightly reduced padding for compact view */
+}
 
 /* Input Fields inside table */
 .cell-input {
