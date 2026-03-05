@@ -483,8 +483,10 @@
                         <span title="Failed" style="color: #f87171;">${c.failed}</span>
                     </td>
                     <td style="padding: 14px 16px; text-align: center;">
-                       <a href="/dashboard/${c.client_id}" class="btn-xs" style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none; margin-right: 5px;">View</a>
-                       <button onclick="confirmDeleteClient('${c.client_id.replace(/'/g, "\\'")}', '${(c.admin||'').replace(/'/g, "\\'")}', '${(c.trader||'').replace(/'/g, "\\'")}')" class="btn-xs" style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; border: none; cursor: pointer;">Del</button>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px; justify-content:center;">
+                            <a href="/dashboard/${c.client_id}" class="btn-xs" style="background: #3b82f6; color: white; padding: 4px 8px; border-radius: 4px; text-decoration: none;">View</a>
+                            <button onclick="confirmDeleteClient('${c.client_id.replace(/'/g, "\\'")}', '${(c.admin||'').replace(/'/g, "\\'")}', '${(c.trader||'').replace(/'/g, "\\'")}')" class="btn-xs" style="background: #ef4444; color: white; padding: 4px 8px; border-radius: 4px; border: none; cursor: pointer;">Del</button>
+                        </div>
                     </td>
                 `;
                 tbody.appendChild(tr);
