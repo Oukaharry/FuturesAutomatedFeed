@@ -10,6 +10,10 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/css/flag-icon.min.css" rel="stylesheet">
     <style>
         /* Version History Sidebar Styles - Google Sheets Style */
+
+        html {
+            scrollbar-gutter: stable;
+        }
         .history-panel {
             position: fixed;
             top: 0;
@@ -635,8 +639,6 @@
 
         /* 5. Sticky Corners (Intersection of Header + Sticky Col) */
         /* Need higher Z-index to stay on top of both vertical and horizontal scrolling content */
-/* 5. Sticky Corners (Intersection of Header + Sticky Col)
-   MUST be above phase headers (purple is 2150) */
         #evaluations-table thead tr:first-child th:nth-child(1),
         #evaluations-table thead tr:first-child th:nth-child(2) {
             position: sticky !important;
@@ -1137,7 +1139,7 @@
                             <th rowspan="2">#</th>
                             <th rowspan="2" style="width: 30px;">{% if user_type != 'client' %}🗑️{% endif %}</th>
                             <!-- Scrolling Group Headers -->
-                            <th colspan="4" class="group-header group-header-blue">INFO</th>
+                            <th colspan="4" class="group-header group-header-blue">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
                             <th colspan="35" class="group-header group-header-purple">FARMING PHASE</th>
@@ -2082,6 +2084,18 @@
         let pendingEvaluations = [];
         let dataLoaded = false; // true after first successful fetch
 
+        function fixSubHeaderTop() {
+            const row1 = document.querySelector('#evaluations-table thead tr:first-child');
+            if (!row1) return;
+            const h = row1.getBoundingClientRect().height;
+            document.querySelectorAll('#evaluations-table thead tr:nth-child(2) th').forEach(th => {
+                th.style.setProperty('top', h + 'px', 'important');
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', fixSubHeaderTop);
+        window.addEventListener('resize', fixSubHeaderTop);
+
         function renderEvaluationsTable(resetPage = true) {
             if (resetPage) evalPage = 1;
             const evalBody = document.getElementById('evaluations-body');
@@ -2235,7 +2249,7 @@
 
                     // Date Purchased Logic
                     const datePurchased = getVal('Date Purchased');
-                    const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased');
+                    const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased', IS_CLIENT);
 
                     row.innerHTML = `
                         <td class="sticky-col-1">${index + 1}</td>
@@ -2249,8 +2263,8 @@
                         ${cell(datePurchasedContent, 'Date Purchased')}
                         ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee', IS_CLIENT), 'Fee')}
                         
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started'), 'Date Started')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended'), 'Date Ended')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started', IS_CLIENT), 'Date Started')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended', IS_CLIENT), 'Date Ended')}
                         ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1', IS_CLIENT), 'Status P1')}
                         ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #', IS_CLIENT), 'Account #')}
                         
@@ -2263,8 +2277,8 @@
                         
                         ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1', IS_CLIENT), 'Account #.1')}
                         ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee', IS_CLIENT), 'Activation Fee')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1'), 'Date Started.1')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1'), 'Date Ended.1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1', IS_CLIENT), 'Date Started.1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1', IS_CLIENT), 'Date Ended.1')}
                         ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', IS_CLIENT), 'Status')}
                         
                         ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1', IS_CLIENT), 'Hedge Result 1.1')}
@@ -2277,17 +2291,17 @@
                         ${cell(formatCurrencyValue(getVal('Hedge Net.1')), 'Hedge Net.1')}
                         
                         ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1', IS_CLIENT), 'Payout 1')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1'), 'Date 1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1', IS_CLIENT), 'Date 1')}
                         ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2', IS_CLIENT), 'Payout 2')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2'), 'Date 2')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2', IS_CLIENT), 'Date 2')}
                         ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3', IS_CLIENT), 'Payout 3')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3'), 'Date 3')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3', IS_CLIENT), 'Date 3')}
                         ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4', IS_CLIENT), 'Payout 4')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4'), 'Date 4')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4', IS_CLIENT), 'Date 4')}
 
                         ${cell(getVal('Farming Net'), 'Farming Net')}
                         
-                        ${generateDayColumns(ev, cell, index, currentRowNum)}
+                        ${generateDayColumns(ev, cell, index, currentRowNum, IS_CLIENT)}
                     `;
                     fragment.appendChild(row);
                     rowsBuilt++;
@@ -2336,6 +2350,8 @@
                     calculateSectionPositions();
                 }, 100);
         }
+
+        fixSubHeaderTop();
 
         function loadMoreEvaluations() {
             evalPage++;
@@ -2395,7 +2411,7 @@
             return string;
         }
 
-        function generateDayColumns(ev, cell, index, currentRowNum) {
+        function generateDayColumns(ev, cell, index, currentRowNum, readOnly=false){
             let html = '';
             for (let i = 1; i <= 30; i++) {
                 const propDayKey = `Prop Day ${i}`;
@@ -2419,7 +2435,7 @@
                 // Render Prop Day
                 // Note: We're passing the propDayKey which cell() uses to lookup note.
                 // Since we deleted it, no note indicator will appear.
-                html += cell(getInputHtml(ev[propDayKey] || '', 'text', index, propDayKey), propDayKey);
+                html += cell(getInputHtml(ev[propDayKey] || '', 'text', index, propDayKey, readOnly), propDayKey);
                 
                 // Restore note immediately after rendering the cell so data is consistent
                 if (hasNote && ev._notes) ev._notes[propDayKey] = originalNote;
@@ -2430,18 +2446,18 @@
                 
                 const safeValue = progressContent.replace(/"/g, '&quot;');
                 
-                html += `<td class="prop-progress-cell" style="padding: 2px;">
-                            <input type="text" 
-                                   class="cell-input" 
-                                   value="${safeValue}" 
-                                   placeholder="-"
-                                   onchange="updatePropProgress(this, ${index}, '${propDayKey}')"
-                                   style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em;"
-                            >
-                         </td>`;
+                    html += `<td class="prop-progress-cell" style="padding: 2px;">
+                                <input type="text" 
+                                    class="cell-input" 
+                                    value="${safeValue}" 
+                                    placeholder="-"
+                                    ${readOnly ? 'readonly' : `onchange="updatePropProgress(this, ${index}, '${propDayKey}')"`}
+                                    style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em; ${readOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"
+                                >
+                            </td>`;
 
                 // 4. Render Hedge Day Cell
-                html += cell(getInputHtml(ev[hedgeDayKey] || '', 'text', index, hedgeDayKey), hedgeDayKey);
+                html += cell(getInputHtml(ev[hedgeDayKey] || '', 'text', index, hedgeDayKey, readOnly), hedgeDayKey);
             }
             return html;
         }
