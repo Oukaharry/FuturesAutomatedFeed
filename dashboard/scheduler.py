@@ -49,7 +49,12 @@ def update_all_clients_watermarks():
                 # Matches Excel: =B6+B3+B4+B5+B25
                 from utils.data_processor import calculate_statistics
                 stats = calculate_statistics(evals)
-                net_profit = stats['profitability_completed']['net_profit']
+                net_profit = (
+                    stats.get('cashflow_inprogress', {}).get('net_profit')
+                    if isinstance(stats, dict) else None
+                )
+                if net_profit is None:
+                    net_profit = stats.get('profitability_completed', {}).get('net_profit', 0.0)
                 
                 # Save daily snapshot
                 save_daily_profit(client_id, net_profit, today_str, source='auto')
