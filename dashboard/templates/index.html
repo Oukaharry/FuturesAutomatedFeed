@@ -1988,17 +1988,19 @@
             }).format(num);
         }
 
-        function updateDashboard() {
+        function updateDashboard(silent = false) {
             // Prevent update if user is interacting
             if (document.querySelector('.cell-input:focus')) return;
             if (document.querySelector('.dropdown-menu.show')) return;
             if (isEditing) return;
             if (isDatePickerOpen) return;
 
-            // Show loading indicator immediately before fetch
-            const evalBody = document.getElementById('evaluations-body');
-            if (evalBody) {
-                evalBody.innerHTML = evalSpinnerHTML();
+            // Show loading indicator only on initial load (not silent auto-refresh)
+            if (!silent) {
+                const evalBody = document.getElementById('evaluations-body');
+                if (evalBody) {
+                    evalBody.innerHTML = evalSpinnerHTML();
+                }
             }
 
             if (!CLIENT_ID) {
@@ -2023,11 +2025,13 @@
 
                     // Handle API-level errors
                     if (data.status === 'error') {
-                        const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
-                            Error loading data: ${data.message || 'Unknown error'}.<br>
-                            <small style="color:#94a3b8;">Try refreshing the page or logging out and back in.</small>
-                        </td></tr>`;
+                        if (!silent) {
+                            const evalBody = document.getElementById('evaluations-body');
+                            if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
+                                Error loading data: ${data.message || 'Unknown error'}.<br>
+                                <small style="color:#94a3b8;">Try refreshing the page or logging out and back in.</small>
+                            </td></tr>`;
+                        }
                         dataLoaded = true;
                         return;
                     }
@@ -2048,7 +2052,9 @@
                     const lastUpdatedEl = document.getElementById('last-updated');
                     if (lastUpdatedEl) lastUpdatedEl.textContent = data.last_updated;
                     
-                    try { renderEvaluationsTable(); } catch(e) {
+                    // On silent auto-refresh, preserve current page position
+                    const resetPage = !silent;
+                    try { renderEvaluationsTable(resetPage); } catch(e) {
                         console.error('renderEvaluationsTable error:', e);
                         const evalBody = document.getElementById('evaluations-body');
                         if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
@@ -2057,13 +2063,15 @@
                     }
 
                     // Safety retry: if tbody has no rows but data exists, re-render after a tick
-                    setTimeout(() => {
-                        const eb = document.getElementById('evaluations-body');
-                        if (eb && eb.rows.length === 0 && currentData.evaluations && currentData.evaluations.length > 0) {
-                            console.warn('Evaluations empty after first render – retrying...');
-                            try { renderEvaluationsTable(); } catch(e) { console.error('Retry render error:', e); }
-                        }
-                    }, 150);
+                    if (!silent) {
+                        setTimeout(() => {
+                            const eb = document.getElementById('evaluations-body');
+                            if (eb && eb.rows.length === 0 && currentData.evaluations && currentData.evaluations.length > 0) {
+                                console.warn('Evaluations empty after first render – retrying...');
+                                try { renderEvaluationsTable(); } catch(e) { console.error('Retry render error:', e); }
+                            }
+                        }, 150);
+                    }
                     try { renderStats(data); } catch(e) { console.error('renderStats error:', e); }
                     try { renderPositions(data); } catch(e) { console.error('renderPositions error:', e); }
                     try { renderHedgeAccounts(data); } catch(e) { console.error('renderHedgeAccounts error:', e); }
@@ -4351,8 +4359,9 @@
         // Initialize Dashboard
         updateDashboard();
         
-        // Disable automatic polling (was 30 seconds)
-        // setInterval(updateDashboard, 30000);
+        // Auto-refresh every 30s (silent mode: no spinner, preserves scroll/page)
+        // This ensures pushed data from the trader app appears on the dashboard
+        setInterval(() => updateDashboard(true), 30000);
 
     </script>
 </body>

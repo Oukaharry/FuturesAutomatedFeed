@@ -4103,6 +4103,27 @@ def update_data():
                 evaluations = data.get("evaluations", existing_data.get("evaluations", []))
                 evaluations = normalize_evaluations(evaluations)
                 
+                # Deep-merge evaluations: preserve push-sourced fields (Hedge Results, deals, etc.)
+                # that the stale frontend may not have received yet.
+                existing_evals = existing_data.get("evaluations", [])
+                PUSH_SOURCED_KEYS = {
+                    'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3',
+                    'Hedge Result 4', 'Hedge Result 5',
+                    'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+                    'Hedge Result 4.1', 'Hedge Result 5.1',
+                    'Hedge Result 6', 'Hedge Result 7',
+                    'Hedge Net', 'Hedge Net.1',
+                }
+                for i, ev in enumerate(evaluations):
+                    if i < len(existing_evals):
+                        existing_ev = existing_evals[i]
+                        for key in PUSH_SOURCED_KEYS:
+                            existing_val = existing_ev.get(key)
+                            incoming_val = ev.get(key)
+                            # Keep the existing (push-sourced) value when the frontend sends empty/missing
+                            if existing_val and (not incoming_val or str(incoming_val).strip() == ''):
+                                ev[key] = existing_val
+                
                 # Merge the update data with existing data
                 client_data = {
                     "deals": data.get("deals", existing_data.get("deals", [])),
