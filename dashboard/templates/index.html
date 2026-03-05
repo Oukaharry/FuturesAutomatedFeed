@@ -332,7 +332,7 @@
         .table-scroll-wrapper {
             position: relative;
         }
-        
+
         .scroll-controls {
             display: flex;
             justify-content: space-between;
@@ -345,22 +345,28 @@
             gap: 16px;
             flex-wrap: nowrap;
         }
-        
+
         .scroll-controls::-webkit-scrollbar {
             height: 6px;
         }
-        
+
         .scroll-controls::-webkit-scrollbar-thumb {
             background: #475569;
             border-radius: 3px;
         }
-        
+
         .scroll-buttons {
             display: flex;
             gap: 4px;
-            flex-shrink: 0;
+            flex: 1;
         }
-        
+
+        .scroll-buttons:last-child {
+            flex: 0;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
         .scroll-btn {
             background: #1e293b;
             border: 1px solid rgba(255,255,255,0.1);
@@ -373,28 +379,29 @@
             transition: all 0.15s ease;
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 2px;
             white-space: nowrap;
-            flex-shrink: 0;
+            flex: 1;
         }
-        
+
         .scroll-btn:hover {
             background: #334155;
             border-color: rgba(255,255,255,0.2);
             color: #f8fafc;
         }
-        
+
         .scroll-btn:active {
             background: #0f172a;
             transform: scale(0.98);
         }
-        
+
         .scroll-btn.active-section {
             background: rgba(251,191,36,0.15);
             border-color: rgba(251,191,36,0.5);
             color: #fbbf24;
         }
-        
+
         .scroll-hint {
             display: none;
         }
@@ -494,8 +501,10 @@
            sticky thead is fully scoped inside — cannot escape div#evaluations. */
         #eval-table-container {
             overflow: auto !important;
-            height: calc(100vh - 160px);
-            height: calc(100dvh - 160px);
+            height: calc((100vh - 160px) / 0.75);
+            height: calc((100dvh - 160px) / 0.75);
+
+            zoom: 0.75;
         }
 
         /* 2. Reset Everything first */
@@ -711,13 +720,6 @@
             background: transparent !important; /* Let body bg show through or card style */
             width: 100% !important; /* Wider on dark mode */
             max-width: 1800px !important;
-        }
-
-
-
-        body {
-            background-color: var(--bg-dark) !important;
-            color: var(--text-primary) !important;
         }
 
         .container {
