@@ -2836,7 +2836,12 @@ def api_get_watermark_history(client_id):
                 except ImportError:
                     from utils.data_processor import calculate_statistics as _cs
                 stats = _cs(client_data['evaluations'])
-                live_net = stats['profitability_completed']['net_profit']
+                live_net = (
+                    stats.get('cashflow_inprogress', {}).get('net_profit')
+                    if isinstance(stats, dict) else None
+                )
+                if live_net is None:
+                    live_net = stats.get('profitability_completed', {}).get('net_profit', 0.0)
                 save_daily_profit(client_id, live_net, today_str, source='live')
         except Exception as snap_err:
             logging.warning(f"Live watermark snapshot failed for {client_id}: {snap_err}")
