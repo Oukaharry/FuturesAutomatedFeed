@@ -744,6 +744,21 @@
             /* Must stay above ALL sticky table headers (max z-index 10001) */
             z-index: 10010 !important;
         }
+
+            .header-combined-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;              /* CRITICAL in flex layouts */
+            }
+
+            .tabs {
+            min-width: 0;              /* CRITICAL so it can shrink */
+            overflow-x: scroll;          /* tabs scroll instead of pushing outside */
+            overflow-y: hidden;
+            }
+
+            .tabs::-webkit-scrollbar { height: 6px; }
         
         h1, h2, h3, h4, h5, h6 { color: var(--text-primary) !important; }
         
@@ -894,6 +909,7 @@
         .nav-links {
             display: flex;
             gap: 8px;
+            overflow: auto;
         }
 
         @keyframes spin {
