@@ -867,6 +867,11 @@
             color: #0f172a !important;
         }
 
+        .scroll-btn.active-section {
+            background: rgba(251,191,36,0.15) !important;
+            border-color: rgba(251,191,36,0.5) !important;
+            color: #fbbf24 !important;
+        }
         /* Modern Nav Bar Styles (Super Admin) */
         .modern-nav {
             background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
@@ -1813,37 +1818,85 @@
             'farming-phase': 4500
         };
         
+        let activeSectionId = 'scroll-btn-info';
+        let manualScrollTarget = null;
+        let manualScrollTimeout = null;
+
+        const SECTION_TO_BTN = {
+            'eval-info': 'scroll-btn-info',
+            'eval-phase': 'scroll-btn-eval',
+            'funded-phase': 'scroll-btn-funded',
+            'farming-phase': 'scroll-btn-farm'
+        };
+
+        const BTN_TO_SECTION_LABEL = {
+            'scroll-btn-info': {
+                text: '📋 EVAL INFO',
+                bg: 'rgba(59,130,246,0.15)',
+                color: '#60a5fa',
+                border: 'rgba(59,130,246,0.35)'
+            },
+            'scroll-btn-eval': {
+                text: '📊 EVAL PHASE',
+                bg: 'rgba(34,197,94,0.15)',
+                color: '#4ade80',
+                border: 'rgba(34,197,94,0.35)'
+            },
+            'scroll-btn-funded': {
+                text: '💰 FUNDED PHASE',
+                bg: 'rgba(244,63,94,0.15)',
+                color: '#fb7185',
+                border: 'rgba(244,63,94,0.35)'
+            },
+            'scroll-btn-farm': {
+                text: '🌱 FARMING PHASE',
+                bg: 'rgba(168,85,247,0.15)',
+                color: '#c084fc',
+                border: 'rgba(168,85,247,0.35)'
+            }
+        };
+
         // Calculate actual section positions based on rendered sub-header cells
         function calculateSectionPositions() {
             const table = document.getElementById('evaluations-table');
             if (!table || !tableContainer) return;
-            
-            const containerRect = tableContainer.getBoundingClientRect();
-            
+
             // Sticky columns width: # (50px) + trash (40px) + prop firm (180px) = 270px
             // Subtract so the section's first column lands exactly at the right edge of sticky cols
-            const STICKY_WIDTH = 270;
+            const STICKY_WIDTH = 300;
 
-            // Helper: get scroll target for a given th element
-            const getPos = (th) => {
-                if (!th) return null;
-                const rect = th.getBoundingClientRect();
-                return Math.max(0, rect.left - containerRect.left + tableContainer.scrollLeft - STICKY_WIDTH);
-            };
-            
-            // Info  → "Account Size": first blue sub-header that is NOT the sticky Prop Firm col
             const infoTh = table.querySelector('thead tr:nth-child(2) th.sub-header-blue:not(.sticky-prop-firm-col)');
-            // Eval  → first green sub-header = "Date Started" (eval phase)
             const evalTh = table.querySelector('thead tr:nth-child(2) th.sub-header-green');
-            // Funded → first orange sub-header = "Account #" (funded phase)
             const fundedTh = table.querySelector('thead tr:nth-child(2) th.sub-header-orange');
-            // Farm  → first purple sub-header = "Farming Net"
             const farmTh = table.querySelector('thead tr:nth-child(2) th.sub-header-purple');
-            
-            if (infoTh)   sectionPositions['eval-info']     = getPos(infoTh);
-            if (evalTh)   sectionPositions['eval-phase']    = getPos(evalTh);
-            if (fundedTh) sectionPositions['funded-phase']  = getPos(fundedTh);
-            if (farmTh)   sectionPositions['farming-phase'] = getPos(farmTh);
+
+            const getPos = (th) => {
+                if (!th) return 0;
+                return Math.max(0, th.offsetLeft - STICKY_WIDTH);
+            };
+
+            sectionPositions['eval-info'] = getPos(infoTh);
+            sectionPositions['eval-phase'] = getPos(evalTh);
+            sectionPositions['funded-phase'] = getPos(fundedTh);
+            sectionPositions['farming-phase'] = getPos(farmTh);
+        }
+
+        function setActiveSection(btnId) {
+            activeSectionId = btnId;
+
+            document.querySelectorAll('.scroll-btn').forEach((btn) => {
+                btn.classList.toggle('active-section', btn.id === btnId);
+            });
+
+            const lbl = document.getElementById('section-sticky-label');
+            const cfg = BTN_TO_SECTION_LABEL[btnId];
+
+            if (lbl && cfg) {
+                lbl.textContent = cfg.text;
+                lbl.style.background = cfg.bg;
+                lbl.style.color = cfg.color;
+                lbl.style.borderColor = cfg.border;
+            }
         }
         
         function scrollTableBy(amount) {
@@ -1862,9 +1915,28 @@
         }
         
         function scrollToSection(section) {
-            if (tableContainer && sectionPositions[section] !== undefined) {
-                tableContainer.scrollTo({ left: sectionPositions[section], behavior: 'smooth' });
+            if (!tableContainer) return;
+
+            calculateSectionPositions();
+
+            const targetLeft = sectionPositions[section];
+            const btnId = SECTION_TO_BTN[section];
+
+            if (btnId) {
+                manualScrollTarget = section;
+                setActiveSection(btnId);
             }
+
+            tableContainer.scrollTo({
+                left: targetLeft,
+                behavior: 'smooth'
+            });
+
+            clearTimeout(manualScrollTimeout);
+            manualScrollTimeout = setTimeout(() => {
+                manualScrollTarget = null;
+                updateScrollIndicator();
+            }, 450);
         }
         
         // Update scroll position indicator and shadow classes
@@ -1873,54 +1945,50 @@
             
             const scrollLeft = tableContainer.scrollLeft;
             const scrollMax = tableContainer.scrollWidth - tableContainer.clientWidth;
-            // Use scroll position + small offset to determine visible section
-            // This shows what section is currently dominant in the view
-            const visiblePosition = scrollLeft + 200; // 200px into visible area
             
-            // Update shadow indicators
             tableContainer.classList.toggle('can-scroll-left', scrollLeft > 10);
             tableContainer.classList.toggle('can-scroll-right', scrollLeft < scrollMax - 10);
-            
-            // Highlight active scroll section button
-            const btnMap = {
-                'scroll-btn-info':   visiblePosition < sectionPositions['eval-phase'],
-                'scroll-btn-eval':   visiblePosition >= sectionPositions['eval-phase']   && visiblePosition < sectionPositions['funded-phase'],
-                'scroll-btn-funded': visiblePosition >= sectionPositions['funded-phase'] && visiblePosition < sectionPositions['farming-phase'],
-                'scroll-btn-farm':   visiblePosition >= sectionPositions['farming-phase'],
-            };
-            Object.entries(btnMap).forEach(([id, active]) => {
-                const btn = document.getElementById(id);
-                if (btn) btn.classList.toggle('active-section', active);
-            });
 
-            // Update sticky section label in the EVAL INFO header
-            const sectionLabelMap = [
-                { id: 'scroll-btn-farm',   text: '🌱 FARMING PHASE',    bg: 'rgba(168,85,247,0.15)',  color: '#c084fc', border: 'rgba(168,85,247,0.35)' },
-                { id: 'scroll-btn-funded', text: '💰 FUNDED PHASE',     bg: 'rgba(244,63,94,0.15)',  color: '#fb7185', border: 'rgba(244,63,94,0.35)'  },
-                { id: 'scroll-btn-eval',   text: '📊 EVAL PHASE',       bg: 'rgba(34,197,94,0.15)',  color: '#4ade80', border: 'rgba(34,197,94,0.35)'  },
-                { id: 'scroll-btn-info',   text: '📋 EVAL INFO',        bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: 'rgba(59,130,246,0.35)' },
-            ];
-            const activeSection = sectionLabelMap.find(s => btnMap[s.id]);
-            const lbl = document.getElementById('section-sticky-label');
-            if (lbl && activeSection) {
-                lbl.textContent = activeSection.text;
-                lbl.style.background    = activeSection.bg;
-                lbl.style.color         = activeSection.color;
-                lbl.style.borderColor   = activeSection.border;
+            if (manualScrollTarget) {
+                const targetLeft = sectionPositions[manualScrollTarget] ?? 0;
+                const closeEnough = Math.abs(scrollLeft - targetLeft) < 8;
+
+                if (!closeEnough) {
+                    return;
+                }
+
+                manualScrollTarget = null;
             }
 
+            let nextActiveBtn = 'scroll-btn-info';
+
+            if (scrollLeft >= sectionPositions['farming-phase'] - 1) {
+                nextActiveBtn = 'scroll-btn-farm';
+            } else if (scrollLeft >= sectionPositions['funded-phase'] - 1) {
+                nextActiveBtn = 'scroll-btn-funded';
+            } else if (scrollLeft >= sectionPositions['eval-phase'] - 1) {
+                nextActiveBtn = 'scroll-btn-eval';
+            }
+
+            if (nextActiveBtn !== activeSectionId) {
+                setActiveSection(nextActiveBtn);
+            }
         }
 
         // Initialize scroll listener
         if (tableContainer) {
             tableContainer.addEventListener('scroll', updateScrollIndicator);
-            // Initial update after table renders
+            
+            setTimeout(() => {
+                calculateSectionPositions();
+                updateScrollIndicator();
+            }, 0);
+
             setTimeout(() => {
                 calculateSectionPositions();
                 updateScrollIndicator();
             }, 500);
 
-            // Recalculate on window resize
             window.addEventListener('resize', () => {
                 calculateSectionPositions();
                 updateScrollIndicator();
