@@ -332,7 +332,7 @@
         .table-scroll-wrapper {
             position: relative;
         }
-        
+
         .scroll-controls {
             display: flex;
             justify-content: space-between;
@@ -345,22 +345,28 @@
             gap: 16px;
             flex-wrap: nowrap;
         }
-        
+
         .scroll-controls::-webkit-scrollbar {
             height: 6px;
         }
-        
+
         .scroll-controls::-webkit-scrollbar-thumb {
             background: #475569;
             border-radius: 3px;
         }
-        
+
         .scroll-buttons {
             display: flex;
             gap: 4px;
-            flex-shrink: 0;
+            flex: 1;
         }
-        
+
+        .scroll-buttons:last-child {
+            flex: 0;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
         .scroll-btn {
             background: #1e293b;
             border: 1px solid rgba(255,255,255,0.1);
@@ -373,28 +379,29 @@
             transition: all 0.15s ease;
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 2px;
             white-space: nowrap;
-            flex-shrink: 0;
+            flex: 1;
         }
-        
+
         .scroll-btn:hover {
             background: #334155;
             border-color: rgba(255,255,255,0.2);
             color: #f8fafc;
         }
-        
+
         .scroll-btn:active {
             background: #0f172a;
             transform: scale(0.98);
         }
-        
+
         .scroll-btn.active-section {
             background: rgba(251,191,36,0.15);
             border-color: rgba(251,191,36,0.5);
             color: #fbbf24;
         }
-        
+
         .scroll-hint {
             display: none;
         }
@@ -494,8 +501,10 @@
            sticky thead is fully scoped inside — cannot escape div#evaluations. */
         #eval-table-container {
             overflow: auto !important;
-            height: calc(100vh - 160px);
-            height: calc(100dvh - 160px);
+            height: calc((100vh - 160px) / 0.75);
+            height: calc((100dvh - 160px) / 0.75);
+
+            zoom: 0.75;
         }
 
         /* 2. Reset Everything first */
@@ -713,13 +722,6 @@
             max-width: 1800px !important;
         }
 
-
-
-        body {
-            background-color: var(--bg-dark) !important;
-            color: var(--text-primary) !important;
-        }
-
         .container {
             background: transparent !important;
             width: 100% !important;
@@ -740,9 +742,58 @@
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
             overflow: visible !important;
             /* Must stay above ALL sticky table headers (max z-index 10001) */
-            z-index: 10010 !important;
+            position: sticky;
+            top: 0;
         }
-        
+        /* Fix h1 so it can shrink and truncate */
+        .header-combined-bar h1 {
+            font-size: clamp(0.75rem, 1.5vw, 1.1rem);  /* scales with viewport */
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+            flex-shrink: 1;                              /* allow shrinking */
+        }
+
+        /* Fix status bar so it can wrap */
+        .header-combined-bar .status {
+            flex-shrink: 1 !important;                  /* override inline flex-shrink:0 */
+            flex-wrap: wrap;                             /* let items wrap to next line */
+            min-width: 0;
+        }
+
+        /* Allow Version History button text to wrap */
+        .header-action-btn {
+            white-space: normal !important;              /* override the nowrap in style.css */
+            text-align: center;
+            max-width: 100px;                             /* forces wrap at small sizes */
+            line-height: 1.2;
+        }
+
+        /* Tighten logout pill at small sizes */
+        .header-logout-pill {
+            padding: 5px 10px;
+        }
+
+        /* Overall bar flex tuning */
+        .header-combined-bar {
+            flex-wrap: nowrap;
+            align-items: center;
+        }
+
+        /* Tabs: shrink but scroll internally (you already have this, confirm it's applied) */
+        .tab-btn {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        .tab-btn:focus,
+        .tab-btn:focus-visible {
+            outline: none !important;
+            box-shadow: none !important;
+            border: none !important;
+        }
         h1, h2, h3, h4, h5, h6 { color: var(--text-primary) !important; }
         
         .version-badge {
@@ -850,6 +901,11 @@
             color: #0f172a !important;
         }
 
+        .scroll-btn.active-section {
+            background: rgba(251,191,36,0.15) !important;
+            border-color: rgba(251,191,36,0.5) !important;
+            color: #fbbf24 !important;
+        }
         /* Modern Nav Bar Styles (Super Admin) */
         .modern-nav {
             background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
@@ -892,6 +948,7 @@
         .nav-links {
             display: flex;
             gap: 8px;
+            overflow: auto;
         }
 
         @keyframes spin {
@@ -1039,7 +1096,7 @@
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
                      style="width: 40px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
                 {% endif %}
-                <h1 style="flex-shrink:0;">Trading Performance Dashboard</h1>
+                <h1 >Trading Performance Dashboard</h1>
                 <div class="tabs" style="margin-bottom:0; flex:1; display:flex; justify-content:center;">
                     <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
                     <button class="tab-btn" onclick="openTab('stats')">Stats</button>
@@ -1048,7 +1105,7 @@
                     <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
                     <button class="tab-btn" onclick="openTab('vps')">VPS</button>
                 </div>
-                <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; flex-shrink:0;">
+                <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
                     {% if user_type in ('admin', 'super_admin') %}
                     <button class="header-action-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
                         <i class="fas fa-history"></i> Version History
@@ -1795,37 +1852,85 @@
             'farming-phase': 4500
         };
         
+        let activeSectionId = 'scroll-btn-info';
+        let manualScrollTarget = null;
+        let manualScrollTimeout = null;
+
+        const SECTION_TO_BTN = {
+            'eval-info': 'scroll-btn-info',
+            'eval-phase': 'scroll-btn-eval',
+            'funded-phase': 'scroll-btn-funded',
+            'farming-phase': 'scroll-btn-farm'
+        };
+
+        const BTN_TO_SECTION_LABEL = {
+            'scroll-btn-info': {
+                text: '📋 EVAL INFO',
+                bg: 'rgba(59,130,246,0.15)',
+                color: '#60a5fa',
+                border: 'rgba(59,130,246,0.35)'
+            },
+            'scroll-btn-eval': {
+                text: '📊 EVAL PHASE',
+                bg: 'rgba(34,197,94,0.15)',
+                color: '#4ade80',
+                border: 'rgba(34,197,94,0.35)'
+            },
+            'scroll-btn-funded': {
+                text: '💰 FUNDED PHASE',
+                bg: 'rgba(244,63,94,0.15)',
+                color: '#fb7185',
+                border: 'rgba(244,63,94,0.35)'
+            },
+            'scroll-btn-farm': {
+                text: '🌱 FARMING PHASE',
+                bg: 'rgba(168,85,247,0.15)',
+                color: '#c084fc',
+                border: 'rgba(168,85,247,0.35)'
+            }
+        };
+
         // Calculate actual section positions based on rendered sub-header cells
         function calculateSectionPositions() {
             const table = document.getElementById('evaluations-table');
             if (!table || !tableContainer) return;
-            
-            const containerRect = tableContainer.getBoundingClientRect();
-            
+
             // Sticky columns width: # (50px) + trash (40px) + prop firm (180px) = 270px
             // Subtract so the section's first column lands exactly at the right edge of sticky cols
-            const STICKY_WIDTH = 270;
+            const STICKY_WIDTH = 300;
 
-            // Helper: get scroll target for a given th element
-            const getPos = (th) => {
-                if (!th) return null;
-                const rect = th.getBoundingClientRect();
-                return Math.max(0, rect.left - containerRect.left + tableContainer.scrollLeft - STICKY_WIDTH);
-            };
-            
-            // Info  → "Account Size": first blue sub-header that is NOT the sticky Prop Firm col
             const infoTh = table.querySelector('thead tr:nth-child(2) th.sub-header-blue:not(.sticky-prop-firm-col)');
-            // Eval  → first green sub-header = "Date Started" (eval phase)
             const evalTh = table.querySelector('thead tr:nth-child(2) th.sub-header-green');
-            // Funded → first orange sub-header = "Account #" (funded phase)
             const fundedTh = table.querySelector('thead tr:nth-child(2) th.sub-header-orange');
-            // Farm  → first purple sub-header = "Farming Net"
             const farmTh = table.querySelector('thead tr:nth-child(2) th.sub-header-purple');
-            
-            if (infoTh)   sectionPositions['eval-info']     = getPos(infoTh);
-            if (evalTh)   sectionPositions['eval-phase']    = getPos(evalTh);
-            if (fundedTh) sectionPositions['funded-phase']  = getPos(fundedTh);
-            if (farmTh)   sectionPositions['farming-phase'] = getPos(farmTh);
+
+            const getPos = (th) => {
+                if (!th) return 0;
+                return Math.max(0, th.offsetLeft - STICKY_WIDTH);
+            };
+
+            sectionPositions['eval-info'] = getPos(infoTh);
+            sectionPositions['eval-phase'] = getPos(evalTh);
+            sectionPositions['funded-phase'] = getPos(fundedTh);
+            sectionPositions['farming-phase'] = getPos(farmTh);
+        }
+
+        function setActiveSection(btnId) {
+            activeSectionId = btnId;
+
+            document.querySelectorAll('.scroll-btn').forEach((btn) => {
+                btn.classList.toggle('active-section', btn.id === btnId);
+            });
+
+            const lbl = document.getElementById('section-sticky-label');
+            const cfg = BTN_TO_SECTION_LABEL[btnId];
+
+            if (lbl && cfg) {
+                lbl.textContent = cfg.text;
+                lbl.style.background = cfg.bg;
+                lbl.style.color = cfg.color;
+                lbl.style.borderColor = cfg.border;
+            }
         }
         
         function scrollTableBy(amount) {
@@ -1844,9 +1949,28 @@
         }
         
         function scrollToSection(section) {
-            if (tableContainer && sectionPositions[section] !== undefined) {
-                tableContainer.scrollTo({ left: sectionPositions[section], behavior: 'smooth' });
+            if (!tableContainer) return;
+
+            calculateSectionPositions();
+
+            const targetLeft = sectionPositions[section];
+            const btnId = SECTION_TO_BTN[section];
+
+            if (btnId) {
+                manualScrollTarget = section;
+                setActiveSection(btnId);
             }
+
+            tableContainer.scrollTo({
+                left: targetLeft,
+                behavior: 'smooth'
+            });
+
+            clearTimeout(manualScrollTimeout);
+            manualScrollTimeout = setTimeout(() => {
+                manualScrollTarget = null;
+                updateScrollIndicator();
+            }, 450);
         }
         
         // Update scroll position indicator and shadow classes
@@ -1855,54 +1979,50 @@
             
             const scrollLeft = tableContainer.scrollLeft;
             const scrollMax = tableContainer.scrollWidth - tableContainer.clientWidth;
-            // Use scroll position + small offset to determine visible section
-            // This shows what section is currently dominant in the view
-            const visiblePosition = scrollLeft + 200; // 200px into visible area
             
-            // Update shadow indicators
             tableContainer.classList.toggle('can-scroll-left', scrollLeft > 10);
             tableContainer.classList.toggle('can-scroll-right', scrollLeft < scrollMax - 10);
-            
-            // Highlight active scroll section button
-            const btnMap = {
-                'scroll-btn-info':   visiblePosition < sectionPositions['eval-phase'],
-                'scroll-btn-eval':   visiblePosition >= sectionPositions['eval-phase']   && visiblePosition < sectionPositions['funded-phase'],
-                'scroll-btn-funded': visiblePosition >= sectionPositions['funded-phase'] && visiblePosition < sectionPositions['farming-phase'],
-                'scroll-btn-farm':   visiblePosition >= sectionPositions['farming-phase'],
-            };
-            Object.entries(btnMap).forEach(([id, active]) => {
-                const btn = document.getElementById(id);
-                if (btn) btn.classList.toggle('active-section', active);
-            });
 
-            // Update sticky section label in the EVAL INFO header
-            const sectionLabelMap = [
-                { id: 'scroll-btn-farm',   text: '🌱 FARMING PHASE',    bg: 'rgba(168,85,247,0.15)',  color: '#c084fc', border: 'rgba(168,85,247,0.35)' },
-                { id: 'scroll-btn-funded', text: '💰 FUNDED PHASE',     bg: 'rgba(244,63,94,0.15)',  color: '#fb7185', border: 'rgba(244,63,94,0.35)'  },
-                { id: 'scroll-btn-eval',   text: '📊 EVAL PHASE',       bg: 'rgba(34,197,94,0.15)',  color: '#4ade80', border: 'rgba(34,197,94,0.35)'  },
-                { id: 'scroll-btn-info',   text: '📋 EVAL INFO',        bg: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: 'rgba(59,130,246,0.35)' },
-            ];
-            const activeSection = sectionLabelMap.find(s => btnMap[s.id]);
-            const lbl = document.getElementById('section-sticky-label');
-            if (lbl && activeSection) {
-                lbl.textContent = activeSection.text;
-                lbl.style.background    = activeSection.bg;
-                lbl.style.color         = activeSection.color;
-                lbl.style.borderColor   = activeSection.border;
+            if (manualScrollTarget) {
+                const targetLeft = sectionPositions[manualScrollTarget] ?? 0;
+                const closeEnough = Math.abs(scrollLeft - targetLeft) < 8;
+
+                if (!closeEnough) {
+                    return;
+                }
+
+                manualScrollTarget = null;
             }
 
+            let nextActiveBtn = 'scroll-btn-info';
+
+            if (scrollLeft >= sectionPositions['farming-phase'] - 1) {
+                nextActiveBtn = 'scroll-btn-farm';
+            } else if (scrollLeft >= sectionPositions['funded-phase'] - 1) {
+                nextActiveBtn = 'scroll-btn-funded';
+            } else if (scrollLeft >= sectionPositions['eval-phase'] - 1) {
+                nextActiveBtn = 'scroll-btn-eval';
+            }
+
+            if (nextActiveBtn !== activeSectionId) {
+                setActiveSection(nextActiveBtn);
+            }
         }
 
         // Initialize scroll listener
         if (tableContainer) {
             tableContainer.addEventListener('scroll', updateScrollIndicator);
-            // Initial update after table renders
+            
+            setTimeout(() => {
+                calculateSectionPositions();
+                updateScrollIndicator();
+            }, 0);
+
             setTimeout(() => {
                 calculateSectionPositions();
                 updateScrollIndicator();
             }, 500);
 
-            // Recalculate on window resize
             window.addEventListener('resize', () => {
                 calculateSectionPositions();
                 updateScrollIndicator();
