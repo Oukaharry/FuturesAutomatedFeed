@@ -720,7 +720,33 @@ class MT5DataPusher:
         # Track farming day slots for each account to ensure sequential filling
         # Maps account_number -> {date_str: slot_number}
         account_farming_slots = {}
-        
+
+        # Pre-build per-account set of close_times already stored in Hedge Day Notes.
+        # This is the deduplication guard: if a close_time is already recorded in
+        # any "Hedge Day N Note" field, that trade has already been pushed and we skip it.
+        # Maps account_number -> set of close_time signature strings
+        account_pushed_close_times = {}
+
+        def _get_pushed_close_times(account_number, phase_code):
+            if account_number in account_pushed_close_times:
+                return account_pushed_close_times[account_number]
+            pushed = set()
+            fa_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
+            for fa_idx, fa_type in (fa_matches or []):
+                if fa_type != 'funded':
+                    continue
+                ev = evaluations[fa_idx]
+                for day_num in range(1, 35):
+                    note = ev.get(f'Hedge Day {day_num} Note', '')
+                    if note and 'Close:' in str(note):
+                        # Extract close time signature: "Open: ... | Close: 2026-01-21 16:00"
+                        close_part = str(note).split('Close:')[-1].strip()
+                        if close_part:
+                            pushed.add(close_part)
+                break  # Use first funded eval match
+            account_pushed_close_times[account_number] = pushed
+            return pushed
+
         for agg in aggregated:
             account_number = agg.get('account_number', '')
             phase_code = agg.get('phase_code', '')
@@ -738,53 +764,65 @@ class MT5DataPusher:
             
             # Special handling for Farming phase to ensure sequential day filling
             forced_day_num = None
+            skip_farming = False
             if phase_code == 'FA':
-                # Initialize slot tracker for this account if needed
-                if account_number not in account_farming_slots:
-                    # Find first empty Hedge Day slot in the eval data for this account
-                    first_empty_slot = 1
-                    fa_eval_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
-                    for fa_idx, fa_type in (fa_eval_matches or []):
-                        if fa_type != 'funded':
-                            continue
-                        ev = evaluations[fa_idx]
-                        for day_num in range(1, 35):
-                            val = ev.get(f'Hedge Day {day_num}')
-                            if val is None or val == '' or val == 0 or str(val).strip() in ('', '0', '$0.00', '$0'):
-                                first_empty_slot = day_num
-                                break
-                        else:
-                            first_empty_slot = 35  # All full
-                        break  # Use first funded match
-                    account_farming_slots[account_number] = {'__next_slot': first_empty_slot}
-                
-                # If we have a date, use it for consistency.
-                # If no date (legacy FA comment without date), we treat each aggregation as a new day?
-                # Or just lump them? Without date we can't key by date.
-                # Assuming date exists, or we use trade_number as secondary key if present.
-                if farming_date:
-                    date_str = str(farming_date)
-                    if date_str in account_farming_slots[account_number]:
-                        forced_day_num = account_farming_slots[account_number][date_str]
-                    else:
-                        # Assign next available slot
-                        slot = account_farming_slots[account_number]['__next_slot']
-                        account_farming_slots[account_number][date_str] = slot
-                        account_farming_slots[account_number]['__next_slot'] += 1
-                        forced_day_num = slot
-                else:
-                    # No date - if trade_number is present use it as day num
-                    if trade_number and trade_number > 0:
-                        forced_day_num = trade_number
-                    else:
-                         # Fallback: Just assign next slot for this unknown group?
-                         # This might be risky if we run multiple times.
-                         # But 'FA' without date or number is rare/legacy.
-                         slot = account_farming_slots[account_number]['__next_slot']
-                         account_farming_slots[account_number]['FA_legacy'] = slot # weak key
-                         account_farming_slots[account_number]['__next_slot'] += 1
-                         forced_day_num = slot
+                close_time = agg.get('close_time')
+                def _fmt_time_fa(t):
+                    try:
+                        return str(t)[:16].replace('T', ' ')
+                    except:
+                        return str(t)
+                close_sig = _fmt_time_fa(close_time) if close_time else None
 
+                # Deduplication: check if this close_time was already pushed
+                if close_sig:
+                    pushed_times = _get_pushed_close_times(account_number, phase_code)
+                    if close_sig in pushed_times:
+                        match_log.append(f"⏭️ SKIP (already pushed) {account_number}_FA close={close_sig}")
+                        skip_farming = True
+
+                if not skip_farming:
+                    # Initialize slot tracker for this account if needed
+                    if account_number not in account_farming_slots:
+                        # Find first empty Hedge Day slot in the eval data for this account
+                        first_empty_slot = 1
+                        fa_eval_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
+                        for fa_idx, fa_type in (fa_eval_matches or []):
+                            if fa_type != 'funded':
+                                continue
+                            ev = evaluations[fa_idx]
+                            for day_num in range(1, 35):
+                                val = ev.get(f'Hedge Day {day_num}')
+                                if val is None or val == '' or val == 0 or str(val).strip() in ('', '0', '$0.00', '$0'):
+                                    first_empty_slot = day_num
+                                    break
+                            else:
+                                first_empty_slot = 35  # All full
+                            break  # Use first funded match
+                        account_farming_slots[account_number] = {'__next_slot': first_empty_slot}
+
+                    if farming_date:
+                        date_str = str(farming_date)
+                        if date_str in account_farming_slots[account_number]:
+                            forced_day_num = account_farming_slots[account_number][date_str]
+                        else:
+                            # Assign next available slot
+                            slot = account_farming_slots[account_number]['__next_slot']
+                            account_farming_slots[account_number][date_str] = slot
+                            account_farming_slots[account_number]['__next_slot'] += 1
+                            forced_day_num = slot
+                    else:
+                        # No date - if trade_number is present use it as day num
+                        if trade_number and trade_number > 0:
+                            forced_day_num = trade_number
+                        else:
+                            slot = account_farming_slots[account_number]['__next_slot']
+                            account_farming_slots[account_number]['FA_legacy'] = slot
+                            account_farming_slots[account_number]['__next_slot'] += 1
+                            forced_day_num = slot
+
+            if skip_farming:
+                continue
 
             # Determine which field to update based on phase
             # Use first match to determine field name logic
@@ -819,6 +857,10 @@ class MT5DataPusher:
                 if open_time or close_time:
                     note = f"Open: {_fmt_time(open_time)} | Close: {_fmt_time(close_time)}"
                     evaluations[eval_idx][f'{field_name} Note'] = note
+                    # Register this close_time so re-entrant pushes in the same run are also blocked
+                    if phase_code == 'FA' and close_time:
+                        close_sig_written = _fmt_time(close_time)
+                        account_pushed_close_times.setdefault(account_number, set()).add(close_sig_written)
 
                 updates_made += 1
                 
