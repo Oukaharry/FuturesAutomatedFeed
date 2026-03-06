@@ -741,7 +741,22 @@ class MT5DataPusher:
             if phase_code == 'FA':
                 # Initialize slot tracker for this account if needed
                 if account_number not in account_farming_slots:
-                    account_farming_slots[account_number] = {'__next_slot': 1}
+                    # Find first empty Hedge Day slot in the eval data for this account
+                    first_empty_slot = 1
+                    fa_eval_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
+                    for fa_idx, fa_type in (fa_eval_matches or []):
+                        if fa_type != 'funded':
+                            continue
+                        ev = evaluations[fa_idx]
+                        for day_num in range(1, 35):
+                            val = ev.get(f'Hedge Day {day_num}')
+                            if val is None or val == '' or val == 0 or str(val).strip() in ('', '0', '$0.00', '$0'):
+                                first_empty_slot = day_num
+                                break
+                        else:
+                            first_empty_slot = 35  # All full
+                        break  # Use first funded match
+                    account_farming_slots[account_number] = {'__next_slot': first_empty_slot}
                 
                 # If we have a date, use it for consistency.
                 # If no date (legacy FA comment without date), we treat each aggregation as a new day?
@@ -792,11 +807,26 @@ class MT5DataPusher:
                 
                 # Update the field
                 evaluations[eval_idx][field_name] = net_profit
+
+                # Store open/close timestamps as a companion note
+                open_time = agg.get('open_time')
+                close_time = agg.get('close_time')
+                def _fmt_time(t):
+                    try:
+                        return str(t)[:16].replace('T', ' ')
+                    except:
+                        return str(t)
+                if open_time or close_time:
+                    note = f"Open: {_fmt_time(open_time)} | Close: {_fmt_time(close_time)}"
+                    evaluations[eval_idx][f'{field_name} Note'] = note
+
                 updates_made += 1
                 
                 eval_account = evaluations[eval_idx].get('Account #' if account_type == 'challenge' else 'Account #.1', 'N/A')
                 match_log.append(f"✅ {account_number}_{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f} ({deal_count} deals)")
                 match_log.append(f"   Matched to eval row: {eval_account} (Row {eval_idx})")
+                if open_time or close_time:
+                    match_log.append(f"   🕐 Open: {_fmt_time(open_time)} | Close: {_fmt_time(close_time)}")
         
         match_log.append(f"\n📈 Total updates made: {updates_made}")
         return evaluations, match_log

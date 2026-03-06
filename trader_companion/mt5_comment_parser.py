@@ -108,6 +108,8 @@ class AggregatedTrade:
     total_fee: float = 0.0
     deal_count: int = 0
     deals: List[Dict] = field(default_factory=list)
+    earliest_deal_time: Optional[str] = None  # ISO string of first deal time
+    latest_deal_time: Optional[str] = None    # ISO string of last deal time
     
     @property
     def net_profit(self) -> float:
@@ -142,7 +144,9 @@ class AggregatedTrade:
             "net_profit": round(self.net_profit, 2),
             "deal_count": self.deal_count,
             "key": self.get_key(),
-            "account_signature": self.account_signature
+            "account_signature": self.account_signature,
+            "open_time": self.earliest_deal_time,
+            "close_time": self.latest_deal_time
         }
 
 
@@ -422,7 +426,15 @@ class MT5DealAggregator:
         agg.total_fee += deal.get('fee', 0) or 0
         agg.deal_count += 1
         agg.deals.append(deal)
-        
+
+        # Track earliest/latest deal times for timestamp notes
+        deal_time = deal.get('time')
+        if deal_time:
+            if agg.earliest_deal_time is None or str(deal_time) < agg.earliest_deal_time:
+                agg.earliest_deal_time = str(deal_time)
+            if agg.latest_deal_time is None or str(deal_time) > agg.latest_deal_time:
+                agg.latest_deal_time = str(deal_time)
+
         return key
     
     def _build_key(self, parsed: ParsedComment) -> str:
