@@ -405,7 +405,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         # Farming Results: SUM(all Hedge Day columns) = ALL farming
         # Payouts: SUM(AC,AE,AG,AI) = ALL payouts
         
-        stats["cashflow_inprogress"]["challenge_fees"] += fee  # Sum ALL fees
+        stats["cashflow_inprogress"]["challenge_fees"] += fee + activation_fee  # Sum ALL fees + activation fees (matches sheet formula)
         stats["cashflow_inprogress"]["hedging_results"] += p1_hedges + funded_hedges  # Sum ALL hedges
         stats["cashflow_inprogress"]["farming_results"] += hedge_days  # Sum ALL farming
         stats["cashflow_inprogress"]["payouts"] += payouts  # Sum ALL payouts
