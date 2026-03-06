@@ -121,7 +121,7 @@ def calculate_derived_metrics(df):
         #   SUM(Funded Hedge) + SUM(Phase 1 Hedge) - Fee - Activation Fee
         # ELSE: ""
         
-        status = str(row.get('Status', ''))
+        status = str(row.get('Status') or row.get('Status Funded', ''))
         
         # Sums
         sum_payouts = sum([get_val(row, c) for c in ['Payout 1', 'Payout 2', 'Payout 3', 'Payout 4']])
@@ -189,6 +189,10 @@ def fetch_evaluations(sheet_url):
             # Clean up columns (remove unnamed, strip whitespace)
             df.columns = [str(c).strip() for c in df.columns]
             
+            # Normalize column name variants: some sheets use 'Status Funded' instead of 'Status'
+            if 'Status Funded' in df.columns and 'Status' not in df.columns:
+                df = df.rename(columns={'Status Funded': 'Status'})
+            
             # Define allowed columns based on the dashboard screenshot/template
             allowed_columns = [
                 # Evaluation Info
@@ -199,7 +203,7 @@ def fetch_evaluations(sheet_url):
                 'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
                 
                 # Funded Phase (duplicates get .1 suffix)
-                'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
+                'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status', 'Status Funded',
                 'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
                 'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
                 'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
@@ -321,7 +325,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     for ev in evaluations:
         firm = ev.get('Prop Firm', 'Unknown')
         status_p1 = str(ev.get('Status P1', '')).strip()
-        status_funded = str(ev.get('Status', '')).strip()
+        # Support both 'Status' and 'Status Funded' column names (sheet variant)
+        status_funded = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
         
         # Normalize for comparison (but keep original for exact match)
         status_p1_lower = status_p1.lower()
@@ -384,8 +389,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         if is_funded_completed:
             stats["profitability_completed"]["farming_results"] += hedge_days
             
-        # Payouts Completed: where Status=Completed or Status=Fail
-        if is_funded_ended:
+# Payouts Completed: where Status=Completed ONLY (sheet formula: SUMIF Status="Completed")
+            if is_funded_completed:
             stats["profitability_completed"]["payouts"] += payouts
             
         # Activation Fee for Completed (B25 in Net Profit formula)
