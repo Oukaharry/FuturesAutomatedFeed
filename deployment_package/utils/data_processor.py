@@ -81,8 +81,16 @@ def calculate_derived_metrics(df):
                 return 0.0
             # Handle string formatting if necessary
             if isinstance(val, str):
-                val = val.replace(',', '').replace('$', '').replace(' ', '')
-                if val == '' or val == '-': return 0.0
+                s = val.replace('$', '').replace(' ', '').strip()
+                # Handle European decimal notation: comma before exactly 2 digits at end, no period
+                # e.g., "-573,79" should be -573.79, not -57379
+                if re.search(r',\d{2}$', s):
+                    last_comma = s.rfind(',')
+                    s = s[:last_comma].replace(',', '').replace('.', '') + '.' + s[last_comma+1:]
+                else:
+                    s = s.replace(',', '')
+                if s == '' or s == '-': return 0.0
+                val = s
             return float(val)
         except:
             return 0.0
@@ -139,7 +147,7 @@ def calculate_derived_metrics(df):
         fee = get_val(row, 'Fee')
         activation_fee = get_val(row, 'Activation Fee')
         
-        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 16)])
+        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 35)])  # All 34 farming days
         
         if status == 'Completed':
             # SUM(AB,AD,AF,AH, T,U,V,W,X,Y,Z, I,J,K,L,M) - D - P + SUM(AL...BN)
@@ -244,17 +252,26 @@ def fetch_evaluations(sheet_url):
 def parse_currency(val):
     """
     Parses a currency string (e.g., '$100,000', '€500') to a float.
+    Handles European decimal notation where comma is used as decimal separator
+    (e.g., '-573,79' → -573.79 rather than -57379).
     """
     if val is None:
         return 0.0
     try:
-        # Remove currency symbols and commas
-        clean_val = str(val).replace('$', '').replace('€', '').replace('£', '').replace(',', '').strip()
-        if not clean_val or clean_val.lower() == 'nan':
+        s = str(val).replace('$', '').replace('€', '').replace('£', '').strip()
+        if not s or s.lower() == 'nan':
             return 0.0
-        return float(clean_val)
+        # Handle European decimal notation: comma before exactly 2 digits at end, no period
+        # e.g., "-573,79" → "-573.79", "1.234,56" → "1234.56"
+        if re.search(r',\d{2}$', s):
+            last_comma = s.rfind(',')
+            s = s[:last_comma].replace(',', '').replace('.', '') + '.' + s[last_comma+1:]
+        else:
+            s = s.replace(',', '')
+        return float(s)
     except:
         return 0.0
+
 
 def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     """
