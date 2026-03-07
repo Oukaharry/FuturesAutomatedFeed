@@ -568,15 +568,35 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
              return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'FA':
-        # Farming: Find next available Hedge Day slot
-        if eval_idx is not None and evaluations:
-            ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
-            for day_num in range(1, 35):
-                field_name = f"Hedge Day {day_num}"
-                existing_value = ev.get(field_name)
-                if existing_value is None or existing_value == '' or existing_value == 0:
-                    return field_name
-        # Default to Hedge Day 1 if no slot found
+        ev = evaluations[eval_idx] if (eval_idx is not None and evaluations and eval_idx < len(evaluations)) else {}
+        incoming_date = str(farming_date or '').strip()
+
+        logging.info(f"[FA SELECT] eval_idx={eval_idx} incoming_date={incoming_date}")
+
+        # Reuse same slot if same date already exists
+        for day_num in range(1, 35):
+            date_key = f"_Hedge Day {day_num} Date"
+            saved_date = str(ev.get(date_key, '')).strip()
+            if saved_date and incoming_date and saved_date == incoming_date:
+                logging.info(f"[FA SELECT] Reusing Hedge Day {day_num} for date {incoming_date}")
+                return f"Hedge Day {day_num}"
+
+        # Otherwise use first empty slot
+        for day_num in range(1, 35):
+            value_key = f"Hedge Day {day_num}"
+            date_key = f"_Hedge Day {day_num} Date"
+
+            existing_value = ev.get(value_key)
+            existing_date = ev.get(date_key)
+
+            is_empty_value = existing_value in (None, '', 0, '0', '$0', '$0.00')
+            is_empty_date = existing_date in (None, '')
+
+            if is_empty_value and is_empty_date:
+                logging.info(f"[FA SELECT] Using empty slot Hedge Day {day_num} for date {incoming_date}")
+                return value_key
+
+        logging.warning(f"[FA SELECT] No empty slot found, defaulting to Hedge Day 1")
         return "Hedge Day 1"
     
     return None
@@ -970,6 +990,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 continue
                 
             best_phase, best_num = max(phases.items(), key=lambda x: x[1])[0]
+            logging.info(
+                f"[SESSION] account_guess={session['account_guess']} "
+                f"best_phase={best_phase} best_num={best_num} "
+                f"start={datetime.datetime.fromtimestamp(session['start'])} "
+                f"end={datetime.datetime.fromtimestamp(session['end'])} "
+                f"profit={session_profit}"
+            )
             
             # If we found a full comment structure, prefer that for matching
             if full_comment_info:
@@ -1132,6 +1159,10 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 # Sort by diff (smallest diff is closest match)
                 valid_candidates.sort(key=lambda x: x[1])
                 best_eval, drift = valid_candidates[0]
+                logging.info(
+                    f"[MATCHED EVAL] eval_idx={evaluations.index(best_eval)} "
+                    f"account={acc_num} phase={best_phase} num={best_num} drift={drift}"
+                )
             
             # Determined Field Name
             field_name = "Hedge Result" # Default
@@ -1180,66 +1211,24 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                  field_name = f"Hedge Result {best_num}.1"
 
             elif best_phase == 'FA':
-                 match_log.append("   Matched Farming session - Finding next available column")
-                 # Farming logic: Find first EMPTY Hedge Day slot (or update existing if same day?)
-                 
-                 # List of potential columns for Farming (Hedge Day 1 to 100)
-                 # We need to preserve the DATE of the value to know if it's the same day.
-                 # But the evaluation dict only stores values (e.g. "$500").
-                 # Problem: We don't store metadata in sheet directly.
-                 # Strategy:
-                 # 1. Use '_farming_sessions' on the eval object (transient) to track what we've processed IN THIS PUSH.
-                 # 2. But we need to know about PREVIOUS pushes too?
-                 #    If we re-push history, we recalculate everything.
-                 #    So if we clear all Farming columns and re-fill them based on session dates, that works for full history pushes.
-                 #    If partial push, we might duplicate.
-                 #    User says "incase a user pushes data to the dashboard more than once a day".
-                 #    This implies re-pushing same data.
-                 #    If we assume FULL HISTORY push, simpler: Clear fields, Fill sequentially by date.
-                 
-                 # Let's try to map FA1 -> Hedge Day 1, FA2 -> Hedge Day 2 first?
-                 # No, user said "enter on the next available farme hedge column".
-                 # This implies dynamic filling.
-                 
-                 # If we use strict index from comment (FA1, FA2), we don't need "next available", we use specific column.
-                 # But farming comments usually don't increment (all might be FA1 or just FA).
-                 # If comment has number (FA1, FA2), use it?
-                 if best_num and best_num > 1:
-                     field_name = f"Hedge Day {best_num}"
-                 else:
-                     # If just FA or FA1, use Next Available logic.
-                     # We need to find the first Hedge Day X that is empty OR matches this session's date/value?
-                     # Since we can't easily store metadata in the simple key-value structure of 'best_eval' without modifying DB schema deeply,
-                     # we will rely on strict mapping if possible, OR sequential filling for this session.
-                     
-                     # BETTER APPROACH for "Next Available":
-                     # 1. Collect all farming sessions for this account.
-                     # 2. Sort them by Date.
-                     # 3. Assign them to columns sequentially: Session 1 -> HD1, Session 2 -> HD2, etc.
-                     # This guarantees that re-pushing the same history results in the same mapping.
-                     # We can do this by deferring the assignment?
-                     # OR, since we are processing sessions in a loop, are they sorted?
-                     # The sessions list 'sessions' is sorted by start time?
-                     # Line 926: sessions.sort(key=lambda x: x['start'])
-                     # YES! They are sorted by time.
-                     
-                     # So if we maintain a counter on the best_eval object, we can assign sequentially.
-                     if '_farming_counter' not in best_eval:
-                         best_eval['_farming_counter'] = 0
-                     
-                     # Increment counter
-                     best_eval['_farming_counter'] += 1
-                     cnt = best_eval['_farming_counter']
-                     field_name = f"Hedge Day {cnt}"
-                     
-                     # Create a tracking key to avoid re-adding if we loop multiple times?
-                     # But we are iterating sessions once.
-                     # The only risk is if OLD data exists in these columns from previous pushes.
-                     # If we are doing a full re-push (which generates all sessions), we will overwrite HD1, HD2...
-                     # This effectively "clears" old data by overwriting it with the sorted session data.
-                     # This satisfies "avoid duplicate" because the same session (historical) always maps to the same index (e.g. 1st session -> HD1).
-                     
-                     pass
+                match_log.append("   Matched Farming session - Selecting Hedge Day by date")
+                farming_date = datetime.datetime.fromtimestamp(start_date_ts).strftime('%Y-%m-%d')
+
+                best_eval_idx = evaluations.index(best_eval)
+
+                field_name = get_field_name_for_phase(
+                    'FA',
+                    best_num,
+                    farming_date,
+                    evaluations,
+                    best_eval_idx,
+                    acc_num
+                )
+
+                logging.info(
+                    f"[FA RAW] account={acc_num} eval_idx={best_eval_idx} "
+                    f"best_num={best_num} farming_date={farming_date} field_name={field_name}"
+                )
 
             
             # Update Logic: ACCUMULATE profit for this push
@@ -1296,6 +1285,16 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
             # FORMAT WITH DOLLAR SIGN FOR PUSH
             best_eval[field_name] = f"${new_val:.2f}"
+            #best_eval[field_name] = f"${new_val:.2f}"
+
+            if best_phase == 'FA' and field_name.startswith("Hedge Day "):
+                meta_date_key = f"_{field_name} Date"
+                farming_date = datetime.datetime.fromtimestamp(start_date_ts).strftime('%Y-%m-%d')
+                best_eval[meta_date_key] = farming_date
+                logging.info(
+                    f"[FA WRITE] row={evaluations.index(best_eval)+2} "
+                    f"field={field_name} value={best_eval[field_name]} date={farming_date}"
+                )
             updates_made += 1
             if 'Match Log' not in best_eval:
                  best_eval['Match Log'] = []
