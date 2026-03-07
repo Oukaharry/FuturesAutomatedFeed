@@ -81,8 +81,18 @@ def calculate_derived_metrics(df):
                 return 0.0
             # Handle string formatting if necessary
             if isinstance(val, str):
-                val = val.replace(',', '').replace('$', '').replace(' ', '')
-                if val == '' or val == '-': return 0.0
+                s = val.replace('$', '').replace(' ', '').strip()
+                if ',' in s:
+                    if '.' not in s:
+                        if re.search(r',\d{1,2}$', s):
+                            return 0.0
+                        s = s.replace(',', '')
+                    else:
+                        if re.search(r',\.', s):
+                            return 0.0
+                        s = s.replace(',', '')
+                if s == '' or s == '-': return 0.0
+                val = s
             return float(val)
         except:
             return 0.0
@@ -121,7 +131,7 @@ def calculate_derived_metrics(df):
         #   SUM(Funded Hedge) + SUM(Phase 1 Hedge) - Fee - Activation Fee
         # ELSE: ""
         
-        status = str(row.get('Status', ''))
+        status = str(row.get('Status') or row.get('Status Funded', ''))
         
         # Sums
         sum_payouts = sum([get_val(row, c) for c in ['Payout 1', 'Payout 2', 'Payout 3', 'Payout 4']])
@@ -139,7 +149,7 @@ def calculate_derived_metrics(df):
         fee = get_val(row, 'Fee')
         activation_fee = get_val(row, 'Activation Fee')
         
-        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 16)])
+        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 35)])  # All 34 farming days
         
         if status == 'Completed':
             # SUM(AB,AD,AF,AH, T,U,V,W,X,Y,Z, I,J,K,L,M) - D - P + SUM(AL...BN)
@@ -189,6 +199,10 @@ def fetch_evaluations(sheet_url):
             # Clean up columns (remove unnamed, strip whitespace)
             df.columns = [str(c).strip() for c in df.columns]
             
+            # Normalize column name variants: some sheets use 'Status Funded' instead of 'Status'
+            if 'Status Funded' in df.columns and 'Status' not in df.columns:
+                df = df.rename(columns={'Status Funded': 'Status'})
+            
             # Define allowed columns based on the dashboard screenshot/template
             allowed_columns = [
                 # Evaluation Info
@@ -199,7 +213,7 @@ def fetch_evaluations(sheet_url):
                 'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
                 
                 # Funded Phase (duplicates get .1 suffix)
-                'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
+                'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status', 'Status Funded',
                 'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
                 'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
                 'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
@@ -239,18 +253,35 @@ def fetch_evaluations(sheet_url):
 
 def parse_currency(val):
     """
-    Parses a currency string (e.g., '$100,000', '€500') to a float.
+    Parses a currency string (e.g., '$100,000', '$1,234.56') to a float.
+    Returns 0.0 for values Google Sheets cannot parse as numbers, so that
+    our SUM logic matches sheet SUM() behaviour exactly.
     """
     if val is None:
         return 0.0
     try:
-        # Remove currency symbols and commas
-        clean_val = str(val).replace('$', '').replace('€', '').replace('£', '').replace(',', '').strip()
-        if not clean_val or clean_val.lower() == 'nan':
+        s = str(val).replace('$', '').replace('\u20ac', '').replace('\u00a3', '').strip()
+        if not s or s.lower() == 'nan':
             return 0.0
-        return float(clean_val)
+        if ',' in s:
+            if '.' not in s:
+                # No period: could be thousands ("1,234") or European decimal ("-573,79").
+                # Google Sheets (US locale) cannot reliably parse these without a period,
+                # so treat comma-decimal endings as unparseable (text → 0 in SUM).
+                # Comma groups of exactly 3 digits are valid thousands separators.
+                if re.search(r',\d{1,2}$', s):  # ends in ,X or ,XX  → ambiguous/euro → 0
+                    return 0.0
+                s = s.replace(',', '')           # thousands comma → strip safely
+            else:
+                # Has both comma and period.
+                # Malformed if comma appears directly before period (e.g. "253,.96").
+                if re.search(r',\.', s):
+                    return 0.0
+                s = s.replace(',', '')           # valid US thousands separator
+        return float(s)
     except:
         return 0.0
+
 
 def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     """
@@ -321,7 +352,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     for ev in evaluations:
         firm = ev.get('Prop Firm', 'Unknown')
         status_p1 = str(ev.get('Status P1', '')).strip()
-        status_funded = str(ev.get('Status', '')).strip()
+        # Support both 'Status' and 'Status Funded' column names (sheet variant)
+        status_funded = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
         
         # Normalize for comparison (but keep original for exact match)
         status_p1_lower = status_p1.lower()
@@ -384,8 +416,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         if is_funded_completed:
             stats["profitability_completed"]["farming_results"] += hedge_days
             
-        # Payouts Completed: where Status=Completed or Status=Fail
-        if is_funded_ended:
+# Payouts Completed: where Status=Completed ONLY (sheet formula: SUMIF Status="Completed")
+            if is_funded_completed:
             stats["profitability_completed"]["payouts"] += payouts
             
         # Activation Fee for Completed (B25 in Net Profit formula)
@@ -400,7 +432,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         # Farming Results: SUM(all Hedge Day columns) = ALL farming
         # Payouts: SUM(AC,AE,AG,AI) = ALL payouts
         
-        stats["cashflow_inprogress"]["challenge_fees"] += fee  # Sum ALL fees
+        stats["cashflow_inprogress"]["challenge_fees"] += fee + activation_fee  # Sum ALL fees + activation fees (matches sheet formula)
         stats["cashflow_inprogress"]["hedging_results"] += p1_hedges + funded_hedges  # Sum ALL hedges
         stats["cashflow_inprogress"]["farming_results"] += hedge_days  # Sum ALL farming
         stats["cashflow_inprogress"]["payouts"] += payouts  # Sum ALL payouts
