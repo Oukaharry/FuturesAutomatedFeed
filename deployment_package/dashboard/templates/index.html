@@ -630,7 +630,7 @@
                         <th>Volume</th>
                         <th>Time</th>
                         <th>Price</th>
-                        <th>Entry</th>
+                        <th>Comment</th>
                         <th>Swap</th>
                         <th>Profit</th>
                     </tr>
@@ -1330,31 +1330,45 @@
             
             histBody.innerHTML = '';
             if (data.deals && data.deals.length > 0) {
-                noHistMsg.style.display = 'none';
-                histTable.style.display = 'table';
-                data.deals.forEach((deal, index) => {
-                    // Handle different field names from MT5
-                    const profit = deal.profit || deal.net_profit || 0;
-                    const profitClass = parseFloat(profit) >= 0 ? 'profit-positive' : 'profit-negative';
-                    const displayTime = deal.time || deal.open_time || '-';
-                    const displayPrice = deal.price || deal.open_price || '-';
-                    const ticketId = deal.ticket || deal.position_id || '-';
-                    
-                    row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${index + 1}</td>
-                        <td>${ticketId}</td>
-                        <td>${deal.symbol || '-'}</td>
-                        <td>${deal.type || '-'}</td>
-                        <td>${deal.volume || '-'}</td>
-                        <td>${displayTime}</td>
-                        <td>${displayPrice}</td>
-                        <td>${deal.entry || '-'}</td>
-                        <td>${deal.swap || 0}</td>
-                        <td class="${profitClass}">${formatMoney(profit)}</td>
-                    `;
-                    histBody.appendChild(row);
-                });
+                // Only show closed (OUT) trade entries; hide IN/BALANCE/etc.
+                const outEntries = new Set(['OUT', 'INOUT', 'OUT_BY']);
+                const outDeals = data.deals.filter(d => outEntries.has((d.entry || '').toUpperCase()));
+
+                if (outDeals.length > 0) {
+                    noHistMsg.style.display = 'none';
+                    histTable.style.display = 'table';
+                    outDeals.forEach((deal, index) => {
+                        // Handle different field names from MT5
+                        const profit = deal.profit || deal.net_profit || 0;
+                        const profitClass = parseFloat(profit) >= 0 ? 'profit-positive' : 'profit-negative';
+                        const displayTime = deal.time || deal.open_time || '-';
+                        const displayPrice = deal.price || deal.open_price || '-';
+                        const ticketId = deal.ticket || deal.position_id || '-';
+                        // Invert direction: the OUT leg shows the close side;
+                        // display the original position direction instead.
+                        const rawType = (deal.type || '').toUpperCase();
+                        const displayType = rawType === 'SELL' ? 'BUY' : rawType === 'BUY' ? 'SELL' : (deal.type || '-');
+
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${ticketId}</td>
+                            <td>${deal.symbol || '-'}</td>
+                            <td>${displayType}</td>
+                            <td>${deal.volume || '-'}</td>
+                            <td>${displayTime}</td>
+                            <td>${displayPrice}</td>
+                            <td>${deal.comment || '-'}</td>
+                            <td>${deal.swap || 0}</td>
+                            <td class="${profitClass}">${formatMoney(profit)}</td>
+                        `;
+                        histBody.appendChild(row);
+                    });
+                } else {
+                    noHistMsg.style.display = 'block';
+                    noHistMsg.textContent = 'No closed trades found.';
+                    histTable.style.display = 'none';
+                }
             } else {
                 noHistMsg.style.display = 'block';
                 histTable.style.display = 'none';
