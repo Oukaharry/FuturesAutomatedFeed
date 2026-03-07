@@ -716,9 +716,13 @@ class MT5DataPusher:
         # Sort aggregated groups by date to ensure chronological order for farming days
         aggregated.sort(key=lambda x: str(x.get('farming_date') or ''))
 
-        # --- Same-day FA aggregation ---
-        # Two farming trades on the same date for the same account count as ONE hedge day.
-        # Merge them: sum net_profit/deal_count, keep earliest open_time / latest close_time.
+        # --- Same-day FA aggregation + hedge-day slot calculation ---
+        # Step 1: Merge trades on the same date into one entry per (account, date).
+        #         sum net_profit/deal_count, earliest open_time, latest close_time.
+        # Step 2: Count ALL distinct FA trading dates per account from the full MT5 history window
+        #         (acts as our "3-month history scan").  That count IS the hedge day number
+        #         for the latest trade — no sheet-slot scanning needed.
+        # Step 3: Only push the LATEST date per account; earlier dates are already in the sheet.
         _fa_by_key = {}   # (account_number, date_str) -> merged dict
         _non_fa = []
         for _agg in aggregated:
@@ -735,18 +739,38 @@ class MT5DataPusher:
                     if _agg.get('open_time') and (
                             not _m.get('open_time') or str(_agg['open_time']) < str(_m['open_time'])):
                         _m['open_time'] = _agg['open_time']
-                    # Latest close_time (used as deduplication key)
+                    # Latest close_time (deduplication key)
                     if _agg.get('close_time') and (
                             not _m.get('close_time') or str(_agg['close_time']) > str(_m['close_time'])):
                         _m['close_time'] = _agg['close_time']
             else:
                 _non_fa.append(_agg)
-        # Rebuild list: non-FA entries first, then per-day FA entries sorted by date
-        aggregated = _non_fa + sorted(_fa_by_key.values(), key=lambda x: str(x.get('farming_date') or ''))
-        match_log.append(f"   After same-day FA merge: {len([a for a in aggregated if a.get('phase_code') == 'FA'])} FA entries")
 
-        # Track farming day slots for each account to ensure sequential filling
-        # Maps account_number -> {date_str: slot_number, '__next_slot': int}
+        # Group merged FA entries by account, sort chronologically.
+        # The hedge day number for the latest trade = total distinct trading days in history.
+        # Only keep the latest entry per account for the actual push.
+        _fa_per_account = {}   # account_number -> sorted list of (date_str, entry)
+        for (acct, date_str), entry in _fa_by_key.items():
+            _fa_per_account.setdefault(acct, []).append((date_str, entry))
+
+        _fa_to_push = []   # only latest per account, tagged with _fa_slot
+        for acct, date_entries in _fa_per_account.items():
+            date_entries.sort(key=lambda x: x[0])          # chronological order
+            total_days = len(date_entries)                  # count = hedge day slot
+            latest_date_str, latest_entry = date_entries[-1]
+            tagged = dict(latest_entry)
+            tagged['_fa_slot'] = total_days                 # pre-computed slot number
+            _fa_to_push.append(tagged)
+            match_log.append(
+                f"   📅 {acct}: {total_days} FA day(s) in MT5 history "
+                f"→ will push as Hedge Day {total_days} ({latest_date_str})"
+            )
+
+        # Rebuild aggregated: non-FA entries + one FA entry per account (latest day only)
+        aggregated = _non_fa + sorted(_fa_to_push, key=lambda x: str(x.get('farming_date') or ''))
+        match_log.append(f"   After FA processing: {len(_fa_to_push)} FA account(s) queued for push")
+
+        # (legacy fallback: still used for edge-cases without a farming_date)
         account_farming_slots = {}
 
         # Pre-build per-account set of close_times already stored in Hedge Day Notes.
@@ -810,40 +834,19 @@ class MT5DataPusher:
                         skip_farming = True
 
                 if not skip_farming:
-                    # Initialize slot tracker for this account if needed
-                    if account_number not in account_farming_slots:
-                        # Count how many Hedge Day slots are already filled.
-                        # Next slot = filled_count + 1  (e.g. 3 filled → next is Day 4)
-                        filled_count = 0
-                        fa_eval_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
-                        for fa_idx, fa_type in (fa_eval_matches or []):
-                            if fa_type != 'funded':
-                                continue
-                            ev = evaluations[fa_idx]
-                            for day_num in range(1, 35):
-                                val = ev.get(f'Hedge Day {day_num}')
-                                if val is not None and str(val).strip() not in ('', '0', '$0.00', '$0'):
-                                    filled_count += 1
-                            break  # Use first funded match
-                        account_farming_slots[account_number] = {'__next_slot': filled_count + 1}
-
-                    if farming_date:
-                        date_str = str(farming_date)
-                        if date_str in account_farming_slots[account_number]:
-                            forced_day_num = account_farming_slots[account_number][date_str]
-                        else:
-                            # Assign next available slot
-                            slot = account_farming_slots[account_number]['__next_slot']
-                            account_farming_slots[account_number][date_str] = slot
-                            account_farming_slots[account_number]['__next_slot'] += 1
-                            forced_day_num = slot
+                    # Slot number was pre-computed from MT5 history count (distinct FA trading days).
+                    # _fa_slot = total distinct FA dates for this account in the history window.
+                    fa_slot = agg.get('_fa_slot')
+                    if fa_slot:
+                        forced_day_num = fa_slot
                     else:
-                        # No date - if trade_number is present use it as day num
+                        # Fallback for entries without a farming_date / legacy comments
                         if trade_number and trade_number > 0:
                             forced_day_num = trade_number
                         else:
+                            if account_number not in account_farming_slots:
+                                account_farming_slots[account_number] = {'__next_slot': 1}
                             slot = account_farming_slots[account_number]['__next_slot']
-                            account_farming_slots[account_number]['FA_legacy'] = slot
                             account_farming_slots[account_number]['__next_slot'] += 1
                             forced_day_num = slot
 
