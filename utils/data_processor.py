@@ -99,13 +99,15 @@ def calculate_derived_metrics(df):
             # Handle string formatting if necessary
             if isinstance(val, str):
                 s = val.replace('$', '').replace(' ', '').strip()
-                # Handle European decimal notation: comma before exactly 2 digits at end, no period
-                # e.g., "-573,79" should be -573.79, not -57379
-                if re.search(r',\d{2}$', s):
-                    last_comma = s.rfind(',')
-                    s = s[:last_comma].replace(',', '').replace('.', '') + '.' + s[last_comma+1:]
-                else:
-                    s = s.replace(',', '')
+                if ',' in s:
+                    if '.' not in s:
+                        if re.search(r',\d{1,2}$', s):
+                            return 0.0
+                        s = s.replace(',', '')
+                    else:
+                        if re.search(r',\.', s):
+                            return 0.0
+                        s = s.replace(',', '')
                 if s == '' or s == '-': return 0.0
                 val = s
             return float(val)
@@ -558,23 +560,31 @@ def fetch_evaluations(sheet_url):
 
 def parse_currency(val):
     """
-    Parses a currency string (e.g., '$100,000', '€500') to a float.
-    Handles European decimal notation where comma is used as decimal separator
-    (e.g., '-573,79' → -573.79 rather than -57379).
+    Parses a currency string (e.g., '$100,000', '$1,234.56') to a float.
+    Returns 0.0 for values Google Sheets cannot parse as numbers, so that
+    our SUM logic matches sheet SUM() behaviour exactly.
     """
     if val is None:
         return 0.0
     try:
-        s = str(val).replace('$', '').replace('€', '').replace('£', '').strip()
+        s = str(val).replace('$', '').replace('\u20ac', '').replace('\u00a3', '').strip()
         if not s or s.lower() == 'nan':
             return 0.0
-        # Handle European decimal notation: comma before exactly 2 digits at end, no period
-        # e.g., "-573,79" → "-573.79", "1.234,56" → "1234.56"
-        if re.search(r',\d{2}$', s):
-            last_comma = s.rfind(',')
-            s = s[:last_comma].replace(',', '').replace('.', '') + '.' + s[last_comma+1:]
-        else:
-            s = s.replace(',', '')
+        if ',' in s:
+            if '.' not in s:
+                # No period: could be thousands ("1,234") or European decimal ("-573,79").
+                # Google Sheets (US locale) cannot reliably parse these without a period,
+                # so treat comma-decimal endings as unparseable (text → 0 in SUM).
+                # Comma groups of exactly 3 digits are valid thousands separators.
+                if re.search(r',\d{1,2}$', s):  # ends in ,X or ,XX  → ambiguous/euro → 0
+                    return 0.0
+                s = s.replace(',', '')           # thousands comma → strip safely
+            else:
+                # Has both comma and period.
+                # Malformed if comma appears directly before period (e.g. "253,.96").
+                if re.search(r',\.', s):
+                    return 0.0
+                s = s.replace(',', '')           # valid US thousands separator
         return float(s)
     except:
         return 0.0
