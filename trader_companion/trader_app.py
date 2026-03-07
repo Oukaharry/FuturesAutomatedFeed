@@ -714,11 +714,39 @@ class MT5DataPusher:
         updates_made = 0
         
         # Sort aggregated groups by date to ensure chronological order for farming days
-        # This fixes the issue where days might be filled out of order or overwrite the same day
         aggregated.sort(key=lambda x: str(x.get('farming_date') or ''))
-        
+
+        # --- Same-day FA aggregation ---
+        # Two farming trades on the same date for the same account count as ONE hedge day.
+        # Merge them: sum net_profit/deal_count, keep earliest open_time / latest close_time.
+        _fa_by_key = {}   # (account_number, date_str) -> merged dict
+        _non_fa = []
+        for _agg in aggregated:
+            if _agg.get('phase_code') == 'FA':
+                _date_str = str(_agg.get('farming_date') or '')
+                _key = (_agg.get('account_number', ''), _date_str)
+                if _key not in _fa_by_key:
+                    _fa_by_key[_key] = dict(_agg)
+                else:
+                    _m = _fa_by_key[_key]
+                    _m['net_profit'] = _m.get('net_profit', 0) + _agg.get('net_profit', 0)
+                    _m['deal_count'] = _m.get('deal_count', 0) + _agg.get('deal_count', 0)
+                    # Earliest open_time
+                    if _agg.get('open_time') and (
+                            not _m.get('open_time') or str(_agg['open_time']) < str(_m['open_time'])):
+                        _m['open_time'] = _agg['open_time']
+                    # Latest close_time (used as deduplication key)
+                    if _agg.get('close_time') and (
+                            not _m.get('close_time') or str(_agg['close_time']) > str(_m['close_time'])):
+                        _m['close_time'] = _agg['close_time']
+            else:
+                _non_fa.append(_agg)
+        # Rebuild list: non-FA entries first, then per-day FA entries sorted by date
+        aggregated = _non_fa + sorted(_fa_by_key.values(), key=lambda x: str(x.get('farming_date') or ''))
+        match_log.append(f"   After same-day FA merge: {len([a for a in aggregated if a.get('phase_code') == 'FA'])} FA entries")
+
         # Track farming day slots for each account to ensure sequential filling
-        # Maps account_number -> {date_str: slot_number}
+        # Maps account_number -> {date_str: slot_number, '__next_slot': int}
         account_farming_slots = {}
 
         # Pre-build per-account set of close_times already stored in Hedge Day Notes.
@@ -784,8 +812,9 @@ class MT5DataPusher:
                 if not skip_farming:
                     # Initialize slot tracker for this account if needed
                     if account_number not in account_farming_slots:
-                        # Find first empty Hedge Day slot in the eval data for this account
-                        first_empty_slot = 1
+                        # Count how many Hedge Day slots are already filled.
+                        # Next slot = filled_count + 1  (e.g. 3 filled → next is Day 4)
+                        filled_count = 0
                         fa_eval_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
                         for fa_idx, fa_type in (fa_eval_matches or []):
                             if fa_type != 'funded':
@@ -793,13 +822,10 @@ class MT5DataPusher:
                             ev = evaluations[fa_idx]
                             for day_num in range(1, 35):
                                 val = ev.get(f'Hedge Day {day_num}')
-                                if val is None or val == '' or val == 0 or str(val).strip() in ('', '0', '$0.00', '$0'):
-                                    first_empty_slot = day_num
-                                    break
-                            else:
-                                first_empty_slot = 35  # All full
+                                if val is not None and str(val).strip() not in ('', '0', '$0.00', '$0'):
+                                    filled_count += 1
                             break  # Use first funded match
-                        account_farming_slots[account_number] = {'__next_slot': first_empty_slot}
+                        account_farming_slots[account_number] = {'__next_slot': filled_count + 1}
 
                     if farming_date:
                         date_str = str(farming_date)
