@@ -11,15 +11,15 @@
 
         body {
             font-family: 'Inter', -apple-system, sans-serif;
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             background: #060d1a;
             color: #f8fafc;
-            overflow-y: auto;
-            padding: 40px 20px;
+            overflow: hidden;
+            padding: 20px;
             position: relative;
         }
 
@@ -106,13 +106,13 @@
         }
 
         .logo-img {
-            width: 840px;
-            height: 840px;
+            width: 540px;
+            height: 540px;
             object-fit: contain;
             filter: drop-shadow(0 0 40px rgba(251,191,36,0.3));
             animation: floatLogo 6s ease-in-out infinite;
             display: block;
-            margin-bottom: -320px;
+            margin-bottom: -100px;
         }
         @keyframes floatLogo {
             0%, 100% { transform: translateY(0px); }
