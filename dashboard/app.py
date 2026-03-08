@@ -2125,6 +2125,27 @@ def get_super_admin_totals():
     
     return jsonify(response_data)
 
+@app.route('/api/super_admin/recalculate_stats', methods=['POST'])
+@require_session
+def recalculate_all_stats():
+    """Recalculate and save statistics for all clients from stored evaluations."""
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    from utils.data_processor import calculate_statistics
+    all_clients = get_all_clients()
+    results = []
+    for client_id, client_data in all_clients.items():
+        try:
+            evals = client_data.get('evaluations', [])
+            old_fees = client_data.get('statistics', {}).get('profitability_completed', {}).get('challenge_fees', 0)
+            new_stats = calculate_statistics(evals)
+            new_fees = new_stats.get('profitability_completed', {}).get('challenge_fees', 0)
+            save_client_data(client_id, {'statistics': new_stats})
+            results.append({"client_id": client_id, "old_fees": old_fees, "new_fees": new_fees, "changed": abs(float(new_fees) - float(old_fees)) > 0.01})
+        except Exception as e:
+            results.append({"client_id": client_id, "error": str(e)})
+    return jsonify({"status": "success", "recalculated": len(results), "results": results})
+
 @app.route('/api/client/update_source', methods=['POST'])
 @require_session
 def update_client_source():

@@ -599,6 +599,44 @@
                             <th>Hedge Day 14</th>
                             <th>Prop Day 15</th>
                             <th>Hedge Day 15</th>
+                            <th>Prop Day 16</th>
+                            <th>Hedge Day 16</th>
+                            <th>Prop Day 17</th>
+                            <th>Hedge Day 17</th>
+                            <th>Prop Day 18</th>
+                            <th>Hedge Day 18</th>
+                            <th>Prop Day 19</th>
+                            <th>Hedge Day 19</th>
+                            <th>Prop Day 20</th>
+                            <th>Hedge Day 20</th>
+                            <th>Prop Day 21</th>
+                            <th>Hedge Day 21</th>
+                            <th>Prop Day 22</th>
+                            <th>Hedge Day 22</th>
+                            <th>Prop Day 23</th>
+                            <th>Hedge Day 23</th>
+                            <th>Prop Day 24</th>
+                            <th>Hedge Day 24</th>
+                            <th>Prop Day 25</th>
+                            <th>Hedge Day 25</th>
+                            <th>Prop Day 26</th>
+                            <th>Hedge Day 26</th>
+                            <th>Prop Day 27</th>
+                            <th>Hedge Day 27</th>
+                            <th>Prop Day 28</th>
+                            <th>Hedge Day 28</th>
+                            <th>Prop Day 29</th>
+                            <th>Hedge Day 29</th>
+                            <th>Prop Day 30</th>
+                            <th>Hedge Day 30</th>
+                            <th>Prop Day 31</th>
+                            <th>Hedge Day 31</th>
+                            <th>Prop Day 32</th>
+                            <th>Hedge Day 32</th>
+                            <th>Prop Day 33</th>
+                            <th>Hedge Day 33</th>
+                            <th>Prop Day 34</th>
+                            <th>Hedge Day 34</th>
                         </tr>
                     </thead>
                     <tbody id="evaluations-body">
@@ -1096,7 +1134,7 @@
 
         function generateDayColumns(ev, cell, index) {
             let html = '';
-            for (let i = 1; i <= 15; i++) {
+            for (let i = 1; i <= 34; i++) {
                 html += cell(getInputHtml(ev[`Prop Day ${i}`] || '', 'text', index, `Prop Day ${i}`), `Prop Day ${i}`);
                 html += cell(getInputHtml(ev[`Hedge Day ${i}`] || '', 'text', index, `Hedge Day ${i}`), `Hedge Day ${i}`);
             }
