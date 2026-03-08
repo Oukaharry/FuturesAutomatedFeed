@@ -1,6 +1,13 @@
 import sys
 import os
 
+# Fix SSL certificates for PyInstaller-bundled exe (HTTPS connections to production)
+if hasattr(sys, '_MEIPASS'):
+    _cert = os.path.join(sys._MEIPASS, 'certifi', 'cacert.pem')
+    if os.path.exists(_cert):
+        os.environ['REQUESTS_CA_BUNDLE'] = _cert
+        os.environ['SSL_CERT_FILE'] = _cert
+
 # Ensure utils is importable when running as PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))

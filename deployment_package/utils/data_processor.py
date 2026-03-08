@@ -398,13 +398,13 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         is_funded_completed = status_funded == 'Completed'
         is_funded_ended = is_funded_fail or is_funded_completed
         
-        # Challenge Fees Completed: Fee where P1=Fail OR Status=Fail OR Status=Completed
+        # Challenge Fees Completed: Fee + Activation Fee where P1=Fail OR Status=Fail OR Status=Completed
         if is_p1_fail:
-            stats["profitability_completed"]["challenge_fees"] += fee
+            stats["profitability_completed"]["challenge_fees"] += fee + activation_fee
         if is_funded_fail:
-            stats["profitability_completed"]["challenge_fees"] += fee
+            stats["profitability_completed"]["challenge_fees"] += fee + activation_fee
         if is_funded_completed:
-            stats["profitability_completed"]["challenge_fees"] += fee
+            stats["profitability_completed"]["challenge_fees"] += fee + activation_fee
             
         # Hedging Results Completed
         if is_p1_fail:
@@ -416,8 +416,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         if is_funded_completed:
             stats["profitability_completed"]["farming_results"] += hedge_days
             
-# Payouts Completed: where Status=Completed ONLY (sheet formula: SUMIF Status="Completed")
-            if is_funded_completed:
+        # Payouts Completed: where Status=Completed ONLY (sheet formula: SUMIF Status="Completed")
+        if is_funded_completed:
             stats["profitability_completed"]["payouts"] += payouts
             
         # Activation Fee for Completed (B25 in Net Profit formula)

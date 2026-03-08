@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+import certifi
 
 a = Analysis(
     ['C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\trader_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\harry\\Music\\MT5HedgingEngine\\utils', 'utils'), ('C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\logo.png', '.')],
+    datas=[
+        ('C:\\Users\\harry\\Music\\MT5HedgingEngine\\utils', 'utils'),
+        ('C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion\\logo.png', '.'),
+        (certifi.where(), 'certifi'),
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
