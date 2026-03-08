@@ -166,17 +166,21 @@ def get_aggregate_watermarks(days=14):
 def bulk_save_history(client_id, history_data):
     """
     Bulk saves history from external source (e.g., sheet).
+    Overwrites all existing daily_watermarks for this client on each import.
     history_data: list of {'date': 'YYYY-MM-DD', 'profit': 123.45}
     """
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
+            # Clear existing daily watermarks for this client then insert fresh
+            cursor.execute('DELETE FROM daily_watermarks WHERE client_id = ?', (client_id,))
             for record in history_data:
                 cursor.execute('''
-                    INSERT OR IGNORE INTO daily_watermarks (client_id, date, net_profit_complete, source, created_at)
+                    INSERT INTO daily_watermarks (client_id, date, net_profit_complete, source, created_at)
                     VALUES (?, ?, ?, 'sheet_import', CURRENT_TIMESTAMP)
                 ''', (client_id, record['date'], float(record['profit'])))
             conn.commit()
+            logging.info(f"Overwrote daily_watermarks for {client_id}: {len(history_data)} records")
             return True
     except Exception as e:
         logging.error(f"Error bulk saving history: {e}")
