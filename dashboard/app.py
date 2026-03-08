@@ -2676,9 +2676,10 @@ def api_migrate_sheet():
 
         eval_result = fetch_evaluations(sheet_url)
         if isinstance(eval_result, tuple):
-            evaluations, _ = eval_result
+            evaluations, xlsx_notes = eval_result
         else:
             evaluations = eval_result
+            xlsx_notes = {}
         if not evaluations:
             return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public. (Evaluations Tab)"}), 400
         
@@ -2748,7 +2749,7 @@ def api_migrate_sheet():
                 save_waterlog_periods(client_id, wl_periods)
         
         # Calculate statistics without MT5 data (discrepancy will be 0)
-        statistics = calculate_statistics(evaluations, None, None)
+        statistics = calculate_statistics(evaluations, None, None, xlsx_notes=xlsx_notes)
         
         # Prepare client data
         client_data = {

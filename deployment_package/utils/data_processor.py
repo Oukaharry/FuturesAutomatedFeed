@@ -251,6 +251,54 @@ def fetch_evaluations(sheet_url):
         print(f"Error fetching sheet: {e}")
         return []
 
+
+def fetch_stats_tab_values(sheet_url):
+    """
+    Fetches the Stats tab values from the Google Sheet XLSX export.
+    Returns a dict with the cashflow and profitability values, or empty dict if unavailable.
+    """
+    try:
+        import openpyxl, io, urllib.parse
+        sheet_url = str(sheet_url).strip()
+        match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_url)
+        if not match:
+            return {}
+        sheet_key = match.group(1)
+        xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export?format=xlsx"
+        resp = requests.get(xlsx_url, timeout=45)
+        if resp.status_code != 200:
+            return {}
+        wb = openpyxl.load_workbook(filename=io.BytesIO(resp.content), data_only=True)
+        if 'Stats' not in wb.sheetnames:
+            return {}
+        stats_ws = wb['Stats']
+        stats_tab = {}
+        current_section = None
+        for row in stats_ws.iter_rows(min_row=1, max_row=30, max_col=2, values_only=True):
+            label = str(row[0]).strip() if row[0] else ''
+            val = row[1]
+            if 'Profitability' in label and 'Completed' in label:
+                current_section = 'profitability'
+                continue
+            elif 'Current Cashflow' in label:
+                current_section = 'cashflow'
+                continue
+            elif 'Expected Value' in label or 'Weekly' in label:
+                current_section = None
+                continue
+            if current_section and label and val is not None and isinstance(val, (int, float)):
+                key = label.lower().replace(' ', '_')
+                if current_section == 'cashflow':
+                    stats_tab[key] = round(float(val), 2)
+                else:
+                    stats_tab['prof_' + key] = round(float(val), 2)
+            elif current_section and not label:
+                current_section = None
+        return {'__stats_tab__': stats_tab} if stats_tab else {}
+    except Exception as e:
+        print(f"Stats tab fetch failed (ignoring): {e}")
+        return {}
+
 def parse_currency(val):
     """
     Parses a currency string (e.g., '$100,000', '$1,234.56') to a float.
@@ -278,15 +326,17 @@ def parse_currency(val):
                 if re.search(r',\.', s):
                     return 0.0
                 s = s.replace(',', '')           # valid US thousands separator
-        return float(s)
+        return round(float(s), 2)
     except:
         return 0.0
 
 
-def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
+def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_notes=None):
     """
     Calculates detailed statistics matching the 'Stats' sheet structure.
     Uses exact SUMIF logic from Google Sheet formulas.
+    If xlsx_notes contains Stats tab values (from XLSX export), uses those
+    for the cashflow section to guarantee exact match with Google Sheets.
     """
     stats = {
         "profitability_completed": {
@@ -359,27 +409,40 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         status_p1_lower = status_p1.lower()
         status_funded_lower = status_funded.lower()
         
-        # Skip deleted accounts
-        if 'deleted' in status_p1_lower or 'deleted' in status_funded_lower:
-            continue
-        
         # === CALCULATE VALUES USING EXACT SHEET SUMIF LOGIC ===
         
         # Get individual hedge results (NOT the calculated Hedge Net columns)
-        p1_hedges = sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS)
-        funded_hedges = sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
-        hedge_days = sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS)
+        # Round each row-level sum to 2dp to match Google Sheets cell precision
+        p1_hedges = round(sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS), 2)
+        funded_hedges = round(sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS), 2)
+        hedge_days = round(sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS), 2)
         
         fee = parse_currency(ev.get('Fee'))
         activation_fee = parse_currency(ev.get('Activation Fee'))
         farming_net = parse_currency(ev.get('Farming Net'))
-        payouts = sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 5))
+        payouts = round(sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 5)), 2)
         
         # For sheet_hedge_total tracking
         hedge_net = parse_currency(ev.get('Hedge Net')) + parse_currency(ev.get('Hedge Net.1'))
         p1_hedge_net = parse_currency(ev.get('Hedge Net'))
         funded_hedge_net = parse_currency(ev.get('Hedge Net.1'))
         sheet_hedge_total += hedge_net
+        
+        # === CASHFLOW - IN PROGRESS (TOTALS of ALL records - no status filtering) ===
+        # Sheet formulas SUM entire columns, including deleted rows:
+        # Challenge Fees: =-SUM(Evaluations!D:D) = negative sum of ALL Fee column only
+        # Hedging Results: =SUM(J:N) + SUM(U:AA) = ALL hedge results
+        # Farming Results: =SUM(all Hedge Day columns) = ALL farming
+        # Payouts: =SUM(AC,AE,AG,AI) = ALL payouts
+        stats["cashflow_inprogress"]["challenge_fees"] = round(stats["cashflow_inprogress"]["challenge_fees"] + fee + activation_fee, 2)
+        stats["cashflow_inprogress"]["hedging_results"] = round(stats["cashflow_inprogress"]["hedging_results"] + p1_hedges + funded_hedges, 2)
+        stats["cashflow_inprogress"]["farming_results"] = round(stats["cashflow_inprogress"]["farming_results"] + hedge_days, 2)
+        stats["cashflow_inprogress"]["payouts"] = round(stats["cashflow_inprogress"]["payouts"] + payouts, 2)
+        stats["cashflow_inprogress"]["activation_fee"] = round(stats["cashflow_inprogress"]["activation_fee"] + activation_fee, 2)
+        
+        # Skip deleted accounts for profitability and other sections
+        if 'deleted' in status_p1_lower or 'deleted' in status_funded_lower:
+            continue
         
         # === PROFITABILITY - COMPLETED (exact SUMIF logic from sheet) ===
         # Challenge Fees formula: (SUMIF(Fee,P1="Fail") + SUMIF(Fee,Status="Completed") + SUMIF(Fee,Status="Fail")) * -1
@@ -400,43 +463,30 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
         
         # Challenge Fees Completed: Fee + Activation Fee where P1=Fail OR Status=Fail OR Status=Completed
         if is_p1_fail:
-            stats["profitability_completed"]["challenge_fees"] += fee + activation_fee
+            stats["profitability_completed"]["challenge_fees"] = round(stats["profitability_completed"]["challenge_fees"] + fee + activation_fee, 2)
         if is_funded_fail:
-            stats["profitability_completed"]["challenge_fees"] += fee + activation_fee
+            stats["profitability_completed"]["challenge_fees"] = round(stats["profitability_completed"]["challenge_fees"] + fee + activation_fee, 2)
         if is_funded_completed:
-            stats["profitability_completed"]["challenge_fees"] += fee + activation_fee
+            stats["profitability_completed"]["challenge_fees"] = round(stats["profitability_completed"]["challenge_fees"] + fee + activation_fee, 2)
             
         # Hedging Results Completed
         if is_p1_fail:
-            stats["profitability_completed"]["hedging_results"] += p1_hedges
+            stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + p1_hedges, 2)
         if is_funded_ended:
-            stats["profitability_completed"]["hedging_results"] += funded_hedges + p1_hedges
+            stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + funded_hedges + p1_hedges, 2)
             
         # Farming Results Completed: Hedge Days ONLY where Status=Completed
         if is_funded_completed:
-            stats["profitability_completed"]["farming_results"] += hedge_days
+            stats["profitability_completed"]["farming_results"] = round(stats["profitability_completed"]["farming_results"] + hedge_days, 2)
             
         # Payouts Completed: where Status=Completed ONLY (sheet formula: SUMIF Status="Completed")
         if is_funded_completed:
-            stats["profitability_completed"]["payouts"] += payouts
+            stats["profitability_completed"]["payouts"] = round(stats["profitability_completed"]["payouts"] + payouts, 2)
             
         # Activation Fee for Completed (B25 in Net Profit formula)
         # Track activation fee for accounts that have ended
         if is_p1_fail or is_funded_ended:
-            stats["profitability_completed"]["activation_fee"] += activation_fee
-        
-        # === CASHFLOW - IN PROGRESS (TOTALS of ALL records - no status filtering) ===
-        # Formula from sheet:
-        # Challenge Fees: -SUM(Evaluations!D:D) = negative sum of ALL fees
-        # Hedging Results: SUM(J:N) + SUM(U:AA) = ALL hedge results
-        # Farming Results: SUM(all Hedge Day columns) = ALL farming
-        # Payouts: SUM(AC,AE,AG,AI) = ALL payouts
-        
-        stats["cashflow_inprogress"]["challenge_fees"] += fee + activation_fee  # Sum ALL fees + activation fees (matches sheet formula)
-        stats["cashflow_inprogress"]["hedging_results"] += p1_hedges + funded_hedges  # Sum ALL hedges
-        stats["cashflow_inprogress"]["farming_results"] += hedge_days  # Sum ALL farming
-        stats["cashflow_inprogress"]["payouts"] += payouts  # Sum ALL payouts
-        stats["cashflow_inprogress"]["activation_fee"] += activation_fee  # Track activation fee for B25
+            stats["profitability_completed"]["activation_fee"] = round(stats["profitability_completed"]["activation_fee"] + activation_fee, 2)
         
         # Track "in progress" for evaluation data section (accounts not ended)
         is_in_progress = not is_p1_fail and not is_funded_ended
@@ -667,6 +717,29 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None):
     for line in debug_log:
         print(f"   {line}")
     print()
+
+    # --- Override cashflow with Stats tab values if available ---
+    stats_tab = (xlsx_notes or {}).get('__stats_tab__', {})
+    if stats_tab:
+        cf = stats["cashflow_inprogress"]
+        if 'challenge_fees' in stats_tab:
+            cf['challenge_fees'] = abs(stats_tab['challenge_fees'])
+        if 'hedging_results' in stats_tab:
+            cf['hedging_results'] = stats_tab['hedging_results']
+        if 'farming_results' in stats_tab:
+            cf['farming_results'] = stats_tab['farming_results']
+        if 'payouts' in stats_tab:
+            cf['payouts'] = stats_tab['payouts']
+
+        pc = stats["profitability_completed"]
+        if 'prof_challenge_fees' in stats_tab:
+            pc['challenge_fees'] = abs(stats_tab['prof_challenge_fees'])
+        if 'prof_hedging_results' in stats_tab:
+            pc['hedging_results'] = stats_tab['prof_hedging_results']
+        if 'prof_farming_results' in stats_tab:
+            pc['farming_results'] = stats_tab['prof_farming_results']
+        if 'prof_payouts' in stats_tab:
+            pc['payouts'] = stats_tab['prof_payouts']
 
     # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
     # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy

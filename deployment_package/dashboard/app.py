@@ -1294,14 +1294,17 @@ def api_migrate_sheet():
     # Fetch data from Google Sheets
     try:
         # Import the data processor
-        from utils.data_processor import fetch_evaluations, calculate_statistics
+        from utils.data_processor import fetch_evaluations, calculate_statistics, fetch_stats_tab_values
         
         evaluations = fetch_evaluations(sheet_url)
         if not evaluations:
             return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public."}), 400
         
+        # Fetch Stats tab values from XLSX for exact match with Google Sheets
+        xlsx_notes = fetch_stats_tab_values(sheet_url)
+        
         # Calculate statistics without MT5 data (discrepancy will be 0)
-        statistics = calculate_statistics(evaluations, None, None)
+        statistics = calculate_statistics(evaluations, None, None, xlsx_notes=xlsx_notes)
         
         # Prepare client data
         client_data = {
