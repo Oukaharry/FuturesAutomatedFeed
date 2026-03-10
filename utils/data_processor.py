@@ -497,12 +497,17 @@ def fetch_evaluations(sheet_url):
                             elif 'Current Cashflow' in label:
                                 current_section = 'cashflow'
                                 continue
-                            elif 'Expected Value' in label or 'Weekly' in label:
+                            elif 'Expected Value' in label:
+                                current_section = 'ev'
+                                continue
+                            elif 'Weekly' in label:
                                 current_section = None
                                 continue
                             if current_section and label and val is not None and isinstance(val, (int, float)):
                                 key = label.lower().replace(' ', '_')
                                 if current_section == 'cashflow':
+                                    stats_tab[key] = round(float(val), 2)
+                                elif current_section == 'ev':
                                     stats_tab[key] = round(float(val), 2)
                                 else:
                                     stats_tab['prof_' + key] = round(float(val), 2)
@@ -724,6 +729,18 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             funded_hedge_net = parse_currency(ev.get('Hedge Net.1'))
             sheet_hedge_total += hedge_net
             
+            # EV tracking: Sheet formula = SUM(O:O, AB:AB) / COUNT(O:O, AB:AB)
+            # O = Hedge Net (P1), AB = Hedge Net.1 (Funded)
+            # Count each non-empty cell independently (a row can contribute to both)
+            raw_p1_hn = ev.get('Hedge Net')
+            raw_fd_hn = ev.get('Hedge Net.1')
+            if raw_p1_hn is not None and str(raw_p1_hn).strip() not in ('', '-'):
+                stats["ev_tracking"]["total_net_ended"] += p1_hedge_net
+                stats["ev_tracking"]["count_ended"] += 1
+            if raw_fd_hn is not None and str(raw_fd_hn).strip() not in ('', '-'):
+                stats["ev_tracking"]["total_net_ended"] += funded_hedge_net
+                stats["ev_tracking"]["count_ended"] += 1
+            
             # === CASHFLOW - IN PROGRESS (TOTALS of ALL records - no status filtering) ===
             # Sheet formulas SUM entire columns, including deleted rows:
             # Challenge Fees: =-SUM(Evaluations!D:D) = negative sum of ALL Fee column only
@@ -824,10 +841,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             estats["net_failed_sum"] += net_profit 
             stats["eval_totals"]["avg_net_failed"] += net_profit
             
-            # EV tracking: Failed P1 net = -Fee + P1 Hedge Net (column N/O formula)
-            ev_net_p1_fail = -fee + p1_hedge_net
-            stats["ev_tracking"]["total_net_ended"] += ev_net_p1_fail
-            stats["ev_tracking"]["count_ended"] += 1
+            # EV tracking moved to cashflow section above (unconditional, matches Sheet SUM/COUNT)
 
         # --- 3. Funded Data ---
         fstats = get_firm_stats(firm, "funded_data")
@@ -857,21 +871,13 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
                 fstats["net_failed_sum"] += net_profit
                 stats["funded_totals"]["avg_net_failed"] += net_profit
                 
-                # EV tracking: Funded failed net = P1 Hedge + Funded Hedge + Payouts - Fee - Act Fee (column AA formula)
-                ev_net_funded = p1_hedge_net + funded_hedge_net + payouts - fee - activation_fee
-                stats["ev_tracking"]["total_net_ended"] += ev_net_funded
-                stats["ev_tracking"]["count_ended"] += 1
+                # EV tracking moved to cashflow section above (unconditional, matches Sheet SUM/COUNT)
                 
             elif is_funded_completed:
                 fstats["completed"] += 1
                 stats["funded_totals"]["completed"] += 1
                 fstats["net_completed_sum"] += net_profit
                 stats["funded_totals"]["avg_net_completed"] += net_profit
-                
-                # EV tracking: Funded completed net = P1 Hedge + Funded Hedge + Payouts - Fee - Act Fee (column AA formula)
-                ev_net_funded = p1_hedge_net + funded_hedge_net + payouts - fee - activation_fee
-                stats["ev_tracking"]["total_net_ended"] += ev_net_funded
-                stats["ev_tracking"]["count_ended"] += 1
 
     # --- Calculate Averages & Rates ---
     
@@ -915,10 +921,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
 
     # --- Expected Value ---
     # Sheet formula: =IFERROR(SUM(Evaluations!O:O,Evaluations!AB:AB) / COUNT(Evaluations!O:O,Evaluations!AB:AB),0)
-    # This is simply the average net profit of all ended accounts (failed P1 + ended funded)
+    # O = Hedge Net (P1), AB = Hedge Net.1 (Funded) — average of non-empty hedge net cells
     ev_data = stats["ev_tracking"]
     if ev_data["count_ended"] > 0:
-        stats["expected_value"] = ev_data["total_net_ended"] / ev_data["count_ended"]
+        stats["expected_value"] = round(ev_data["total_net_ended"] / ev_data["count_ended"], 2)
     else:
         stats["expected_value"] = 0.0
 
@@ -1043,6 +1049,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             pc['farming_results'] = stats_tab['prof_farming_results']
         if 'prof_payouts' in stats_tab:
             pc['payouts'] = stats_tab['prof_payouts']
+
+        # Override EV with Stats tab value if available
+        if 'ev' in stats_tab:
+            stats['expected_value'] = stats_tab['ev']
 
     # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
     # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy
