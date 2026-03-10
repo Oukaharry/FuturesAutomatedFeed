@@ -821,11 +821,43 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     logging.warning(f"Failed to parse timestamp {ts}: {e}")
                     return "1970-01-01"
             
+            # Count FA deals for logging
+            fa_count = sum(1 for d in raw_deals if parse_comment(d.get('comment', ''))[0] == 'FA')
+            if fa_count:
+                match_log.append(f"🌾 Found {fa_count} farming deals in data")
+
+            # --- PRE-COMPUTE FARMING DAILY PROFITS PER ACCOUNT (before date filter) ---
+            # Scan ALL FA deals to build: {account_num: {date_str: total_profit}}
+            # This lets us know how many farming days exist for each account
+            # and which Hedge Day slot each date maps to.
+            fa_account_days = {}
+            for _d in raw_deals:
+                _phase, _num = parse_comment(_d.get('comment', ''))
+                if _phase != 'FA':
+                    continue
+                _acc = extract_account_from_comment(_d.get('comment', ''))
+                if not _acc:
+                    continue
+                _ts = get_ts(_d)
+                _date = datetime.datetime.fromtimestamp(_ts).strftime('%Y-%m-%d')
+                _profit = float(_d.get('profit', 0)) + float(_d.get('commission', 0)) + float(_d.get('swap', 0))
+                if _acc not in fa_account_days:
+                    fa_account_days[_acc] = {}
+                fa_account_days[_acc][_date] = fa_account_days[_acc].get(_date, 0.0) + _profit
+
+            if fa_account_days:
+                for _acc, _days in fa_account_days.items():
+                    logging.info(f"[FA PRE-COMPUTE] account={_acc} farming_days={len(_days)} dates={sorted(_days.keys())}")
+                match_log.append(f"🌾 Pre-computed farming: {len(fa_account_days)} account(s), {sum(len(d) for d in fa_account_days.values())} total farming day(s)")
+
+            # Track which evals have already had their Hedge Days written by FA pre-compute
+            fa_evals_written = set()
+            
             # Identify Today
             today_date = datetime.datetime.now().strftime('%Y-%m-%d')
             
             # Identify all unique dates in the data
-            unique_dates = sorted(list({get_date_str(d['time']) for d in raw_deals}))
+            unique_dates = sorted(list({get_date_str(d['time']) for d in raw_deals})) if raw_deals else []
             
             target_date = None
             filter_reason = ""
@@ -839,10 +871,14 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
             if target_date:
                 original_count = len(raw_deals)
-                # Filter raw_deals to keep only those matching target_date
-                raw_deals = [d for d in raw_deals if get_date_str(d['time']) == target_date]
-                match_log.append(f"📅 Filtered trades to {filter_reason}: {len(raw_deals)}/{original_count} positions kept.")
-                logging.info(f"   [DATE FILTER] Keeping trades for {target_date} ONLY ({len(raw_deals)} positions).")
+                # Filter non-FA deals to target_date only; keep ALL FA deals so they form sessions
+                raw_deals = [d for d in raw_deals
+                             if get_date_str(d['time']) == target_date
+                             or parse_comment(d.get('comment', ''))[0] == 'FA']
+                match_log.append(f"📅 Filtered trades to {filter_reason}: {len(raw_deals)}/{original_count} positions kept (FA deals preserved).")
+                logging.info(f"   [DATE FILTER] Keeping trades for {target_date} ONLY + all FA deals ({len(raw_deals)} positions).")
+            
+
         # --------------------------------
         
         # ---------------------------------------------
@@ -956,6 +992,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         trade_summary = {}
         # ------------------------------------------
 
+
+
         # Now match each session to an Evaluation
         updates_made = 0
         
@@ -1031,6 +1069,12 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
             s_acc_raw = normalize_acc(acc_num)
             
+            # Preserve the comment prefix (e.g. 'V2-', 'MFFU', 'FNFT') for firm validation
+            # even when acc_num itself has no hyphen (full_comment_info strips prefix from acc_part)
+            comment_prefix = None
+            if full_comment_info and full_comment_info[0]:
+                comment_prefix = full_comment_info[0].rstrip('-').upper()
+            
             # If s_acc contains a hyphen, try splitting
             if '-' in s_acc_raw:
                 # Keep full for strict check, but try short version for loose check?
@@ -1051,6 +1095,11 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 ac1 = normalize_acc(e.get('Account #', ''))
                 ac2 = normalize_acc(e.get('Account #.1', ''))
                 
+                # Strip Top Step prefixes (50KTC- for challenge, EXPRESS- for funded) before matching
+                for _ts_prefix in ['50KTC-', 'EXPRESS-']:
+                    if ac1.startswith(_ts_prefix): ac1 = ac1[len(_ts_prefix):]
+                    if ac2.startswith(_ts_prefix): ac2 = ac2[len(_ts_prefix):]
+                
                 # Use flexible matching against s_search (which is just the trailing number usually)
                 s = s_search 
                 
@@ -1059,8 +1108,6 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     if s == ac1: is_match = True
                     elif s.endswith(ac1) or ac1.endswith(s): is_match = True
                     elif len(s) >= 4 and s in ac1: is_match = True
-                    # Also check for "TDFY-72031" vs "TDFYSL...72031"
-                    # If we stripped prefix from 's', it works.
                 
                 # Check ac2
                 if not is_match and ac2:
@@ -1068,31 +1115,33 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     elif s.endswith(ac2) or ac2.endswith(s): is_match = True
                     elif len(s) >= 4 and s in ac2: is_match = True
                 
-                # STRICT PREFIX CHECK:
+                # STRICT PREFIX CHECK — use comment_prefix (from full_comment_info) OR s_acc_raw hyphen prefix
+                prefix_part = comment_prefix  # e.g. 'V2' from V2-1128_CH2
+                if not prefix_part and '-' in s_acc_raw:
+                    prefix_part = s_acc_raw.split('-')[0]
+                
                 try:
-                    # Use full s_acc_raw for prefix logic (since it might have TDFY- prefix)
-                    if is_match and '-' in s_acc_raw:
-                        # ... original logic using s_acc_raw ...
-                        prefix_part = s_acc_raw.split('-')[0]
+                    if is_match and prefix_part:
                         pf_val = str(e.get('Prop Firm', '')).upper()
                         
                         # Only proceed if we have a valid Prop Firm string to check against
                         if pf_val and prefix_part not in pf_val and pf_val not in prefix_part:
                             mapping = {
-                                'MFFU': ['MYFUNDED', 'MFFU'],
+                                'MFFU': ['MYFUNDED', 'MFFU', 'MY FUNDED'],
                                 'AFAD': ['ALPHA', 'AFAD'],
-                                'V2': ['TOPSTEP', 'V2'],
-                                'FNFT': ['FUNDEDNEXT', 'FNFT'],
+                                'V2': ['TOPSTEP', 'TOP STEP', 'V2'],
+                                'FNFT': ['FUNDEDNEXT', 'FUNDED NEXT', 'FNFT'],
                                 'TDFY': ['TRADEIFY', 'TDFY'],
                                 'ELTD': ['TRADEDAY', 'ELTD'],
-                                'TDF': ['TRADEDAY', 'TDF']
+                                'TDF': ['TRADEDAY', 'TDF', 'TRADEIFY'],
+                                'FTDF': ['TRADEDAY', 'TDF', 'TRADEIFY']
                             }
                             if prefix_part in mapping:
                                 valid_keywords = mapping[prefix_part]
                                 if not any(k in pf_val for k in valid_keywords):
                                     is_match = False
                 except Exception as ex:
-                    logging.error(f"Error in Strict Prefix Check for {s_acc_raw}: {ex}")
+                    logging.error(f"Error in Strict Prefix Check for {s_acc_raw} prefix={prefix_part}: {ex}")
 
                 if matches_full_strict and is_match:
                      pass
@@ -1211,24 +1260,112 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                  field_name = f"Hedge Result {best_num}.1"
 
             elif best_phase == 'FA':
-                match_log.append("   Matched Farming session - Selecting Hedge Day by date")
-                farming_date = datetime.datetime.fromtimestamp(start_date_ts).strftime('%Y-%m-%d')
-
+                # --- FARMING: Count farming days from MT5 history, only update the LAST one ---
+                # fa_account_days has ALL farming dates per account from full MT5 history.
+                # Count distinct dates to know which Hedge Day slot the latest trade belongs to.
+                # e.g. 5 farming days total → only write Hedge Day 5 with the latest day's profit.
                 best_eval_idx = evaluations.index(best_eval)
+                row_num = best_eval_idx + 2
 
-                field_name = get_field_name_for_phase(
-                    'FA',
-                    best_num,
-                    farming_date,
-                    evaluations,
-                    best_eval_idx,
-                    acc_num
+                # --- Active account check: skip inactive evals for farming ---
+                _s_p1 = str(best_eval.get('Status P1', '')).lower()
+                _s_funded = str(best_eval.get('Status', '') or best_eval.get('Status Funded', '')).lower()
+                _inactive_kw = ('fail', 'breach', 'sl', 'closed', 'delete')
+                _is_inactive = (
+                    any(kw in _s_p1 for kw in _inactive_kw) or
+                    any(kw in _s_funded for kw in (*_inactive_kw, 'complete'))
                 )
+                if _is_inactive:
+                    match_log.append(f"   ⏩ Skipping FA for inactive eval row {row_num} (P1='{_s_p1}', Funded='{_s_funded}')")
+                    logging.info(f"[FA SKIP] eval_idx={best_eval_idx} inactive — P1='{_s_p1}' Funded='{_s_funded}'")
+                    continue
 
+                # Only write once per eval
+                if best_eval_idx in fa_evals_written:
+                    continue
+                fa_evals_written.add(best_eval_idx)
+
+                # Get this account's farming data from the pre-computed map
+                # Pre-compute keys have prefix (e.g. "FNFT-76770"), but acc_num may be just digits ("76770")
+                # Try exact match first, then substring fallback
+                account_days = fa_account_days.get(acc_num, {})
+                if not account_days:
+                    # Substring match: find key where acc_num appears in it or it appears in acc_num
+                    for _fa_key, _fa_days in fa_account_days.items():
+                        if acc_num in _fa_key or _fa_key in acc_num:
+                            account_days = _fa_days
+                            logging.info(f"[FA WRITE] Matched acc_num={acc_num} to pre-computed key={_fa_key}")
+                            break
+                if not account_days:
+                    logging.warning(f"[FA WRITE] No pre-computed farming data for account {acc_num} (eval_idx={best_eval_idx})")
+                    continue
+
+                # Only write if this account has farming activity on the target date
+                # (otherwise it's stale data from a previous push)
+                sorted_dates = sorted(account_days.keys())
+                if target_date and target_date not in account_days:
+                    logging.info(f"[FA SKIP] account={acc_num} has no farming on target_date={target_date} (last={sorted_dates[-1]}), skipping")
+                    fa_evals_written.discard(best_eval_idx)  # Allow re-check if another session hits this eval
+                    continue
+
+                # Sort dates chronologically — position = Hedge Day number
+                total_farming_days = len(sorted_dates)
+                last_date = sorted_dates[-1]
+                last_profit = account_days[last_date]
+                slot = total_farming_days  # e.g. 5 dates → Hedge Day 5
+
+                if slot > 34:
+                    logging.warning(f"[FA WRITE] eval_idx={best_eval_idx} has {slot} farming days, capping at 34")
+                    slot = 34
+
+                field_name = f'Hedge Day {slot}'
+                best_eval[field_name] = f'${last_profit:.2f}'
+                best_eval[f'_{field_name} Date'] = last_date
+                updates_made += 1
+
+                match_log.append(f"✅ 🌾 Row {row_num} | {field_name}: ${last_profit:.2f} ({last_date}) [day {slot} of {total_farming_days}]")
                 logging.info(
-                    f"[FA RAW] account={acc_num} eval_idx={best_eval_idx} "
-                    f"best_num={best_num} farming_date={farming_date} field_name={field_name}"
+                    f"[FA WRITE] row={row_num} account={acc_num} "
+                    f"total_farming_days={total_farming_days} → {field_name}=${last_profit:.2f} date={last_date}"
                 )
+
+                # --- Also add to trade_summary for logging ---
+                try:
+                    p_firm = best_eval.get('Prop Firm') or 'Unknown Firm'
+                    report_acc = best_eval.get('Account #') or best_eval.get('Account #.1') or acc_num
+                    phase_label = f"FA{best_num or ''}"
+                    if p_firm not in trade_summary: trade_summary[p_firm] = {}
+                    if report_acc not in trade_summary[p_firm]: trade_summary[p_firm][report_acc] = {}
+                    if phase_label not in trade_summary[p_firm][report_acc]:
+                        trade_summary[p_firm][report_acc][phase_label] = {
+                            'profit': 0.0, 'trades': 0, 'source_accounts': set(),
+                            'comments': set(), 'target_field': field_name,
+                            'detailed_trades': [], 'row_index': row_num
+                        }
+                    sn = trade_summary[p_firm][report_acc][phase_label]
+                    # Use the pre-computed last-date profit (what was actually written),
+                    # NOT the session profit (which may come from the earliest session)
+                    sn['profit'] = float(last_profit)
+                    sn['trades'] = total_farming_days
+                    sn['source_accounts'].add(str(acc_num))
+                    sn['target_field'] = field_name
+                    # Find the actual trade timestamp for the last farming date
+                    _last_ts_str = last_date
+                    for _fd in reversed(raw_deals):
+                        _fp, _ = parse_comment(_fd.get('comment', ''))
+                        if _fp == 'FA':
+                            _fa_acc = extract_account_from_comment(_fd.get('comment', ''))
+                            if _fa_acc and (acc_num in _fa_acc or _fa_acc in acc_num):
+                                _fts = get_ts(_fd)
+                                _fdate = datetime.datetime.fromtimestamp(_fts).strftime('%Y-%m-%d') if _fts > 0 else ''
+                                if _fdate == last_date:
+                                    _last_ts_str = datetime.datetime.fromtimestamp(_fts).strftime('%Y-%m-%d %H:%M:%S')
+                                    break
+                    sn['detailed_trades'] = [f"[{_last_ts_str}] [{session['deals'][0].get('comment', '')}] {acc_num} -> ${last_profit:.2f}"]
+                except Exception as e:
+                    logging.error(f"Error accumulating FA stats: {e}")
+
+                continue  # Skip normal write logic — FA is handled above
 
             
             # Update Logic: ACCUMULATE profit for this push
@@ -1285,16 +1422,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
             # FORMAT WITH DOLLAR SIGN FOR PUSH
             best_eval[field_name] = f"${new_val:.2f}"
-            #best_eval[field_name] = f"${new_val:.2f}"
 
-            if best_phase == 'FA' and field_name.startswith("Hedge Day "):
-                meta_date_key = f"_{field_name} Date"
-                farming_date = datetime.datetime.fromtimestamp(start_date_ts).strftime('%Y-%m-%d')
-                best_eval[meta_date_key] = farming_date
-                logging.info(
-                    f"[FA WRITE] row={evaluations.index(best_eval)+2} "
-                    f"field={field_name} value={best_eval[field_name]} date={farming_date}"
-                )
             updates_made += 1
             if 'Match Log' not in best_eval:
                  best_eval['Match Log'] = []
@@ -1384,6 +1512,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             except Exception as e:
                 logging.error(f"Error accumulating stats: {e}")
             # -------------------------------
+
+
 
         # CLEANUP: Remove temporary tracking fields before returning
         for ev in evaluations:
@@ -2534,6 +2664,7 @@ def api_client_push():
     # ALWAYS recalculate statistics when we have evaluations or MT5 data
     # This ensures discrepancy is only calculated when we have actual MT5 data
     statistics = data.get("statistics", {})
+    push_sheet_url = existing_data.get('sheet_url') or (existing_data.get('identity') or {}).get('sheet_url')
     if evaluations or mt5_deals or mt5_account:
         try:
             from utils.data_processor import calculate_statistics
@@ -2549,7 +2680,22 @@ def api_client_push():
             # Pass MT5 data - if empty, discrepancy will be 0
             mt5_acc_param = mt5_account if mt5_account else None
             mt5_deals_param = mt5_deals if mt5_deals else None
-            statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param)
+            
+            # Fetch Stats tab values from Google Sheet so the SUMIF stats
+            # use formula-precision values instead of CSV-rounded values.
+            push_xlsx_notes = None
+            if push_sheet_url:
+                try:
+                    from utils.data_processor import fetch_evaluations as _fe
+                    _result = _fe(push_sheet_url)
+                    if isinstance(_result, tuple) and len(_result) == 2:
+                        _, push_xlsx_notes = _result
+                        if push_xlsx_notes and '__stats_tab__' in push_xlsx_notes:
+                            app.logger.info(f"📊 Stats tab override loaded from sheet")
+                except Exception as _e:
+                    app.logger.warning(f"Stats tab fetch failed (non-critical): {_e}")
+            
+            statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param, xlsx_notes=push_xlsx_notes)
             
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
@@ -2580,7 +2726,8 @@ def api_client_push():
             "admin": admin_id,
             "trader": trader_id,
             "client": client_id,
-            "email": email
+            "email": email,
+            "sheet_url": push_sheet_url
         },
         # Store aggregated comment data if provided (from Push by Comment feature)
         "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
