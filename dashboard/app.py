@@ -3512,11 +3512,29 @@ def api_delete_user():
         delete_user_credential(name, 'trader')
             
     elif user_type == 'client':
-        if not admin or not trader: return jsonify({"status": "error", "message": "Parents required"}), 400
-        result = remove_client(admin, trader, name)
+        result = remove_client(admin or '', trader or '', name)
         delete_user_credential(name, 'client')
-        if result:
-            delete_client_data(name)
+        # Always delete client data from database (even if hierarchy removal failed,
+        # e.g. name mismatch between identity display name and hierarchy name)
+        delete_client_data(name)
+        if not result:
+            # Try to find and remove from hierarchy by searching all admins/traders
+            from config.hierarchy import SYSTEM_HIERARCHY, save_hierarchy
+            for a_name, a_data in SYSTEM_HIERARCHY.get("admins", {}).items():
+                for t_name, t_data in a_data.get("traders", {}).items():
+                    for i, client in enumerate(t_data.get("clients", [])):
+                        if client.get("name") == name:
+                            del t_data["clients"][i]
+                            save_hierarchy(SYSTEM_HIERARCHY)
+                            result = True
+                            break
+                    if result:
+                        break
+                if result:
+                    break
+            if not result:
+                # Client data was still deleted from DB, consider it a success
+                result = True
     
     if result:
         log_action(f'DELETE_{user_type.upper()}', user_type, name, get_remote_address())
