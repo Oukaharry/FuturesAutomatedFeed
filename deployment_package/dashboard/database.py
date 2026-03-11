@@ -671,7 +671,7 @@ def save_client_data(client_id: str, data: dict) -> bool:
                 "topstep": "Topstep",
                 "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",
                 "fundednext": "FundedNext",
-                "tradeday": "Trade Day", "tradeify": "Tradeify",
+                "tradeday": "TradeDay", "tradeify": "Tradeify",
                 "alphafutures": "Alpha Futures",
             }
             for ev in merged_evaluations:

@@ -2134,7 +2134,7 @@ class MT5Automator:
             
             # Define closing times for each prop firm (24-hour format)
             closing_schedules = {
-                "Trade Day": (17, 0),  # 5:00 PM Eastern Time
+                "TradeDay": (17, 0),  # 5:00 PM Eastern Time
                 "Funding Ticks": (17, 0),  # 5:00 PM Eastern Time
                 "Tradeify": (16, 59),  # 4:59 PM Eastern Time
                 "MFFU": (16, 10),  # 4:10 PM Eastern Standard Time
