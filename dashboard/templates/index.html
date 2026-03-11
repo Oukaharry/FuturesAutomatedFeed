@@ -2652,6 +2652,34 @@
                     s.funded_data = s.funded_data || {};
                     s.funded_totals = s.funded_totals || { not_started: 0, ongoing: 0, failed: 0, completed: 0, avg_net_failed: 0, avg_net_completed: 0, total_funding: 0 };
 
+                    // Normalize firm keys in stats to merge duplicates like "TopStep"/"Top Step"/"Topstep"
+                    const firmMap = {
+                        'mffu': 'My Funded Futures', 'mffuflex': 'My Funded Futures',
+                        'myfundedfutures': 'My Funded Futures', 'myfundedfx': 'My Funded Futures',
+                        'mff': 'My Funded Futures',
+                        'topstep': 'Topstep',
+                        'fundingticks': 'Funding Ticks', 'fundingtick': 'Funding Ticks',
+                        'fundednext': 'FundedNext',
+                        'tradeday': 'Trade Day', 'tradeify': 'Tradeify',
+                        'alphafutures': 'Alpha Futures', 'lucid': 'Lucid',
+                    };
+                    function normFirm(name) {
+                        if (!name) return 'Unknown';
+                        const key = name.trim().toLowerCase().replace(/[\s_]/g, '');
+                        return firmMap[key] || name.trim();
+                    }
+                    function mergeStatKeys(obj) {
+                        const merged = {};
+                        for (const [rawKey, val] of Object.entries(obj)) {
+                            const canon = normFirm(rawKey);
+                            if (!merged[canon]) { merged[canon] = {...val}; }
+                            else { for (const [k, v] of Object.entries(val)) { if (typeof v === 'number') merged[canon][k] = (merged[canon][k] || 0) + v; } }
+                        }
+                        return merged;
+                    }
+                    s.evaluation_data = mergeStatKeys(s.evaluation_data);
+                    s.funded_data = mergeStatKeys(s.funded_data);
+
                     // Helper for safe rate formatting
                     const fmtRate = (val) => {
                         const n = parseFloat(val);

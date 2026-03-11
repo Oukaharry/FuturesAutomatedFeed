@@ -19,6 +19,49 @@ def clean_float(val):
     except:
         return 0.0
 
+# Canonical prop firm name mapping - single source of truth
+_FIRM_MAP = {
+    "mffu": "My Funded Futures", "mffuflex": "My Funded Futures",
+    "myfundedfutures": "My Funded Futures", "myfundedfx": "My Funded Futures",
+    "mff": "My Funded Futures",
+    "topstep": "Topstep",
+    "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",
+    "fundednext": "FundedNext",
+    "tradeday": "Trade Day",
+    "tradeify": "Tradeify",
+    "alphafutures": "Alpha Futures",
+    "ftmo": "FTMO",
+    "blueguardian": "Blue Guardian",
+    "fundedtradingplus": "Funded Trading Plus",
+    "the5ers": "The 5%ers",
+    "apextraderfunding": "Apex Trader Funding",
+    "apextrader": "Apex Trader Funding",
+    "uprofittrader": "UProfit", "uprofit": "UProfit",
+    "bulenox": "Bulenox",
+    "tickticktrader": "TickTick Trader",
+    "elitetraderfunding": "Elite Trader Funding",
+    "takeprofittrader": "Take Profit Trader",
+    "lucid": "Lucid",
+}
+
+def normalize_prop_firm(name):
+    """Normalize prop firm name to canonical form to prevent duplicates."""
+    if not name:
+        return "Unknown"
+    original = str(name).strip()
+    key = original.lower().replace(" ", "").replace("_", "")
+    if key in _FIRM_MAP:
+        return _FIRM_MAP[key]
+    if "myfundedfutures" in key or "myfundedfx" in key:
+        return "My Funded Futures"
+    if "fundednext" in key:
+        return "FundedNext"
+    if "topstep" in key:
+        return "Topstep"
+    if "fundingtick" in key:
+        return "Funding Ticks"
+    return original
+
 def normalize_account_size(value):
     """
     Normalize account size values to standard format: $X,XXX (v1.0.1)
@@ -234,6 +277,7 @@ def fetch_evaluations(sheet_url):
             # Filter valid rows (where Prop Firm is not empty)
             if 'Prop Firm' in df.columns:
                 df = df[df['Prop Firm'].notna()]
+                df['Prop Firm'] = df['Prop Firm'].apply(normalize_prop_firm)
             
             # Apply derived metrics calculations
             df = calculate_derived_metrics(df)
@@ -389,7 +433,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         return stats[section][firm_name]
 
     # Pre-populate target firms to match sheet structure
-    TARGET_FIRMS = ["My Funded Futures", "Funding Ticks", "Trade Day", "Funded Next", "Topstep"]
+    TARGET_FIRMS = ["My Funded Futures", "Funding Ticks", "Trade Day", "FundedNext", "Topstep"]
     for firm in TARGET_FIRMS:
         get_firm_stats(firm, "evaluation_data")
         get_firm_stats(firm, "funded_data")
@@ -405,7 +449,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 35)]
 
     for ev in evaluations:
-        firm = ev.get('Prop Firm', 'Unknown')
+        firm = normalize_prop_firm(ev.get('Prop Firm', 'Unknown'))
         status_p1 = str(ev.get('Status P1', '')).strip()
         # Support both 'Status' and 'Status Funded' column names (sheet variant)
         status_funded = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
@@ -783,7 +827,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'MFFU', 'MFFU_Flex', 'Funded Next', 'Funding Ticks', 'Topstep', 'Lucid', 'Trade Day', 'Alpha Futures', 'Tradeify', 'Other'},
+        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'Trade Day', 'Alpha Futures', 'Tradeify', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }
@@ -794,7 +838,7 @@ def extract_unique_values(data):
     for row in data:
         # Prop Firm
         val = row.get('Prop Firm')
-        if val: options['Prop Firm'].add(str(val).strip())
+        if val: options['Prop Firm'].add(normalize_prop_firm(str(val).strip()))
             
         # Account Size - normalize to standard format
         val = row.get('Account Size')

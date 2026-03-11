@@ -1145,6 +1145,36 @@
             const statsContainer = document.getElementById('stats-summary');
             if (data.statistics) {
                 const s = data.statistics;
+
+                // Normalize firm keys in stats to merge duplicates
+                const firmMap = {
+                    'mffu': 'My Funded Futures', 'mffuflex': 'My Funded Futures',
+                    'myfundedfutures': 'My Funded Futures', 'myfundedfx': 'My Funded Futures',
+                    'mff': 'My Funded Futures',
+                    'topstep': 'Topstep',
+                    'fundingticks': 'Funding Ticks', 'fundingtick': 'Funding Ticks',
+                    'fundednext': 'FundedNext',
+                    'tradeday': 'Trade Day', 'tradeify': 'Tradeify',
+                    'alphafutures': 'Alpha Futures', 'lucid': 'Lucid',
+                };
+                function normFirm(name) {
+                    if (!name) return 'Unknown';
+                    const key = name.trim().toLowerCase().replace(/[\s_]/g, '');
+                    return firmMap[key] || name.trim();
+                }
+                function mergeStatKeys(obj) {
+                    if (!obj) return {};
+                    const merged = {};
+                    for (const [rawKey, val] of Object.entries(obj)) {
+                        const canon = normFirm(rawKey);
+                        if (!merged[canon]) { merged[canon] = {...val}; }
+                        else { for (const [k, v] of Object.entries(val)) { if (typeof v === 'number') merged[canon][k] = (merged[canon][k] || 0) + v; } }
+                    }
+                    return merged;
+                }
+                s.evaluation_data = mergeStatKeys(s.evaluation_data);
+                s.funded_data = mergeStatKeys(s.funded_data);
+
                 // Store sheet hedging results for recalculation
                 sheetHedgingResults = s.hedging_review.sheet_hedging_results || 0;
                 statsContainer.innerHTML = `
