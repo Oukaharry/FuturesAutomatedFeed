@@ -2327,7 +2327,7 @@ def get_data():
                     # Recalculate actual hedging and discrepancy with combined values
                     net_deposits = hr['total_deposits'] + hr['total_withdrawals']
                     hr['actual_hedging_results'] = hr['current_balance'] - net_deposits
-                    hr['discrepancy'] = hr['actual_hedging_results'] - hr.get('sheet_hedging_results', 0)
+                    hr['discrepancy'] = hr.get('sheet_hedging_results', 0) - hr['actual_hedging_results']
             
             return jsonify(data)
     

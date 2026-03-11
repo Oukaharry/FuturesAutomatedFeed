@@ -646,6 +646,27 @@
             background-color: #1e293b !important;
         }
 
+        /* Client view: hide delete column entirely */
+        .client-view #evaluations-table thead tr:first-child th:nth-child(2),
+        .client-view #evaluations-table tbody td.sticky-col-2 {
+            display: none !important;
+        }
+        /* Shift Prop Firm column left since delete col (40px) is gone */
+        .client-view #evaluations-table tbody td.sticky-col-3,
+        .client-view #evaluations-table thead tr:first-child th.group-header-blue.sticky-prop-firm-header,
+        .client-view #evaluations-table thead tr:nth-child(2) th:nth-child(1) {
+            left: 50px !important;
+        }
+        /* Hide Actions column in Hedge/Prop/VPS tables for clients */
+        .client-view #hedge-accounts-table th:last-child,
+        .client-view #hedge-accounts-table td:last-child,
+        .client-view #prop-accounts-table th:last-child,
+        .client-view #prop-accounts-table td:last-child,
+        .client-view #vps-accounts-table th:last-child,
+        .client-view #vps-accounts-table td:last-child {
+            display: none !important;
+        }
+
         /* 5. Sticky Corners (Intersection of Header + Sticky Col) */
         /* Need higher Z-index to stay on top of both vertical and horizontal scrolling content */
         #evaluations-table thead tr:first-child th:nth-child(1),
@@ -1011,7 +1032,7 @@
         }
     </style>
 </head>
-<body>
+<body class="{% if user_type == 'client' %}client-view{% endif %}">
     <!-- Preview Mode Banner -->
     <div id="preview-banner" class="preview-banner">
         <span>📜 Viewing Version <strong id="preview-version-num"></strong> from <span id="preview-version-date"></span></span>
@@ -3295,7 +3316,7 @@
             // Note: withdrawals should be negative, so we add them
             const netDeposits = deposits + withdrawals;  // withdrawals is negative
             const actualHedging = balance - netDeposits;
-            const discrepancy = actualHedging - sheetHedgingResults;
+            const discrepancy = sheetHedgingResults - actualHedging;
             
             // Update display
             const actualEl = document.getElementById('hedging-actual');
@@ -3312,7 +3333,7 @@
             // Calculate actual hedging and discrepancy
             const netDeposits = deposits + withdrawals;
             const actualHedging = balance - netDeposits;
-            const discrepancy = actualHedging - sheetHedgingResults;
+            const discrepancy = sheetHedgingResults - actualHedging;
             
             try {
                 const response = await fetch(`/api/hedging_review/${CLIENT_ID}`, {
@@ -3370,7 +3391,7 @@
             
             let html = '<div style="background:#f8fafc;border-radius:4px;padding:8px;margin-top:5px;">';
             html += '<table style="width:100%;font-size:10px;border-collapse:collapse;">';
-            html += '<tr style="border-bottom:1px solid #e2e8f0;"><th style="text-align:left;padding:2px;">Name</th><th style="text-align:right;padding:2px;">Deposits</th><th style="text-align:right;padding:2px;">Withdrawals</th><th style="text-align:right;padding:2px;">Balance</th><th></th></tr>';
+            html += '<tr style="border-bottom:1px solid #e2e8f0;"><th style="text-align:left;padding:2px;">Name</th><th style="text-align:right;padding:2px;">Deposits</th><th style="text-align:right;padding:2px;">Withdrawals</th><th style="text-align:right;padding:2px;">Balance</th>' + (IS_CLIENT ? '' : '<th></th>') + '</tr>';
             
             accounts.forEach((acc, idx) => {
                 html += `<tr>
@@ -3378,7 +3399,7 @@
                     <td style="text-align:right;padding:2px;">${formatMoney(acc.deposits)}</td>
                     <td style="text-align:right;padding:2px;">${formatMoney(acc.withdrawals)}</td>
                     <td style="text-align:right;padding:2px;">${formatMoney(acc.final_balance)}</td>
-                    <td style="text-align:center;padding:2px;"><button onclick="deleteHistoricalMT5(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:10px;">✕</button></td>
+                    ${IS_CLIENT ? '' : `<td style="text-align:center;padding:2px;"><button onclick="deleteHistoricalMT5(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:10px;">✕</button></td>`}
                 </tr>`;
             });
             
@@ -3387,7 +3408,7 @@
                 <td style="text-align:right;padding:2px;">${formatMoney(totalDep)}</td>
                 <td style="text-align:right;padding:2px;">${formatMoney(totalWith)}</td>
                 <td style="text-align:right;padding:2px;">${formatMoney(totalBal)}</td>
-                <td></td>
+                ${IS_CLIENT ? '' : '<td></td>'}
             </tr>`;
             html += '</table></div>';
             
@@ -3647,6 +3668,10 @@
         }
 
         function getInputHtml(value, type, index, key, readOnly = false) {
+            // For read-only date fields with no value, show empty cell instead of date picker
+            if (readOnly && type === 'date' && !value) {
+                return '';
+            }
             const readOnlyAttr = readOnly ? 'readonly' : '';
             let style = readOnly ? 'background-color: rgba(255, 255, 255, 0.05); cursor: not-allowed; color: var(--text-secondary);' : '';
             

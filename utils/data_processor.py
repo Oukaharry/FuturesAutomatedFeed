@@ -1007,7 +1007,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         net_deposits = deposits + withdrawals  # withdrawals is negative
         actual_hedging = balance - net_deposits
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
-        stats["hedging_review"]["discrepancy"] = actual_hedging - stats["hedging_review"]["sheet_hedging_results"]
+        stats["hedging_review"]["discrepancy"] = stats["hedging_review"]["sheet_hedging_results"] - actual_hedging
         
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")
@@ -1107,15 +1107,15 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         )
         if has_mt5_data:
             stats["hedging_review"]["discrepancy"] = (
-                stats["hedging_review"]["actual_hedging_results"] -
-                stats["hedging_review"]["sheet_hedging_results"]
+                stats["hedging_review"]["sheet_hedging_results"] -
+                stats["hedging_review"]["actual_hedging_results"]
             )
 
     # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
     # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy
     # The sheet formula is: =B6+B3+B4+B5+B25 
     # where B3=fees(negative), B4=hedging, B5=farming, B6=payouts, B25=discrepancy
-    # Discrepancy = Actual Hedging Results - Sheet Hedging Results (from MT5)
+    # Discrepancy = Sheet Hedging Results - Actual Hedging Results
     # NOTE: Only include discrepancy if we have actual MT5 data, otherwise use 0
     discrepancy = stats["hedging_review"]["discrepancy"] if has_mt5_data else 0.0
     

@@ -1458,7 +1458,7 @@
             // Note: withdrawals should be negative, so we add them
             const netDeposits = deposits + withdrawals;  // withdrawals is negative
             const actualHedging = balance - netDeposits;
-            const discrepancy = actualHedging - sheetHedgingResults;
+            const discrepancy = sheetHedgingResults - actualHedging;
             
             // Update display
             const actualEl = document.getElementById('hedging-actual');
@@ -1475,7 +1475,7 @@
             // Calculate actual hedging and discrepancy
             const netDeposits = deposits + withdrawals;
             const actualHedging = balance - netDeposits;
-            const discrepancy = actualHedging - sheetHedgingResults;
+            const discrepancy = sheetHedgingResults - actualHedging;
             
             try {
                 const response = await fetch(`/api/hedging_review/${CLIENT_ID}`, {
