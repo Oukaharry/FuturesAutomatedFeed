@@ -207,8 +207,8 @@ class MT5DataPusher:
         except Exception:
             pass
 
-        if is_fnft:
-            # Override from_timestamp to 60 days to capture history (for session-based matching)
+        if is_fnft and days < 60:
+            # Override small day values for FNFT to capture session-based history
             # We no longer hard-limit to "today" because the server side will handle resets.
             days = 60
             from_timestamp = time.time() - (days * 24 * 3600)
@@ -489,6 +489,19 @@ class MT5DataPusher:
         account = self.get_account_info()
         positions = self.get_positions()
         deals = self.get_deals(days=30)
+        
+        # Merge in full-history farming deals for correct hedge day calculation
+        all_deals_full = self.get_deals(days=365) or []
+        if deals is None:
+            deals = []
+        existing_ids = {d.get('ticket') or d.get('order') for d in deals}
+        for d in all_deals_full:
+            if '_FA' in str(d.get('comment', '')).upper():
+                deal_id = d.get('ticket') or d.get('order')
+                if deal_id not in existing_ids:
+                    deals.append(d)
+                    existing_ids.add(deal_id)
+        
         statistics = self.calculate_statistics(deals)
         
         payload = {
@@ -1525,8 +1538,21 @@ class TraderCompanionApp:
             self.log(f"   - Total Withdrawals: ${w}")
 
         positions = self.pusher.get_positions()
-        # Fetch deals for fast sync (increased to 30 days)
+        # Fetch recent deals (30 days) for regular trading stats
         raw_deals = self.pusher.get_deals(days=30)
+        if raw_deals is None:
+            raw_deals = []
+        
+        # Fetch full history (365 days) for farming deals only — needed for correct hedge day count
+        all_deals_full = self.pusher.get_deals(days=365) or []
+        fa_deal_ids = {d.get('ticket') or d.get('order') for d in raw_deals if '_FA' in str(d.get('comment', '')).upper()}
+        for d in all_deals_full:
+            comment = str(d.get('comment', '')).upper()
+            if '_FA' in comment:
+                deal_id = d.get('ticket') or d.get('order')
+                if deal_id not in fa_deal_ids:
+                    raw_deals.append(d)
+                    fa_deal_ids.add(deal_id)
         
         # Filter deals: Only keep Balance operations and Trades with valid comments
         deals = []
@@ -1558,9 +1584,8 @@ class TraderCompanionApp:
 
         statistics = self.pusher.calculate_statistics(deals)
         
-        # NOTE: Increased aggregated result history to 30 days coverage.
-        # Use "Sync Hedge Results" button separately if you need to re-scan full year.
-        aggregated_result = self.pusher.get_deals_grouped_by_phase(days=30)
+        # Full history for aggregated results to capture all farming trades
+        aggregated_result = self.pusher.get_deals_grouped_by_phase(days=365)
         aggregated_by_comment = aggregated_result.get('aggregated', [])
         comment_summary = aggregated_result.get('summary', {})
         
