@@ -429,9 +429,11 @@ def normalize_prop_firm_name(name):
     # Map normalized keys to display names
     MAPPING = {
         "myfundedfutures": "My Funded Futures",
+        "myfundedfx": "My Funded Futures",
         "fundednext": "FundedNext",
         "topstep": "Topstep",
         "fundingticks": "Funding Ticks",
+        "fundingtick": "Funding Ticks",
         "tradeday": "Trade Day",
         "tradeify": "Tradeify",
         "ftmo": "FTMO",
@@ -450,6 +452,7 @@ def normalize_prop_firm_name(name):
         "takeprofittrader": "Take Profit Trader",
         "mff": "My Funded Futures",
         "mffu": "My Funded Futures",
+        "mffuflex": "My Funded Futures",
         "fundednextlegacyaccount": "FundedNext (Legacy)", # Keep distinct if wanted, or merge to FundedNext
     }
     

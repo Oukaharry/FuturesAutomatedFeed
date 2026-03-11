@@ -662,6 +662,24 @@ def save_client_data(client_id: str, data: dict) -> bool:
             merged_positions = data.get('positions', existing_data.get('positions', []))
             merged_account = data.get('account', existing_data.get('account', {}))
             merged_evaluations = data.get('evaluations', existing_data.get('evaluations', []))
+
+            # Normalize Prop Firm names before storing to prevent duplicates
+            FIRM_NORMALIZE = {
+                "mffu": "My Funded Futures", "mffuflex": "My Funded Futures",
+                "myfundedfutures": "My Funded Futures", "myfundedfx": "My Funded Futures",
+                "mff": "My Funded Futures",
+                "topstep": "Topstep",
+                "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",
+                "fundednext": "FundedNext",
+                "tradeday": "Trade Day", "tradeify": "Tradeify",
+                "alphafutures": "Alpha Futures",
+            }
+            for ev in merged_evaluations:
+                if isinstance(ev, dict) and ev.get('Prop Firm'):
+                    raw = ev['Prop Firm'].strip().lower().replace(" ", "").replace("_", "")
+                    if raw in FIRM_NORMALIZE:
+                        ev['Prop Firm'] = FIRM_NORMALIZE[raw]
+
             merged_statistics = data.get('statistics', existing_data.get('statistics', {}))
             merged_dropdown_options = data.get('dropdown_options', existing_data.get('dropdown_options', {}))
             merged_identity = data.get('identity', existing_data.get('identity', {}))

@@ -1444,7 +1444,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      # Also check comments in session for clues if account number is ambiguous
                      session_comments = " ".join([d.get('comment', '') for d in session['deals'][:5]])
                      
-                     if 'MFF' in guesser or 'MFF' in session_comments.upper(): p_firm = 'MyFundedFX'
+                     if 'MFF' in guesser or 'MFF' in session_comments.upper(): p_firm = 'My Funded Futures'
                      elif 'V2' in guesser or 'V2' in session_comments.upper(): p_firm = 'Topstep'
                      elif 'FN' in guesser or 'FNFT' in session_comments.upper(): p_firm = 'FundedNext'
                      elif 'AF' in guesser or 'AFAD' in session_comments.upper(): p_firm = 'Alpha Futures'

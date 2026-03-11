@@ -799,6 +799,23 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 for ev in merged_evaluations
             ]
 
+            # Normalize Prop Firm names before storing to prevent duplicates
+            FIRM_NORMALIZE = {
+                "mffu": "My Funded Futures", "mffuflex": "My Funded Futures",
+                "myfundedfutures": "My Funded Futures", "myfundedfx": "My Funded Futures",
+                "mff": "My Funded Futures",
+                "topstep": "Topstep", "topstep": "Topstep",
+                "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",
+                "fundednext": "FundedNext",
+                "tradeday": "Trade Day", "tradeify": "Tradeify",
+                "alphafutures": "Alpha Futures",
+            }
+            for ev in clean_evaluations:
+                if isinstance(ev, dict) and ev.get('Prop Firm'):
+                    raw = ev['Prop Firm'].strip().lower().replace(" ", "").replace("_", "")
+                    if raw in FIRM_NORMALIZE:
+                        ev['Prop Firm'] = FIRM_NORMALIZE[raw]
+
             cursor.execute('''
                 INSERT INTO clients_data (
                     client_id, deals, positions, account, evaluations,
