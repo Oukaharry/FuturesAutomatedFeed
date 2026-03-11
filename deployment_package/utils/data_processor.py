@@ -795,6 +795,18 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         if 'ev' in stats_tab:
             stats['expected_value'] = stats_tab['ev']
 
+        # Recalculate Sheet Hedging Results from the (now-overridden) cashflow values
+        # so it matches the Google Sheet's own formula (=Hedging Results + Farming Results)
+        stats["hedging_review"]["sheet_hedging_results"] = (
+            stats["cashflow_inprogress"]["hedging_results"] +
+            stats["cashflow_inprogress"]["farming_results"]
+        )
+        if has_mt5_data:
+            stats["hedging_review"]["discrepancy"] = (
+                stats["hedging_review"]["actual_hedging_results"] -
+                stats["hedging_review"]["sheet_hedging_results"]
+            )
+
     # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
     # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy
     # The sheet formula is: =B6+B3+B4+B5+B25 
