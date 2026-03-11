@@ -30,7 +30,7 @@ from dashboard.database import (
     init_database, 
     validate_api_key, generate_api_key, list_api_keys, revoke_api_key,
     verify_admin_password, set_admin_password,
-    save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field,
+    save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field, delete_client_data,
     log_action, get_audit_log,
     create_session, validate_session, delete_session,
     create_user, verify_user_password, verify_client_login, update_user_password,
@@ -3515,6 +3515,8 @@ def api_delete_user():
         if not admin or not trader: return jsonify({"status": "error", "message": "Parents required"}), 400
         result = remove_client(admin, trader, name)
         delete_user_credential(name, 'client')
+        if result:
+            delete_client_data(name)
     
     if result:
         log_action(f'DELETE_{user_type.upper()}', user_type, name, get_remote_address())

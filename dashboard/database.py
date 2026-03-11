@@ -854,6 +854,18 @@ def get_all_clients() -> dict:
             clients[client_id] = get_client_data(client_id)
         return clients
 
+def delete_client_data(client_id: str) -> bool:
+    """Permanently delete all data for a client from the database."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM clients_data WHERE client_id = ?', (client_id,))
+        cursor.execute('DELETE FROM data_history WHERE client_id = ?', (client_id,))
+        cursor.execute('DELETE FROM cell_notes WHERE client_id = ?', (client_id,))
+        cursor.execute('DELETE FROM daily_watermarks WHERE client_id = ?', (client_id,))
+        cursor.execute('DELETE FROM waterlog_periods WHERE client_id = ?', (client_id,))
+        conn.commit()
+        return cursor.rowcount >= 0
+
 def get_clients_count() -> int:
     """Get count of clients in database."""
     with get_connection() as conn:

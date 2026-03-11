@@ -26,7 +26,7 @@ from dashboard.database import (
     init_database, 
     validate_api_key, generate_api_key, list_api_keys, revoke_api_key,
     verify_admin_password, set_admin_password,
-    save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field,
+    save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field, delete_client_data,
     log_action, get_audit_log,
     create_session, validate_session, delete_session,
     create_user, verify_user_password, verify_client_login, update_user_password,
@@ -1924,6 +1924,7 @@ def api_remove_client():
         )
     
     if remove_client(admin, trader, name):
+        delete_client_data(name)
         log_action('REMOVE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Client not found"}), 400
