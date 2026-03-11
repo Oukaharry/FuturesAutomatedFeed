@@ -142,6 +142,57 @@ def remove_client(admin_name, trader_name, client_name):
                     return True
     return False
 
+def rename_admin(old_name, new_name, new_email=None):
+    """Rename an admin. Preserves all traders/clients underneath."""
+    reload_hierarchy()
+    if old_name not in SYSTEM_HIERARCHY["admins"]:
+        return False
+    if new_name != old_name and new_name in SYSTEM_HIERARCHY["admins"]:
+        return False  # new name already taken
+    admin_data = SYSTEM_HIERARCHY["admins"].pop(old_name)
+    if new_email is not None:
+        admin_data["email"] = new_email
+    SYSTEM_HIERARCHY["admins"][new_name] = admin_data
+    save_hierarchy(SYSTEM_HIERARCHY)
+    return True
+
+def rename_trader(admin_name, old_name, new_name, new_email=None):
+    """Rename a trader under a given admin."""
+    reload_hierarchy()
+    if admin_name not in SYSTEM_HIERARCHY["admins"]:
+        return False
+    traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
+    if old_name not in traders:
+        return False
+    if new_name != old_name and new_name in traders:
+        return False  # new name already taken under this admin
+    trader_data = traders.pop(old_name)
+    if new_email is not None:
+        trader_data["email"] = new_email
+    traders[new_name] = trader_data
+    save_hierarchy(SYSTEM_HIERARCHY)
+    return True
+
+def rename_client(admin_name, trader_name, old_name, new_name, new_email=None, new_category=None):
+    """Rename a client under a given admin/trader."""
+    reload_hierarchy()
+    if admin_name not in SYSTEM_HIERARCHY["admins"]:
+        return False
+    traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
+    if trader_name not in traders:
+        return False
+    clients = traders[trader_name]["clients"]
+    for client in clients:
+        if client["name"] == old_name:
+            client["name"] = new_name
+            if new_email is not None:
+                client["email"] = new_email
+            if new_category is not None:
+                client["category"] = new_category
+            save_hierarchy(SYSTEM_HIERARCHY)
+            return True
+    return False
+
 def move_client(client_name, old_admin, old_trader, new_admin, new_trader):
     # Verify existence of old location
     if old_admin not in SYSTEM_HIERARCHY["admins"]: return False

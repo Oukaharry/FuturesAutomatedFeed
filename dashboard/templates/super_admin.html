@@ -627,8 +627,8 @@
                 <span onclick="closeEditUserModal()" style="cursor: pointer; font-size: 1.5rem; color: var(--text-secondary);">&times;</span>
             </div>
             <div class="form-group">
-                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Name (Read Only)</label>
-                <input type="text" id="editUserName" class="form-input" readonly disabled style="opacity: 0.7; cursor: not-allowed; width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
+                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Name</label>
+                <input type="text" id="editUserName" class="form-input" placeholder="Name" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
             </div>
             <div class="form-group" style="margin-top: 15px;">
                 <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Email</label>
@@ -638,9 +638,7 @@
                 <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Category/Profile</label>
                 <select id="editUserCategory" class="form-input" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
                      <option value="Private">Private</option>
-                     <option value="Retail">Retail</option>
-                     <option value="Institutional">Institutional</option>
-                     <option value="PropFirm">Prop Firm</option>
+                     <option value="BEF">BEF</option>
                 </select>
             </div>
             
@@ -648,6 +646,7 @@
             <input type="hidden" id="editUserType">
             <input type="hidden" id="editUserAdmin">
             <input type="hidden" id="editUserTrader">
+            <input type="hidden" id="editUserOriginalName">
             
             <div style="margin-top: 24px; text-align: right;">
                 <button onclick="closeEditUserModal()" style="margin-right: 10px; padding: 8px 16px; background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; cursor: pointer;">Cancel</button>
@@ -672,7 +671,8 @@
         document.addEventListener('keydown', function(event) {
             if (event.key === "Escape") {
                 debugLog("ESC key pressed. Attempting to close modal.");
-                if (window.closeUserListModal) window.closeUserListModal();
+                if (document.getElementById('editUserModal').style.display !== 'none') closeEditUserModal();
+                else if (window.closeUserListModal) window.closeUserListModal();
             }
         });
 
@@ -890,27 +890,65 @@
 
         // --- Edit / Delete User Logic ---
         
-        // Refactored to separate simple prompt function
-        async function openEditUserModal(type, name, email, parent1, parent2, extra) {
-             // Stop propagation if called from a button inside a clickable card
+        function openEditUserModal(type, name, email, parent1, parent2, extra) {
              if(event) event.stopPropagation();
-
-             // Native prompt for Email as requested
-             const newEmail = prompt(`Edit Email for ${name}:`, (email && email !== 'undefined' && email !== 'null') ? email : '');
-             if (newEmail === null) return; // User Cancelled
              
-             // Prepare payload
-             const payload = { 
-                name: name,
-                email: newEmail.trim()
+             // Clean up escaped values
+             const cleanName = (name || '').replace(/\\'/g, "'");
+             const cleanEmail = (email && email !== 'undefined' && email !== 'null') ? email.replace(/\\'/g, "'") : '';
+             const cleanCategory = (extra && extra !== 'undefined' && extra !== 'null') ? extra : 'Private';
+             
+             // Populate modal fields
+             document.getElementById('editModalTitle').textContent = 'Edit ' + type.charAt(0).toUpperCase() + type.slice(1);
+             document.getElementById('editUserName').value = cleanName;
+             document.getElementById('editUserEmail').value = cleanEmail;
+             document.getElementById('editUserType').value = type;
+             document.getElementById('editUserAdmin').value = parent1 || '';
+             document.getElementById('editUserTrader').value = parent2 || '';
+             document.getElementById('editUserOriginalName').value = cleanName; // Store original for rename detection
+             
+             // Show category dropdown only for clients
+             const catGroup = document.getElementById('editClientCategoryGroup');
+             if (type === 'client') {
+                 catGroup.style.display = 'block';
+                 document.getElementById('editUserCategory').value = cleanCategory;
+             } else {
+                 catGroup.style.display = 'none';
+             }
+             
+             // Show modal
+             document.getElementById('editUserModal').style.display = 'block';
+        }
+        
+        function closeEditUserModal() {
+            document.getElementById('editUserModal').style.display = 'none';
+        }
+        
+        async function submitEditUser() {
+            const type = document.getElementById('editUserType').value;
+            const originalName = document.getElementById('editUserOriginalName').value;
+            const newName = document.getElementById('editUserName').value.trim();
+            const newEmail = document.getElementById('editUserEmail').value.trim();
+            const admin = document.getElementById('editUserAdmin').value;
+            const trader = document.getElementById('editUserTrader').value;
+            const category = document.getElementById('editUserCategory').value;
+            
+            if (!newName) return alert('Name cannot be empty');
+            
+            const payload = { 
+                name: originalName,
+                email: newEmail
             };
             
-            if (type !== 'admin') {
-                payload.admin = parent1;
+            // Include new_name if changed
+            if (newName !== originalName) {
+                payload.new_name = newName;
             }
+            
+            if (type !== 'admin') payload.admin = admin;
             if (type === 'client') {
-                payload.trader = parent2;
-                payload.category = extra || 'Private'; // Preserve category
+                payload.trader = trader;
+                payload.category = category;
             }
             
             let url = '';
@@ -925,14 +963,14 @@
                     body: JSON.stringify(payload)
                 });
                 
-                // Inspect response content type to avoid crashing on HTML error pages
                 const contentType = res.headers.get("content-type");
                 if (contentType && contentType.indexOf("application/json") !== -1) {
                     const result = await res.json();
                     if (result.status === 'success') {
+                        closeEditUserModal();
                         loadData(); 
                     } else {
-                        alert('Error updating: ' + result.message);
+                        alert('Error: ' + result.message);
                     }
                 } else {
                     const text = await res.text();
@@ -941,7 +979,7 @@
                 }
             } catch (err) {
                 console.error(err);
-                alert('Network error updating user: ' + err.message);
+                alert('Network error: ' + err.message);
             }
         }
         

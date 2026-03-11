@@ -482,6 +482,41 @@ def user_exists(username: str, user_type: str) -> bool:
         )
         return cursor.fetchone() is not None
 
+def rename_user_credential(old_name: str, new_name: str, user_type: str) -> bool:
+    """Rename a user in user_credentials table."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE user_credentials SET username = ?, updated_at = ?
+            WHERE username = ? AND user_type = ?
+        ''', (new_name, datetime.now().isoformat(), old_name, user_type))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def rename_client_in_db(old_name: str, new_name: str) -> bool:
+    """Rename client_id across all client data tables."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        for table in ['clients_data', 'data_history']:
+            try:
+                cursor.execute(f'UPDATE {table} SET client_id = ? WHERE client_id = ?', (new_name, old_name))
+            except Exception:
+                pass
+        conn.commit()
+        return True
+
+def update_user_email(username: str, user_type: str, new_email: str) -> bool:
+    """Update a user's email address."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE user_credentials 
+            SET email = ?, updated_at = ?
+            WHERE username = ? AND user_type = ?
+        ''', (new_email, datetime.now().isoformat(), username, user_type))
+        conn.commit()
+        return cursor.rowcount > 0
+
 def record_login_attempt(username: str, user_type: str, ip_address: str, success: bool):
     """Record a login attempt."""
     with get_connection() as conn:

@@ -22,7 +22,8 @@ from config.hierarchy import (
     update_admin_details, update_trader_details, update_client_details, update_client_category,
     get_client_by_email, get_user_by_email,
     remove_admin, remove_trader, remove_client,
-    move_client, move_trader
+    move_client, move_trader,
+    rename_admin, rename_trader, rename_client
 )
 
 # Import database module for secure storage
@@ -34,7 +35,7 @@ from dashboard.database import (
     log_action, get_audit_log,
     create_session, validate_session, delete_session,
     create_user, verify_user_password, verify_client_login, update_user_password,
-    delete_user_credential, update_user_email,
+    delete_user_credential, update_user_email, rename_user_credential, rename_client_in_db,
     get_user, list_users, deactivate_user, reset_user_password, user_exists,
     record_login_attempt, is_account_locked,
     find_user_by_identifier, verify_user_by_identifier,
@@ -3546,7 +3547,16 @@ def api_delete_user():
 def api_update_admin():
     name = request.json.get('name')
     email = request.json.get('email')
+    new_name = request.json.get('new_name', '').strip()
     if not name: return jsonify({"status": "error", "message": "Name required"}), 400
+    
+    # Rename if new_name provided and different
+    if new_name and new_name != name:
+        if not rename_admin(name, new_name, email):
+            return jsonify({"status": "error", "message": "Rename failed (name taken or not found)"}), 400
+        rename_user_credential(name, new_name, 'admin')
+        log_action('RENAME_ADMIN', 'admin', f'{name} -> {new_name}', get_remote_address())
+        return jsonify({"status": "success"})
     
     if update_admin_details(name, email):
         update_user_email(name, 'admin', email)
@@ -3559,7 +3569,16 @@ def api_update_trader():
     admin = request.json.get('admin')
     name = request.json.get('name')
     email = request.json.get('email')
+    new_name = request.json.get('new_name', '').strip()
     if not admin or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    # Rename if new_name provided and different
+    if new_name and new_name != name:
+        if not rename_trader(admin, name, new_name, email):
+            return jsonify({"status": "error", "message": "Rename failed (name taken or not found)"}), 400
+        rename_user_credential(name, new_name, 'trader')
+        log_action('RENAME_TRADER', 'trader', f'{name} -> {new_name}', get_remote_address(), f"Admin: {admin}")
+        return jsonify({"status": "success"})
     
     if update_trader_details(admin, name, email):
         update_user_email(name, 'trader', email)
@@ -3574,8 +3593,18 @@ def api_update_client():
     name = request.json.get('name')
     email = request.json.get('email', '')
     category = request.json.get('category', '')
+    new_name = request.json.get('new_name', '').strip()
     
     if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
+    
+    # Rename if new_name provided and different
+    if new_name and new_name != name:
+        if not rename_client(admin, trader, name, new_name, email, category or None):
+            return jsonify({"status": "error", "message": "Rename failed (not found)"}), 400
+        rename_client_in_db(name, new_name)
+        rename_user_credential(name, new_name, 'client')
+        log_action('RENAME_CLIENT', 'client', f'{name} -> {new_name}', get_remote_address(), f"Trader: {trader}")
+        return jsonify({"status": "success"})
     
     if category:
         update_client_category(admin, trader, name, category)
