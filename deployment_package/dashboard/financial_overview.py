@@ -45,7 +45,7 @@ def normalize_prop_firm_name(name):
     MAPPING = {
         "myfundedfutures": "My Funded Futures",
         "fundednext": "FundedNext",
-        "topstep": "Top Step",
+        "topstep": "Topstep",
         "fundingticks": "Funding Ticks",
         "tradeday": "Trade Day",
         "tradeify": "Tradeify",

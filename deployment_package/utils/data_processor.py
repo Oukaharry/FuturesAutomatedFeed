@@ -389,7 +389,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         return stats[section][firm_name]
 
     # Pre-populate target firms to match sheet structure
-    TARGET_FIRMS = ["My Funded Futures", "Funding Ticks", "Trade Day", "Funded Next", "Top Step"]
+    TARGET_FIRMS = ["My Funded Futures", "Funding Ticks", "Trade Day", "Funded Next", "Topstep"]
     for firm in TARGET_FIRMS:
         get_firm_stats(firm, "evaluation_data")
         get_firm_stats(firm, "funded_data")
@@ -783,7 +783,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'MFFU', 'MFFU_Flex', 'Funded Next', 'Funding Ticks', 'Top Step', 'Lucid', 'Trade Day', 'Alpha Futures', 'Tradeify', 'Other'},
+        'Prop Firm': {'MFFU', 'MFFU_Flex', 'Funded Next', 'Funding Ticks', 'Topstep', 'Lucid', 'Trade Day', 'Alpha Futures', 'Tradeify', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }
