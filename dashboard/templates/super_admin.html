@@ -620,37 +620,41 @@
     </div>
 
     <!-- Edit User Modal -->
-    <div id="editUserModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10050; background: rgba(0,0,0,0.8); align-items: center; justify-content: center;">
-        <div style="width: 90%; max-width: 500px; padding: 24px; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h3 id="editModalTitle" style="margin: 0; color: var(--text-primary);">Edit User</h3>
-                <span onclick="closeEditUserModal()" style="cursor: pointer; font-size: 1.5rem; color: var(--text-secondary);">&times;</span>
+    <div id="editUserModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10050; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); align-items: center; justify-content: center;">
+        <div style="width: 90%; max-width: 480px; background: linear-gradient(165deg, #1a2332 0%, #0f172a 100%); border: 1px solid rgba(96,165,250,0.2); border-radius: 16px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6), 0 0 40px rgba(59,130,246,0.08);">
+            <!-- Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(139,92,246,0.1) 100%); border-bottom: 1px solid rgba(96,165,250,0.15); border-radius: 16px 16px 0 0;">
+                <h3 id="editModalTitle" style="margin: 0; color: #f1f5f9; font-size: 1.15rem; font-weight: 700;">Edit User</h3>
+                <span onclick="closeEditUserModal()" style="cursor: pointer; font-size: 1.4rem; color: #94a3b8; transition: color 0.2s;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">&times;</span>
             </div>
-            <div class="form-group">
-                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Name</label>
-                <input type="text" id="editUserName" class="form-input" placeholder="Name" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
-            </div>
-            <div class="form-group" style="margin-top: 15px;">
-                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Email</label>
-                <input type="email" id="editUserEmail" class="form-input" placeholder="user@example.com" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
-            </div>
-             <div class="form-group" style="margin-top: 15px; display:none;" id="editClientCategoryGroup">
-                <label style="color: var(--text-secondary); display: block; margin-bottom: 5px;">Category/Profile</label>
-                <select id="editUserCategory" class="form-input" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
-                     <option value="Private">Private</option>
-                     <option value="BEF">BEF</option>
-                </select>
-            </div>
-            
-            <!-- Hidden fields for context -->
-            <input type="hidden" id="editUserType">
-            <input type="hidden" id="editUserAdmin">
-            <input type="hidden" id="editUserTrader">
-            <input type="hidden" id="editUserOriginalName">
-            
-            <div style="margin-top: 24px; text-align: right;">
-                <button onclick="closeEditUserModal()" style="margin-right: 10px; padding: 8px 16px; background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; cursor: pointer;">Cancel</button>
-                <button onclick="submitEditUser()" style="padding: 8px 16px; background: var(--accent-gold); border: none; color: black; font-weight: bold; border-radius: 4px; cursor: pointer;">Save Changes</button>
+            <!-- Body -->
+            <div style="padding: 24px;">
+                <div style="margin-bottom: 18px;">
+                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Name</label>
+                    <input type="text" id="editUserName" placeholder="Name" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='rgba(96,165,250,0.25)'">
+                </div>
+                <div style="margin-bottom: 18px;">
+                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Email</label>
+                    <input type="email" id="editUserEmail" placeholder="user@example.com" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='rgba(96,165,250,0.25)'">
+                </div>
+                <div style="margin-bottom: 18px; display:none;" id="editClientCategoryGroup">
+                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Category/Profile</label>
+                    <select id="editUserCategory" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+                         <option value="Private">Private</option>
+                         <option value="BEF">BEF</option>
+                    </select>
+                </div>
+
+                <!-- Hidden fields -->
+                <input type="hidden" id="editUserType">
+                <input type="hidden" id="editUserAdmin">
+                <input type="hidden" id="editUserTrader">
+                <input type="hidden" id="editUserOriginalName">
+
+                <div style="margin-top: 24px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button onclick="closeEditUserModal()" style="padding: 10px 20px; background: transparent; border: 1px solid rgba(148,163,184,0.3); color: #cbd5e1; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(148,163,184,0.5)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(148,163,184,0.3)'">Cancel</button>
+                    <button onclick="submitEditUser()" style="padding: 10px 20px; background: linear-gradient(135deg, #3b82f6, #2563eb); border: none; color: white; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(59,130,246,0.35); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 6px 16px rgba(59,130,246,0.5)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(59,130,246,0.35)';this.style.transform='translateY(0)'">Save Changes</button>
+                </div>
             </div>
         </div>
     </div>
