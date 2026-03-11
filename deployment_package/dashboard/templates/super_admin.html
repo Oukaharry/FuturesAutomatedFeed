@@ -916,12 +916,18 @@
                  catGroup.style.display = 'none';
              }
              
-             // Show modal
-             document.getElementById('editUserModal').style.display = 'block';
+             // Show modal (must set display, opacity, AND .show class to override .modal-overlay CSS)
+             const modal = document.getElementById('editUserModal');
+             modal.style.display = 'block';
+             modal.style.opacity = '1';
+             modal.classList.add('show');
         }
         
         function closeEditUserModal() {
-            document.getElementById('editUserModal').style.display = 'none';
+            const modal = document.getElementById('editUserModal');
+            modal.style.display = 'none';
+            modal.style.opacity = '0';
+            modal.classList.remove('show');
         }
         
         async function submitEditUser() {
@@ -1007,37 +1013,6 @@
                     loadData();
                     // Reopen modal? No, we are in tree view now. 
                     // Just reload tree.
-                } else {
-                    alert('Error deleting: ' + result.message);
-                }
-            } catch (err) {
-                console.error(err);
-                alert('Network error deleting user');
-            }
-        }
-
-        async function deleteUser(type, name, parent1, parent2) {
-            const cleanName = name.replace(/\\'/g, "'");
-            if (!confirm(`Are you sure you want to delete ${type} "${cleanName}"?\nThis cannot be undone.`)) return;
-            
-            const payload = {
-                type: type,
-                name: cleanName,
-                admin: (type !== 'admin') ? parent1 : undefined,
-                trader: (type === 'client') ? parent2 : undefined
-            };
-
-            try {
-                const res = await fetch('/api/delete_user', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                const result = await res.json();
-                if (result.status === 'success') {
-                    loadData();
-                    // Reopen modal to show updated list
-                    setTimeout(() => openUserListModal(type), 500);
                 } else {
                     alert('Error deleting: ' + result.message);
                 }
