@@ -707,7 +707,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         net_deposits = deposits + withdrawals  # withdrawals is negative
         actual_hedging = balance - net_deposits
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
-        stats["hedging_review"]["discrepancy"] = stats["hedging_review"]["sheet_hedging_results"] - actual_hedging
+        stats["hedging_review"]["discrepancy"] = actual_hedging - stats["hedging_review"]["sheet_hedging_results"]
         
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")
@@ -803,8 +803,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         )
         if has_mt5_data:
             stats["hedging_review"]["discrepancy"] = (
-                stats["hedging_review"]["sheet_hedging_results"] -
-                stats["hedging_review"]["actual_hedging_results"]
+                stats["hedging_review"]["actual_hedging_results"] -
+                stats["hedging_review"]["sheet_hedging_results"]
             )
 
     # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
