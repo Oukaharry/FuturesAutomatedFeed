@@ -261,11 +261,16 @@
         
         /* Make empty date fields more obvious */
         input[type="date"].cell-input:not(:valid) {
-            color: #9ca3af;
+            color: transparent;
         }
         
         input[type="date"].cell-input::placeholder {
-            color: #9ca3af;
+            color: transparent;
+        }
+        
+        /* Hide dd/mm/yyyy placeholder text on empty date inputs */
+        input[type="date"].cell-input:not(:focus):not([data-has-value])::-webkit-datetime-edit {
+            color: transparent;
         }
         
         /* ============ Enhanced Table Scrolling ============ */

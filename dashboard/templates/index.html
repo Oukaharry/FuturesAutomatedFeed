@@ -277,11 +277,16 @@
         
         /* Make empty date fields more obvious */
         input[type="date"].cell-input:not(:valid) {
-            color: #9ca3af;
+            color: transparent;
         }
         
         input[type="date"].cell-input::placeholder {
-            color: #9ca3af;
+            color: transparent;
+        }
+        
+        /* Hide dd/mm/yyyy placeholder text on empty date inputs */
+        input[type="date"].cell-input:not(:focus):not([data-has-value])::-webkit-datetime-edit {
+            color: transparent;
         }
 
         /* --- Visual Notes --- */
@@ -539,6 +544,14 @@
             background-color: #1e293b !important; /* Ensure opaque background */
             box-shadow: 0 1px 0 rgba(255,255,255,0.1);
             height: 45px; /* Consistent height for sub-headers */
+        }
+
+        /* Farming sub-header text fitting */
+        [class^="sub-header-"] {
+            font-size: 11px !important;
+            white-space: nowrap !important;
+            padding: 4px 6px !important;
+            text-align: center !important;
         }
 
         /* 4. Sticky Columns (Horizontal) - Left Edge */
@@ -840,6 +853,7 @@
             border-bottom: 2px solid transparent !important;
             padding: 8px 14px !important;
             text-align: center !important;
+            justify-content: center !important;
             border-radius: 6px !important;
         }
         .tab-btn:hover { background: rgba(255,255,255,0.07) !important; color: var(--text-primary) !important; }
@@ -950,6 +964,7 @@
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
             padding: 8px 16px;
             border-radius: 8px;
