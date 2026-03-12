@@ -324,6 +324,7 @@ def create_user(username: str, password: str, user_type: str,
                 email: str = None, parent_admin: str = None, 
                 parent_trader: str = None) -> bool:
     """Create a new user with hashed password."""
+    username = username.strip()
     password_hash, salt = hash_password(password)
     now = datetime.now().isoformat()
     
@@ -1271,6 +1272,7 @@ def get_audit_log(limit: int = 100, action_filter: str = None) -> list:
 def create_session(user_type: str, user_identifier: str, ip_address: str = None, 
                    hours_valid: int = 24) -> str:
     """Create a new session token."""
+    user_identifier = user_identifier.strip()
     session_token = secrets.token_urlsafe(32)
     now = datetime.now()
     expires = now + timedelta(hours=hours_valid)

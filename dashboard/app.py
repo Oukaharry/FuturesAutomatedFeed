@@ -2095,7 +2095,7 @@ def get_filtered_hierarchy(user_type, user_identifier):
     
     if user_type == 'trader':
         # Trader sees only their clients - need to find which admin they belong to
-        trader_name = user_identifier
+        trader_name = user_identifier.strip()
         for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
             traders = admin_data.get('traders', {})
             if trader_name in traders:
@@ -3140,7 +3140,7 @@ def unified_login():
         return jsonify({"status": "error", "message": "Email not found in system"}), 403
     
     user_type = user.get('user_type')
-    username = user.get('username', identifier)
+    username = user.get('username', identifier).strip()
     
     # Check account lockout
     if is_account_locked(username, user_type):
