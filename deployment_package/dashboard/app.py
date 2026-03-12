@@ -39,6 +39,9 @@ from dashboard.database import (
     save_client_data_with_history, get_data_history, get_data_version,
     rollback_to_version, compare_versions, get_latest_version
 )
+from dashboard.notes_service import (
+    get_client_notes, save_client_note, delete_client_note
+)
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -2283,6 +2286,58 @@ def manage_historical_mt5(client_id):
         }
     })
 
+@app.route('/api/notes', methods=['POST'])
+@require_session
+def update_note():
+    """Update or Delete a cell note."""
+    try:
+        session_user = request.session_user
+        user_type = session_user.get('user_type')
+        user_identifier = session_user.get('user_identifier')
+        
+        data = request.json
+        client_id = data.get('client_id')
+        row_index = data.get('row_index')
+        column_key = data.get('column_key')
+        content = data.get('content')
+
+        # Clients cannot edit notes
+        if user_type == 'client':
+            return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
+        
+        if not client_id or row_index is None or not column_key:
+            return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+        if not can_access_client(user_type, user_identifier, client_id):
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        if content:
+            save_client_note(client_id, row_index, column_key, content, user_identifier)
+        else:
+            delete_client_note(client_id, row_index, column_key)
+            
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logging.error(f"Error updating note: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/notes/delete', methods=['POST'])
+@require_session
+def delete_note_endpoint():
+    """Delete a cell note."""
+    session_user = request.session_user
+    if session_user.get('user_type') == 'client':
+        return jsonify({"status": "error", "message": "Clients cannot delete notes"}), 403
+    
+    data = request.json
+    client_id = data.get('client_id')
+    row_index = data.get('row_index')
+    column_key = data.get('column_key')
+    
+    if delete_client_note(client_id, row_index, column_key):
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Database error"}), 500
+
 @app.route('/api/data')
 def get_data():
     """Get client data - requires authentication and role-based access."""
@@ -2308,6 +2363,16 @@ def get_data():
         
         data = get_client_data(client_id)
         if data:
+            # Inject Visual Notes
+            if 'evaluations' in data:
+                try:
+                    notes = get_client_notes(client_id)
+                    for i, ev in enumerate(data['evaluations']):
+                        if i in notes:
+                            ev['_notes'] = notes[i]
+                except Exception as e:
+                    logging.error(f"Error injecting notes: {e}")
+
             # Add historical MT5 values to hedging_review totals
             if 'statistics' in data and 'hedging_review' in data['statistics']:
                 hr = data['statistics']['hedging_review']

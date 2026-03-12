@@ -259,8 +259,12 @@
             background-color: #dbeafe;
         }
         
-        /* Make empty date fields more obvious */
-        input[type="date"].cell-input:not(:valid) {
+        /* Hide dd/mm/yyyy placeholder on empty date inputs, but show when focused */
+        input[type="date"].cell-input:not(:valid):not(:focus) {
+            color: transparent;
+        }
+        
+        input[type="date"].cell-input:not(:valid):not(:focus)::-webkit-datetime-edit {
             color: transparent;
         }
         
@@ -268,11 +272,42 @@
             color: transparent;
         }
         
-        /* Hide dd/mm/yyyy placeholder text on empty date inputs */
-        input[type="date"].cell-input:not(:focus):not([data-has-value])::-webkit-datetime-edit {
-            color: transparent;
-        }
+        /* --- Visual Notes --- */
+        td { position: relative; }
         
+        td.has-note::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 8px 8px 0;
+            border-color: transparent #fbbf24 transparent transparent;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* Note Modal */
+        #note-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        #note-modal-content {
+            background: #fff;
+            width: 90%; max-width: 400px;
+            border-radius: 12px;
+            border: 1px solid #3b82f6;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+
         /* ============ Enhanced Table Scrolling ============ */
         .table-scroll-wrapper {
             position: relative;
@@ -718,18 +753,38 @@
         </div>
     </div>
 
-    <div id="note-editor" class="note-editor">
-        <h4>Edit Note</h4>
-        <textarea id="note-text" placeholder="Enter note..."></textarea>
-        <div class="note-editor-buttons">
-            <button class="btn-xs btn-delete" onclick="deleteNote()">Delete</button>
-            <button class="btn-xs btn-cancel" onclick="closeNoteEditor()">Cancel</button>
-            <button class="btn-xs btn-save" onclick="saveNote()">Save</button>
+    <!-- Note Modal -->
+    <div id="note-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; justify-content:center; align-items:center;">
+        <div id="note-modal-content" style="background:#fff; border:1px solid #3b82f6; border-radius:12px; width:400px; max-width:90%; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+            <div style="background:rgba(59,130,246,0.1); padding:16px; border-bottom:1px solid rgba(59,130,246,0.2); display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; color:#1e40af; font-size:1.1rem;">Cell Note</h3>
+                <button onclick="closeNoteModal()" style="background:none; border:none; color:#64748b; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div style="padding:20px;">
+                <!-- View Mode -->
+                <div id="note-view-mode">
+                    <div id="note-text-display" style="color:#374151; font-size:0.95rem; line-height:1.6; white-space:pre-wrap; min-height:60px; margin-bottom:20px; padding:10px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0;"></div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button id="btn-delete-note" onclick="deleteNote()" style="background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:8px 16px; border-radius:6px; cursor:pointer;">Delete</button>
+                        <button id="btn-edit-note" onclick="enableNoteEdit()" style="background:#3b82f6; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer;">Edit</button>
+                    </div>
+                </div>
+                <!-- Edit Mode -->
+                <div id="note-edit-mode" style="display:none;">
+                    <textarea id="note-textarea" style="width:100%; height:120px; background:#f8fafc; border:1px solid #d1d5db; border-radius:6px; padding:12px; color:#374151; font-family:inherit; resize:vertical; margin-bottom:20px;" placeholder="Enter your note here..."></textarea>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button onclick="closeNoteModal()" style="background:transparent; color:#64748b; border:1px solid #d1d5db; padding:8px 16px; border-radius:6px; cursor:pointer;">Cancel</button>
+                        <button onclick="saveNote()" style="background:#3b82f6; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-weight:600; cursor:pointer;">Save Note</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         const CLIENT_ID = "{{ client_id }}";
+        const USER_TYPE = "{{ user_type }}";
+        const IS_CLIENT = USER_TYPE === 'client';
         // @ts-ignore
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
         let currentData = {};
@@ -737,6 +792,109 @@
         let isDatePickerOpen = false;
         let currentNoteTarget = null; // { index, key }
         let sheetHedgingResults = 0; // Store for recalculation
+
+        // --- Note System ---
+        function handleCellClick(event, index, key) {
+            const hasNote = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key];
+            if (!hasNote) return;
+            if (event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) return;
+            openNoteEditor(event, index, key);
+        }
+
+        function openNoteEditor(event, index, key) {
+            if (event && event.preventDefault) event.preventDefault();
+            const modal = document.getElementById('note-modal');
+            if (!modal) return;
+
+            const isClient = (USER_TYPE === 'client');
+            let currentContent = '';
+            let hasContent = false;
+            try {
+                if (currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key]) {
+                    currentContent = currentData.evaluations[index]._notes[key];
+                    hasContent = true;
+                }
+            } catch(e) {}
+
+            currentNoteTarget = { index, key };
+
+            const viewMode = document.getElementById('note-view-mode');
+            const editMode = document.getElementById('note-edit-mode');
+            const textDisplay = document.getElementById('note-text-display');
+            const textArea = document.getElementById('note-textarea');
+            const btnEdit = document.getElementById('btn-edit-note');
+            const btnDelete = document.getElementById('btn-delete-note');
+
+            if (viewMode) viewMode.style.display = 'none';
+            if (editMode) editMode.style.display = 'none';
+            if (btnEdit) btnEdit.style.display = 'none';
+            if (btnDelete) btnDelete.style.display = 'none';
+
+            if (isClient) {
+                if (!hasContent) { modal.style.display = 'none'; return; }
+                viewMode.style.display = 'block';
+                editMode.style.display = 'none';
+                textDisplay.textContent = currentContent;
+            } else {
+                if (hasContent) {
+                    viewMode.style.display = 'block';
+                    textDisplay.textContent = currentContent;
+                    if (btnEdit) btnEdit.style.display = 'inline-block';
+                    if (btnDelete) btnDelete.style.display = 'inline-block';
+                } else {
+                    editMode.style.display = 'block';
+                    if (textArea) textArea.value = '';
+                    setTimeout(() => { if(textArea) textArea.focus(); }, 100);
+                }
+            }
+            modal.style.display = 'flex';
+        }
+
+        function enableNoteEdit() {
+            const viewMode = document.getElementById('note-view-mode');
+            const editMode = document.getElementById('note-edit-mode');
+            const textDisplay = document.getElementById('note-text-display');
+            const textArea = document.getElementById('note-textarea');
+            textArea.value = textDisplay.textContent;
+            viewMode.style.display = 'none';
+            editMode.style.display = 'block';
+            textArea.focus();
+        }
+
+        function closeNoteModal() {
+            const modal = document.getElementById('note-modal');
+            if (modal) modal.style.display = 'none';
+            currentNoteTarget = null;
+        }
+
+        function saveNote() {
+            if (!currentNoteTarget) return;
+            const content = document.getElementById('note-textarea').value;
+            const { index, key } = currentNoteTarget;
+            if (!currentData.evaluations[index]._notes) currentData.evaluations[index]._notes = {};
+            currentData.evaluations[index]._notes[key] = content;
+            renderEvaluationsTable();
+            closeNoteModal();
+            fetch('/api/notes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: CLIENT_ID, row_index: index, column_key: key, content: content })
+            }).then(r => r.json()).then(d => { if(d.status !== 'success') alert('Failed to save note'); });
+        }
+
+        function deleteNote() {
+            if (!confirm('Delete this note?')) return;
+            if (!currentNoteTarget) return;
+            const { index, key } = currentNoteTarget;
+            if (currentData.evaluations[index]._notes) delete currentData.evaluations[index]._notes[key];
+            renderEvaluationsTable();
+            closeNoteModal();
+            fetch('/api/notes/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: CLIENT_ID, row_index: index, column_key: key })
+            });
+        }
         
         // Track date input interactions to prevent auto-refresh
         document.addEventListener('click', function(e) {
@@ -993,7 +1151,7 @@
                         // Combine classes
                         const classes = [hasNoteClass, highlightClass].filter(Boolean).join(' ');
 
-                        return `<td ${cellId} class="${classes}" oncontextmenu="openNoteEditor(event, ${index}, '${key}')" ${noteAttrs}>${content}</td>`;
+                        return `<td ${cellId} class="${classes}" oncontextmenu="openNoteEditor(event, ${index}, '${key}')" onclick="handleCellClick(event, ${index}, '${key}')" ${noteAttrs}>${content}</td>`;
                     };
 
                     // Date Purchased Logic: 
@@ -1747,6 +1905,10 @@
         }
 
         function getInputHtml(value, type, index, key, readOnly = false) {
+            // For read-only date fields with no value, show empty cell instead of date picker
+            if (readOnly && type === 'date' && !value) {
+                return '';
+            }
             const readOnlyAttr = readOnly ? 'readonly' : '';
             let style = readOnly ? 'background-color: #f9f9f9; cursor: not-allowed;' : '';
             

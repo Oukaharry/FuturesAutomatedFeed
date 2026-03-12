@@ -162,6 +162,20 @@ def init_database():
                 success INTEGER DEFAULT 0
             )
         ''')
+
+        # Cell Notes table (For client evaluations)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cell_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id TEXT NOT NULL,
+                row_index INTEGER NOT NULL,
+                column_key TEXT NOT NULL,
+                note_content TEXT,
+                created_by TEXT,
+                updated_at TEXT,
+                UNIQUE(client_id, row_index, column_key)
+            )
+        ''')
         
         conn.commit()
         print("Database initialized successfully")

@@ -275,17 +275,16 @@
             opacity: 1;
         }
         
-        /* Make empty date fields more obvious */
-        input[type="date"].cell-input:not(:valid) {
+        /* Hide dd/mm/yyyy placeholder on empty date inputs, but show when focused */
+        input[type="date"].cell-input:not(:valid):not(:focus) {
+            color: transparent;
+        }
+        
+        input[type="date"].cell-input:not(:valid):not(:focus)::-webkit-datetime-edit {
             color: transparent;
         }
         
         input[type="date"].cell-input::placeholder {
-            color: transparent;
-        }
-        
-        /* Hide dd/mm/yyyy placeholder text on empty date inputs */
-        input[type="date"].cell-input:not(:focus):not([data-has-value])::-webkit-datetime-edit {
             color: transparent;
         }
 
@@ -1551,35 +1550,6 @@
         ...
         */
     </style>
-
-    <div id="note-modal" class="note-modal-overlay">
-        <!-- Modal Content Container -->
-        <div id="note-modal-content" class="note-modal-content">
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <h3 style="margin: 0; font-size: 18px;">Cell Note</h3>
-                <button onclick="closeNoteModal()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 24px;">&times;</button>
-            </div>
-            
-            <!-- View Mode -->
-            <div id="note-view-mode">
-                <div id="note-text-display" style="white-space: pre-wrap; margin-bottom: 20px; line-height: 1.5; min-height: 60px; color: var(--text-primary);"></div>
-                <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                     <button id="btn-edit-note" class="btn-primary" onclick="enableNoteEdit()">Edit</button>
-                     <button id="btn-delete-note" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;" onclick="deleteNote()">Delete</button>
-                </div>
-            </div>
-            
-            <!-- Edit Mode -->
-            <div id="note-edit-mode" style="display: none;">
-                <textarea id="note-textarea" style="width: 100%; height: 150px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); color: var(--text-primary); padding: 12px; border-radius: 8px; margin-bottom: 16px; resize: vertical;" placeholder="Enter note..."></textarea>
-                <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                    <button class="btn-secondary" onclick="closeNoteModal()">Cancel</button>
-                    <button class="btn-primary" onclick="saveNote()">Save Note</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
 
     <script>
