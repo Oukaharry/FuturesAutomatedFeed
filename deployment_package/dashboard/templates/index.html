@@ -798,7 +798,8 @@
         function handleCellClick(event, index, key) {
             const hasNote = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key];
             if (!hasNote) return;
-            if (event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) return;
+            // For non-clients, let them edit the input instead of viewing the note
+            if (!IS_CLIENT && event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) return;
             openNoteEditor(event, index, key);
         }
 

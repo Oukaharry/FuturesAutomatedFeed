@@ -1578,8 +1578,8 @@
              const hasNote = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key];
              if (!hasNote) return;
 
-             // If clicking an editable input, prioritize editing the cell value
-             if (event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) {
+             // For non-clients, let them edit the input instead of viewing the note
+             if (!IS_CLIENT && event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) {
                  return;
              }
              
