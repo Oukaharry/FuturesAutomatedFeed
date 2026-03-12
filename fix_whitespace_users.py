@@ -20,18 +20,30 @@ print(f"Found {len(dirty)} user_credentials rows with whitespace issues:")
 for r in dirty:
     print(f"  id={r['id']} username='{r['username']}' type={r['user_type']}")
 
-# 2. Fix them
+# 2. Delete whitespace duplicates (where a trimmed version already exists)
+cur.execute("""
+    DELETE FROM user_credentials
+    WHERE username != TRIM(username)
+      AND EXISTS (
+          SELECT 1 FROM user_credentials AS uc2
+          WHERE TRIM(user_credentials.username) = uc2.username
+            AND user_credentials.user_type = uc2.user_type
+      )
+""")
+print(f"  → Deleted {cur.rowcount} whitespace duplicate rows")
+
+# 3. Trim any remaining (where no clean version exists yet)
 cur.execute("UPDATE user_credentials SET username = TRIM(username) WHERE username != TRIM(username)")
 print(f"  → Trimmed {cur.rowcount} rows")
 
-# 3. Remove duplicates (keep lowest id)
+# 4. Remove any other exact duplicates (keep lowest id)
 cur.execute("""
     DELETE FROM user_credentials
     WHERE id NOT IN (
         SELECT MIN(id) FROM user_credentials GROUP BY username, user_type
     )
 """)
-print(f"  → Removed {cur.rowcount} duplicate rows")
+print(f"  → Removed {cur.rowcount} remaining duplicate rows")
 
 # 4. Fix sessions too
 cur.execute("UPDATE sessions SET user_identifier = TRIM(user_identifier) WHERE user_identifier != TRIM(user_identifier)")
