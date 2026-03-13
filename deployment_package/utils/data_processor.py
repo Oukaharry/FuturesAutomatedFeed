@@ -849,8 +849,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         if 'prof_payouts' in stats_tab:
             pc['payouts'] = stats_tab['prof_payouts']
 
-        # Override EV with Stats tab value if available
-        if 'ev' in stats_tab:
+        # Override EV with Stats tab value if available (but not if sheet returns 0 from IFERROR)
+        if 'ev' in stats_tab and stats_tab['ev'] != 0:
             stats['expected_value'] = stats_tab['ev']
 
         # Recalculate Sheet Hedging Results from the (now-overridden) cashflow values
@@ -869,9 +869,9 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy
     # The sheet formula is: =B6+B3+B4+B5+B25 
     # where B3=fees(negative), B4=hedging, B5=farming, B6=payouts, B25=discrepancy
-    # Discrepancy = Sheet Hedging Results - Actual Hedging Results
-    # NOTE: Only include discrepancy if we have actual MT5 data, otherwise use 0
-    discrepancy = stats["hedging_review"]["discrepancy"] if has_mt5_data else 0.0
+    # Discrepancy = Actual Hedging Results - Sheet Hedging Results
+    # Use discrepancy directly from hedging_review (already 0 when no MT5 data)
+    discrepancy = stats["hedging_review"]["discrepancy"]
     
     for section in ["profitability_completed", "cashflow_inprogress"]:
         s = stats[section]
