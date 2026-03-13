@@ -511,8 +511,15 @@
            sticky thead is fully scoped inside — cannot escape div#evaluations. */
         #eval-table-container {
             overflow: auto !important;
-            height: calc((100vh - 160px) / 0.75);
-            height: calc((100dvh - 160px) / 0.75);
+            height: calc(100vh - 160px);
+            height: calc(100dvh - 160px);
+        }
+
+        /* Zoom on the TABLE (not the container) so sticky positioning is
+           calculated against the un-zoomed scroll container — fixes Chrome
+           bug where zoom on the scroll ancestor breaks sticky for far-right
+           elements like the Farming Phase header. */
+        #evaluations-table {
             zoom: 0.75;
         }
 
@@ -741,6 +748,10 @@
         #evaluations-table thead tr:first-child th.group-header-purple {
             z-index: 2150 !important;
             background: linear-gradient(135deg, #581c87, #3b0764) !important;
+        }
+
+        #evaluations-body {
+            zoom: 0.75; /* adjust % to taste */
         }
 
 
