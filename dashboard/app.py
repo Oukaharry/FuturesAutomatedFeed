@@ -4353,6 +4353,7 @@ def update_data():
                     "hedge_accounts": data.get("hedge_accounts", existing_data.get("hedge_accounts", [])),
                     "prop_accounts": data.get("prop_accounts", existing_data.get("prop_accounts", [])),
                     "vps_accounts": data.get("vps_accounts", existing_data.get("vps_accounts", [])),
+                    "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
                     "evaluations": evaluations,
                     "statistics": data.get("statistics", existing_data.get("statistics", {})),
                     "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),

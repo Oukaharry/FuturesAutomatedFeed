@@ -530,6 +530,7 @@
             <button class="tab-btn" onclick="openTab('hedge')">Hedge Accounts</button>
             <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
             <button class="tab-btn" onclick="openTab('vps')">VPS</button>
+            <button class="tab-btn" onclick="openTab('payment')">Payment Info</button>
         </div>
 
         <!-- Evaluations Tab -->
@@ -725,6 +726,36 @@
         <!-- VPS Tab -->
         <div id="vps" class="tab-content">
             <div class="no-data">VPS Management Module - Coming Soon</div>
+        </div>
+
+        <!-- Payment Info Tab -->
+        <div id="payment" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3>Payment Info</h3>
+                <button class="btn-primary" onclick="addPaymentInfo()">+ Add Payment</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="payment-info-table">
+                    <thead>
+                        <tr>
+                            <th>Bank</th>
+                            <th>Name on Card</th>
+                            <th>Prop Firm</th>
+                            <th>Card Number</th>
+                            <th>Expiration</th>
+                            <th>CCV</th>
+                            <th>Address</th>
+                            <th>City</th>
+                            <th>State</th>
+                            <th>Zip</th>
+                            <th>Phone Number</th>
+                            <th style="width:60px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="payment-info-body"></tbody>
+                </table>
+            </div>
+            <div id="no-payment-info-msg" class="no-data">No payment info configured. Add one to get started.</div>
         </div>
     </div>
 
@@ -1048,6 +1079,7 @@
                     renderStats(data);
                     renderPositions(data);
                     renderHistory(data);
+                    renderPaymentInfo(data);
                     
                     // Update Dropdown Options if available
                     if (data.dropdown_options) {
@@ -2189,6 +2221,59 @@
                 saveData();
                 alert(`Row deleted. Use Version History to recover if needed.`);
             }
+        }
+
+        // ============ Payment Info CRUD ============
+        function renderPaymentInfo(data) {
+            const body = document.getElementById('payment-info-body');
+            const noDataMsg = document.getElementById('no-payment-info-msg');
+            const table = document.getElementById('payment-info-table');
+            if (!body || !noDataMsg || !table) return;
+
+            body.innerHTML = '';
+            const items = data.payment_info || [];
+
+            if (items.length > 0) {
+                noDataMsg.style.display = 'none';
+                table.style.display = 'table';
+
+                items.forEach((item, index) => {
+                    const row = document.createElement('tr');
+                    const fields = ['bank','name_on_card','prop_firm','card_number','expiration','ccv','address','city','state','zip','phone_number'];
+                    const placeholders = ['Bank','Name on Card','Prop Firm','Card Number','MM/YY','CCV','Address','City','State','Zip','Phone Number'];
+                    row.innerHTML = fields.map((f, i) =>
+                        `<td><input type="text" class="cell-input" style="width:100%" value="${(item[f] || '').toString().replace(/"/g, '&quot;')}" placeholder="${placeholders[i]}" onchange="updatePaymentInfo(${index}, '${f}', this.value)"></td>`
+                    ).join('') + `<td style="text-align:center;"><button onclick="deletePaymentInfo(${index})" class="btn-delete" title="Remove">\ud83d\uddd1\ufe0f</button></td>`;
+                    body.appendChild(row);
+                });
+            } else {
+                noDataMsg.style.display = 'block';
+                table.style.display = 'none';
+            }
+        }
+
+        function updatePaymentInfo(index, key, value) {
+            if (!currentData.payment_info) return;
+            isEditing = true;
+            currentData.payment_info[index][key] = value;
+            saveData();
+        }
+
+        function addPaymentInfo() {
+            if (!currentData.payment_info) currentData.payment_info = [];
+            currentData.payment_info.push({
+                bank: '', name_on_card: '', prop_firm: '', card_number: '',
+                expiration: '', ccv: '', address: '', city: '', state: '', zip: '', phone_number: ''
+            });
+            renderPaymentInfo(currentData);
+            saveData();
+        }
+
+        function deletePaymentInfo(index) {
+            if (!confirm('Are you sure you want to remove this payment info?')) return;
+            currentData.payment_info.splice(index, 1);
+            renderPaymentInfo(currentData);
+            saveData();
         }
 
         // Retry queue for failed saves

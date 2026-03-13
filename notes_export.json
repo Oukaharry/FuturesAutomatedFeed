@@ -1,0 +1,1231 @@
+{
+  "exported_at": "2026-03-13T12:05:55.828582",
+  "source_db": "C:\\Users\\harry\\Music\\MT5HedgingEngine\\dashboard\\dashboard.db",
+  "total_notes": 153,
+  "notes": [
+    {
+      "client_id": "Ed",
+      "row_index": 5,
+      "column_key": "Hedge Result 1",
+      "note_content": "funding ticks canceled the trade during news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 6,
+      "column_key": "Hedge Result 1",
+      "note_content": "funding ticks canceled the trade during news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 7,
+      "column_key": "Hedge Result 1",
+      "note_content": "funding ticks canceled the trade during news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 8,
+      "column_key": "Hedge Result 1",
+      "note_content": "funding ticks canceled the trade during news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 9,
+      "column_key": "Hedge Result 1",
+      "note_content": "funding ticks canceled the trade during news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 249,
+      "column_key": "Hedge Day 7",
+      "note_content": "0/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 249,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit TP both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 249,
+      "column_key": "Prop Day 2",
+      "note_content": "2/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 249,
+      "column_key": "Prop Day 3",
+      "note_content": "3/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 249,
+      "column_key": "Prop Day 4",
+      "note_content": "3/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 249,
+      "column_key": "Prop Day 5",
+      "note_content": "4/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:24"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 249,
+      "column_key": "Prop Day 6",
+      "note_content": "5/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 1",
+      "note_content": "2/5\n12/22/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 10",
+      "note_content": "5/5\n1/14/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 2",
+      "note_content": "3/5\n12/23/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 3",
+      "note_content": "4/5\n1/5/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 4",
+      "note_content": "4/5\n1/6/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 5",
+      "note_content": "5/5\n1/7/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 6",
+      "note_content": "1/5\n1/8/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 7",
+      "note_content": "2/5\n1/9/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 8",
+      "note_content": "3/5\n1/12/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Day 9",
+      "note_content": "4/5\n1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 442,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit tp both sides on 12/19/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 1",
+      "note_content": "2/5\n12/22/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 10",
+      "note_content": "5/5\n1/14/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 2",
+      "note_content": "3/5\n12/23/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 3",
+      "note_content": "4/5\n1/5/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 4",
+      "note_content": "4/5\n1/6/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 5",
+      "note_content": "5/5\n1/7/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 6",
+      "note_content": "1/5\n1/8/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 7",
+      "note_content": "2/5\n1/9/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 8",
+      "note_content": "3/5\n1/12/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Day 9",
+      "note_content": "4/5\n1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 443,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit tp both sides on 12/19/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:25"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 1",
+      "note_content": "2/5\n12/22/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 10",
+      "note_content": "5/5\n1/14/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 2",
+      "note_content": "2/5\n12/23/25\nHit tp both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 3",
+      "note_content": "3/5\n1/5/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 4",
+      "note_content": "3/5\n1/6/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 5",
+      "note_content": "4/5\n1/7/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 6",
+      "note_content": "1/5\n1/8/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 7",
+      "note_content": "2/5\n1/9/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 8",
+      "note_content": "3/5\n1/12/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Day 9",
+      "note_content": "4/5\n1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 445,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit tp both sides on 12/19/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:26"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 453,
+      "column_key": "Hedge Result 3",
+      "note_content": "Hit tp both sides on 12/18/25",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 525,
+      "column_key": "Hedge Net",
+      "note_content": "Tight blueprint needs adjustment",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 526,
+      "column_key": "Hedge Result 1",
+      "note_content": "Closed trade manually due to nfp news. 1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 527,
+      "column_key": "Hedge Result 1",
+      "note_content": "Closed trade manually due to nfp news. 1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:27"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 534,
+      "column_key": "Hedge Result 2",
+      "note_content": "Topstep X did not edit TP target for challenge trade, account does not meet cosistency, it made more that 1500 in a single day. Account needs to fail to recover the hedge amount incurred on the hedge side. Needs Custom blueprint 2/5/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 535,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit tp on both sides. 1/7/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 10",
+      "note_content": "5/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 2",
+      "note_content": "2/5\n1/14/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 3",
+      "note_content": "3/5\n1/15/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 4",
+      "note_content": "3/5\n1/16/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 5",
+      "note_content": "4/5\n1/19/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 6",
+      "note_content": "5/5\n1/20/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 7",
+      "note_content": "2/5\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 8",
+      "note_content": "3/5\n1/26/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 536,
+      "column_key": "Prop Day 9",
+      "note_content": "4/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:28"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 554,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit tp both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 560,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/14/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 560,
+      "column_key": "Prop Day 2",
+      "note_content": "3/5\n1/15/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 561,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/14/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 561,
+      "column_key": "Prop Day 2",
+      "note_content": "3/5\n1/15/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 1",
+      "note_content": "1/5\n1/14/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 10",
+      "note_content": "4/5\n1/30/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 11",
+      "note_content": "4/5\n2/2/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 12",
+      "note_content": "5/5\n2/3/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 2",
+      "note_content": "2/5\n1/15/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 3",
+      "note_content": "2/5\n1/16/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 4",
+      "note_content": "3/5\n1/19/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 5",
+      "note_content": "4/5\n1/20/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 6",
+      "note_content": "4/5\n1/21/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 7",
+      "note_content": "5/5\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 8",
+      "note_content": "2/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 562,
+      "column_key": "Prop Day 9",
+      "note_content": "3/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:29"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 10",
+      "note_content": "5/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 2",
+      "note_content": "2/5\n1/13/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 3",
+      "note_content": "3/5\n1/15/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 4",
+      "note_content": "3/5\n1/16/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 5",
+      "note_content": "4/5\n1/19/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 6",
+      "note_content": "5/5\n1/20/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 7",
+      "note_content": "2/5\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 8",
+      "note_content": "3/5\n1/26/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 564,
+      "column_key": "Prop Day 9",
+      "note_content": "4/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:30"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 569,
+      "column_key": "Prop Day 1",
+      "note_content": "1/5\n1/21/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 569,
+      "column_key": "Prop Day 2",
+      "note_content": "2/5\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 569,
+      "column_key": "Prop Day 3",
+      "note_content": "3/5\n1/23/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 569,
+      "column_key": "Prop Day 4",
+      "note_content": "4/5\n1/26/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 569,
+      "column_key": "Prop Day 5",
+      "note_content": "4/5\n1/27/26\nOn 1/22/26 Account did not a tp of 200. Need one more farming day.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 569,
+      "column_key": "Prop Day 6",
+      "note_content": "5/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 570,
+      "column_key": "Hedge Net",
+      "note_content": "Funding Ticks have closed their operations on 1/19/26, we can't proceed to the next phase.  Hence the negative hedge net.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 584,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit tp on both sides\n1/20/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 597,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit tp both sides\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 597,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 597,
+      "column_key": "Prop Day 2",
+      "note_content": "3/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 597,
+      "column_key": "Prop Day 3",
+      "note_content": "4/5\n1/30/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 597,
+      "column_key": "Prop Day 4",
+      "note_content": "4/5\n2/2/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 597,
+      "column_key": "Prop Day 5",
+      "note_content": "5/5\n2/3/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:31"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 597,
+      "column_key": "Prop Day 6",
+      "note_content": "5/5\n2/5/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 598,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit tp both sides\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 598,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 598,
+      "column_key": "Prop Day 2",
+      "note_content": "3/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 598,
+      "column_key": "Prop Day 3",
+      "note_content": "4/5\n1/30/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 598,
+      "column_key": "Prop Day 4",
+      "note_content": "4/5\n2/2/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 598,
+      "column_key": "Prop Day 5",
+      "note_content": "5/5\n2/3/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 598,
+      "column_key": "Prop Day 6",
+      "note_content": "5/5\n2/5/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 599,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit tp both sides\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 599,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:32"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 599,
+      "column_key": "Prop Day 2",
+      "note_content": "3/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 599,
+      "column_key": "Prop Day 3",
+      "note_content": "4/5\n1/30/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 599,
+      "column_key": "Prop Day 4",
+      "note_content": "4/5\n2/2/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 599,
+      "column_key": "Prop Day 5",
+      "note_content": "5/5\n2/3/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 599,
+      "column_key": "Prop Day 6",
+      "note_content": "4/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 600,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit tp both sides\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 600,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 600,
+      "column_key": "Prop Day 2",
+      "note_content": "3/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 600,
+      "column_key": "Prop Day 3",
+      "note_content": "4/5\n1/30/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 600,
+      "column_key": "Prop Day 4",
+      "note_content": "4/5\n2/2/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 600,
+      "column_key": "Prop Day 5",
+      "note_content": "5/5\n2/3/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 600,
+      "column_key": "Prop Day 6",
+      "note_content": "4/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 601,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit tp both sides\n1/22/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:33"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 601,
+      "column_key": "Prop Day 1",
+      "note_content": "2/5\n1/27/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 601,
+      "column_key": "Prop Day 2",
+      "note_content": "3/5\n1/29/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 601,
+      "column_key": "Prop Day 3",
+      "note_content": "4/5\n1/30/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 601,
+      "column_key": "Prop Day 4",
+      "note_content": "4/5\n2/2/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 601,
+      "column_key": "Prop Day 5",
+      "note_content": "5/5\n2/3/26",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 601,
+      "column_key": "Prop Day 6",
+      "note_content": "4/5",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 625,
+      "column_key": "Hedge Net",
+      "note_content": "Tight blueprint needs adjustment",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 679,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit TP on both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 688,
+      "column_key": "Hedge Net",
+      "note_content": "Blueprint too tight needs adjustment",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 689,
+      "column_key": "Hedge Net",
+      "note_content": "Blueprint too tight needs adjustment",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 717,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit TP on both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 718,
+      "column_key": "Hedge Net",
+      "note_content": "Tight blueprint needs adjustment",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 719,
+      "column_key": "Hedge Net",
+      "note_content": "Tight blueprint needs adjustment",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:34"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 723,
+      "column_key": "Hedge Net",
+      "note_content": "Hit double SL due to high market volatility after CPI.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 732,
+      "column_key": "Hedge Net",
+      "note_content": "Tight blueprint needs adjustment.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 736,
+      "column_key": "Hedge Net",
+      "note_content": "Challenge trade one lost more than the blueprint because of volatility brought about by the news, hence the negative hedge net",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 737,
+      "column_key": "Hedge Net",
+      "note_content": "Challenge trade one lost more than the blueprint because of volatility brought about by the news, hence the negative hedge net",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 739,
+      "column_key": "Hedge Net",
+      "note_content": "Challenge trade one lost more than the blueprint because of volatility brought about by the news, hence the negative hedge net",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 741,
+      "column_key": "Hedge Net",
+      "note_content": "-ve hn due to high market volatility due FOMC news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 742,
+      "column_key": "Hedge Net",
+      "note_content": "-ve hn due to high market volatility due FOMC news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 743,
+      "column_key": "Hedge Net",
+      "note_content": "-ve hn due to high market volatility due FOMC news",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 749,
+      "column_key": "Hedge Net",
+      "note_content": "blueprint too tight needs adjustment",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 757,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit TP on both sides",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 758,
+      "column_key": "Hedge Result 2",
+      "note_content": "Hit TP on both sides",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:35"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 767,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit TP on both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:36"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 768,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit TP on both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:36"
+    },
+    {
+      "client_id": "Ed",
+      "row_index": 770,
+      "column_key": "Hedge Result 1",
+      "note_content": "Hit TP on both sides.",
+      "created_by": "sheet_import",
+      "updated_at": "2026-02-24 13:11:36"
+    },
+    {
+      "client_id": "Taras",
+      "row_index": 67,
+      "column_key": "Prop Day 25",
+      "note_content": "2/5",
+      "created_by": "super_admin",
+      "updated_at": "2026-02-27 15:26:39"
+    }
+  ]
+}

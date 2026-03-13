@@ -99,12 +99,13 @@ def init_database():
                 last_updated TEXT NOT NULL,
                 hedge_accounts TEXT DEFAULT '[]',
                 prop_accounts TEXT DEFAULT '[]',
-                vps_accounts TEXT DEFAULT '[]'
+                vps_accounts TEXT DEFAULT '[]',
+                payment_info TEXT DEFAULT '[]'
             )
         ''')
 
-        # Migration: add hedge_accounts, prop_accounts, vps_accounts columns to existing databases
-        for _col, _default in [('hedge_accounts', "'[]'"), ('prop_accounts', "'[]'"), ('vps_accounts', "'[]'")]:
+        # Migration: add hedge_accounts, prop_accounts, vps_accounts, payment_info columns to existing databases
+        for _col, _default in [('hedge_accounts', "'[]'"), ('prop_accounts', "'[]'"), ('vps_accounts', "'[]'"), ('payment_info', "'[]'")]:
             try:
                 cursor.execute(f"ALTER TABLE clients_data ADD COLUMN {_col} TEXT DEFAULT {_default}")
             except Exception:
@@ -761,6 +762,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_hedge_accounts = data.get('hedge_accounts', [])
                 merged_prop_accounts = data.get('prop_accounts', [])
                 merged_vps_accounts = data.get('vps_accounts', [])
+                merged_payment_info = data.get('payment_info', [])
             else:
                 # Merge: get existing data so missing keys fall back gracefully
                 cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
@@ -779,6 +781,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                         'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
                         'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
                         'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
+                        'payment_info': json.loads(row['payment_info'] or '[]'),
                     }
                 
                 # Merge existing data with new data (new data takes precedence)
@@ -792,6 +795,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_hedge_accounts = data.get('hedge_accounts', existing_data.get('hedge_accounts', []))
                 merged_prop_accounts = data.get('prop_accounts', existing_data.get('prop_accounts', []))
                 merged_vps_accounts = data.get('vps_accounts', existing_data.get('vps_accounts', []))
+                merged_payment_info = data.get('payment_info', existing_data.get('payment_info', []))
 
             # Strip _notes from evaluations — notes are stored separately in cell_notes table
             clean_evaluations = [
@@ -821,8 +825,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 INSERT INTO clients_data (
                     client_id, deals, positions, account, evaluations,
                     statistics, dropdown_options, identity, last_updated,
-                    hedge_accounts, prop_accounts, vps_accounts
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    hedge_accounts, prop_accounts, vps_accounts, payment_info
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     deals = excluded.deals,
                     positions = excluded.positions,
@@ -834,7 +838,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                     last_updated = excluded.last_updated,
                     hedge_accounts = excluded.hedge_accounts,
                     prop_accounts = excluded.prop_accounts,
-                    vps_accounts = excluded.vps_accounts
+                    vps_accounts = excluded.vps_accounts,
+                    payment_info = excluded.payment_info
             ''', (
                 client_id,
                 json.dumps(merged_deals),
@@ -848,6 +853,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 json.dumps(merged_hedge_accounts),
                 json.dumps(merged_prop_accounts),
                 json.dumps(merged_vps_accounts),
+                json.dumps(merged_payment_info),
             ))
             conn.commit()
             return True
@@ -880,6 +886,7 @@ def get_client_data(client_id: str) -> dict:
                 'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
                 'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
                 'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
+                'payment_info': json.loads(row['payment_info'] or '[]'),
             }
         
         return None
@@ -918,7 +925,7 @@ def get_clients_count() -> int:
 def update_client_field(client_id: str, field: str, value) -> bool:
     """Update a specific field for a client."""
     valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options',
-                    'hedge_accounts', 'prop_accounts', 'vps_accounts']
+                    'hedge_accounts', 'prop_accounts', 'vps_accounts', 'payment_info']
     if field not in valid_fields:
         return False
     

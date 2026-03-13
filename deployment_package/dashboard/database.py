@@ -90,10 +90,18 @@ def init_database():
                 statistics TEXT DEFAULT '{}',
                 dropdown_options TEXT DEFAULT '{}',
                 identity TEXT DEFAULT '{}',
-                last_updated TEXT NOT NULL
+                last_updated TEXT NOT NULL,
+                payment_info TEXT DEFAULT '[]'
             )
         ''')
-        
+
+        # Migration: add payment_info column to existing databases
+        for _col, _default in [('payment_info', "'[]'")]:
+            try:
+                cursor.execute(f"ALTER TABLE clients_data ADD COLUMN {_col} TEXT DEFAULT {_default}")
+            except Exception:
+                pass  # Column already exists
+
         # Audit log table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS audit_log (
@@ -698,12 +706,13 @@ def save_client_data(client_id: str, data: dict) -> bool:
             merged_statistics = data.get('statistics', existing_data.get('statistics', {}))
             merged_dropdown_options = data.get('dropdown_options', existing_data.get('dropdown_options', {}))
             merged_identity = data.get('identity', existing_data.get('identity', {}))
+            merged_payment_info = data.get('payment_info', existing_data.get('payment_info', []))
 
             cursor.execute('''
                 INSERT INTO clients_data (
                     client_id, deals, positions, account, evaluations,
-                    statistics, dropdown_options, identity, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    statistics, dropdown_options, identity, last_updated, payment_info
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     deals = excluded.deals,
                     positions = excluded.positions,
@@ -712,7 +721,8 @@ def save_client_data(client_id: str, data: dict) -> bool:
                     statistics = excluded.statistics,
                     dropdown_options = excluded.dropdown_options,
                     identity = excluded.identity,
-                    last_updated = excluded.last_updated
+                    last_updated = excluded.last_updated,
+                    payment_info = excluded.payment_info
             ''', (
                 client_id,
                 json.dumps(merged_deals),
@@ -722,7 +732,8 @@ def save_client_data(client_id: str, data: dict) -> bool:
                 json.dumps(merged_statistics),
                 json.dumps(merged_dropdown_options),
                 json.dumps(merged_identity),
-                now
+                now,
+                json.dumps(merged_payment_info),
             ))
             conn.commit()
             return True
@@ -746,7 +757,8 @@ def get_client_data(client_id: str) -> dict:
                 'statistics': json.loads(row['statistics']),
                 'dropdown_options': json.loads(row['dropdown_options']),
                 'identity': json.loads(row['identity']),
-                'last_updated': row['last_updated']
+                'last_updated': row['last_updated'],
+                'payment_info': json.loads(row['payment_info'] or '[]'),
             }
         
         return None
@@ -781,7 +793,7 @@ def get_clients_count() -> int:
 
 def update_client_field(client_id: str, field: str, value) -> bool:
     """Update a specific field for a client."""
-    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options']
+    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options', 'payment_info']
     if field not in valid_fields:
         return False
     

@@ -2460,6 +2460,7 @@ def update_data():
                 "evaluations": evaluations,
                 "statistics": data.get("statistics", existing_data.get("statistics", {})),
                 "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
+                "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
             }
             
             # Ensure client ID is in identity
@@ -2519,7 +2520,8 @@ def update_data_with_api_key(data, identity, user_info):
         "evaluations": data.get("evaluations", []),
         "statistics": data.get("statistics", {}),
         "dropdown_options": data.get("dropdown_options", {}),
-        "identity": identity
+        "identity": identity,
+        "payment_info": data.get("payment_info", []),
     }
     
     # Save to database WITH history tracking
