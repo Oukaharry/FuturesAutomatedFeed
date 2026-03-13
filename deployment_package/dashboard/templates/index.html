@@ -732,30 +732,52 @@
         <div id="payment" class="tab-content">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <h3>Payment Info</h3>
-                <button class="btn-primary" onclick="addPaymentInfo()">+ Add Payment</button>
+                <button class="btn-primary" onclick="addPaymentInfo()">+ Add Card</button>
             </div>
-            <div style="overflow-x: auto;">
-                <table id="payment-info-table">
-                    <thead>
-                        <tr>
-                            <th>Bank</th>
-                            <th>Name on Card</th>
-                            <th>Prop Firm</th>
-                            <th>Card Number</th>
-                            <th>Expiration</th>
-                            <th>CCV</th>
-                            <th>Address</th>
-                            <th>City</th>
-                            <th>State</th>
-                            <th>Zip</th>
-                            <th>Phone Number</th>
-                            <th style="width:60px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="payment-info-body"></tbody>
-                </table>
+
+            <!-- Shared Address Section -->
+            <div id="payment-address-section" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <h4 style="margin: 0 0 12px 0; color: #64748b; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;">Billing Address</h4>
+                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="display:block; font-size:0.75em; color:#64748b; margin-bottom:3px;">Address</label>
+                        <input type="text" class="cell-input" id="payment-address" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="Street Address" onchange="updatePaymentAddress('address', this.value)">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.75em; color:#64748b; margin-bottom:3px;">City</label>
+                        <input type="text" class="cell-input" id="payment-city" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="City" onchange="updatePaymentAddress('city', this.value)">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.75em; color:#64748b; margin-bottom:3px;">State</label>
+                        <input type="text" class="cell-input" id="payment-state" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="State" onchange="updatePaymentAddress('state', this.value)">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.75em; color:#64748b; margin-bottom:3px;">Zip</label>
+                        <input type="text" class="cell-input" id="payment-zip" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="Zip" onchange="updatePaymentAddress('zip', this.value)">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.75em; color:#64748b; margin-bottom:3px;">Phone Number</label>
+                        <input type="text" class="cell-input" id="payment-phone" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="Phone Number" onchange="updatePaymentAddress('phone_number', this.value)">
+                    </div>
+                </div>
             </div>
-            <div id="no-payment-info-msg" class="no-data">No payment info configured. Add one to get started.</div>
+
+            <!-- Cards Table -->
+            <table id="payment-info-table">
+                <thead>
+                    <tr>
+                        <th style="width:14%;">Bank</th>
+                        <th style="width:18%;">Name on Card</th>
+                        <th style="width:16%;">Prop Firm</th>
+                        <th style="width:22%;">Card Number</th>
+                        <th style="width:10%;">Expiration</th>
+                        <th style="width:8%;">CCV</th>
+                        <th style="width:60px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="payment-info-body"></tbody>
+            </table>
+            <div id="no-payment-info-msg" class="no-data">No payment cards configured. Add one to get started.</div>
         </div>
     </div>
 
@@ -2230,6 +2252,19 @@
             const table = document.getElementById('payment-info-table');
             if (!body || !noDataMsg || !table) return;
 
+            // Render shared address fields
+            const addrData = data.payment_address || {};
+            const addrEl = document.getElementById('payment-address');
+            const cityEl = document.getElementById('payment-city');
+            const stateEl = document.getElementById('payment-state');
+            const zipEl = document.getElementById('payment-zip');
+            const phoneEl = document.getElementById('payment-phone');
+            if (addrEl) addrEl.value = addrData.address || '';
+            if (cityEl) cityEl.value = addrData.city || '';
+            if (stateEl) stateEl.value = addrData.state || '';
+            if (zipEl) zipEl.value = addrData.zip || '';
+            if (phoneEl) phoneEl.value = addrData.phone_number || '';
+
             body.innerHTML = '';
             const items = data.payment_info || [];
 
@@ -2239,10 +2274,10 @@
 
                 items.forEach((item, index) => {
                     const row = document.createElement('tr');
-                    const fields = ['bank','name_on_card','prop_firm','card_number','expiration','ccv','address','city','state','zip','phone_number'];
-                    const placeholders = ['Bank','Name on Card','Prop Firm','Card Number','MM/YY','CCV','Address','City','State','Zip','Phone Number'];
+                    const fields = ['bank','name_on_card','prop_firm','card_number','expiration','ccv'];
+                    const placeholders = ['Bank','Name on Card','Prop Firm','Card Number','MM/YY','CCV'];
                     row.innerHTML = fields.map((f, i) =>
-                        `<td><input type="text" class="cell-input" style="width:100%" value="${(item[f] || '').toString().replace(/"/g, '&quot;')}" placeholder="${placeholders[i]}" onchange="updatePaymentInfo(${index}, '${f}', this.value)"></td>`
+                        `<td><input type="text" class="cell-input" style="width:100%; padding:6px 8px; font-size:0.9em;" value="${(item[f] || '').toString().replace(/"/g, '&quot;')}" placeholder="${placeholders[i]}" onchange="updatePaymentInfo(${index}, '${f}', this.value)"></td>`
                     ).join('') + `<td style="text-align:center;"><button onclick="deletePaymentInfo(${index})" class="btn-delete" title="Remove">\ud83d\uddd1\ufe0f</button></td>`;
                     body.appendChild(row);
                 });
@@ -2250,6 +2285,13 @@
                 noDataMsg.style.display = 'block';
                 table.style.display = 'none';
             }
+        }
+
+        function updatePaymentAddress(key, value) {
+            if (!currentData.payment_address) currentData.payment_address = {};
+            isEditing = true;
+            currentData.payment_address[key] = value;
+            saveData();
         }
 
         function updatePaymentInfo(index, key, value) {
@@ -2263,14 +2305,14 @@
             if (!currentData.payment_info) currentData.payment_info = [];
             currentData.payment_info.push({
                 bank: '', name_on_card: '', prop_firm: '', card_number: '',
-                expiration: '', ccv: '', address: '', city: '', state: '', zip: '', phone_number: ''
+                expiration: '', ccv: ''
             });
             renderPaymentInfo(currentData);
             saveData();
         }
 
         function deletePaymentInfo(index) {
-            if (!confirm('Are you sure you want to remove this payment info?')) return;
+            if (!confirm('Are you sure you want to remove this payment card?')) return;
             currentData.payment_info.splice(index, 1);
             renderPaymentInfo(currentData);
             saveData();

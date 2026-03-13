@@ -2461,6 +2461,7 @@ def update_data():
                 "statistics": data.get("statistics", existing_data.get("statistics", {})),
                 "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
                 "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
+                "payment_address": data.get("payment_address", existing_data.get("payment_address", {})),
             }
             
             # Ensure client ID is in identity
@@ -2522,6 +2523,7 @@ def update_data_with_api_key(data, identity, user_info):
         "dropdown_options": data.get("dropdown_options", {}),
         "identity": identity,
         "payment_info": data.get("payment_info", []),
+        "payment_address": data.get("payment_address", {}),
     }
     
     # Save to database WITH history tracking

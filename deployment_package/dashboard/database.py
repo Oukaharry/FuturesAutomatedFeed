@@ -91,12 +91,13 @@ def init_database():
                 dropdown_options TEXT DEFAULT '{}',
                 identity TEXT DEFAULT '{}',
                 last_updated TEXT NOT NULL,
-                payment_info TEXT DEFAULT '[]'
+                payment_info TEXT DEFAULT '[]',
+                payment_address TEXT DEFAULT '{}'
             )
         ''')
 
         # Migration: add payment_info column to existing databases
-        for _col, _default in [('payment_info', "'[]'")]:
+        for _col, _default in [('payment_info', "'[]'"), ('payment_address', "'{}'")]:
             try:
                 cursor.execute(f"ALTER TABLE clients_data ADD COLUMN {_col} TEXT DEFAULT {_default}")
             except Exception:
@@ -707,12 +708,13 @@ def save_client_data(client_id: str, data: dict) -> bool:
             merged_dropdown_options = data.get('dropdown_options', existing_data.get('dropdown_options', {}))
             merged_identity = data.get('identity', existing_data.get('identity', {}))
             merged_payment_info = data.get('payment_info', existing_data.get('payment_info', []))
+            merged_payment_address = data.get('payment_address', existing_data.get('payment_address', {}))
 
             cursor.execute('''
                 INSERT INTO clients_data (
                     client_id, deals, positions, account, evaluations,
-                    statistics, dropdown_options, identity, last_updated, payment_info
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    statistics, dropdown_options, identity, last_updated, payment_info, payment_address
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     deals = excluded.deals,
                     positions = excluded.positions,
@@ -722,7 +724,8 @@ def save_client_data(client_id: str, data: dict) -> bool:
                     dropdown_options = excluded.dropdown_options,
                     identity = excluded.identity,
                     last_updated = excluded.last_updated,
-                    payment_info = excluded.payment_info
+                    payment_info = excluded.payment_info,
+                    payment_address = excluded.payment_address
             ''', (
                 client_id,
                 json.dumps(merged_deals),
@@ -734,6 +737,7 @@ def save_client_data(client_id: str, data: dict) -> bool:
                 json.dumps(merged_identity),
                 now,
                 json.dumps(merged_payment_info),
+                json.dumps(merged_payment_address),
             ))
             conn.commit()
             return True
@@ -759,6 +763,7 @@ def get_client_data(client_id: str) -> dict:
                 'identity': json.loads(row['identity']),
                 'last_updated': row['last_updated'],
                 'payment_info': json.loads(row['payment_info'] or '[]'),
+                'payment_address': json.loads(row['payment_address'] or '{}'),
             }
         
         return None
@@ -793,7 +798,7 @@ def get_clients_count() -> int:
 
 def update_client_field(client_id: str, field: str, value) -> bool:
     """Update a specific field for a client."""
-    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options', 'payment_info']
+    valid_fields = ['deals', 'positions', 'account', 'evaluations', 'statistics', 'identity', 'dropdown_options', 'payment_info', 'payment_address']
     if field not in valid_fields:
         return False
     
