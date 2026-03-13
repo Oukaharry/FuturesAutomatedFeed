@@ -511,11 +511,14 @@
            sticky thead is fully scoped inside — cannot escape div#evaluations. */
         #eval-table-container {
             overflow: auto !important;
-            height: calc((100vh - 160px) / 0.75);
-            height: calc((100dvh - 160px) / 0.75);
-            zoom: 0.75;
+            height: calc(100vh - 160px);
+            height: calc(100dvh - 160px);
         }
 
+        /* Zoom on the TABLE (not the container) so sticky positioning is
+           calculated against the un-zoomed scroll container — fixes Chrome
+           bug where zoom on the scroll ancestor breaks sticky for far-right
+           elements like the Farming Phase header. */
         /* 2. Reset Everything first */
         #evaluations-table th, #evaluations-table td {
             position: static; 
@@ -728,7 +731,7 @@
         #evaluations-table thead tr:first-child th.group-header-orange,
         #evaluations-table thead tr:first-child th.group-header-purple {
             position: sticky !important;
-            left: 90px !important;
+            left: 45px !important;
             z-index: 2100 !important; /* Higher than blue header (2000) so phase text appears on top */
             text-align: left !important;
             padding-left: 14px !important;
@@ -741,6 +744,10 @@
         #evaluations-table thead tr:first-child th.group-header-purple {
             z-index: 2150 !important;
             background: linear-gradient(135deg, #581c87, #3b0764) !important;
+        }
+
+        #evaluations-body {
+            zoom: 0.75; /* adjust % to taste */
         }
 
 
@@ -1245,7 +1252,7 @@
                             <th colspan="4" class="group-header group-header-blue">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="21" class="group-header group-header-orange">FUNDED PHASE</th>
-                            <th colspan="102" class="group-header group-header-purple">FARMING PHASE</th>
+                            <th colspan="35" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
                         <tr>
                             <!-- EVALUATION INFO (0-3) -->
