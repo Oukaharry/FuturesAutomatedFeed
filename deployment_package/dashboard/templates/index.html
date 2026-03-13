@@ -1448,6 +1448,7 @@
                                 </div>
 
                                 <!-- Live Hedging Review -->
+                                ${!IS_CLIENT ? `
                                 <div class="card">
                                     <div class="card-header">Live Hedging Review
                                         ${canEditHedging ? '<button class="btn-small" onclick="saveHedgingReview()" style="float:right;padding:2px 8px;font-size:11px;">💾 Save</button>' : ''}
@@ -1499,6 +1500,7 @@
                                     </div>
                                     ` : '')}
                                 </div>
+                                ` : ''}
 
                                 <!-- Current Cashflow - In Progress -->
                                 <div class="card">
