@@ -3009,19 +3009,17 @@ def api_get_watermark_history(client_id):
         today_str = __import__('datetime').datetime.now().strftime('%Y-%m-%d')
         try:
             client_data = get_client_data(client_id)
-            if client_data and client_data.get('evaluations'):
-                try:
-                    from dashboard.utils.data_processor import calculate_statistics as _cs
-                except ImportError:
-                    from utils.data_processor import calculate_statistics as _cs
-                stats = _cs(client_data['evaluations'])
-                live_net = (
-                    stats.get('cashflow_inprogress', {}).get('net_profit')
-                    if isinstance(stats, dict) else None
-                )
-                if live_net is None:
-                    live_net = stats.get('profitability_completed', {}).get('net_profit', 0.0)
-                save_daily_profit(client_id, live_net, today_str, source='live')
+            if client_data:
+                # Pull net profit directly from stored statistics
+                # (already includes discrepancy from the last data push)
+                stored_stats = client_data.get('statistics', {})
+                live_net = None
+                if isinstance(stored_stats, dict):
+                    live_net = stored_stats.get('cashflow_inprogress', {}).get('net_profit')
+                    if live_net is None:
+                        live_net = stored_stats.get('profitability_completed', {}).get('net_profit')
+                if live_net is not None:
+                    save_daily_profit(client_id, live_net, today_str, source='live')
         except Exception as snap_err:
             logging.warning(f"Live watermark snapshot failed for {client_id}: {snap_err}")
 

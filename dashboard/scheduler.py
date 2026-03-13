@@ -38,23 +38,19 @@ def update_all_clients_watermarks():
         
         for client_id, client in clients.items():
             try:
-                # evaluations is already parsed by get_all_clients -> get_client_data
-                evals = client.get('evaluations', [])
-                if not evals:
-                    logging.info(f"Skipping {client_id}: no evaluations data")
+                # Pull net profit directly from stored statistics
+                # (already includes discrepancy from the last data push)
+                stored_stats = client.get('statistics', {})
+                if not isinstance(stored_stats, dict):
+                    logging.info(f"Skipping {client_id}: no statistics data")
                     continue
 
-                # Use calculate_statistics — same formula as the dashboard
-                # Formula: Net Profit = Payouts + Hedging + Farming - Challenge Fees + Discrepancy
-                # Matches Excel: =B6+B3+B4+B5+B25
-                from utils.data_processor import calculate_statistics
-                stats = calculate_statistics(evals)
-                net_profit = (
-                    stats.get('cashflow_inprogress', {}).get('net_profit')
-                    if isinstance(stats, dict) else None
-                )
+                net_profit = stored_stats.get('cashflow_inprogress', {}).get('net_profit')
                 if net_profit is None:
-                    net_profit = stats.get('profitability_completed', {}).get('net_profit', 0.0)
+                    net_profit = stored_stats.get('profitability_completed', {}).get('net_profit')
+                if net_profit is None:
+                    logging.info(f"Skipping {client_id}: no net_profit in statistics")
+                    continue
                 
                 # Save daily snapshot
                 save_daily_profit(client_id, net_profit, today_str, source='auto')
