@@ -1344,13 +1344,28 @@ def api_migrate_sheet():
         # Clear financial cache to reflect changes immediately
         clear_financial_cache()
 
+        # Save cell comments as notes (for Prop Progress display)
+        notes_saved = 0
+        try:
+            from utils.data_processor import fetch_xlsx_comments
+            xlsx_comments = fetch_xlsx_comments(sheet_url)
+            if xlsx_comments:
+                for row_idx, col_notes in xlsx_comments.items():
+                    if isinstance(row_idx, int) and isinstance(col_notes, dict):
+                        for col_key, content in col_notes.items():
+                            if content and str(content).strip():
+                                save_client_note(client_id, row_idx, col_key, str(content).strip(), 'sheet_import')
+                                notes_saved += 1
+        except Exception as e:
+            logging.error(f"Error importing sheet comments: {e}")
+
         # Update Hierarchy
         add_admin(admin_id)
         add_trader(admin_id, trader_id)
         add_client(admin_id, trader_id, client_id)
         
         log_action('SHEET_MIGRATION', 'client', email, get_remote_address(), 
-                   f"Migrated {len(evaluations)} records from Google Sheets for {client_id} (v{version})")
+                   f"Migrated {len(evaluations)} records + {notes_saved} notes from Google Sheets for {client_id} (v{version})")
         
         # Return statistics for verification
         return jsonify({

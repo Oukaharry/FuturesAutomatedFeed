@@ -1280,11 +1280,12 @@
                 if (hasNote && ev._notes) ev._notes[propDayKey] = originalNote;
 
                 // Render Prop Progress cell
-                const safeValue = progressContent.replace(/"/g, '&quot;');
-                html += `<td class="prop-progress-cell" style="padding: 2px;">
+                const displayValue = progressContent.replace(/\n/g, ' ').replace(/"/g, '&quot;');
+                const noteClass = hasNote ? 'has-note' : '';
+                html += `<td class="prop-progress-cell ${noteClass}" style="padding: 2px;" ${hasNote ? `title="${displayValue}"` : ''}>
                             <input type="text" 
                                 class="cell-input" 
-                                value="${safeValue}" 
+                                value="${displayValue}" 
                                 placeholder="-"
                                 ${readOnly ? 'readonly' : `onchange="updatePropProgress(this, ${index}, '${propDayKey}')"`}
                                 style="width:100%; height:100%; border:none; background:transparent; color:inherit; font-size:0.85em; ${readOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"

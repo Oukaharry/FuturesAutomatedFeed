@@ -2931,13 +2931,23 @@ def api_migrate_sheet():
             overwrite=True
         )
         
+        # Save cell comments as notes (for Prop Progress display)
+        notes_saved = 0
+        if xlsx_notes:
+            for row_idx, col_notes in xlsx_notes.items():
+                if isinstance(row_idx, int) and isinstance(col_notes, dict):
+                    for col_key, content in col_notes.items():
+                        if content and str(content).strip():
+                            save_client_note(client_id, row_idx, col_key, str(content).strip(), 'sheet_import')
+                            notes_saved += 1
+
         # Update Hierarchy
         add_admin(admin_id)
         add_trader(admin_id, trader_id)
         add_client(admin_id, trader_id, client_id)
         
         log_action('SHEET_MIGRATION', 'client', email, get_remote_address(), 
-                   f"Migrated {len(evaluations)} records + {waterlog_count} waterlog entries from Google Sheets for {client_id} (v{version})")
+                   f"Migrated {len(evaluations)} records + {waterlog_count} waterlog entries + {notes_saved} notes from Google Sheets for {client_id} (v{version})")
         
         # Return statistics for verification
         return jsonify({

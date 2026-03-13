@@ -2572,12 +2572,13 @@
                 // We render an input that acts as the note editor for Prop Day X
                 // When changed, it should update the note for propDayKey
                 
-                const safeValue = progressContent.replace(/"/g, '&quot;');
+                const displayValue = progressContent.replace(/\n/g, ' ').replace(/"/g, '&quot;');
+                const noteClass = hasNote ? 'has-note' : '';
                 
-                    html += `<td class="prop-progress-cell" style="padding: 2px;">
+                    html += `<td class="prop-progress-cell ${noteClass}" style="padding: 2px;" ${hasNote ? `title="${displayValue}"` : ''}>
                                 <input type="text" 
                                     class="cell-input" 
-                                    value="${safeValue}" 
+                                    value="${displayValue}" 
                                     placeholder="-"
                                     ${readOnly ? 'readonly' : `onchange="updatePropProgress(this, ${index}, '${propDayKey}')"`}
                                     style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em; ${readOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"

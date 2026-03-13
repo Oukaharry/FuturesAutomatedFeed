@@ -296,6 +296,64 @@ def fetch_evaluations(sheet_url):
         return []
 
 
+def fetch_xlsx_comments(sheet_url):
+    """
+    Fetches cell comments from a Google Sheet via XLSX export.
+    Returns: { row_index: { column_key: comment_text } }
+    """
+    notes = {}
+    try:
+        import openpyxl, io, urllib.parse
+        sheet_url = str(sheet_url).strip()
+        match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', sheet_url)
+        if not match:
+            return notes
+        sheet_key = match.group(1)
+        xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_key}/export?format=xlsx"
+        resp = requests.get(xlsx_url, timeout=45)
+        if resp.status_code != 200:
+            return notes
+        wb = openpyxl.load_workbook(filename=io.BytesIO(resp.content), data_only=True)
+        ws = wb[wb.sheetnames[0]] if wb.sheetnames else wb.active
+
+        header_idx = -1
+        col_map = {}
+        for r_idx, row in enumerate(ws.iter_rows(min_row=1, max_row=20, values_only=False)):
+            row_vals = [str(c.value).strip() if c.value else '' for c in row]
+            if any('Prop Firm' in str(v) for v in row_vals):
+                header_idx = r_idx
+                col_map = {idx: str(h).strip() for idx, h in enumerate(row_vals) if h}
+                break
+            elif any('Account Size' in str(v) for v in row_vals):
+                header_idx = r_idx
+                col_map = {idx: str(h).strip() for idx, h in enumerate(row_vals) if h}
+                if 0 not in col_map or not col_map[0]:
+                    col_map[0] = 'Prop Firm'
+                break
+
+        if header_idx != -1:
+            data_row_counter = 0
+            for row_cells in ws.iter_rows(min_row=header_idx + 2, values_only=False):
+                is_valid = False
+                for c_idx, cell in enumerate(row_cells):
+                    if c_idx in col_map and col_map[c_idx] == 'Prop Firm':
+                        if cell.value and str(cell.value).strip():
+                            is_valid = True
+                        break
+                if is_valid:
+                    for c_idx, cell in enumerate(row_cells):
+                        if c_idx in col_map and cell.comment:
+                            c_name = col_map[c_idx]
+                            if data_row_counter not in notes:
+                                notes[data_row_counter] = {}
+                            notes[data_row_counter][c_name] = cell.comment.text.strip()
+                    data_row_counter += 1
+        return notes
+    except Exception as e:
+        print(f"XLSX comments fetch failed: {e}")
+        return notes
+
+
 def fetch_stats_tab_values(sheet_url):
     """
     Fetches the Stats tab values from the Google Sheet XLSX export.
