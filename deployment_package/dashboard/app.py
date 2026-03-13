@@ -2301,9 +2301,7 @@ def update_note():
         column_key = data.get('column_key')
         content = data.get('content')
 
-        # Clients cannot edit notes
-        if user_type == 'client':
-            return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
+        # Clients have full notes access
         
         if not client_id or row_index is None or not column_key:
             return jsonify({"status": "error", "message": "Missing required fields"}), 400
@@ -2326,8 +2324,6 @@ def update_note():
 def delete_note_endpoint():
     """Delete a cell note."""
     session_user = request.session_user
-    if session_user.get('user_type') == 'client':
-        return jsonify({"status": "error", "message": "Clients cannot delete notes"}), 403
     
     data = request.json
     client_id = data.get('client_id')

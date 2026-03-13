@@ -797,8 +797,7 @@
         // --- Note System ---
         function handleCellClick(event, index, key) {
             const hasNote = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key];
-            if (!hasNote) return;
-            // For non-clients, let them edit the input instead of viewing the note
+            // For non-clients clicking an editable input, let them edit normally
             if (!IS_CLIENT && event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) return;
             openNoteEditor(event, index, key);
         }
@@ -832,12 +831,8 @@
             if (btnEdit) btnEdit.style.display = 'none';
             if (btnDelete) btnDelete.style.display = 'none';
 
-            if (isClient) {
-                if (!hasContent) { modal.style.display = 'none'; return; }
-                viewMode.style.display = 'block';
-                editMode.style.display = 'none';
-                textDisplay.textContent = currentContent;
-            } else {
+            // All users (clients, admins, traders) get full notes access
+            {
                 if (hasContent) {
                     viewMode.style.display = 'block';
                     textDisplay.textContent = currentContent;

@@ -4239,11 +4239,7 @@ def update_note():
         column_key = data.get('column_key')
         content = data.get('content')
 
-        # Clients can only save their own prop-progress notes (Prop Day N columns)
-        if user_type == 'client':
-            import re as _re
-            if not (column_key and _re.match(r'^Prop Day \d+$', column_key)):
-                return jsonify({"status": "error", "message": "Clients cannot edit notes"}), 403
+        # Clients have full notes access
         
         if not client_id or row_index is None or not column_key:
             return jsonify({"status": "error", "message": "Missing required fields"}), 400
@@ -4276,8 +4272,6 @@ def delete_note():
     column_key = data.get('column_key')
     
     session_user = request.session_user
-    if session_user.get('user_type') == 'client':
-        return jsonify({"status": "error", "message": "Clients cannot delete notes"}), 403
         
     if delete_client_note(client_id, row_index, column_key):
         return jsonify({"status": "success"})

@@ -1573,18 +1573,13 @@
         let currentNoteTarget = null; // { index, key }
         let sheetHedgingResults = 0; // Store for recalculation
         
-        // Wraps openNoteEditor for left-click interaction (View Only unless shift-click?)
+        // Wraps openNoteEditor for left-click interaction
         function handleCellClick(event, index, key) {
-             // ... (View Only)
-             const hasNote = currentData.evaluations[index]._notes && currentData.evaluations[index]._notes[key];
-             if (!hasNote) return;
-
-             // For non-clients, let them edit the input instead of viewing the note
+             // For non-clients clicking an editable input, let them edit normally
              if (!IS_CLIENT && event.target.tagName === 'INPUT' && !event.target.readOnly && !event.target.disabled) {
                  return;
              }
              
-             // Open Note View
              openNoteEditor(event, index, key);
         }
 
@@ -1670,20 +1665,8 @@
              
              console.log("Has content:", hasContent);
 
-             // 1. Client Logic
-             if (isClient) {
-                 if (!hasContent) {
-                     // Ensure modal is hidden
-                     modal.style.display = 'none';
-                     return; 
-                 }
-                 
-                 viewMode.style.display = 'block';
-                 editMode.style.display = 'none'; // Explicit
-                 textDisplay.textContent = currentContent;
-             } 
-             // 2. Admin/Trader Logic
-             else {
+             // All users (clients, admins, traders) get full notes access
+             {
                  if (hasContent) {
                      // View Mode
                      console.log("Admin viewing existing note -> View Mode");
