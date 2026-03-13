@@ -2268,8 +2268,17 @@ def recalculate_all_stats():
     for client_id, client_data in all_clients.items():
         try:
             evals = client_data.get('evaluations', [])
+            existing_mt5 = client_data.get('account')
+            existing_hr = client_data.get('statistics', {}).get('hedging_review', {})
+            existing_hist = existing_hr.get('historical_accounts')
             old_fees = client_data.get('statistics', {}).get('profitability_completed', {}).get('challenge_fees', 0)
-            new_stats = calculate_statistics(evals)
+            new_stats = calculate_statistics(evals, mt5_account=existing_mt5, historical_accounts=existing_hist)
+            # Preserve historical account fields
+            if existing_hist:
+                new_stats.setdefault('hedging_review', {})['historical_accounts'] = existing_hist
+                new_stats['hedging_review']['historical_deposits'] = existing_hr.get('historical_deposits', 0)
+                new_stats['hedging_review']['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
+                new_stats['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
             new_fees = new_stats.get('profitability_completed', {}).get('challenge_fees', 0)
             save_client_data(client_id, {'statistics': new_stats})
             results.append({"client_id": client_id, "old_fees": old_fees, "new_fees": new_fees, "changed": abs(float(new_fees) - float(old_fees)) > 0.01})
@@ -2696,7 +2705,8 @@ def api_client_push():
                 except Exception as _e:
                     app.logger.warning(f"Stats tab fetch failed (non-critical): {_e}")
             
-            statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param, xlsx_notes=push_xlsx_notes)
+            statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param, xlsx_notes=push_xlsx_notes,
+                                              historical_accounts=existing_data.get('statistics', {}).get('hedging_review', {}).get('historical_accounts'))
             
             # Preserve historical MT5 accounts from existing data
             existing_hr = existing_data.get('statistics', {}).get('hedging_review', {})
@@ -2904,14 +2914,28 @@ def api_migrate_sheet():
             if wl_periods:
                 save_waterlog_periods(client_id, wl_periods)
         
-        # Calculate statistics without MT5 data (discrepancy will be 0)
-        statistics = calculate_statistics(evaluations, None, None, xlsx_notes=xlsx_notes)
+        # Get existing data to preserve MT5 account and historical accounts
+        existing_import_data = get_client_data(client_id) or {}
+        existing_mt5 = existing_import_data.get('account') or None
+        existing_hist = existing_import_data.get('statistics', {}).get('hedging_review', {}).get('historical_accounts')
+        
+        # Calculate statistics including existing MT5 data and historical accounts
+        statistics = calculate_statistics(evaluations, None, existing_mt5 if existing_mt5 else None, xlsx_notes=xlsx_notes,
+                                          historical_accounts=existing_hist)
+        
+        # Preserve historical accounts in the new statistics
+        if existing_hist:
+            existing_hr = existing_import_data.get('statistics', {}).get('hedging_review', {})
+            statistics.setdefault('hedging_review', {})['historical_accounts'] = existing_hist
+            statistics['hedging_review']['historical_deposits'] = existing_hr.get('historical_deposits', 0)
+            statistics['hedging_review']['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
+            statistics['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
         
         # Prepare client data
         client_data = {
-            "deals": [],
-            "positions": [],
-            "account": {},
+            "deals": existing_import_data.get('deals', []),
+            "positions": existing_import_data.get('positions', []),
+            "account": existing_mt5 or {},
             "evaluations": evaluations,
             "statistics": statistics,
             "dropdown_options": {},
@@ -3881,9 +3905,20 @@ def api_delete_evaluation():
     evaluations.pop(evaluation_index)
     client_data['evaluations'] = evaluations
     
-    # Recalculate statistics
+    # Recalculate statistics with existing MT5 + historical accounts
     from utils.data_processor import calculate_statistics
-    client_data['statistics'] = calculate_statistics(evaluations, None, None)
+    existing_mt5 = client_data.get('account') or None
+    existing_hist = client_data.get('statistics', {}).get('hedging_review', {}).get('historical_accounts')
+    new_stats = calculate_statistics(evaluations, None, existing_mt5 if existing_mt5 else None,
+                                     historical_accounts=existing_hist)
+    # Preserve historical accounts
+    if existing_hist:
+        old_hr = client_data.get('statistics', {}).get('hedging_review', {})
+        new_stats.setdefault('hedging_review', {})['historical_accounts'] = existing_hist
+        new_stats['hedging_review']['historical_deposits'] = old_hr.get('historical_deposits', 0)
+        new_stats['hedging_review']['historical_withdrawals'] = old_hr.get('historical_withdrawals', 0)
+        new_stats['hedging_review']['historical_balance'] = old_hr.get('historical_balance', 0)
+    client_data['statistics'] = new_stats
     
     # Save with history tracking - the previous version contains the deleted row
     success, version = save_client_data_with_history(

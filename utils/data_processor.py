@@ -676,12 +676,13 @@ def parse_currency(val):
         return 0.0
 
 
-def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_notes=None):
+def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_notes=None, historical_accounts=None):
     """
     Calculates detailed statistics matching the 'Stats' sheet structure.
     Uses exact SUMIF logic from Google Sheet formulas.
     If xlsx_notes contains Stats tab values (from XLSX export), uses those
     for the cashflow section to guarantee exact match with Google Sheets.
+    historical_accounts: list of previous MT5 accounts to include in discrepancy calc.
     """
     stats = {
         "profitability_completed": {
@@ -1000,15 +1001,32 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         stats["hedging_review"]["total_deposits"] = deposits
         stats["hedging_review"]["total_withdrawals"] = withdrawals
         
+        # Include historical MT5 accounts in the calculation
+        hist_dep = 0.0
+        hist_with = 0.0
+        hist_bal = 0.0
+        if historical_accounts:
+            for acc in historical_accounts:
+                hist_dep += float(acc.get('deposits', 0) or 0)
+                hist_with += float(acc.get('withdrawals', 0) or 0)
+                hist_bal += float(acc.get('final_balance', 0) or 0)
+        
+        combined_deposits = deposits + hist_dep
+        combined_withdrawals = withdrawals + hist_with
+        combined_balance = balance + hist_bal
+        
         # Calculate Actual Hedging Results using the Google Sheet formula:
         # =IF(AND(B20<>"", B22<>""), B22-(B20-B21), "")
-        # Which is: Current Balance - (Total Deposits - Total Withdrawals)
+        # Which is: Combined Balance - (Combined Deposits - Combined Withdrawals)
         # Note: withdrawals are already negative, so we add them
-        net_deposits = deposits + withdrawals  # withdrawals is negative
-        actual_hedging = balance - net_deposits
+        net_deposits = combined_deposits + combined_withdrawals
+        actual_hedging = combined_balance - net_deposits
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
         
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
+        if historical_accounts:
+            debug_log.append(f"Historical: deposits=${hist_dep:.2f}, withdrawals=${hist_with:.2f}, balance=${hist_bal:.2f}")
+            debug_log.append(f"Combined: deposits=${combined_deposits:.2f}, withdrawals=${combined_withdrawals:.2f}, balance=${combined_balance:.2f}")
         debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")
         has_mt5_data = True
     else:
