@@ -2698,6 +2698,14 @@ def api_client_push():
             
             statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param, xlsx_notes=push_xlsx_notes)
             
+            # Preserve historical MT5 accounts from existing data
+            existing_hr = existing_data.get('statistics', {}).get('hedging_review', {})
+            if 'historical_accounts' in existing_hr:
+                statistics.setdefault('hedging_review', {})['historical_accounts'] = existing_hr['historical_accounts']
+                statistics['hedging_review']['historical_deposits'] = existing_hr.get('historical_deposits', 0)
+                statistics['hedging_review']['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
+                statistics['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
+            
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
             app.logger.info(f"Stats calculated:")
@@ -4200,26 +4208,9 @@ def get_data():
                 except Exception as e:
                     logging.error(f"Error injecting notes: {e}")
 
-            # Add historical MT5 values to hedging_review totals
-            if 'statistics' in data and 'hedging_review' in data['statistics']:
-                hr = data['statistics']['hedging_review']
-                hist_accounts = hr.get('historical_accounts', [])
-                
-                # Calculate historical totals
-                hist_deposits = sum(acc.get('deposits', 0) for acc in hist_accounts)
-                hist_withdrawals = sum(acc.get('withdrawals', 0) for acc in hist_accounts)
-                hist_balance = sum(acc.get('final_balance', 0) for acc in hist_accounts)
-                
-                # Add to current values if there are historical accounts
-                if hist_accounts:
-                    hr['total_deposits'] = hr.get('total_deposits', 0) + hist_deposits
-                    hr['total_withdrawals'] = hr.get('total_withdrawals', 0) + hist_withdrawals
-                    hr['current_balance'] = hr.get('current_balance', 0) + hist_balance
-                    
-                    # Recalculate actual hedging and discrepancy with combined values
-                    net_deposits = hr['total_deposits'] + hr['total_withdrawals']
-                    hr['actual_hedging_results'] = hr['current_balance'] - net_deposits
-                    hr['discrepancy'] = hr['actual_hedging_results'] - hr.get('sheet_hedging_results', 0)
+            # Historical MT5 values are shown separately in the MT5 Accounts Overview table.
+            # The hedging_review values (deposits, withdrawals, balance, discrepancy) are
+            # served as-is from data_processor.py — single source of truth.
             
             data['status'] = 'success'
             return jsonify(data)
