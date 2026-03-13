@@ -2811,7 +2811,7 @@
                                             <button class="btn-small" onclick="showAddHistoricalMT5Modal()" style="padding:4px 12px;font-size:11px;">+ Add Previous MT5</button>
                                         </div>
                                         <div id="historical-mt5-list">
-                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], s.hedging_review)}
+                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {})}
                                         </div>
                                     </div>
                                     ` : (s.hedging_review.historical_accounts && s.hedging_review.historical_accounts.length > 0 ? `
@@ -3487,10 +3487,10 @@
         }
 
         // Historical MT5 Accounts Functions
-        function renderHistoricalMT5List(accounts, currentMT5) {
-            const curDep = (currentMT5 && currentMT5.total_deposits) || 0;
-            const curWith = (currentMT5 && currentMT5.total_withdrawals) || 0;
-            const curBal = (currentMT5 && currentMT5.current_balance) || 0;
+        function renderHistoricalMT5List(accounts, mt5Account) {
+            const curDep = parseFloat(mt5Account.total_deposits) || 0;
+            const curWith = parseFloat(mt5Account.total_withdrawals) || 0;
+            const curBal = parseFloat(mt5Account.balance) || 0;
             const hasHistorical = accounts && accounts.length > 0;
             
             let totalDep = curDep, totalWith = curWith, totalBal = curBal;
