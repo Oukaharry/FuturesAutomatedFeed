@@ -765,7 +765,6 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         net_deposits = deposits + withdrawals  # withdrawals is negative
         actual_hedging = balance - net_deposits
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
-        stats["hedging_review"]["discrepancy"] = actual_hedging - stats["hedging_review"]["sheet_hedging_results"]
         
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")
@@ -859,18 +858,19 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             stats["cashflow_inprogress"]["hedging_results"] +
             stats["cashflow_inprogress"]["farming_results"]
         )
-        if has_mt5_data:
-            stats["hedging_review"]["discrepancy"] = (
-                stats["hedging_review"]["actual_hedging_results"] -
-                stats["hedging_review"]["sheet_hedging_results"]
-            )
 
-    # --- Calculate Net Profit for each section (AFTER discrepancy is calculated) ---
-    # Formula: Net Profit = Payouts + Challenge Fees (neg) + Hedging + Farming + Discrepancy
-    # The sheet formula is: =B6+B3+B4+B5+B25 
-    # where B3=fees(negative), B4=hedging, B5=farming, B6=payouts, B25=discrepancy
-    # Discrepancy = Actual Hedging Results - Sheet Hedging Results
-    # Use discrepancy directly from hedging_review (already 0 when no MT5 data)
+    # --- Calculate Discrepancy ONCE from the final authoritative values ---
+    # This is the single source of truth displayed in the Hedging Review card.
+    # Discrepancy = Actual Hedging Results (from MT5) - Sheet Hedging Results (from Google Sheet)
+    if mt5_account:
+        stats["hedging_review"]["discrepancy"] = (
+            stats["hedging_review"]["actual_hedging_results"] -
+            stats["hedging_review"]["sheet_hedging_results"]
+        )
+
+    # --- Calculate Net Profit for each section ---
+    # Formula: Net Profit = Payouts + Hedging + Farming - Challenge Fees + Discrepancy
+    # Pick discrepancy directly from hedging_review (the value shown in the UI)
     discrepancy = stats["hedging_review"]["discrepancy"]
     
     for section in ["profitability_completed", "cashflow_inprogress"]:
