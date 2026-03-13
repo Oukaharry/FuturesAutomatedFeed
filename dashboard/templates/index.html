@@ -2814,8 +2814,13 @@
                                         </div>
                                     </div>
                                     ` : (s.hedging_review.historical_accounts && s.hedging_review.historical_accounts.length > 0 ? `
-                                    <div style="margin-top:15px;padding-top:10px;border-top:1px solid #e2e8f0;">
-                                        <span style="font-weight:600;font-size:12px;color:#64748b;">📜 Historical MT5 Accounts: ${s.hedging_review.historical_accounts.length}</span>
+                                    <div style="margin-top:15px;padding-top:12px;border-top:1px solid #334155;">
+                                        <div style="margin-bottom:10px;">
+                                            <span style="font-weight:600;font-size:13px;color:#e2e8f0;">📜 MT5 Accounts Overview</span>
+                                        </div>
+                                        <div>
+                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {})}
+                                        </div>
                                     </div>
                                     ` : '')}
                                 </div>
