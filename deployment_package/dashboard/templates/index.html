@@ -1943,8 +1943,21 @@
             if (key.includes('Account #')) {
                 style += ' font-size:  11px; letter-spacing: -0.5px; font-weight: 600;';
             }
+
+            // Format money columns with $
+            let displayVal = value;
+            const moneyKeys = ['Prop Day', 'Hedge Day', 'Hedge Result', 'Fee', 'Payout'];
+            if (value !== '' && value != null && moneyKeys.some(k => key.startsWith(k))) {
+                const str = String(value);
+                if (!str.startsWith('$') && !str.startsWith('-$') && !isNaN(str.replace(/[,$]/g, ''))) {
+                    const num = parseFloat(str);
+                    if (!isNaN(num)) {
+                        displayVal = num < 0 ? `-$${Math.abs(num).toFixed(2)}` : `$${num.toFixed(2)}`;
+                    }
+                }
+            }
             
-            return `<input type="${type}" class="cell-input" value="${value}" onchange="handleInputChange(${index}, '${key}', this.value)" ${readOnlyAttr} style="${style}">`;
+            return `<input type="${type}" class="cell-input" value="${displayVal}" onchange="handleInputChange(${index}, '${key}', this.value)" ${readOnlyAttr} style="${style}">`;
         }
 
         // Global state for portal dropdowns
