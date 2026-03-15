@@ -2479,12 +2479,21 @@ def update_data():
             evaluations = normalize_evaluations(evaluations)
             
             # Merge the update data with existing data
+            merged_statistics = data.get("statistics", existing_data.get("statistics", {}))
+            
+            # Always preserve hedging_review from DB — it is only authoritative
+            # when set by /api/client/push or /api/hedging_review, never from
+            # stale frontend copies sent during evaluation edits.
+            existing_hr = existing_data.get('statistics', {}).get('hedging_review')
+            if existing_hr:
+                merged_statistics['hedging_review'] = existing_hr
+
             client_data = {
                 "deals": data.get("deals", existing_data.get("deals", [])),
                 "positions": data.get("positions", existing_data.get("positions", [])),
                 "account": data.get("account", existing_data.get("account", {})),
                 "evaluations": evaluations,
-                "statistics": data.get("statistics", existing_data.get("statistics", {})),
+                "statistics": merged_statistics,
                 "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
                 "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
                 "payment_address": data.get("payment_address", existing_data.get("payment_address", {})),
@@ -2539,13 +2548,25 @@ def update_data_with_api_key(data, identity, user_info):
     client_id = identity.get('client', 'Client1')
     email = identity.get('email', '')
     
-    # Prepare client data
+    # Prepare client data — smart merge for statistics to preserve hedging_review
+    existing_data = get_client_data(client_id) or {}
+    incoming_stats = data.get("statistics", {})
+    existing_stats = existing_data.get("statistics", {})
+    statistics = existing_stats.copy()
+    statistics.update(incoming_stats)
+    
+    # Always preserve hedging_review from DB — only /api/client/push and
+    # /api/hedging_review are authoritative sources for this data.
+    existing_hr = existing_stats.get('hedging_review')
+    if existing_hr:
+        statistics['hedging_review'] = existing_hr
+
     client_data = {
         "deals": data.get("deals", []),
         "positions": data.get("positions", []),
         "account": data.get("account", {}),
         "evaluations": data.get("evaluations", []),
-        "statistics": data.get("statistics", {}),
+        "statistics": statistics,
         "dropdown_options": data.get("dropdown_options", {}),
         "identity": identity,
         "payment_info": data.get("payment_info", []),

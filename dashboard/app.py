@@ -4370,6 +4370,15 @@ def update_data():
                                 ev[key] = existing_val
                 
                 # Merge the update data with existing data
+                merged_statistics = data.get("statistics", existing_data.get("statistics", {}))
+                
+                # Always preserve hedging_review from DB — it is only authoritative
+                # when set by /api/client/push or /api/hedging_review, never from
+                # stale frontend copies sent during evaluation edits.
+                existing_hr = existing_data.get('statistics', {}).get('hedging_review')
+                if existing_hr:
+                    merged_statistics['hedging_review'] = existing_hr
+
                 client_data = {
                     "deals": data.get("deals", existing_data.get("deals", [])),
                     "positions": data.get("positions", existing_data.get("positions", [])),
@@ -4380,7 +4389,7 @@ def update_data():
                     "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
                     "payment_address": data.get("payment_address", existing_data.get("payment_address", {})),
                     "evaluations": evaluations,
-                    "statistics": data.get("statistics", existing_data.get("statistics", {})),
+                    "statistics": merged_statistics,
                     "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
                     # Persist match log when updating from dashboard
                     "aggregated_by_comment": existing_data.get("aggregated_by_comment", []),
@@ -4470,6 +4479,12 @@ def update_data_with_api_key(data, identity, user_info):
     # This preserves keys like 'hedging_review' that the trader app doesn't send
     statistics = existing_stats.copy()
     statistics.update(incoming_stats)
+    
+    # Always preserve hedging_review from DB — only /api/client/push and
+    # /api/hedging_review are authoritative sources for this data.
+    existing_hr = existing_stats.get('hedging_review')
+    if existing_hr:
+        statistics['hedging_review'] = existing_hr
     
     # Smart merge for dropdown_options (preserve if incoming is empty)
     incoming_options = data.get("dropdown_options", {})
