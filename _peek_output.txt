@@ -1,0 +1,92 @@
+﻿
+============================================================
+  Section: Positions (at char 2786)
+============================================================
+ align="center">
+            <th colspan="14" style="height: 25px"><div style="font: 10pt Tahoma"><b>Positions</b></div></th>
+        </tr>
+        <tr align="center" bgcolor="#E5F0FC">
+            <td nowrap style="height: 30px"><b>Time</b></td>
+            <td nowrap><b>Position</b></td>
+            <td nowrap><b>Symbol</b></td>
+            <td nowrap><b>Type</b></td>
+            <td nowrap><b>Volume</b></td>
+            <td nowrap><b>Price</b></td>
+            <td nowrap><b>S / L</b></td>
+            <td nowrap><b>T / P</b></td>
+            <td nowrap><b>Time</b></td>
+            <td nowrap><b>Price</b></td>
+            <td nowrap><b>Commission</b></td>
+            <td nowrap><b>Swap</b></td>
+            <td nowrap colspan="2"><b>Profit</b></td>
+        </tr>
+        
+        <tr bgcolor="#FFFFFF" align="right">
+            <td>2026.01.05 14:03:20</td>
+            <td>57560656</td>
+            <td>USTECH</td>
+            <td>sell</td>
+            <td class="hidden" colspan="8">FNFT...17408</td>
+            <td class="">0.25</td>
+            <td class="">25375.33</td>
+            <td class="">25401.33</td>
+            <td class="">25317.33</td>
+            <td class="">2026.01.05 16:01:25</td>
+            <td class="">25401.62</td>
+            <td class="">0.00</td>
+            <td class="">0.00</td>
+            <td colspan="2">- 131.45</td>
+        </tr>
+        
+        <tr bgcolor="#F7F7F7" align="right">
+            <td>2026.01.05 14:03:58</td>
+            <td>57560667<
+
+============================================================
+  Section: Orders (at char 395936)
+============================================================
+ align="center">
+            <th colspan="14" style="height: 25px"><div style="font: 10pt Tahoma"><b>Orders</b></div></th>
+        </tr>
+        <tr align="center" bgcolor="#E5F0FC">
+            <td nowrap style="height: 30px"><b>Open Time</b></td>
+            <td nowrap><b>Order</b></td>
+            <td nowrap><b>Symbol</b></td>
+            <td nowrap><b>Type</b></td>
+            <td nowrap><b>Volume</b></td>
+            <td nowrap><b>Price</b></td>
+            <td nowrap><b>S / L</b></td>
+            <td nowrap><b>T / P</b></td>
+            <td nowrap><b>Time</b></td>
+            <td nowrap colspan="2"><b>State</b></td>
+            <td nowrap colspan="3"><b>Comment</b></td>
+        </tr>
+        <tr bgcolor="#FFFFFF" align="right"><td>2026.01.05 14:03:19</td><td>57560656</td><td>USTECH</td><td>sell</td><td>0.25 / 0.25</td><td>market</td><td>25401.33</td><td>25317.33</td><td>2026.01.05 14:03:20</td><td colspan="2">filled</td><td colspan="3">FNFT...17408</td></tr>
+        <tr bgcolor="#F7F7F7" align="right"><td>2026.01.05 14:03:58</td><td>57560667</td><td>USTECH</td><td>sell</td><td>0.25 / 0.25</td><td>market</td><td>25398.62</td><td>25314.62</td><td>2026.01.05 14:03:58</td><td colspan="2">filled</td><td colspan="3">FNFT...17815</td></tr>
+        <tr bgcolor="#FFFFFF" align="right"><td>2026.01.05 14:04:27</td><td>57560699</td><td>USTECH</td><td>sell</td><td>0.25 / 0.25</td><td>market</td><td>25396.27</td><td>25312.27</td><td>2026.01.05 14:04:27</td><td colspan="2">filled</td>
+
+============================================================
+  Section: Deals (at char 749736)
+============================================================
+ align="center">
+            <th colspan="14" style="height: 25px"><div style="font: 10pt Tahoma"><b>Deals</b></div></th>
+        </tr>
+        <tr align="center" bgcolor="#E5F0FC">
+            <td nowrap style="height: 30px"><b>Time</b></td>
+            <td nowrap><b>Deal</b></td>
+            <td nowrap><b>Symbol</b></td>
+            <td nowrap><b>Type</b></td>
+            <td nowrap><b>Direction</b></td>
+            <td nowrap><b>Volume</b></td>
+            <td nowrap><b>Price</b></td>
+            <td nowrap><b>Order</b></td>
+            <td nowrap class="hidden"><b>Cost</b></td>
+            <td nowrap><b>Commission</b></td>
+            <td nowrap><b>Fee</b></td>
+            <td nowrap><b>Swap</b></td>
+            <td nowrap><b>Profit</b></td>
+            <td nowrap><b>Balance</b></td>
+            <td nowrap><b>Comment</b></td>
+        </tr>
+        <tr bgcolor="#FFFFFF" align="right"><td nowrap>2025.12.24 23:16:37</td><td nowrap>25781238</td><td nowrap></td><td nowrap>balance</td><td nowrap></td><td nowrap></td><td nowrap></td><td nowrap></td><td nowrap class="hidden"></td><td nowrap>0.00</td><td nowrap>0.00</td><td nowrap>0.00</td><td nowrap>49 700.00</td><td nowrap>49 700.00</td><td nowrap>internal transfer</td></tr>
+        <tr bgcolor="#F7F7F7" align="right"><td nowrap>2026.01.05 14:03:20</td><td nowrap>26144775</td><td nowrap>USTECH</td><td nowrap>sell</td><td nowrap>in</td><td nowrap>0.25</td><td nowrap>25375.33</td><td nowrap>57560656</td><td nowrap class="hidden"><

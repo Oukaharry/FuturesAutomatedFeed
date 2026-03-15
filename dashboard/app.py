@@ -2716,6 +2716,13 @@ def api_client_push():
                 statistics['hedging_review']['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
                 statistics['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
             
+            # Push-once: if hedging_review was already populated (non-zero deposits
+            # or balance), keep the existing values. Only the first push or manual
+            # edits via /api/hedging_review can set these.
+            if existing_hr.get('total_deposits', 0) != 0 or existing_hr.get('current_balance', 0) != 0:
+                app.logger.info(f"📌 Hedging review already populated — preserving existing values (push-once)")
+                statistics['hedging_review'] = existing_hr
+            
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
             app.logger.info(f"Stats calculated:")
