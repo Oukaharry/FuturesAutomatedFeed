@@ -1344,6 +1344,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     slot = 34
 
                 field_name = f'Hedge Day {slot}'
+
+                # Skip fields that were manually edited by a user
+                fa_manual_overrides = set(best_eval.get('_manual_overrides', []))
+                if field_name in fa_manual_overrides:
+                    logging.info(f"[FA SKIP] field_name={field_name} is manually overridden, preserving value '{best_eval.get(field_name)}'")
+                    continue
+
                 best_eval[field_name] = f'${last_profit:.2f}'
                 best_eval[f'_{field_name} Date'] = last_date
                 updates_made += 1
@@ -1439,6 +1446,12 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             if '_updated_fields' not in best_eval:
                 best_eval['_updated_fields'] = set()
             
+            # Skip fields that were manually edited by a user
+            manual_overrides = set(best_eval.get('_manual_overrides', []))
+            if field_name in manual_overrides:
+                logging.info(f"[PUSH SKIP] field_name={field_name} is manually overridden, preserving value '{best_eval.get(field_name)}'")
+                continue
+
             if field_name not in best_eval['_updated_fields']:
                 new_val = session_profit
                 best_eval['_updated_fields'].add(field_name)
@@ -4390,6 +4403,10 @@ def update_data():
                     'Hedge Result 6', 'Hedge Result 7',
                     'Hedge Net', 'Hedge Net.1',
                 }
+                # Fields that the push endpoint auto-calculates — manual edits to
+                # these must be preserved across future pushes.
+                HEDGE_FIELD_PATTERN = re.compile(r'^Hedge (Result|Day|Net)\b')
+
                 for i, ev in enumerate(evaluations):
                     if i < len(existing_evals):
                         existing_ev = existing_evals[i]
@@ -4399,6 +4416,28 @@ def update_data():
                             # Keep the existing (push-sourced) value when the frontend sends empty/missing
                             if existing_val and (not incoming_val or str(incoming_val).strip() == ''):
                                 ev[key] = existing_val
+
+                    # Detect manual overrides: if the user changed a hedge field
+                    # compared to what's stored in the DB, flag it so the push
+                    # endpoint won't overwrite it.
+                    if i < len(existing_evals):
+                        existing_ev = existing_evals[i]
+                        prev_overrides = set(existing_ev.get('_manual_overrides', []))
+                        for key in list(ev.keys()):
+                            if not HEDGE_FIELD_PATTERN.match(key):
+                                continue
+                            incoming_val = str(ev.get(key, '') or '').strip()
+                            existing_val = str(existing_ev.get(key, '') or '').strip()
+                            if incoming_val and incoming_val != existing_val:
+                                prev_overrides.add(key)
+                            elif not incoming_val and key in prev_overrides:
+                                # User cleared the field — remove override so push can fill it
+                                prev_overrides.discard(key)
+                        # Persist the override flags (stored as list for JSON serialization)
+                        ev['_manual_overrides'] = list(prev_overrides)
+                    else:
+                        # New evaluation — carry over any existing override flags
+                        ev.setdefault('_manual_overrides', [])
                 
                 # Merge the update data with existing data
                 merged_statistics = data.get("statistics", existing_data.get("statistics", {}))
