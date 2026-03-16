@@ -1219,7 +1219,20 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             else:
                 # Sort by diff (smallest diff is closest match)
                 valid_candidates.sort(key=lambda x: x[1])
-                best_eval, drift = valid_candidates[0]
+                
+                # FNFT override: when multiple candidates match, prefer the latest row
+                # (highest row number = most recently added evaluation)
+                is_fnft_session = comment_prefix and 'FNFT' in comment_prefix.upper()
+                if is_fnft_session and len(valid_candidates) > 1:
+                    # Pick the candidate with the highest index in evaluations (latest row)
+                    best_eval = max(
+                        [vc[0] for vc in valid_candidates],
+                        key=lambda e: evaluations.index(e)
+                    )
+                    drift = next(vc[1] for vc in valid_candidates if vc[0] is best_eval)
+                else:
+                    best_eval, drift = valid_candidates[0]
+                    
                 logging.info(
                     f"[MATCHED EVAL] eval_idx={evaluations.index(best_eval)} "
                     f"account={acc_num} phase={best_phase} num={best_num} drift={drift}"
