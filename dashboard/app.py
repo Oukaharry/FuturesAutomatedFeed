@@ -2883,25 +2883,8 @@ def api_migrate_sheet():
         # Import the data processor
         from utils.data_processor import fetch_evaluations, calculate_statistics, fetch_waterlog_history
         from dashboard.watermark_service import bulk_save_history
+        import concurrent.futures
 
-        eval_result = fetch_evaluations(sheet_url)
-        if isinstance(eval_result, tuple):
-            evaluations, xlsx_notes = eval_result
-        else:
-            evaluations = eval_result
-            xlsx_notes = {}
-        if not evaluations:
-            return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's public. (Evaluations Tab)"}), 400
-        
-        # Fetch and save daily waterlog history
-        waterlog_history = fetch_waterlog_history(sheet_url)
-        waterlog_count = 0
-        if waterlog_history:
-            bulk_save_history(client_id, waterlog_history)
-            waterlog_count = len(waterlog_history)
-
-        # Fetch and save the bi-weekly period schedule WITH Low/High values
-        # from the sheet so compute_waterlog_from_db() returns identical data.
         try:
             from utils.sheet_helper import fetch_waterlog_data, fetch_waterlog_periods_from_sheet
         except ImportError:
@@ -2915,43 +2898,66 @@ def api_migrate_sheet():
         except ImportError:
             from watermark_service import save_waterlog_periods
 
-        if fetch_waterlog_data:
-            wl_full = fetch_waterlog_data(sheet_url)  # list of {from_date, to_date, low, high, profit_split}
-            if wl_full:
-                from datetime import datetime as _wldt
-                import re as _re
+        # Fetch evaluations, waterlog history and waterlog data in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            future_eval = executor.submit(fetch_evaluations, sheet_url)
+            future_wl_hist = executor.submit(fetch_waterlog_history, sheet_url)
+            future_wl_data = executor.submit(fetch_waterlog_data, sheet_url) if fetch_waterlog_data else None
 
-                def _parse_currency_str(s):
-                    try:
-                        return float(_re.sub(r'[^0-9.\-]', '', str(s))) if s else None
-                    except Exception:
-                        return None
+            eval_result = future_eval.result()
+            waterlog_history = future_wl_hist.result()
+            wl_full = future_wl_data.result() if future_wl_data else None
 
-                def _to_iso(date_str):
-                    """Convert M/D/YYYY to YYYY-MM-DD."""
-                    try:
-                        return _wldt.strptime(date_str.strip(), '%m/%d/%Y').strftime('%Y-%m-%d')
-                    except Exception:
-                        return None
+        if isinstance(eval_result, tuple):
+            evaluations, xlsx_notes = eval_result
+        else:
+            evaluations = eval_result
+            xlsx_notes = {}
+        if not evaluations:
+            return jsonify({"status": "error", "message": "Could not fetch data from sheet. Make sure it's shared as 'Anyone with the link'. (Evaluations Tab)"}), 400
+        
+        # Save daily waterlog history
+        waterlog_count = 0
+        if waterlog_history:
+            bulk_save_history(client_id, waterlog_history)
+            waterlog_count = len(waterlog_history)
 
-                wl_periods = []
-                wl_values  = {}
-                for row in wl_full:
-                    fd = _to_iso(row.get('from_date', ''))
-                    td = _to_iso(row.get('to_date', ''))
-                    if fd and td:
-                        wl_periods.append((fd, td))
-                        low  = _parse_currency_str(row.get('low'))
-                        high = _parse_currency_str(row.get('high'))
-                        if low is not None or high is not None:
-                            wl_values[fd] = {
-                                'low':       low,
-                                'high':      high,
-                                'split_pct': row.get('split_pct', 25),
-                            }
+        # Save the bi-weekly period schedule WITH Low/High values
+        if wl_full:
+            from datetime import datetime as _wldt
+            import re as _re
 
-                if wl_periods:
-                    save_waterlog_periods(client_id, wl_periods, period_values=wl_values)
+            def _parse_currency_str(s):
+                try:
+                    return float(_re.sub(r'[^0-9.\-]', '', str(s))) if s else None
+                except Exception:
+                    return None
+
+            def _to_iso(date_str):
+                """Convert M/D/YYYY to YYYY-MM-DD."""
+                try:
+                    return _wldt.strptime(date_str.strip(), '%m/%d/%Y').strftime('%Y-%m-%d')
+                except Exception:
+                    return None
+
+            wl_periods = []
+            wl_values  = {}
+            for row in wl_full:
+                fd = _to_iso(row.get('from_date', ''))
+                td = _to_iso(row.get('to_date', ''))
+                if fd and td:
+                    wl_periods.append((fd, td))
+                    low  = _parse_currency_str(row.get('low'))
+                    high = _parse_currency_str(row.get('high'))
+                    if low is not None or high is not None:
+                        wl_values[fd] = {
+                            'low':       low,
+                            'high':      high,
+                            'split_pct': row.get('split_pct', 25),
+                        }
+
+            if wl_periods:
+                save_waterlog_periods(client_id, wl_periods, period_values=wl_values)
         elif fetch_waterlog_periods_from_sheet:
             # Fallback: save dates only (no Low/High)
             wl_periods = fetch_waterlog_periods_from_sheet(sheet_url)

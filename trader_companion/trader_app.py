@@ -2273,36 +2273,16 @@ class TraderCompanionApp:
             messagebox.showerror("Error", "Please enter a valid Google Sheets URL")
             return
         
-        self.log(f"Step 1: Fetching data from Google Sheets...")
-        self.status_var.set("Fetching sheet data...")
+        self.log(f"Migrating sheet data to dashboard...")
+        self.status_var.set("Migrating sheet data...")
         self.root.update_idletasks()
         
         try:
-            from utils.data_processor import fetch_evaluations
-            
-            res = fetch_evaluations(sheet_url)
-            if isinstance(res, tuple):
-                evaluations, _ = res
-            else:
-                evaluations = res
-                
-            if not evaluations:
-                self.log("❌ Could not fetch data from sheet. Make sure it's public.", "ERROR")
-                messagebox.showerror("Error", "Could not fetch data from sheet. Make sure it's public.")
-                return
-            
-            self.log(f"   Fetched {len(evaluations)} evaluation records")
-            
-            # Step 2: Push to dashboard (full overwrite)
-            self.log(f"Step 2: Pushing data to dashboard...")
-            self.status_var.set("Pushing to dashboard...")
-            self.root.update_idletasks()
-            
             response = requests.post(
                 f"{dashboard_url}/api/client/migrate_sheet",
                 json={"email": email, "sheet_url": sheet_url},
                 headers={"Content-Type": "application/json"},
-                timeout=60
+                timeout=180
             )
             
             if response.status_code != 200:
@@ -2332,9 +2312,13 @@ class TraderCompanionApp:
             self.lookup_client()
                 
         except requests.exceptions.Timeout:
-            self.log("❌ Connection timeout - sheet may be too large", "ERROR")
+            self.log("❌ Connection timeout - server is still processing the sheet", "ERROR")
             self.status_var.set("Timeout")
-            messagebox.showerror("Timeout", "Connection timed out. Make sure your sheet is public and try again.")
+            messagebox.showerror("Timeout", "Connection timed out. The sheet may be too large or the server is busy. Please try again.")
+        except requests.exceptions.ConnectionError:
+            self.log("❌ Could not connect to dashboard server", "ERROR")
+            self.status_var.set("Connection failed")
+            messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
         except Exception as e:
             self.log(f"❌ Migration error: {e}", "ERROR")
             self.status_var.set("Migration failed")
