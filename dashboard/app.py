@@ -1101,20 +1101,31 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     if ac1.startswith(_ts_prefix): ac1 = ac1[len(_ts_prefix):]
                     if ac2.startswith(_ts_prefix): ac2 = ac2[len(_ts_prefix):]
                 
-                # Use flexible matching against s_search (which is just the trailing number usually)
-                s = s_search 
+                # Use ENDING digits matching only — never substring containment
+                s = s_search
+                
+                # Extract trailing digits for comparison
+                import re as _re
+                s_digits = _re.search(r'(\d+)$', s)
+                s_trail = s_digits.group(1) if s_digits else s
                 
                 # Check ac1
                 if ac1:
-                    if s == ac1: is_match = True
-                    elif s.endswith(ac1) or ac1.endswith(s): is_match = True
-                    elif len(s) >= 4 and s in ac1: is_match = True
+                    ac1_digits = _re.search(r'(\d+)$', ac1)
+                    ac1_trail = ac1_digits.group(1) if ac1_digits else ac1
+                    if s == ac1:
+                        is_match = True
+                    elif ac1_trail.endswith(s_trail) or s_trail.endswith(ac1_trail):
+                        is_match = True
                 
                 # Check ac2
                 if not is_match and ac2:
-                    if s == ac2: is_match = True
-                    elif s.endswith(ac2) or ac2.endswith(s): is_match = True
-                    elif len(s) >= 4 and s in ac2: is_match = True
+                    ac2_digits = _re.search(r'(\d+)$', ac2)
+                    ac2_trail = ac2_digits.group(1) if ac2_digits else ac2
+                    if s == ac2:
+                        is_match = True
+                    elif ac2_trail.endswith(s_trail) or s_trail.endswith(ac2_trail):
+                        is_match = True
                 
                 # STRICT PREFIX CHECK — use comment_prefix (from full_comment_info) OR s_acc_raw hyphen prefix
                 prefix_part = comment_prefix  # e.g. 'V2' from V2-1128_CH2
@@ -1166,8 +1177,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
             for e in candidates:
                 if skip_date_filter:
-                     # Trust the account match implicitly
-                     valid_candidates.append((e, 0)) # 0 drift because perfect ID match
+                     # Trust the account match implicitly (all matches are suffix-based)
+                     valid_candidates.append((e, 0))
                      continue
 
                 dp_str = str(e.get('Date Started', '')) or str(e.get('Date Purchased', ''))
@@ -1200,8 +1211,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             if not valid_candidates:
                 # If we had a strict comment match, and no valid dates, maybe just pick the best text match?
                 if matches_full_strict and candidates:
-                     best_eval = candidates[0] # Naive fallback
-                     match_log.append(f"⚠️ Date mismatch but strict ID match for {acc_num}, using first candidate.")
+                     best_eval = candidates[0]
+                     match_log.append(f"⚠️ Date mismatch but strict ID match for {acc_num}, using best candidate.")
                 else:
                      match_log.append(f"⚠️ No valid date match for {acc_num}")
                      continue
