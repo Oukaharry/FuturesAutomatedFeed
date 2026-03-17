@@ -1637,6 +1637,7 @@
         const EVAL_PAGE_SIZE = 50;
         let histSortAsc = false; // false = newest first (default)
         let isEditing = false;
+        let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
         let isDatePickerOpen = false;
         let currentNoteTarget = null; // { index, key }
         let sheetHedgingResults = 0; // Store for recalculation
@@ -4043,6 +4044,10 @@
             // Mark editing started (prevents auto-refresh)
             isEditing = true;
             
+            // Track this field as explicitly changed by the user
+            if (!_changedFields[index]) _changedFields[index] = new Set();
+            _changedFields[index].add(key);
+            
             // Normalize date values to consistent format
             if (key.toLowerCase().includes('date') && value) {
                 value = formatDateForInput(value);
@@ -4126,6 +4131,17 @@
             const payload = { ...currentData };
             payload.action_type = action;
             if (description) payload.change_description = description;
+            
+            // Include explicitly changed fields so backend knows intentional clears vs stale data
+            if (Object.keys(_changedFields).length > 0) {
+                const cf = {};
+                for (const [idx, fields] of Object.entries(_changedFields)) {
+                    cf[idx] = Array.from(fields);
+                }
+                payload._changedFields = cf;
+            }
+            // Reset after including in payload
+            _changedFields = {};
 
             fetch('/api/update_data', {
                 method: 'POST',

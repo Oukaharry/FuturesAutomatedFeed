@@ -4413,10 +4413,25 @@ def update_data():
                 # these must be preserved across future pushes.
                 HEDGE_FIELD_PATTERN = re.compile(r'^Hedge (Result|Day|Net)\b')
 
+                # Fields the user explicitly touched in this edit session
+                # (sent by frontend so we can distinguish intentional clears from stale data)
+                raw_changed = data.get('_changedFields', {})
+                user_changed = {}  # { int(eval_index): set(field_names) }
+                for idx_str, fields in raw_changed.items():
+                    try:
+                        user_changed[int(idx_str)] = set(fields) if isinstance(fields, list) else set()
+                    except (ValueError, TypeError):
+                        pass
+
                 for i, ev in enumerate(evaluations):
+                    explicitly_changed = user_changed.get(i, set())
+
                     if i < len(existing_evals):
                         existing_ev = existing_evals[i]
                         for key in PUSH_SOURCED_KEYS:
+                            # If the user explicitly cleared this field, respect the clear
+                            if key in explicitly_changed:
+                                continue
                             existing_val = existing_ev.get(key)
                             incoming_val = ev.get(key)
                             # Keep the existing (push-sourced) value when the frontend sends empty/missing
@@ -4429,15 +4444,15 @@ def update_data():
                     if i < len(existing_evals):
                         existing_ev = existing_evals[i]
                         prev_overrides = set(existing_ev.get('_manual_overrides', []))
-                        for key in list(ev.keys()):
+                        for key in list(ev.keys()) + list(explicitly_changed):
                             if not HEDGE_FIELD_PATTERN.match(key):
                                 continue
                             incoming_val = str(ev.get(key, '') or '').strip()
                             existing_val = str(existing_ev.get(key, '') or '').strip()
                             if incoming_val and incoming_val != existing_val:
                                 prev_overrides.add(key)
-                            elif not incoming_val and key in prev_overrides:
-                                # User cleared the field — remove override so push can fill it
+                            elif key in explicitly_changed and not incoming_val:
+                                # User explicitly cleared the field — remove override so push can fill it
                                 prev_overrides.discard(key)
                         # Persist the override flags (stored as list for JSON serialization)
                         ev['_manual_overrides'] = list(prev_overrides)
