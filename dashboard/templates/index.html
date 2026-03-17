@@ -2680,6 +2680,7 @@
                                     class="cell-input" 
                                     value="${displayValue}" 
                                     placeholder="-"
+                                    onfocus="isEditing = true"
                                     ${readOnly ? 'readonly' : `onchange="updatePropProgress(this, ${index}, '${propDayKey}')"`}
                                     style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em; ${readOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"
                                 >
@@ -2693,6 +2694,7 @@
 
         // Handler for Prop Progress Input
         function updatePropProgress(input, index, key) {
+             isEditing = true;  // Guard against auto-refresh during save
              const newValue = input.value;
              if (!currentData.evaluations[index]) return;
              
@@ -2719,7 +2721,11 @@
                    if (data.status !== 'success') {
                        console.error('Failed to save progress note:', data.message);
                    }
-               }).catch(err => console.error('Error saving progress note:', err));
+               }).catch(err => console.error('Error saving progress note:', err))
+               .finally(() => {
+                   // Keep guard active for 2s so the next refresh picks up the saved value
+                   setTimeout(() => { isEditing = false; }, 2000);
+               });
         }
 
         function renderStats(data) {
