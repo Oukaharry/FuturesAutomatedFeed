@@ -2120,41 +2120,48 @@ def get_filtered_hierarchy(user_type, user_identifier):
         return full_hierarchy
     
     if user_type == 'admin':
-        # Admin sees only their own data
+        # Admin sees only their own data (case-insensitive match)
         admin_name = user_identifier
-        if admin_name in full_hierarchy.get('admins', {}):
-            return {
-                'admins': {
-                    admin_name: full_hierarchy['admins'][admin_name]
+        admin_name_lower = admin_name.strip().lower()
+        for key in full_hierarchy.get('admins', {}):
+            if key.strip().lower() == admin_name_lower:
+                return {
+                    'admins': {
+                        key: full_hierarchy['admins'][key]
+                    }
                 }
-            }
         return {'admins': {}}
     
     if user_type == 'trader':
         # Trader sees only their clients - need to find which admin they belong to
         trader_name = user_identifier.strip()
+        trader_name_lower = trader_name.lower()
         for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
             traders = admin_data.get('traders', {})
-            if trader_name in traders:
-                return {
-                    'admins': {
-                        admin_name: {
-                            'email': '',  # Hide admin email from trader
-                            'traders': {
-                                trader_name: traders[trader_name]
+            for t_key in traders:
+                if t_key.strip().lower() == trader_name_lower:
+                    return {
+                        'admins': {
+                            admin_name: {
+                                'email': '',  # Hide admin email from trader
+                                'traders': {
+                                    t_key: traders[t_key]
+                                }
                             }
                         }
                     }
-                }
         return {'admins': {}}
     
     if user_type == 'client':
-        # Client sees only themselves
+        # Client sees only themselves (case-insensitive match)
         client_name = user_identifier
+        client_name_lower = client_name.strip().lower()
         for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
             for trader_name, trader_data in admin_data.get('traders', {}).items():
                 for client in trader_data.get('clients', []):
-                    if client.get('name') == client_name or client.get('email') == client_name:
+                    cname = (client.get('name') or '').strip().lower()
+                    cemail = (client.get('email') or '').strip().lower()
+                    if cname == client_name_lower or cemail == client_name_lower:
                         return {
                             'admins': {
                                 admin_name: {
@@ -2199,6 +2206,13 @@ def get_hierarchy():
     reload_hierarchy()
     
     filtered = get_filtered_hierarchy(user_type, user_identifier)
+    
+    # Debug logging for empty hierarchy results
+    if not filtered.get('admins') or all(
+        not admin_data.get('traders', {}) for admin_data in filtered.get('admins', {}).values()
+    ):
+        logging.warning(f"[HIERARCHY] Empty result for user_type={user_type} user_identifier='{user_identifier}' — available trader keys: {[t for a in hierarchy.get('admins', {}).values() for t in a.get('traders', {}).keys()]}")
+    
     return jsonify(filtered)
 
 from dashboard.financial_overview import calculate_all_financials
