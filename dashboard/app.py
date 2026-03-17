@@ -4298,6 +4298,12 @@ def get_data():
             # served as-is from data_processor.py — single source of truth.
             
             data['status'] = 'success'
+            # Include current version so frontend can detect stale refreshes
+            try:
+                from dashboard.database import get_next_version
+                data['_version'] = get_next_version(client_id) - 1
+            except Exception:
+                pass
             return jsonify(data)
     
     # If no client specified, return empty
@@ -4428,6 +4434,12 @@ def update_data():
 
                     if i < len(existing_evals):
                         existing_ev = existing_evals[i]
+                        
+                        # Preserve DB-only internal keys the frontend doesn't send
+                        for k, v in existing_ev.items():
+                            if k.startswith('_') and k not in ev:
+                                ev[k] = v
+                        
                         for key in PUSH_SOURCED_KEYS:
                             # If the user explicitly cleared this field, respect the clear
                             if key in explicitly_changed:

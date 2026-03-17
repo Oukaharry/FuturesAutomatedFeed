@@ -1638,6 +1638,8 @@
         let histSortAsc = false; // false = newest first (default)
         let isEditing = false;
         let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
+        let _saveDebounceTimer = null;  // Debounce rapid edits into one save
+        let _lastSavedVersion = null;   // Version from last successful save
         let isDatePickerOpen = false;
         let currentNoteTarget = null; // { index, key }
         let sheetHedgingResults = 0; // Store for recalculation
@@ -2187,6 +2189,16 @@
                 .then(data => {
                     // Prevent overwriting if user started editing during fetch
                     if (isEditing || isSaving || document.querySelector('.cell-input:focus')) return;
+                    
+                    // Skip stale data: if the response version is older than
+                    // our last save, ignore it to prevent reverting edits.
+                    if (_lastSavedVersion && data._version && data._version < _lastSavedVersion) {
+                        return;
+                    }
+                    // Data is up-to-date — clear the version guard
+                    if (_lastSavedVersion && data._version && data._version >= _lastSavedVersion) {
+                        _lastSavedVersion = null;
+                    }
 
                     // Handle API-level errors
                     if (data.status === 'error') {
@@ -4054,7 +4066,13 @@
             }
             
             currentData.evaluations[index][key] = value;
-            saveData();
+            
+            // Debounce: batch rapid edits into a single save (400ms window)
+            if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
+            _saveDebounceTimer = setTimeout(() => {
+                _saveDebounceTimer = null;
+                saveData();
+            }, 400);
             
             // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
             const showActiveOnly = document.getElementById('activeFilter').checked;
@@ -4108,7 +4126,7 @@
         let saveRetryQueue = [];
         let isSaving = false;
         
-        function saveData(action = 'UPDATE', description = null, retryCount = 0) {
+        function saveData(action = 'UPDATE', description = null, retryCount = 0, _retryBody = null) {
             // Handle optional arguments shifting if called with just retryCount (legacy calls)
             if (typeof action === 'number') {
                 retryCount = action;
@@ -4127,28 +4145,32 @@
             isEditing = true;
             isSaving = true;
             
-            // Prepare payload with metadata
-            const payload = { ...currentData };
-            payload.action_type = action;
-            if (description) payload.change_description = description;
-            
-            // Include explicitly changed fields so backend knows intentional clears vs stale data
-            if (Object.keys(_changedFields).length > 0) {
-                const cf = {};
-                for (const [idx, fields] of Object.entries(_changedFields)) {
-                    cf[idx] = Array.from(fields);
+            let bodyStr = _retryBody;
+            if (!bodyStr) {
+                // Prepare payload with metadata (only on first attempt, retries reuse the same body)
+                const payload = { ...currentData };
+                payload.action_type = action;
+                if (description) payload.change_description = description;
+                
+                // Include explicitly changed fields so backend knows intentional clears vs stale data
+                if (Object.keys(_changedFields).length > 0) {
+                    const cf = {};
+                    for (const [idx, fields] of Object.entries(_changedFields)) {
+                        cf[idx] = Array.from(fields);
+                    }
+                    payload._changedFields = cf;
                 }
-                payload._changedFields = cf;
+                // Reset after including in payload
+                _changedFields = {};
+                bodyStr = JSON.stringify(payload);
             }
-            // Reset after including in payload
-            _changedFields = {};
 
             fetch('/api/update_data', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(payload),
+                body: bodyStr,
             })
             .then(response => {
                 if (response.status === 401) {
@@ -4163,10 +4185,14 @@
                 return response.json();
             })
             .then(data => {
-                // console.log('Data saved, version:', data.version);
                 isSaving = false;
-                // Brief delay before allowing refresh to ensure DB has updated
-                setTimeout(() => { isEditing = false; }, 300);
+                // Remember the version we saved — auto-refresh will skip
+                // data older than this to prevent stale overwrites.
+                if (data.version) _lastSavedVersion = data.version;
+                
+                // Keep isEditing true for 2s so the next auto-refresh
+                // has time to see the saved version in the DB.
+                setTimeout(() => { isEditing = false; }, 2000);
                 
                 // Show brief success indicator
                 showSaveStatus('saved');
@@ -4183,11 +4209,11 @@
                 }
                 
                 // Retry logic (up to 3 times with exponential backoff)
+                // Reuses the same serialized body so _changedFields are preserved
                 if (retryCount < 3) {
                     const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-                    // console.log(`Retrying save in ${delay}ms (attempt ${retryCount + 1}/3)...`);
                     showSaveStatus('retrying', retryCount + 1);
-                    setTimeout(() => saveData(retryCount + 1), delay);
+                    setTimeout(() => saveData('UPDATE', null, retryCount + 1, bodyStr), delay);
                     return;
                 }
                 
