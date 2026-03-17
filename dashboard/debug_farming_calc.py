@@ -22,7 +22,7 @@ if completed:
             print(f"  '{k}': {ev[k]}")
 
 # Calculate farming total for all completed accounts
-HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 35)]
+HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
 farming_total = 0
 for ev in completed:
     for col in HEDGE_DAY_COLS:

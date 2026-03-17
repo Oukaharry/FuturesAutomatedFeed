@@ -808,7 +808,7 @@ class MT5DataPusher:
                 if fa_type != 'funded':
                     continue
                 ev = evaluations[fa_idx]
-                for day_num in range(1, 35):
+                for day_num in range(1, 51):
                     note = ev.get(f'Hedge Day {day_num} Note', '')
                     if note and 'Close:' in str(note):
                         # Extract close time signature: "Open: ... | Close: 2026-01-21 16:00"
@@ -1024,7 +1024,7 @@ class MT5DataPusher:
         ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
         
         # Find the first empty farming day slot
-        for day_num in range(1, 35):
+        for day_num in range(1, 51):
             field_name = f"Hedge Day {day_num}"
             existing_value = ev.get(field_name)
             
@@ -1033,7 +1033,7 @@ class MT5DataPusher:
                 return day_num
         
         # All slots full, return the last one
-        return 34
+        return 50
     
     def _process_deals_legacy(self, deals, evaluations):
         """Legacy deal processing for backward compatibility."""
@@ -2140,7 +2140,7 @@ class TraderCompanionApp:
         self.log("  CH1-5 → Hedge Result 1-5 (Challenge)")
         self.log("  FD0-4 → Hedge Result 1.1-5.1 (Funded)")
         self.log("  DD1-4 → Additional Funded Hedge Results")
-        self.log("  FA/FA_DDMMYY → Hedge Day 1-34 (Farming)")
+        self.log("  FA/FA_DDMMYY → Hedge Day 1-50 (Farming)")
         self.log("Account Matching: First 4 + Last 4 characters")
         self.log("="*70)
         self.status_var.set("Processing MT5 deals...")

@@ -51,13 +51,13 @@ print(f"\nFunded Hedging:")
 print(f"  Individual Results Sum: ${total_funded_hedge:,.2f}")
 print(f"  Hedge Net.1 column: ${hedge_net_funded:,.2f}")
 
-# Sum Hedge Day columns (1-34)
+# Sum Hedge Day columns (1-50)
 hedge_days_total = 0
-for i in range(1, 35):
+for i in range(1, 51):
     col = f'Hedge Day {i}'
     if col in df.columns:
         hedge_days_total += df[col].apply(parse_val).sum()
-print(f"\nHedge Days (1-34): ${hedge_days_total:,.2f}")
+print(f"\nHedge Days (1-50): ${hedge_days_total:,.2f}")
 
 print(f"\nTOTAL ALL HEDGING: ${total_p1_hedge + total_funded_hedge + hedge_days_total:,.2f}")
 print(f"Hedge Net columns only: ${hedge_net_p1 + hedge_net_funded:,.2f}")

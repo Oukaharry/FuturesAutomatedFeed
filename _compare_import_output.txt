@@ -1,0 +1,49 @@
+﻿python : [2026-03-17 00:36:29,147] DEBUG in connectionpool: Starting new HTTPS 
+connection (1): docs.google.com:443
+At line:1 char:1
++ python _compare_import.py 2>&1 | Out-File -Encoding utf8 _compare_imp ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([2026-03-17 00:....google.com:443 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[2026-03-17 00:36:29,147] DEBUG in connectionpool: Starting new HTTPS 
+connection (1): docs.google.com:443
+[2026-03-17 00:36:30,272] DEBUG in connectionpool: https://docs.google.com:443 
+"GET /spreadsheets/d/1JK1lCkfj8GRQEKD2AOILms8LZom3I5zQ-_UrQU9xw8o/export?format
+=xlsx HTTP/1.1" 307 None
+[2026-03-17 00:36:30,280] DEBUG in connectionpool: https://docs.google.com:443 
+"GET 
+/spreadsheets/d/1JK1lCkfj8GRQEKD2AOILms8LZom3I5zQ-_UrQU9xw8o/export?format=csv 
+HTTP/1.1" 307 None
+[2026-03-17 00:36:30,305] DEBUG in connectionpool: Starting new HTTPS 
+connection (1): doc-08-4k-sheets.googleusercontent.com:443
+[2026-03-17 00:36:30,322] DEBUG in connectionpool: Starting new HTTPS 
+connection (1): doc-08-4k-sheets.googleusercontent.com:443
+[2026-03-17 00:36:32,080] DEBUG in connectionpool: 
+https://doc-08-4k-sheets.googleusercontent.com:443 "GET /export/54bogvaave6cua4
+cdnls17ksc4/t3qpe69aqailj5b937043p89b8/1773696990000/101533788058334479043/*/1J
+K1lCkfj8GRQEKD2AOILms8LZom3I5zQ-_UrQU9xw8o?format=csv HTTP/1.1" 200 None
+[2026-03-17 00:36:32,797] DEBUG in connectionpool: 
+https://doc-08-4k-sheets.googleusercontent.com:443 "GET /export/54bogvaave6cua4
+cdnls17ksc4/t3qpe69aqailj5b937043p89b8/1773696990000/101533788058334479043/*/1J
+K1lCkfj8GRQEKD2AOILms8LZom3I5zQ-_UrQU9xw8o?format=xlsx HTTP/1.1" 200 None
+Database initialized successfully
+Database initialized successfully
+Admin password initialized
+Sheet rows: 518, DB rows: 518
+
+All rows match position-by-position.
+Sheet unique accs: 484, DB unique accs: 484
+Account sets are IDENTICAL between sheet and DB.
+
+Total row-level differences: 0
+
+DB rows with empty Account #: 3
+  Row 313: Funding Ticks
+  Row 362: Funding Ticks
+  Row 498: My Funded Futures
+Sheet rows with empty Account #: 3
+  Row 313: Funding Ticks
+  Row 362: Funding Ticks
+  Row 498: My Funded Futures

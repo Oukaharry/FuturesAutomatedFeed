@@ -39,7 +39,7 @@ for status in df['Status'].unique():
     hedge_funded = sum(subset[col].apply(parse_val).sum() for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7'] if col in subset.columns)
     
     # Hedge Days
-    hedge_days = sum(subset[f'Hedge Day {i}'].apply(parse_val).sum() for i in range(1, 35) if f'Hedge Day {i}' in subset.columns)
+    hedge_days = sum(subset[f'Hedge Day {i}'].apply(parse_val).sum() for i in range(1, 51) if f'Hedge Day {i}' in subset.columns)
     
     payouts = sum(subset[col].apply(parse_val).sum() for col in ['Payout 1', 'Payout 2', 'Payout 3', 'Payout 4'] if col in subset.columns)
     farm = subset['Farming Net'].apply(parse_val).sum() if 'Farming Net' in subset.columns else 0

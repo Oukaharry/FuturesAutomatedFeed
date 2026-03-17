@@ -35,7 +35,7 @@ def calc_row_values(row):
     hedge_funded = sum(parse_val(row.get(col, 0)) for col in 
                        ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 
                         'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7'])
-    hedge_days = sum(parse_val(row.get(f'Hedge Day {i}', 0)) for i in range(1, 35))
+    hedge_days = sum(parse_val(row.get(f'Hedge Day {i}', 0)) for i in range(1, 51))
     
     total_hedge = hedge_p1 + hedge_funded + hedge_days
     
@@ -90,7 +90,7 @@ print("IN PROGRESS: Fees=-$38,441.23, Hedge=-$33,469.18, Farm=$6,604.17, Payouts
 
 # Let's also try summing Hedge Days column which could be the Farming
 print("\n\n=== CHECKING HEDGE DAYS AS POTENTIAL FARMING ===")
-for i in range(1, 35):
+for i in range(1, 51):
     col = f'Hedge Day {i}'
     if col in df.columns:
         total = df[col].apply(parse_val).sum()

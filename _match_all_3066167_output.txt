@@ -1,0 +1,1229 @@
+========================================================================================================================
+  FULL MT5 <-> SHEET MATCHING: Account 3066167 / Robert Madsen
+========================================================================================================================
+
+  Parsing MT5 report...
+  MT5 positions: 1209
+  MT5 unique account refs: 635
+  MT5 total net P&L: $-28,285.83
+
+  Fetching Google Sheet...
+  Sheet evaluations: 412
+  Hedge result columns: ['hedge result 1', 'hedge result 2', 'hedge result 3', 'hedge result 4', 'hedge result 5', 'hedge result 6', 'hedge result 7']
+  Sheet total hedge results: $-29,035.61
+  Difference: $749.78
+
+========================================================================================================================
+  FULL MATCHING: Every MT5 value <-> Sheet hedge result
+  (Grouped by sheet account #, 1-to-1 greedy assignment by closest value)
+========================================================================================================================
+
+  --- Row 8: My Funded Futures | MFFUSFSCL402290011 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.80 MFFU...90011                                        630.96      15.84        OFF
+  ACCOUNT TOTALS:          646.80                                                     630.96      15.84
+
+  --- Row 9: My Funded Futures | MFFUSFSCL402290012 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.80 MFFU...90012                                        646.80       0.00      EXACT
+
+  --- Row 10: My Funded Futures | MFFUSFSCL402290013 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1005.00 MFFU...90013                                       -517.18    -487.82        OFF
+  ACCOUNT TOTALS:        -1005.00                                                    -517.18    -487.82
+
+  --- Row 11: My Funded Futures | MFFUSFSCL402290014 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1003.20 MFFU...90014                                       -371.60    -631.60        OFF
+  ACCOUNT TOTALS:        -1003.20                                                    -371.60    -631.60
+
+  --- Row 12: My Funded Futures | MFFUSFSCL402290015 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1          -982.00 MFFU...90015                                        717.08   -1699.08 FLIP~$264.92
+  ACCOUNT TOTALS:         -982.00                                                     717.08   -1699.08
+
+  --- Row 15: My Funded Futures | MFFUSFSCL402290020 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1007.82 MFFU...90020                                        596.98   -1604.80 FLIP~$410.84
+  ACCOUNT TOTALS:        -1007.82                                                     596.98   -1604.80
+
+  --- Row 16: My Funded Futures | MFFUSFSCL402290021 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           640.00 MFFU...90021                                        640.20      -0.20      CLOSE
+  ACCOUNT TOTALS:          640.00                                                     640.20      -0.20
+
+  --- Row 27: Funding Ticks | FTPROPLUSM832610958749 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           620.40 FTPR...58749                                        620.40       0.00      EXACT
+
+  --- Row 31: Funding Ticks | FTPROPLUSM116345790829 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           627.00 FTPR...90829                                        627.00       0.00      EXACT
+
+  --- Row 32: My Funded Futures | MFFUEVSCL402290037 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           -69.30 MFFU...90037                                        577.50    -646.80 FLIP~$508.20
+  hedge result 2           646.80 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 33: My Funded Futures | MFFUEVSCL402290038 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           -79.20 MFFU...90038                                        565.62    -644.82 FLIP~$486.42
+  hedge result 2           644.82 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 34: My Funded Futures | MFFUEVSCL402290039 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.80 MFFU...90039                                        646.80       0.00      EXACT
+
+  --- Row 35: My Funded Futures | MFFUEVSCL402290040 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           644.82 MFFU...90040                                        644.82       0.00      EXACT
+
+  --- Row 36: My Funded Futures | MFFUEVSCL402290046 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.80 MFFU...90046                                        646.80       0.00      EXACT
+
+  --- Row 37: Funding Ticks | FTPROPLUSM425743102689 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.92 FTPR...02689                                        634.92       0.00      EXACT
+
+  --- Row 38: Funding Ticks | FTPROPLUSM904817953261 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           627.00 FTPR...53261                                        627.00       0.00      EXACT
+
+  --- Row 39: Funding Ticks | FTPROPLUSM062847065193 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...65193                                        633.60       0.00      EXACT
+
+  --- Row 41: Funding Ticks | FTPROPLUSM512768953408 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...53408                                        633.60       0.00      EXACT
+
+  --- Row 47: Funding Ticks | FTPROPLUSM073289461575 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...61575                                        633.60       0.00      EXACT
+
+  --- Row 63: My Funded Futures | MFFUSFSCL402290061 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.80 MFFU...90061                                        646.80       0.00      EXACT
+
+  --- Row 64: My Funded Futures | MFFUSFSCL402290062 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.80 MFFU...90062                                        646.80       0.00      EXACT
+
+  --- Row 88: Funding Ticks | FTPROPLUSM823901856247 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...56247                                        633.60       0.00      EXACT
+
+  --- Row 89: Funding Ticks | FTPROPLUSM178193462505 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           630.96 FTPR...62505                                        630.96       0.00      EXACT
+  (no sheet col)                  FTPR...78193                                        182.04     182.04  MT5 EXTRA
+  ACCOUNT TOTALS:          630.96                                                     813.00    -182.04
+
+  --- Row 90: Funding Ticks | FTPROPLUSM647183629502 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           632.28 FTPR...29502                                        632.28       0.00      EXACT
+
+  --- Row 91: Funding Ticks | FTPROPLUSM829542687301 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...87301                                        633.60       0.00      EXACT
+
+  --- Row 209: Funding Ticks | FTPROPLUSM134827109650 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1677.72 FTPR...09650                                      -1677.68      -0.04      EXACT
+  hedge result 2          -552.30 -- no MT5 left --                                                      UNMATCHED
+  hedge result 3           318.50 -- no MT5 left --                                                      UNMATCHED
+  hedge result 4           584.00 -- no MT5 left --                                                      UNMATCHED
+  ACCOUNT TOTALS:        -1327.52                                                   -1677.68     350.16
+
+  --- Row 227: My Funded Futures | MFFUSFSCL402290124 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1011.78 MFFU...90124                                      -1280.74     268.96        OFF
+  ACCOUNT TOTALS:        -1011.78                                                   -1280.74     268.96
+
+  --- Row 228: My Funded Futures | MFFUSFSCL402290125 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1677.72 MFFU...90125                                      -1267.68    -410.04        OFF
+  ACCOUNT TOTALS:        -1677.72                                                   -1267.68    -410.04
+
+  --- Row 229: My Funded Futures | MFFUSFSCL402290126 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1007.16 MFFU...90126                                      -1268.08     260.92        OFF
+  ACCOUNT TOTALS:        -1007.16                                                   -1268.08     260.92
+
+  --- Row 230: My Funded Futures | MFFUSFSCL402290127 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.80 MFFU...90127                                        646.80       0.00      EXACT
+
+  --- Row 231: My Funded Futures | MFFUSFSCL402290128 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           646.14 MFFU...90128                                        646.14       0.00      EXACT
+
+  --- Row 232: Funding Ticks | FTPROPLUSM786278495301 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           624.36 FTPR...95301                                        624.36       0.00      EXACT
+
+  --- Row 233: Funding Ticks | FTPROPLUSM841387529609 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           630.96 FTPR...29609                                        630.96       0.00      EXACT
+
+  --- Row 234: Funding Ticks | FTPROPLUSM190368724560 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           632.28 FTPR...24560                                        632.28       0.00      EXACT
+
+  --- Row 235: Funding Ticks | FTPROPLUSM641523607898 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           612.48 FTPR...07898                                        612.48       0.00      EXACT
+
+  --- Row 236: Funding Ticks | FTPROPLUSM120567948370 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.92 FTPR...48370                                        634.92       0.00      EXACT
+
+  --- Row 237: Funded Next | FNFTFAROBERTMADSEN73328 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1          -133.86 FNFT...73328                                       -511.62     377.76        OFF
+  hedge result 2          -168.00 -- no MT5 left --                                                      UNMATCHED
+  hedge result 3          -209.76 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 238: Funded Next | FNFTFAROBERTMADSEN48533 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1          -130.18 FNFT...48533                                       -526.62     396.44        OFF
+  hedge result 2          -180.60 -- no MT5 left --                                                      UNMATCHED
+  hedge result 3          -215.84 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 239: Funded Next | FNFTFAROBERTMADSEN70465 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1          -128.80 FNFT...70465                                       -510.36     381.56        OFF
+  hedge result 2          -168.00 -- no MT5 left --                                                      UNMATCHED
+  hedge result 3          -213.56 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 240: Funded Next | FNFTFAROBERTMADSEN40232 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1          -143.52 FNFT...40232                                       -530.48     386.96        OFF
+  hedge result 2          -173.40 -- no MT5 left --                                                      UNMATCHED
+  hedge result 3          -213.56 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 241: Funded Next | FNFTFAROBERTMADSEN59943 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1          -129.72 FNFT...59943                                       -513.72     384.00        OFF
+  hedge result 2          -167.40 -- no MT5 left --                                                      UNMATCHED
+  hedge result 3          -216.60 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 242: Funded Next | FNFTFAROBERTMADSEN1525 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1          -129.72 FNFT...N1525                                       -520.00     390.28        OFF
+  hedge result 2          -175.20 -- no MT5 left --                                                      UNMATCHED
+  hedge result 3          -215.08 -- no MT5 left --                                                      UNMATCHED
+
+  --- Row 254: Funding Ticks | FTPROPLUSM514039628710 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           630.96 FTPR...28710                                        630.96       0.00      EXACT
+
+  --- Row 255: Funding Ticks | FTPROPLUSMO69538274182 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...74182                                        633.60       0.00      EXACT
+
+  --- Row 256: Funding Ticks | FTPROPLUSM762417586039 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...86039                                        633.60       0.00      EXACT
+
+  --- Row 258: Funding Ticks | FTPROPLUSM921734095688 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           633.60 FTPR...95688                                        633.60       0.00      EXACT
+
+  --- Row 259: My Funded Futures | MFFUSFSCL402290137 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1005.18 MFFU...90137                                      -1265.13     259.95        OFF
+  (no sheet col)                  MFFU...90137_FA                                    -282.62    -282.62  MT5 EXTRA
+  ACCOUNT TOTALS:        -1005.18                                                   -1547.75     542.57
+
+  --- Row 260: My Funded Futures | MFFUSFSCL402290138 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1004.52 MFFU...90138                                      -1232.01     227.49        OFF
+  (no sheet col)                  MFFU...90138_FA                                    -278.04    -278.04  MT5 EXTRA
+  ACCOUNT TOTALS:        -1004.52                                                   -1510.05     505.53
+
+  --- Row 261: Funding Ticks | FTPROPLUSM478690325419 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           607.02 FTPR...25419                                        607.02       0.00      EXACT
+
+  --- Row 262: Funding Ticks | FTPROPLUSM892830714652 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           613.72 FTPR...14652                                        613.72       0.00      EXACT
+
+  --- Row 263: Funding Ticks | FTPROPLUSM945864901273 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           616.40 FTPR...01273                                        616.40       0.00      EXACT
+
+  --- Row 264: Funding Ticks | FTPROPLUSM806759413280 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           612.38 FTPR...13280                                        612.38       0.00      EXACT
+
+  --- Row 265: Funding Ticks | FTPROPLUSM680423165972 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           616.40 FTPR...65972                                        616.40       0.00      EXACT
+
+  --- Row 266: Funding Ticks | FTPROPLUSM352017649880 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1777.78 FTPR...49880                                       -614.10   -1163.68        OFF
+  ACCOUNT TOTALS:        -1777.78                                                    -614.10   -1163.68
+
+  --- Row 276: Funding Ticks | FTPROPLUSM851467203917 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           610.00 FTPR...03917                                        610.10      -0.10      CLOSE
+  ACCOUNT TOTALS:          610.00                                                     610.10      -0.10
+
+  --- Row 277: Funding Ticks | FTPROPLUSM706391284548 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           602.60 FTPR...84548                                        602.60       0.00      EXACT
+
+  --- Row 278: Funding Ticks | FTPROPLUSM367540981223 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           612.92 FTPR...81223                                        612.92       0.00      EXACT
+
+  --- Row 279: Funding Ticks | FTPROPLUSM784329057613 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           616.40 FTPR...57613                                        616.40       0.00      EXACT
+
+  --- Row 280: Funding Ticks | FTPROPLUSM629048713513 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           616.40 FTPR...13513                                        616.40       0.00      EXACT
+
+  --- Row 285: Funding Ticks | FTPROPLUSM540671328958 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1803.38 FTPR...28958                                      -1976.54     173.16        OFF
+  ACCOUNT TOTALS:        -1803.38                                                   -1976.54     173.16
+
+  --- Row 297: My Funded Futures | MFFUSFCRFLX402290149 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           611.32 MFFU...90149_FD0                                    611.32       0.00      EXACT
+  (no sheet col)                  MFFU...90149_FD1                                     -1.44      -1.44  MT5 EXTRA
+  ACCOUNT TOTALS:          611.32                                                     609.88       1.44
+
+  --- Row 298: My Funded Futures | MFFUSFCRFLX402290150 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           642.74 MFFU...90150_FD0                                    642.74       0.00      EXACT
+  (no sheet col)                  MFFU...90150_FD1                                     -6.72      -6.72  MT5 EXTRA
+  ACCOUNT TOTALS:          642.74                                                     636.02       6.72
+
+  --- Row 299: My Funded Futures | MFFUSFCRFLX402290151 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           667.56 MFFU...90151_FD0                                    667.56       0.00      EXACT
+
+  --- Row 305: Funded Next | FNFTFAROBERTMADSEN41745 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2166.78 FNFT...41745_FD1                                  -2166.78       0.00      EXACT
+  hedge result 2           987.70 FNFT...41745_FD2                                    987.70       0.00      EXACT
+  (no sheet col)                  FNFT...41745_FD0                                    446.50     446.50  MT5 EXTRA
+  (no sheet col)                  FNFT...41745_UNK                                   -217.40    -217.40  MT5 EXTRA
+  (no sheet col)                  FNFT...41745                                        467.20     467.20  MT5 EXTRA
+  (no sheet col)                  FNFT...41745_FA                                    -216.56    -216.56  MT5 EXTRA
+  ACCOUNT TOTALS:        -1179.08                                                    -699.34    -479.74
+
+  --- Row 311: Funded Next | FNFTFAROBERTMADSEN17980 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2177.14 FNFT...17980_FD1                                  -2177.14       0.00      EXACT
+  hedge result 2          1002.64 FNFT...17980_FD2                                   1002.64       0.00      EXACT
+  (no sheet col)                  FNFT...17980_FD0                                    449.19     449.19  MT5 EXTRA
+  (no sheet col)                  FNFT...17980_UNK                                   -217.76    -217.76  MT5 EXTRA
+  (no sheet col)                  FNFT...17980                                        466.30     466.30  MT5 EXTRA
+  (no sheet col)                  FNFT...17980_FA                                    -221.52    -221.52  MT5 EXTRA
+  ACCOUNT TOTALS:        -1174.50                                                    -698.29    -476.21
+
+  --- Row 312: Funded Next | FNFTFAROBERTMADSEN12506 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2160.20 FNFT...12506_FD1                                  -2160.20       0.00      EXACT
+  hedge result 2         -1317.21 FNFT...12506_FD2                                  -1317.21       0.00      EXACT
+  hedge result 3           420.00 FNFT...12506_FD3                                    420.00       0.00      EXACT
+  (no sheet col)                  FNFT...12506_FD0                                    604.88     604.88  MT5 EXTRA
+  (no sheet col)                  FNFT...12506_UNK                                   -217.20    -217.20  MT5 EXTRA
+  (no sheet col)                  FNFT...12506                                        468.03     468.03  MT5 EXTRA
+  (no sheet col)                  FNFT...12506_FA                                     -14.45     -14.45  MT5 EXTRA
+  (no sheet col)                  FNFT...12506_CH3                                   -147.39    -147.39  MT5 EXTRA
+  ACCOUNT TOTALS:        -3057.41                                                   -2363.54    -693.87
+
+  --- Row 320: Funded Next | FNFTFAROBERTMADSEN30090 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           614.32 FNFT...30090_FD1                                    614.32       0.00      EXACT
+
+  --- Row 321: Funded Next | FNFTFAROBERTMADSEN42727 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           644.00 FNFT...42727_FD1                                    644.00       0.00      EXACT
+
+  --- Row 322: Top Step | EXPRESS-V2-486522-13236798 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1893.60 V2-...6798_FD1                                    -1893.60       0.00      EXACT
+  hedge result 2         -1654.60 V2-...6798_FD2                                    -1654.60       0.00      EXACT
+  hedge result 3          1026.00 V2-...6798_FD3                                     1026.00       0.00      EXACT
+  (no sheet col)                  V2-...6798_UNK                                     -200.11    -200.11  MT5 EXTRA
+  (no sheet col)                  V2-...6798_FA                                       116.82     116.82  MT5 EXTRA
+  ACCOUNT TOTALS:        -2522.20                                                   -2605.49      83.29
+
+  --- Row 323: Top Step | EXPRESS-V2-486522-95435017 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1877.44 V2-...5017_FD1                                    -1877.44       0.00      EXACT
+  hedge result 2         -1589.60 V2-...5017_FD2                                    -1589.60       0.00      EXACT
+  hedge result 3          1033.02 V2-...5017_FD3                                     1033.02       0.00      EXACT
+  (no sheet col)                  V2-...5017_UNK                                     -200.44    -200.44  MT5 EXTRA
+  (no sheet col)                  V2-...5017_FA                                        99.65      99.65  MT5 EXTRA
+  ACCOUNT TOTALS:        -2434.02                                                   -2534.81     100.79
+
+  --- Row 324: Top Step | EXPRESS-V2-486522-97118709 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1876.16 V2-...8709_FD1                                    -1876.16       0.00      EXACT
+  hedge result 2         -1607.60 V2-...8709_FD2                                    -1607.60       0.00      EXACT
+  (no sheet col)                  V2-...8709_UNK                                     -199.78    -199.78  MT5 EXTRA
+  (no sheet col)                  V2-...8709_FA                                       111.67     111.67  MT5 EXTRA
+  ACCOUNT TOTALS:        -3483.76                                                   -3571.87      88.11
+
+  --- Row 325: Top Step | EXPRESS-V2-486522-85488902 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1878.08 V2-...8902_FD1                                    -1878.08       0.00      EXACT
+  hedge result 2         -1606.80 V2-...8902_FD2                                    -1606.80       0.00      EXACT
+  hedge result 3          1026.00 V2-...8902_FD3                                     1026.00       0.00      EXACT
+  (no sheet col)                  V2-...8902_UNK                                     -199.80    -199.80  MT5 EXTRA
+  (no sheet col)                  V2-...8902_FA                                       794.41     794.41  MT5 EXTRA
+  ACCOUNT TOTALS:        -2458.88                                                   -1864.27    -594.61
+
+  --- Row 326: Top Step | EXPRESS-V2-486522-62125854 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1877.28 V2-...5854_FD1                                    -1877.28       0.00      EXACT
+  hedge result 2         -1624.60 V2-...5854_FD2                                    -1624.60       0.00      EXACT
+  hedge result 3          1026.00 V2-...5854_FD3                                     1026.00       0.00      EXACT
+  (no sheet col)                  V2-...5854_UNK                                     -198.61    -198.61  MT5 EXTRA
+  (no sheet col)                  V2-...5854_FA                                       790.46     790.46  MT5 EXTRA
+  ACCOUNT TOTALS:        -2475.88                                                   -1884.03    -591.85
+
+  --- Row 328: Tradeify | FTDFYSLX50594511952 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1971.74 FTDF...11952_FD1                                  -1971.74       0.00      EXACT
+  hedge result 2         -1428.30 FTDF...11952_FD2                                  -1428.30       0.00      EXACT
+  hedge result 3          -237.54 FTDF...11952_FD3                                   -237.54       0.00      EXACT
+  (no sheet col)                  FTDF...11952_FA                                    1341.80    1341.80  MT5 EXTRA
+  ACCOUNT TOTALS:        -3637.58                                                   -2295.78   -1341.80
+
+  --- Row 334: Tradeify | FTDFYSLX50810746206 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           628.18 FTDF...46206_FD1                                    628.18       0.00      EXACT
+
+  --- Row 335: Tradeify | FTDFYSLX50515154049 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           636.18 FTDF...54049_FD1                                    636.18       0.00      EXACT
+
+  --- Row 340: Tradeify | FTDFYSLX50793063738 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           640.46 FTDF...63738_FD1                                    640.46       0.00      EXACT
+
+  --- Row 343: Tradeify | FTDFYSLX50738932037 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...32037_FD1                                    634.80       0.00      EXACT
+
+  --- Row 351: Funded Next | FNFTFAROBERTMADSEN14320 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           799.26 FNFT...14320_FD1                                    799.26       0.00      EXACT
+
+  --- Row 352: Funded Next | FNFTFAROBERTMADSEN27436 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           810.88 FNFT...27436_FD1                                    810.88       0.00      EXACT
+
+  --- Row 357: Tradeify | FTDFYSLX50408964331 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...64331_FD1                                    634.80       0.00      EXACT
+
+  --- Row 358: Tradeify | FTDFYSLX50666186294 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...86294_FD1                                    634.80       0.00      EXACT
+
+  --- Row 359: Tradeify | FTDFYSLX50916525759 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...25759_FD1                                    634.80       0.00      EXACT
+
+  --- Row 360: Tradeify | FTDFYSLX50705833429 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...33429_FD1                                    634.80       0.00      EXACT
+
+  --- Row 363: Funded Next | FNFTFAROBERTMADSEN9142 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1928.08 FNFT...N9142_FD1                                  -1928.08       0.00      EXACT
+  hedge result 2         -1314.06 FNFT...N9142_FD2                                  -1314.06       0.00      EXACT
+  (no sheet col)                  FNFT...N9142_FA                                   -1345.60   -1345.60  MT5 EXTRA
+  ACCOUNT TOTALS:        -3242.14                                                   -4587.74    1345.60
+
+  --- Row 364: Funded Next | FNFTFAROBERTMADSEN14810 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1886.22 FNFT...14810_FD1                                  -1886.22       0.00      EXACT
+  hedge result 2         -1318.04 FNFT...14810_FD2                                  -1318.04       0.00      EXACT
+  hedge result 3          -569.59 FNFT...14810_FD3                                   -569.59       0.00      EXACT
+  (no sheet col)                  FNFT...14810_FA                                   -1131.66   -1131.66  MT5 EXTRA
+  ACCOUNT TOTALS:        -3773.85                                                   -4905.51    1131.66
+
+  --- Row 365: Funded Next | FNFTFAROBERTMADSEN22675 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1883.98 FNFT...22675_FD1                                  -1883.98       0.00      EXACT
+  hedge result 2         -1314.55 FNFT...22675_FD2                                  -1314.55       0.00      EXACT
+  hedge result 3          -560.70 FNFT...22675_FD3                                   -560.70       0.00      EXACT
+  (no sheet col)                  FNFT...22675_FA                                   -1139.57   -1139.57  MT5 EXTRA
+  ACCOUNT TOTALS:        -3759.23                                                   -4898.80    1139.57
+
+  --- Row 366: Funded Next | FNFTFAROBERTMADSEN60899 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1877.40 FNFT...60899_FD1                                  -1877.40       0.00      EXACT
+  hedge result 2         -1309.24 FNFT...60899_FD2                                  -1309.24       0.00      EXACT
+  hedge result 3          -556.50 FNFT...60899_FD3                                   -556.50       0.00      EXACT
+  (no sheet col)                  FNFT...60899_FA                                   -1149.77   -1149.77  MT5 EXTRA
+  ACCOUNT TOTALS:        -3743.14                                                   -4892.91    1149.77
+
+  --- Row 367: Tradeify | FTDFYSLX50915204633 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...04633_FD1                                    634.80       0.00      EXACT
+
+  --- Row 368: Tradeify | FTDFYSLX50964180546 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...80546_FD1                                    634.80       0.00      EXACT
+
+  --- Row 378: TopStep | EXPRESS-V2-486522-51069422 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           735.84 V2-...9422_FD1                                      735.84       0.00      EXACT
+
+  --- Row 379: TopStep | EXPRESS-V2-486522-70478166 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           736.00 V2-...8166_FD1                                      736.00       0.00      EXACT
+
+  --- Row 380: TopStep | EXPRESS-V2-486522-22909960 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           736.00 V2-...9960_FD1                                      736.00       0.00      EXACT
+
+  --- Row 381: TopStep | EXPRESS-V2-486522-54741425 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           736.00 V2-...1425_FD1                                      736.00       0.00      EXACT
+
+  --- Row 382: TopStep | EXPRESS-V2-486522-54918282 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           736.00 V2-...8282_FD1                                      736.00       0.00      EXACT
+
+  --- Row 383: Funded Next | FNFTFAROBERTMADSEN99489 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           643.72 FNFT...99489_FD1                                    643.72       0.00      EXACT
+
+  --- Row 384: Tradeify | FTDFYSLX50984396323 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           631.76 FTDF...96323_FD1                                    631.76       0.00      EXACT
+
+  --- Row 385: Tradeify | FTDFYSLX50464041228 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...41228_FD1                                    634.80       0.00      EXACT
+
+  --- Row 386: Tradeify | FTDFYSLX50694149435 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           641.82 FTDF...49435_FD1                                    641.84      -0.02      EXACT
+
+  --- Row 387: Tradeify | FTDFYSLX50176504713 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           634.80 FTDF...04713_FD1                                    634.80       0.00      EXACT
+
+  --- Row 388: My Funded Futures | MFFUSFFLX402290155 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2224.64 MFFU...90155_FD1                                  -2224.64       0.00      EXACT
+  (no sheet col)                  MFFU...90155_FA                                    -567.87    -567.87  MT5 EXTRA
+  ACCOUNT TOTALS:        -2224.64                                                   -2792.51     567.87
+
+  --- Row 389: My Funded Futures | MFFUSFFLX402290156 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2237.92 MFFU...90156_FD1                                  -2237.92       0.00      EXACT
+  (no sheet col)                  MFFU...90156_FA                                    -572.67    -572.67  MT5 EXTRA
+  ACCOUNT TOTALS:        -2237.92                                                   -2810.59     572.67
+
+  --- Row 394: Funded Next | FNFTFAROBERTMADSEN57764 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           657.86 FNFT...57764_FD1                                    729.54     -71.68        OFF
+  ACCOUNT TOTALS:          657.86                                                     729.54     -71.68
+
+  --- Row 395: TopStep | EXPRESS-V2-486522-22016323 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2244.64 V2-...6323_FD1                                    -2244.64       0.00      EXACT
+  (no sheet col)                  V2-...6323_FA                                       -32.76     -32.76  MT5 EXTRA
+  ACCOUNT TOTALS:        -2244.64                                                   -2277.40      32.76
+
+  --- Row 396: TopStep | EXPRESS-V2-486522-30160123 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2220.48 V2-...0123_FD1                                    -2220.48       0.00      EXACT
+  (no sheet col)                  V2-...0123_FA                                       -42.30     -42.30  MT5 EXTRA
+  ACCOUNT TOTALS:        -2220.48                                                   -2262.78      42.30
+
+  --- Row 397: TopStep | EXPRESS-V2-486522-60587094 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2278.40 V2-...7094_FD1                                    -2278.40       0.00      EXACT
+  (no sheet col)                  V2-...7094_FA                                       -35.71     -35.71  MT5 EXTRA
+  ACCOUNT TOTALS:        -2278.40                                                   -2314.11      35.71
+
+  --- Row 398: TopStep | EXPRESS-V2-486522-66366008 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2246.08 V2-...6008_FD1                                    -2246.08       0.00      EXACT
+  (no sheet col)                  V2-...6008_FA                                       -57.20     -57.20  MT5 EXTRA
+  ACCOUNT TOTALS:        -2246.08                                                   -2303.28      57.20
+
+  --- Row 404: Tradeify | FTDFYSLX50671636906 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           615.20 FTDF...36906_FD1                                    615.20       0.00      EXACT
+
+  --- Row 405: Tradeify | FTDFYSLX50521207044 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1370.89 FTDF...07044_FD1                                  -1370.89       0.00      EXACT
+  (no sheet col)                  FTDF...07044_FA                                    -313.60    -313.60  MT5 EXTRA
+  ACCOUNT TOTALS:        -1370.89                                                   -1684.49     313.60
+
+  --- Row 406: Tradeify | FTDFYSLX50643021863 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -1420.57 FTDF...21863_FD1                                  -1420.57       0.00      EXACT
+  (no sheet col)                  FTDF...21863_FA                                    -311.58    -311.58  MT5 EXTRA
+  ACCOUNT TOTALS:        -1420.57                                                   -1732.15     311.58
+
+  --- Row 407: My Funded Futures | MFFUSFFLX402290163 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2224.00 MFFU...90163_FD1                                  -2224.00       0.00      EXACT
+  (no sheet col)                  MFFU...90163_FA                                     465.15     465.15  MT5 EXTRA
+  ACCOUNT TOTALS:        -2224.00                                                   -1758.85    -465.15
+
+  --- Row 408: My Funded Futures | MFFUSFFLX402290162 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1         -2238.40 MFFU...90162_FD1                                  -2238.40       0.00      EXACT
+  (no sheet col)                  MFFU...90162_FA                                     466.56     466.56  MT5 EXTRA
+  ACCOUNT TOTALS:        -2238.40                                                   -1771.84    -466.56
+
+  --- Row 409: My Funded Futures | MFFUSFFLX402290161 ---
+  Col                      Sheet$ MT5 Ref                                               MT5$       Diff     Status
+  --------------------------------------------------------------------------------------------------------------
+  hedge result 1           726.40 MFFU...90161_FD1                                    726.40       0.00      EXACT
+
+========================================================================================================================
+  MT5 ACCOUNTS WITH NO SHEET MATCH
+========================================================================================================================
+  Total unmatched MT5 accounts: 457
+  Total unmatched MT5 P&L: $-1,513.29
+
+  MT5 Ref                                       Trades      Net P&L
+  -----------------------------------------------------------------
+  UNKNOWN                                           19     -1335.99
+  V2-...7956                                         2      -560.16
+  V2-...3798                                         2      -557.13
+  V2-...7549                                         2      -551.37
+  V2-...3404                                         2      -549.99
+  V2-...0344                                         2      -547.70
+  FTPR...38976                                       3      -489.75
+  FNFT...92624                                       3      -486.56
+  FTPR...71045                                       3      -483.05
+  FTPR...93591                                       3      -481.64
+  FTPR...13670                                       3      -480.42
+  FTPR...52018                                       3      -478.56
+  FTPR...43541                                       3      -478.56
+  TDFY...58769_UNK                                   6      -478.21
+  FTPR...82513                                       3      -469.58
+  FTPR...79827                                       3      -469.52
+  FTPR...12869                                       3      -465.88
+  MFFU...90119                                       2      -432.10
+  MFFU...90006                                       2      -413.50
+  MFFU...90120                                       2      -411.60
+  MFFU...90055                                       2      -410.40
+  MFFU...90122                                       2      -408.70
+  V2-...1765_CH2                                     1      -408.16
+  MFFU...90056                                       2      -405.00
+  MFFU...90036                                       2      -404.90
+  MFFU...90121                                       2      -404.40
+  MFFU...90136                                       2      -404.20
+  MFFU...90032                                       2      -403.90
+  MFFU...90033                                       2      -402.80
+  MFFU...90035                                       2      -402.80
+  MFFU...90018                                       2      -402.60
+  MFFU...90009                                       2      -402.40
+  MFFU...90135                                       2      -401.50
+  MFFU...90019                                       2      -401.20
+  MFFU...90123                                       2      -400.70
+  MFFU...90008                                       2      -400.60
+  MFFU...90007                                       2      -400.00
+  MFFU...90034                                       2      -399.70
+  MFFU...90010                                       2      -399.40
+  FTPR...73290                                       3      -393.86
+  FTPR...49625                                       3      -387.62
+  V2-...6707_CH2                                     1      -387.41
+  V2-...9429_CH2                                     1      -385.39
+  FTPR...94051                                       3      -384.92
+  FTPR...81729                                       3      -384.36
+  FNFT...51712_CH3                                   2      -381.96
+  FTPR...58412                                       4      -380.34
+  FTPR...65425                                       3      -379.92
+  FTPR...73528                                       3      -379.42
+  FNFT...10709_CH3                                   2      -378.47
+  FTPR...03518                                       4      -377.92
+  FNFT...99753_CH3                                   2      -377.51
+  FTPR...48631                                       3      -375.46
+  FTPR...46810                                       3      -375.28
+  FTPR...48327                                       4      -374.74
+  FTPR...39246                                       3      -369.42
+  FTPR...42871                                       3      -369.36
+  FTPR...14879                                       3      -369.22
+  FTPR...03194                                       3      -368.64
+  FTPR...69082                                       3      -367.38
+  FTPR...48916                                       3      -366.96
+  FTPR...50148                                       3      -366.70
+  FTPR...70627                                       3      -366.60
+  V2-...3645_CH2                                     1      -365.99
+  MFFU...90159_CH2                                   1      -365.74
+  MFFU...90160_CH2                                   1      -362.12
+  V2-...0118_CH2                                     1      -358.34
+  MFFU...90144_CH2                                   1      -358.01
+  V2-...1166_CH2                                     1      -357.34
+  V2-...1095_CH2                                     1      -356.75
+  MFFU...90147_CH2                                   1      -356.16
+  MFFU...90158_CH2                                   1      -355.99
+  MFFU...90157_CH2                                   1      -355.91
+  MFFU...90146_CH2                                   1      -355.66
+  V2-...9676_CH2                                     1      -354.73
+  V2-...6717_CH2                                     1      -353.89
+  V2-...8997_CH2                                     1      -353.81
+  MFFU...90148_CH2                                   1      -353.81
+  MFFU...90145_CH2                                   1      -353.64
+  FNFT...94037                                       4      -320.38
+  FNFT...N5876                                       4      -307.84
+  TDFY...64704_CH3                                   1      -292.69
+  TDFY...19865_CH3                                   1      -286.35
+  TDFY...11521_CH3                                   2      -257.40
+  MFFU...90143                                       3      -255.68
+  FNFT...23992_CH3                                   1      -249.66
+  FNFT...11519_CH3                                   2      -242.88
+  FNFT...33514_CH3                                   1      -240.68
+  TDFY...39933_CH3                                   1      -237.95
+  TDFY...64386_CH3                                   1      -237.51
+  TDFY...59956_CH3                                   1      -236.37
+  TDFY...28610_CH3                                   1      -236.28
+  TDFY...79141_CH3                                   1      -236.28
+  FNFT...78047_CH3                                   1      -236.10
+  TDFY...05977_CH3                                   1      -234.43
+  TDFY...44574_CH3                                   1      -234.08
+  TDFY...13567_CH3                                   1      -231.97
+  FTPR...09656                                       5      -231.82
+  FNFT...22430_CH3                                   1      -231.79
+  TDFY...46776_CH3                                   1      -231.18
+  TDFY...19540_CH3                                   1      -231.09
+  FNFT...39683_CH3                                   1      -231.00
+  FNFT...82991_CH3                                   1      -230.65
+  TDFY...80004_CH3                                   1      -230.56
+  TDFY...27878_CH3                                   1      -230.30
+  TDFY...29255_CH3                                   1      -229.68
+  TDFY...46525_CH3                                   1      -227.66
+  MFFU...90157_CH1                                   1      -210.50
+  MFFU...90152_CH1                                   1      -206.40
+  MFFU...90160_CH1                                   1      -203.73
+  MFFU...90145_CH1                                   1      -202.12
+  MFFU...90153_CH1                                   1      -201.94
+  MFFU...90158_CH1                                   1      -201.11
+  FNFT...33187_CH1                                   3      -200.38
+  V2-...6717_CH1                                     1      -200.24
+  MFFU...90159_CH1                                   1      -200.15
+  FNFT...16772_CH1                                   2      -200.04
+  V2-...0118_CH1                                     1      -199.59
+  MFFU...90154_CH1                                   1      -199.50
+  MFFU...90148_CH1                                   1      -198.81
+  V2-...1095_CH1                                     1      -198.21
+  V2-...8997_CH1                                     1      -197.34
+  V2-...3529_CH1                                     1      -195.73
+  MFFU...90144_CH1                                   1      -195.04
+  V2-...2635_CH1                                     1      -194.99
+  V2-...6707_CH1                                     1      -194.99
+  MFFU...90147_CH1                                   1      -194.99
+  V2-...1166_CH1                                     1      -194.90
+  V2-...1765_CH1                                     1      -194.81
+  V2-...9676_CH1                                     1      -194.76
+  V2-...2089_CH1                                     1      -194.35
+  V2-...9429_CH1                                     1      -194.21
+  MFFU...90146_CH1                                   1      -193.75
+  V2-...5502_CH1                                     1      -193.61
+  V2-...2003_CH1                                     1      -193.61
+  V2-...3645_CH1                                     1      -192.69
+  FTPR...41657                                       1      -188.29
+  FTPR...56893                                       1      -188.08
+  TDFY...11521_CH2                                   1      -159.71
+  FNFT...82991_CH2                                   1      -158.20
+  TDFY...39933_CH2                                   1      -156.07
+  TDFY...64386_CH2                                   1      -155.90
+  TDFY...05977_CH2                                   1      -154.62
+  FNFT...23992_CH2                                   1      -153.55
+  FNFT...39683_CH2                                   1      -153.33
+  TDFY...80004_CH2                                   1      -152.66
+  TDFY...18248_CH2                                   1      -151.76
+  TDFY...27878_CH2                                   1      -150.86
+  TDFY...59956_CH2                                   1      -150.81
+  TDFY...29255_CH2                                   1      -150.64
+  FTPR...69319                                       3      -150.42
+  TDFY...64704_CH2                                   1      -148.96
+  TDFY...44574_CH2                                   1      -147.73
+  TDFY...28610_CH2                                   1      -147.39
+  TDFY...46525_CH2                                   1      -146.61
+  TDFY...19865_CH2                                   1      -145.77
+  TDFY...79141_CH2                                   1      -144.26
+  FNFT...99753_CH1                                   1      -115.37
+  FNFT...78363_CH0                                   1      -112.29
+  TDFY...86268_CH1                                   2      -108.76
+  TDFY...68438_CH1                                   1      -107.17
+  TDFY...12092_CH1                                   1      -106.67
+  TDFY...25679_CH1                                   1      -105.70
+  FNFT...N3555_CH1                                   1      -104.88
+  FNFT...56845_CH0                                   1      -104.39
+  FNFT...22430_CH1                                   1      -104.20
+  TDFY...19865_CH1                                   1      -103.57
+  FNFT...39683_CH1                                   1      -103.40
+  FNFT...82991_CH1                                   1      -103.06
+  FNFT...56248_CH0                                   1      -102.41
+  FNFT...10709_CH1                                   1      -102.18
+  TDFY...18248_CH1                                   1      -102.13
+  FNFT...51712_CH1                                   1      -100.66
+  FNFT...N3084_CH0                                   1      -100.59
+  TDFY...46525_CH1                                   1      -100.51
+  FNFT...23992_CH1                                   1       -99.56
+  FNFT...78047_CH1                                   1       -99.37
+  TDFY...85320_CH1                                   1       -98.96
+  TDFY...30578_CH1                                   1       -98.82
+  TDFY...52795_CH1                                   1       -98.75
+  TDFY...16619_CH0                                   1       -96.84
+  TDFY...30974_CH1                                   1       -96.70
+  TDFY...46776_CH0                                   1       -96.16
+  TDFY...64704_CH1                                   1       -95.22
+  TDFY...79141_CH0                                   1       -95.11
+  TDFY...90025_CH0                                   1       -95.08
+  TDFY...44574_CH1                                   1       -94.93
+  TDFY...13567_CH0                                   1       -94.82
+  TDFY...85403_CH1                                   1       -94.72
+  TDFY...27878_CH0                                   1       -94.39
+  TDFY...39933_CH0                                   1       -94.32
+  TDFY...05977_CH1                                   1       -94.28
+  TDFY...29255_CH1                                   1       -93.96
+  TDFY...86456_CH1                                   1       -93.85
+  TDFY...80004_CH0                                   1       -93.71
+  TDFY...19540_CH1                                   1       -93.10
+  FNFT...78047_CH2                                   2       -81.87
+  FNFT...26449                                       1        -0.36
+  FTPR...84917                                       3         2.24
+  FTPR...53285                                       2         7.07
+  FNFT...33514                                       4        83.88
+  FNFT...11519                                       7        84.69
+  MFFU...90141                                       1        93.55
+  TDFY...30974_CH3                                   3        94.87
+  MFFU...90142                                       1        97.10
+  FNFT...16772_CH2                                   2        99.07
+  FNFT...33187_CH2                                   2       110.26
+  FTPR...45910                                       3       122.60
+  FTPR...02544                                       3       123.56
+  FTPR...39472                                       2       129.04
+  FTPR...75261                                       2       130.10
+  FTPR...73521                                       2       130.72
+  FTPR...39276                                       3       130.96
+  MFFU...90003                                       2       131.70
+  Not Connected                                      1       131.70
+  MFFU...90002                                       2       132.00
+  FTPR...80234                                       3       133.04
+  FTPR...17834                                       3       133.28
+  FTPR...14522                                       3       134.00
+  FTPR...25378                                       2       134.90
+  MFFU...90053                                       1       135.30
+  FTPR...92508                                       2       135.80
+  FTPR...73461                                       2       135.80
+  FTPR...47539                                       2       135.84
+  FTPR...29506                                       2       135.94
+  FTPR...82471                                       1       136.20
+  FTPR...15689                                       2       136.70
+  FTPR...19625                                       3       136.72
+  MFFU...90066                                       1       136.80
+  FTPR...85076                                       3       137.40
+  FTPR...05167                                       2       137.51
+  FTPR...30249                                       2       137.64
+  FTPR...96022                                       2       137.90
+  FTPR...68919                                       1       138.30
+  FTPR...63795                                       2       138.48
+  FTPR...51605                                       2       138.62
+  FTPR...65185                                       2       138.80
+  FTPR...64190                                       1       138.90
+  MFFU...90134                                       1       138.90
+  FTPR...15041                                       2       138.96
+  FTPR...48752                                       2       139.06
+  FTPR...56029                                       1       139.20
+  FTPR...65120                                       2       139.26
+  FTPR...57941                                       1       139.50
+  MFFU...90099                                       1       139.50
+  FTPR...65708                                       2       139.70
+  FTPR...78315                                       2       139.70
+  FTPR...51092                                       2       139.98
+  FTPR...16393                                       2       140.00
+  FTPR...02898                                       2       140.00
+  FTPR...10981                                       3       140.03
+  MFFU...90029                                       1       140.10
+  MFFU...90031                                       1       140.10
+  FTPR...32881                                       2       140.14
+  FTPR...17099                                       2       140.30
+  FTPR...94627                                       2       140.30
+  FTPR...56748                                       1       140.40
+  MFFU...90064                                       1       140.40
+  MFFU...90068                                       1       140.40
+  FTPR...07927                                       1       140.40
+  FTPR...84233                                       1       140.70
+  FTPR...30941                                       1       140.70
+  FTPR...29775                                       1       140.70
+  FTPR...47508                                       1       140.70
+  MFFU...90095                                       1       140.70
+  MFFU...90111                                       1       140.70
+  FTPR...26547                                       2       140.74
+  MFFU...90005                                       1       141.00
+  MFFU...90001                                       1       141.00
+  MFFU...90022                                       1       141.00
+  MFFU...90028                                       1       141.00
+  MFFU...90030                                       1       141.00
+  FTPR...34652                                       1       141.00
+  FTPR...07820                                       1       141.00
+  MFFU...90047                                       1       141.00
+  FTPR...24182                                       1       141.00
+  FTPR...35712                                       1       141.00
+  FTPR...28165                                       1       141.00
+  FTPR...17858                                       1       141.00
+  MFFU...90054                                       1       141.00
+  MFFU...90057                                       1       141.00
+  FTPR...69403                                       1       141.00
+  FTPR...51461                                       1       141.00
+  FTPR...06282                                       1       141.00
+  MFFU...90063                                       1       141.00
+  MFFU...90065                                       1       141.00
+  MFFU...90067                                       1       141.00
+  MFFU...90069                                       1       141.00
+  MFFU...90070                                       1       141.00
+  MFFU...90071                                       1       141.00
+  MFFU...90072                                       1       141.00
+  MFFU...90096                                       1       141.00
+  MFFU...90097                                       1       141.00
+  MFFU...90098                                       1       141.00
+  MFFU...90100                                       1       141.00
+  MFFU...90101                                       1       141.00
+  MFFU...90102                                       1       141.00
+  MFFU...90103                                       1       141.00
+  MFFU...90104                                       1       141.00
+  MFFU...90105                                       1       141.00
+  FTPR...70249                                       1       141.00
+  FTPR...02562                                       1       141.00
+  FTPR...78429                                       1       141.00
+  FTPR...26958                                       1       141.00
+  MFFU...90106                                       1       141.00
+  MFFU...90107                                       1       141.00
+  MFFU...90108                                       1       141.00
+  MFFU...90109                                       1       141.00
+  MFFU...90110                                       1       141.00
+  MFFU...90112                                       1       141.00
+  MFFU...90113                                       1       141.00
+  FTPR...02568                                       1       141.00
+  FTPR...23058                                       2       141.20
+  FTPR...51724                                       2       141.20
+  FTPR...31819                                       2       141.20
+  FTPR...70105                                       2       141.20
+  FTPR...69339                                       2       141.20
+  MFFU...90004                                       1       141.30
+  MFFU...90023                                       1       141.30
+  FTPR...95287                                       1       141.30
+  FTPR...95678                                       1       141.30
+  FTPR...40238                                       1       141.30
+  FTPR...27944                                       1       141.60
+  FTPR...51429                                       1       141.90
+  MFFU...90027                                       1       144.30
+  TDFY...86014_UNK                                   3       156.77
+  TDFY...57015_UNK                                   3       157.67
+  FNFT...27331                                       2       160.56
+  TDFY...49807_UNK                                   3       163.04
+  MFFU...90051                                       2       163.70
+  TDFY...66611_CH0                                   1       164.20
+  TDFY...58985_UNK                                   3       164.51
+  TDFY...11521_CH1                                   1       164.63
+  TDFY...81347_CH1                                   1       165.10
+  TDFY...40590_CH0                                   1       165.53
+  TDFY...28610_CH1                                   1       165.60
+  TDFY...59956_CH1                                   1       165.60
+  TDFY...75274_CH0                                   1       165.60
+  TDFY...50079_CH0                                   1       165.60
+  TDFY...23345_CH0                                   1       165.60
+  TDFY...30847_CH1                                   1       165.60
+  TDFY...14563_CH1                                   1       165.60
+  TDFY...17445_CH1                                   1       165.60
+  TDFY...64386_CH1                                   1       165.96
+  TDFY...76942_CH1                                   1       167.69
+  FTPR...42193                                       3       170.06
+  FNFT...62734                                       1       171.36
+  FNFT...62137                                       1       172.80
+  FNFT...75904                                       1       172.80
+  FNFT...33187                                       2       173.09
+  FNFT...12098                                       1       173.88
+  FNFT...78929                                       1       174.24
+  FNFT...82841_CH1                                   1       174.80
+  FTPR...57496                                       1       181.84
+  MFFU...90045                                       2       191.40
+  MFFU...90116                                       2       199.80
+  MFFU...90080                                       2       202.70
+  MFFU...90084                                       2       203.00
+  MFFU...90049                                       2       203.90
+  MFFU...90052                                       2       203.90
+  MFFU...90077                                       2       203.90
+  MFFU...90048                                       2       204.30
+  MFFU...90058                                       2       204.40
+  MFFU...90044                                       2       204.80
+  MFFU...90117                                       2       204.80
+  MFFU...90131                                       2       205.10
+  MFFU...90079                                       2       205.40
+  MFFU...90086                                       2       205.60
+  MFFU...90115                                       2       205.60
+  MFFU...90081                                       2       205.70
+  MFFU...90092                                       2       205.70
+  MFFU...90094                                       2       205.70
+  MFFU...90017                                       2       206.00
+  MFFU...90093                                       2       206.00
+  MFFU...90087                                       2       206.40
+  MFFU...90016                                       2       206.60
+  MFFU...90041                                       2       206.60
+  MFFU...90129                                       2       206.60
+  MFFU...90130                                       2       206.80
+  MFFU...90090                                       2       206.90
+  MFFU...90060                                       2       207.20
+  MFFU...90050                                       2       207.40
+  MFFU...90082                                       2       207.60
+  MFFU...90089                                       2       207.80
+  MFFU...90114                                       2       207.80
+  MFFU...90073                                       2       208.10
+  MFFU...90085                                       2       208.30
+  MFFU...90042                                       2       208.70
+  MFFU...90059                                       2       208.70
+  MFFU...90075                                       2       208.70
+  MFFU...90076                                       2       208.70
+  MFFU...90078                                       2       208.70
+  MFFU...90083                                       2       208.70
+  V2-...3898                                         1       208.93
+  MFFU...90074                                       2       209.00
+  MFFU...90088                                       2       209.00
+  MFFU...90118                                       2       209.00
+  V2-...9394                                         1       209.16
+  MFFU...90091                                       2       209.20
+  V2-...2279                                         1       209.53
+  V2-...2190                                         1       209.58
+  V2-...6634                                         1       211.19
+  V2-...5345                                         1       211.23
+  V2-...6472                                         1       211.60
+  V2-...8645                                         1       211.60
+  V2-...5691                                         1       211.65
+  V2-...9718                                         1       214.04
+  MFFU...90132                                       2       214.70
+  FNFT...N3084_CH2                                   1       228.48
+  MFFU...90139                                       1       230.00
+  TDFY...85403_CH2                                   1       242.48
+  TDFY...85320_CH2                                   1       251.44
+  FNFT...N3555_CH2                                   1       254.13
+  FNFT...78363_CH3                                   1       254.63
+  TDFY...12092_CH2                                   1       254.91
+  TDFY...68438_CH2                                   1       255.30
+  FNFT...56845_CH2                                   1       256.03
+  TDFY...19540_CH2                                   1       256.54
+  TDFY...16619_CH2                                   1       256.76
+  TDFY...46776_CH2                                   1       257.54
+  FNFT...56248_CH3                                   1       257.60
+  TDFY...30578_CH2                                   1       257.60
+  TDFY...13567_CH2                                   1       257.60
+  TDFY...90025_CH2                                   1       257.60
+  TDFY...25679_CH2                                   1       257.60
+  TDFY...86268_CH2                                   1       258.38
+  TDFY...52795_CH2                                   1       259.50
+  TDFY...86456_CH2                                   1       261.91
+  FTPR...91447                                       2       263.22
+  FTPR...56007                                       2       263.74
+  FTPR...15674                                       2       265.10
+  FTPR...10232                                       2       265.15
+  FTPR...43050                                       2       267.80
+  FTPR...97271                                       3       271.23
+  FTPR...41770                                       2       293.44
+  FTPR...51872                                       1       301.39
+  FTPR...29197                                       1       301.60
+  FTPR...19376                                       1       301.60
+  FTPR...41369                                       2       307.42
+  MFFU...90026                                       1       335.30
+  FTPR...59639                                       2       348.92
+  V2-...3529_CH2                                     1       375.98
+  MFFU...90152_CH2                                   1       381.61
+  V2-...2089_CH2                                     1       382.20
+  MFFU...90153_CH2                                   1       386.32
+  V2-...2003_CH2                                     1       386.40
+  V2-...2635_CH2                                     1       386.40
+  MFFU...90154_CH2                                   1       386.40
+  V2-...5502_CH2                                     1       390.43
+  FNFT...16772_CH3                                   1       400.31
+  FNFT...33187_CH3                                   1       404.62
+  FNFT...41047                                       8       919.80
+  FNFT...12858                                       8       920.88
+  FNFT...13167                                       8       923.76
+  FNFT...15531                                       8       926.64
+  FNFT...36792                                       8       927.00
+  FNFT...79013                                       8       930.60
+
+========================================================================================================================
+  SUMMARY
+========================================================================================================================
+
+  MT5 total net P&L:           $  -28,285.83
+  Sheet total hedge results:   $  -29,035.61
+  Overall difference:          $      749.78
+
+  Matched pairs:  135
+    Exact:        112
+    Close (<$5):  2
+    Sign flips:   4
+    Value off:    17
+
+  Sheet hedge results with no MT5 match: 17
+  MT5 extra entries (no sheet column):    43
+  MT5 accounts with no sheet match:       457
+
+  Matched sheet total:    $  -29,035.61
+  Matched MT5 total:      $  -26,772.54
+  MT5 extra (in-acct):    $   -2,249.47
+  MT5 no-match total:     $   -1,513.29
+
+========================================================================================================================
+  SIGN FLIP DETAILS
+========================================================================================================================
+   Row Prop                 Account #                      Col                      Sheet$ MT5 Ref                                               MT5$
+  -------------------------------------------------------------------------------------------------------------------------------------------------
+    12 My Funded Futures    MFFUSFSCL402290015             hedge result 1          -982.00 MFFU...90015                                        717.08
+    15 My Funded Futures    MFFUSFSCL402290020             hedge result 1         -1007.82 MFFU...90020                                        596.98
+    32 My Funded Futures    MFFUEVSCL402290037             hedge result 1           -69.30 MFFU...90037                                        577.50
+    33 My Funded Futures    MFFUEVSCL402290038             hedge result 1           -79.20 MFFU...90038                                        565.62
+
+========================================================================================================================
+  VALUE MISMATCHES > $50 (16 entries)
+========================================================================================================================
+   Row Prop                 Account #                      Col                      Sheet$ MT5 Ref                                               MT5$       Diff
+  -----------------------------------------------------------------------------------------------------------------------------------------------------------
+   266 Funding Ticks        FTPROPLUSM352017649880         hedge result 1         -1777.78 FTPR...49880                                       -614.10   -1163.68
+    11 My Funded Futures    MFFUSFSCL402290014             hedge result 1         -1003.20 MFFU...90014                                       -371.60    -631.60
+    10 My Funded Futures    MFFUSFSCL402290013             hedge result 1         -1005.00 MFFU...90013                                       -517.18    -487.82
+   228 My Funded Futures    MFFUSFSCL402290125             hedge result 1         -1677.72 MFFU...90125                                      -1267.68    -410.04
+   238 Funded Next          FNFTFAROBERTMADSEN48533        hedge result 1          -130.18 FNFT...48533                                       -526.62     396.44
+   242 Funded Next          FNFTFAROBERTMADSEN1525         hedge result 1          -129.72 FNFT...N1525                                       -520.00     390.28
+   240 Funded Next          FNFTFAROBERTMADSEN40232        hedge result 1          -143.52 FNFT...40232                                       -530.48     386.96
+   241 Funded Next          FNFTFAROBERTMADSEN59943        hedge result 1          -129.72 FNFT...59943                                       -513.72     384.00
+   239 Funded Next          FNFTFAROBERTMADSEN70465        hedge result 1          -128.80 FNFT...70465                                       -510.36     381.56
+   237 Funded Next          FNFTFAROBERTMADSEN73328        hedge result 1          -133.86 FNFT...73328                                       -511.62     377.76
+   227 My Funded Futures    MFFUSFSCL402290124             hedge result 1         -1011.78 MFFU...90124                                      -1280.74     268.96
+   229 My Funded Futures    MFFUSFSCL402290126             hedge result 1         -1007.16 MFFU...90126                                      -1268.08     260.92
+   259 My Funded Futures    MFFUSFSCL402290137             hedge result 1         -1005.18 MFFU...90137                                      -1265.13     259.95
+   260 My Funded Futures    MFFUSFSCL402290138             hedge result 1         -1004.52 MFFU...90138                                      -1232.01     227.49
+   285 Funding Ticks        FTPROPLUSM540671328958         hedge result 1         -1803.38 FTPR...28958                                      -1976.54     173.16
+   394 Funded Next          FNFTFAROBERTMADSEN57764        hedge result 1           657.86 FNFT...57764_FD1                                    729.54     -71.68

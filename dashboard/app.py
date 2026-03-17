@@ -575,7 +575,7 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
         logging.info(f"[FA SELECT] eval_idx={eval_idx} incoming_date={incoming_date}")
 
         # Reuse same slot if same date already exists
-        for day_num in range(1, 35):
+        for day_num in range(1, 51):
             date_key = f"_Hedge Day {day_num} Date"
             saved_date = str(ev.get(date_key, '')).strip()
             if saved_date and incoming_date and saved_date == incoming_date:
@@ -583,7 +583,7 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
                 return f"Hedge Day {day_num}"
 
         # Otherwise use first empty slot
-        for day_num in range(1, 35):
+        for day_num in range(1, 51):
             value_key = f"Hedge Day {day_num}"
             date_key = f"_Hedge Day {day_num} Date"
 
@@ -1339,9 +1339,9 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 last_profit = account_days[last_date]
                 slot = total_farming_days  # e.g. 5 dates → Hedge Day 5
 
-                if slot > 34:
-                    logging.warning(f"[FA WRITE] eval_idx={best_eval_idx} has {slot} farming days, capping at 34")
-                    slot = 34
+                if slot > 50:
+                    logging.warning(f"[FA WRITE] eval_idx={best_eval_idx} has {slot} farming days, capping at 50")
+                    slot = 50
 
                 field_name = f'Hedge Day {slot}'
 

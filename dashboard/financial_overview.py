@@ -183,7 +183,7 @@ def calculate_all_financials(profile_filter=None):
                 funded_hedges = sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
                 hedge_results = p1_hedges + funded_hedges
                 
-                farming_results = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+                farming_results = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
                 
                 # Status Logic
                 status_p1 = str(ev.get('Status P1', '')).strip()
@@ -279,7 +279,7 @@ def calculate_all_financials(profile_filter=None):
                 ts_net_profit.append((d, fd_profit))
 
             # 4. Farming Results
-            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
             if farming_calc != 0:
                 d = date_ended_funded or date_ended or base_date
                 ts_farming.append((d, farming_calc))
@@ -813,8 +813,8 @@ def get_cumulative_trading_profit(profile_filter=None):
                 events.append((date_ended_funded or date_started_funded or base_date, fd_profit))
                 
             # 5. Farming Results
-            # Match calculate_propfirm_overview logic: Sum of Hedge Day 1-34
-            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+            # Match calculate_propfirm_overview logic: Sum of Hedge Day 1-50
+            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
             
             if farming_calc != 0:
                 # Assign to later dates
@@ -1017,7 +1017,7 @@ def calculate_propfirm_overview(profile_filter=None):
             
             # Farming Results (PROFIT)
             farming_results = 0.0
-            for i in range(1, 35):
+            for i in range(1, 51):
                 key = f'Hedge Day {i}'
                 farming_results += parse_currency(eval_data.get(key))
             
@@ -1195,7 +1195,7 @@ def get_cumulative_farming_data(profile_filter=None):
             base_date = date_started or datetime.now()
 
             # Farming Results
-            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 35))
+            farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
             if farming_calc != 0:
                 events.append((date_ended_funded or date_ended or base_date, farming_calc))
                 

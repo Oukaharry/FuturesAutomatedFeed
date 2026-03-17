@@ -217,7 +217,7 @@ def calculate_derived_metrics(df):
         fee = get_val(row, 'Fee')
         activation_fee = get_val(row, 'Activation Fee')
         
-        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 35)])
+        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 51)])
         
         if status == 'Completed':
             # SUM(AB,AD,AF,AH, T,U,V,W,X,Y,Z, I,J,K,L,M) - D - P + SUM(AL...BN)
@@ -615,7 +615,7 @@ def fetch_evaluations(sheet_url):
                     'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
                     'Farming Net'
                 ]
-                for i in range(1, 35):
+                for i in range(1, 51):
                     allowed_columns.append(f'Prop Day {i}')
                     allowed_columns.append(f'Hedge Day {i}')
                 
@@ -743,7 +743,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
                          'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
     # Hedge Day columns for farming
-    HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 35)]
+    HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
 
     for ev in evaluations:
         try:
