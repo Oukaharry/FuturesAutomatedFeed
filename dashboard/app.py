@@ -322,15 +322,11 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp, phase_code=Non
     """
     Filter matches to find the best matching evaluation.
     
-    For FundedNext (FNFT):
-        - Ignores trade timestamps (mostly).
-        - Priority 1: Check if the TARGET FIELD (e.g. Hedge Result 1) contains a PLACEHOLDER ("DAY", "/Y", etc).
-          If found, this is the active reset account expecting data.
-        - Priority 2: Sort by Date Started (Newest first).
-        
-    For Others:
-        - Filters by Trade Date >= Date Purchased (with small buffer).
-        - If multiple valid matches, picks the one closest to trade date.
+    Universal logic for ALL prop firms:
+        - When multiple rows match the same account, always prefer the LATEST row
+          (highest eval_index = most recently added to the dashboard).
+        - Date filtering is used as a secondary signal but never overrides the
+          "latest row wins" rule.
     
     Args:
         matches: List of (eval_index, matched_account)
@@ -341,67 +337,10 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp, phase_code=Non
     """
     if not matches:
         return None
-        
-    # Check if this is a FundedNext account (FNFT prefix)
-    is_fnft = False
-    match_acc_str = str(matches[0][1]).upper()
-    if 'FNFT' in match_acc_str or 'FUNDEDNEXT' in match_acc_str:
-        is_fnft = True
     
-    if is_fnft:
-        # FNFT Priority Logic
-        
-        # Helper to detect placeholders in a specific field content
-        def has_placeholder(val):
-            s = str(val).upper()
-            placeholders = ['DAY', '/Y', 'MON', 'TUE', 'WED', 'THU', 'FRI']
-            return any(p in s for p in placeholders)
-
-        # 1. Try to find a match where the expected TARGET FIELD has a placeholder
-        # We need to guess the field name. 
-        if phase_code:
-            target_field = None
-            # Replicate simpler version of get_field_name logic or use it if context allows
-            # Since we are outside the update loop, we simulate field name logic
-            if phase_code == 'CH' and trade_number:
-                target_field = f"Hedge Result {trade_number}"
-            elif phase_code == 'FD' and trade_number:
-                # FNFT: FD0->1.1 (Wait, FNFT usually starts at 1?)
-                # FNFT logic in get_field_name: "Other firms: FD0->HR1.1, FD1->HR1.1"
-                # Let's assume standard behavior for now.
-                target_field = f"Hedge Result {trade_number}.1" if trade_number > 0 else "Hedge Result 1.1"
-            elif phase_code == 'DD' and trade_number:
-                target_field = f"Hedge Result {trade_number}.1"
-            
-            # If we identified a potential target field, check candidates
-            if target_field:
-                for idx, acc in matches:
-                    ev = evaluations[idx]
-                    existing_val = ev.get(target_field, '')
-                    if has_placeholder(existing_val):
-                         # Found a winner! This "new" account is waiting for data.
-                         return (idx, acc)
-
-        # 2. Fallback: Sort matches by Date Started (Descending) -> Newest first
-        def fnft_latest_sorter(match_tuple):
-            idx, _ = match_tuple
-            ev = evaluations[idx]
-            d_str = ev.get('Date Started', '') or ev.get('Date Purchased', '')
-            d_obj = parse_sheet_date(d_str)
-            
-            # Key 1: Timestamp (0 if missing)
-            ts = d_obj.timestamp() if d_obj else 0
-            # Key 2: Index (Original order)
-            return (ts, idx)
-
-        # Sort descending to get max date/index at the top
-        matches.sort(key=fnft_latest_sorter, reverse=True)
-        return matches[0]
-
-    # --- Standard Logic for other firms ---
-    
+    # Universal: always prefer the latest row (highest eval_index)
     if not trade_timestamp:
-        return matches[0]
+        return max(matches, key=lambda m: m[0])
 
     # Convert trade timestamp to datetime
     try:
@@ -412,7 +351,7 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp, phase_code=Non
         try:
              trade_date = datetime.fromisoformat(str(trade_timestamp).replace('Z', '+00:00'))
         except ValueError:
-             return matches[0]
+             return max(matches, key=lambda m: m[0])
         
     valid_matches = []
     
@@ -453,29 +392,17 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp, phase_code=Non
             })
             
     if not valid_matches:
-        # Fallback for non-FNFT if no valid dates found (relaxed matching)
-        return matches[0]
+        # Fallback if no valid dates found — prefer latest row (highest eval_index)
+        # Prefer the latest row (highest eval_index = most recently added account)
+        return max(matches, key=lambda m: m[0])
         
-    # Sort matches:
-    # 1. Prefer Non-Negative Delta (Trade >= Start) -> Logic: Trade follows Start.
-    # 2. Then Smallest Absolute Delta (Closest date).
-    def match_sorter(x):
-        delta = x['delta']
-        valid_date = x['valid_date']
-        
-        if not valid_date:
-             return (2, 0) # Least preferred
-        
-        # If delta is negative (Trade < Start), it is a "buffer match". 
-        # We penalize it slightly so that if we have a "real match" (Trade > Start), we pick that.
-        if delta < 0:
-             return (1, abs(delta)) 
-        
-        return (0, delta) # Best match: Positive delta, smallest value
-        
-    valid_matches.sort(key=match_sorter)
-    
-    match_result = valid_matches[0]['match']
+    # When multiple valid matches exist, prefer the latest row (highest eval_index).
+    # This ensures data always goes to the most recently added account on the dashboard.
+    dated_valid = [m for m in valid_matches if m['valid_date']]
+    if dated_valid:
+        match_result = max(dated_valid, key=lambda m: m['match'][0])['match']
+    else:
+        match_result = max(valid_matches, key=lambda m: m['match'][0])['match']
     return match_result
 
 
@@ -1172,8 +1099,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
             # STRICT MATCH OVERRIDE: If we have a perfectly parsed comment (Structure: PREFIX...ACC_PHASE),
             # and we found matching accounts, we TRUST the account number match primarily.
-            # We skip date filtering for non-FNFT if we have a structural match.
-            skip_date_filter = matches_full_strict and not ('FNFT' in (full_comment_info[0] or ''))
+            # Skip date filtering for ALL firms with a structural match — latest row always wins.
+            skip_date_filter = matches_full_strict
 
             for e in candidates:
                 if skip_date_filter:
@@ -1211,27 +1138,20 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             if not valid_candidates:
                 # If we had a strict comment match, and no valid dates, maybe just pick the best text match?
                 if matches_full_strict and candidates:
-                     best_eval = candidates[0]
-                     match_log.append(f"⚠️ Date mismatch but strict ID match for {acc_num}, using best candidate.")
+                     # Always prefer the latest row (highest eval_index)
+                     best_eval = max(candidates, key=lambda e: evaluations.index(e))
+                     match_log.append(f"⚠️ Date mismatch but strict ID match for {acc_num}, using latest row.")
                 else:
                      match_log.append(f"⚠️ No valid date match for {acc_num}")
                      continue
             else:
-                # Sort by diff (smallest diff is closest match)
-                valid_candidates.sort(key=lambda x: x[1])
-                
-                # FNFT override: when multiple candidates match, prefer the latest row
-                # (highest row number = most recently added evaluation)
-                is_fnft_session = comment_prefix and 'FNFT' in comment_prefix.upper()
-                if is_fnft_session and len(valid_candidates) > 1:
-                    # Pick the candidate with the highest index in evaluations (latest row)
-                    best_eval = max(
-                        [vc[0] for vc in valid_candidates],
-                        key=lambda e: evaluations.index(e)
-                    )
-                    drift = next(vc[1] for vc in valid_candidates if vc[0] is best_eval)
-                else:
-                    best_eval, drift = valid_candidates[0]
+                # Always prefer the latest row (highest eval_index = most recently added)
+                # regardless of date proximity — the bigger the row number, the more recent the account
+                best_eval = max(
+                    [vc[0] for vc in valid_candidates],
+                    key=lambda e: evaluations.index(e)
+                )
+                drift = next(vc[1] for vc in valid_candidates if vc[0] is best_eval)
                     
                 logging.info(
                     f"[MATCHED EVAL] eval_idx={evaluations.index(best_eval)} "
