@@ -2158,8 +2158,9 @@
         function updateDashboard(silent = false) {
             // Prevent update if user is interacting
             if (document.querySelector('.cell-input:focus')) return;
-            if (document.querySelector('.dropdown-menu.show')) return;
+            if (activeDropdownTrigger || (globalDropdownMenu && globalDropdownMenu.style.display !== 'none')) return;
             if (isEditing) return;
+            if (isSaving) return;
             if (isDatePickerOpen) return;
 
             // Show loading indicator only on initial load (not silent auto-refresh)
@@ -3975,6 +3976,10 @@
                 activeDropdownTrigger.classList.remove('active');
                 activeDropdownTrigger = null;
             }
+            // Allow auto-refresh again (unless a save is pending)
+            if (!isSaving && !_saveDebounceTimer) {
+                setTimeout(() => { isEditing = false; }, 500);
+            }
         }
 
         function updateGlobalMenuPosition() {
@@ -4007,6 +4012,9 @@
 
             // Close existing
             closeGlobalMenu();
+
+            // Mark as editing while dropdown is open (prevents auto-refresh)
+            isEditing = true;
 
             // Set new active
             activeDropdownTrigger = dropdown;
