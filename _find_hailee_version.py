@@ -1,13 +1,13 @@
 """
-Find yesterday's version of Hailee Wood's data (before today's corruption).
-Run on server: python _find_hailee_version.py
+Find best version of a client's data and provide rollback command.
+Run on server: python _find_hailee_version.py "Client Name"
 """
 import sys, os, json, sqlite3
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dashboard.database import get_data_version, rollback_to_version
 
-CLIENT_ID = "Hailee Wood"
+CLIENT_ID = sys.argv[1] if len(sys.argv) > 1 else "Hailee Wood"
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard', 'dashboard.db')
 
 def main():
