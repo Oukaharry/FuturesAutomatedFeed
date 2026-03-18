@@ -394,7 +394,7 @@
                         <tr>
                             <td style="text-align: left;">
                                 {% if payout.date %}
-                                    <span style="color: #93c5fd; font-weight: 500;">{{ payout.date.strftime('%Y-%m-%d') }}</span>
+                                    <span style="color: #93c5fd; font-weight: 500;">{{ payout.date.strftime('%b') }} {{ payout.date.day }}, {{ payout.date.year }}</span>
                                 {% else %}
                                     <span class="neutral">-</span>
                                 {% endif %}

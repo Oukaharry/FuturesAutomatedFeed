@@ -4934,7 +4934,7 @@
                             const profitColor = item.profit >= 0 ? '#4ade80' : '#f87171';
                             html += `
                                 <tr>
-                                    <td style="text-align: left; padding-left: 20px;">${item.date}</td>
+                                    <td style="text-align: left; padding-left: 20px;">${formatDisplayDate(item.date)}</td>
                                     <td style="text-align: left; padding-left: 20px; color: ${profitColor};">$${item.profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                     <td style="text-align: left; padding-left: 20px;">${changeHtml}</td>
                                 </tr>
@@ -5066,6 +5066,24 @@
                 closeHistoryPanel();
             }
         });
+
+        // Normalize any date to 'Mon D, YYYY' for display (e.g. 'Mar 5, 2026')
+        function formatDisplayDate(dateStr) {
+            if (!dateStr || dateStr === '-') return dateStr || '-';
+            // Parse YYYY-MM-DD
+            let m = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+            if (m) { const d = new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3])); return d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}); }
+            // Parse M/D/YY
+            m = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+            if (m) { const d = new Date(2000+parseInt(m[3]), parseInt(m[1])-1, parseInt(m[2])); return d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}); }
+            // Parse M/D/YYYY
+            m = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+            if (m) { const d = new Date(parseInt(m[3]), parseInt(m[1])-1, parseInt(m[2])); return d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}); }
+            // Parse MM/DD/YY with leading zeros
+            m = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{2})$/);
+            if (m) { const d = new Date(2000+parseInt(m[3]), parseInt(m[1])-1, parseInt(m[2])); return d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}); }
+            return dateStr;
+        }
 
         // Initialize helpers - formatDateForInput fallback
         function formatDateForInput(dateStr) {

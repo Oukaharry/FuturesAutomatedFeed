@@ -3711,6 +3711,15 @@ def api_kyc_portfolio():
         if filter_to and d > filter_to:
             return False
         return True
+
+    def format_display_date(date_str):
+        """Normalize any date string to 'Mon D, YYYY' format (e.g. Mar 5, 2026)."""
+        if not date_str or not isinstance(date_str, str):
+            return date_str or '-'
+        d = parse_date_safe(date_str)
+        if not d:
+            return date_str
+        return f"{d.strftime('%b')} {d.day}, {d.year}"
     
     # Aggregate stats across all KYC accounts
     totals = {
@@ -3795,7 +3804,7 @@ def api_kyc_portfolio():
                     if date_in_period(pdate):
                         all_payouts.append({
                             "client": name, "prop_firm": prop_firm, "account": account_num,
-                            "payout_num": i, "amount": round(pval, 2), "date": pdate
+                            "payout_num": i, "amount": round(pval, 2), "date": format_display_date(pdate)
                         })
                         acc_stats["payouts"] += pval
                         # Add to prop firm payouts
