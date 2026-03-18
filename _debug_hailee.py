@@ -2,17 +2,67 @@
 Diagnostic script for Hailee Wood — investigate missing dashboard data.
 Run on the server: python _debug_hailee.py
 """
-import sys, os, json
+import sys, os, json, sqlite3
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dashboard.database import get_client_data, get_data_history, get_data_version
 
 CLIENT_ID = "Hailee Wood"
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard', 'dashboard.db')
 
 def main():
     print(f"{'='*80}")
     print(f"  DIAGNOSTIC REPORT: {CLIENT_ID}")
     print(f"{'='*80}\n")
+
+    # 0. Direct DB check — look for ALL client IDs containing "hailee" or "wood"
+    print(f"--- STEP 0: Direct DB scan for similar client IDs ---\n")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        
+        # Check clients_data table
+        cur.execute("SELECT client_id, last_updated, length(evaluations) FROM clients_data WHERE lower(client_id) LIKE '%hailee%' OR lower(client_id) LIKE '%wood%'")
+        rows = cur.fetchall()
+        print(f"  clients_data matches: {len(rows)}")
+        for r in rows:
+            print(f"    client_id='{r[0]}' | last_updated={r[1]} | eval_json_len={r[2]}")
+        
+        # Check data_history table
+        cur.execute("SELECT client_id, COUNT(*) as versions, MIN(created_at), MAX(created_at) FROM data_history WHERE lower(client_id) LIKE '%hailee%' OR lower(client_id) LIKE '%wood%' GROUP BY client_id")
+        rows = cur.fetchall()
+        print(f"\n  data_history matches: {len(rows)}")
+        for r in rows:
+            print(f"    client_id='{r[0]}' | versions={r[1]} | first={r[2]} | last={r[3]}")
+        
+        # Check user_credentials table
+        cur.execute("SELECT username, email, user_type, parent_admin, parent_trader, is_active FROM user_credentials WHERE lower(username) LIKE '%hailee%' OR lower(username) LIKE '%wood%' OR lower(email) LIKE '%hailee%' OR lower(email) LIKE '%wood%'")
+        rows = cur.fetchall()
+        print(f"\n  user_credentials matches: {len(rows)}")
+        for r in rows:
+            print(f"    username='{r[0]}' | email='{r[1]}' | type={r[2]} | admin={r[3]} | trader={r[4]} | active={r[5]}")
+        
+        # Check hierarchy.json too
+        hierarchy_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'hierarchy.json')
+        if os.path.exists(hierarchy_path):
+            with open(hierarchy_path) as f:
+                h = json.load(f)
+            found = []
+            for admin_name, admin_data in h.get('admins', {}).items():
+                for trader_name, trader_data in admin_data.get('traders', {}).items():
+                    for client in trader_data.get('clients', []):
+                        cname = client.get('name', '')
+                        if 'hailee' in cname.lower() or 'wood' in cname.lower():
+                            found.append((admin_name, trader_name, client))
+            print(f"\n  hierarchy.json matches: {len(found)}")
+            for admin, trader, cli in found:
+                print(f"    admin={admin} | trader={trader} | client={cli}")
+        
+        conn.close()
+    except Exception as e:
+        print(f"  DB scan error: {e}")
+    
+    print()
 
     # 1. Current live data
     data = get_client_data(CLIENT_ID)
