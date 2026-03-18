@@ -1734,6 +1734,29 @@ def init_admin_password():
 init_database()
 init_admin_password()
 
+def provision_hierarchy_passwords():
+    """Auto-create user_credentials with default password for all hierarchy users who don't have one yet."""
+    default_pw = 'Test@123'
+    created = 0
+    for admin_name, admin_data in hierarchy.get('admins', {}).items():
+        if not user_exists(admin_name, 'admin'):
+            if create_user(admin_name, default_pw, 'admin', admin_data.get('email')):
+                created += 1
+        for trader_name, trader_data in admin_data.get('traders', {}).items():
+            if not user_exists(trader_name, 'trader'):
+                if create_user(trader_name, default_pw, 'trader', trader_data.get('email'), admin_name):
+                    created += 1
+            for client in trader_data.get('clients', []):
+                c_name = client.get('name') if isinstance(client, dict) else client
+                c_email = client.get('email', '') if isinstance(client, dict) else ''
+                if not user_exists(c_name, 'client'):
+                    if create_user(c_name, default_pw, 'client', c_email, admin_name, trader_name):
+                        created += 1
+    if created:
+        print(f"[AUTH] Provisioned {created} users with default password")
+
+provision_hierarchy_passwords()
+
 # ============ Authentication Decorators ============
 
 def require_api_key(f):
@@ -3109,7 +3132,7 @@ def api_logout():
 @app.route('/api/auth/check-admin', methods=['POST'])
 @limiter.limit("20 per minute")
 def check_admin_identifier():
-    """Returns whether the given identifier belongs to a super_admin (requires password)."""
+    """Returns whether the given identifier requires a password (all users do)."""
     data = request.json or {}
     identifier = data.get('identifier', '').strip()
     if not identifier:
@@ -3117,7 +3140,8 @@ def check_admin_identifier():
     user = find_user_by_identifier(identifier)
     if not user and '@' in identifier:
         user = get_user_by_email(identifier)
-    requires_password = bool(user and user.get('user_type') == 'super_admin')
+    # All recognised users require a password
+    requires_password = bool(user)
     return jsonify({"requires_password": requires_password})
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -3125,8 +3149,7 @@ def check_admin_identifier():
 def unified_login():
     """
     Unified login endpoint - auto-detects user type from email/username.
-    - Super Admin: requires email + password
-    - Admin/Trader/Client: only requires email (no password)
+    All user types require email + password. Default password: Test@123
     """
     data = request.json
     identifier = data.get('identifier', '').strip()
@@ -3183,11 +3206,25 @@ def unified_login():
         log_action('LOGIN_FAILED', 'super_admin', 'super_admin', client_ip, 'Invalid password', False)
         return jsonify({"status": "error", "message": "Invalid password"}), 403
     
-    # Handle Admin/Trader/Client login - NO PASSWORD REQUIRED (email only)
-    # Just verify the email exists in hierarchy
-    session_token = create_session(user_type, username, client_ip)
+    # Handle Admin/Trader/Client login - PASSWORD REQUIRED
+    if not password:
+        return jsonify({"status": "error", "message": "Password is required"}), 400
+
+    # Auto-provision credentials if user exists in hierarchy but not in user_credentials DB
+    if not find_user_by_identifier(username) and not find_user_by_identifier(user.get('email', '')):
+        default_pw = 'Test@123'
+        create_user(username, default_pw, user_type,
+                    user.get('email'), user.get('parent_admin'), user.get('parent_trader'))
+
+    # Verify password
+    verified = verify_user_password(username, user_type, password)
+    if not verified:
+        record_login_attempt(username, user_type, client_ip, False)
+        log_action('LOGIN_FAILED', user_type, username, client_ip, 'Invalid password', False)
+        return jsonify({"status": "error", "message": "Invalid password"}), 403
+
     record_login_attempt(username, user_type, client_ip, True)
-    log_action('LOGIN_SUCCESS', user_type, username, client_ip, 'Email-only login')
+    log_action('LOGIN_SUCCESS', user_type, username, client_ip)
     
     # Determine redirect URL based on user type
     redirect_map = {
@@ -3197,12 +3234,15 @@ def unified_login():
     }
     redirect_url = redirect_map.get(user_type, '/')
     
+    must_change = verified.get('must_change_password', False)
+    
     max_age = 30 * 24 * 60 * 60 if remember else 86400
+    session_token = create_session(user_type, username, client_ip)
     response = jsonify({
         "status": "success",
         "user_type": user_type,
         "redirect": redirect_url,
-        "must_change_password": False
+        "must_change_password": must_change
     })
     response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
     return response
@@ -3222,10 +3262,7 @@ def api_create_user():
     # Auto-generate password if not provided
     password = data.get('password')
     if not password:
-        import secrets
-        import string
-        alphabet = string.ascii_letters + string.digits
-        password = ''.join(secrets.choice(alphabet) for i in range(12))
+        password = 'Test@123'
     
     parent_admin = data.get('parent_admin')
     parent_trader = data.get('parent_trader')
@@ -3418,6 +3455,32 @@ def api_reset_password():
         })
     
     return jsonify({"status": "error", "message": "User not found"}), 404
+
+@app.route('/api/admin/set_password', methods=['POST'])
+@require_role('super_admin')
+def api_set_password():
+    """Super admin sets a specific password for any user."""
+    data = request.json
+    username = data.get('username')
+    user_type = data.get('user_type')
+    new_password = data.get('new_password')
+
+    if not username or not user_type or not new_password:
+        return jsonify({"status": "error", "message": "username, user_type and new_password required"}), 400
+    if len(new_password) < 6:
+        return jsonify({"status": "error", "message": "Password must be at least 6 characters"}), 400
+
+    # Auto-provision if the user has no credentials row yet
+    if not user_exists(username, user_type):
+        create_user(username, new_password, user_type)
+        log_action('SET_PASSWORD', 'super_admin', username, get_remote_address(), f"Created + set ({user_type})")
+        return jsonify({"status": "success", "message": f"Credentials created for {username} with provided password"})
+
+    if update_user_password(username, user_type, new_password):
+        log_action('SET_PASSWORD', 'super_admin', username, get_remote_address(), f"Type: {user_type}")
+        return jsonify({"status": "success", "message": f"Password set for {username}"})
+
+    return jsonify({"status": "error", "message": "Failed to set password"}), 500
 
 @app.route('/api/admin/deactivate_user', methods=['POST'])
 @require_admin_password

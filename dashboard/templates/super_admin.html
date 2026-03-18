@@ -840,7 +840,9 @@
                          }
                          // Reset Password button (all user types)
                          const resetStyle = "color:#60a5fa; border:1px solid #1e3a5f; background:rgba(30,58,95,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:5px;";
-                         btns += `<button onclick="resetUserPassword('${safeName}')" style="${resetStyle}" title="Reset login password">🔑</button>`;
+                         btns += `<button onclick="resetUserPassword('${safeName}', '${type}')" style="${resetStyle}" title="Reset login password">🔑</button>`;
+                         const setPwStyle = "color:#a78bfa; border:1px solid #4c1d95; background:rgba(76,29,149,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:3px;";
+                         btns += `<button onclick="openSetPasswordModal('${safeName}', '${type}')" style="${setPwStyle}" title="Set specific password">🔐</button>`;
 
                          let parentCol = (type !== 'admin') ? `<td style="padding:10px; color:#cbd5e1;">${r.parent || '-'}</td>` : '';
                          
@@ -1495,24 +1497,72 @@
         // Expose to global window
         window.openUserListModal = openUserListModal;
         window.closeUserListModal = closeUserListModal;
+        window.resetUserPassword = resetUserPassword;
+        window.openSetPasswordModal = openSetPasswordModal;
+        window.submitSetPassword = submitSetPassword;
 
         // ── Reset Password ────────────────────────────────────────────────
-        async function resetUserPassword(name) {
+        async function resetUserPassword(name, userType) {
             if (!confirm(`Reset dashboard login password for "${name}"?\n\nA new random password will be generated.`)) return;
             try {
-                const res = await fetch('/api/admin/reset_password', {
+                const res = await fetch('/api/user/reset_password', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username: name})
+                    body: JSON.stringify({username: name, user_type: userType || 'client'})
                 });
                 const data = await res.json();
-                if (data.new_password) {
-                    showResetPwModal(name, data.new_password);
+                if (data.temporary_password) {
+                    showResetPwModal(name, data.temporary_password);
                 } else {
-                    alert('Error: ' + (data.error || 'Failed to reset password'));
+                    alert('Error: ' + (data.message || 'Failed to reset password'));
                 }
             } catch(e) {
                 alert('Network error: ' + e.message);
+            }
+        }
+
+        // ── Set Specific Password ─────────────────────────────────────────
+        function openSetPasswordModal(name, userType) {
+            const overlay = document.createElement('div');
+            overlay.id = 'set-pw-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:20000;display:flex;align-items:center;justify-content:center;';
+            overlay.innerHTML = `
+                <div style="background:#1e293b;border:2px solid #a78bfa;border-radius:10px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+                    <h3 style="color:#f8fafc;margin:0 0 8px;">&#128274; Set Password</h3>
+                    <p style="color:#94a3b8;margin:0 0 16px;font-size:0.9rem;">Set a specific password for <strong style="color:#f1f5f9;">${name}</strong></p>
+                    <input id="set-pw-input" type="text" value="Test@123" style="width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#fbbf24;font-size:1.05rem;letter-spacing:0.05em;box-sizing:border-box;margin-bottom:6px;" />
+                    <p id="set-pw-msg" style="color:#94a3b8;font-size:0.78rem;margin:0 0 16px;min-height:18px;"></p>
+                    <div style="display:flex;gap:10px;justify-content:flex-end;">
+                        <button onclick="document.getElementById('set-pw-overlay').remove()" style="padding:9px 22px;background:#475569;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Cancel</button>
+                        <button onclick="submitSetPassword('${name}', '${userType}')" style="padding:9px 22px;background:#7c3aed;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Set Password</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            document.getElementById('set-pw-input').focus();
+            document.getElementById('set-pw-input').select();
+        }
+
+        async function submitSetPassword(name, userType) {
+            const pw = document.getElementById('set-pw-input').value;
+            const msg = document.getElementById('set-pw-msg');
+            if (!pw || pw.length < 6) { msg.style.color = '#ef4444'; msg.textContent = 'Password must be at least 6 characters'; return; }
+            try {
+                const res = await fetch('/api/admin/set_password', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username: name, user_type: userType, new_password: pw})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    msg.style.color = '#22c55e'; msg.textContent = '✓ ' + data.message;
+                    setTimeout(() => { const o = document.getElementById('set-pw-overlay'); if(o) o.remove(); }, 1500);
+                } else {
+                    msg.style.color = '#ef4444'; msg.textContent = data.message || 'Failed';
+                }
+            } catch(e) {
+                msg.style.color = '#ef4444'; msg.textContent = 'Network error: ' + e.message;
             }
         }
 
