@@ -44,7 +44,7 @@ from dashboard.database import (
     rollback_to_version, compare_versions, get_latest_version,
     # KYC link management
     add_kyc_link, remove_kyc_link, get_kyc_linked_clients, get_kyc_primary_for,
-    get_all_kyc_accounts, get_all_kyc_links
+    get_all_kyc_accounts, get_all_kyc_links, is_kyc_primary
 )
 from dashboard.notes_service import (
     get_client_notes, save_client_note, delete_client_note
@@ -2040,11 +2040,14 @@ def client_dashboard(client_id):
     if user_type in ['super_admin', 'admin', 'trader']:
         return render_template('index.html', client_id=client_id, user_type=user_type, 
                                can_edit_hedging=True, client_email=client_email)
-    # Client access: allow own dashboard OR any KYC-linked account
+    # Client access: allow own dashboard OR primary KYC can view linked accounts
     if user_type == 'client':
         own_name = session_user.get('user_identifier')
-        kyc_group = get_all_kyc_accounts(own_name)
-        if client_id == own_name or client_id in kyc_group:
+        if client_id == own_name:
+            return render_template('index.html', client_id=client_id, user_type=user_type, 
+                                   can_edit_hedging=False, client_email=client_email)
+        # Only primary KYC clients can view linked accounts
+        if is_kyc_primary(own_name) and client_id in get_all_kyc_accounts(own_name):
             return render_template('index.html', client_id=client_id, user_type=user_type, 
                                    can_edit_hedging=False, client_email=client_email)
     return redirect('/')
@@ -3611,14 +3614,115 @@ def api_kyc_accounts():
     if user_type == 'client' and client_id != session_user.get('user_identifier'):
         return jsonify({"status": "error", "message": "Access denied"}), 403
     
-    accounts = get_all_kyc_accounts(client_id)
+    # Only primary KYC clients see linked accounts; linked clients see only themselves
+    if is_kyc_primary(client_id):
+        accounts = get_all_kyc_accounts(client_id)
+    else:
+        accounts = [client_id]
     # Enrich with basic client info
     result = []
     for name in accounts:
         cdata = get_client_data(name)
         eval_count = len(cdata.get('evaluations', [])) if cdata else 0
         result.append({"name": name, "eval_count": eval_count, "is_current": name == client_id})
-    return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1})
+    return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1, "is_primary": is_kyc_primary(client_id)})
+
+@app.route('/api/kyc/portfolio', methods=['GET'])
+@require_session
+def api_kyc_portfolio():
+    """Get combined portfolio stats across all KYC-linked accounts. Only for primary KYC clients."""
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    client_id = session_user.get('user_identifier', '')
+    
+    # Super admins can query any primary client's portfolio
+    if user_type == 'super_admin':
+        client_id = request.args.get('client_id', client_id)
+    elif user_type != 'client':
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+    
+    if not is_kyc_primary(client_id):
+        return jsonify({"status": "error", "message": "Not a primary KYC account"}), 403
+    
+    accounts = get_all_kyc_accounts(client_id)
+    from dashboard.financial_overview import parse_currency
+    
+    # Aggregate stats across all KYC accounts
+    totals = {
+        "total_payouts": 0.0, "total_deposits": 0.0, "total_fees": 0.0,
+        "total_net_profit": 0.0, "total_hedge": 0.0, "total_farming": 0.0,
+        "active_accounts": 0, "passed_accounts": 0, "failed_accounts": 0,
+        "total_evaluations": 0
+    }
+    per_account = []
+    
+    for name in accounts:
+        cdata = get_client_data(name)
+        if not cdata:
+            per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
+            continue
+        
+        evals = cdata.get('evaluations', [])
+        acc_stats = {"name": name, "eval_count": len(evals), "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
+        totals["total_evaluations"] += len(evals)
+        
+        for ev in evals:
+            if not isinstance(ev, dict):
+                continue
+            # Status
+            status = str(ev.get('Status') or '').lower()
+            if any(s in status for s in ['passed', 'funded']):
+                acc_stats["passed"] += 1
+                totals["passed_accounts"] += 1
+            elif any(s in status for s in ['failed', 'breached', 'blown', 'fail']):
+                acc_stats["failed"] += 1
+                totals["failed_accounts"] += 1
+            elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
+                acc_stats["active"] += 1
+                totals["active_accounts"] += 1
+            
+            # Fees
+            fee = parse_currency(ev.get('Fee'))
+            act_fee = parse_currency(ev.get('Activation Fee'))
+            acc_stats["fees"] += (fee + act_fee)
+            
+            # Payouts
+            for i in range(1, 10):
+                acc_stats["payouts"] += parse_currency(ev.get(f'Payout {i}'))
+            
+            # Hedge results
+            for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
+                        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
+                        'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                acc_stats["hedge"] += parse_currency(ev.get(col))
+            
+            # Farming
+            acc_stats["farming"] += parse_currency(ev.get('Farming Profit'))
+        
+        acc_stats["net"] = round(acc_stats["payouts"] - acc_stats["fees"] + acc_stats["hedge"] + acc_stats["farming"], 2)
+        acc_stats["payouts"] = round(acc_stats["payouts"], 2)
+        acc_stats["fees"] = round(acc_stats["fees"], 2)
+        acc_stats["hedge"] = round(acc_stats["hedge"], 2)
+        acc_stats["farming"] = round(acc_stats["farming"], 2)
+        
+        totals["total_payouts"] += acc_stats["payouts"]
+        totals["total_fees"] += acc_stats["fees"]
+        totals["total_hedge"] += acc_stats["hedge"]
+        totals["total_farming"] += acc_stats["farming"]
+        totals["total_net_profit"] += acc_stats["net"]
+        
+        per_account.append(acc_stats)
+    
+    # Round totals
+    for k in ["total_payouts", "total_fees", "total_hedge", "total_farming", "total_net_profit"]:
+        totals[k] = round(totals[k], 2)
+    
+    return jsonify({
+        "status": "success",
+        "primary": client_id,
+        "totals": totals,
+        "accounts": per_account
+    })
 
 # ============ Admin/Trader/Client Management ============
 
@@ -4076,11 +4180,14 @@ def can_access_client(user_type, user_identifier, target_client):
         return True
     
     if user_type == 'client':
-        # Client can access own data or KYC-linked accounts
+        # Client can always access own data
         if user_identifier == target_client:
             return True
-        kyc_group = get_all_kyc_accounts(user_identifier)
-        return target_client in kyc_group
+        # Only primary KYC clients can access linked accounts' data
+        if is_kyc_primary(user_identifier):
+            kyc_group = get_all_kyc_accounts(user_identifier)
+            return target_client in kyc_group
+        return False
     
     # For admins and traders, check hierarchy
     for admin_name, admin_data in hierarchy.get('admins', {}).items():

@@ -798,6 +798,10 @@ def get_kyc_primary_for(linked_client: str) -> str:
         row = cursor.fetchone()
         return row['primary_client'] if row else None
 
+def is_kyc_primary(client_name: str) -> bool:
+    """Check if this client is a primary KYC account (has linked accounts under it)."""
+    return len(get_kyc_linked_clients(client_name)) > 0
+
 def get_all_kyc_accounts(client_name: str) -> list:
     """Get all KYC accounts for a client (including self). 
     If client_name is primary → returns [self] + linked accounts.

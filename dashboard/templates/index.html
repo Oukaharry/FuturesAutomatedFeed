@@ -1160,6 +1160,9 @@
                     <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
                     <button class="tab-btn" onclick="openTab('vps')">VPS</button>
                     <button class="tab-btn" onclick="openTab('payment')">Payment Info</button>
+                    <button class="tab-btn" id="kyc-portfolio-tab-btn" onclick="openTab('kyc-portfolio')" style="display:none; background:linear-gradient(135deg,rgba(168,85,247,0.2),rgba(88,28,135,0.4)); border:1px solid rgba(192,132,252,0.4);">
+                        <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
+                    </button>
                 </div>
                 <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
                     {% if user_type in ('admin', 'super_admin') %}
@@ -1553,6 +1556,89 @@
             </table>
             <div id="no-payment-info-msg" class="no-data">No payment cards configured. Add one to get started.</div>
         </div>
+
+        <!-- KYC Portfolio Tab (Primary KYC clients only) -->
+        <div id="kyc-portfolio" class="tab-content">
+            <div class="card" style="margin-top: 20px;">
+                <h3 style="color: #c084fc; margin-bottom: 20px; display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-users"></i> Combined KYC Portfolio
+                </h3>
+                
+                <!-- Summary Cards -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 30px;">
+                    <!-- Total Evaluations -->
+                    <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                        <div style="font-size:0.75rem; color:#93c5fd; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">TOTAL EVALUATIONS</div>
+                        <div id="kyc-total-evals" style="font-size:1.8rem; font-weight:800; color:#60a5fa;">0</div>
+                    </div>
+                    <!-- Total Payouts -->
+                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                        <div style="font-size:0.75rem; color:#6ee7b7; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">TOTAL PAYOUTS</div>
+                        <div id="kyc-total-payouts" style="font-size:1.8rem; font-weight:800; color:#34d399;">$0.00</div>
+                    </div>
+                    <!-- Challenge Fees -->
+                    <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                        <div style="font-size:0.75rem; color:#fca5a5; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">CHALLENGE FEES</div>
+                        <div id="kyc-total-fees" style="font-size:1.8rem; font-weight:800; color:#f87171;">$0.00</div>
+                    </div>
+                    <!-- Net Profit -->
+                    <div style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                        <div style="font-size:0.75rem; color:#d8b4fe; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">NET PROFIT</div>
+                        <div id="kyc-total-net" style="font-size:1.8rem; font-weight:800; color:#c084fc;">$0.00</div>
+                    </div>
+                    <!-- Hedging Results -->
+                    <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                        <div style="font-size:0.75rem; color:#bae6fd; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">HEDGING RESULTS</div>
+                        <div id="kyc-total-hedge" style="font-size:1.8rem; font-weight:800; color:#38bdf8;">$0.00</div>
+                    </div>
+                    <!-- Farming Results -->
+                    <div style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                        <div style="font-size:0.75rem; color:#d9f99d; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">FARMING RESULTS</div>
+                        <div id="kyc-total-farming" style="font-size:1.8rem; font-weight:800; color:#a3e635;">$0.00</div>
+                    </div>
+                </div>
+
+                <!-- Mini Stats -->
+                <div style="display: flex; gap: 30px; margin-bottom: 24px; padding: 12px 20px; background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;">
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span style="color:#94a3b8;">Active</span>
+                        <span id="kyc-active" style="font-weight:700; color:#fff;">0</span>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span style="color:#94a3b8;">Passed</span>
+                        <span id="kyc-passed" style="font-weight:700; color:#34d399;">0</span>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span style="color:#94a3b8;">Failed</span>
+                        <span id="kyc-failed" style="font-weight:700; color:#f87171;">0</span>
+                    </div>
+                </div>
+
+                <!-- Per-Account Breakdown Table -->
+                <h4 style="color: #94a3b8; margin-bottom: 12px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                    <i class="fas fa-chart-bar" style="margin-right: 6px;"></i> Per-Account Breakdown
+                </h4>
+                <table class="data-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding-left:16px;">Account</th>
+                            <th style="text-align:center;">Evals</th>
+                            <th style="text-align:center;">Active</th>
+                            <th style="text-align:center;">Passed</th>
+                            <th style="text-align:center;">Failed</th>
+                            <th style="text-align:right;">Payouts</th>
+                            <th style="text-align:right;">Fees</th>
+                            <th style="text-align:right;">Hedge</th>
+                            <th style="text-align:right;">Farming</th>
+                            <th style="text-align:right; padding-right:16px;">Net Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kyc-portfolio-body">
+                        <tr><td colspan="10" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <style>
@@ -1660,6 +1746,7 @@
 
         // ── KYC Account Switcher ──────────────────────────────────────────
         let kycAccounts = [];
+        let isKycPrimary = false;
         function initKycSwitcher() {
             if (!CLIENT_ID) return;
             fetch(`/api/kyc/accounts?client_id=${encodeURIComponent(CLIENT_ID)}`)
@@ -1670,6 +1757,7 @@
                         return;
                     }
                     kycAccounts = data.accounts;
+                    isKycPrimary = data.is_primary;
                     document.getElementById('kyc-single-badge').style.display = 'none';
                     document.getElementById('kyc-switcher-wrap').style.display = 'block';
                     const list = document.getElementById('kyc-dropdown-list');
@@ -1684,6 +1772,61 @@
                             <span style="font-size:0.78rem; color:#64748b;">${a.eval_count} evals</span>
                         </a>
                     `).join('');
+                    
+                    // Show KYC Portfolio tab if primary
+                    if (isKycPrimary) {
+                        const tabBtn = document.getElementById('kyc-portfolio-tab-btn');
+                        if (tabBtn) tabBtn.style.display = '';
+                        loadKycPortfolio();
+                    }
+                })
+                .catch(() => {});
+        }
+        
+        function loadKycPortfolio() {
+            fetch('/api/kyc/portfolio')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status !== 'success') return;
+                    const t = data.totals;
+                    const fmt = v => '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    
+                    document.getElementById('kyc-total-evals').textContent = t.total_evaluations;
+                    document.getElementById('kyc-total-payouts').textContent = fmt(t.total_payouts);
+                    document.getElementById('kyc-total-fees').textContent = fmt(t.total_fees);
+                    document.getElementById('kyc-total-net').textContent = fmt(t.total_net_profit);
+                    document.getElementById('kyc-total-hedge').textContent = fmt(t.total_hedge);
+                    document.getElementById('kyc-total-farming').textContent = fmt(t.total_farming);
+                    document.getElementById('kyc-active').textContent = t.active_accounts;
+                    document.getElementById('kyc-passed').textContent = t.passed_accounts;
+                    document.getElementById('kyc-failed').textContent = t.failed_accounts;
+                    
+                    // Net profit color
+                    const netEl = document.getElementById('kyc-total-net');
+                    netEl.style.color = t.total_net_profit >= 0 ? '#c084fc' : '#f87171';
+                    
+                    // Per-account table
+                    const tbody = document.getElementById('kyc-portfolio-body');
+                    if (data.accounts && data.accounts.length) {
+                        tbody.innerHTML = data.accounts.map(a => `
+                            <tr style="border-bottom:1px solid #1e293b;">
+                                <td style="padding:10px 16px; font-weight:600;">
+                                    <a href="/dashboard/${encodeURIComponent(a.name)}" style="color:#60a5fa; text-decoration:none;">${a.name}</a>
+                                </td>
+                                <td style="text-align:center;">${a.eval_count}</td>
+                                <td style="text-align:center; color:#fff;">${a.active}</td>
+                                <td style="text-align:center; color:#34d399;">${a.passed}</td>
+                                <td style="text-align:center; color:#f87171;">${a.failed}</td>
+                                <td style="text-align:right; color:#34d399;">${fmt(a.payouts)}</td>
+                                <td style="text-align:right; color:#f87171;">${fmt(a.fees)}</td>
+                                <td style="text-align:right; color:#38bdf8;">${fmt(a.hedge)}</td>
+                                <td style="text-align:right; color:#a3e635;">${fmt(a.farming)}</td>
+                                <td style="text-align:right; padding-right:16px; font-weight:700; color:${a.net >= 0 ? '#c084fc' : '#f87171'};">${fmt(a.net)}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
+                    }
                 })
                 .catch(() => {});
         }
