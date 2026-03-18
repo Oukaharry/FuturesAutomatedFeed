@@ -1160,9 +1160,6 @@
                     <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
                     <button class="tab-btn" onclick="openTab('vps')">VPS</button>
                     <button class="tab-btn" onclick="openTab('payment')">Payment Info</button>
-                    <button class="tab-btn" id="kyc-portfolio-tab-btn" onclick="openTab('kyc-portfolio')" style="display:none; background:linear-gradient(135deg,rgba(168,85,247,0.2),rgba(88,28,135,0.4)); border:1px solid rgba(192,132,252,0.4);">
-                        <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
-                    </button>
                 </div>
                 <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
                     {% if user_type in ('admin', 'super_admin') %}
@@ -1171,24 +1168,33 @@
                     </button>
                     {% endif %}
                     {% if client_id %}
-                    <div id="kyc-switcher-wrap" style="display:none; position:relative;">
-                        <button id="kyc-switcher-btn" onclick="toggleKycDropdown()" class="header-user-badge" style="cursor:pointer; border:none; background:rgba(96,165,250,0.15); padding:6px 14px; border-radius:8px; display:flex; align-items:center; gap:6px;">
-                            <span id="kyc-current-name">{{ client_id }}</span>
-                            <i class="fas fa-chevron-down" style="font-size:0.7rem; opacity:0.7;"></i>
-                        </button>
-                        <div id="kyc-dropdown" style="display:none; position:absolute; top:100%; right:0; margin-top:6px; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;">
-                            <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
-                        </div>
-                    </div>
                     <span id="kyc-single-badge" class="header-user-badge">{{ client_id }}</span>
                     {% endif %}
-                    <a href="/change-password" class="header-logout-pill" style="background: rgba(245,158,11,0.15); color: #f59e0b; margin-right: 6px;">
-                        <i class="fas fa-key"></i> Password
-                    </a>
                     <a href="/logout" class="header-logout-pill">
                         Logout
                     </a>
                 </div>
+            </div>
+            <!-- Secondary bar: KYC Portfolio, KYC Switcher, Change Password -->
+            <div id="header-secondary-bar" style="display:flex; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border-top:1px solid rgba(255,255,255,0.06); padding:6px 20px; justify-content:center; align-items:center; gap:12px;">
+                <button class="tab-btn" id="kyc-portfolio-tab-btn" onclick="openTab('kyc-portfolio')" style="display:none; background:linear-gradient(135deg,rgba(168,85,247,0.2),rgba(88,28,135,0.4)); border:1px solid rgba(192,132,252,0.4); padding:6px 16px; font-size:0.85rem;">
+                    <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
+                </button>
+                {% if client_id %}
+                <div id="kyc-switcher-wrap" style="display:none; position:relative;">
+                    <button id="kyc-switcher-btn" onclick="toggleKycDropdown()" style="cursor:pointer; border:1px solid rgba(96,165,250,0.3); background:rgba(96,165,250,0.1); padding:6px 14px; border-radius:8px; display:flex; align-items:center; gap:6px; color:#60a5fa; font-size:0.85rem; font-weight:500;">
+                        <i class="fas fa-exchange-alt" style="font-size:0.75rem;"></i>
+                        <span id="kyc-current-name">{{ client_id }}</span>
+                        <i class="fas fa-chevron-down" style="font-size:0.65rem; opacity:0.7;"></i>
+                    </button>
+                    <div id="kyc-dropdown" style="display:none; position:absolute; top:100%; right:0; margin-top:6px; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;">
+                        <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
+                    </div>
+                </div>
+                {% endif %}
+                <a href="/change-password" style="display:flex; align-items:center; gap:5px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); color:#f59e0b; padding:6px 14px; border-radius:8px; font-size:0.85rem; font-weight:500; text-decoration:none;">
+                    <i class="fas fa-key" style="font-size:0.75rem;"></i> Password
+                </a>
             </div>
         </header>
 
