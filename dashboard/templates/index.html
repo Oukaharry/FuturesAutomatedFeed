@@ -1137,6 +1137,9 @@
                 <a href="/client_performance" class="tab-btn active"><i class="fas fa-users"></i> Clients</a>
                 <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
                 <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
+                <a href="/change-password" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                    <i class="fas fa-key"></i> Change Password
+                </a>
                 <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </a>
@@ -1167,6 +1170,9 @@
                     {% if client_id %}
                     <span class="header-user-badge">{{ client_id }} <span class="flag-icon flag-icon-us"></span></span>
                     {% endif %}
+                    <a href="/change-password" class="header-logout-pill" style="background: rgba(245,158,11,0.15); color: #f59e0b; margin-right: 6px;">
+                        <i class="fas fa-key"></i> Password
+                    </a>
                     <a href="/logout" class="header-logout-pill">
                         Logout
                     </a>

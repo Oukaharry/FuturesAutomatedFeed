@@ -3520,8 +3520,6 @@ def change_password_page():
 @limiter.limit("5 per hour")
 def api_change_password():
     """Change user's own password."""
-    from dashboard.email_service import send_password_changed_notification
-    
     data = request.json
     current_password = data.get('current_password')
     new_password = data.get('new_password')
@@ -3535,7 +3533,6 @@ def api_change_password():
     session_user = request.session_user
     user_type = session_user.get('user_type')
     username = session_user.get('user_identifier')
-    user_email = session_user.get('email', username)  # Use email if available
     
     # Verify current password
     if user_type == 'super_admin':
@@ -3543,9 +3540,6 @@ def api_change_password():
             return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
         if set_admin_password('super_admin', new_password):
             log_action('CHANGE_PASSWORD', 'super_admin', 'super_admin', get_remote_address())
-            # Send email notification
-            if user_email:
-                send_password_changed_notification(user_email, 'Super Admin', 'self')
             return jsonify({"status": "success", "message": "Password changed successfully"})
     else:
         user_info = verify_user_password(username, user_type, current_password)
@@ -3553,9 +3547,6 @@ def api_change_password():
             return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
         if update_user_password(username, user_type, new_password):
             log_action('CHANGE_PASSWORD', user_type, username, get_remote_address())
-            # Send email notification
-            if user_email and '@' in user_email:
-                send_password_changed_notification(user_email, username, 'self')
             return jsonify({"status": "success", "message": "Password changed successfully"})
     
     return jsonify({"status": "error", "message": "Failed to change password"}), 500
