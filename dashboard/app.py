@@ -3692,7 +3692,20 @@ def api_kyc_portfolio():
             return True
         d = parse_date_safe(ev.get('Date Purchased')) or parse_date_safe(ev.get('Date Started'))
         if not d:
-            return False  # Exclude evals with unparseable dates when filtering
+            return False
+        if filter_from and d < filter_from:
+            return False
+        if filter_to and d > filter_to:
+            return False
+        return True
+
+    def date_in_period(date_str):
+        """Check if a date string falls within the filter period."""
+        if not filter_from and not filter_to:
+            return True
+        d = parse_date_safe(date_str)
+        if not d:
+            return True  # Include items with no parseable date
         if filter_from and d < filter_from:
             return False
         if filter_to and d > filter_to:
@@ -3716,13 +3729,15 @@ def api_kyc_portfolio():
             per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
             continue
         
-        evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict) and eval_in_period(ev)]
-        acc_stats = {"name": name, "eval_count": len(evals), "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
-        totals["total_evaluations"] += len(evals)
+        all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
+        period_evals = [ev for ev in all_evals if eval_in_period(ev)]
         
-        for ev in evals:
+        acc_stats = {"name": name, "eval_count": len(period_evals), "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
+        totals["total_evaluations"] += len(period_evals)
+        
+        # Pass 1: Eval-level stats (fees, hedge, farming, status) filtered by Date Purchased
+        for ev in period_evals:
             prop_firm = str(ev.get('Prop Firm') or 'Unknown').strip() or 'Unknown'
-            account_num = str(ev.get('Account #') or ev.get('Account #.1') or '-').strip()
             status = str(ev.get('Status') or '').lower()
             
             # Status
@@ -3741,19 +3756,6 @@ def api_kyc_portfolio():
             act_fee = parse_currency(ev.get('Activation Fee'))
             acc_stats["fees"] += (fee + act_fee)
             
-            # Payouts — collect individual records
-            ev_payouts_total = 0.0
-            for i in range(1, 10):
-                pval = parse_currency(ev.get(f'Payout {i}'))
-                if pval != 0:
-                    pdate = str(ev.get(f'Date {i}') or '-').strip()
-                    all_payouts.append({
-                        "client": name, "prop_firm": prop_firm, "account": account_num,
-                        "payout_num": i, "amount": round(pval, 2), "date": pdate
-                    })
-                    ev_payouts_total += pval
-                acc_stats["payouts"] += pval
-            
             # Hedge results
             ev_hedge = 0.0
             for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
@@ -3766,12 +3768,11 @@ def api_kyc_portfolio():
             ev_farming = parse_currency(ev.get('Farming Profit'))
             acc_stats["farming"] += ev_farming
             
-            # Prop firm breakdown
+            # Prop firm breakdown (non-payout stats)
             if prop_firm not in by_prop_firm:
                 by_prop_firm[prop_firm] = {"evals": 0, "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
             pf = by_prop_firm[prop_firm]
             pf["evals"] += 1
-            pf["payouts"] += ev_payouts_total
             pf["fees"] += (fee + act_fee)
             pf["hedge"] += ev_hedge
             pf["farming"] += ev_farming
@@ -3781,6 +3782,26 @@ def api_kyc_portfolio():
                 pf["failed"] += 1
             elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
                 pf["active"] += 1
+        
+        # Pass 2: Payouts from ALL evals, filtered by individual payout date
+        for ev in all_evals:
+            prop_firm = str(ev.get('Prop Firm') or 'Unknown').strip() or 'Unknown'
+            account_num = str(ev.get('Account #') or ev.get('Account #.1') or '-').strip()
+            
+            for i in range(1, 10):
+                pval = parse_currency(ev.get(f'Payout {i}'))
+                if pval != 0:
+                    pdate = str(ev.get(f'Date {i}') or '-').strip()
+                    if date_in_period(pdate):
+                        all_payouts.append({
+                            "client": name, "prop_firm": prop_firm, "account": account_num,
+                            "payout_num": i, "amount": round(pval, 2), "date": pdate
+                        })
+                        acc_stats["payouts"] += pval
+                        # Add to prop firm payouts
+                        if prop_firm not in by_prop_firm:
+                            by_prop_firm[prop_firm] = {"evals": 0, "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
+                        by_prop_firm[prop_firm]["payouts"] += pval
         
         acc_stats["net"] = round(acc_stats["payouts"] - acc_stats["fees"] + acc_stats["hedge"] + acc_stats["farming"], 2)
         acc_stats["payouts"] = round(acc_stats["payouts"], 2)
