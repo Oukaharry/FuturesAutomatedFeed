@@ -1698,7 +1698,6 @@
                                     <th style="text-align:left; padding-left:16px;">Client</th>
                                     <th style="text-align:left;">Prop Firm</th>
                                     <th style="text-align:left;">Account</th>
-                                    <th style="text-align:center;">Payout #</th>
                                     <th style="text-align:left;">Date</th>
                                     <th style="text-align:right; padding-right:16px;">Amount</th>
                                 </tr>
@@ -1937,13 +1936,12 @@
                                 <td style="padding:8px 16px;">${p.client}</td>
                                 <td style="color:#fbbf24;">${p.prop_firm}</td>
                                 <td style="color:#94a3b8; font-size:0.85rem;">${p.account}</td>
-                                <td style="text-align:center;">${p.payout_num}</td>
                                 <td style="color:#94a3b8;">${p.date}</td>
                                 <td style="text-align:right; padding-right:16px; font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
                             </tr>
                         `).join('');
                     } else {
-                        payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#64748b;">No payouts found for this period.</td></tr>';
+                        payoutsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#64748b;">No payouts found for this period.</td></tr>';
                     }
                     // Collapse payouts section on refresh
                     document.getElementById('kyc-payouts-section').style.display = 'none';
@@ -1969,14 +1967,13 @@
             }
         }
         function setKycDefaultPeriod() {
-            // Default to last month
+            // Default to current month
             const now = new Date();
-            const firstOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-            const lastMonth = new Date(firstOfThisMonth.getTime() - 1); // last day of prev month
-            const y = lastMonth.getFullYear();
-            const m = String(lastMonth.getMonth() + 1).padStart(2, '0');
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
             document.getElementById('kyc-date-from').value = `${y}-${m}-01`;
-            document.getElementById('kyc-date-to').value = `${y}-${m}-${String(lastMonth.getDate()).padStart(2, '0')}`;
+            document.getElementById('kyc-date-to').value = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
         }
         function toggleKycDropdown() {
             const dd = document.getElementById('kyc-dropdown');
