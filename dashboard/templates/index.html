@@ -1655,6 +1655,58 @@
                         <tr><td colspan="10" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
                     </tbody>
                 </table>
+
+                <!-- By Prop Firm Breakdown -->
+                <h4 style="color: #94a3b8; margin: 30px 0 12px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                    <i class="fas fa-building" style="margin-right: 6px;"></i> By Prop Firm
+                </h4>
+                <table class="data-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding-left:16px;">Prop Firm</th>
+                            <th style="text-align:center;">Evals</th>
+                            <th style="text-align:center;">Active</th>
+                            <th style="text-align:center;">Passed</th>
+                            <th style="text-align:center;">Failed</th>
+                            <th style="text-align:right;">Payouts</th>
+                            <th style="text-align:right;">Fees</th>
+                            <th style="text-align:right;">Hedge</th>
+                            <th style="text-align:right;">Farming</th>
+                            <th style="text-align:right; padding-right:16px;">Net Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="kyc-propfirm-body">
+                        <tr><td colspan="10" style="text-align:center; padding:20px; color:#64748b;">Loading...</td></tr>
+                    </tbody>
+                </table>
+
+                <!-- All Payouts Section -->
+                <div style="margin-top:30px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                        <h4 style="color: #94a3b8; margin: 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                            <i class="fas fa-money-bill-wave" style="margin-right: 6px;"></i> All Payouts
+                            <span id="kyc-payouts-count" style="font-size:0.8rem; color:#64748b; font-weight:400; margin-left:6px;"></span>
+                        </h4>
+                        <button onclick="toggleKycPayouts()" id="kyc-payouts-toggle-btn" style="background:linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,78,59,0.5)); border:1px solid rgba(52,211,153,0.4); color:#34d399; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                            <i class="fas fa-eye"></i> See All Payouts
+                        </button>
+                    </div>
+                    <div id="kyc-payouts-section" style="display:none;">
+                        <table class="data-table" style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left; padding-left:16px;">Client</th>
+                                    <th style="text-align:left;">Prop Firm</th>
+                                    <th style="text-align:left;">Account</th>
+                                    <th style="text-align:center;">Payout #</th>
+                                    <th style="text-align:left;">Date</th>
+                                    <th style="text-align:right; padding-right:16px;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kyc-payouts-body"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1852,6 +1904,51 @@
                     } else {
                         tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
                     }
+                    
+                    // Prop firm breakdown table
+                    const pfBody = document.getElementById('kyc-propfirm-body');
+                    if (data.by_prop_firm && data.by_prop_firm.length) {
+                        pfBody.innerHTML = data.by_prop_firm.map(pf => `
+                            <tr style="border-bottom:1px solid #1e293b;">
+                                <td style="padding:10px 16px; font-weight:600; color:#fbbf24;">${pf.name}</td>
+                                <td style="text-align:center;">${pf.evals}</td>
+                                <td style="text-align:center; color:#fff;">${pf.active}</td>
+                                <td style="text-align:center; color:#34d399;">${pf.passed}</td>
+                                <td style="text-align:center; color:#f87171;">${pf.failed}</td>
+                                <td style="text-align:right; color:#34d399;">${fmt(pf.payouts)}</td>
+                                <td style="text-align:right; color:#f87171;">${fmt(pf.fees)}</td>
+                                <td style="text-align:right; color:#38bdf8;">${fmt(pf.hedge)}</td>
+                                <td style="text-align:right; color:#a3e635;">${fmt(pf.farming)}</td>
+                                <td style="text-align:right; padding-right:16px; font-weight:700; color:${pf.net >= 0 ? '#c084fc' : '#f87171'};">${fmt(pf.net)}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        pfBody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#64748b;">No prop firm data.</td></tr>';
+                    }
+                    
+                    // All payouts table
+                    const payoutsBody = document.getElementById('kyc-payouts-body');
+                    const payoutsCount = document.getElementById('kyc-payouts-count');
+                    const payouts = data.payouts || [];
+                    payoutsCount.textContent = `(${payouts.length} payouts — ${fmt(payouts.reduce((s, p) => s + p.amount, 0))})`;
+                    if (payouts.length) {
+                        payoutsBody.innerHTML = payouts.map(p => `
+                            <tr style="border-bottom:1px solid #1e293b;">
+                                <td style="padding:8px 16px;">${p.client}</td>
+                                <td style="color:#fbbf24;">${p.prop_firm}</td>
+                                <td style="color:#94a3b8; font-size:0.85rem;">${p.account}</td>
+                                <td style="text-align:center;">${p.payout_num}</td>
+                                <td style="color:#94a3b8;">${p.date}</td>
+                                <td style="text-align:right; padding-right:16px; font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
+                            </tr>
+                        `).join('');
+                    } else {
+                        payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#64748b;">No payouts found for this period.</td></tr>';
+                    }
+                    // Collapse payouts section on refresh
+                    document.getElementById('kyc-payouts-section').style.display = 'none';
+                    const btn = document.getElementById('kyc-payouts-toggle-btn');
+                    btn.innerHTML = '<i class="fas fa-eye"></i> See All Payouts';
                 })
                 .catch(() => {});
         }
@@ -1859,6 +1956,17 @@
             document.getElementById('kyc-date-from').value = '';
             document.getElementById('kyc-date-to').value = '';
             loadKycPortfolio();
+        }
+        function toggleKycPayouts() {
+            const section = document.getElementById('kyc-payouts-section');
+            const btn = document.getElementById('kyc-payouts-toggle-btn');
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Payouts';
+            } else {
+                section.style.display = 'none';
+                btn.innerHTML = '<i class="fas fa-eye"></i> See All Payouts';
+            }
         }
         function setKycDefaultPeriod() {
             // Default to last month

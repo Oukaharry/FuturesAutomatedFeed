@@ -3707,6 +3707,8 @@ def api_kyc_portfolio():
         "total_evaluations": 0
     }
     per_account = []
+    all_payouts = []  # Individual payout records
+    by_prop_firm = {}  # Prop firm breakdown
     
     for name in accounts:
         cdata = get_client_data(name)
@@ -3719,8 +3721,11 @@ def api_kyc_portfolio():
         totals["total_evaluations"] += len(evals)
         
         for ev in evals:
-            # Status
+            prop_firm = str(ev.get('Prop Firm') or 'Unknown').strip() or 'Unknown'
+            account_num = str(ev.get('Account #') or ev.get('Account #.1') or '-').strip()
             status = str(ev.get('Status') or '').lower()
+            
+            # Status
             if any(s in status for s in ['passed', 'funded']):
                 acc_stats["passed"] += 1
                 totals["passed_accounts"] += 1
@@ -3736,18 +3741,46 @@ def api_kyc_portfolio():
             act_fee = parse_currency(ev.get('Activation Fee'))
             acc_stats["fees"] += (fee + act_fee)
             
-            # Payouts
+            # Payouts — collect individual records
+            ev_payouts_total = 0.0
             for i in range(1, 10):
-                acc_stats["payouts"] += parse_currency(ev.get(f'Payout {i}'))
+                pval = parse_currency(ev.get(f'Payout {i}'))
+                if pval != 0:
+                    pdate = str(ev.get(f'Date {i}') or '-').strip()
+                    all_payouts.append({
+                        "client": name, "prop_firm": prop_firm, "account": account_num,
+                        "payout_num": i, "amount": round(pval, 2), "date": pdate
+                    })
+                    ev_payouts_total += pval
+                acc_stats["payouts"] += pval
             
             # Hedge results
+            ev_hedge = 0.0
             for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
                         'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                acc_stats["hedge"] += parse_currency(ev.get(col))
+                ev_hedge += parse_currency(ev.get(col))
+            acc_stats["hedge"] += ev_hedge
             
             # Farming
-            acc_stats["farming"] += parse_currency(ev.get('Farming Profit'))
+            ev_farming = parse_currency(ev.get('Farming Profit'))
+            acc_stats["farming"] += ev_farming
+            
+            # Prop firm breakdown
+            if prop_firm not in by_prop_firm:
+                by_prop_firm[prop_firm] = {"evals": 0, "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
+            pf = by_prop_firm[prop_firm]
+            pf["evals"] += 1
+            pf["payouts"] += ev_payouts_total
+            pf["fees"] += (fee + act_fee)
+            pf["hedge"] += ev_hedge
+            pf["farming"] += ev_farming
+            if any(s in status for s in ['passed', 'funded']):
+                pf["passed"] += 1
+            elif any(s in status for s in ['failed', 'breached', 'blown', 'fail']):
+                pf["failed"] += 1
+            elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
+                pf["active"] += 1
         
         acc_stats["net"] = round(acc_stats["payouts"] - acc_stats["fees"] + acc_stats["hedge"] + acc_stats["farming"], 2)
         acc_stats["payouts"] = round(acc_stats["payouts"], 2)
@@ -3767,11 +3800,27 @@ def api_kyc_portfolio():
     for k in ["total_payouts", "total_fees", "total_hedge", "total_farming", "total_net_profit"]:
         totals[k] = round(totals[k], 2)
     
+    # Round prop firm breakdown
+    prop_firm_list = []
+    for pf_name, pf in by_prop_firm.items():
+        pf["net"] = round(pf["payouts"] - pf["fees"] + pf["hedge"] + pf["farming"], 2)
+        pf["payouts"] = round(pf["payouts"], 2)
+        pf["fees"] = round(pf["fees"], 2)
+        pf["hedge"] = round(pf["hedge"], 2)
+        pf["farming"] = round(pf["farming"], 2)
+        prop_firm_list.append({"name": pf_name, **pf})
+    prop_firm_list.sort(key=lambda x: x["payouts"], reverse=True)
+    
+    # Sort payouts by amount descending
+    all_payouts.sort(key=lambda x: x["amount"], reverse=True)
+    
     return jsonify({
         "status": "success",
         "primary": client_id,
         "totals": totals,
         "accounts": per_account,
+        "payouts": all_payouts,
+        "by_prop_firm": prop_firm_list,
         "period": {"from": from_date, "to": to_date}
     })
 
