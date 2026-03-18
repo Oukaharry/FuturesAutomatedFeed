@@ -3656,18 +3656,17 @@ def api_kyc_portfolio():
     
     accounts = get_all_kyc_accounts(client_id)
     from dashboard.financial_overview import parse_currency
-    from datetime import date as date_type
-    import re as _re
     
     def parse_date_safe(val):
-        """Try to parse a date string to date object. Handles common formats."""
+        """Try to parse a date string to date object. Handles M/D/YY, M/D/YYYY, YYYY-MM-DD, etc."""
         if not val or not isinstance(val, str):
             return None
         clean = val.strip()
         if not clean or clean in ('-', 'n/a', 'null', ''):
             return None
-        # Try common formats
-        for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d', '%m-%d-%Y', '%d-%m-%Y',
+        # Try common formats (2-digit year first since that's the actual data format)
+        for fmt in ('%m/%d/%y', '%m/%d/%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d',
+                    '%m-%d-%Y', '%m-%d-%y', '%d-%m-%Y', '%d-%m-%y',
                     '%b %d, %Y', '%B %d, %Y', '%d %b %Y', '%d %B %Y'):
             try:
                 return datetime.strptime(clean, fmt).date()
@@ -3677,7 +3676,6 @@ def api_kyc_portfolio():
         try:
             return datetime.fromisoformat(clean.replace('Z', '+00:00')).date()
         except Exception:
-            return None
             return None
     
     # Parse filter bounds (expect YYYY-MM-DD from date inputs)
@@ -3694,7 +3692,7 @@ def api_kyc_portfolio():
             return True
         d = parse_date_safe(ev.get('Date Purchased')) or parse_date_safe(ev.get('Date Started'))
         if not d:
-            return True  # Include evals with no date
+            return False  # Exclude evals with unparseable dates when filtering
         if filter_from and d < filter_from:
             return False
         if filter_to and d > filter_to:
