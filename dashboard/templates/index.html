@@ -1560,9 +1560,27 @@
         <!-- KYC Portfolio Tab (Primary KYC clients only) -->
         <div id="kyc-portfolio" class="tab-content">
             <div class="card" style="margin-top: 20px;">
-                <h3 style="color: #c084fc; margin-bottom: 20px; display:flex; align-items:center; gap:10px;">
-                    <i class="fas fa-users"></i> Combined KYC Portfolio
-                </h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+                    <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px;">
+                        <i class="fas fa-users"></i> Combined KYC Portfolio
+                    </h3>
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">From</label>
+                            <input type="date" id="kyc-date-from" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:0.85rem;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">To</label>
+                            <input type="date" id="kyc-date-to" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:0.85rem;">
+                        </div>
+                        <button onclick="loadKycPortfolio()" style="background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                            <i class="fas fa-filter"></i> Apply
+                        </button>
+                        <button onclick="resetKycPeriod()" style="background:rgba(255,255,255,0.08); border:1px solid #475569; color:#94a3b8; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85rem;">
+                            All Time
+                        </button>
+                    </div>
+                </div>
                 
                 <!-- Summary Cards -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 30px;">
@@ -1777,6 +1795,7 @@
                     if (isKycPrimary) {
                         const tabBtn = document.getElementById('kyc-portfolio-tab-btn');
                         if (tabBtn) tabBtn.style.display = '';
+                        setKycDefaultPeriod();
                         loadKycPortfolio();
                     }
                 })
@@ -1784,7 +1803,13 @@
         }
         
         function loadKycPortfolio() {
-            fetch('/api/kyc/portfolio')
+            const fromDate = document.getElementById('kyc-date-from').value;
+            const toDate = document.getElementById('kyc-date-to').value;
+            let url = `/api/kyc/portfolio?client_id=${encodeURIComponent(CLIENT_ID)}`;
+            if (fromDate) url += `&from=${fromDate}`;
+            if (toDate) url += `&to=${toDate}`;
+            
+            fetch(url)
                 .then(r => r.json())
                 .then(data => {
                     if (data.status !== 'success') return;
@@ -1829,6 +1854,21 @@
                     }
                 })
                 .catch(() => {});
+        }
+        function resetKycPeriod() {
+            document.getElementById('kyc-date-from').value = '';
+            document.getElementById('kyc-date-to').value = '';
+            loadKycPortfolio();
+        }
+        function setKycDefaultPeriod() {
+            // Default to current month
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            document.getElementById('kyc-date-from').value = `${y}-${m}-01`;
+            // Last day of current month
+            const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
+            document.getElementById('kyc-date-to').value = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
         }
         function toggleKycDropdown() {
             const dd = document.getElementById('kyc-dropdown');

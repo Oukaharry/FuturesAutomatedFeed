@@ -3630,22 +3630,76 @@ def api_kyc_accounts():
 @app.route('/api/kyc/portfolio', methods=['GET'])
 @require_session
 def api_kyc_portfolio():
-    """Get combined portfolio stats across all KYC-linked accounts. Only for primary KYC clients."""
+    """Get combined portfolio stats across all KYC-linked accounts."""
     session_user = request.session_user
     user_type = session_user.get('user_type')
-    client_id = session_user.get('user_identifier', '')
+    user_id = session_user.get('user_identifier', '')
+    client_id = request.args.get('client_id', '')
     
-    # Super admins can query any primary client's portfolio
-    if user_type == 'super_admin':
-        client_id = request.args.get('client_id', client_id)
-    elif user_type != 'client':
+    # Determine which client to query
+    if user_type in ('super_admin', 'admin', 'trader'):
+        if not client_id:
+            return jsonify({"status": "error", "message": "client_id required"}), 400
+    elif user_type == 'client':
+        client_id = client_id or user_id
+        if client_id != user_id:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+    else:
         return jsonify({"status": "error", "message": "Access denied"}), 403
     
     if not is_kyc_primary(client_id):
         return jsonify({"status": "error", "message": "Not a primary KYC account"}), 403
     
+    # Date period filter (YYYY-MM-DD)
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    
     accounts = get_all_kyc_accounts(client_id)
     from dashboard.financial_overview import parse_currency
+    from datetime import date as date_type
+    import re as _re
+    
+    def parse_date_safe(val):
+        """Try to parse a date string to date object. Handles common formats."""
+        if not val or not isinstance(val, str):
+            return None
+        clean = val.strip()
+        if not clean or clean in ('-', 'n/a', 'null', ''):
+            return None
+        # Try common formats
+        for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d', '%m-%d-%Y', '%d-%m-%Y',
+                    '%b %d, %Y', '%B %d, %Y', '%d %b %Y', '%d %B %Y'):
+            try:
+                return datetime.strptime(clean, fmt).date()
+            except ValueError:
+                continue
+        # Try ISO format with time
+        try:
+            return datetime.fromisoformat(clean.replace('Z', '+00:00')).date()
+        except Exception:
+            return None
+            return None
+    
+    # Parse filter bounds (expect YYYY-MM-DD from date inputs)
+    filter_from = None
+    filter_to = None
+    if from_date:
+        filter_from = parse_date_safe(from_date)
+    if to_date:
+        filter_to = parse_date_safe(to_date)
+    
+    def eval_in_period(ev):
+        """Check if evaluation falls within the date period based on Date Purchased."""
+        if not filter_from and not filter_to:
+            return True
+        d = parse_date_safe(ev.get('Date Purchased')) or parse_date_safe(ev.get('Date Started'))
+        if not d:
+            return True  # Include evals with no date
+        if filter_from and d < filter_from:
+            return False
+        if filter_to and d > filter_to:
+            return False
+        return True
     
     # Aggregate stats across all KYC accounts
     totals = {
@@ -3662,13 +3716,11 @@ def api_kyc_portfolio():
             per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
             continue
         
-        evals = cdata.get('evaluations', [])
+        evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict) and eval_in_period(ev)]
         acc_stats = {"name": name, "eval_count": len(evals), "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
         totals["total_evaluations"] += len(evals)
         
         for ev in evals:
-            if not isinstance(ev, dict):
-                continue
             # Status
             status = str(ev.get('Status') or '').lower()
             if any(s in status for s in ['passed', 'funded']):
@@ -3721,7 +3773,8 @@ def api_kyc_portfolio():
         "status": "success",
         "primary": client_id,
         "totals": totals,
-        "accounts": per_account
+        "accounts": per_account,
+        "period": {"from": from_date, "to": to_date}
     })
 
 # ============ Admin/Trader/Client Management ============
