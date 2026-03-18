@@ -1937,15 +1937,17 @@
                     const payouts = data.payouts || [];
                     payoutsCount.textContent = `(${payouts.length} payouts — ${fmt(payouts.reduce((s, p) => s + p.amount, 0))})`;
                     if (payouts.length) {
-                        payoutsBody.innerHTML = payouts.map(p => `
-                            <tr style="border-bottom:1px solid #1e293b;">
+                        payoutsBody.innerHTML = payouts.map(p => {
+                            const linkUrl = `/dashboard/${encodeURIComponent(p.client)}?highlight_account=${encodeURIComponent(p.account)}&highlight_payout=${p.payout_num}`;
+                            return `
+                            <tr style="border-bottom:1px solid #1e293b; cursor:pointer; transition:background 0.15s;" onclick="window.location.href='${linkUrl}'" onmouseover="this.style.background='rgba(96,165,250,0.1)'" onmouseout="this.style.background='transparent'" title="Click to view this payout">
                                 <td style="padding:8px 16px;">${p.client}</td>
                                 <td style="color:#fbbf24;">${p.prop_firm}</td>
                                 <td style="color:#94a3b8; font-size:0.85rem;">${p.account}</td>
                                 <td style="color:#94a3b8;">${p.date}</td>
                                 <td style="text-align:right; padding-right:16px; font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
                             </tr>
-                        `).join('');
+                        `}).join('');
                     } else {
                         payoutsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#64748b;">No payouts found for this period.</td></tr>';
                     }
@@ -2690,6 +2692,16 @@
             // Check for deep link parameters
             const urlParams = new URLSearchParams(window.location.search);
             const hlRange = urlParams.get('range');
+            const hlAccount = urlParams.get('highlight_account');
+            const hlPayout = urlParams.get('highlight_payout');
+
+            // If deep-linking to a payout, uncheck active filter to show all rows
+            if (hlAccount && hlPayout) {
+                const activeFilterCb = document.getElementById('activeFilter');
+                if (activeFilterCb && activeFilterCb.checked) {
+                    activeFilterCb.checked = false;
+                }
+            }
 
             // NOTE: Do NOT clear evalBody here - we keep the spinner until rows are ready.
             // evalBody is only cleared right before we actually insert rows (see below).
@@ -2709,6 +2721,11 @@
                             if (match && parseInt(match[2]) === currentRowNum) {
                                 forceShow = true;
                             }
+                        }
+                        // Also force-show if targeted by account highlight
+                        if (hlAccount) {
+                            const evAccount = String(ev['Account #'] || ev['Account #.1'] || '').trim();
+                            if (evAccount === hlAccount) forceShow = true;
                         }
 
                         // Filter Logic
@@ -2813,6 +2830,14 @@
                         let highlightClass = '';
                         if (hlRange && colLetter && `${colLetter}${currentRowNum}` === hlRange) {
                              highlightClass = 'highlight-cell';
+                        }
+                        // Highlight payout cell from KYC deep link
+                        if (hlAccount && hlPayout && colLetter) {
+                            const evAccount = String(ev['Account #'] || ev['Account #.1'] || '').trim();
+                            const payoutColLetter = getColumnLetterForKey('Payout ' + hlPayout) || getColumnLetterForKey('Account #');
+                            if (evAccount === hlAccount && colLetter === payoutColLetter) {
+                                highlightClass = 'highlight-cell';
+                            }
                         }
                         
                         // FIX: Only add sticky class if this is the "Prop Firm" column
@@ -2930,6 +2955,33 @@
                 setTimeout(() => {
                     calculateSectionPositions();
                 }, 100);
+
+                // Deep-link scroll: find and scroll to highlighted cell
+                if (hlRange || (hlAccount && hlPayout)) {
+                    setTimeout(() => {
+                        let targetEl = null;
+                        if (hlRange) {
+                            targetEl = document.getElementById(hlRange);
+                        }
+                        if (!targetEl && hlAccount && hlPayout) {
+                            // Find the highlighted cell by searching for .highlight-cell
+                            targetEl = evalBody.querySelector('.highlight-cell');
+                        }
+                        if (targetEl) {
+                            // Switch to evaluations tab
+                            openTab('evaluations');
+                            setTimeout(() => {
+                                targetEl.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'center'});
+                            }, 200);
+                        } else if (hlAccount && hlPayout && pageRows.length < rowsToRender.length) {
+                            // Target row might be on a later page — load all rows
+                            while (evalPage * EVAL_PAGE_SIZE < rowsToRender.length) {
+                                evalPage++;
+                            }
+                            renderEvaluationsTable(false);
+                        }
+                    }, 300);
+                }
         }
 
         fixSubHeaderTop();
