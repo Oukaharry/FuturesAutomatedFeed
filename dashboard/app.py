@@ -41,7 +41,10 @@ from dashboard.database import (
     find_user_by_identifier, verify_user_by_identifier,
     # History management
     save_client_data_with_history, get_data_history, get_data_version,
-    rollback_to_version, compare_versions, get_latest_version
+    rollback_to_version, compare_versions, get_latest_version,
+    # KYC link management
+    add_kyc_link, remove_kyc_link, get_kyc_linked_clients, get_kyc_primary_for,
+    get_all_kyc_accounts, get_all_kyc_links
 )
 from dashboard.notes_service import (
     get_client_notes, save_client_note, delete_client_note
@@ -2037,11 +2040,14 @@ def client_dashboard(client_id):
     if user_type in ['super_admin', 'admin', 'trader']:
         return render_template('index.html', client_id=client_id, user_type=user_type, 
                                can_edit_hedging=True, client_email=client_email)
-    # Check if user is the correct client
-    if user_type != 'client' or session_user.get('user_identifier') != client_id:
-        return redirect('/')
-    return render_template('index.html', client_id=client_id, user_type=user_type, 
-                           can_edit_hedging=False, client_email=client_email)
+    # Client access: allow own dashboard OR any KYC-linked account
+    if user_type == 'client':
+        own_name = session_user.get('user_identifier')
+        kyc_group = get_all_kyc_accounts(own_name)
+        if client_id == own_name or client_id in kyc_group:
+            return render_template('index.html', client_id=client_id, user_type=user_type, 
+                                   can_edit_hedging=False, client_email=client_email)
+    return redirect('/')
 
 # ============ Hierarchy API with Role-Based Access Control ============
 
@@ -3551,6 +3557,69 @@ def api_change_password():
     
     return jsonify({"status": "error", "message": "Failed to change password"}), 500
 
+# ============ KYC Link Management Endpoints ============
+
+@app.route('/api/kyc/link', methods=['POST'])
+@require_role('super_admin')
+def api_kyc_link():
+    """Link a secondary client to a primary client as a KYC account."""
+    data = request.json
+    primary = data.get('primary_client', '').strip()
+    linked = data.get('linked_client', '').strip()
+    if not primary or not linked:
+        return jsonify({"status": "error", "message": "primary_client and linked_client required"}), 400
+    if primary == linked:
+        return jsonify({"status": "error", "message": "Cannot link a client to themselves"}), 400
+    # Prevent linking a client that is already a primary of other links
+    existing_links = get_kyc_linked_clients(linked)
+    if existing_links:
+        return jsonify({"status": "error", "message": f"'{linked}' is already a primary account with linked KYCs. Unlink those first."}), 400
+    if add_kyc_link(primary, linked, request.session_user.get('user_identifier', 'super_admin')):
+        log_action('KYC_LINK', 'super_admin', primary, get_remote_address(), f"Linked: {linked}")
+        return jsonify({"status": "success", "message": f"'{linked}' linked to '{primary}' as KYC"})
+    return jsonify({"status": "error", "message": "Link already exists or failed"}), 400
+
+@app.route('/api/kyc/unlink', methods=['POST'])
+@require_role('super_admin')
+def api_kyc_unlink():
+    """Remove a KYC link."""
+    data = request.json
+    primary = data.get('primary_client', '').strip()
+    linked = data.get('linked_client', '').strip()
+    if not primary or not linked:
+        return jsonify({"status": "error", "message": "primary_client and linked_client required"}), 400
+    if remove_kyc_link(primary, linked):
+        log_action('KYC_UNLINK', 'super_admin', primary, get_remote_address(), f"Unlinked: {linked}")
+        return jsonify({"status": "success", "message": f"'{linked}' unlinked from '{primary}'"})
+    return jsonify({"status": "error", "message": "Link not found"}), 404
+
+@app.route('/api/kyc/links', methods=['GET'])
+@require_role('super_admin')
+def api_kyc_list_all():
+    """List all KYC links (super admin view)."""
+    return jsonify({"status": "success", "links": get_all_kyc_links()})
+
+@app.route('/api/kyc/accounts', methods=['GET'])
+@require_session
+def api_kyc_accounts():
+    """Get all KYC-linked accounts for the current user or a specified client."""
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    client_id = request.args.get('client_id', session_user.get('user_identifier', ''))
+    
+    # Admins/super_admins can query any client; clients can only query themselves
+    if user_type == 'client' and client_id != session_user.get('user_identifier'):
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+    
+    accounts = get_all_kyc_accounts(client_id)
+    # Enrich with basic client info
+    result = []
+    for name in accounts:
+        cdata = get_client_data(name)
+        eval_count = len(cdata.get('evaluations', [])) if cdata else 0
+        result.append({"name": name, "eval_count": eval_count, "is_current": name == client_id})
+    return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1})
+
 # ============ Admin/Trader/Client Management ============
 
 @app.route('/api/add_admin', methods=['POST'])
@@ -4007,8 +4076,11 @@ def can_access_client(user_type, user_identifier, target_client):
         return True
     
     if user_type == 'client':
-        # Client can only access their own data
-        return user_identifier == target_client
+        # Client can access own data or KYC-linked accounts
+        if user_identifier == target_client:
+            return True
+        kyc_group = get_all_kyc_accounts(user_identifier)
+        return target_client in kyc_group
     
     # For admins and traders, check hierarchy
     for admin_name, admin_data in hierarchy.get('admins', {}).items():

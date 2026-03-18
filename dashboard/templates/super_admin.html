@@ -473,6 +473,27 @@
                     </div>
                     <input type="email" id="new-client-email" placeholder="Email (Optional)" class="form-dark" style="margin-top:8px;">
                 </div>
+
+                <div style="height:1px; background:var(--border-color); margin:24px 0;"></div>
+
+                <!-- KYC Account Linking -->
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label class="form-label" style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px; display:block;">
+                        <i class="fas fa-link" style="color:#a78bfa;"></i> Link KYC Accounts
+                    </label>
+                    <select id="kyc-primary-client" class="form-dark" style="margin-bottom:8px;">
+                        <option value="">— Primary Client —</option>
+                    </select>
+                    <select id="kyc-linked-client" class="form-dark" style="margin-bottom:8px;">
+                        <option value="">— Link to (KYC) —</option>
+                    </select>
+                    <button onclick="linkKycAccounts()" class="btn-gold" style="width:100%; padding:8px; border-radius:8px; background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; font-weight:bold; cursor:pointer;">
+                        <i class="fas fa-link"></i> Link KYC
+                    </button>
+                    <!-- Current KYC Links -->
+                    <div id="kyc-links-list" style="margin-top:16px;"></div>
+                </div>
+
                 </div>
             </div>
 
@@ -1590,6 +1611,111 @@
             document.body.appendChild(overlay);
             overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
         }
+
+        // ── KYC Account Linking ───────────────────────────────────────────
+        function populateKycSelects() {
+            const primarySel = document.getElementById('kyc-primary-client');
+            const linkedSel = document.getElementById('kyc-linked-client');
+            if (!primarySel || !linkedSel || !hierarchyData || !hierarchyData.admins) return;
+            // Gather all client names from hierarchy data
+            const clientNames = [];
+            Object.values(hierarchyData.admins).forEach(admin => {
+                Object.values(admin.traders || {}).forEach(trader => {
+                    (trader.clients || []).forEach(c => {
+                        const name = (typeof c === 'object') ? c.name : c;
+                        if (name) clientNames.push(name);
+                    });
+                });
+            });
+            clientNames.sort((a, b) => a.localeCompare(b));
+            const makeOpts = (sel, placeholder) => {
+                const val = sel.value;
+                sel.innerHTML = `<option value="">${placeholder}</option>` +
+                    clientNames.map(n => `<option value="${n}">${n}</option>`).join('');
+                sel.value = val;
+            };
+            makeOpts(primarySel, '— Primary Client —');
+            makeOpts(linkedSel, '— Link to (KYC) —');
+        }
+
+        async function loadKycLinks() {
+            try {
+                const res = await fetch('/api/kyc/links');
+                const data = await res.json();
+                if (data.status !== 'success') return;
+                const container = document.getElementById('kyc-links-list');
+                if (!container) return;
+                const links = data.links || [];
+                if (links.length === 0) {
+                    container.innerHTML = '<p style="color:#64748b; font-size:0.82rem; text-align:center;">No KYC links yet</p>';
+                    return;
+                }
+                // Group by primary
+                const groups = {};
+                links.forEach(l => {
+                    if (!groups[l.primary_client]) groups[l.primary_client] = [];
+                    groups[l.primary_client].push(l.linked_client);
+                });
+                let html = '';
+                for (const [primary, linkedList] of Object.entries(groups)) {
+                    html += `<div style="background:#0f172a; border:1px solid #1e3a5f; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
+                        <div style="font-weight:700; color:#fbbf24; font-size:0.88rem; margin-bottom:6px;">
+                            <i class="fas fa-user" style="margin-right:4px;"></i> ${primary}
+                        </div>`;
+                    linkedList.forEach(linked => {
+                        html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0 4px 18px;">
+                            <span style="color:#94a3b8; font-size:0.83rem;"><i class="fas fa-arrow-right" style="color:#7c3aed; margin-right:6px; font-size:0.7rem;"></i>${linked}</span>
+                            <button onclick="unlinkKyc('${primary}','${linked}')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:0.8rem; padding:2px 6px;" title="Remove link">✕</button>
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                container.innerHTML = html;
+            } catch(e) { console.error('KYC load error:', e); }
+        }
+
+        async function linkKycAccounts() {
+            const primary = document.getElementById('kyc-primary-client').value;
+            const linked = document.getElementById('kyc-linked-client').value;
+            if (!primary || !linked) return alert('Select both a primary client and a KYC to link');
+            if (primary === linked) return alert('Cannot link a client to themselves');
+            try {
+                const res = await fetch('/api/kyc/link', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({primary_client: primary, linked_client: linked})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    document.getElementById('kyc-linked-client').value = '';
+                    loadKycLinks();
+                } else {
+                    alert(data.message || 'Failed to link');
+                }
+            } catch(e) { alert('Network error: ' + e.message); }
+        }
+
+        async function unlinkKyc(primary, linked) {
+            if (!confirm(`Remove KYC link: ${linked} from ${primary}?`)) return;
+            try {
+                const res = await fetch('/api/kyc/unlink', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({primary_client: primary, linked_client: linked})
+                });
+                const data = await res.json();
+                if (data.status === 'success') loadKycLinks();
+                else alert(data.message || 'Failed');
+            } catch(e) { alert('Network error: ' + e.message); }
+        }
+
+        window.linkKycAccounts = linkKycAccounts;
+        window.unlinkKyc = unlinkKyc;
+
+        // Load KYC links on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => { populateKycSelects(); loadKycLinks(); }, 1500);
+        });
     </script>
 </body>
 </html>

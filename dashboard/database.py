@@ -259,6 +259,21 @@ def init_database():
         conn.commit()
         print("Database initialized successfully")
 
+        # KYC Links table - links multiple client accounts to one primary account
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS kyc_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                primary_client TEXT NOT NULL,
+                linked_client TEXT NOT NULL,
+                linked_by TEXT DEFAULT 'super_admin',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(primary_client, linked_client)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_kyc_primary ON kyc_links(primary_client)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_kyc_linked ON kyc_links(linked_client)')
+        conn.commit()
+
 # ============ Password Hashing ============
 
 def hash_password(password: str, salt: str = None) -> tuple:
@@ -737,6 +752,74 @@ def delete_api_key(key_prefix: str) -> bool:
         cursor.execute('DELETE FROM api_keys WHERE key_prefix = ?', (key_prefix,))
         conn.commit()
         return cursor.rowcount > 0
+
+# ============ KYC Link Management ============
+
+def add_kyc_link(primary_client: str, linked_client: str, linked_by: str = 'super_admin') -> bool:
+    """Link a secondary client account to a primary client as a KYC."""
+    if primary_client == linked_client:
+        return False
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO kyc_links (primary_client, linked_client, linked_by, created_at)
+                VALUES (?, ?, ?, ?)
+            ''', (primary_client, linked_client, linked_by, datetime.now().isoformat()))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+def remove_kyc_link(primary_client: str, linked_client: str) -> bool:
+    """Remove a KYC link between two clients."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM kyc_links WHERE primary_client = ? AND linked_client = ?',
+                       (primary_client, linked_client))
+        conn.commit()
+        return cursor.rowcount > 0
+
+def get_kyc_linked_clients(primary_client: str) -> list:
+    """Get all linked KYC accounts for a primary client."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT linked_client, linked_by, created_at FROM kyc_links WHERE primary_client = ?',
+                       (primary_client,))
+        return [{'linked_client': r['linked_client'], 'linked_by': r['linked_by'],
+                 'created_at': r['created_at']} for r in cursor.fetchall()]
+
+def get_kyc_primary_for(linked_client: str) -> str:
+    """If this client is linked to someone, return the primary client name."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT primary_client FROM kyc_links WHERE linked_client = ?',
+                       (linked_client,))
+        row = cursor.fetchone()
+        return row['primary_client'] if row else None
+
+def get_all_kyc_accounts(client_name: str) -> list:
+    """Get all KYC accounts for a client (including self). 
+    If client_name is primary → returns [self] + linked accounts.
+    If client_name is linked → returns [primary] + all siblings + self.
+    """
+    # Check if this client is a primary
+    linked = get_kyc_linked_clients(client_name)
+    if linked:
+        return [client_name] + [l['linked_client'] for l in linked]
+    # Check if this client is linked to a primary
+    primary = get_kyc_primary_for(client_name)
+    if primary:
+        siblings = get_kyc_linked_clients(primary)
+        return [primary] + [l['linked_client'] for l in siblings]
+    return [client_name]
+
+def get_all_kyc_links() -> list:
+    """Get all KYC links in the system (for admin view)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT primary_client, linked_client, linked_by, created_at FROM kyc_links ORDER BY primary_client')
+        return [dict(r) for r in cursor.fetchall()]
 
 # ============ Client Data Management ============
 

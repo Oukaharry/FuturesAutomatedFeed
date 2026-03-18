@@ -1168,7 +1168,16 @@
                     </button>
                     {% endif %}
                     {% if client_id %}
-                    <span class="header-user-badge">{{ client_id }} <span class="flag-icon flag-icon-us"></span></span>
+                    <div id="kyc-switcher-wrap" style="display:none; position:relative;">
+                        <button id="kyc-switcher-btn" onclick="toggleKycDropdown()" class="header-user-badge" style="cursor:pointer; border:none; background:rgba(96,165,250,0.15); padding:6px 14px; border-radius:8px; display:flex; align-items:center; gap:6px;">
+                            <span id="kyc-current-name">{{ client_id }}</span>
+                            <i class="fas fa-chevron-down" style="font-size:0.7rem; opacity:0.7;"></i>
+                        </button>
+                        <div id="kyc-dropdown" style="display:none; position:absolute; top:100%; right:0; margin-top:6px; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;">
+                            <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
+                        </div>
+                    </div>
+                    <span id="kyc-single-badge" class="header-user-badge">{{ client_id }}</span>
                     {% endif %}
                     <a href="/change-password" class="header-logout-pill" style="background: rgba(245,158,11,0.15); color: #f59e0b; margin-right: 6px;">
                         <i class="fas fa-key"></i> Password
@@ -1648,6 +1657,49 @@
         const USER_TYPE = "{{ user_type }}";
         const IS_CLIENT = USER_TYPE === 'client';
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
+
+        // ── KYC Account Switcher ──────────────────────────────────────────
+        let kycAccounts = [];
+        function initKycSwitcher() {
+            if (!CLIENT_ID) return;
+            fetch(`/api/kyc/accounts?client_id=${encodeURIComponent(CLIENT_ID)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status !== 'success' || !data.has_kyc_links) {
+                        // No linked KYCs — show simple badge
+                        return;
+                    }
+                    kycAccounts = data.accounts;
+                    document.getElementById('kyc-single-badge').style.display = 'none';
+                    document.getElementById('kyc-switcher-wrap').style.display = 'block';
+                    const list = document.getElementById('kyc-dropdown-list');
+                    list.innerHTML = kycAccounts.map(a => `
+                        <a href="/dashboard/${encodeURIComponent(a.name)}" 
+                           style="display:flex; justify-content:space-between; align-items:center; padding:10px 16px; color:${a.is_current ? '#fbbf24' : '#e2e8f0'}; text-decoration:none; border-bottom:1px solid #1e293b; background:${a.is_current ? 'rgba(251,191,36,0.1)' : 'transparent'}; transition:background 0.15s;"
+                           onmouseover="this.style.background='rgba(96,165,250,0.15)'"
+                           onmouseout="this.style.background='${a.is_current ? 'rgba(251,191,36,0.1)' : 'transparent'}'">
+                            <span style="font-weight:${a.is_current ? '700' : '400'};">
+                                ${a.is_current ? '● ' : ''}${a.name}
+                            </span>
+                            <span style="font-size:0.78rem; color:#64748b;">${a.eval_count} evals</span>
+                        </a>
+                    `).join('');
+                })
+                .catch(() => {});
+        }
+        function toggleKycDropdown() {
+            const dd = document.getElementById('kyc-dropdown');
+            dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+        }
+        // Close dropdown on outside click
+        document.addEventListener('click', function(e) {
+            const wrap = document.getElementById('kyc-switcher-wrap');
+            if (wrap && !wrap.contains(e.target)) {
+                document.getElementById('kyc-dropdown').style.display = 'none';
+            }
+        });
+        // Init on page load
+        document.addEventListener('DOMContentLoaded', initKycSwitcher);
 
         // Debug Logger
         function debugLog(msg) {
