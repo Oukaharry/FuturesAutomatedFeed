@@ -142,6 +142,10 @@ def main():
                 evals = snap_data.get('evaluations', [])
                 eval_count = len(evals)
                 
+                # Check identity
+                ident = snap_data.get('identity', {})
+                has_email = '✉' if ident.get('email') else ' '
+                
                 # Count non-empty hedge fields across all evals
                 total_hedge = 0
                 for ev in evals:
@@ -154,7 +158,7 @@ def main():
                     if eval_count < prev_eval_count:
                         marker = f" ⚠️ EVALS DROPPED from {prev_eval_count} to {eval_count}!"
                         data_drop_versions.append(ver)
-                    elif total_hedge == 0 and prev_eval_count > 0:
+                    elif eval_count > 0 and prev_eval_count > 0 and total_hedge == 0:
                         marker = " ⚠️ HEDGE DATA GONE!"
                         data_drop_versions.append(ver)
                 
@@ -162,7 +166,7 @@ def main():
                 source = h.get('change_source', '')
                 by = h.get('changed_by', '')
                 date = h.get('created_at', '?')
-                print(f"  v{ver:>3} | evals={eval_count:>3} | hedge_fields={total_hedge:>4} | {action:<15} | {source:<20} | {by:<25} | {date}{marker}")
+                print(f"  v{ver:>3} | evals={eval_count:>3} | hedge={total_hedge:>4} | {has_email} | {action:<15} | {source:<20} | {by:<25} | {date}{marker}")
                 
                 prev_eval_count = eval_count
                 prev_ver = ver
