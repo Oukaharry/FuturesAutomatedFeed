@@ -1735,25 +1735,33 @@ init_database()
 init_admin_password()
 
 def provision_hierarchy_passwords():
-    """Auto-create user_credentials with default password for all hierarchy users who don't have one yet."""
+    """Auto-create or reset user_credentials with default password for hierarchy users."""
     default_pw = 'Test@123'
     created = 0
-    for admin_name, admin_data in hierarchy.get('admins', {}).items():
-        if not user_exists(admin_name, 'admin'):
-            if create_user(admin_name, default_pw, 'admin', admin_data.get('email')):
+    reset = 0
+
+    def ensure_password(name, utype, email=None, parent_admin=None, parent_trader=None):
+        nonlocal created, reset
+        if not user_exists(name, utype):
+            if create_user(name, default_pw, utype, email, parent_admin, parent_trader):
                 created += 1
+        else:
+            # Reset password for users who have never logged in (still have old random pw)
+            existing = get_user(name, utype)
+            if existing and not existing.get('last_login'):
+                if update_user_password(name, utype, default_pw):
+                    reset += 1
+
+    for admin_name, admin_data in hierarchy.get('admins', {}).items():
+        ensure_password(admin_name, 'admin', admin_data.get('email'))
         for trader_name, trader_data in admin_data.get('traders', {}).items():
-            if not user_exists(trader_name, 'trader'):
-                if create_user(trader_name, default_pw, 'trader', trader_data.get('email'), admin_name):
-                    created += 1
+            ensure_password(trader_name, 'trader', trader_data.get('email'), admin_name)
             for client in trader_data.get('clients', []):
                 c_name = client.get('name') if isinstance(client, dict) else client
                 c_email = client.get('email', '') if isinstance(client, dict) else ''
-                if not user_exists(c_name, 'client'):
-                    if create_user(c_name, default_pw, 'client', c_email, admin_name, trader_name):
-                        created += 1
-    if created:
-        print(f"[AUTH] Provisioned {created} users with default password")
+                ensure_password(c_name, 'client', c_email, admin_name, trader_name)
+    if created or reset:
+        print(f"[AUTH] Provisioned {created} new, reset {reset} existing users to default password")
 
 provision_hierarchy_passwords()
 
