@@ -367,16 +367,21 @@
                     renderSummary(data);
                     renderTraders(data.by_trader || {});
                     renderResults(data.results);
-                    // Show scan dates coverage
-                    if (data.scan_dates && data.scan_dates.length > 1) {
-                        const lbl = document.getElementById('date-range-label');
-                        lbl.textContent += ` (${data.scan_dates.length} scan days)`;
+                    // Update date label with scan dates info
+                    const lbl = document.getElementById('date-range-label');
+                    if (data.scan_dates && data.scan_dates.length > 0) {
+                        if (data.scan_dates.length === 1) {
+                            lbl.textContent = `Scan: ${data.scan_dates[0]}`;
+                        } else {
+                            lbl.textContent = `${data.scan_dates.length} scans: ${data.scan_dates[0]} → ${data.scan_dates[data.scan_dates.length-1]}`;
+                        }
                     }
                 } else {
                     allResults = [];
-                    renderSummary({total_clients:0, avg_health_score:0, clients_with_issues:0, total_issues:0});
+                    renderSummary({total_clients:0, avg_health_score:0, clients_with_issues:0, total_issues:0, scan_date: null, message: data.message});
                     renderTraders({});
                     renderResults([]);
+                    document.getElementById('date-range-label').textContent = data.message || 'No data for this period';
                 }
             } catch (e) {
                 console.error('Failed to load quality results:', e);
@@ -416,7 +421,13 @@
             avgEl.className = 'value ' + (avg >= 90 ? 'green' : avg >= 70 ? 'yellow' : 'red');
             document.getElementById('clients-issues').textContent = data.clients_with_issues || 0;
             document.getElementById('total-issues').textContent = data.total_issues || 0;
-            document.getElementById('last-scan').textContent = data.scan_date || 'Never';
+            // Show scan date or date range
+            const scanEl = document.getElementById('last-scan');
+            if (data.scan_dates && data.scan_dates.length > 1) {
+                scanEl.textContent = `${data.scan_dates[0]} → ${data.scan_dates[data.scan_dates.length-1]}`;
+            } else {
+                scanEl.textContent = data.scan_date || 'No scan data';
+            }
         }
 
         function renderTraders(byTrader) {

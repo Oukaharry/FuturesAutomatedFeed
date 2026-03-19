@@ -4960,15 +4960,30 @@ def api_quality_results():
     else:
         results = get_quality_scan_results(scan_date)
     if not results:
-        return jsonify({'status': 'success', 'results': [], 'message': 'No scan results yet. Run a scan first.'})
+        return jsonify({'status': 'success', 'results': [], 'total_clients': 0,
+                        'clients_with_issues': 0, 'total_issues': 0, 'avg_health_score': 0,
+                        'by_trader': {}, 'scan_dates': [],
+                        'message': 'No scan results for this date range.'})
 
-    total_issues = sum(r['total_issues'] for r in results)
-    clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
-    avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
+    # Collect unique scan dates
+    scan_dates = sorted(set(r['scan_date'] for r in results))
 
-    # Group by trader
-    by_trader = {}
+    # For multi-day ranges, deduplicate: keep only the LATEST scan per client
+    # This gives an accurate current-state view even when looking across days
+    client_latest = {}
     for r in results:
+        cid = r['client_id']
+        if cid not in client_latest or r['scan_date'] > client_latest[cid]['scan_date']:
+            client_latest[cid] = r
+    deduped = list(client_latest.values())
+
+    total_issues = sum(r['total_issues'] for r in deduped)
+    clients_with_issues = sum(1 for r in deduped if r['total_issues'] > 0)
+    avg_health = sum(r['health_score'] for r in deduped) / len(deduped) if deduped else 0
+
+    # Group by trader (using deduplicated data)
+    by_trader = {}
+    for r in deduped:
         t = r.get('trader', 'Unknown')
         if t not in by_trader:
             by_trader[t] = {'clients': 0, 'issues': 0, 'total_health': 0}
@@ -4977,19 +4992,16 @@ def api_quality_results():
         by_trader[t]['total_health'] += r['health_score']
     trader_summary = {t: {**v, 'avg_health': round(v['total_health'] / v['clients'], 1)} for t, v in by_trader.items()}
 
-    # Collect unique scan dates for reference
-    scan_dates = sorted(set(r['scan_date'] for r in results))
-
     return jsonify({
         'status': 'success',
         'scan_date': scan_dates[-1] if scan_dates else None,
         'scan_dates': scan_dates,
-        'total_clients': len(results),
+        'total_clients': len(deduped),
         'clients_with_issues': clients_with_issues,
         'total_issues': total_issues,
         'avg_health_score': round(avg_health, 1),
         'by_trader': trader_summary,
-        'results': results
+        'results': results  # Full results (all days) for the issues table
     })
 
 

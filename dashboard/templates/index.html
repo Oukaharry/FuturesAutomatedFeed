@@ -4682,16 +4682,24 @@
         let saveRetryQueue = [];
         let isSaving = false;
 
-        // ── Save-time validation warnings ──
+        // ── Save-time validation warnings (admin/trader only, changed rows only) ──
         function validateBeforeSave() {
+            // Never show to clients
+            if (IS_CLIENT) return [];
+
+            // Only validate rows that were edited in this session
+            const changedRows = new Set(Object.keys(_changedFields).map(Number));
+            if (changedRows.size === 0) return [];
+
             const warnings = [];
             const evals = currentData.evaluations || [];
-            evals.forEach((ev, idx) => {
-                if (ev._deleted) return;
+            changedRows.forEach(idx => {
+                const ev = evals[idx];
+                if (!ev || ev._deleted) return;
                 const row = idx + 1;
                 const pf = (ev['Prop Firm'] || '').trim();
                 const sz = (ev['Account Size'] || '').trim();
-                if (!pf && !sz) return; // empty row
+                if (!pf && !sz) return;
 
                 const sp1 = (ev['Status P1'] || '').trim().toLowerCase();
                 const isActive = sp1 && !['fail','breach','sl','completed','complete'].includes(sp1);
@@ -4710,7 +4718,6 @@
                 if (isActive && !(ev['Account #'] || '').trim() && !(ev['Account #.1'] || '').trim())
                     warnings.push({ row, msg: 'Account # is empty' });
 
-                // Negative Hedge Net without note
                 const hn = parseFloat(String(ev['Hedge Net'] || '').replace(/[$,]/g, ''));
                 const note = (ev['Notes'] || '').trim();
                 const cellNotes = ev._notes || {};
@@ -4722,28 +4729,31 @@
         }
 
         function showValidationWarnings(warnings) {
-            // Remove any existing banner
             const existing = document.getElementById('validation-warning-banner');
             if (existing) existing.remove();
-            if (!warnings.length) return;
+            if (!warnings.length || IS_CLIENT) return;
 
             const banner = document.createElement('div');
             banner.id = 'validation-warning-banner';
-            banner.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:10000; background:linear-gradient(135deg,#92400e,#78350f); border-bottom:2px solid #f59e0b; padding:12px 20px; display:flex; align-items:center; gap:12px; animation:slideDown 0.3s ease;';
+            banner.style.cssText = 'position:fixed; bottom:16px; right:16px; z-index:10000; background:rgba(30,41,59,0.97); border:1px solid rgba(251,191,36,0.4); border-radius:12px; padding:14px 18px; max-width:420px; box-shadow:0 8px 32px rgba(0,0,0,0.5); backdrop-filter:blur(12px);';
+            const highCount = warnings.filter(w => w.severity === 'high').length;
+            const icon = highCount ? 'exclamation-circle' : 'info-circle';
+            const borderColor = highCount ? 'rgba(239,68,68,0.5)' : 'rgba(251,191,36,0.4)';
+            banner.style.borderColor = borderColor;
             banner.innerHTML = `
-                <i class="fas fa-exclamation-triangle" style="color:#fbbf24; font-size:1.2rem;"></i>
-                <div style="flex:1;">
-                    <strong style="color:#fef3c7;">${warnings.length} data quality issue${warnings.length > 1 ? 's' : ''} detected:</strong>
-                    <span style="color:#fde68a; font-size:0.85rem; margin-left:8px;">
-                        ${warnings.slice(0, 5).map(w => `Row ${w.row}: ${w.msg}`).join(' &bull; ')}
-                        ${warnings.length > 5 ? ` (+${warnings.length - 5} more)` : ''}
-                    </span>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                    <i class="fas fa-${icon}" style="color:${highCount ? '#f87171' : '#fbbf24'}; font-size:1rem;"></i>
+                    <strong style="color:#e2e8f0; font-size:0.85rem;">${warnings.length} issue${warnings.length > 1 ? 's' : ''} on edited rows</strong>
+                    <button onclick="this.closest('#validation-warning-banner').remove()" style="margin-left:auto; background:none; border:none; color:#64748b; cursor:pointer; font-size:1rem; padding:0 4px;">&times;</button>
                 </div>
-                <button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.2); color:#fef3c7; padding:4px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;">Dismiss</button>
+                <div style="max-height:180px; overflow-y:auto;">
+                    ${warnings.map(w => `<div style="font-size:0.78rem; color:#94a3b8; padding:3px 0; border-top:1px solid rgba(255,255,255,0.04);">
+                        <span style="color:${w.severity === 'high' ? '#f87171' : '#fbbf24'}; font-weight:600;">Row ${w.row}</span> ${w.msg}
+                    </div>`).join('')}
+                </div>
             `;
-            document.body.prepend(banner);
-            // Auto-hide after 10s
-            setTimeout(() => { if (banner.parentElement) banner.remove(); }, 10000);
+            document.body.appendChild(banner);
+            setTimeout(() => { if (banner.parentElement) banner.remove(); }, 8000);
         }
         
         function saveData(action = 'UPDATE', description = null, retryCount = 0, _retryBody = null) {
