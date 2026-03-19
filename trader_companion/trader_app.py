@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
     import tkinter as tk
-    from tkinter import ttk, messagebox, scrolledtext, simpledialog
+    from tkinter import ttk, messagebox, scrolledtext, simpledialog, filedialog
     GUI_AVAILABLE = True
 except ImportError:
     GUI_AVAILABLE = False
@@ -1382,21 +1382,42 @@ class TraderCompanionApp:
         
         ttk.Button(btn_frame, text="💾 Save Config", command=self.save_config).pack(side=tk.RIGHT, padx=5)
         
-        # Google Sheets Migration Frame
-        sheet_frame = ttk.LabelFrame(main_frame, text="📋 Import from Google Sheets", padding=8)
-        sheet_frame.pack(fill=tk.X, pady=(0, 8))
-        
-        sheet_url_frame = ttk.Frame(sheet_frame)
-        sheet_url_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(sheet_url_frame, text="Sheet URL:", width=15).pack(side=tk.LEFT)
-        self.sheet_url_entry = ttk.Entry(sheet_url_frame, width=50)
+        # Data Import Frame  (Google Sheets OR CSV file)
+        import_frame = ttk.LabelFrame(main_frame, text="📋 Import Data", padding=8)
+        import_frame.pack(fill=tk.X, pady=(0, 8))
+
+        # Source selector
+        source_row = ttk.Frame(import_frame)
+        source_row.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(source_row, text="Source:", width=15).pack(side=tk.LEFT)
+        self.import_source = tk.StringVar(value="sheet")
+        ttk.Radiobutton(source_row, text="Google Sheets", variable=self.import_source,
+                        value="sheet", command=self._toggle_import_source).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Radiobutton(source_row, text="CSV File", variable=self.import_source,
+                        value="csv", command=self._toggle_import_source).pack(side=tk.LEFT)
+
+        # Google Sheets input row
+        self.sheet_input_frame = ttk.Frame(import_frame)
+        self.sheet_input_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(self.sheet_input_frame, text="Sheet URL:", width=15).pack(side=tk.LEFT)
+        self.sheet_url_entry = ttk.Entry(self.sheet_input_frame, width=50)
         self.sheet_url_entry.pack(side=tk.LEFT, padx=5)
-        
-        self.migrate_btn = ttk.Button(sheet_frame, text="📥 Import Sheet Data", command=self.migrate_from_sheet)
-        self.migrate_btn.pack(pady=5)
-        
-        ttk.Label(sheet_frame, text="Sheet must be public", 
-                  font=('Segoe UI', 8, 'italic'), foreground='#888888').pack()
+
+        # CSV file input row (hidden initially)
+        self.csv_input_frame = ttk.Frame(import_frame)
+        ttk.Label(self.csv_input_frame, text="CSV File:", width=15).pack(side=tk.LEFT)
+        self.csv_path_var = tk.StringVar()
+        self.csv_path_entry = ttk.Entry(self.csv_input_frame, textvariable=self.csv_path_var, width=40, state='readonly')
+        self.csv_path_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Button(self.csv_input_frame, text="Browse…", command=self._browse_csv).pack(side=tk.LEFT, padx=2)
+
+        # Import button
+        self.import_btn = ttk.Button(import_frame, text="📥 Import Sheet Data", command=self._do_import)
+        self.import_btn.pack(pady=5)
+
+        self.import_hint = ttk.Label(import_frame, text="Sheet must be public",
+                                      font=('Segoe UI', 8, 'italic'), foreground='#888888')
+        self.import_hint.pack()
         
         # Status Frame
         status_frame = ttk.LabelFrame(main_frame, text="Status Log", padding=5)
@@ -2254,7 +2275,131 @@ class TraderCompanionApp:
         except Exception as e:
             self.log(f"❌ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
-    
+
+    # ── Import source toggle helpers ──
+
+    def _toggle_import_source(self):
+        """Show/hide the correct input row based on selected import source."""
+        if self.import_source.get() == 'sheet':
+            self.csv_input_frame.pack_forget()
+            self.sheet_input_frame.pack(fill=tk.X, pady=2)
+            self.import_btn.config(text="📥 Import Sheet Data")
+            self.import_hint.config(text="Sheet must be public")
+        else:
+            self.sheet_input_frame.pack_forget()
+            self.csv_input_frame.pack(fill=tk.X, pady=2)
+            self.import_btn.config(text="📥 Import CSV File")
+            self.import_hint.config(text="Use a CSV exported from the dashboard")
+
+    def _browse_csv(self):
+        """Open file dialog to pick a CSV file."""
+        path = filedialog.askopenfilename(
+            title="Select CSV File",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if path:
+            self.csv_path_var.set(path)
+
+    def _do_import(self):
+        """Route to the correct import method."""
+        if self.import_source.get() == 'sheet':
+            self.migrate_from_sheet()
+        else:
+            self.import_from_csv()
+
+    def import_from_csv(self):
+        """Import evaluation data from a CSV file previously exported from the dashboard."""
+        email = self.client_email_entry.get().strip()
+        csv_path = self.csv_path_var.get().strip()
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+
+        if not email:
+            messagebox.showerror("Error", "Please enter your client email first")
+            return
+
+        if not csv_path:
+            messagebox.showerror("Error", "Please select a CSV file first")
+            return
+
+        if not os.path.isfile(csv_path):
+            messagebox.showerror("Error", f"File not found:\n{csv_path}")
+            return
+
+        if not self.client_info:
+            messagebox.showerror("Error", "Please lookup the client first by entering email and clicking 'Lookup'")
+            return
+
+        client_name = self.client_info.get('client', '')
+        if not client_name:
+            messagebox.showerror("Error", "Client lookup failed - no client name found")
+            return
+
+        # Confirm before proceeding
+        if not messagebox.askyesno("Confirm CSV Import",
+                f"This will import CSV data into {client_name}'s dashboard.\n\n"
+                f"File: {os.path.basename(csv_path)}\n\n"
+                "Existing rows matched by Account # will be updated.\n"
+                "New rows will be appended.\n\nContinue?"):
+            return
+
+        self.log(f"📂 Importing CSV for {client_name}...")
+        self.status_var.set("Importing CSV...")
+        self.root.update_idletasks()
+
+        try:
+            with open(csv_path, 'rb') as f:
+                response = requests.post(
+                    f"{dashboard_url}/api/client/import_csv_companion",
+                    data={"email": email},
+                    files={"file": (os.path.basename(csv_path), f, "text/csv")},
+                    timeout=120
+                )
+
+            if response.status_code != 200:
+                error_msg = f"HTTP {response.status_code}"
+                try:
+                    error_msg = response.json().get("message", error_msg)
+                except:
+                    pass
+                self.log(f"❌ CSV import failed: {error_msg}", "ERROR")
+                self.status_var.set("Import failed")
+                messagebox.showerror("Error", error_msg)
+                return
+
+            data = response.json()
+            if data.get("status") != "success":
+                error_msg = data.get("message", "Import failed")
+                self.log(f"❌ {error_msg}", "ERROR")
+                self.status_var.set("Import failed")
+                messagebox.showerror("Error", error_msg)
+                return
+
+            updated = data.get('updated', 0)
+            added = data.get('added', 0)
+            total = data.get('total_rows', 0)
+            self.log(f"   ✅ CSV import complete!")
+            self.log(f"   {updated} rows updated, {added} rows added ({total} total evaluations)")
+            self.status_var.set(f"Imported {updated + added} rows from CSV")
+            messagebox.showinfo("Success",
+                f"CSV import complete!\n\n"
+                f"• {updated} rows updated\n"
+                f"• {added} rows added\n"
+                f"• {total} total evaluations")
+            self.lookup_client()
+
+        except requests.exceptions.Timeout:
+            self.log("❌ Connection timeout during CSV import", "ERROR")
+            self.status_var.set("Timeout")
+            messagebox.showerror("Timeout", "Connection timed out. Please try again.")
+        except requests.exceptions.ConnectionError:
+            self.log("❌ Could not connect to dashboard server", "ERROR")
+            self.status_var.set("Connection failed")
+            messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
+        except Exception as e:
+            self.log(f"❌ CSV import error: {e}", "ERROR")
+            self.status_var.set("Import failed")
+            messagebox.showerror("Error", str(e))
+
     def migrate_from_sheet(self):
         """Migrate data from Google Sheets to the dashboard with verification."""
         email = self.client_email_entry.get().strip()

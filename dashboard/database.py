@@ -272,6 +272,39 @@ def init_database():
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_kyc_primary ON kyc_links(primary_client)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_kyc_linked ON kyc_links(linked_client)')
+
+        # Quality scan results table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quality_scan_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_date TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                trader TEXT,
+                admin TEXT,
+                total_issues INTEGER DEFAULT 0,
+                issues TEXT DEFAULT '[]',
+                health_score REAL DEFAULT 100.0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_quality_scan_date ON quality_scan_results(scan_date, client_id)')
+
+        # Daily checklists table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS daily_checklists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                user_identifier TEXT NOT NULL,
+                user_type TEXT NOT NULL,
+                checklist_type TEXT NOT NULL,
+                items TEXT DEFAULT '[]',
+                submitted_at TEXT NOT NULL,
+                ip_address TEXT,
+                UNIQUE(date, user_identifier, checklist_type)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_date ON daily_checklists(date, user_identifier)')
+
         conn.commit()
 
 # ============ Password Hashing ============
@@ -1041,7 +1074,132 @@ def update_client_field(client_id: str, field: str, value) -> bool:
         conn.commit()
         return True
 
+# ============ Quality Scan Functions ============
+
+def save_quality_scan_results(scan_date: str, results: list):
+    """Save quality scan results for all clients."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM quality_scan_results WHERE scan_date = ?', (scan_date,))
+        for r in results:
+            cursor.execute('''
+                INSERT INTO quality_scan_results (scan_date, client_id, trader, admin, total_issues, issues, health_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
+                  r['total_issues'], json.dumps(r['issues']), r['health_score']))
+        conn.commit()
+
+def get_quality_scan_results(scan_date: str = None) -> list:
+    """Get quality scan results. If no date, returns latest scan."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if not scan_date:
+            cursor.execute('SELECT MAX(scan_date) as d FROM quality_scan_results')
+            row = cursor.fetchone()
+            scan_date = row['d'] if row and row['d'] else None
+        if not scan_date:
+            return []
+        cursor.execute('''
+            SELECT * FROM quality_scan_results WHERE scan_date = ? ORDER BY health_score ASC
+        ''', (scan_date,))
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                'client_id': row['client_id'],
+                'trader': row['trader'],
+                'admin': row['admin'],
+                'total_issues': row['total_issues'],
+                'issues': json.loads(row['issues']),
+                'health_score': row['health_score'],
+                'scan_date': row['scan_date'],
+            })
+        return results
+
+def save_daily_checklist(date: str, user_identifier: str, user_type: str,
+                         checklist_type: str, items: list, ip_address: str = None):
+    """Save a daily checklist submission."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO daily_checklists (date, user_identifier, user_type, checklist_type, items, submitted_at, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (date, user_identifier, user_type, checklist_type, json.dumps(items),
+              datetime.now().isoformat(), ip_address))
+        conn.commit()
+
+def get_daily_checklists(date: str, user_identifier: str = None) -> list:
+    """Get checklists for a date, optionally filtered by user."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if user_identifier:
+            cursor.execute('SELECT * FROM daily_checklists WHERE date = ? AND user_identifier = ?',
+                           (date, user_identifier))
+        else:
+            cursor.execute('SELECT * FROM daily_checklists WHERE date = ?', (date,))
+        return [{
+            'user_identifier': row['user_identifier'],
+            'user_type': row['user_type'],
+            'checklist_type': row['checklist_type'],
+            'items': json.loads(row['items']),
+            'submitted_at': row['submitted_at'],
+        } for row in cursor.fetchall()]
+
+
+def get_weekly_scan_results(end_date: str = None, days: int = 7) -> list:
+    """Get quality scan results for a date range (default: last 7 days)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=days - 1)).strftime('%Y-%m-%d')
+        cursor.execute('''
+            SELECT * FROM quality_scan_results
+            WHERE scan_date BETWEEN ? AND ?
+            ORDER BY scan_date ASC, health_score ASC
+        ''', (start_date, end_date))
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                'client_id': row['client_id'],
+                'trader': row['trader'],
+                'admin': row['admin'],
+                'total_issues': row['total_issues'],
+                'issues': json.loads(row['issues']),
+                'health_score': row['health_score'],
+                'scan_date': row['scan_date'],
+            })
+        return results
+
+
 # ============ Data History Management ============
+
+def get_client_activity(client_id: str) -> dict:
+    """Get last push time and last edit info for a client from data_history."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # Last push (from companion app / MT5)
+        cursor.execute('''
+            SELECT created_at, changed_by FROM data_history
+            WHERE client_id = ? AND change_source = 'push'
+            ORDER BY version DESC LIMIT 1
+        ''', (client_id,))
+        push_row = cursor.fetchone()
+
+        # Last manual edit (from dashboard)
+        cursor.execute('''
+            SELECT created_at, changed_by, changed_by_type FROM data_history
+            WHERE client_id = ? AND change_source IN ('dashboard_edit', 'dashboard_delete')
+            ORDER BY version DESC LIMIT 1
+        ''', (client_id,))
+        edit_row = cursor.fetchone()
+
+        return {
+            'last_push_at': push_row['created_at'] if push_row else None,
+            'last_push_by': push_row['changed_by'] if push_row else None,
+            'last_edit_at': edit_row['created_at'] if edit_row else None,
+            'last_edit_by': edit_row['changed_by'] if edit_row else None,
+            'last_edit_by_type': edit_row['changed_by_type'] if edit_row else None,
+        }
 
 def get_next_version(client_id: str) -> int:
     """Get the next version number for a client's data history."""

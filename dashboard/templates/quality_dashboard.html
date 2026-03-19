@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Quality Dashboard - VPF Futures</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+        /* Nav (same as super_admin) */
+        .modern-nav { display:flex; justify-content:center; align-items:center; padding:10px 20px; background:linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.95)); border-bottom:1px solid rgba(255,255,255,0.06); position:sticky; top:0; z-index:100; backdrop-filter:blur(12px); }
+        .nav-links { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+        .tab-btn { display:inline-flex; align-items:center; gap:5px; padding:8px 14px; border-radius:8px; font-size:0.85rem; font-weight:500; color:#94a3b8; text-decoration:none; transition:all 0.2s; border:none; background:transparent; cursor:pointer; }
+        .tab-btn:hover { background:rgba(255,255,255,0.06); color:#e2e8f0; }
+        .tab-btn.active { background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(16,185,129,0.3)); color:#4ade80; border:1px solid rgba(34,197,94,0.3); }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+        /* Summary Cards */
+        .summary-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px; }
+        .summary-card { background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:20px; }
+        .summary-card .label { font-size:0.8rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+        .summary-card .value { font-size:2rem; font-weight:700; }
+        .summary-card .sub { font-size:0.78rem; color:#64748b; margin-top:4px; }
+        .green { color:#4ade80; } .yellow { color:#fbbf24; } .red { color:#f87171; } .blue { color:#60a5fa; } .purple { color:#a78bfa; }
+
+        /* Action bar */
+        .action-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px; }
+        .scan-btn { background:linear-gradient(135deg,#22c55e,#16a34a); color:#fff; border:none; padding:10px 24px; border-radius:10px; font-size:0.9rem; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px; transition:all 0.2s; }
+        .scan-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(34,197,94,0.3); }
+        .scan-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+        .filter-group { display:flex; gap:8px; align-items:center; }
+        .filter-btn { background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.1); color:#94a3b8; padding:6px 14px; border-radius:8px; font-size:0.8rem; cursor:pointer; transition:all 0.2s; }
+        .filter-btn:hover, .filter-btn.active { background:rgba(96,165,250,0.15); border-color:rgba(96,165,250,0.3); color:#60a5fa; }
+
+        /* Trader summary */
+        .trader-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin-bottom:24px; }
+        .trader-card { background:rgba(30,41,59,0.5); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:16px; }
+        .trader-card .name { font-size:0.95rem; font-weight:600; color:#e2e8f0; margin-bottom:8px; }
+        .trader-card .metric { display:flex; justify-content:space-between; font-size:0.82rem; color:#94a3b8; padding:3px 0; }
+        .health-bar { height:6px; border-radius:3px; background:rgba(255,255,255,0.06); margin-top:10px; overflow:hidden; }
+        .health-fill { height:100%; border-radius:3px; transition:width 0.5s; }
+
+        /* Client issues table */
+        .issues-table { width:100%; border-collapse:separate; border-spacing:0; background:rgba(30,41,59,0.4); border-radius:12px; overflow:hidden; }
+        .issues-table thead th { background:rgba(15,23,42,0.8); padding:12px 14px; font-size:0.78rem; text-transform:uppercase; color:#94a3b8; letter-spacing:0.5px; text-align:left; position:sticky; top:0; }
+        .issues-table tbody td { padding:10px 14px; font-size:0.85rem; border-top:1px solid rgba(255,255,255,0.04); }
+        .issues-table tbody tr:hover { background:rgba(96,165,250,0.05); }
+        .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:0.72rem; font-weight:600; }
+        .badge-green { background:rgba(34,197,94,0.15); color:#4ade80; }
+        .badge-yellow { background:rgba(251,191,36,0.15); color:#fbbf24; }
+        .badge-red { background:rgba(239,68,68,0.15); color:#f87171; }
+        .badge-critical { background:rgba(239,68,68,0.3); color:#fca5a5; }
+        .badge-high { background:rgba(249,115,22,0.15); color:#fb923c; }
+        .badge-medium { background:rgba(251,191,36,0.15); color:#fbbf24; }
+        .badge-low { background:rgba(148,163,184,0.15); color:#94a3b8; }
+
+        .issue-pill { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.7rem; margin:1px; }
+        .empty-state { text-align:center; padding:60px 20px; color:#64748b; }
+        .empty-state i { font-size:3rem; margin-bottom:12px; opacity:0.3; }
+
+        /* Checklist section */
+        .section-title { font-size:1.1rem; font-weight:600; color:#e2e8f0; margin:28px 0 14px 0; display:flex; align-items:center; gap:8px; }
+        .checklist-status-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; margin-bottom:24px; }
+        .checklist-card { background:rgba(30,41,59,0.5); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px; }
+        .checklist-card .user { font-weight:600; font-size:0.9rem; margin-bottom:6px; }
+        .checklist-card .info { font-size:0.78rem; color:#94a3b8; }
+        .checklist-card .check-count { font-size:1.2rem; font-weight:700; }
+
+        @media (max-width: 768px) {
+            .summary-row { grid-template-columns:1fr 1fr; }
+            .action-bar { flex-direction:column; align-items:stretch; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="modern-nav">
+        <div class="nav-links">
+            <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+            <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
+            <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+            <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+            <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
+            <a href="/quality_dashboard" class="tab-btn active"><i class="fas fa-clipboard-check"></i> Data Quality</a>
+            <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
+            <a href="/change-password" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);"><i class="fas fa-key"></i> Password</a>
+            <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Summary Cards -->
+        <div class="summary-row" id="summary-cards">
+            <div class="summary-card">
+                <div class="label">Total Clients</div>
+                <div class="value blue" id="total-clients">--</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Avg Health Score</div>
+                <div class="value" id="avg-health">--</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Clients With Issues</div>
+                <div class="value yellow" id="clients-issues">--</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Total Issues</div>
+                <div class="value red" id="total-issues">--</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Last Scan</div>
+                <div class="value blue" id="last-scan" style="font-size:1.1rem;">Never</div>
+            </div>
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+            <button class="scan-btn" id="run-scan-btn" onclick="runScan()">
+                <i class="fas fa-radar" id="scan-icon"></i> Run Quality Scan
+            </button>
+            <div class="filter-group">
+                <button class="filter-btn active" onclick="filterResults('all', this)">All</button>
+                <button class="filter-btn" onclick="filterResults('issues', this)">Issues Only</button>
+                <button class="filter-btn" onclick="filterResults('green', this)">Healthy</button>
+                <button class="filter-btn" onclick="filterResults('red', this)">Critical</button>
+            </div>
+        </div>
+
+        <!-- Trader Summary -->
+        <div class="section-title"><i class="fas fa-user-tie" style="color:#60a5fa;"></i> Trader Breakdown</div>
+        <div class="trader-grid" id="trader-grid"></div>
+
+        <!-- Client Issues Table -->
+        <div class="section-title"><i class="fas fa-list-check" style="color:#fbbf24;"></i> Client Details</div>
+        <div style="overflow-x:auto; border-radius:12px;">
+            <table class="issues-table" id="results-table">
+                <thead>
+                    <tr>
+                        <th>Client</th>
+                        <th>Trader</th>
+                        <th>Health</th>
+                        <th>Issues</th>
+                        <th>Details</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="results-body">
+                    <tr><td colspan="6" class="empty-state">
+                        <i class="fas fa-clipboard-check"></i>
+                        <div>No scan results yet. Click "Run Quality Scan" to start.</div>
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Daily Checklists -->
+        <div class="section-title"><i class="fas fa-tasks" style="color:#a78bfa;"></i> Today's Checklists</div>
+        <div class="checklist-status-grid" id="checklist-grid">
+            <div class="empty-state" style="grid-column:1/-1;"><div>Loading checklists...</div></div>
+        </div>
+
+        <!-- Weekly Scorecard -->
+        <div class="section-title" style="margin-top:32px;"><i class="fas fa-trophy" style="color:#fbbf24;"></i> Weekly Scorecard
+            <button onclick="loadScorecard()" style="margin-left:12px; background:linear-gradient(135deg,#7c3aed,#6d28d9); border:none; color:#fff; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
+                <i class="fas fa-sync-alt"></i> Load Scorecard
+            </button>
+        </div>
+        <div id="scorecard-container" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px;">
+            <div class="empty-state" style="grid-column:1/-1;"><div>Click "Load Scorecard" to view trader weekly performance</div></div>
+        </div>
+
+        <!-- Daily Summary for Discord -->
+        <div class="section-title" style="margin-top:32px;"><i class="fas fa-bullhorn" style="color:#38bdf8;"></i> Daily Summary
+            <button onclick="generateSummary()" style="margin-left:12px; background:linear-gradient(135deg,#0891b2,#0e7490); border:none; color:#fff; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
+                <i class="fas fa-file-alt"></i> Generate
+            </button>
+            <button onclick="copySummary()" id="copy-summary-btn" style="margin-left:6px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem; display:none;">
+                <i class="fas fa-copy"></i> Copy
+            </button>
+        </div>
+        <pre id="summary-output" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; color:#e2e8f0; font-size:0.82rem; white-space:pre-wrap; line-height:1.6; min-height:40px; display:none;"></pre>
+
+        <!-- CSV Re-Import Tool -->
+        <div class="section-title" style="margin-top:32px;"><i class="fas fa-upload" style="color:#f472b6;"></i> CSV Re-Import</div>
+        <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+                <div>
+                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">Client Name</label>
+                    <input type="text" id="import-client-id" placeholder="e.g. John Smith" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:220px;">
+                </div>
+                <div>
+                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">CSV File</label>
+                    <input type="file" id="import-csv-file" accept=".csv" style="font-size:0.82rem; color:#94a3b8;">
+                </div>
+                <button onclick="importCSV()" style="background:linear-gradient(135deg,#db2777,#be185d); border:none; color:#fff; padding:8px 20px; border-radius:8px; cursor:pointer; font-size:0.82rem;">
+                    <i class="fas fa-file-import"></i> Import
+                </button>
+            </div>
+            <div id="import-result" style="margin-top:12px; font-size:0.82rem; display:none;"></div>
+        </div>
+    </div>
+
+    <script>
+        let allResults = [];
+        let currentFilter = 'all';
+
+        // Load existing results on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadResults();
+            loadChecklists();
+        });
+
+        async function loadResults() {
+            try {
+                const resp = await fetch('/api/quality/results');
+                const data = await resp.json();
+                if (data.status === 'success' && data.results && data.results.length > 0) {
+                    allResults = data.results;
+                    renderSummary(data);
+                    renderTraders(data.by_trader || {});
+                    renderResults(data.results);
+                }
+            } catch (e) {
+                console.error('Failed to load quality results:', e);
+            }
+        }
+
+        async function runScan() {
+            const btn = document.getElementById('run-scan-btn');
+            const icon = document.getElementById('scan-icon');
+            btn.disabled = true;
+            icon.className = 'fas fa-spinner fa-spin';
+            btn.querySelector('span, #scan-icon').nextSibling && (btn.childNodes[1].textContent = ' Scanning...');
+
+            try {
+                const resp = await fetch('/api/quality/scan', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    allResults = data.results;
+                    renderSummary(data);
+                    // Reload to get trader breakdown
+                    await loadResults();
+                }
+            } catch (e) {
+                console.error('Scan failed:', e);
+                alert('Scan failed. Check console for details.');
+            } finally {
+                btn.disabled = false;
+                icon.className = 'fas fa-radar';
+            }
+        }
+
+        function renderSummary(data) {
+            document.getElementById('total-clients').textContent = data.total_clients || 0;
+            const avgEl = document.getElementById('avg-health');
+            const avg = data.avg_health_score || 0;
+            avgEl.textContent = avg.toFixed(1) + '%';
+            avgEl.className = 'value ' + (avg >= 90 ? 'green' : avg >= 70 ? 'yellow' : 'red');
+            document.getElementById('clients-issues').textContent = data.clients_with_issues || 0;
+            document.getElementById('total-issues').textContent = data.total_issues || 0;
+            document.getElementById('last-scan').textContent = data.scan_date || 'Never';
+        }
+
+        function renderTraders(byTrader) {
+            const grid = document.getElementById('trader-grid');
+            if (!byTrader || Object.keys(byTrader).length === 0) {
+                grid.innerHTML = '<div style="color:#64748b; font-size:0.85rem;">No trader data available</div>';
+                return;
+            }
+            grid.innerHTML = Object.entries(byTrader).sort((a,b) => a[1].avg_health - b[1].avg_health).map(([name, t]) => {
+                const healthColor = t.avg_health >= 90 ? '#4ade80' : t.avg_health >= 70 ? '#fbbf24' : '#f87171';
+                return `<div class="trader-card">
+                    <div class="name"><i class="fas fa-user" style="color:${healthColor}; margin-right:6px;"></i>${name}</div>
+                    <div class="metric"><span>Clients</span><span>${t.clients}</span></div>
+                    <div class="metric"><span>Issues</span><span style="color:${t.issues > 0 ? '#fbbf24' : '#4ade80'}">${t.issues}</span></div>
+                    <div class="metric"><span>Avg Health</span><span style="color:${healthColor}">${t.avg_health}%</span></div>
+                    <div class="health-bar"><div class="health-fill" style="width:${t.avg_health}%; background:${healthColor};"></div></div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderResults(results) {
+            const tbody = document.getElementById('results-body');
+            let filtered = results;
+            if (currentFilter === 'issues') filtered = results.filter(r => r.total_issues > 0);
+            else if (currentFilter === 'green') filtered = results.filter(r => r.health_score >= 90);
+            else if (currentFilter === 'red') filtered = results.filter(r => r.health_score < 70);
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><div>No results match the current filter.</div></td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(r => {
+                const healthBadge = r.health_score >= 90 ? 'badge-green' :
+                                    r.health_score >= 70 ? 'badge-yellow' : 'badge-red';
+                const issueList = r.issues.slice(0, 5).map(i =>
+                    `<span class="issue-pill badge-${i.severity}">${i.check}</span>`
+                ).join('');
+                const moreCount = r.issues.length > 5 ? `<span class="issue-pill badge-low">+${r.issues.length - 5} more</span>` : '';
+
+                return `<tr>
+                    <td><a href="/dashboard/${encodeURIComponent(r.client_id)}" style="color:#60a5fa; text-decoration:none;">${r.client_id}</a></td>
+                    <td style="color:#94a3b8;">${r.trader || '-'}</td>
+                    <td><span class="badge ${healthBadge}">${r.health_score}%</span></td>
+                    <td style="color:${r.total_issues > 0 ? '#fbbf24' : '#4ade80'}">${r.total_issues}</td>
+                    <td>${issueList}${moreCount}</td>
+                    <td><a href="/dashboard/${encodeURIComponent(r.client_id)}" style="color:#60a5fa; font-size:0.8rem;"><i class="fas fa-external-link-alt"></i> View</a></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function filterResults(filter, btn) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            renderResults(allResults);
+        }
+
+        async function loadChecklists() {
+            try {
+                const resp = await fetch('/api/checklist/status');
+                const data = await resp.json();
+                const grid = document.getElementById('checklist-grid');
+                if (!data.checklists || data.checklists.length === 0) {
+                    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><i class="fas fa-tasks" style="font-size:2rem; opacity:0.3; margin-bottom:8px;"></i><div>No checklists submitted today</div></div>';
+                    return;
+                }
+                grid.innerHTML = data.checklists.map(c => {
+                    const total = c.items.length;
+                    const checked = c.items.filter(i => i.checked).length;
+                    const pct = total > 0 ? Math.round(checked / total * 100) : 0;
+                    const color = pct === 100 ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171';
+                    return `<div class="checklist-card">
+                        <div class="user"><i class="fas fa-${c.checklist_type === 'trader' ? 'chart-line' : 'shield-alt'}" style="color:${color}; margin-right:6px;"></i>${c.user_identifier}</div>
+                        <div class="info">${c.checklist_type} checklist &middot; ${c.submitted_at.split('T')[0]}</div>
+                        <div style="margin-top:8px;"><span class="check-count" style="color:${color};">${checked}/${total}</span> <span style="font-size:0.78rem; color:#64748b;">(${pct}%)</span></div>
+                        <div class="health-bar" style="margin-top:6px;"><div class="health-fill" style="width:${pct}%; background:${color};"></div></div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load checklists:', e);
+            }
+        }
+        async function importCSV() {
+            const clientId = document.getElementById('import-client-id').value.trim();
+            const fileInput = document.getElementById('import-csv-file');
+            const resultDiv = document.getElementById('import-result');
+            if (!clientId) { alert('Enter a client name'); return; }
+            if (!fileInput.files.length) { alert('Select a CSV file'); return; }
+
+            const formData = new FormData();
+            formData.append('client_id', clientId);
+            formData.append('file', fileInput.files[0]);
+
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<span style="color:#60a5fa;"><i class="fas fa-spinner fa-spin"></i> Importing...</span>';
+
+            try {
+                const resp = await fetch('/api/client/import_csv', { method: 'POST', body: formData });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = `<span style="color:#4ade80;"><i class="fas fa-check-circle"></i> ${data.message}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<span style="color:#f87171;"><i class="fas fa-times-circle"></i> ${data.message}</span>`;
+                }
+            } catch (e) {
+                resultDiv.innerHTML = '<span style="color:#f87171;"><i class="fas fa-times-circle"></i> Import failed</span>';
+            }
+        }
+
+        async function generateSummary() {
+            const output = document.getElementById('summary-output');
+            const copyBtn = document.getElementById('copy-summary-btn');
+            output.style.display = 'block';
+            output.textContent = 'Generating summary...';
+            try {
+                const resp = await fetch('/api/quality/daily_summary?format=text');
+                if (!resp.ok) throw new Error('Failed');
+                const text = await resp.text();
+                output.textContent = text;
+                copyBtn.style.display = 'inline-block';
+            } catch (e) {
+                output.textContent = 'Failed to generate summary. Run a quality scan first.';
+                copyBtn.style.display = 'none';
+            }
+        }
+
+        function copySummary() {
+            const text = document.getElementById('summary-output').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById('copy-summary-btn');
+                const orig = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                btn.style.borderColor = '#4ade80';
+                setTimeout(() => { btn.innerHTML = orig; btn.style.borderColor = 'rgba(255,255,255,0.15)'; }, 2000);
+            });
+        }
+
+        async function loadScorecard() {
+            const container = document.getElementById('scorecard-container');
+            container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+            try {
+                const resp = await fetch('/api/quality/scorecard');
+                const data = await resp.json();
+                if (data.status !== 'success' || !data.scorecard || Object.keys(data.scorecard).length === 0) {
+                    container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>No scorecard data. Run daily scans first.</div></div>';
+                    return;
+                }
+                const period = data.period;
+                const gradeColors = { A: '#4ade80', B: '#86efac', C: '#fbbf24', D: '#fb923c', F: '#f87171' };
+                const trendIcons = { improving: '↗️', stable: '➡️', declining: '↘️' };
+                container.innerHTML = Object.entries(data.scorecard)
+                    .sort((a, b) => b[1].avg_health - a[1].avg_health)
+                    .map(([trader, s]) => {
+                        const gc = gradeColors[s.grade] || '#94a3b8';
+                        const healthColor = s.avg_health >= 90 ? '#4ade80' : s.avg_health >= 70 ? '#fbbf24' : '#f87171';
+                        return `<div class="trader-card" style="position:relative;">
+                            <div style="position:absolute; top:12px; right:12px; font-size:1.8rem; font-weight:800; color:${gc}; opacity:0.6;">${s.grade}</div>
+                            <div class="name"><i class="fas fa-user-tie" style="color:${healthColor}; margin-right:6px;"></i>${trader}</div>
+                            <div class="metric"><span>Clients</span><span>${s.total_clients}</span></div>
+                            <div class="metric"><span>Avg Health</span><span style="color:${healthColor}">${s.avg_health}%</span></div>
+                            <div class="metric"><span>Total Issues</span><span style="color:${s.total_issues > 0 ? '#fbbf24' : '#4ade80'}">${s.total_issues}</span></div>
+                            <div class="metric"><span>Trend</span><span>${trendIcons[s.trend] || '?'} ${s.trend}</span></div>
+                            <div class="metric"><span>Scans</span><span>${s.scans_in_period} days</span></div>
+                            <div class="health-bar" style="margin-top:8px;"><div class="health-fill" style="width:${s.avg_health}%; background:${healthColor};"></div></div>
+                            <div style="font-size:0.7rem; color:#64748b; margin-top:6px;">${period.start} → ${period.end}</div>
+                        </div>`;
+                    }).join('');
+            } catch (e) {
+                console.error('Failed to load scorecard:', e);
+                container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div style="color:#f87171;">Failed to load scorecard</div></div>';
+            }
+        }
+    </script>
+</body>
+</html>

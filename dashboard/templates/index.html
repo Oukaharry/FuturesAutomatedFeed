@@ -1168,6 +1168,9 @@
                     </button>
                     {% endif %}
                     {% if client_id %}
+                    <button class="header-action-btn" onclick="downloadCSV()" title="Download evaluation data as CSV" style="color:#4ade80;">
+                        <i class="fas fa-download"></i> CSV
+                    </button>
                     <span id="kyc-single-badge" class="header-user-badge">{{ client_id }}</span>
                     {% endif %}
                     <a href="/logout" class="header-logout-pill">
@@ -1195,6 +1198,13 @@
                 <a href="/change-password" style="display:flex; align-items:center; gap:5px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); color:#f59e0b; padding:6px 14px; border-radius:8px; font-size:0.85rem; font-weight:500; text-decoration:none;">
                     <i class="fas fa-key" style="font-size:0.75rem;"></i> Password
                 </a>
+                <!-- Last Activity Indicators -->
+                <span id="activity-push" style="display:none; font-size:0.78rem; color:#94a3b8; background:rgba(30,41,59,0.6); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
+                    <i class="fas fa-upload" style="color:#60a5fa; margin-right:3px;"></i> Last Push: <span id="activity-push-time">--</span>
+                </span>
+                <span id="activity-edit" style="display:none; font-size:0.78rem; color:#94a3b8; background:rgba(30,41,59,0.6); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
+                    <i class="fas fa-edit" style="color:#a78bfa; margin-right:3px;"></i> Last Edit: <span id="activity-edit-time">--</span>
+                </span>
             </div>
         </header>
 
@@ -2669,6 +2679,7 @@
                     try { renderVPSAccounts(data); } catch(e) { console.error('renderVPSAccounts error:', e); }
                     try { renderPaymentInfo(data); } catch(e) { console.error('renderPaymentInfo error:', e); }
                     try { renderHistory(data); } catch(e) { console.error('renderHistory error:', e); }
+                    try { renderActivityIndicators(data); } catch(e) { console.error('renderActivityIndicators error:', e); }
                     
                     // Update Dropdown Options if available
                     if (data.dropdown_options) {
@@ -2894,9 +2905,9 @@
                     row.innerHTML = `
                         <td class="sticky-col-1">${index + 1}</td>
                         <td class="sticky-col-2" style="text-align:center;padding:2px;">
-                             ${USER_TYPE !== 'client' ? `<button onclick="deleteEvaluation(${index})" 
+                             ${USER_TYPE === 'super_admin' ? `<button onclick="deleteEvaluation(${index})" 
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
-                                     title="Delete this row">🗑️</button>` : ''}
+                                     title="Delete this row (super admin only)">🗑️</button>` : ''}
                         </td>
                         ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', IS_CLIENT), 'Prop Firm')}
                         ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', IS_CLIENT), 'Account Size')}
@@ -3809,6 +3820,50 @@
             saveData('DELETE', 'Removed hedge account');
         }
 
+        function renderActivityIndicators(data) {
+            const act = data._activity;
+            if (!act) return;
+            
+            function timeAgo(isoStr) {
+                if (!isoStr) return null;
+                const d = new Date(isoStr);
+                if (isNaN(d)) return null;
+                const secs = Math.floor((Date.now() - d.getTime()) / 1000);
+                if (secs < 60) return 'just now';
+                if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+                if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+                return Math.floor(secs / 86400) + 'd ago';
+            }
+            
+            const pushEl = document.getElementById('activity-push');
+            const editEl = document.getElementById('activity-edit');
+            
+            if (act.last_push_at && pushEl) {
+                const ago = timeAgo(act.last_push_at);
+                if (ago) {
+                    document.getElementById('activity-push-time').textContent = ago;
+                    pushEl.style.display = '';
+                    // Warn if >24h since last push (on weekdays)
+                    const pushDate = new Date(act.last_push_at);
+                    const hoursSince = (Date.now() - pushDate.getTime()) / 3600000;
+                    const today = new Date().getDay();
+                    if (hoursSince > 24 && today >= 1 && today <= 5) {
+                        pushEl.style.borderColor = 'rgba(239,68,68,0.5)';
+                        pushEl.style.color = '#f87171';
+                    }
+                }
+            }
+            
+            if (act.last_edit_at && editEl) {
+                const ago = timeAgo(act.last_edit_at);
+                if (ago) {
+                    const by = act.last_edit_by ? ` by ${act.last_edit_by}` : '';
+                    document.getElementById('activity-edit-time').textContent = ago + by;
+                    editEl.style.display = '';
+                }
+            }
+        }
+
         function renderHistory(data) {
             const histBody = document.getElementById('history-body');
             const noHistMsg = document.getElementById('no-history-msg');
@@ -4553,6 +4608,13 @@
 
         function addAccount() {
             if (!currentData.evaluations) currentData.evaluations = [];
+
+        }
+
+        function downloadCSV() {
+            if (!CLIENT_ID) return;
+            window.location.href = `/api/client/export_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
+        }
             currentData.evaluations.push({
                 "Prop Firm": "My Funded Futures",
                 "Account Size": "$100,000",
@@ -4591,6 +4653,70 @@
         // Retry queue for failed saves
         let saveRetryQueue = [];
         let isSaving = false;
+
+        // ── Save-time validation warnings ──
+        function validateBeforeSave() {
+            const warnings = [];
+            const evals = currentData.evaluations || [];
+            evals.forEach((ev, idx) => {
+                if (ev._deleted) return;
+                const row = idx + 1;
+                const pf = (ev['Prop Firm'] || '').trim();
+                const sz = (ev['Account Size'] || '').trim();
+                if (!pf && !sz) return; // empty row
+
+                const sp1 = (ev['Status P1'] || '').trim().toLowerCase();
+                const isActive = sp1 && !['fail','breach','sl','completed','complete'].includes(sp1);
+                const isClosed = ['fail','breach','sl','completed','complete'].includes(sp1);
+
+                if (!sp1 && (pf || sz))
+                    warnings.push({ row, msg: 'Status P1 is blank' });
+                if (isActive && !(ev['Date Started'] || '').trim())
+                    warnings.push({ row, msg: 'Missing Date Started' });
+                if (isClosed && !(ev['Date Ended'] || '').trim())
+                    warnings.push({ row, msg: 'Missing Date Ended' });
+                if (!(ev['Fee'] || '').trim())
+                    warnings.push({ row, msg: 'Fee is empty' });
+                if (!sz)
+                    warnings.push({ row, msg: 'Account Size is empty' });
+                if (isActive && !(ev['Account #'] || '').trim() && !(ev['Account #.1'] || '').trim())
+                    warnings.push({ row, msg: 'Account # is empty' });
+
+                // Negative Hedge Net without note
+                const hn = parseFloat(String(ev['Hedge Net'] || '').replace(/[$,]/g, ''));
+                const note = (ev['Notes'] || '').trim();
+                const cellNotes = ev._notes || {};
+                const hasNote = note || Object.values(cellNotes).some(n => n);
+                if (!isNaN(hn) && hn < 0 && !hasNote)
+                    warnings.push({ row, msg: 'Negative Hedge Net with no note', severity: 'high' });
+            });
+            return warnings;
+        }
+
+        function showValidationWarnings(warnings) {
+            // Remove any existing banner
+            const existing = document.getElementById('validation-warning-banner');
+            if (existing) existing.remove();
+            if (!warnings.length) return;
+
+            const banner = document.createElement('div');
+            banner.id = 'validation-warning-banner';
+            banner.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:10000; background:linear-gradient(135deg,#92400e,#78350f); border-bottom:2px solid #f59e0b; padding:12px 20px; display:flex; align-items:center; gap:12px; animation:slideDown 0.3s ease;';
+            banner.innerHTML = `
+                <i class="fas fa-exclamation-triangle" style="color:#fbbf24; font-size:1.2rem;"></i>
+                <div style="flex:1;">
+                    <strong style="color:#fef3c7;">${warnings.length} data quality issue${warnings.length > 1 ? 's' : ''} detected:</strong>
+                    <span style="color:#fde68a; font-size:0.85rem; margin-left:8px;">
+                        ${warnings.slice(0, 5).map(w => `Row ${w.row}: ${w.msg}`).join(' &bull; ')}
+                        ${warnings.length > 5 ? ` (+${warnings.length - 5} more)` : ''}
+                    </span>
+                </div>
+                <button onclick="this.parentElement.remove()" style="background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.2); color:#fef3c7; padding:4px 12px; border-radius:6px; cursor:pointer; font-size:0.8rem;">Dismiss</button>
+            `;
+            document.body.prepend(banner);
+            // Auto-hide after 10s
+            setTimeout(() => { if (banner.parentElement) banner.remove(); }, 10000);
+        }
         
         function saveData(action = 'UPDATE', description = null, retryCount = 0, _retryBody = null) {
             // Handle optional arguments shifting if called with just retryCount (legacy calls)
@@ -4610,6 +4736,12 @@
             // Set editing flag to prevent auto-refresh during save
             isEditing = true;
             isSaving = true;
+
+            // Show validation warnings on first save attempt (not retries)
+            if (retryCount === 0 && action === 'UPDATE') {
+                const warnings = validateBeforeSave();
+                showValidationWarnings(warnings);
+            }
             
             let bodyStr = _retryBody;
             if (!bodyStr) {

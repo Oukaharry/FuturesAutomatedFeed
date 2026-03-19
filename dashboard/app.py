@@ -1943,6 +1943,13 @@ def super_admin():
         return redirect('/')
     return render_template('super_admin.html')
 
+@app.route('/quality_dashboard')
+@require_session
+def quality_dashboard():
+    if request.session_user.get('user_type') != 'super_admin':
+        return redirect('/')
+    return render_template('quality_dashboard.html')
+
 @app.route('/admin/<admin_name>')
 @require_session
 def admin_dashboard(admin_name):
@@ -4259,8 +4266,21 @@ def api_remove_client():
 def api_delete_evaluation():
     """
     Delete an evaluation row with history tracking.
+    Only super_admin users can delete evaluation rows.
     The data is removed from current view but can be recovered from version history.
     """
+    # Require super_admin for all deletes
+    session_token = request.cookies.get('session_token')
+    if not session_token:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    session_info = validate_session(session_token)
+    if not session_info:
+        return jsonify({"status": "error", "message": "Invalid or expired session"}), 401
+    if session_info.get('user_type') != 'super_admin':
+        log_action('DELETE_DENIED', session_info.get('user_type'), session_info.get('user_identifier'),
+                   get_remote_address(), 'Attempted evaluation delete without super_admin role', False)
+        return jsonify({"status": "error", "message": "Only super admins can delete evaluations"}), 403
+
     data = request.json
     email = data.get('email', '').strip().lower()
     evaluation_index = data.get('index')
@@ -4653,6 +4673,12 @@ def get_data():
                 data['_version'] = get_next_version(client_id) - 1
             except Exception:
                 pass
+            # Include last activity info for dashboard display
+            try:
+                from dashboard.database import get_client_activity
+                data['_activity'] = get_client_activity(client_id)
+            except Exception:
+                pass
             return jsonify(data)
     
     # If no client specified, return empty
@@ -4661,6 +4687,717 @@ def get_data():
         "deals": [], "positions": [], "account": {}, 
         "evaluations": [], "statistics": {}, "dropdown_options": {}, 
         "last_updated": "Never"
+    })
+
+@app.route('/api/client/export_csv')
+def export_client_csv():
+    """Export client evaluation data as CSV download."""
+    import csv
+    import io
+
+    client_id = request.args.get('client_id')
+    if not client_id:
+        return jsonify({"status": "error", "message": "client_id required"}), 400
+
+    # Auth check
+    session_token = request.cookies.get('session_token')
+    api_key = request.headers.get('X-API-Key')
+    if session_token:
+        session_info = validate_session(session_token)
+        if not session_info:
+            return jsonify({"status": "error", "message": "Invalid session"}), 401
+        user_type = session_info.get('user_type')
+        user_identifier = session_info.get('user_identifier')
+    elif api_key:
+        key_info = validate_api_key(api_key)
+        if not key_info:
+            return jsonify({"status": "error", "message": "Invalid API key"}), 401
+        user_type = 'api'
+        user_identifier = key_info.get('owner')
+    else:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    if not can_access_client(user_type, user_identifier, client_id):
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+
+    data = get_client_data(client_id)
+    if not data:
+        return jsonify({"status": "error", "message": "No data found"}), 404
+
+    evaluations = data.get('evaluations', [])
+    if not evaluations:
+        return jsonify({"status": "error", "message": "No evaluation data"}), 404
+
+    # Build column list from all evaluations (preserving order from first row, then extras)
+    seen = set()
+    columns = []
+    for ev in evaluations:
+        for key in ev:
+            if key not in seen and not key.startswith('_'):
+                seen.add(key)
+                columns.append(key)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(columns)
+    for ev in evaluations:
+        writer.writerow([ev.get(col, '') for col in columns])
+
+    # Add statistics summary rows
+    stats = data.get('statistics', {})
+    if stats:
+        writer.writerow([])  # blank separator
+        writer.writerow(['--- Statistics ---'])
+        for key, val in stats.items():
+            if isinstance(val, dict):
+                for k2, v2 in val.items():
+                    writer.writerow([f'{key}.{k2}', v2])
+            else:
+                writer.writerow([key, val])
+
+    csv_content = output.getvalue()
+    output.close()
+
+    from flask import Response
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', client_id)
+    resp = Response(csv_content, mimetype='text/csv')
+    resp.headers['Content-Disposition'] = f'attachment; filename={safe_name}_evaluations.csv'
+    log_action('CSV_EXPORT', user_type, user_identifier, get_remote_address(), f"Exported CSV for {client_id}")
+    return resp
+
+# ============ Quality Scan System ============
+
+def run_quality_scan():
+    """
+    Automated quality scan: checks every client's data for SOP violations.
+    Returns list of per-client scan results with issues and health scores.
+    """
+    from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
+    from dashboard.database import get_client_data, get_client_activity
+
+    all_clients = hierarchy_get_all_clients()
+    results = []
+    now = datetime.now()
+    today_weekday = now.weekday()  # 0=Mon, 6=Sun
+
+    for client_name in all_clients:
+        profile = get_client_profile(client_name)
+        trader = profile.get('trader', '') if profile else ''
+        admin = profile.get('admin', '') if profile else ''
+        data = get_client_data(client_name)
+
+        issues = []
+
+        if not data:
+            issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'Client has no saved data in database'})
+            results.append({
+                'client_id': client_name, 'trader': trader, 'admin': admin,
+                'total_issues': len(issues), 'issues': issues, 'health_score': 0.0
+            })
+            continue
+
+        evaluations = data.get('evaluations', [])
+        if not evaluations:
+            issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows'})
+
+        # Activity tracking
+        activity = get_client_activity(client_name) or {}
+        last_push = activity.get('last_push_at')
+        if last_push:
+            try:
+                push_dt = datetime.fromisoformat(last_push)
+                hours_since_push = (now - push_dt).total_seconds() / 3600
+                # Flag if >24h since last push on a weekday (Mon-Fri)
+                if hours_since_push > 24 and today_weekday < 5:
+                    issues.append({'check': 'No recent MT5 push', 'severity': 'high',
+                                   'detail': f'Last push {hours_since_push:.0f}h ago'})
+            except (ValueError, TypeError):
+                pass
+        elif today_weekday < 5 and evaluations:
+            issues.append({'check': 'No MT5 push ever', 'severity': 'high', 'detail': 'No push records found'})
+
+        # Check each evaluation row
+        total_checks = 0
+        for idx, ev in enumerate(evaluations):
+            row_label = f'Row {idx + 1}'
+            # Skip internal/deleted rows
+            if ev.get('_deleted'):
+                continue
+
+            status_p1 = str(ev.get('Status P1', '') or '').strip().lower()
+            status_p2 = str(ev.get('Status', '') or '').strip().lower()
+            is_active = status_p1 not in ('fail', 'breach', 'sl', 'completed', 'complete', '')
+
+            prop_firm = str(ev.get('Prop Firm', '') or '').strip()
+            acct_size = str(ev.get('Account Size', '') or '').strip()
+            has_data = bool(prop_firm or acct_size)
+            total_checks += 1
+
+            if not has_data:
+                continue
+
+            # Status blank on non-empty row
+            if not status_p1 and has_data:
+                issues.append({'check': 'Status blank', 'severity': 'medium', 'row': idx,
+                               'detail': f'{row_label}: Has data but no Status P1'})
+
+            # Missing Date Started (if status is not blank or fail)
+            date_started = str(ev.get('Date Started', '') or '').strip()
+            if not date_started and status_p1 and status_p1 not in ('', 'fail', 'breach', 'sl'):
+                issues.append({'check': 'Missing Date Started', 'severity': 'medium', 'row': idx,
+                               'detail': f'{row_label}: Active/completed but no start date'})
+
+            # Missing Date Ended for completed/failed accounts
+            date_ended = str(ev.get('Date Ended', '') or '').strip()
+            if status_p1 in ('fail', 'breach', 'sl', 'completed', 'complete') and not date_ended:
+                issues.append({'check': 'Missing Date Ended', 'severity': 'medium', 'row': idx,
+                               'detail': f'{row_label}: {status_p1} but no end date'})
+
+            # Empty Fee
+            fee = str(ev.get('Fee', '') or '').strip()
+            if not fee and has_data:
+                issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
+                               'detail': f'{row_label}: Fee not filled in'})
+
+            # Empty Account Size
+            if not acct_size and prop_firm:
+                issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
+                               'detail': f'{row_label}: Account Size blank'})
+
+            # Empty Account #
+            acct_num = str(ev.get('Account #', '') or '').strip()
+            acct_num2 = str(ev.get('Account #.1', '') or '').strip()
+            if is_active and not acct_num and not acct_num2:
+                issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
+                               'detail': f'{row_label}: Active but no account number'})
+
+            # Empty Activation Fee on funded rows
+            activation = str(ev.get('Activation Fee', '') or '').strip()
+            if status_p2 in ('funded', 'live', 'payout') and not activation:
+                issues.append({'check': 'Empty Activation Fee', 'severity': 'medium', 'row': idx,
+                               'detail': f'{row_label}: Funded but no activation fee'})
+
+            # Notes check: active account should have a note
+            note = ev.get('_notes', {})
+            has_any_note = bool(note) if isinstance(note, dict) and any(note.values()) else False
+            notes_col = str(ev.get('Notes', '') or '').strip()
+            if is_active and not has_any_note and not notes_col:
+                issues.append({'check': 'No note on active account', 'severity': 'medium', 'row': idx,
+                               'detail': f'{row_label}: Active with no note'})
+
+            # Negative Hedge Net without note
+            def _parse_num(v):
+                try: return float(str(v).replace('$', '').replace(',', '').strip())
+                except (ValueError, TypeError): return None
+
+            hedge_net = _parse_num(ev.get('Hedge Net', ''))
+            if hedge_net is not None and hedge_net < 0 and not notes_col and not has_any_note:
+                issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
+                               'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation'})
+
+        # Calculate health score (100 - deductions)
+        severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3}
+        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
+        health_score = max(0.0, 100.0 - deduction)
+
+        results.append({
+            'client_id': client_name,
+            'trader': trader,
+            'admin': admin,
+            'total_issues': len(issues),
+            'issues': issues,
+            'health_score': round(health_score, 1)
+        })
+
+    return results
+
+
+@app.route('/api/quality/scan', methods=['POST'])
+@require_role('super_admin')
+def api_run_quality_scan():
+    """Run quality scan on all clients. Super admin only."""
+    from dashboard.database import save_quality_scan_results
+    results = run_quality_scan()
+    scan_date = datetime.now().strftime('%Y-%m-%d')
+    save_quality_scan_results(scan_date, results)
+
+    total_issues = sum(r['total_issues'] for r in results)
+    clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
+    avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
+
+    log_action('QUALITY_SCAN', 'super_admin', request.session_user.get('user_identifier'),
+               get_remote_address(), f"Scanned {len(results)} clients, {total_issues} total issues")
+
+    return jsonify({
+        'status': 'success',
+        'scan_date': scan_date,
+        'total_clients': len(results),
+        'clients_with_issues': clients_with_issues,
+        'total_issues': total_issues,
+        'avg_health_score': round(avg_health, 1),
+        'results': results
+    })
+
+
+@app.route('/api/quality/results')
+@require_role('super_admin')
+def api_quality_results():
+    """Get latest quality scan results. Super admin only."""
+    from dashboard.database import get_quality_scan_results
+    scan_date = request.args.get('date')
+    results = get_quality_scan_results(scan_date)
+    if not results:
+        return jsonify({'status': 'success', 'results': [], 'message': 'No scan results yet. Run a scan first.'})
+
+    total_issues = sum(r['total_issues'] for r in results)
+    clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
+    avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
+
+    # Group by trader
+    by_trader = {}
+    for r in results:
+        t = r.get('trader', 'Unknown')
+        if t not in by_trader:
+            by_trader[t] = {'clients': 0, 'issues': 0, 'total_health': 0}
+        by_trader[t]['clients'] += 1
+        by_trader[t]['issues'] += r['total_issues']
+        by_trader[t]['total_health'] += r['health_score']
+    trader_summary = {t: {**v, 'avg_health': round(v['total_health'] / v['clients'], 1)} for t, v in by_trader.items()}
+
+    return jsonify({
+        'status': 'success',
+        'scan_date': results[0]['scan_date'] if results else None,
+        'total_clients': len(results),
+        'clients_with_issues': clients_with_issues,
+        'total_issues': total_issues,
+        'avg_health_score': round(avg_health, 1),
+        'by_trader': trader_summary,
+        'results': results
+    })
+
+
+# ============ Daily Checklists ============
+
+@app.route('/api/checklist/submit', methods=['POST'])
+@require_session
+def api_submit_checklist():
+    """Submit a daily checklist."""
+    from dashboard.database import save_daily_checklist
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+
+    data = request.json
+    checklist_type = data.get('checklist_type')  # 'trader' or 'admin'
+    items = data.get('items', [])
+
+    if checklist_type not in ('trader', 'admin'):
+        return jsonify({'status': 'error', 'message': 'Invalid checklist type'}), 400
+
+    if not items:
+        return jsonify({'status': 'error', 'message': 'No items provided'}), 400
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    save_daily_checklist(today, user_identifier, user_type, checklist_type, items, get_remote_address())
+
+    log_action('CHECKLIST_SUBMIT', user_type, user_identifier, get_remote_address(),
+               f"{checklist_type} checklist: {sum(1 for i in items if i.get('checked'))} / {len(items)} checked")
+
+    return jsonify({'status': 'success', 'message': 'Checklist saved'})
+
+
+@app.route('/api/checklist/status')
+@require_session
+def api_checklist_status():
+    """Get checklist status for today (or specified date)."""
+    from dashboard.database import get_daily_checklists
+    session_user = request.session_user
+    user_identifier = session_user.get('user_identifier')
+    user_type = session_user.get('user_type')
+
+    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+    if user_type == 'super_admin':
+        # Super admin sees all checklists
+        checklists = get_daily_checklists(date)
+    else:
+        checklists = get_daily_checklists(date, user_identifier)
+
+    return jsonify({'status': 'success', 'date': date, 'checklists': checklists})
+
+@app.route('/api/quality/scorecard')
+@require_role('super_admin')
+def api_weekly_scorecard():
+    """Generate weekly scorecard aggregating quality scan data per trader."""
+    from dashboard.database import get_weekly_scan_results, get_daily_checklists
+    end_date = request.args.get('end_date', datetime.now().strftime('%Y-%m-%d'))
+    days = int(request.args.get('days', 7))
+    results = get_weekly_scan_results(end_date, days)
+    if not results:
+        return jsonify({'status': 'success', 'scorecard': {}, 'message': 'No scan data for this period.'})
+
+    start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=days - 1)).strftime('%Y-%m-%d')
+
+    # Aggregate by trader
+    traders = {}
+    scan_dates = set()
+    for r in results:
+        t = r.get('trader', 'Unknown')
+        sd = r['scan_date']
+        scan_dates.add(sd)
+        if t not in traders:
+            traders[t] = {'clients': set(), 'daily': {}, 'total_issues': 0, 'total_health': 0, 'scan_count': 0}
+        traders[t]['clients'].add(r['client_id'])
+        traders[t]['total_issues'] += r['total_issues']
+        traders[t]['total_health'] += r['health_score']
+        traders[t]['scan_count'] += 1
+        if sd not in traders[t]['daily']:
+            traders[t]['daily'][sd] = {'issues': 0, 'health_sum': 0, 'count': 0}
+        traders[t]['daily'][sd]['issues'] += r['total_issues']
+        traders[t]['daily'][sd]['health_sum'] += r['health_score']
+        traders[t]['daily'][sd]['count'] += 1
+
+    # Build scorecard
+    scorecard = {}
+    for t, data in traders.items():
+        avg_health = round(data['total_health'] / data['scan_count'], 1) if data['scan_count'] else 0
+        # Health trend: compare first half vs second half
+        sorted_dates = sorted(data['daily'].keys())
+        mid = len(sorted_dates) // 2
+        first_half = sorted_dates[:mid] if mid > 0 else sorted_dates
+        second_half = sorted_dates[mid:] if mid > 0 else sorted_dates
+        fh_health = sum(data['daily'][d]['health_sum'] / data['daily'][d]['count'] for d in first_half) / len(first_half) if first_half else 0
+        sh_health = sum(data['daily'][d]['health_sum'] / data['daily'][d]['count'] for d in second_half) / len(second_half) if second_half else 0
+        trend = 'improving' if sh_health > fh_health + 2 else ('declining' if sh_health < fh_health - 2 else 'stable')
+
+        daily_breakdown = {}
+        for d in sorted_dates:
+            dd = data['daily'][d]
+            daily_breakdown[d] = {
+                'issues': dd['issues'],
+                'avg_health': round(dd['health_sum'] / dd['count'], 1),
+                'clients_scanned': dd['count']
+            }
+
+        # Grade based on avg health
+        grade = 'A' if avg_health >= 90 else 'B' if avg_health >= 75 else 'C' if avg_health >= 60 else 'D' if avg_health >= 40 else 'F'
+
+        scorecard[t] = {
+            'total_clients': len(data['clients']),
+            'total_issues': data['total_issues'],
+            'avg_health': avg_health,
+            'grade': grade,
+            'trend': trend,
+            'scans_in_period': len(sorted_dates),
+            'daily': daily_breakdown
+        }
+
+    # Checklist completion for the period
+    checklist_summary = {}
+    current = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    while current <= end_dt:
+        d = current.strftime('%Y-%m-%d')
+        cls = get_daily_checklists(d)
+        for cl in cls:
+            uid = cl['user_identifier']
+            if uid not in checklist_summary:
+                checklist_summary[uid] = {'completed': 0, 'total_days': 0}
+            checklist_summary[uid]['completed'] += 1
+        current += timedelta(days=1)
+    for uid in checklist_summary:
+        checklist_summary[uid]['total_days'] = days
+
+    return jsonify({
+        'status': 'success',
+        'period': {'start': start_date, 'end': end_date, 'days': days},
+        'scan_dates': sorted(scan_dates),
+        'scorecard': scorecard,
+        'checklist_completion': checklist_summary
+    })
+
+@app.route('/api/quality/daily_summary')
+@require_role('super_admin')
+def api_daily_summary():
+    """Generate a text summary of today's dashboard state for Discord/team sharing."""
+    from dashboard.database import get_quality_scan_results, get_daily_checklists
+    from config.hierarchy import get_all_clients, get_client_profile
+
+    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    scan_results = get_quality_scan_results(date)
+    checklists = get_daily_checklists(date)
+
+    all_clients = get_all_clients()
+    total_clients = len(all_clients)
+
+    # Count active vs issues from scan
+    clients_healthy = sum(1 for r in scan_results if r['health_score'] >= 90)
+    clients_warning = sum(1 for r in scan_results if 70 <= r['health_score'] < 90)
+    clients_critical = sum(1 for r in scan_results if r['health_score'] < 70)
+    total_issues = sum(r['total_issues'] for r in scan_results)
+    avg_health = round(sum(r['health_score'] for r in scan_results) / len(scan_results), 1) if scan_results else 0
+
+    # Top issues by frequency
+    issue_counts = {}
+    for r in scan_results:
+        for iss in r['issues']:
+            key = iss['check']
+            issue_counts[key] = issue_counts.get(key, 0) + 1
+    top_issues = sorted(issue_counts.items(), key=lambda x: -x[1])[:5]
+
+    # Trader breakdown
+    trader_stats = {}
+    for r in scan_results:
+        t = r.get('trader', 'Unknown')
+        if t not in trader_stats:
+            trader_stats[t] = {'clients': 0, 'issues': 0, 'health_sum': 0}
+        trader_stats[t]['clients'] += 1
+        trader_stats[t]['issues'] += r['total_issues']
+        trader_stats[t]['health_sum'] += r['health_score']
+
+    # Checklist status
+    checklist_count = len(checklists)
+
+    # Build the text summary
+    weekday = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+    lines = []
+    lines.append(f"📊 **Daily Quality Summary — {weekday}, {date}**")
+    lines.append("")
+    lines.append(f"🏢 **Portfolio:** {total_clients} total clients")
+    if scan_results:
+        lines.append(f"💚 Healthy (90%+): {clients_healthy}  |  🟡 Warning: {clients_warning}  |  🔴 Critical: {clients_critical}")
+        lines.append(f"📈 Avg Health Score: **{avg_health}%**  |  Total Issues: **{total_issues}**")
+    else:
+        lines.append("⚠️ No quality scan run today yet.")
+    lines.append("")
+
+    if top_issues:
+        lines.append("🔍 **Top Issues:**")
+        for check, count in top_issues:
+            lines.append(f"  • {check}: {count} occurrences")
+        lines.append("")
+
+    if trader_stats:
+        lines.append("👤 **Trader Breakdown:**")
+        for t, s in sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1)):
+            avg = round(s['health_sum'] / s['clients'], 1)
+            emoji = '💚' if avg >= 90 else '🟡' if avg >= 70 else '🔴'
+            lines.append(f"  {emoji} {t}: {s['clients']} clients, {s['issues']} issues, {avg}% health")
+        lines.append("")
+
+    lines.append(f"📋 Checklists submitted today: **{checklist_count}**")
+    lines.append("")
+    lines.append("—")
+
+    summary_text = "\n".join(lines)
+
+    fmt = request.args.get('format', 'json')
+    if fmt == 'text':
+        return summary_text, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+    return jsonify({
+        'status': 'success',
+        'date': date,
+        'summary': summary_text,
+        'stats': {
+            'total_clients': total_clients,
+            'scanned': len(scan_results),
+            'healthy': clients_healthy,
+            'warning': clients_warning,
+            'critical': clients_critical,
+            'total_issues': total_issues,
+            'avg_health': avg_health,
+            'checklists_submitted': checklist_count
+        }
+    })
+
+@app.route('/api/client/import_csv', methods=['POST'])
+@require_role('super_admin')
+def import_client_csv():
+    """Import CSV data back into a client's evaluations. Super admin only."""
+    import csv
+    import io
+    from dashboard.database import get_client_data, save_client_data_with_history
+
+    session_user = request.session_user
+    user_identifier = session_user.get('user_identifier')
+
+    client_id = request.form.get('client_id')
+    if not client_id:
+        return jsonify({"status": "error", "message": "client_id required"}), 400
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({"status": "error", "message": "CSV file required"}), 400
+
+    if not file.filename.lower().endswith('.csv'):
+        return jsonify({"status": "error", "message": "File must be a .csv"}), 400
+
+    # Read and parse CSV
+    try:
+        content = file.read().decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(content))
+        rows = []
+        for row in reader:
+            # Stop at statistics separator
+            first_val = list(row.values())[0] if row else ''
+            if first_val and first_val.strip().startswith('--- '):
+                break
+            # Skip empty rows
+            if all(not v.strip() for v in row.values()):
+                continue
+            rows.append(dict(row))
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to parse CSV: {str(e)}"}), 400
+
+    if not rows:
+        return jsonify({"status": "error", "message": "CSV contains no data rows"}), 400
+
+    # Load existing data
+    existing_data = get_client_data(client_id)
+    if not existing_data:
+        return jsonify({"status": "error", "message": f"No existing data for client {client_id}"}), 404
+
+    existing_evals = existing_data.get('evaluations', [])
+
+    # Build index of existing evaluations by Account # for matching
+    existing_by_account = {}
+    for idx, ev in enumerate(existing_evals):
+        acct = (ev.get('Account #') or '').strip()
+        if acct:
+            existing_by_account[acct] = idx
+
+    # Merge: update matched rows, append new ones
+    updated_count = 0
+    added_count = 0
+    merged_evals = list(existing_evals)  # copy
+
+    for csv_row in rows:
+        acct = (csv_row.get('Account #') or '').strip()
+        # Clean out internal keys
+        clean_row = {k: v for k, v in csv_row.items() if not k.startswith('_')}
+
+        if acct and acct in existing_by_account:
+            # Update existing evaluation
+            idx = existing_by_account[acct]
+            for key, val in clean_row.items():
+                if val.strip():  # only overwrite non-empty values
+                    merged_evals[idx][key] = val
+            updated_count += 1
+        else:
+            # New row - append
+            merged_evals.append(clean_row)
+            added_count += 1
+
+    # Save with history
+    existing_data['evaluations'] = merged_evals
+    save_client_data_with_history(
+        client_id, existing_data,
+        changed_by=user_identifier,
+        change_source='csv_import',
+        change_description=f"CSV import: {updated_count} updated, {added_count} added"
+    )
+
+    log_action('CSV_IMPORT', 'super_admin', user_identifier, get_remote_address(),
+               f"Imported CSV for {client_id}: {updated_count} updated, {added_count} added from {len(rows)} rows")
+
+    return jsonify({
+        'status': 'success',
+        'message': f'Import complete: {updated_count} rows updated, {added_count} rows added',
+        'updated': updated_count,
+        'added': added_count,
+        'total_rows': len(merged_evals)
+    })
+
+@app.route('/api/client/import_csv_companion', methods=['POST'])
+@limiter.limit("10 per minute")
+def import_csv_companion():
+    """Import CSV data via companion app. Auth via email (same as sheet migration)."""
+    import csv
+    import io
+    from dashboard.database import get_client_data, save_client_data_with_history
+
+    email = (request.form.get('email') or '').strip().lower()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
+
+    client_id = client_info['client']
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({"status": "error", "message": "CSV file required"}), 400
+
+    if not file.filename.lower().endswith('.csv'):
+        return jsonify({"status": "error", "message": "File must be a .csv"}), 400
+
+    try:
+        content = file.read().decode('utf-8-sig')
+        reader = csv.DictReader(io.StringIO(content))
+        rows = []
+        for row in reader:
+            first_val = list(row.values())[0] if row else ''
+            if first_val and first_val.strip().startswith('--- '):
+                break
+            if all(not v.strip() for v in row.values()):
+                continue
+            rows.append(dict(row))
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to parse CSV: {str(e)}"}), 400
+
+    if not rows:
+        return jsonify({"status": "error", "message": "CSV contains no data rows"}), 400
+
+    existing_data = get_client_data(client_id)
+    if not existing_data:
+        return jsonify({"status": "error", "message": f"No existing data for client {client_id}"}), 404
+
+    existing_evals = existing_data.get('evaluations', [])
+
+    existing_by_account = {}
+    for idx, ev in enumerate(existing_evals):
+        acct = (ev.get('Account #') or '').strip()
+        if acct:
+            existing_by_account[acct] = idx
+
+    updated_count = 0
+    added_count = 0
+    merged_evals = list(existing_evals)
+
+    for csv_row in rows:
+        acct = (csv_row.get('Account #') or '').strip()
+        clean_row = {k: v for k, v in csv_row.items() if not k.startswith('_')}
+
+        if acct and acct in existing_by_account:
+            idx = existing_by_account[acct]
+            for key, val in clean_row.items():
+                if val.strip():
+                    merged_evals[idx][key] = val
+            updated_count += 1
+        else:
+            merged_evals.append(clean_row)
+            added_count += 1
+
+    existing_data['evaluations'] = merged_evals
+    save_client_data_with_history(
+        client_id, existing_data,
+        changed_by=email,
+        change_source='csv_import',
+        change_description=f"CSV import via companion: {updated_count} updated, {added_count} added"
+    )
+
+    log_action('CSV_IMPORT', 'companion', email, get_remote_address(),
+               f"Imported CSV for {client_id}: {updated_count} updated, {added_count} added from {len(rows)} rows")
+
+    return jsonify({
+        'status': 'success',
+        'message': f'Import complete: {updated_count} rows updated, {added_count} rows added',
+        'updated': updated_count,
+        'added': added_count,
+        'total_rows': len(merged_evals)
     })
 
 @app.route('/api/notes', methods=['POST'])
@@ -4844,6 +5581,12 @@ def update_data():
                 # Clients are view+edit only — block add/delete of evaluations
                 if user_type == 'client' and action_type in ('CREATE', 'DELETE'):
                     return jsonify({"status": "error", "message": "Clients cannot add or delete evaluations"}), 403
+
+                # Only super_admin can delete evaluations
+                if action_type == 'DELETE' and user_type != 'super_admin':
+                    log_action('DELETE_DENIED', user_type, user_identifier, get_remote_address(),
+                               f'Attempted DELETE on {client_id} without super_admin role', False)
+                    return jsonify({"status": "error", "message": "Only super admins can delete evaluations"}), 403
 
                 # Save with history tracking
                 success, version = save_client_data_with_history(
