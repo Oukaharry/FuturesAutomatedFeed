@@ -433,7 +433,7 @@
             if (range) {
                 dateFiltered = allIssuesFlat.filter(i => {
                     const d = i.estimated_date;
-                    if (!d || d === '-') return false;
+                    if (!d || d === '-') return true;  // Include items with no date
                     return d >= range.start && d <= range.end;
                 });
             }
@@ -517,11 +517,9 @@
             const range = getDateRange();
 
             let items = allIssuesFlat.filter(i => {
-                // Date filter by estimated_date
-                if (range) {
-                    const d = i.estimated_date;
-                    if (!d || d === '-') return false;
-                    if (d < range.start || d > range.end) return false;
+                // Date filter by estimated_date (include items with no date — they need a re-scan)
+                if (range && i.estimated_date && i.estimated_date !== '-') {
+                    if (i.estimated_date < range.start || i.estimated_date > range.end) return false;
                 }
                 if (sevFilter !== 'all' && i.severity !== sevFilter) return false;
                 if (typeFilter !== 'all' && i.check !== typeFilter) return false;

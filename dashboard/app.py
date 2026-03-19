@@ -4774,8 +4774,9 @@ def _parse_date_str(val):
     val = str(val).strip()
     if not val:
         return None
-    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y', '%d-%m-%Y',
-                '%b %d, %Y', '%B %d, %Y', '%Y/%m/%d', '%m/%d/%y', '%d/%m/%y'):
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y', '%d/%m/%Y', '%d/%m/%y',
+                '%m-%d-%Y', '%m-%d-%y', '%d-%m-%Y', '%d-%m-%y',
+                '%b %d, %Y', '%B %d, %Y', '%Y/%m/%d'):
         try:
             return datetime.strptime(val, fmt).strftime('%Y-%m-%d')
         except ValueError:
