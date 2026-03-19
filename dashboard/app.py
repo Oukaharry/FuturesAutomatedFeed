@@ -4771,16 +4771,45 @@ def _parse_date_str(val):
     """Try to parse a date string from evaluation data. Returns YYYY-MM-DD or None."""
     if not val:
         return None
-    val = str(val).strip()
-    if not val:
+    val = str(val).strip().rstrip('.')
+    if not val or len(val) < 3:
         return None
-    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y', '%d/%m/%Y', '%d/%m/%y',
-                '%m-%d-%Y', '%m-%d-%y', '%d-%m-%Y', '%d-%m-%y',
+    # Skip obvious non-dates
+    if val[0].isalpha() and '/' not in val and '-' not in val:
+        return None
+
+    # Normalize: replace dots with slashes, collapse double slashes
+    normalized = val.replace('.', '/').replace('//', '/')
+    # Strip leading non-digit chars (e.g. "V10/17/25")
+    while normalized and not normalized[0].isdigit():
+        normalized = normalized[1:]
+    if not normalized:
+        return None
+
+    # Try standard formats
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m/%d/%y', '%m-%d-%Y', '%m-%d-%y',
                 '%b %d, %Y', '%B %d, %Y', '%Y/%m/%d'):
         try:
-            return datetime.strptime(val, fmt).strftime('%Y-%m-%d')
+            return datetime.strptime(normalized, fmt).strftime('%Y-%m-%d')
         except ValueError:
             continue
+
+    # Handle M/D (no year) — infer year
+    parts = normalized.split('/')
+    if len(parts) == 2:
+        try:
+            month = int(parts[0])
+            day = int(parts[1])
+            if 1 <= month <= 12 and 1 <= day <= 31:
+                now = datetime.now()
+                candidate = datetime(now.year, month, day)
+                # If the date is in the future, assume previous year
+                if candidate > now:
+                    candidate = datetime(now.year - 1, month, day)
+                return candidate.strftime('%Y-%m-%d')
+        except (ValueError, TypeError):
+            pass
+
     return None
 
 
