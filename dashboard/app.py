@@ -4878,10 +4878,11 @@ def run_quality_scan():
                                'detail': f'{row_label}: Funded but no activation fee'})
 
             # Notes check: active account should have a note
-            note = ev.get('_notes', {})
-            has_any_note = bool(note) if isinstance(note, dict) and any(note.values()) else False
+            cell_notes = ev.get('_notes', {}) or {}
+            has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
             notes_col = str(ev.get('Notes', '') or '').strip()
-            if is_active and not has_any_note and not notes_col:
+            has_note = has_any_note or bool(notes_col)
+            if is_active and not has_note:
                 issues.append({'check': 'No note on active account', 'severity': 'medium', 'row': idx,
                                'detail': f'{row_label}: Active with no note'})
 
@@ -4891,7 +4892,7 @@ def run_quality_scan():
                 except (ValueError, TypeError): return None
 
             hedge_net = _parse_num(ev.get('Hedge Net', ''))
-            if hedge_net is not None and hedge_net < 0 and not notes_col and not has_any_note:
+            if hedge_net is not None and hedge_net < 0 and not has_note:
                 issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
                                'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation'})
 
