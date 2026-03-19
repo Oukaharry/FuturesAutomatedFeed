@@ -4927,9 +4927,7 @@ def run_quality_scan():
                                    'estimated_date': push_dt.strftime('%Y-%m-%d')})
             except (ValueError, TypeError):
                 pass
-        elif today_weekday < 5 and evaluations:
-            issues.append({'check': 'No MT5 push ever', 'severity': 'high', 'detail': 'No push records found',
-                           'estimated_date': scan_date_str})
+        # (Removed: 'No MT5 push ever' check — not a data quality issue)
 
         # Check each evaluation row
         total_checks = 0
@@ -4957,19 +4955,7 @@ def run_quality_scan():
                                'detail': f'{row_label}: Has data but no Status P1',
                                'estimated_date': _estimate_issue_date(ev, 'Status blank', scan_date_str)})
 
-            # Missing Date Started (if status is not blank or fail)
-            date_started = str(ev.get('Date Started', '') or '').strip()
-            if not date_started and status_p1 and status_p1 not in ('', 'fail', 'breach', 'sl'):
-                issues.append({'check': 'Missing Date Started', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Active/completed but no start date',
-                               'estimated_date': _estimate_issue_date(ev, 'Missing Date Started', scan_date_str)})
 
-            # Missing Date Ended for completed/failed accounts
-            date_ended = str(ev.get('Date Ended', '') or '').strip()
-            if status_p1 in ('fail', 'breach', 'sl', 'completed', 'complete') and not date_ended:
-                issues.append({'check': 'Missing Date Ended', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: {status_p1} but no end date',
-                               'estimated_date': _estimate_issue_date(ev, 'Missing Date Ended', scan_date_str)})
 
             # Empty Fee
             fee = str(ev.get('Fee', '') or '').strip()
@@ -5087,7 +5073,7 @@ def api_quality_results():
     if not results:
         return jsonify({'status': 'success', 'results': [], 'total_clients': 0,
                         'clients_with_issues': 0, 'total_issues': 0, 'avg_health_score': 0,
-                        'by_trader': {}, 'scan_dates': [],
+                        'scan_dates': [],
                         'message': 'No scan results for this date range.'})
 
     # Collect unique scan dates
@@ -5106,17 +5092,6 @@ def api_quality_results():
     clients_with_issues = sum(1 for r in deduped if r['total_issues'] > 0)
     avg_health = sum(r['health_score'] for r in deduped) / len(deduped) if deduped else 0
 
-    # Group by trader (using deduplicated data)
-    by_trader = {}
-    for r in deduped:
-        t = r.get('trader', 'Unknown')
-        if t not in by_trader:
-            by_trader[t] = {'clients': 0, 'issues': 0, 'total_health': 0}
-        by_trader[t]['clients'] += 1
-        by_trader[t]['issues'] += r['total_issues']
-        by_trader[t]['total_health'] += r['health_score']
-    trader_summary = {t: {**v, 'avg_health': round(v['total_health'] / v['clients'], 1)} for t, v in by_trader.items()}
-
     return jsonify({
         'status': 'success',
         'scan_date': scan_dates[-1] if scan_dates else None,
@@ -5125,7 +5100,6 @@ def api_quality_results():
         'clients_with_issues': clients_with_issues,
         'total_issues': total_issues,
         'avg_health_score': round(avg_health, 1),
-        'by_trader': trader_summary,
         'results': results  # Full results (all days) for the issues table
     })
 

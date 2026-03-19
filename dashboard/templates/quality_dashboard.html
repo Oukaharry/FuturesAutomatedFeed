@@ -36,19 +36,7 @@
         .filter-btn { background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.1); color:#94a3b8; padding:6px 14px; border-radius:8px; font-size:0.8rem; cursor:pointer; transition:all 0.2s; }
         .filter-btn:hover, .filter-btn.active { background:rgba(96,165,250,0.15); border-color:rgba(96,165,250,0.3); color:#60a5fa; }
 
-        /* Trader summary */
-        .trader-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin-bottom:24px; }
-        .trader-card { background:rgba(30,41,59,0.5); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:16px; }
-        .trader-card .name { font-size:0.95rem; font-weight:600; color:#e2e8f0; margin-bottom:8px; }
-        .trader-card .metric { display:flex; justify-content:space-between; font-size:0.82rem; color:#94a3b8; padding:3px 0; }
-        .health-bar { height:6px; border-radius:3px; background:rgba(255,255,255,0.06); margin-top:10px; overflow:hidden; }
-        .health-fill { height:100%; border-radius:3px; transition:width 0.5s; }
 
-        /* Client issues table */
-        .issues-table { width:100%; border-collapse:separate; border-spacing:0; background:rgba(30,41,59,0.4); border-radius:12px; overflow:hidden; }
-        .issues-table thead th { background:rgba(15,23,42,0.8); padding:12px 14px; font-size:0.78rem; text-transform:uppercase; color:#94a3b8; letter-spacing:0.5px; text-align:left; position:sticky; top:0; }
-        .issues-table tbody td { padding:10px 14px; font-size:0.85rem; border-top:1px solid rgba(255,255,255,0.04); }
-        .issues-table tbody tr:hover { background:rgba(96,165,250,0.05); }
         .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:0.72rem; font-weight:600; }
         .badge-green { background:rgba(34,197,94,0.15); color:#4ade80; }
         .badge-yellow { background:rgba(251,191,36,0.15); color:#fbbf24; }
@@ -124,68 +112,14 @@
             <span id="date-range-label" style="margin-left:auto; font-size:0.82rem; color:#94a3b8; font-weight:500;"></span>
         </div>
 
-        <!-- Summary Cards -->
-        <div class="summary-row" id="summary-cards">
-            <div class="summary-card">
-                <div class="label">Total Clients</div>
-                <div class="value blue" id="total-clients">--</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Avg Health Score</div>
-                <div class="value" id="avg-health">--</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Clients With Issues</div>
-                <div class="value yellow" id="clients-issues">--</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Total Issues</div>
-                <div class="value red" id="total-issues">--</div>
-            </div>
-            <div class="summary-card">
-                <div class="label">Last Scan</div>
-                <div class="value blue" id="last-scan" style="font-size:1.1rem;">Never</div>
-                <div class="sub" id="scan-coverage-sub">No scans run yet</div>
-            </div>
-        </div>
+
 
         <!-- Action Bar -->
         <div class="action-bar">
             <button class="scan-btn" id="run-scan-btn" onclick="runScan()">
                 <i class="fas fa-radar" id="scan-icon"></i> Run Quality Scan
             </button>
-            <div class="filter-group">
-                <button class="filter-btn active" onclick="filterResults('all', this)">All</button>
-                <button class="filter-btn" onclick="filterResults('issues', this)">Issues Only</button>
-                <button class="filter-btn" onclick="filterResults('green', this)">Healthy</button>
-                <button class="filter-btn" onclick="filterResults('red', this)">Critical</button>
             </div>
-        </div>
-
-        <!-- Trader Summary -->
-        <div class="section-title"><i class="fas fa-user-tie" style="color:#60a5fa;"></i> Trader Breakdown</div>
-        <div class="trader-grid" id="trader-grid"></div>
-
-        <!-- Client Summary Table -->
-        <div class="section-title"><i class="fas fa-users" style="color:#60a5fa;"></i> Client Summary</div>
-        <div style="overflow-x:auto; border-radius:12px; margin-bottom:24px;">
-            <table class="issues-table" id="results-table">
-                <thead>
-                    <tr>
-                        <th>Client</th>
-                        <th>Trader</th>
-                        <th>Health</th>
-                        <th>Issues</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody id="results-body">
-                    <tr><td colspan="5" class="empty-state">
-                        <i class="fas fa-clipboard-check"></i>
-                        <div>No scan results yet. Click "Run Quality Scan" to start.</div>
-                    </td></tr>
-                </tbody>
-            </table>
         </div>
 
         <!-- All Issues Table (flat, one row per issue) -->
@@ -367,8 +301,7 @@
                     allResults = [];
                     allIssuesFlat = [];
                     renderSummary(null);
-                    renderTraders({});
-                    renderResults([]);
+
                 }
             } catch (e) {
                 console.error('Failed to load quality results:', e);
@@ -378,8 +311,7 @@
         function refreshView() {
             if (!fullScanData) return;
             renderSummary(fullScanData);
-            renderTraders(fullScanData.by_trader || {});
-            renderResults(allResults);
+            renderIssuesTable();
         }
 
         async function runScan() {
@@ -409,65 +341,13 @@
 
         function renderSummary(data) {
             if (!data) {
-                document.getElementById('total-clients').textContent = '0';
-                document.getElementById('avg-health').textContent = '0.0%';
-                document.getElementById('avg-health').className = 'value red';
-                document.getElementById('clients-issues').textContent = '0';
-                document.getElementById('total-issues').textContent = '0';
-                document.getElementById('last-scan').textContent = 'Never';
-                document.getElementById('last-scan').className = 'value red';
-                document.getElementById('scan-coverage-sub').textContent = 'No scans run yet';
                 document.getElementById('date-range-label').textContent = '';
                 return;
             }
-
-            document.getElementById('total-clients').textContent = data.total_clients || 0;
-            const avgEl = document.getElementById('avg-health');
-            const avg = data.avg_health_score || 0;
-            avgEl.textContent = avg.toFixed(1) + '%';
-            avgEl.className = 'value ' + (avg >= 90 ? 'green' : avg >= 70 ? 'yellow' : 'red');
-
-            // Compute date-filtered stats from issues
-            const range = getDateRange();
-            let dateFiltered = allIssuesFlat;
-            if (range) {
-                dateFiltered = allIssuesFlat.filter(i => {
-                    const d = i.estimated_date;
-                    if (!d || d === '-') return true;  // Include items with no date
-                    return d >= range.start && d <= range.end;
-                });
-            }
-            document.getElementById('clients-issues').textContent = new Set(dateFiltered.map(i => i.client)).size;
-            document.getElementById('total-issues').textContent = dateFiltered.length;
-
-            // Last scan card
-            const scanEl = document.getElementById('last-scan');
-            const scanSub = document.getElementById('scan-coverage-sub');
-            const scanDate = data.scan_date;
-            scanEl.textContent = scanDate || 'Never';
-            scanEl.className = 'value ' + (scanDate ? 'blue' : 'red');
-            scanSub.textContent = scanDate ? 'Latest scan date' : 'No scans run yet';
-
             updateDateLabel();
         }
 
-        function renderTraders(byTrader) {
-            const grid = document.getElementById('trader-grid');
-            if (!byTrader || Object.keys(byTrader).length === 0) {
-                grid.innerHTML = '<div style="color:#64748b; font-size:0.85rem;">No trader data available</div>';
-                return;
-            }
-            grid.innerHTML = Object.entries(byTrader).sort((a,b) => a[1].avg_health - b[1].avg_health).map(([name, t]) => {
-                const healthColor = t.avg_health >= 90 ? '#4ade80' : t.avg_health >= 70 ? '#fbbf24' : '#f87171';
-                return `<div class="trader-card">
-                    <div class="name"><i class="fas fa-user" style="color:${healthColor}; margin-right:6px;"></i>${name}</div>
-                    <div class="metric"><span>Clients</span><span>${t.clients}</span></div>
-                    <div class="metric"><span>Issues</span><span style="color:${t.issues > 0 ? '#fbbf24' : '#4ade80'}">${t.issues}</span></div>
-                    <div class="metric"><span>Avg Health</span><span style="color:${healthColor}">${t.avg_health}%</span></div>
-                    <div class="health-bar"><div class="health-fill" style="width:${t.avg_health}%; background:${healthColor};"></div></div>
-                </div>`;
-            }).join('');
-        }
+
 
         // Flat list of all issues for the issues detail table
         let allIssuesFlat = [];
@@ -569,40 +449,7 @@
             }).join('');
         }
 
-        function renderResults(results) {
-            const tbody = document.getElementById('results-body');
-            let filtered = results;
-            if (currentFilter === 'issues') filtered = results.filter(r => r.total_issues > 0);
-            else if (currentFilter === 'green') filtered = results.filter(r => r.health_score >= 90);
-            else if (currentFilter === 'red') filtered = results.filter(r => r.health_score < 70);
 
-            // Render issues table (flat list already built)
-            renderIssuesTable();
-
-            if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div>No results match the current filter.</div></td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = filtered.map(r => {
-                const healthBadge = r.health_score >= 90 ? 'badge-green' :
-                                    r.health_score >= 70 ? 'badge-yellow' : 'badge-red';
-                return `<tr>
-                    <td><a href="/dashboard/${encodeURIComponent(r.client_id)}" style="color:#60a5fa; text-decoration:none;">${r.client_id}</a></td>
-                    <td style="color:#94a3b8;">${r.trader || '-'}</td>
-                    <td><span class="badge ${healthBadge}">${r.health_score}%</span></td>
-                    <td style="color:${r.total_issues > 0 ? '#fbbf24' : '#4ade80'}">${r.total_issues}</td>
-                    <td><a href="/dashboard/${encodeURIComponent(r.client_id)}" style="color:#60a5fa; font-size:0.8rem;"><i class="fas fa-external-link-alt"></i> View</a></td>
-                </tr>`;
-            }).join('');
-        }
-
-        function filterResults(filter, btn) {
-            currentFilter = filter;
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            if (btn) btn.classList.add('active');
-            renderResults(allResults);
-        }
 
         async function loadChecklists() {
             try {
