@@ -143,8 +143,9 @@
                 <div class="value red" id="total-issues">--</div>
             </div>
             <div class="summary-card">
-                <div class="label">Last Scan</div>
+                <div class="label">Scan Coverage</div>
                 <div class="value blue" id="last-scan" style="font-size:1.1rem;">Never</div>
+                <div class="sub" id="scan-coverage-sub">Run daily scans for trend data</div>
             </div>
         </div>
 
@@ -367,21 +368,11 @@
                     renderSummary(data);
                     renderTraders(data.by_trader || {});
                     renderResults(data.results);
-                    // Update date label with scan dates info
-                    const lbl = document.getElementById('date-range-label');
-                    if (data.scan_dates && data.scan_dates.length > 0) {
-                        if (data.scan_dates.length === 1) {
-                            lbl.textContent = `Scan: ${data.scan_dates[0]}`;
-                        } else {
-                            lbl.textContent = `${data.scan_dates.length} scans: ${data.scan_dates[0]} → ${data.scan_dates[data.scan_dates.length-1]}`;
-                        }
-                    }
                 } else {
                     allResults = [];
-                    renderSummary({total_clients:0, avg_health_score:0, clients_with_issues:0, total_issues:0, scan_date: null, message: data.message});
+                    renderSummary({total_clients:0, avg_health_score:0, clients_with_issues:0, total_issues:0, scan_dates:[], message: data.message});
                     renderTraders({});
                     renderResults([]);
-                    document.getElementById('date-range-label').textContent = data.message || 'No data for this period';
                 }
             } catch (e) {
                 console.error('Failed to load quality results:', e);
@@ -418,12 +409,46 @@
             avgEl.className = 'value ' + (avg >= 90 ? 'green' : avg >= 70 ? 'yellow' : 'red');
             document.getElementById('clients-issues').textContent = data.clients_with_issues || 0;
             document.getElementById('total-issues').textContent = data.total_issues || 0;
-            // Show scan date or date range
+
+            // Scan coverage info
             const scanEl = document.getElementById('last-scan');
-            if (data.scan_dates && data.scan_dates.length > 1) {
-                scanEl.textContent = `${data.scan_dates[0]} → ${data.scan_dates[data.scan_dates.length-1]}`;
+            const scanSub = document.getElementById('scan-coverage-sub');
+            const lbl = document.getElementById('date-range-label');
+            const scanDates = data.scan_dates || [];
+
+            if (scanDates.length === 0) {
+                scanEl.textContent = 'No data';
+                scanEl.className = 'value red';
+                scanSub.textContent = 'No scans found for this period';
+                lbl.textContent = 'No scan data for selected period';
+                lbl.style.color = '#f87171';
             } else {
-                scanEl.textContent = data.scan_date || 'No scan data';
+                scanEl.textContent = scanDates.length + ' day' + (scanDates.length > 1 ? 's' : '');
+                scanEl.className = 'value ' + (scanDates.length >= 5 ? 'green' : scanDates.length >= 2 ? 'yellow' : 'blue');
+
+                // Calculate expected days in period
+                let expectedDays = 1;
+                if (currentDateFilter === 'week') expectedDays = 7;
+                else if (currentDateFilter === 'month') expectedDays = 30;
+                else if (currentDateFilter === 'custom') {
+                    const s = document.getElementById('date-start').value;
+                    const e = document.getElementById('date-end').value;
+                    if (s && e) expectedDays = Math.round((new Date(e) - new Date(s)) / 86400000) + 1;
+                }
+
+                if (currentDateFilter === 'latest' || currentDateFilter === 'today') {
+                    scanSub.textContent = scanDates[0];
+                } else {
+                    scanSub.textContent = `${scanDates.length} of ~${expectedDays} days have scans`;
+                }
+
+                // Update the period label with scan info
+                lbl.style.color = '#94a3b8';
+                if (scanDates.length === 1) {
+                    lbl.textContent += ` · 1 scan (${scanDates[0]})`;
+                } else {
+                    lbl.textContent += ` · ${scanDates.length} scans`;
+                }
             }
         }
 
