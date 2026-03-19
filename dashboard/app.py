@@ -3740,13 +3740,26 @@ def api_kyc_portfolio():
 
     filter_from = parse_date_safe(from_date) if from_date else None
     filter_to = parse_date_safe(to_date) if to_date else None
+    has_date_filter = bool(filter_from or filter_to)
 
     def date_in_period(date_str):
-        if not filter_from and not filter_to:
+        if not has_date_filter:
             return True
         d = parse_date_safe(date_str)
         if not d:
             return True
+        if filter_from and d < filter_from:
+            return False
+        if filter_to and d > filter_to:
+            return False
+        return True
+
+    def eval_in_period(ev):
+        if not has_date_filter:
+            return True
+        d = parse_date_safe(ev.get('Date Purchased')) or parse_date_safe(ev.get('Date Started'))
+        if not d:
+            return False
         if filter_from and d < filter_from:
             return False
         if filter_to and d > filter_to:
@@ -3777,50 +3790,84 @@ def api_kyc_portfolio():
             per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
             continue
 
-        stats = cdata.get('statistics', {}) or {}
-        cashflow = stats.get('cashflow_inprogress', {})
-        eval_totals = stats.get('eval_totals', {})
+        all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
 
-        # Pull values directly from stored statistics (same as Stats tab)
-        s_payouts = cashflow.get('payouts', 0.0) or 0.0
-        s_fees = (cashflow.get('challenge_fees', 0.0) or 0.0)
-        s_hedge = cashflow.get('hedging_results', 0.0) or 0.0
-        s_farming = cashflow.get('farming_results', 0.0) or 0.0
-        s_net = s_payouts + s_hedge + s_farming - s_fees
+        if not has_date_filter:
+            # ── No date filter: use stored statistics (consistent with Stats tab) ──
+            stats = cdata.get('statistics', {}) or {}
+            cashflow = stats.get('cashflow_inprogress', {})
+            et = stats.get('eval_totals', {})
 
-        # Account counts from eval_totals
-        s_active = (eval_totals.get('total_running', 0) or 0)
-        s_passed = (eval_totals.get('total_passed', 0) or 0)
-        s_failed = (eval_totals.get('total_failed', 0) or 0)
-        s_evals = s_active + s_passed + s_failed
+            s_payouts = cashflow.get('payouts', 0.0) or 0.0
+            s_fees = cashflow.get('challenge_fees', 0.0) or 0.0
+            s_hedge = cashflow.get('hedging_results', 0.0) or 0.0
+            s_farming = cashflow.get('farming_results', 0.0) or 0.0
+            s_net = s_payouts + s_hedge + s_farming - s_fees
+            s_active = et.get('total_running', 0) or 0
+            s_passed = et.get('total_passed', 0) or 0
+            s_failed = et.get('total_failed', 0) or 0
+            s_evals = s_active + s_passed + s_failed
 
-        acc_stats = {
-            "name": name,
-            "eval_count": s_evals,
-            "payouts": round(s_payouts, 2),
-            "fees": round(s_fees, 2),
-            "hedge": round(s_hedge, 2),
-            "farming": round(s_farming, 2),
-            "net": round(s_net, 2),
-            "active": s_active,
-            "passed": s_passed,
-            "failed": s_failed
-        }
+            acc_stats = {
+                "name": name, "eval_count": s_evals,
+                "payouts": round(s_payouts, 2), "fees": round(s_fees, 2),
+                "hedge": round(s_hedge, 2), "farming": round(s_farming, 2),
+                "net": round(s_net, 2),
+                "active": s_active, "passed": s_passed, "failed": s_failed
+            }
+        else:
+            # ── Date filter active: recalculate from evaluations in period ──
+            period_evals = [ev for ev in all_evals if eval_in_period(ev)]
+            acc_stats = {"name": name, "eval_count": len(period_evals),
+                         "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0,
+                         "net": 0.0, "active": 0, "passed": 0, "failed": 0}
 
+            for ev in period_evals:
+                status = str(ev.get('Status') or '').lower()
+                if any(s in status for s in ['passed', 'funded']):
+                    acc_stats["passed"] += 1
+                elif any(s in status for s in ['failed', 'breached', 'blown', 'fail']):
+                    acc_stats["failed"] += 1
+                elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
+                    acc_stats["active"] += 1
+
+                acc_stats["fees"] += parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
+
+                for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
+                            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
+                            'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                    acc_stats["hedge"] += parse_currency(ev.get(col))
+                acc_stats["farming"] += parse_currency(ev.get('Farming Profit'))
+
+            # Payouts from ALL evals filtered by individual payout date
+            for ev in all_evals:
+                for i in range(1, 10):
+                    pval = parse_currency(ev.get(f'Payout {i}'))
+                    if pval != 0:
+                        pdate = str(ev.get(f'Date {i}') or '-').strip()
+                        if date_in_period(pdate):
+                            acc_stats["payouts"] += pval
+
+            acc_stats["net"] = round(acc_stats["payouts"] - acc_stats["fees"] + acc_stats["hedge"] + acc_stats["farming"], 2)
+            acc_stats["payouts"] = round(acc_stats["payouts"], 2)
+            acc_stats["fees"] = round(acc_stats["fees"], 2)
+            acc_stats["hedge"] = round(acc_stats["hedge"], 2)
+            acc_stats["farming"] = round(acc_stats["farming"], 2)
+
+        # Accumulate totals
         totals["total_payouts"] += acc_stats["payouts"]
         totals["total_fees"] += acc_stats["fees"]
         totals["total_hedge"] += acc_stats["hedge"]
         totals["total_farming"] += acc_stats["farming"]
         totals["total_net_profit"] += acc_stats["net"]
-        totals["active_accounts"] += s_active
-        totals["passed_accounts"] += s_passed
-        totals["failed_accounts"] += s_failed
-        totals["total_evaluations"] += s_evals
+        totals["active_accounts"] += acc_stats["active"]
+        totals["passed_accounts"] += acc_stats["passed"]
+        totals["failed_accounts"] += acc_stats["failed"]
+        totals["total_evaluations"] += acc_stats["eval_count"]
 
         per_account.append(acc_stats)
 
-        # Collect individual payout records (still need eval rows for payout dates)
-        all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
+        # Collect individual payout records and prop firm breakdown from evals
         for ev in all_evals:
             prop_firm = str(ev.get('Prop Firm') or 'Unknown').strip() or 'Unknown'
             account_num = str(ev.get('Account #') or ev.get('Account #.1') or '-').strip()
@@ -3835,7 +3882,6 @@ def api_kyc_portfolio():
                             "payout_num": i, "amount": round(pval, 2), "date": format_display_date(pdate)
                         })
 
-            # Prop firm breakdown from stored stats isn't per-firm, so build from evals for breakdown
             if prop_firm not in by_prop_firm:
                 by_prop_firm[prop_firm] = {"evals": 0, "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
             pf = by_prop_firm[prop_firm]
