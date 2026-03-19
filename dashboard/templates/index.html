@@ -4608,13 +4608,6 @@
 
         function addAccount() {
             if (!currentData.evaluations) currentData.evaluations = [];
-
-        }
-
-        function downloadCSV() {
-            if (!CLIENT_ID) return;
-            window.location.href = `/api/client/export_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
-        }
             currentData.evaluations.push({
                 "Prop Firm": "My Funded Futures",
                 "Account Size": "$100,000",
@@ -4623,6 +4616,11 @@
             });
             renderEvaluationsTable();
             saveData('CREATE', 'Added new evaluation account');
+        }
+
+        function downloadCSV() {
+            if (!CLIENT_ID) return;
+            window.location.href = `/api/client/export_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
         }
 
         async function deleteEvaluation(index) {
