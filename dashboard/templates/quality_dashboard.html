@@ -190,6 +190,24 @@
                 <option value="all">All Traders</option>
             </select>
         </div>
+
+        <!-- Date Filter Bar -->
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap; background:rgba(15,23,42,0.5); padding:12px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:0.82rem; color:#94a3b8; font-weight:600; margin-right:4px;"><i class="fas fa-calendar-alt" style="margin-right:4px;"></i> Period:</span>
+            <button class="filter-btn active" id="date-btn-latest" onclick="setDateFilter('latest')">Latest</button>
+            <button class="filter-btn" id="date-btn-today" onclick="setDateFilter('today')">Today</button>
+            <button class="filter-btn" id="date-btn-week" onclick="setDateFilter('week')">This Week</button>
+            <button class="filter-btn" id="date-btn-month" onclick="setDateFilter('month')">This Month</button>
+            <button class="filter-btn" id="date-btn-custom" onclick="setDateFilter('custom')">Custom</button>
+            <div id="custom-date-range" style="display:none; margin-left:8px; display:none; gap:8px; align-items:center;">
+                <label style="font-size:0.78rem; color:#94a3b8;">From</label>
+                <input type="date" id="date-start" class="issue-search" style="width:150px; padding:6px 10px;">
+                <label style="font-size:0.78rem; color:#94a3b8;">To</label>
+                <input type="date" id="date-end" class="issue-search" style="width:150px; padding:6px 10px;">
+                <button onclick="applyCustomDateFilter()" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:none; color:#fff; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:0.8rem;">Apply</button>
+            </div>
+            <span id="date-range-label" style="margin-left:auto; font-size:0.78rem; color:#64748b;"></span>
+        </div>
         <div style="overflow-x:auto; border-radius:12px; max-height:600px; overflow-y:auto;">
             <table class="issues-detail-table" id="issues-detail-table">
                 <thead>
@@ -262,22 +280,102 @@
     <script>
         let allResults = [];
         let currentFilter = 'all';
+        let currentDateFilter = 'latest';
 
         // Load existing results on page load
         document.addEventListener('DOMContentLoaded', () => {
+            // Set default date values for custom range
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date-end').value = today;
+            const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+            document.getElementById('date-start').value = weekAgo;
             loadResults();
             loadChecklists();
         });
 
+        function getDateFilterParams() {
+            const today = new Date().toISOString().split('T')[0];
+            if (currentDateFilter === 'latest') return '';
+            if (currentDateFilter === 'today') return `&start=${today}&end=${today}`;
+            if (currentDateFilter === 'week') {
+                const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                return `&start=${weekAgo}&end=${today}`;
+            }
+            if (currentDateFilter === 'month') {
+                const monthAgo = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                return `&start=${monthAgo}&end=${today}`;
+            }
+            if (currentDateFilter === 'custom') {
+                const s = document.getElementById('date-start').value;
+                const e = document.getElementById('date-end').value;
+                if (s && e) return `&start=${s}&end=${e}`;
+            }
+            return '';
+        }
+
+        function setDateFilter(mode) {
+            currentDateFilter = mode;
+            // Update active button
+            document.querySelectorAll('[id^="date-btn-"]').forEach(b => b.classList.remove('active'));
+            const btn = document.getElementById('date-btn-' + mode);
+            if (btn) btn.classList.add('active');
+            // Toggle custom date inputs
+            const customEl = document.getElementById('custom-date-range');
+            customEl.style.display = mode === 'custom' ? 'flex' : 'none';
+            // Load unless custom (need user to click Apply)
+            if (mode !== 'custom') {
+                updateDateLabel();
+                loadResults();
+            }
+        }
+
+        function applyCustomDateFilter() {
+            const s = document.getElementById('date-start').value;
+            const e = document.getElementById('date-end').value;
+            if (!s || !e) { alert('Please select both start and end dates'); return; }
+            if (s > e) { alert('Start date must be before end date'); return; }
+            updateDateLabel();
+            loadResults();
+        }
+
+        function updateDateLabel() {
+            const label = document.getElementById('date-range-label');
+            const today = new Date().toISOString().split('T')[0];
+            if (currentDateFilter === 'latest') label.textContent = 'Showing latest scan';
+            else if (currentDateFilter === 'today') label.textContent = `Showing: ${today}`;
+            else if (currentDateFilter === 'week') {
+                const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
+                label.textContent = `Showing: ${weekAgo} → ${today}`;
+            } else if (currentDateFilter === 'month') {
+                const monthAgo = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
+                label.textContent = `Showing: ${monthAgo} → ${today}`;
+            } else if (currentDateFilter === 'custom') {
+                const s = document.getElementById('date-start').value;
+                const e = document.getElementById('date-end').value;
+                label.textContent = `Showing: ${s} → ${e}`;
+            }
+        }
+
         async function loadResults() {
             try {
-                const resp = await fetch('/api/quality/results');
+                const params = getDateFilterParams();
+                const resp = await fetch('/api/quality/results?' + params.replace(/^&/, ''));
                 const data = await resp.json();
                 if (data.status === 'success' && data.results && data.results.length > 0) {
                     allResults = data.results;
                     renderSummary(data);
                     renderTraders(data.by_trader || {});
                     renderResults(data.results);
+                    // Show scan dates coverage
+                    if (data.scan_dates && data.scan_dates.length > 1) {
+                        const lbl = document.getElementById('date-range-label');
+                        lbl.textContent += ` (${data.scan_dates.length} scan days)`;
+                    }
+                } else {
+                    allResults = [];
+                    renderSummary({total_clients:0, avg_health_score:0, clients_with_issues:0, total_issues:0});
+                    renderTraders({});
+                    renderResults([]);
                 }
             } catch (e) {
                 console.error('Failed to load quality results:', e);

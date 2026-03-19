@@ -4942,10 +4942,23 @@ def api_run_quality_scan():
 @app.route('/api/quality/results')
 @require_role('super_admin')
 def api_quality_results():
-    """Get latest quality scan results. Super admin only."""
-    from dashboard.database import get_quality_scan_results
+    """Get quality scan results. Supports ?date=, ?start=&end= for ranges. Super admin only."""
+    from dashboard.database import get_quality_scan_results, get_weekly_scan_results
     scan_date = request.args.get('date')
-    results = get_quality_scan_results(scan_date)
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+
+    if start_date and end_date:
+        # Date range query
+        try:
+            s = datetime.strptime(start_date, '%Y-%m-%d')
+            e = datetime.strptime(end_date, '%Y-%m-%d')
+            days = (e - s).days + 1
+            results = get_weekly_scan_results(end_date, days)
+        except ValueError:
+            return jsonify({'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    else:
+        results = get_quality_scan_results(scan_date)
     if not results:
         return jsonify({'status': 'success', 'results': [], 'message': 'No scan results yet. Run a scan first.'})
 
@@ -4964,9 +4977,13 @@ def api_quality_results():
         by_trader[t]['total_health'] += r['health_score']
     trader_summary = {t: {**v, 'avg_health': round(v['total_health'] / v['clients'], 1)} for t, v in by_trader.items()}
 
+    # Collect unique scan dates for reference
+    scan_dates = sorted(set(r['scan_date'] for r in results))
+
     return jsonify({
         'status': 'success',
-        'scan_date': results[0]['scan_date'] if results else None,
+        'scan_date': scan_dates[-1] if scan_dates else None,
+        'scan_dates': scan_dates,
         'total_clients': len(results),
         'clients_with_issues': clients_with_issues,
         'total_issues': total_issues,
@@ -4974,6 +4991,18 @@ def api_quality_results():
         'by_trader': trader_summary,
         'results': results
     })
+
+
+@app.route('/api/quality/scan_dates')
+@require_role('super_admin')
+def api_quality_scan_dates():
+    """Get list of all dates that have scan results."""
+    from dashboard.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT DISTINCT scan_date FROM quality_scan_results ORDER BY scan_date DESC')
+        dates = [row['scan_date'] for row in cursor.fetchall()]
+    return jsonify({'status': 'success', 'dates': dates})
 
 
 # ============ Daily Checklists ============
