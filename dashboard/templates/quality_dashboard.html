@@ -106,6 +106,24 @@
     </nav>
 
     <div class="container">
+        <!-- Date Filter Bar (controls ALL stats on this page) -->
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; background:linear-gradient(135deg,rgba(15,23,42,0.8),rgba(30,41,59,0.7)); padding:14px 20px; border-radius:12px; border:1px solid rgba(96,165,250,0.15); box-shadow:0 2px 12px rgba(0,0,0,0.2);">
+            <span style="font-size:0.88rem; color:#e2e8f0; font-weight:700; margin-right:6px;"><i class="fas fa-calendar-alt" style="margin-right:5px; color:#60a5fa;"></i> Period:</span>
+            <button class="filter-btn active" id="date-btn-latest" onclick="setDateFilter('latest')">Latest</button>
+            <button class="filter-btn" id="date-btn-today" onclick="setDateFilter('today')">Today</button>
+            <button class="filter-btn" id="date-btn-week" onclick="setDateFilter('week')">This Week</button>
+            <button class="filter-btn" id="date-btn-month" onclick="setDateFilter('month')">This Month</button>
+            <button class="filter-btn" id="date-btn-custom" onclick="setDateFilter('custom')">Custom</button>
+            <div id="custom-date-range" style="display:none; margin-left:8px; gap:8px; align-items:center;">
+                <label style="font-size:0.78rem; color:#94a3b8;">From</label>
+                <input type="date" id="date-start" class="issue-search" style="width:150px; padding:6px 10px;">
+                <label style="font-size:0.78rem; color:#94a3b8;">To</label>
+                <input type="date" id="date-end" class="issue-search" style="width:150px; padding:6px 10px;">
+                <button onclick="applyCustomDateFilter()" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:none; color:#fff; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:0.8rem;">Apply</button>
+            </div>
+            <span id="date-range-label" style="margin-left:auto; font-size:0.82rem; color:#94a3b8; font-weight:500;"></span>
+        </div>
+
         <!-- Summary Cards -->
         <div class="summary-row" id="summary-cards">
             <div class="summary-card">
@@ -141,24 +159,6 @@
                 <button class="filter-btn" onclick="filterResults('green', this)">Healthy</button>
                 <button class="filter-btn" onclick="filterResults('red', this)">Critical</button>
             </div>
-        </div>
-
-        <!-- Date Filter Bar (controls ALL sections) -->
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; background:rgba(15,23,42,0.5); padding:12px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.06);">
-            <span style="font-size:0.82rem; color:#94a3b8; font-weight:600; margin-right:4px;"><i class="fas fa-calendar-alt" style="margin-right:4px;"></i> Period:</span>
-            <button class="filter-btn active" id="date-btn-latest" onclick="setDateFilter('latest')">Latest</button>
-            <button class="filter-btn" id="date-btn-today" onclick="setDateFilter('today')">Today</button>
-            <button class="filter-btn" id="date-btn-week" onclick="setDateFilter('week')">This Week</button>
-            <button class="filter-btn" id="date-btn-month" onclick="setDateFilter('month')">This Month</button>
-            <button class="filter-btn" id="date-btn-custom" onclick="setDateFilter('custom')">Custom</button>
-            <div id="custom-date-range" style="display:none; margin-left:8px; gap:8px; align-items:center;">
-                <label style="font-size:0.78rem; color:#94a3b8;">From</label>
-                <input type="date" id="date-start" class="issue-search" style="width:150px; padding:6px 10px;">
-                <label style="font-size:0.78rem; color:#94a3b8;">To</label>
-                <input type="date" id="date-end" class="issue-search" style="width:150px; padding:6px 10px;">
-                <button onclick="applyCustomDateFilter()" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:none; color:#fff; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:0.8rem;">Apply</button>
-            </div>
-            <span id="date-range-label" style="margin-left:auto; font-size:0.78rem; color:#64748b;"></span>
         </div>
 
         <!-- Trader Summary -->
@@ -393,16 +393,13 @@
             const icon = document.getElementById('scan-icon');
             btn.disabled = true;
             icon.className = 'fas fa-spinner fa-spin';
-            btn.querySelector('span, #scan-icon').nextSibling && (btn.childNodes[1].textContent = ' Scanning...');
 
             try {
                 const resp = await fetch('/api/quality/scan', { method: 'POST' });
                 const data = await resp.json();
                 if (data.status === 'success') {
-                    allResults = data.results;
-                    renderSummary(data);
-                    // Reload to get trader breakdown
-                    await loadResults();
+                    // After scan, switch to Today to show fresh results
+                    setDateFilter('today');
                 }
             } catch (e) {
                 console.error('Scan failed:', e);
