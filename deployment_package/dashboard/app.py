@@ -254,13 +254,13 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
         If trade_timestamp is missing/invalid, returns the first match (fallback).
     """
     if not matches or not trade_timestamp:
-        return matches[0] if matches else None
+        return max(matches, key=lambda m: m[0]) if matches else None
 
     # Convert trade timestamp to datetime
     try:
         trade_date = datetime.fromtimestamp(float(trade_timestamp))
     except (ValueError, TypeError):
-        return matches[0]
+        return max(matches, key=lambda m: m[0])
         
     valid_matches = []
     
@@ -296,14 +296,16 @@ def filter_matches_by_date(matches, evaluations, trade_timestamp):
             })
             
     if not valid_matches:
-        # No matches with valid matches found? Return first match as fallback
-        return matches[0]
+        # No matches with valid dates found? Prefer latest row (highest eval_index)
+        return max(matches, key=lambda m: m[0])
         
-    # Sort by delta (smallest positive difference)
-    # Prefer matches with valid dates
-    valid_matches.sort(key=lambda x: (not x['valid_date'], x['delta']))
-    
-    return valid_matches[0]['match']
+    # When multiple valid matches, prefer the latest row (highest eval_index)
+    # This ensures data always goes to the most recently added account
+    dated_valid = [m for m in valid_matches if m['valid_date']]
+    if dated_valid:
+        return max(dated_valid, key=lambda m: m['match'][0])['match']
+    else:
+        return max(valid_matches, key=lambda m: m['match'][0])['match']
 
 
 def normalize_account_size(value):
