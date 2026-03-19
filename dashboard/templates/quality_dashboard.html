@@ -143,9 +143,9 @@
                 <div class="value red" id="total-issues">--</div>
             </div>
             <div class="summary-card">
-                <div class="label">Scan Coverage</div>
+                <div class="label">Last Scan</div>
                 <div class="value blue" id="last-scan" style="font-size:1.1rem;">Never</div>
-                <div class="sub" id="scan-coverage-sub">Run daily scans for trend data</div>
+                <div class="sub" id="scan-coverage-sub">No scans run yet</div>
             </div>
         </div>
 
@@ -219,7 +219,7 @@
                         <th onclick="sortIssuesBy('check')">Issue <i class="fas fa-sort" style="opacity:0.4;"></i></th>
                         <th>Detail</th>
                         <th onclick="sortIssuesBy('row')">Row <i class="fas fa-sort" style="opacity:0.4;"></i></th>
-                        <th onclick="sortIssuesBy('scan_date')">Scan Date <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                        <th onclick="sortIssuesBy('estimated_date')">Est. Date <i class="fas fa-sort" style="opacity:0.4;"></i></th>
                         <th>Go To</th>
                     </tr>
                 </thead>
@@ -281,6 +281,7 @@
 
     <script>
         let allResults = [];
+        let fullScanData = null;
         let currentFilter = 'all';
         let currentDateFilter = 'latest';
 
@@ -295,39 +296,34 @@
             loadChecklists();
         });
 
-        function getDateFilterParams() {
+        function getDateRange() {
+            if (currentDateFilter === 'latest') return null;
             const today = new Date().toISOString().split('T')[0];
-            if (currentDateFilter === 'latest') return '';
-            if (currentDateFilter === 'today') return `&start=${today}&end=${today}`;
+            if (currentDateFilter === 'today') return { start: today, end: today };
             if (currentDateFilter === 'week') {
                 const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0];
-                return `&start=${weekAgo}&end=${today}`;
+                return { start: weekAgo, end: today };
             }
             if (currentDateFilter === 'month') {
                 const monthAgo = new Date(Date.now() - 29 * 86400000).toISOString().split('T')[0];
-                return `&start=${monthAgo}&end=${today}`;
+                return { start: monthAgo, end: today };
             }
             if (currentDateFilter === 'custom') {
                 const s = document.getElementById('date-start').value;
                 const e = document.getElementById('date-end').value;
-                if (s && e) return `&start=${s}&end=${e}`;
+                if (s && e) return { start: s, end: e };
             }
-            return '';
+            return null;
         }
 
         function setDateFilter(mode) {
             currentDateFilter = mode;
-            // Update active button
             document.querySelectorAll('[id^="date-btn-"]').forEach(b => b.classList.remove('active'));
             const btn = document.getElementById('date-btn-' + mode);
             if (btn) btn.classList.add('active');
-            // Toggle custom date inputs
-            const customEl = document.getElementById('custom-date-range');
-            customEl.style.display = mode === 'custom' ? 'flex' : 'none';
-            // Load unless custom (need user to click Apply)
+            document.getElementById('custom-date-range').style.display = mode === 'custom' ? 'flex' : 'none';
             if (mode !== 'custom') {
-                updateDateLabel();
-                loadResults();
+                refreshView();
             }
         }
 
@@ -336,8 +332,7 @@
             const e = document.getElementById('date-end').value;
             if (!s || !e) { alert('Please select both start and end dates'); return; }
             if (s > e) { alert('Start date must be before end date'); return; }
-            updateDateLabel();
-            loadResults();
+            refreshView();
         }
 
         function updateDateLabel() {
@@ -360,23 +355,31 @@
 
         async function loadResults() {
             try {
-                const params = getDateFilterParams();
-                const resp = await fetch('/api/quality/results?' + params.replace(/^&/, ''));
+                const resp = await fetch('/api/quality/results');
                 const data = await resp.json();
                 if (data.status === 'success' && data.results && data.results.length > 0) {
+                    fullScanData = data;
                     allResults = data.results;
-                    renderSummary(data);
-                    renderTraders(data.by_trader || {});
-                    renderResults(data.results);
+                    buildFlatIssues(data.results);
+                    refreshView();
                 } else {
+                    fullScanData = null;
                     allResults = [];
-                    renderSummary({total_clients:0, avg_health_score:0, clients_with_issues:0, total_issues:0, scan_dates:[], message: data.message});
+                    allIssuesFlat = [];
+                    renderSummary(null);
                     renderTraders({});
                     renderResults([]);
                 }
             } catch (e) {
                 console.error('Failed to load quality results:', e);
             }
+        }
+
+        function refreshView() {
+            if (!fullScanData) return;
+            renderSummary(fullScanData);
+            renderTraders(fullScanData.by_trader || {});
+            renderResults(allResults);
         }
 
         async function runScan() {
@@ -389,8 +392,11 @@
                 const resp = await fetch('/api/quality/scan', { method: 'POST' });
                 const data = await resp.json();
                 if (data.status === 'success') {
-                    // After scan, switch to Today to show fresh results
-                    setDateFilter('today');
+                    // Reload fresh results after scan
+                    currentDateFilter = 'latest';
+                    document.querySelectorAll('[id^="date-btn-"]').forEach(b => b.classList.remove('active'));
+                    document.getElementById('date-btn-latest').classList.add('active');
+                    loadResults();
                 }
             } catch (e) {
                 console.error('Scan failed:', e);
@@ -402,54 +408,47 @@
         }
 
         function renderSummary(data) {
+            if (!data) {
+                document.getElementById('total-clients').textContent = '0';
+                document.getElementById('avg-health').textContent = '0.0%';
+                document.getElementById('avg-health').className = 'value red';
+                document.getElementById('clients-issues').textContent = '0';
+                document.getElementById('total-issues').textContent = '0';
+                document.getElementById('last-scan').textContent = 'Never';
+                document.getElementById('last-scan').className = 'value red';
+                document.getElementById('scan-coverage-sub').textContent = 'No scans run yet';
+                document.getElementById('date-range-label').textContent = '';
+                return;
+            }
+
             document.getElementById('total-clients').textContent = data.total_clients || 0;
             const avgEl = document.getElementById('avg-health');
             const avg = data.avg_health_score || 0;
             avgEl.textContent = avg.toFixed(1) + '%';
             avgEl.className = 'value ' + (avg >= 90 ? 'green' : avg >= 70 ? 'yellow' : 'red');
-            document.getElementById('clients-issues').textContent = data.clients_with_issues || 0;
-            document.getElementById('total-issues').textContent = data.total_issues || 0;
 
-            // Scan coverage info
+            // Compute date-filtered stats from issues
+            const range = getDateRange();
+            let dateFiltered = allIssuesFlat;
+            if (range) {
+                dateFiltered = allIssuesFlat.filter(i => {
+                    const d = i.estimated_date;
+                    if (!d || d === '-') return false;
+                    return d >= range.start && d <= range.end;
+                });
+            }
+            document.getElementById('clients-issues').textContent = new Set(dateFiltered.map(i => i.client)).size;
+            document.getElementById('total-issues').textContent = dateFiltered.length;
+
+            // Last scan card
             const scanEl = document.getElementById('last-scan');
             const scanSub = document.getElementById('scan-coverage-sub');
-            const lbl = document.getElementById('date-range-label');
-            const scanDates = data.scan_dates || [];
+            const scanDate = data.scan_date;
+            scanEl.textContent = scanDate || 'Never';
+            scanEl.className = 'value ' + (scanDate ? 'blue' : 'red');
+            scanSub.textContent = scanDate ? 'Latest scan date' : 'No scans run yet';
 
-            if (scanDates.length === 0) {
-                scanEl.textContent = 'No data';
-                scanEl.className = 'value red';
-                scanSub.textContent = 'No scans found for this period';
-                lbl.textContent = 'No scan data for selected period';
-                lbl.style.color = '#f87171';
-            } else {
-                scanEl.textContent = scanDates.length + ' day' + (scanDates.length > 1 ? 's' : '');
-                scanEl.className = 'value ' + (scanDates.length >= 5 ? 'green' : scanDates.length >= 2 ? 'yellow' : 'blue');
-
-                // Calculate expected days in period
-                let expectedDays = 1;
-                if (currentDateFilter === 'week') expectedDays = 7;
-                else if (currentDateFilter === 'month') expectedDays = 30;
-                else if (currentDateFilter === 'custom') {
-                    const s = document.getElementById('date-start').value;
-                    const e = document.getElementById('date-end').value;
-                    if (s && e) expectedDays = Math.round((new Date(e) - new Date(s)) / 86400000) + 1;
-                }
-
-                if (currentDateFilter === 'latest' || currentDateFilter === 'today') {
-                    scanSub.textContent = scanDates[0];
-                } else {
-                    scanSub.textContent = `${scanDates.length} of ~${expectedDays} days have scans`;
-                }
-
-                // Update the period label with scan info
-                lbl.style.color = '#94a3b8';
-                if (scanDates.length === 1) {
-                    lbl.textContent += ` · 1 scan (${scanDates[0]})`;
-                } else {
-                    lbl.textContent += ` · ${scanDates.length} scans`;
-                }
-            }
+            updateDateLabel();
         }
 
         function renderTraders(byTrader) {
@@ -490,7 +489,7 @@
                         check: issue.check,
                         detail: issue.detail || '',
                         row: issue.row !== undefined ? issue.row : null,
-                        scan_date: r.scan_date || '-'
+                        estimated_date: issue.estimated_date || '-'
                     });
                 });
             });
@@ -515,8 +514,15 @@
             const sevFilter = document.getElementById('issue-severity-filter').value;
             const typeFilter = document.getElementById('issue-type-filter').value;
             const traderFilter = document.getElementById('issue-trader-filter').value;
+            const range = getDateRange();
 
             let items = allIssuesFlat.filter(i => {
+                // Date filter by estimated_date
+                if (range) {
+                    const d = i.estimated_date;
+                    if (!d || d === '-') return false;
+                    if (d < range.start || d > range.end) return false;
+                }
                 if (sevFilter !== 'all' && i.severity !== sevFilter) return false;
                 if (typeFilter !== 'all' && i.check !== typeFilter) return false;
                 if (traderFilter !== 'all' && i.trader !== traderFilter) return false;
@@ -536,7 +542,7 @@
                 else if (issuesSortCol === 'trader') cmp = a.trader.localeCompare(b.trader);
                 else if (issuesSortCol === 'check') cmp = a.check.localeCompare(b.check);
                 else if (issuesSortCol === 'row') cmp = (a.row ?? 9999) - (b.row ?? 9999);
-                else if (issuesSortCol === 'scan_date') cmp = a.scan_date.localeCompare(b.scan_date);
+                else if (issuesSortCol === 'estimated_date') cmp = (a.estimated_date || '').localeCompare(b.estimated_date || '');
                 return issuesSortAsc ? cmp : -cmp;
             });
 
@@ -559,7 +565,7 @@
                     <td style="color:#e2e8f0;">${i.check}</td>
                     <td style="color:#94a3b8; font-size:0.78rem; max-width:280px;">${i.detail}</td>
                     <td style="color:#60a5fa;">${rowLabel}</td>
-                    <td style="color:#64748b; font-size:0.78rem;">${i.scan_date}</td>
+                    <td style="color:#64748b; font-size:0.78rem;">${i.estimated_date || '-'}</td>
                     <td><a href="${link}" target="_blank" class="go-link" onclick="event.stopPropagation();"><i class="fas fa-arrow-right"></i> Go</a></td>
                 </tr>`;
             }).join('');
@@ -572,8 +578,7 @@
             else if (currentFilter === 'green') filtered = results.filter(r => r.health_score >= 90);
             else if (currentFilter === 'red') filtered = results.filter(r => r.health_score < 70);
 
-            // Build flat issues list for the detail table
-            buildFlatIssues(results);
+            // Render issues table (flat list already built)
             renderIssuesTable();
 
             if (filtered.length === 0) {

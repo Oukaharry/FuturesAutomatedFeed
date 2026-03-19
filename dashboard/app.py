@@ -4767,6 +4767,67 @@ def export_client_csv():
 
 # ============ Quality Scan System ============
 
+def _parse_date_str(val):
+    """Try to parse a date string from evaluation data. Returns YYYY-MM-DD or None."""
+    if not val:
+        return None
+    val = str(val).strip()
+    if not val:
+        return None
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%m-%d-%Y', '%d-%m-%Y',
+                '%b %d, %Y', '%B %d, %Y', '%Y/%m/%d', '%m/%d/%y', '%d/%m/%y'):
+        try:
+            return datetime.strptime(val, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+
+
+def _get_row_dates(ev):
+    """Extract all parseable dates from an evaluation row."""
+    fields = ['Date Purchased', 'Date Started', 'Date Ended',
+              'Date Started.1', 'Date Ended.1',
+              'Date 1', 'Date 2', 'Date 3', 'Date 4']
+    dates = []
+    for f in fields:
+        d = _parse_date_str(ev.get(f, ''))
+        if d:
+            dates.append(d)
+    # Also check farming progress columns (Prop Day N, Hedge Day N)
+    for key, val in ev.items():
+        k = str(key)
+        if ('Prop Day' in k or 'Hedge Day' in k) and not k.startswith('_'):
+            d = _parse_date_str(val)
+            if d:
+                dates.append(d)
+    return sorted(set(dates))
+
+
+def _estimate_issue_date(ev, issue_check, fallback):
+    """Estimate when an issue occurred based on row dates and issue type."""
+    dates = _get_row_dates(ev)
+    if not dates:
+        return fallback
+    dp = _parse_date_str(ev.get('Date Purchased', ''))
+    ds = _parse_date_str(ev.get('Date Started', ''))
+    # Setup/entry issues → earliest date (purchase/start)
+    if issue_check in ('Status blank', 'Empty Fee', 'Empty Account Size', 'Missing Date Started'):
+        return dp or ds or dates[0]
+    # End-of-life issues → latest known date
+    if issue_check == 'Missing Date Ended':
+        return ds or dates[-1]
+    # Active account issues → start date
+    if issue_check == 'Empty Account #':
+        return ds or dp or dates[0]
+    # Funded issues → latest date
+    if issue_check == 'Empty Activation Fee':
+        return dates[-1]
+    # Current/ongoing issues → latest date
+    if issue_check in ('No note on active account', 'Negative Hedge Net, no note'):
+        return dates[-1]
+    return dates[-1]
+
+
 def run_quality_scan():
     """
     Automated quality scan: checks every client's data for SOP violations.
@@ -4779,6 +4840,7 @@ def run_quality_scan():
     results = []
     now = datetime.now()
     today_weekday = now.weekday()  # 0=Mon, 6=Sun
+    scan_date_str = now.strftime('%Y-%m-%d')
 
     for client_name in all_clients:
         profile = get_client_profile(client_name)
@@ -4789,7 +4851,8 @@ def run_quality_scan():
         issues = []
 
         if not data:
-            issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'Client has no saved data in database'})
+            issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'Client has no saved data in database',
+                           'estimated_date': scan_date_str})
             results.append({
                 'client_id': client_name, 'trader': trader, 'admin': admin,
                 'total_issues': len(issues), 'issues': issues, 'health_score': 0.0
@@ -4798,7 +4861,8 @@ def run_quality_scan():
 
         evaluations = data.get('evaluations', [])
         if not evaluations:
-            issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows'})
+            issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows',
+                           'estimated_date': scan_date_str})
 
         # Activity tracking
         activity = get_client_activity(client_name) or {}
@@ -4810,11 +4874,13 @@ def run_quality_scan():
                 # Flag if >24h since last push on a weekday (Mon-Fri)
                 if hours_since_push > 24 and today_weekday < 5:
                     issues.append({'check': 'No recent MT5 push', 'severity': 'high',
-                                   'detail': f'Last push {hours_since_push:.0f}h ago'})
+                                   'detail': f'Last push {hours_since_push:.0f}h ago',
+                                   'estimated_date': push_dt.strftime('%Y-%m-%d')})
             except (ValueError, TypeError):
                 pass
         elif today_weekday < 5 and evaluations:
-            issues.append({'check': 'No MT5 push ever', 'severity': 'high', 'detail': 'No push records found'})
+            issues.append({'check': 'No MT5 push ever', 'severity': 'high', 'detail': 'No push records found',
+                           'estimated_date': scan_date_str})
 
         # Check each evaluation row
         total_checks = 0
@@ -4839,43 +4905,50 @@ def run_quality_scan():
             # Status blank on non-empty row
             if not status_p1 and has_data:
                 issues.append({'check': 'Status blank', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Has data but no Status P1'})
+                               'detail': f'{row_label}: Has data but no Status P1',
+                               'estimated_date': _estimate_issue_date(ev, 'Status blank', scan_date_str)})
 
             # Missing Date Started (if status is not blank or fail)
             date_started = str(ev.get('Date Started', '') or '').strip()
             if not date_started and status_p1 and status_p1 not in ('', 'fail', 'breach', 'sl'):
                 issues.append({'check': 'Missing Date Started', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Active/completed but no start date'})
+                               'detail': f'{row_label}: Active/completed but no start date',
+                               'estimated_date': _estimate_issue_date(ev, 'Missing Date Started', scan_date_str)})
 
             # Missing Date Ended for completed/failed accounts
             date_ended = str(ev.get('Date Ended', '') or '').strip()
             if status_p1 in ('fail', 'breach', 'sl', 'completed', 'complete') and not date_ended:
                 issues.append({'check': 'Missing Date Ended', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: {status_p1} but no end date'})
+                               'detail': f'{row_label}: {status_p1} but no end date',
+                               'estimated_date': _estimate_issue_date(ev, 'Missing Date Ended', scan_date_str)})
 
             # Empty Fee
             fee = str(ev.get('Fee', '') or '').strip()
             if not fee and has_data:
                 issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
-                               'detail': f'{row_label}: Fee not filled in'})
+                               'detail': f'{row_label}: Fee not filled in',
+                               'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
 
             # Empty Account Size
             if not acct_size and prop_firm:
                 issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
-                               'detail': f'{row_label}: Account Size blank'})
+                               'detail': f'{row_label}: Account Size blank',
+                               'estimated_date': _estimate_issue_date(ev, 'Empty Account Size', scan_date_str)})
 
             # Empty Account #
             acct_num = str(ev.get('Account #', '') or '').strip()
             acct_num2 = str(ev.get('Account #.1', '') or '').strip()
             if is_active and not acct_num and not acct_num2:
                 issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Active but no account number'})
+                               'detail': f'{row_label}: Active but no account number',
+                               'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
 
             # Empty Activation Fee on funded rows
             activation = str(ev.get('Activation Fee', '') or '').strip()
             if status_p2 in ('funded', 'live', 'payout') and not activation:
                 issues.append({'check': 'Empty Activation Fee', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Funded but no activation fee'})
+                               'detail': f'{row_label}: Funded but no activation fee',
+                               'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
             # Notes check: active account should have a note
             cell_notes = ev.get('_notes', {}) or {}
@@ -4884,7 +4957,8 @@ def run_quality_scan():
             has_note = has_any_note or bool(notes_col)
             if is_active and not has_note:
                 issues.append({'check': 'No note on active account', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Active with no note'})
+                               'detail': f'{row_label}: Active with no note',
+                               'estimated_date': _estimate_issue_date(ev, 'No note on active account', scan_date_str)})
 
             # Negative Hedge Net without note
             def _parse_num(v):
@@ -4894,7 +4968,8 @@ def run_quality_scan():
             hedge_net = _parse_num(ev.get('Hedge Net', ''))
             if hedge_net is not None and hedge_net < 0 and not has_note:
                 issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
-                               'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation'})
+                               'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
+                               'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
         # Calculate health score (100 - deductions)
         severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3}
