@@ -459,6 +459,56 @@ def normalize_evaluations(evaluations):
     return evaluations
 
 
+def recalculate_hedge_nets(evaluations):
+    """Recalculate Hedge Net and Hedge Net.1 for every evaluation row.
+
+    Uses the same formulas as the Google Sheet import in data_processor.py
+    so that values stay correct whenever hedge results or statuses change.
+    """
+    def _num(val):
+        if val is None or str(val).strip() in ('', '-'):
+            return 0.0
+        try:
+            return float(str(val).replace('$', '').replace(',', '').strip())
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _is_blank(val):
+        return val is None or str(val).strip() in ('', '-')
+
+    for ev in (evaluations or []):
+        # --- Hedge Net (Phase 1) ---
+        # =IF(OR(ISBLANK(HR1), Status P1<>"Fail"), "", -Fee + HR1+HR2+HR3+HR4+HR5)
+        status_p1 = str(ev.get('Status P1', '')).strip()
+        if _is_blank(ev.get('Hedge Result 1')) or status_p1 != 'Fail':
+            ev['Hedge Net'] = ''
+        else:
+            fee = _num(ev.get('Fee'))
+            hr_sum = sum(_num(ev.get(f'Hedge Result {i}')) for i in range(1, 6))
+            ev['Hedge Net'] = -fee + hr_sum
+
+        # --- Hedge Net.1 (Funded) ---
+        status = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
+        sum_phase1 = sum(_num(ev.get(f'Hedge Result {i}')) for i in range(1, 6))
+        sum_funded = sum(_num(ev.get(c)) for c in [
+            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+            'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
+        ])
+        fee = _num(ev.get('Fee'))
+        activation_fee = _num(ev.get('Activation Fee'))
+
+        if status == 'Completed':
+            sum_payouts = sum(_num(ev.get(f'Payout {i}')) for i in range(1, 5))
+            sum_days = sum(_num(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
+            ev['Hedge Net.1'] = sum_payouts + sum_funded + sum_phase1 - fee - activation_fee + sum_days
+        elif status == 'Fail':
+            ev['Hedge Net.1'] = sum_funded + sum_phase1 - fee - activation_fee
+        else:
+            ev['Hedge Net.1'] = ''
+
+    return evaluations
+
+
 def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
     """
     Determine the correct field name to update based on phase.
@@ -2267,6 +2317,7 @@ def recalculate_all_stats():
     for client_id, client_data in all_clients.items():
         try:
             evals = client_data.get('evaluations', [])
+            evals = recalculate_hedge_nets(evals)
             existing_mt5 = client_data.get('account')
             existing_hr = client_data.get('statistics', {}).get('hedging_review', {})
             existing_hist = existing_hr.get('historical_accounts')
@@ -2279,7 +2330,7 @@ def recalculate_all_stats():
                 new_stats['hedging_review']['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
                 new_stats['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
             new_fees = new_stats.get('profitability_completed', {}).get('challenge_fees', 0)
-            save_client_data(client_id, {'statistics': new_stats})
+            save_client_data(client_id, {'evaluations': evals, 'statistics': new_stats})
             results.append({"client_id": client_id, "old_fees": old_fees, "new_fees": new_fees, "changed": abs(float(new_fees) - float(old_fees)) > 0.01})
         except Exception as e:
             results.append({"client_id": client_id, "error": str(e)})
@@ -2674,6 +2725,10 @@ def api_client_push():
     # This ensures discrepancy is only calculated when we have actual MT5 data
     statistics = data.get("statistics", {})
     push_sheet_url = existing_data.get('sheet_url') or (existing_data.get('identity') or {}).get('sheet_url')
+
+    # Recalculate Hedge Net / Hedge Net.1 before stats so formulas stay current
+    evaluations = recalculate_hedge_nets(evaluations)
+
     if evaluations or mt5_deals or mt5_account:
         try:
             from utils.data_processor import calculate_statistics
@@ -4240,6 +4295,7 @@ def api_delete_evaluation():
     
     # Remove the evaluation
     evaluations.pop(evaluation_index)
+    evaluations = recalculate_hedge_nets(evaluations)
     client_data['evaluations'] = evaluations
     
     # Recalculate statistics with existing MT5 + historical accounts
@@ -4706,7 +4762,6 @@ def update_data():
                     'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
                     'Hedge Result 4.1', 'Hedge Result 5.1',
                     'Hedge Result 6', 'Hedge Result 7',
-                    'Hedge Net', 'Hedge Net.1',
                 }
 
                 # Fields the user explicitly touched in this edit session
@@ -4740,10 +4795,18 @@ def update_data():
                             if existing_val and (not incoming_val or str(incoming_val).strip() == ''):
                                 ev[key] = existing_val
 
+                # Recalculate Hedge Net / Hedge Net.1 from current hedge results & statuses
+                evaluations = recalculate_hedge_nets(evaluations)
 
-                
-                # Merge the update data with existing data
-                merged_statistics = data.get("statistics", existing_data.get("statistics", {}))
+                # Recalculate statistics so they reflect latest evaluation changes
+                from utils.data_processor import calculate_statistics
+                existing_mt5 = existing_data.get('account') or data.get('account')
+                existing_hr_stats = existing_data.get('statistics', {}).get('hedging_review', {})
+                existing_hist = existing_hr_stats.get('historical_accounts')
+                merged_statistics = calculate_statistics(
+                    evaluations, mt5_account=existing_mt5,
+                    historical_accounts=existing_hist
+                )
                 
                 # Always preserve hedging_review from DB — it is only authoritative
                 # when set by /api/client/push or /api/hedging_review, never from

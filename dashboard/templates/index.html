@@ -2525,6 +2525,38 @@
             }).format(num);
         }
 
+        function _numVal(v) {
+            if (v == null || String(v).trim() === '' || String(v).trim() === '-') return 0;
+            const n = parseFloat(String(v).replace(/[$,]/g, '').trim());
+            return isNaN(n) ? 0 : n;
+        }
+        function computeHedgeNet(ev) {
+            const hr1 = ev['Hedge Result 1'];
+            if (hr1 == null || String(hr1).trim() === '') return '';
+            if (String(ev['Status P1'] || '').trim() !== 'Fail') return '';
+            const fee = _numVal(ev['Fee']);
+            let sum = 0;
+            for (let i = 1; i <= 5; i++) sum += _numVal(ev['Hedge Result ' + i]);
+            return formatCurrencyValue(-fee + sum);
+        }
+        function computeHedgeNet1(ev) {
+            const status = String(ev['Status'] || ev['Status Funded'] || '').trim();
+            const fee = _numVal(ev['Fee']);
+            const actFee = _numVal(ev['Activation Fee']);
+            let p1 = 0; for (let i = 1; i <= 5; i++) p1 += _numVal(ev['Hedge Result ' + i]);
+            let fd = 0;
+            ['Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1',
+             'Hedge Result 4.1','Hedge Result 5.1','Hedge Result 6','Hedge Result 7'
+            ].forEach(k => fd += _numVal(ev[k]));
+            if (status === 'Completed') {
+                let pay = 0; for (let i = 1; i <= 4; i++) pay += _numVal(ev['Payout ' + i]);
+                let days = 0; for (let i = 1; i <= 50; i++) days += _numVal(ev['Hedge Day ' + i]);
+                return formatCurrencyValue(pay + fd + p1 - fee - actFee + days);
+            }
+            if (status === 'Fail') return formatCurrencyValue(fd + p1 - fee - actFee);
+            return '';
+        }
+
         function updateDashboard(silent = false) {
             // Prevent update if user is interacting
             if (document.querySelector('.cell-input:focus')) return;
@@ -2881,7 +2913,7 @@
                         ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3', IS_CLIENT), 'Hedge Result 3')}
                         ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4', IS_CLIENT), 'Hedge Result 4')}
                         ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5', IS_CLIENT), 'Hedge Result 5')}
-                        ${cell(formatCurrencyValue(getVal('Hedge Net')), 'Hedge Net')}
+                        ${cell(computeHedgeNet(ev), 'Hedge Net')}
                         
                         ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1', IS_CLIENT), 'Account #.1')}
                         ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee', IS_CLIENT), 'Activation Fee')}
@@ -2896,7 +2928,7 @@
                         ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1', IS_CLIENT), 'Hedge Result 5.1')}
                         ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6', IS_CLIENT), 'Hedge Result 6')}
                         ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7', IS_CLIENT), 'Hedge Result 7')}
-                        ${cell(formatCurrencyValue(getVal('Hedge Net.1')), 'Hedge Net.1')}
+                        ${cell(computeHedgeNet1(ev), 'Hedge Net.1')}
                         
                         ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1', IS_CLIENT), 'Payout 1')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1'), 'Date 1')}
