@@ -4872,7 +4872,7 @@ def _estimate_issue_date(ev, issue_check, fallback):
     if issue_check == 'Empty Activation Fee':
         return dates[-1]
     # Current/ongoing issues → latest date
-    if issue_check in ('No note on active account', 'Negative Hedge Net, no note'):
+    if issue_check in ('No current day value', 'Negative Hedge Net, no note'):
         return dates[-1]
     return dates[-1]
 
@@ -4985,15 +4985,21 @@ def run_quality_scan():
                                'detail': f'{row_label}: Funded but no activation fee',
                                'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
-            # Notes check: active account should have a note
-            cell_notes = ev.get('_notes', {}) or {}
-            has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
-            notes_col = str(ev.get('Notes', '') or '').strip()
-            has_note = has_any_note or bool(notes_col)
-            if is_active and not has_note:
-                issues.append({'check': 'No note on active account', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Active with no note',
-                               'estimated_date': _estimate_issue_date(ev, 'No note on active account', scan_date_str)})
+            # Active account: at least one cell must contain a weekday name (Mon-Fri)
+            if is_active:
+                weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+                            'mon', 'tue', 'wed', 'thu', 'fri',
+                            'tues', 'weds', 'thurs'}
+                has_weekday = False
+                for val in ev.values():
+                    s = str(val or '').strip().lower()
+                    if any(wd in s for wd in weekdays):
+                        has_weekday = True
+                        break
+                if not has_weekday:
+                    issues.append({'check': 'No current day value', 'severity': 'medium', 'row': idx,
+                                   'detail': f'{row_label}: Active account has no cell with a weekday (Mon-Fri)',
+                                   'estimated_date': _estimate_issue_date(ev, 'No current day value', scan_date_str)})
 
             # Negative Hedge Net without note
             def _parse_num(v):
@@ -5001,10 +5007,15 @@ def run_quality_scan():
                 except (ValueError, TypeError): return None
 
             hedge_net = _parse_num(ev.get('Hedge Net', ''))
-            if hedge_net is not None and hedge_net < 0 and not has_note:
-                issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
-                               'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
-                               'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
+            if hedge_net is not None and hedge_net < 0:
+                cell_notes = ev.get('_notes', {}) or {}
+                has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
+                notes_col = str(ev.get('Notes', '') or '').strip()
+                has_note = has_any_note or bool(notes_col)
+                if not has_note:
+                    issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
+                                   'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
+                                   'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
         # Calculate health score (100 - deductions)
         severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3}
