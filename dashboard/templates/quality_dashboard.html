@@ -59,6 +59,20 @@
         .badge-low { background:rgba(148,163,184,0.15); color:#94a3b8; }
 
         .issue-pill { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.7rem; margin:1px; }
+
+        /* Issues detail table */
+        .issues-detail-table { width:100%; border-collapse:separate; border-spacing:0; background:rgba(15,23,42,0.5); border-radius:12px; overflow:hidden; }
+        .issues-detail-table thead th { background:rgba(10,15,30,0.9); padding:10px 14px; font-size:0.75rem; text-transform:uppercase; color:#94a3b8; letter-spacing:0.5px; text-align:left; position:sticky; top:0; cursor:pointer; user-select:none; }
+        .issues-detail-table thead th:hover { color:#e2e8f0; }
+        .issues-detail-table tbody td { padding:8px 14px; font-size:0.82rem; border-top:1px solid rgba(255,255,255,0.03); }
+        .issues-detail-table tbody tr:hover { background:rgba(251,191,36,0.06); }
+        .issues-detail-table tbody tr { cursor:pointer; transition:background 0.15s; }
+        .go-link { color:#60a5fa; text-decoration:none; font-weight:600; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:6px; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.2); transition:all 0.2s; }
+        .go-link:hover { background:rgba(96,165,250,0.2); border-color:rgba(96,165,250,0.4); }
+        .issue-search { background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 14px; border-radius:8px; font-size:0.85rem; width:280px; }
+        .issue-search::placeholder { color:#64748b; }
+        .issue-type-filter { background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:6px 12px; border-radius:8px; font-size:0.82rem; }
+        .issue-type-filter option { background:#1e293b; color:#e2e8f0; }
         .empty-state { text-align:center; padding:60px 20px; color:#64748b; }
         .empty-state i { font-size:3rem; margin-bottom:12px; opacity:0.3; }
 
@@ -133,9 +147,9 @@
         <div class="section-title"><i class="fas fa-user-tie" style="color:#60a5fa;"></i> Trader Breakdown</div>
         <div class="trader-grid" id="trader-grid"></div>
 
-        <!-- Client Issues Table -->
-        <div class="section-title"><i class="fas fa-list-check" style="color:#fbbf24;"></i> Client Details</div>
-        <div style="overflow-x:auto; border-radius:12px;">
+        <!-- Client Summary Table -->
+        <div class="section-title"><i class="fas fa-users" style="color:#60a5fa;"></i> Client Summary</div>
+        <div style="overflow-x:auto; border-radius:12px; margin-bottom:24px;">
             <table class="issues-table" id="results-table">
                 <thead>
                     <tr>
@@ -143,14 +157,56 @@
                         <th>Trader</th>
                         <th>Health</th>
                         <th>Issues</th>
-                        <th>Details</th>
                         <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="results-body">
-                    <tr><td colspan="6" class="empty-state">
+                    <tr><td colspan="5" class="empty-state">
                         <i class="fas fa-clipboard-check"></i>
                         <div>No scan results yet. Click "Run Quality Scan" to start.</div>
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- All Issues Table (flat, one row per issue) -->
+        <div class="section-title"><i class="fas fa-list-check" style="color:#fbbf24;"></i> All Issues
+            <span id="issues-count-badge" style="margin-left:8px; font-size:0.78rem; background:rgba(239,68,68,0.15); color:#f87171; padding:2px 10px; border-radius:12px; font-weight:600;"></span>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+            <input type="text" id="issue-search" class="issue-search" placeholder="Search client, trader, issue..." oninput="renderIssuesTable()">
+            <select id="issue-severity-filter" class="issue-type-filter" onchange="renderIssuesTable()">
+                <option value="all">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="warning">Warning</option>
+            </select>
+            <select id="issue-type-filter" class="issue-type-filter" onchange="renderIssuesTable()">
+                <option value="all">All Issue Types</option>
+            </select>
+            <select id="issue-trader-filter" class="issue-type-filter" onchange="renderIssuesTable()">
+                <option value="all">All Traders</option>
+            </select>
+        </div>
+        <div style="overflow-x:auto; border-radius:12px; max-height:600px; overflow-y:auto;">
+            <table class="issues-detail-table" id="issues-detail-table">
+                <thead>
+                    <tr>
+                        <th onclick="sortIssuesBy('client')">Client <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                        <th onclick="sortIssuesBy('trader')">Trader <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                        <th onclick="sortIssuesBy('severity')">Severity <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                        <th onclick="sortIssuesBy('check')">Issue <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                        <th>Detail</th>
+                        <th onclick="sortIssuesBy('row')">Row <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                        <th>Go To</th>
+                    </tr>
+                </thead>
+                <tbody id="issues-detail-body">
+                    <tr><td colspan="7" class="empty-state">
+                        <i class="fas fa-clipboard-check"></i>
+                        <div>Run a quality scan to see individual issues here.</div>
                     </td></tr>
                 </tbody>
             </table>
@@ -282,6 +338,98 @@
             }).join('');
         }
 
+        // Flat list of all issues for the issues detail table
+        let allIssuesFlat = [];
+        let issuesSortCol = 'severity';
+        let issuesSortAsc = true;
+
+        function buildFlatIssues(results) {
+            allIssuesFlat = [];
+            const typeSet = new Set();
+            const traderSet = new Set();
+            results.forEach(r => {
+                if (r.trader) traderSet.add(r.trader);
+                r.issues.forEach(issue => {
+                    typeSet.add(issue.check);
+                    allIssuesFlat.push({
+                        client: r.client_id,
+                        trader: r.trader || '-',
+                        severity: issue.severity,
+                        check: issue.check,
+                        detail: issue.detail || '',
+                        row: issue.row !== undefined ? issue.row : null
+                    });
+                });
+            });
+            // Populate filter dropdowns
+            const typeFilter = document.getElementById('issue-type-filter');
+            typeFilter.innerHTML = '<option value="all">All Issue Types</option>' +
+                [...typeSet].sort().map(t => `<option value="${t}">${t}</option>`).join('');
+            const traderFilter = document.getElementById('issue-trader-filter');
+            traderFilter.innerHTML = '<option value="all">All Traders</option>' +
+                [...traderSet].sort().map(t => `<option value="${t}">${t}</option>`).join('');
+        }
+
+        function sortIssuesBy(col) {
+            if (issuesSortCol === col) { issuesSortAsc = !issuesSortAsc; }
+            else { issuesSortCol = col; issuesSortAsc = true; }
+            renderIssuesTable();
+        }
+
+        function renderIssuesTable() {
+            const tbody = document.getElementById('issues-detail-body');
+            const search = (document.getElementById('issue-search').value || '').toLowerCase();
+            const sevFilter = document.getElementById('issue-severity-filter').value;
+            const typeFilter = document.getElementById('issue-type-filter').value;
+            const traderFilter = document.getElementById('issue-trader-filter').value;
+
+            let items = allIssuesFlat.filter(i => {
+                if (sevFilter !== 'all' && i.severity !== sevFilter) return false;
+                if (typeFilter !== 'all' && i.check !== typeFilter) return false;
+                if (traderFilter !== 'all' && i.trader !== traderFilter) return false;
+                if (search && !i.client.toLowerCase().includes(search) &&
+                    !i.trader.toLowerCase().includes(search) &&
+                    !i.check.toLowerCase().includes(search) &&
+                    !i.detail.toLowerCase().includes(search)) return false;
+                return true;
+            });
+
+            // Sort
+            const sevOrder = {critical:0, high:1, medium:2, warning:3, low:4};
+            items.sort((a, b) => {
+                let cmp = 0;
+                if (issuesSortCol === 'severity') cmp = (sevOrder[a.severity]||5) - (sevOrder[b.severity]||5);
+                else if (issuesSortCol === 'client') cmp = a.client.localeCompare(b.client);
+                else if (issuesSortCol === 'trader') cmp = a.trader.localeCompare(b.trader);
+                else if (issuesSortCol === 'check') cmp = a.check.localeCompare(b.check);
+                else if (issuesSortCol === 'row') cmp = (a.row ?? 9999) - (b.row ?? 9999);
+                return issuesSortAsc ? cmp : -cmp;
+            });
+
+            document.getElementById('issues-count-badge').textContent = items.length + ' issues';
+
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">No issues match filters</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = items.map(i => {
+                const rowLabel = i.row !== null ? `Row ${i.row + 1}` : '-';
+                const link = i.row !== null
+                    ? `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}`
+                    : `/dashboard/${encodeURIComponent(i.client)}`;
+                return `<tr onclick="window.open('${link}', '_blank')">
+                    <td style="color:#e2e8f0; font-weight:500;">${i.client}</td>
+                    <td style="color:#94a3b8;">${i.trader}</td>
+                    <td><span class="badge badge-${i.severity}">${i.severity}</span></td>
+                    <td style="color:#e2e8f0;">${i.check}</td>
+                    <td style="color:#94a3b8; font-size:0.78rem; max-width:280px;">${i.detail}</td>
+                    <td style="color:#60a5fa;">${rowLabel}</td>
+                    <td><a href="${link}" target="_blank" class="go-link" onclick="event.stopPropagation();"><i class="fas fa-arrow-right"></i> Go</a></td>
+                </tr>`;
+            }).join('');
+        }
+
         function renderResults(results) {
             const tbody = document.getElementById('results-body');
             let filtered = results;
@@ -289,25 +437,23 @@
             else if (currentFilter === 'green') filtered = results.filter(r => r.health_score >= 90);
             else if (currentFilter === 'red') filtered = results.filter(r => r.health_score < 70);
 
+            // Build flat issues list for the detail table
+            buildFlatIssues(results);
+            renderIssuesTable();
+
             if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><div>No results match the current filter.</div></td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state"><div>No results match the current filter.</div></td></tr>';
                 return;
             }
 
             tbody.innerHTML = filtered.map(r => {
                 const healthBadge = r.health_score >= 90 ? 'badge-green' :
                                     r.health_score >= 70 ? 'badge-yellow' : 'badge-red';
-                const issueList = r.issues.slice(0, 5).map(i =>
-                    `<span class="issue-pill badge-${i.severity}">${i.check}</span>`
-                ).join('');
-                const moreCount = r.issues.length > 5 ? `<span class="issue-pill badge-low">+${r.issues.length - 5} more</span>` : '';
-
                 return `<tr>
                     <td><a href="/dashboard/${encodeURIComponent(r.client_id)}" style="color:#60a5fa; text-decoration:none;">${r.client_id}</a></td>
                     <td style="color:#94a3b8;">${r.trader || '-'}</td>
                     <td><span class="badge ${healthBadge}">${r.health_score}%</span></td>
                     <td style="color:${r.total_issues > 0 ? '#fbbf24' : '#4ade80'}">${r.total_issues}</td>
-                    <td>${issueList}${moreCount}</td>
                     <td><a href="/dashboard/${encodeURIComponent(r.client_id)}" style="color:#60a5fa; font-size:0.8rem;"><i class="fas fa-external-link-alt"></i> View</a></td>
                 </tr>`;
             }).join('');

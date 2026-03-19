@@ -2831,6 +2831,7 @@
                 pageRows.forEach(({ item: ev, originalIndex: index, rowNum: currentRowNum }) => {
                   try {
                     const row = document.createElement('tr');
+                    row.id = 'eval-row-' + index;
                     const getVal = (key) => ev[key] || '';
                     
                     // --- Status Row Styling ---
@@ -3023,6 +3024,33 @@
                             while (evalPage * EVAL_PAGE_SIZE < rowsToRender.length) {
                                 evalPage++;
                             }
+                            renderEvaluationsTable(false);
+                        }
+                    }, 300);
+                }
+
+                // Hash-based deep link: #eval-row-N from quality dashboard
+                const hashTarget = window.location.hash;
+                if (hashTarget && hashTarget.startsWith('#eval-row-')) {
+                    setTimeout(() => {
+                        const targetRow = document.getElementById(hashTarget.substring(1));
+                        if (targetRow) {
+                            openTab('evaluations');
+                            setTimeout(() => {
+                                targetRow.style.outline = '2px solid #fbbf24';
+                                targetRow.style.outlineOffset = '-1px';
+                                targetRow.style.background = 'rgba(251,191,36,0.12)';
+                                targetRow.scrollIntoView({behavior: 'smooth', block: 'center'});
+                                setTimeout(() => {
+                                    targetRow.style.outline = '';
+                                    targetRow.style.outlineOffset = '';
+                                    targetRow.style.background = '';
+                                }, 4000);
+                            }, 200);
+                        } else if (pageRows.length < rowsToRender.length) {
+                            // Row might be on a later page — load all
+                            while (evalPage * EVAL_PAGE_SIZE < rowsToRender.length) { evalPage++; }
+                            window._evalRowDeepLinked = true;
                             renderEvaluationsTable(false);
                         }
                     }, 300);
