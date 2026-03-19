@@ -143,6 +143,24 @@
             </div>
         </div>
 
+        <!-- Date Filter Bar (controls ALL sections) -->
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; background:rgba(15,23,42,0.5); padding:12px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.06);">
+            <span style="font-size:0.82rem; color:#94a3b8; font-weight:600; margin-right:4px;"><i class="fas fa-calendar-alt" style="margin-right:4px;"></i> Period:</span>
+            <button class="filter-btn active" id="date-btn-latest" onclick="setDateFilter('latest')">Latest</button>
+            <button class="filter-btn" id="date-btn-today" onclick="setDateFilter('today')">Today</button>
+            <button class="filter-btn" id="date-btn-week" onclick="setDateFilter('week')">This Week</button>
+            <button class="filter-btn" id="date-btn-month" onclick="setDateFilter('month')">This Month</button>
+            <button class="filter-btn" id="date-btn-custom" onclick="setDateFilter('custom')">Custom</button>
+            <div id="custom-date-range" style="display:none; margin-left:8px; gap:8px; align-items:center;">
+                <label style="font-size:0.78rem; color:#94a3b8;">From</label>
+                <input type="date" id="date-start" class="issue-search" style="width:150px; padding:6px 10px;">
+                <label style="font-size:0.78rem; color:#94a3b8;">To</label>
+                <input type="date" id="date-end" class="issue-search" style="width:150px; padding:6px 10px;">
+                <button onclick="applyCustomDateFilter()" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:none; color:#fff; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:0.8rem;">Apply</button>
+            </div>
+            <span id="date-range-label" style="margin-left:auto; font-size:0.78rem; color:#64748b;"></span>
+        </div>
+
         <!-- Trader Summary -->
         <div class="section-title"><i class="fas fa-user-tie" style="color:#60a5fa;"></i> Trader Breakdown</div>
         <div class="trader-grid" id="trader-grid"></div>
@@ -190,24 +208,6 @@
                 <option value="all">All Traders</option>
             </select>
         </div>
-
-        <!-- Date Filter Bar -->
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px; flex-wrap:wrap; background:rgba(15,23,42,0.5); padding:12px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.06);">
-            <span style="font-size:0.82rem; color:#94a3b8; font-weight:600; margin-right:4px;"><i class="fas fa-calendar-alt" style="margin-right:4px;"></i> Period:</span>
-            <button class="filter-btn active" id="date-btn-latest" onclick="setDateFilter('latest')">Latest</button>
-            <button class="filter-btn" id="date-btn-today" onclick="setDateFilter('today')">Today</button>
-            <button class="filter-btn" id="date-btn-week" onclick="setDateFilter('week')">This Week</button>
-            <button class="filter-btn" id="date-btn-month" onclick="setDateFilter('month')">This Month</button>
-            <button class="filter-btn" id="date-btn-custom" onclick="setDateFilter('custom')">Custom</button>
-            <div id="custom-date-range" style="display:none; margin-left:8px; display:none; gap:8px; align-items:center;">
-                <label style="font-size:0.78rem; color:#94a3b8;">From</label>
-                <input type="date" id="date-start" class="issue-search" style="width:150px; padding:6px 10px;">
-                <label style="font-size:0.78rem; color:#94a3b8;">To</label>
-                <input type="date" id="date-end" class="issue-search" style="width:150px; padding:6px 10px;">
-                <button onclick="applyCustomDateFilter()" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:none; color:#fff; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:0.8rem;">Apply</button>
-            </div>
-            <span id="date-range-label" style="margin-left:auto; font-size:0.78rem; color:#64748b;"></span>
-        </div>
         <div style="overflow-x:auto; border-radius:12px; max-height:600px; overflow-y:auto;">
             <table class="issues-detail-table" id="issues-detail-table">
                 <thead>
@@ -218,11 +218,12 @@
                         <th onclick="sortIssuesBy('check')">Issue <i class="fas fa-sort" style="opacity:0.4;"></i></th>
                         <th>Detail</th>
                         <th onclick="sortIssuesBy('row')">Row <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                        <th onclick="sortIssuesBy('scan_date')">Scan Date <i class="fas fa-sort" style="opacity:0.4;"></i></th>
                         <th>Go To</th>
                     </tr>
                 </thead>
                 <tbody id="issues-detail-body">
-                    <tr><td colspan="7" class="empty-state">
+                    <tr><td colspan="8" class="empty-state">
                         <i class="fas fa-clipboard-check"></i>
                         <div>Run a quality scan to see individual issues here.</div>
                     </td></tr>
@@ -455,7 +456,8 @@
                         severity: issue.severity,
                         check: issue.check,
                         detail: issue.detail || '',
-                        row: issue.row !== undefined ? issue.row : null
+                        row: issue.row !== undefined ? issue.row : null,
+                        scan_date: r.scan_date || '-'
                     });
                 });
             });
@@ -501,13 +503,14 @@
                 else if (issuesSortCol === 'trader') cmp = a.trader.localeCompare(b.trader);
                 else if (issuesSortCol === 'check') cmp = a.check.localeCompare(b.check);
                 else if (issuesSortCol === 'row') cmp = (a.row ?? 9999) - (b.row ?? 9999);
+                else if (issuesSortCol === 'scan_date') cmp = a.scan_date.localeCompare(b.scan_date);
                 return issuesSortAsc ? cmp : -cmp;
             });
 
             document.getElementById('issues-count-badge').textContent = items.length + ' issues';
 
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">No issues match filters</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:30px; color:#64748b;">No issues match filters</td></tr>';
                 return;
             }
 
@@ -523,6 +526,7 @@
                     <td style="color:#e2e8f0;">${i.check}</td>
                     <td style="color:#94a3b8; font-size:0.78rem; max-width:280px;">${i.detail}</td>
                     <td style="color:#60a5fa;">${rowLabel}</td>
+                    <td style="color:#64748b; font-size:0.78rem;">${i.scan_date}</td>
                     <td><a href="${link}" target="_blank" class="go-link" onclick="event.stopPropagation();"><i class="fas fa-arrow-right"></i> Go</a></td>
                 </tr>`;
             }).join('');
