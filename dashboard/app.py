@@ -3020,7 +3020,7 @@ def api_migrate_sheet():
                         wl_values[fd] = {
                             'low':       low,
                             'high':      high,
-                            'split_pct': row.get('split_pct', 25),
+                            'split_pct': row.get('split_pct', 50),
                         }
 
             if wl_periods:
