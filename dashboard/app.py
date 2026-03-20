@@ -5644,6 +5644,44 @@ def update_data():
                 # Deep-merge evaluations: preserve push-sourced fields (Hedge Results, deals, etc.)
                 # that the stale frontend may not have received yet.
                 existing_evals = existing_data.get("evaluations", [])
+                
+                # --- SAFETY: Prevent stale frontend from wiping evaluations ---
+                action_type = data.get('action_type', 'UPDATE')
+                
+                if action_type == 'CREATE':
+                    # For "Add Account", ALWAYS use DB evaluations as the base
+                    # and only append genuinely new rows. This prevents a stale
+                    # frontend copy from overwriting push-sourced data.
+                    if len(evaluations) > len(existing_evals):
+                        new_rows = evaluations[len(existing_evals):]
+                        evaluations = normalize_evaluations(existing_evals) + new_rows
+                    else:
+                        # Frontend has fewer or equal evals — it's stale.
+                        # Append a default new evaluation to the DB version.
+                        evaluations = normalize_evaluations(existing_evals)
+                        evaluations.append({
+                            "Prop Firm": "My Funded Futures",
+                            "Account Size": "$100,000",
+                            "Date Purchased": "",
+                            "Fee": "0"
+                        })
+                    existing_evals = existing_data.get("evaluations", [])
+                elif action_type not in ('DELETE', 'ROLLBACK'):
+                    # General safety check: block saves that would drop eval count
+                    # by more than 50% (accidental wipe protection)
+                    if (len(existing_evals) >= 10
+                            and len(evaluations) < len(existing_evals) * 0.5):
+                        log_action('WIPE_BLOCKED', user_type, user_identifier,
+                                   get_remote_address(),
+                                   f'{client_id}: incoming {len(evaluations)} evals vs '
+                                   f'existing {len(existing_evals)} — blocked to prevent data loss',
+                                   False)
+                        return jsonify({
+                            "status": "error",
+                            "message": f"Safety check: your page has {len(evaluations)} evaluations "
+                                       f"but the database has {len(existing_evals)}. "
+                                       f"Please refresh the page and try again."
+                        }), 409
                 PUSH_SOURCED_KEYS = {
                     'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3',
                     'Hedge Result 4', 'Hedge Result 5',

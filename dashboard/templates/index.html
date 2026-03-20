@@ -4637,15 +4637,37 @@
         }
 
         function addAccount() {
-            if (!currentData.evaluations) currentData.evaluations = [];
-            currentData.evaluations.push({
-                "Prop Firm": "My Funded Futures",
-                "Account Size": "$100,000",
-                "Date Purchased": "",
-                "Fee": "0"
-            });
-            renderEvaluationsTable();
-            saveData('CREATE', 'Added new evaluation account');
+            // Refresh data from server first to prevent stale overwrites,
+            // then append the new account and save.
+            const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}`;
+            fetch(url)
+                .then(r => r.json())
+                .then(freshData => {
+                    if (freshData && freshData.evaluations) {
+                        currentData = freshData;
+                    }
+                    if (!currentData.evaluations) currentData.evaluations = [];
+                    currentData.evaluations.push({
+                        "Prop Firm": "My Funded Futures",
+                        "Account Size": "$100,000",
+                        "Date Purchased": "",
+                        "Fee": "0"
+                    });
+                    renderEvaluationsTable();
+                    saveData('CREATE', 'Added new evaluation account');
+                })
+                .catch(() => {
+                    // If refresh fails, still add — backend safety check will protect
+                    if (!currentData.evaluations) currentData.evaluations = [];
+                    currentData.evaluations.push({
+                        "Prop Firm": "My Funded Futures",
+                        "Account Size": "$100,000",
+                        "Date Purchased": "",
+                        "Fee": "0"
+                    });
+                    renderEvaluationsTable();
+                    saveData('CREATE', 'Added new evaluation account');
+                });
         }
 
         function downloadCSV() {
