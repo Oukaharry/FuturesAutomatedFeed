@@ -2656,6 +2656,49 @@ def api_client_auth():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/client/data', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_client_data():
+    """
+    Public endpoint - fetch client evaluations by email.
+    Used by Trader Companion to load active trades list.
+    """
+    from dashboard.database import get_client_data
+
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+
+        email = (data.get('email') or '').strip().lower()
+        if not email:
+            return jsonify({"status": "error", "message": "Email required"}), 400
+
+        client_info = get_client_by_email(email)
+        if not client_info:
+            return jsonify({"status": "error", "message": "Email not registered"}), 404
+
+        client_id = client_info['client']
+        client_data = get_client_data(client_id)
+        if not client_data:
+            return jsonify({"status": "error", "message": "No data found for client"}), 404
+
+        return jsonify({
+            "status": "success",
+            "evaluations": client_data.get("evaluations", []),
+            "identity": {
+                "client": client_info['client'],
+                "trader": client_info['trader'],
+                "admin": client_info['admin'],
+            }
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/client/push', methods=['POST'])
 @limiter.limit("60 per minute")
 def api_client_push():
