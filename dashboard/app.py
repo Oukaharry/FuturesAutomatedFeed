@@ -5039,7 +5039,10 @@ def run_quality_scan():
                                'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
             # Active account: at least one cell must contain a weekday name (Mon-Fri)
-            if status_p1 == 'active':
+            # Only applies to accounts visible under "Active Only" filter
+            _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
+            _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
+            if not _inactive_p1 and not _inactive_p2 and status_p1:
                 weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
                             'mon', 'tue', 'wed', 'thu', 'fri',
                             'tues', 'weds', 'thurs'}
