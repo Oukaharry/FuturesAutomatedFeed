@@ -1229,8 +1229,8 @@ class TraderCompanionApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title(f"Trader Companion v{APP_VERSION}")
-        self.root.geometry("720x820")
-        self.root.minsize(620, 650)
+        self.root.geometry("770x850")
+        self.root.minsize(720, 650)
         self.root.configure(bg='#0a0e1a')
         self.root.resizable(True, True)
         
@@ -1257,11 +1257,17 @@ class TraderCompanionApp:
             lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
         )
         
-        self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw",
+                                        tags="inner_frame")
         self.main_canvas.configure(yscrollcommand=scrollbar.set)
         
         self.main_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        # Keep inner frame width = canvas width so content stretches fully
+        def _resize_inner(event):
+            self.main_canvas.itemconfig("inner_frame", width=event.width)
+        self.main_canvas.bind("<Configure>", _resize_inner)
         
         # Enable mousewheel scrolling
         def _on_mousewheel(event):
@@ -2788,7 +2794,7 @@ class TraderCompanionApp:
 
         # ── Active Trades list card ──
         trades_frame = ttk.LabelFrame(parent, text="📋  Active Trades", padding=8)
-        trades_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=(4, 3))
+        trades_frame.pack(fill=tk.X, padx=6, pady=(4, 3))
 
         # Top bar with Load button
         trades_top = ttk.Frame(trades_frame, style='CardBG.TFrame')
@@ -2817,7 +2823,7 @@ class TraderCompanionApp:
                   font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
 
         # Scrollable trade rows container
-        trades_canvas = tk.Canvas(trades_frame, bg='#111827', highlightthickness=0, height=200)
+        trades_canvas = tk.Canvas(trades_frame, bg='#111827', highlightthickness=0, height=300)
         trades_scrollbar = ttk.Scrollbar(trades_frame, orient="vertical", command=trades_canvas.yview)
         self._trades_inner = ttk.Frame(trades_canvas, style='CardBG.TFrame')
         self._trades_inner.bind("<Configure>",
@@ -2956,9 +2962,18 @@ class TraderCompanionApp:
                 data = r.json()
                 evaluations = data.get("evaluations", [])
 
-                # Filter active evals
-                active_evals = [ev for ev in evaluations
-                                if self._is_eval_active(ev) and not ev.get("_deleted")]
+                # Filter active evals (exclude completed/farming-done)
+                active_evals = []
+                for ev in evaluations:
+                    if not self._is_eval_active(ev) or ev.get("_deleted"):
+                        continue
+                    prop_firm_name = ev.get("Prop Firm", "Unknown")
+                    firm_code = self._FIRM_MAP.get(prop_firm_name, "MFFU_Flex")
+                    current_display, phase_key = self._detect_eval_phase(ev)
+                    next_display = self._get_next_phase(firm_code, current_display)
+                    if "complete" in next_display.lower():
+                        continue  # Skip evaluations that have no next phase
+                    active_evals.append(ev)
 
                 self.root.after(0, lambda ae=active_evals: self._populate_trade_rows(ae))
 

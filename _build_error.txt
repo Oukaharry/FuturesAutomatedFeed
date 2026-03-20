@@ -1,0 +1,244 @@
+173 INFO: PyInstaller: 6.19.0, contrib hooks: 2026.2
+200 INFO: Python: 3.12.10
+250 INFO: Platform: Windows-10-10.0.19045-SP0
+283 INFO: Python environment: C:\Users\harry\AppData\Local\Programs\Python\Python312
+306 INFO: wrote C:\Users\harry\Music\MT5HedgingEngine\Trader_Companion_v1.4.1.spec
+351 INFO: Removing temporary files and cleaning cache in C:\Users\harry\AppData\Local\pyinstaller
+379 WARNING: Failed to collect submodules for 'numpy.f2py.tests' because importing 'numpy.f2py.tests' raised: ModuleNotFoundError: No module named 'pytest'
+3664 INFO: Module search paths (PYTHONPATH):
+['C:\\Users\\harry\\Music\\MT5HedgingEngine',
+ 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\python312.zip',
+ 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\DLLs',
+ 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib',
+ 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312',
+ 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages',
+ 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\trader_companion']
+4150 INFO: Appending 'datas' from .spec
+4237 INFO: checking Analysis
+4238 INFO: Building Analysis because Analysis-00.toc is non existent
+4238 INFO: Looking for Python shared library...
+4238 INFO: Using Python shared library: C:\Users\harry\AppData\Local\Programs\Python\Python312\python312.dll
+4239 INFO: Running Analysis Analysis-00.toc
+4239 INFO: Target bytecode optimization level: 0
+4239 INFO: Initializing module dependency graph...
+4241 INFO: Initializing module graph hook caches...
+4257 INFO: Analyzing modules for base_library.zip ...
+5858 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+6707 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+8020 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+9942 INFO: Caching module dependency graph...
+9996 INFO: Analyzing C:\Users\harry\Music\MT5HedgingEngine\trader_companion\trader_app.py
+10178 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+10438 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+10441 INFO: SetuptoolsInfo: initializing cached setuptools info...
+11105 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+11111 INFO: Processing standard module hook 'hook-setuptools.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11172 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11208 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11277 INFO: Processing standard module hook 'hook-sysconfig.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11284 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11284 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+11300 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11301 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+11473 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+11780 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11907 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+12267 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+12954 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+13157 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+13174 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+13693 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+13695 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+13720 INFO: Processing standard module hook 'hook-setuptools._vendor.importlib_metadata.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+13749 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+13750 INFO: Setuptools: 'zipp' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.zipp'!
+14099 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+14101 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+14755 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+14757 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+15403 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+15591 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+15756 INFO: Processing pre-find-module-path hook 'hook-tkinter.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+15756 INFO: TclTkInfo: initializing cached Tcl/Tk info...
+16213 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+16398 INFO: Analyzing hidden import 'numpy'
+16422 INFO: Processing standard module hook 'hook-numpy.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+17052 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+18658 INFO: Processing standard module hook 'hook-psutil.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+20572 INFO: Analyzing hidden import 'numpy._configtool'
+20572 INFO: Analyzing hidden import 'numpy._core._exceptions'
+20572 INFO: Analyzing hidden import 'numpy._core._multiarray_tests'
+20572 INFO: Analyzing hidden import 'numpy._core._operand_flag_tests'
+20572 INFO: Analyzing hidden import 'numpy._core._rational_tests'
+20572 INFO: Analyzing hidden import 'numpy._core._simd'
+20591 INFO: Analyzing hidden import 'numpy._core._struct_ufunc_tests'
+20592 INFO: Analyzing hidden import 'numpy._core._umath_tests'
+20596 INFO: Analyzing hidden import 'numpy._core.cversions'
+20599 INFO: Analyzing hidden import 'numpy._pyinstaller'
+20600 INFO: Analyzing hidden import 'numpy._pyinstaller.hook-numpy'
+20673 INFO: Processing standard module hook 'hook-win32ctypes.core.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+22064 INFO: Processing standard module hook 'hook-pycparser.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+23297 INFO: Analyzing hidden import 'numpy._typing._extended_precision'
+23297 INFO: Analyzing hidden import 'numpy._utils._pep440'
+23313 INFO: Analyzing hidden import 'numpy.conftest'
+23328 INFO: Analyzing hidden import 'numpy.core._dtype'
+23328 INFO: Analyzing hidden import 'numpy.core._dtype_ctypes'
+23328 INFO: Analyzing hidden import 'numpy.core._internal'
+23328 INFO: Analyzing hidden import 'numpy.core._multiarray_umath'
+23328 INFO: Analyzing hidden import 'numpy.core.arrayprint'
+23328 INFO: Analyzing hidden import 'numpy.core.defchararray'
+23344 INFO: Analyzing hidden import 'numpy.core.einsumfunc'
+23344 INFO: Analyzing hidden import 'numpy.core.fromnumeric'
+23344 INFO: Analyzing hidden import 'numpy.core.function_base'
+23344 INFO: Analyzing hidden import 'numpy.core.getlimits'
+23344 INFO: Analyzing hidden import 'numpy.core.multiarray'
+23344 INFO: Analyzing hidden import 'numpy.core.numeric'
+23344 INFO: Analyzing hidden import 'numpy.core.numerictypes'
+23344 INFO: Analyzing hidden import 'numpy.core.overrides'
+23344 INFO: Analyzing hidden import 'numpy.core.records'
+23360 INFO: Analyzing hidden import 'numpy.core.shape_base'
+23360 INFO: Analyzing hidden import 'numpy.core.umath'
+23360 INFO: Analyzing hidden import 'numpy.f2py.__main__'
+23360 INFO: Analyzing hidden import 'numpy.f2py._src_pyf'
+23375 INFO: Analyzing hidden import 'numpy.fft.tests'
+23375 INFO: Analyzing hidden import 'numpy.fft.tests.test_helper'
+23375 INFO: Analyzing hidden import 'numpy.fft.tests.test_pocketfft'
+23422 INFO: Analyzing hidden import 'numpy.lib._user_array_impl'
+23438 INFO: Analyzing hidden import 'numpy.lib.tests'
+23438 INFO: Analyzing hidden import 'numpy.lib.tests.test__datasource'
+23465 INFO: Analyzing hidden import 'numpy.lib.tests.test__iotools'
+23485 INFO: Analyzing hidden import 'numpy.lib.tests.test__version'
+23489 INFO: Analyzing hidden import 'numpy.lib.tests.test_array_utils'
+23489 INFO: Analyzing hidden import 'numpy.lib.tests.test_arraypad'
+23551 INFO: Analyzing hidden import 'numpy.lib.tests.test_arraysetops'
+23641 INFO: Analyzing hidden import 'numpy.lib.tests.test_arrayterator'
+23641 INFO: Analyzing hidden import 'numpy.lib.tests.test_format'
+23688 INFO: Analyzing hidden import 'numpy.lib.tests.test_function_base'
+24018 INFO: Analyzing hidden import 'numpy.lib.tests.test_histograms'
+24055 INFO: Analyzing hidden import 'numpy.lib.tests.test_index_tricks'
+24107 INFO: Analyzing hidden import 'numpy.lib.tests.test_io'
+24314 INFO: Analyzing hidden import 'numpy.lib.tests.test_loadtxt'
+24376 INFO: Analyzing hidden import 'numpy.lib.tests.test_mixins'
+24392 INFO: Analyzing hidden import 'numpy.lib.tests.test_nanfunctions'
+24470 INFO: Analyzing hidden import 'numpy.lib.tests.test_packbits'
+24501 INFO: Analyzing hidden import 'numpy.lib.tests.test_polynomial'
+24518 INFO: Analyzing hidden import 'numpy.lib.tests.test_recfunctions'
+24573 INFO: Analyzing hidden import 'numpy.lib.tests.test_regression'
+24589 INFO: Analyzing hidden import 'numpy.lib.tests.test_shape_base'
+24658 INFO: Analyzing hidden import 'numpy.lib.tests.test_stride_tricks'
+24689 INFO: Analyzing hidden import 'numpy.lib.tests.test_twodim_base'
+24705 INFO: Analyzing hidden import 'numpy.lib.tests.test_type_check'
+24736 INFO: Analyzing hidden import 'numpy.lib.tests.test_ufunclike'
+24751 INFO: Analyzing hidden import 'numpy.lib.tests.test_utils'
+24751 INFO: Analyzing hidden import 'numpy.lib.user_array'
+24751 INFO: Analyzing hidden import 'numpy.linalg.lapack_lite'
+24767 INFO: Analyzing hidden import 'numpy.linalg.tests'
+24767 INFO: Analyzing hidden import 'numpy.linalg.tests.test_deprecations'
+24767 INFO: Analyzing hidden import 'numpy.linalg.tests.test_linalg'
+24923 INFO: Analyzing hidden import 'numpy.linalg.tests.test_regression'
+24923 INFO: Analyzing hidden import 'numpy.ma.tests'
+24923 INFO: Analyzing hidden import 'numpy.ma.tests.test_arrayobject'
+24923 INFO: Analyzing hidden import 'numpy.ma.tests.test_core'
+25345 INFO: Analyzing hidden import 'numpy.ma.tests.test_deprecations'
+25350 INFO: Analyzing hidden import 'numpy.ma.tests.test_extras'
+25493 INFO: Analyzing hidden import 'numpy.ma.tests.test_mrecords'
+25534 INFO: Analyzing hidden import 'numpy.ma.tests.test_old_ma'
+25626 INFO: Analyzing hidden import 'numpy.ma.tests.test_regression'
+25632 INFO: Analyzing hidden import 'numpy.ma.tests.test_subclassing'
+25654 INFO: Analyzing hidden import 'numpy.matrixlib.tests'
+25656 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_defmatrix'
+25694 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_interaction'
+25708 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_masked_matrix'
+25734 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_matrix_linalg'
+25739 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_multiarray'
+25742 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_numeric'
+25745 INFO: Analyzing hidden import 'numpy.matrixlib.tests.test_regression'
+25748 INFO: Analyzing hidden import 'numpy.polynomial.tests'
+25749 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_chebyshev'
+25791 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_classes'
+25824 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_hermite'
+25839 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_hermite_e'
+25894 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_laguerre'
+25907 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_legendre'
+25954 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_polynomial'
+26005 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_polyutils'
+26005 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_printing'
+26036 INFO: Analyzing hidden import 'numpy.polynomial.tests.test_symbol'
+26052 INFO: Analyzing hidden import 'numpy.random.tests'
+26052 INFO: Analyzing hidden import 'numpy.random.tests.data'
+26052 INFO: Analyzing hidden import 'numpy.random.tests.test_direct'
+26083 INFO: Analyzing hidden import 'numpy.random.tests.test_extending'
+26120 INFO: Analyzing hidden import 'numpy.random.tests.test_generator_mt19937'
+26297 INFO: Analyzing hidden import 'numpy.random.tests.test_generator_mt19937_regressions'
+26313 INFO: Analyzing hidden import 'numpy.random.tests.test_random'
+26420 INFO: Analyzing hidden import 'numpy.random.tests.test_randomstate'
+26545 INFO: Analyzing hidden import 'numpy.random.tests.test_randomstate_regression'
+26561 INFO: Analyzing hidden import 'numpy.random.tests.test_regression'
+26577 INFO: Analyzing hidden import 'numpy.random.tests.test_seed_sequence'
+26577 INFO: Analyzing hidden import 'numpy.random.tests.test_smoke'
+26644 INFO: Analyzing hidden import 'numpy.testing.print_coercion_tables'
+26652 INFO: Analyzing hidden import 'numpy.testing.tests'
+26653 INFO: Analyzing hidden import 'numpy.testing.tests.test_utils'
+26768 INFO: Analyzing hidden import 'numpy.tests'
+26768 INFO: Analyzing hidden import 'numpy.tests.test__all__'
+26768 INFO: Analyzing hidden import 'numpy.tests.test_configtool'
+26783 INFO: Analyzing hidden import 'numpy.tests.test_ctypeslib'
+26799 INFO: Analyzing hidden import 'numpy.tests.test_lazyloading'
+26799 INFO: Analyzing hidden import 'numpy.tests.test_matlib'
+26799 INFO: Analyzing hidden import 'numpy.tests.test_numpy_config'
+26815 INFO: Analyzing hidden import 'numpy.tests.test_numpy_version'
+26815 INFO: Analyzing hidden import 'numpy.tests.test_public_api'
+26830 INFO: Analyzing hidden import 'numpy.tests.test_reloading'
+26846 INFO: Analyzing hidden import 'numpy.tests.test_scripts'
+26846 INFO: Analyzing hidden import 'numpy.tests.test_warnings'
+26846 INFO: Analyzing hidden import 'numpy.typing.mypy_plugin'
+26846 INFO: Analyzing hidden import 'numpy.typing.tests'
+26846 INFO: Analyzing hidden import 'numpy.typing.tests.test_isfile'
+26862 INFO: Analyzing hidden import 'numpy.typing.tests.test_runtime'
+26862 INFO: Analyzing hidden import 'numpy.typing.tests.test_typing'
+26877 INFO: Processing module hooks (post-graph stage)...
+26877 WARNING: Hidden import "charset_normalizer.md__mypyc" not found!
+26877 WARNING: Hidden import "pycparser.lextab" not found!
+26877 WARNING: Hidden import "pycparser.yacctab" not found!
+27033 INFO: Processing standard module hook 'hook-_tkinter.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+27080 INFO: Performing binary vs. data reclassification (1868 entries)
+27306 INFO: Looking for ctypes DLLs
+27462 INFO: Analyzing run-time hooks ...
+27462 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+27462 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+27478 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+27478 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+27478 INFO: Including run-time hook 'pyi_rth__tkinter.py' from 'C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+27556 INFO: Creating base_library.zip...
+27587 INFO: Looking for dynamic libraries
+28506 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Users\\harry\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\numpy.libs']
+28506 INFO: Extra DLL search directories (PATH): []
+29276 INFO: Warnings written to C:\Users\harry\Music\MT5HedgingEngine\build\Trader_Companion_v1.4.1\warn-Trader_Companion_v1.4.1.txt
+29389 INFO: Graph cross-reference written to C:\Users\harry\Music\MT5HedgingEngine\build\Trader_Companion_v1.4.1\xref-Trader_Companion_v1.4.1.html
+29611 INFO: checking PYZ
+29612 INFO: Building PYZ because PYZ-00.toc is non existent
+29612 INFO: Building PYZ (ZlibArchive) C:\Users\harry\Music\MT5HedgingEngine\build\Trader_Companion_v1.4.1\PYZ-00.pyz
+30532 INFO: Building PYZ (ZlibArchive) C:\Users\harry\Music\MT5HedgingEngine\build\Trader_Companion_v1.4.1\PYZ-00.pyz completed successfully.
+30589 INFO: checking PKG
+30589 INFO: Building PKG because PKG-00.toc is non existent
+30589 INFO: Building PKG (CArchive) Trader_Companion_v1.4.1.pkg
+39632 INFO: Building PKG (CArchive) Trader_Companion_v1.4.1.pkg completed successfully.
+39689 INFO: Bootloader C:\Users\harry\AppData\Local\Programs\Python\Python312\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+39690 INFO: checking EXE
+39691 INFO: Building EXE because EXE-00.toc is non existent
+39691 INFO: Building EXE from EXE-00.toc
+39692 INFO: Copying bootloader EXE to C:\Users\harry\Music\MT5HedgingEngine\dist\Trader_Companion_v1.4.1.exe
+39747 INFO: Copying icon to EXE
+40105 INFO: Copying 0 resources to EXE
+40105 INFO: Embedding manifest in EXE
+40152 INFO: Appending PKG archive to EXE
+40255 INFO: Fixing EXE headers
+40744 INFO: Building EXE from EXE-00.toc completed successfully.
+40806 INFO: Build complete! The results are available in: C:\Users\harry\Music\MT5HedgingEngine\dist
+Traceback (most recent call last):
+  File "C:\Users\harry\Music\MT5HedgingEngine\build.py", line 59, in <module>
+    print(f"\n\u2705 Build SUCCESS! output: dist/{BUILD_NAME}.exe")
+  File "C:\Users\harry\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 2: character maps to <undefined>

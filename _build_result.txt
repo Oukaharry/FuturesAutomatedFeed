@@ -1,0 +1,19 @@
+RETURN CODE: 1
+STDOUT (last 2000 chars):
+Cleaning build directories...
+
+STDERR (last 2000 chars):
+Traceback (most recent call last):
+  File "C:\Users\harry\Music\MT5HedgingEngine\build.py", line 28, in <module>
+    shutil.rmtree(DIST_DIR)
+  File "C:\Users\harry\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\harry\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\harry\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Access is denied: 'C:\\Users\\harry\\Music\\MT5HedgingEngine\\dist\\Trader_Companion_v1.4.1.exe'
+
+
+EXE EXISTS: dist\Trader_Companion_v1.4.1.exe (30.8 MB)
