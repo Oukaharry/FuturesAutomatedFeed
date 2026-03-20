@@ -4952,6 +4952,16 @@ def run_quality_scan():
             continue
 
         evaluations = data.get('evaluations', [])
+
+        # Inject cell notes so checks like "Negative Hedge Net, no note" can see them
+        try:
+            notes = get_client_notes(client_name)
+            for i, ev in enumerate(evaluations):
+                if i in notes:
+                    ev['_notes'] = notes[i]
+        except Exception:
+            pass
+
         if not evaluations:
             issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows',
                            'estimated_date': scan_date_str})
