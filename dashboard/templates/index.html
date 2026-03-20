@@ -1160,6 +1160,11 @@
                     <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
                     <button class="tab-btn" onclick="openTab('vps')">VPS</button>
                     <button class="tab-btn" onclick="openTab('payment')">Payment Info</button>
+                    {% if user_type != 'client' %}
+                    <button class="tab-btn" onclick="openTab('issues')" id="issues-tab-btn" style="color:#f87171;">
+                        <i class="fas fa-exclamation-triangle" style="margin-right:4px;font-size:0.75rem;"></i>Issues <span id="issues-count-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.7rem;margin-left:4px;"></span>
+                    </button>
+                    {% endif %}
                 </div>
                 <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
                     {% if user_type in ('admin', 'super_admin') %}
@@ -1574,6 +1579,48 @@
             </table>
             <div id="no-payment-info-msg" class="no-data">No payment cards configured. Add one to get started.</div>
         </div>
+
+        <!-- Issues Tab (traders/admins only) -->
+        {% if user_type != 'client' %}
+        <div id="issues" class="tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                <h3 style="color:#f87171; margin:0; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-exclamation-triangle"></i> Data Quality Issues
+                </h3>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <select id="issues-severity-filter" onchange="filterIssuesTable()" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:0.85rem;">
+                        <option value="">All Severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <button onclick="loadClientIssues()" style="background:rgba(248,113,113,0.15); border:1px solid rgba(248,113,113,0.3); color:#f87171; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:500;">
+                        <i class="fas fa-sync-alt" style="margin-right:4px;"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div id="issues-loading" style="display:none; text-align:center; padding:40px; color:#94a3b8;">
+                <i class="fas fa-spinner fa-spin" style="font-size:1.5rem; margin-bottom:10px;"></i><br>Scanning for issues...
+            </div>
+            <div id="issues-empty" style="display:none; text-align:center; padding:40px; color:#4ade80;">
+                <i class="fas fa-check-circle" style="font-size:2rem; margin-bottom:10px;"></i><br>No issues found — all data looks good!
+            </div>
+            <table id="issues-table" style="display:none; width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr style="border-bottom:1px solid #334155;">
+                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Severity</th>
+                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Issue</th>
+                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Detail</th>
+                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Row</th>
+                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Est. Date</th>
+                        <th style="text-align:center; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Go To</th>
+                    </tr>
+                </thead>
+                <tbody id="issues-table-body"></tbody>
+            </table>
+        </div>
+        {% endif %}
 
         <!-- KYC Portfolio Tab (Primary KYC clients only) -->
         <div id="kyc-portfolio" class="tab-content">
@@ -3062,6 +3109,105 @@
                     }, 300);
                 }
         }
+
+        // --- Issues Tab Logic ---
+        let _clientIssues = [];
+        function loadClientIssues() {
+            if (IS_CLIENT) return;
+            const clientId = '{{ client_id }}';
+            if (!clientId) return;
+            const loading = document.getElementById('issues-loading');
+            const empty = document.getElementById('issues-empty');
+            const table = document.getElementById('issues-table');
+            if (loading) loading.style.display = 'block';
+            if (empty) empty.style.display = 'none';
+            if (table) table.style.display = 'none';
+            fetch(`/api/quality/client/${encodeURIComponent(clientId)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (loading) loading.style.display = 'none';
+                    if (data.status === 'success' && data.data) {
+                        _clientIssues = data.data.issues || [];
+                        const badge = document.getElementById('issues-count-badge');
+                        if (badge) {
+                            if (_clientIssues.length > 0) {
+                                badge.textContent = _clientIssues.length;
+                                badge.style.display = 'inline';
+                            } else {
+                                badge.style.display = 'none';
+                            }
+                        }
+                        filterIssuesTable();
+                    }
+                })
+                .catch(() => { if (loading) loading.style.display = 'none'; });
+        }
+        function filterIssuesTable() {
+            const severity = (document.getElementById('issues-severity-filter') || {}).value || '';
+            const filtered = severity ? _clientIssues.filter(i => i.severity === severity) : _clientIssues;
+            const empty = document.getElementById('issues-empty');
+            const table = document.getElementById('issues-table');
+            const tbody = document.getElementById('issues-table-body');
+            if (!filtered.length) {
+                if (empty) empty.style.display = 'block';
+                if (table) table.style.display = 'none';
+                return;
+            }
+            if (empty) empty.style.display = 'none';
+            if (table) table.style.display = 'table';
+            const sevColors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#60a5fa',warning:'#a78bfa'};
+            tbody.innerHTML = filtered.map(i => {
+                const rowNum = i.row !== null && i.row !== undefined ? `Row ${i.row + 1}` : '-';
+                const color = sevColors[i.severity] || '#94a3b8';
+                const goBtn = i.row !== null && i.row !== undefined
+                    ? `<button onclick="goToIssueRow(${i.row})" style="background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:500;"><i class="fas fa-arrow-right" style="margin-right:4px;"></i>Go</button>`
+                    : '';
+                return `<tr style="border-bottom:1px solid #1e293b;">
+                    <td style="padding:10px 12px;"><span style="background:${color}22;color:${color};border:1px solid ${color}44;padding:2px 10px;border-radius:10px;font-size:0.75rem;font-weight:600;">${i.severity}</span></td>
+                    <td style="padding:10px 12px;color:#e2e8f0;font-size:0.9rem;">${i.check || ''}</td>
+                    <td style="padding:10px 12px;color:#94a3b8;font-size:0.85rem;">${i.detail || ''}</td>
+                    <td style="padding:10px 12px;"><span style="color:#60a5fa;font-weight:500;">${rowNum}</span></td>
+                    <td style="padding:10px 12px;color:#94a3b8;font-size:0.85rem;">${i.estimated_date || ''}</td>
+                    <td style="padding:10px 12px;text-align:center;">${goBtn}</td>
+                </tr>`;
+            }).join('');
+        }
+        function goToIssueRow(rowIndex) {
+            const activeFilterCb = document.getElementById('activeFilter');
+            if (activeFilterCb && activeFilterCb.checked) {
+                activeFilterCb.checked = false;
+            }
+            openTab('evaluations');
+            setTimeout(() => {
+                renderEvaluationsTable();
+                setTimeout(() => {
+                    const targetRow = document.getElementById('eval-row-' + rowIndex);
+                    if (!targetRow) {
+                        // Load all pages
+                        while (evalPage * EVAL_PAGE_SIZE < (window._allRowsToRender || []).length) { evalPage++; }
+                        renderEvaluationsTable(false);
+                        setTimeout(() => {
+                            const tr = document.getElementById('eval-row-' + rowIndex);
+                            if (tr) {
+                                tr.style.outline = '2px solid #fbbf24';
+                                tr.style.outlineOffset = '-1px';
+                                tr.style.background = 'rgba(251,191,36,0.12)';
+                                tr.scrollIntoView({behavior:'smooth',block:'center'});
+                                setTimeout(() => { tr.style.outline=''; tr.style.outlineOffset=''; tr.style.background=''; }, 4000);
+                            }
+                        }, 200);
+                    } else {
+                        targetRow.style.outline = '2px solid #fbbf24';
+                        targetRow.style.outlineOffset = '-1px';
+                        targetRow.style.background = 'rgba(251,191,36,0.12)';
+                        targetRow.scrollIntoView({behavior:'smooth',block:'center'});
+                        setTimeout(() => { targetRow.style.outline=''; targetRow.style.outlineOffset=''; targetRow.style.background=''; }, 4000);
+                    }
+                }, 300);
+            }, 100);
+        }
+        // Auto-load issues when page loads (non-client)
+        if (!IS_CLIENT) { setTimeout(loadClientIssues, 500); }
 
         fixSubHeaderTop();
 

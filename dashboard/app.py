@@ -4920,15 +4920,16 @@ def _estimate_issue_date(ev, issue_check, fallback):
     return dates[-1]
 
 
-def run_quality_scan():
+def run_quality_scan(target_client=None):
     """
     Automated quality scan: checks every client's data for SOP violations.
     Returns list of per-client scan results with issues and health scores.
+    If target_client is given, only scan that one client.
     """
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from dashboard.database import get_client_data, get_client_activity
 
-    all_clients = hierarchy_get_all_clients()
+    all_clients = [target_client] if target_client else hierarchy_get_all_clients()
     results = []
     now = datetime.now()
     today_weekday = now.weekday()  # 0=Mon, 6=Sun
@@ -5002,8 +5003,17 @@ def run_quality_scan():
             if not has_data:
                 continue
 
+            # Detect "double dip" — MFF/TopStep accounts with an activation fee
+            # These are reset at funded stage so eval-phase fields are intentionally blank
+            _dd_firms = ('my funded futures', 'mff', 'topstep', 'top step', 'topstepx')
+            activation_fee = str(ev.get('Activation Fee', '') or '').strip()
+            is_double_dip = (
+                prop_firm.lower() in _dd_firms
+                and bool(activation_fee)
+            )
+
             # Status blank on non-empty row
-            if not status_p1 and has_data:
+            if not status_p1 and has_data and not is_double_dip:
                 issues.append({'check': 'Status blank', 'severity': 'medium', 'row': idx,
                                'detail': f'{row_label}: Has data but no Status P1',
                                'estimated_date': _estimate_issue_date(ev, 'Status blank', scan_date_str)})
@@ -5012,13 +5022,13 @@ def run_quality_scan():
 
             # Empty Fee
             fee = str(ev.get('Fee', '') or '').strip()
-            if not fee and has_data:
+            if not fee and has_data and not is_double_dip:
                 issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
                                'detail': f'{row_label}: Fee not filled in',
                                'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
 
             # Empty Account Size
-            if not acct_size and prop_firm:
+            if not acct_size and prop_firm and not is_double_dip:
                 issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
                                'detail': f'{row_label}: Account Size blank',
                                'estimated_date': _estimate_issue_date(ev, 'Empty Account Size', scan_date_str)})
@@ -5027,9 +5037,11 @@ def run_quality_scan():
             acct_num = str(ev.get('Account #', '') or '').strip()
             acct_num2 = str(ev.get('Account #.1', '') or '').strip()
             if is_active and not acct_num and not acct_num2:
-                issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Active but no account number',
-                               'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
+                # For double dips, only the funded-phase account # matters
+                if not is_double_dip or not acct_num2:
+                    issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
+                                   'detail': f'{row_label}: Active but no account number',
+                                   'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
 
             # Empty Activation Fee on funded rows
             activation = str(ev.get('Activation Fee', '') or '').strip()
@@ -5115,6 +5127,20 @@ def api_run_quality_scan():
         'avg_health_score': round(avg_health, 1),
         'results': results
     })
+
+
+@app.route('/api/quality/client/<client_id>', methods=['GET'])
+@require_role('admin', 'trader', 'super_admin')
+def api_quality_client(client_id):
+    """Run quality scan for a single client. Accessible by admins and traders."""
+    user_type = request.session_user.get('user_type')
+    user_identifier = request.session_user.get('user_identifier')
+    if not can_access_client(user_type, user_identifier, client_id):
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+    results = run_quality_scan(target_client=client_id)
+    if results:
+        return jsonify({"status": "success", "data": results[0]})
+    return jsonify({"status": "success", "data": {"client_id": client_id, "issues": [], "health_score": 100.0}})
 
 
 @app.route('/api/quality/results')
