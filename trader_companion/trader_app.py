@@ -2860,6 +2860,7 @@ class TraderCompanionApp:
         "TradeDay": "TradeDay",
         "Tradeify": "Tradeify",
         "Alpha Futures": "AlphaFutures",
+        "Apex": "Apex",
     }
 
     _FAILED_STATUSES = {"fail", "failed", "breach", "delete", "deleted", "closed", "sl", "ended", "lost"}

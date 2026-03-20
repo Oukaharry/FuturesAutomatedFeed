@@ -3576,7 +3576,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Topstep', 'Tradeify', 'Alpha Futures', 'Other'
+                    'FundedNext', 'Topstep', 'Tradeify', 'Alpha Futures', 'Apex', 'Other'
                 ];
 
                 accounts.forEach((acc, index) => {
@@ -4245,7 +4245,7 @@
         }
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Other'],
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Other'],
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted', 'Completed']
@@ -4283,6 +4283,9 @@
                 } else if (v.includes('lucid')) {
                     // Grey (Lucid)
                     return "background-color: #808080; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                } else if (v.includes('apex')) {
+                    // Blue (Apex)
+                    return "background-color: #2563eb; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 }
                 return "";
             };
@@ -4479,6 +4482,7 @@
                                 if (v.includes('tradeify')) return "background-color: #000000; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('fundednext')) return "background-color: #6a0dad; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('lucid')) return "background-color: #808080; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('apex')) return "background-color: #2563eb; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 return "";
                             };
                             
