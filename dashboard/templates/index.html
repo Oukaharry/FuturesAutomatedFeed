@@ -3032,6 +3032,12 @@
                 // Hash-based deep link: #eval-row-N from quality dashboard
                 const hashTarget = window.location.hash;
                 if (hashTarget && hashTarget.startsWith('#eval-row-')) {
+                    // Uncheck active filter so inactive/failed rows are visible
+                    const activeFilterCb = document.getElementById('activeFilter');
+                    if (activeFilterCb && activeFilterCb.checked) {
+                        activeFilterCb.checked = false;
+                        renderEvaluationsTable();
+                    }
                     setTimeout(() => {
                         const targetRow = document.getElementById(hashTarget.substring(1));
                         if (targetRow) {
