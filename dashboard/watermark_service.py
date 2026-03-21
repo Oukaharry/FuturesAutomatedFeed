@@ -393,7 +393,7 @@ def compute_waterlog_from_db(client_id):
     })
 
     # ── Monthly periods from 3/21 onwards (new split logic) ─────────────
-    # Reference = previous period's net profit (not a running HWM)
+    # Reference = the net profit from the last period (transition or previous month)
     prev_period_net = transition_net
     today = _dt.now().date()
     month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
@@ -407,11 +407,12 @@ def compute_waterlog_from_db(client_id):
 
         effective_end = min(month_end, today)
 
+        # Net profit = latest daily watermark value up to effective_end
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
-        net_profit = in_range[-1][1] if in_range else 0.0
+        net_profit = in_range[-1][1] if in_range else prev_period_net
 
-        # New split: 50% of (this month net profit − previous period net profit)
-        # No split on negatives or when net profit hasn't grown
+        # Split = 50% of (this period's net profit − previous period's net profit)
+        # Only if net profit grew and is positive
         if net_profit > prev_period_net and net_profit > 0:
             profit_split = (net_profit - prev_period_net) * 0.5
         else:
@@ -419,7 +420,7 @@ def compute_waterlog_from_db(client_id):
 
         result.append({
             'from_date':    _fmt_date(month_start),
-            'to_date':      _fmt_date(effective_end),
+            'to_date':      _fmt_date(month_end),  # Always show full period end
             'low':          _fmt_currency(net_profit),
             'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
             'split_pct':    50,
@@ -429,7 +430,8 @@ def compute_waterlog_from_db(client_id):
         if effective_end >= month_end:
             prev_period_net = net_profit
 
-        month_start = effective_end + timedelta(days=1)
+        # Advance to next month
+        month_start = month_end + timedelta(days=1)
         if month_start > today:
             break
 
