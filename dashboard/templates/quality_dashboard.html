@@ -288,7 +288,7 @@
                 } else {
                     alert(data.message || 'Failed to save.');
                 }
-            } catch(e) { alert('Failed to save webhook URL.'); }
+            } catch(e) { alert('Error saving: ' + e.message); }
         }
 
         async function removeSlackWebhook() {
