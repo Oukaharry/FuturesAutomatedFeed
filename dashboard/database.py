@@ -1141,26 +1141,26 @@ def save_daily_checklist(date: str, user_identifier: str, user_type: str,
 
 def _ensure_settings_table():
     """Create system_settings table if it doesn't exist."""
-    conn = get_db()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS system_settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            updated_by TEXT DEFAULT ''
-        )
-    ''')
-    conn.commit()
+    with get_connection() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_by TEXT DEFAULT ''
+            )
+        ''')
+        conn.commit()
 
 
 def get_setting(key: str) -> str:
     """Get a system setting by key. Returns empty string if not found."""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute('SELECT value FROM system_settings WHERE key = ?', (key,))
-        row = cursor.fetchone()
-        return row['value'] if row else ''
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT value FROM system_settings WHERE key = ?', (key,))
+            row = cursor.fetchone()
+            return row['value'] if row else ''
     except Exception:
         _ensure_settings_table()
         return ''
@@ -1169,14 +1169,14 @@ def get_setting(key: str) -> str:
 def set_setting(key: str, value: str, updated_by: str = ''):
     """Set a system setting."""
     _ensure_settings_table()
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO system_settings (key, value, updated_at, updated_by)
-        VALUES (?, ?, datetime('now'), ?)
-        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-    ''', (key, value, updated_by))
-    conn.commit()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO system_settings (key, value, updated_at, updated_by)
+            VALUES (?, ?, datetime('now'), ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+        ''', (key, value, updated_by))
+        conn.commit()
 
 
 def get_daily_checklists(date: str, user_identifier: str = None) -> list:
