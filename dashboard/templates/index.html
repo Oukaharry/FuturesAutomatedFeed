@@ -286,12 +286,23 @@
 
         /* --- Cell Input Sizing --- */
         .cell-input {
-            font-size: 0.75em !important;
-            padding: 1px 2px !important;
+            font-size: 15px !important;
+            padding: 2px 4px !important;
             box-sizing: border-box;
             width: 100%;
             border: none !important;
             min-width: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
+
+        /* Standardize all text/select/td font inside evaluations table */
+        #evaluations-table tbody td {
+            font-size: 13px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
+        #evaluations-table tbody td select {
+            font-size: 13px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
         }
 
         /* --- Visual Notes --- */
@@ -538,31 +549,32 @@
             position: sticky !important;
             top: 0 !important;
             z-index: 1000 !important;
-            height: 55px !important; /* Locked height for calculation */
+            height: 36px !important; /* Compact group header row */
             background-color: #1e293b !important; /* Fallback opaque bg */
-            box-shadow: 0 1px 0 rgba(255,255,255,0.1); 
+            box-shadow: 0 1px 0 rgba(255,255,255,0.1);
+            font-size: 13px !important;
         }
 
         /* SECOND ROW (Sub Headers) */
         #evaluations-table thead tr:nth-child(2) th {
             position: sticky !important;
-            top: 55px !important; /* Stick below the first row */
+            top: 36px !important; /* Stick below the first row (36px) */
             z-index: 999 !important; /* Slightly below the main headers */
             background-color: #1e293b !important; /* Ensure opaque background */
             box-shadow: 0 1px 0 rgba(255,255,255,0.1);
-            height: 45px; /* Consistent height for sub-headers */
+            height: 32px; /* Compact sub-header row */
         }
 
-        /* Farming sub-header text fitting */
+        /* Sub-header text fitting */
         [class^="sub-header-"] {
-            font-size: 11px !important;
+            font-size: 12px !important;
             white-space: nowrap !important;
             padding: 4px 6px !important;
             text-align: center !important;
         }
 
         /* 4. Sticky Columns (Horizontal) - Left Edge */
-        /* First Column (#) */
+        /* First Column (#) - header stays at left:0, body at left:0 (0/0.75=0) */
         #evaluations-table thead tr:first-child th:nth-child(1),
         #evaluations-table tbody td.sticky-col-1 {
             position: sticky !important;
@@ -596,11 +608,14 @@
             background-clip: padding-box !important;
         }
         
-        /* Second Column (Trash) */
-        #evaluations-table thead tr:first-child th:nth-child(2),
-        #evaluations-table tbody td.sticky-col-2 {
+        /* Second Column (Trash) - header at 50px, body compensated for 0.75 zoom */
+        #evaluations-table thead tr:first-child th:nth-child(2) {
             position: sticky !important;
             left: 50px !important;
+        }
+        #evaluations-table tbody td.sticky-col-2 {
+            position: sticky !important;
+            left: 66.67px !important; /* 50px / 0.75 = 66.67px in zoomed tbody */
             z-index: 1005 !important; /* Above normal headers */
             background-color: #1e293b !important;
             border-right: 1px solid rgba(255,255,255,0.1);
@@ -644,7 +659,7 @@
         #evaluations-table thead tr:nth-child(2) th:nth-child(1) {
             position: sticky !important;
             left: 90px !important;
-            top: 55px !important; /* Below Row 1 */
+            top: 36px !important; /* Below Row 1 (36px) */
             z-index: 1050 !important; /* Higher than data cells, lower than group header */
             background-color: #1e293b !important;
             width: 180px;
@@ -652,10 +667,10 @@
             border-right: 1px solid rgba(255,255,255,0.1);
         }
 
-        /* 3. The Data Cells (Column 3) */
+        /* 3. The Data Cells (Column 3) - compensated for 0.75 zoom */
         #evaluations-table tbody td.sticky-col-3 {
             position: sticky !important;
-            left: 90px !important;
+            left: 120px !important; /* 90px / 0.75 = 120px in zoomed tbody */
             z-index: 100 !important; /* Lower than headers */
             background-color: #1e293b !important; /* Opaque background */
             border-right: 1px solid rgba(255,255,255,0.1);
@@ -672,9 +687,19 @@
             display: none !important;
         }
         /* Shift Prop Firm column left since delete col (40px) is gone */
-        .client-view #evaluations-table tbody td.sticky-col-3,
         .client-view #evaluations-table thead tr:first-child th.group-header-blue.sticky-prop-firm-header,
         .client-view #evaluations-table thead tr:nth-child(2) th:nth-child(1) {
+            left: 50px !important;
+        }
+        /* Body cells need zoom-compensated value: 50px / 0.75 = 66.67px */
+        .client-view #evaluations-table tbody td.sticky-col-3 {
+            left: 66.67px !important;
+        }
+        /* Shift group headers left since delete col (40px) is gone in client view */
+        .client-view #evaluations-table thead tr:first-child th.group-header-blue,
+        .client-view #evaluations-table thead tr:first-child th.group-header-green,
+        .client-view #evaluations-table thead tr:first-child th.group-header-orange,
+        .client-view #evaluations-table thead tr:first-child th.group-header-purple {
             left: 50px !important;
         }
         /* Prevent clients from editing date inputs - looks identical but non-interactive */
@@ -724,14 +749,14 @@
         }
 
         /* Phase group headers are sticky BOTH TOP and LEFT (resist being swallowed).
-           They stick to the right edge of the prop firm column (90px) and stay visible
-           until completely scrolled away. */
+           They stick to the right edge of the frozen columns (# 50px + trash 40px = 90px)
+           so they stay visible during horizontal scroll. */
         #evaluations-table thead tr:first-child th.group-header-blue,
         #evaluations-table thead tr:first-child th.group-header-green,
         #evaluations-table thead tr:first-child th.group-header-orange,
         #evaluations-table thead tr:first-child th.group-header-purple {
             position: sticky !important;
-            left: 45px !important;
+            left: 90px !important;
             z-index: 2100 !important; /* Higher than blue header (2000) so phase text appears on top */
             text-align: left !important;
             padding-left: 14px !important;
@@ -746,6 +771,10 @@
             background: linear-gradient(135deg, #581c87, #3b0764) !important;
         }
 
+        /* Zoom on tbody only so sticky thead top values stay in the
+           scroll-container's coordinate space (fixes header row 2
+           sliding up instead of sticking).  Body sticky-col left
+           values are divided by 0.75 below to compensate. */
         #evaluations-body {
             zoom: 0.75; /* adjust % to taste */
         }
