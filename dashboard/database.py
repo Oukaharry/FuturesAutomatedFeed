@@ -305,7 +305,6 @@ def init_database():
             )
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_date ON daily_checklists(date, user_identifier)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_client ON daily_checklists(date, client_id)')
         # Migration: add client_id column if missing from older schema
         try:
             cursor.execute('SELECT client_id FROM daily_checklists LIMIT 1')
@@ -314,6 +313,11 @@ def init_database():
                 cursor.execute('ALTER TABLE daily_checklists ADD COLUMN client_id TEXT DEFAULT ""')
             except Exception:
                 pass
+        # Index on client_id (only after column is guaranteed to exist)
+        try:
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_client ON daily_checklists(date, client_id)')
+        except Exception:
+            pass
 
         # System settings key-value store
         cursor.execute('''
