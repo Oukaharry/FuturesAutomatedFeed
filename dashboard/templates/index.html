@@ -935,9 +935,9 @@
         }
         .checklist-panel {
             position: fixed;
-            top: 0; right: -420px; bottom: 0;
-            width: 400px;
-            max-width: 90vw;
+            top: 0; right: -520px; bottom: 0;
+            width: 500px;
+            max-width: 95vw;
             background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
             border-left: 1px solid rgba(167,139,250,0.3);
             z-index: 10000;
@@ -948,7 +948,7 @@
         }
         .checklist-panel.open { right: 0; }
         .checklist-panel-header {
-            padding: 20px;
+            padding: 16px 20px;
             border-bottom: 1px solid rgba(255,255,255,0.08);
             display: flex;
             align-items: center;
@@ -965,59 +965,124 @@
         .checklist-panel-body {
             flex: 1;
             overflow-y: auto;
-            padding: 16px 20px;
+            padding: 12px 20px;
         }
-        .checklist-item {
+        /* Summary section cards */
+        .summary-section {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+        }
+        .summary-section-header {
             display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
         }
-        .checklist-item:last-child { border-bottom: none; }
-        .checklist-item input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            margin-top: 2px;
-            accent-color: #7c3aed;
-            flex-shrink: 0;
+        .summary-section-title {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+        .summary-section-title .section-num {
+            color: #a78bfa;
+            margin-right: 6px;
+        }
+        .summary-status-toggle {
+            display: flex;
+            gap: 4px;
+        }
+        .summary-status-toggle button {
+            padding: 4px 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            background: rgba(255,255,255,0.04);
+            color: #94a3b8;
+            font-size: 0.75rem;
             cursor: pointer;
+            transition: all 0.15s ease;
         }
-        .checklist-item label {
-            font-size: 0.85rem;
-            color: #cbd5e1;
-            cursor: pointer;
-            line-height: 1.5;
+        .summary-status-toggle button.active-ok {
+            background: rgba(34,197,94,0.15);
+            border-color: rgba(34,197,94,0.4);
+            color: #4ade80;
         }
-        .checklist-item.checked label {
-            color: #64748b;
-            text-decoration: line-through;
+        .summary-status-toggle button.active-warn {
+            background: rgba(245,158,11,0.15);
+            border-color: rgba(245,158,11,0.4);
+            color: #fbbf24;
+        }
+        .summary-notes-input {
+            width: 100%;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 0.8rem;
+            resize: vertical;
+            min-height: 36px;
+            font-family: inherit;
+        }
+        .summary-notes-input::placeholder { color: #475569; }
+        .summary-notes-input:focus { border-color: rgba(167,139,250,0.5); outline: none; }
+        /* Preview output box */
+        .summary-preview {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(167,139,250,0.2);
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-top: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.78rem;
+            color: #e2e8f0;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            display: none;
         }
         .checklist-panel-footer {
-            padding: 16px 20px;
+            padding: 12px 20px;
             border-top: 1px solid rgba(255,255,255,0.08);
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            flex-wrap: wrap;
         }
         .checklist-submit-btn {
             flex: 1;
-            padding: 12px;
+            padding: 10px;
             border: none;
             border-radius: 10px;
             background: linear-gradient(135deg, #7c3aed, #6d28d9);
             color: #fff;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 100px;
+        }
+        .checklist-submit-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .checklist-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .checklist-copy-btn {
+            padding: 10px 14px;
+            border: 1px solid rgba(167,139,250,0.3);
+            border-radius: 10px;
+            background: rgba(167,139,250,0.1);
+            color: #a78bfa;
+            font-size: 0.85rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
         }
-        .checklist-submit-btn:hover { opacity: 0.9; transform: translateY(-1px); }
-        .checklist-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .checklist-copy-btn:hover { background: rgba(167,139,250,0.2); }
         .checklist-progress {
-            font-size: 0.78rem;
+            font-size: 0.75rem;
             color: #94a3b8;
             white-space: nowrap;
+            width: 100%;
         }
 
         /* Tighten logout pill at small sizes */
@@ -1280,21 +1345,25 @@
 
     <!-- Daily Checklist FAB + Panel (traders/admins only) -->
     {% if user_type in ('trader', 'admin', 'super_admin') %}
-    <button class="checklist-fab" id="checklist-fab" onclick="toggleChecklistPanel()" title="Daily Sign-Off Checklist">
+    <button class="checklist-fab" id="checklist-fab" onclick="toggleChecklistPanel()" title="Daily Client Summary">
         <i class="fas fa-clipboard-check"></i>
         <span class="fab-badge pending" id="checklist-fab-badge" style="display:none;"></span>
     </button>
     <div class="checklist-overlay" id="checklist-overlay" onclick="toggleChecklistPanel()"></div>
     <div class="checklist-panel" id="checklist-panel">
         <div class="checklist-panel-header">
-            <h3><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> Daily Sign-Off</h3>
+            <h3><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> <span id="checklist-title">Daily Summary</span></h3>
             <button onclick="toggleChecklistPanel()" style="background:none; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer; padding:4px;">&times;</button>
         </div>
         <div class="checklist-panel-body" id="checklist-panel-body"></div>
+        <div class="summary-preview" id="summary-preview"></div>
         <div class="checklist-panel-footer">
-            <span class="checklist-progress" id="checklist-progress">0 / 0</span>
+            <span class="checklist-progress" id="checklist-progress"></span>
+            <button class="checklist-copy-btn" id="checklist-copy-btn" onclick="copySummary()" style="display:none;">
+                <i class="fas fa-copy" style="margin-right:4px;"></i> Copy
+            </button>
             <button class="checklist-submit-btn" id="checklist-submit-btn" onclick="submitChecklist()">
-                <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit
+                <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Save &amp; Preview
             </button>
         </div>
     </div>
@@ -5900,41 +5969,31 @@
 
 
         // ══════════════════════════════════════════════════════════
-        // ── Daily Sign-Off Checklist ─────────────────────────────
+        // ── Per-Client Daily Summary Generator ───────────────────
         // ══════════════════════════════════════════════════════════
-        const TRADER_CHECKLIST = [
-            'I confirmed all accounts are visible on Tradovate AND the dashboard',
-            'I verified MT5 name matches client name on every hedging account',
-            'I confirmed Tradovate balance matches the sheet (within $100)',
-            'I checked forexfactory.com for red-zone news before trading',
-            'I verified trades against the correct blueprint before placing',
-            'I confirmed MT5 opposite trade executed after each Tradovate trade',
-            'Every active account has an updated note with today\'s date',
-            'I traded ALL accounts — none were skipped',
-            'All numbers entered are exact to the cent, no rounding'
-        ];
-        const ADMIN_CHECKLIST = [
-            'All challenges needed for tomorrow are purchased',
-            'All failed account subscriptions are cancelled',
-            'All master agreements are signed',
-            'All eligible payouts are requested',
-            'All client emails checked for notifications',
-            'All Discord messages replied to',
-            'Daily summary sent to EVERY client',
-            'All clients are within challenge limit'
+        const SUMMARY_SECTIONS = [
+            { id: 'challenge_purchase', num: 1, title: 'Challenge Purchase Status',
+              okText: 'All challenges purchased and funded — no pending orders.',
+              warnPlaceholder: 'e.g. Waiting on 50K TopStep challenge — payment processing' },
+            { id: 'renewal_cancel', num: 2, title: 'Renewal / Cancellation Check',
+              okText: 'No renewals or cancellations needed today.',
+              warnPlaceholder: 'e.g. Apex 150K failed — cancellation submitted' },
+            { id: 'trading_delays', num: 3, title: 'Trading / Operational Delays',
+              okText: 'All accounts traded on schedule — no delays or issues.',
+              warnPlaceholder: 'e.g. MT5 connection lost for 20 mins, resolved at 10:30 AM' },
+            { id: 'payout_requests', num: 4, title: 'Payout Requests',
+              okText: 'No payout requests pending.',
+              warnPlaceholder: 'e.g. $500 payout requested on Apex 100K #2 — awaiting approval' },
+            { id: 'payout_confirm', num: 5, title: 'Payout Confirmation & Sheet Update',
+              okText: 'All confirmed payouts recorded — sheet is up to date.',
+              warnPlaceholder: 'e.g. FTMO $1,200 payout confirmed — sheet updated' },
+            { id: 'action_items', num: 6, title: 'Client Action Items',
+              okText: 'No client action required at this time.',
+              warnPlaceholder: 'e.g. Client to send KYC documents by Friday' }
         ];
 
-        let _checklistItems = [];
+        let _summaryData = {};  // { sectionId: { status: 'ok'|'warn', notes: '' } }
         let _checklistLoaded = false;
-
-        function _getChecklistType() {
-            if (USER_TYPE === 'trader') return 'trader';
-            return 'admin'; // admin and super_admin use admin checklist
-        }
-
-        function _getChecklistTemplate() {
-            return _getChecklistType() === 'trader' ? TRADER_CHECKLIST : ADMIN_CHECKLIST;
-        }
 
         function toggleChecklistPanel() {
             const panel = document.getElementById('checklist-panel');
@@ -5951,106 +6010,202 @@
         }
 
         async function loadChecklist() {
-            const template = _getChecklistTemplate();
-            const type = _getChecklistType();
+            const clientId = CLIENT_ID || '';
+            // Update title with client info
+            const titleEl = document.getElementById('checklist-title');
+            titleEl.textContent = clientId ? `Daily Summary — ${clientId}` : 'Daily Summary';
+
+            // Init defaults
+            SUMMARY_SECTIONS.forEach(s => {
+                _summaryData[s.id] = { status: 'ok', notes: '' };
+            });
+
             // Load existing submission for today
-            try {
-                const resp = await fetch('/api/checklist/status');
-                const data = await resp.json();
-                let saved = null;
-                if (data.checklists && data.checklists.length) {
-                    saved = data.checklists.find(c => c.checklist_type === type);
-                }
-                _checklistItems = template.map((text, i) => ({
-                    id: i,
-                    text: text,
-                    checked: saved ? (saved.items[i] && saved.items[i].checked) : false
-                }));
-            } catch (e) {
-                _checklistItems = template.map((text, i) => ({ id: i, text: text, checked: false }));
+            if (clientId) {
+                try {
+                    const resp = await fetch(`/api/checklist/status?client_id=${encodeURIComponent(clientId)}`);
+                    const data = await resp.json();
+                    if (data.checklists && data.checklists.length) {
+                        const saved = data.checklists[0];
+                        if (saved.items && Array.isArray(saved.items)) {
+                            saved.items.forEach(item => {
+                                if (_summaryData[item.id]) {
+                                    _summaryData[item.id].status = item.status || 'ok';
+                                    _summaryData[item.id].notes = item.notes || '';
+                                }
+                            });
+                        }
+                    }
+                } catch (e) { /* use defaults */ }
             }
+
             _checklistLoaded = true;
             renderChecklist();
         }
 
         function renderChecklist() {
             const body = document.getElementById('checklist-panel-body');
-            const checked = _checklistItems.filter(i => i.checked).length;
-            const total = _checklistItems.length;
-            body.innerHTML = _checklistItems.map(item => `
-                <div class="checklist-item ${item.checked ? 'checked' : ''}">
-                    <input type="checkbox" id="cl-${item.id}" ${item.checked ? 'checked' : ''}
-                           onchange="toggleChecklistItem(${item.id}, this.checked)">
-                    <label for="cl-${item.id}">${item.text}</label>
-                </div>
-            `).join('');
-            document.getElementById('checklist-progress').textContent = `${checked} / ${total}`;
-            updateChecklistBadge(checked, total);
+            let filled = 0;
+            const html = SUMMARY_SECTIONS.map(s => {
+                const d = _summaryData[s.id];
+                const isOk = d.status === 'ok';
+                const isWarn = d.status === 'warn';
+                if (isOk || (isWarn && d.notes.trim())) filled++;
+                return `
+                <div class="summary-section" data-section="${s.id}">
+                    <div class="summary-section-header">
+                        <div class="summary-section-title"><span class="section-num">${s.num}.</span>${s.title}</div>
+                        <div class="summary-status-toggle">
+                            <button class="${isOk ? 'active-ok' : ''}" onclick="setSectionStatus('${s.id}','ok')">✅ All Good</button>
+                            <button class="${isWarn ? 'active-warn' : ''}" onclick="setSectionStatus('${s.id}','warn')">⚠️ Notes</button>
+                        </div>
+                    </div>
+                    ${isWarn ? `<textarea class="summary-notes-input" placeholder="${s.warnPlaceholder}"
+                        oninput="setSectionNotes('${s.id}', this.value)">${d.notes}</textarea>` : ''}
+                </div>`;
+            }).join('');
+            body.innerHTML = html;
+            document.getElementById('checklist-progress').textContent = `${filled} / ${SUMMARY_SECTIONS.length} sections completed`;
+            updateChecklistBadge(filled, SUMMARY_SECTIONS.length);
         }
 
-        function toggleChecklistItem(id, checked) {
-            _checklistItems[id].checked = checked;
+        function setSectionStatus(sectionId, status) {
+            _summaryData[sectionId].status = status;
+            if (status === 'ok') _summaryData[sectionId].notes = '';
             renderChecklist();
+            // Hide preview when editing
+            document.getElementById('summary-preview').style.display = 'none';
+            document.getElementById('checklist-copy-btn').style.display = 'none';
         }
 
-        function updateChecklistBadge(checked, total) {
+        function setSectionNotes(sectionId, notes) {
+            _summaryData[sectionId].notes = notes;
+        }
+
+        function updateChecklistBadge(filled, total) {
             const badge = document.getElementById('checklist-fab-badge');
             if (!badge) return;
-            if (checked === total && total > 0) {
+            if (filled === total && total > 0) {
                 badge.className = 'fab-badge done';
                 badge.innerHTML = '<i class="fas fa-check" style="font-size:0.6rem;"></i>';
                 badge.style.display = 'flex';
-            } else if (checked > 0) {
+            } else if (filled > 0) {
                 badge.className = 'fab-badge pending';
-                badge.textContent = checked;
+                badge.textContent = filled;
                 badge.style.display = 'flex';
             } else {
                 badge.style.display = 'none';
             }
         }
 
+        function generateSummaryText() {
+            const clientId = CLIENT_ID || 'UNKNOWN';
+            const today = new Date();
+            const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+            let lines = [];
+            lines.push(`📋 **DAILY SUMMARY — ${clientId}**`);
+            lines.push(`📅 ${dateStr}`);
+            lines.push('');
+            SUMMARY_SECTIONS.forEach(s => {
+                const d = _summaryData[s.id];
+                const icon = d.status === 'ok' ? '✅' : '⚠️';
+                lines.push(`**${s.num}. ${s.title}**`);
+                if (d.status === 'ok') {
+                    lines.push(`${icon} ${s.okText}`);
+                } else {
+                    lines.push(`${icon} ${d.notes.trim() || 'Attention needed — details pending.'}`);
+                }
+                lines.push('');
+            });
+            lines.push('—');
+            return lines.join('\n');
+        }
+
         async function submitChecklist() {
             const btn = document.getElementById('checklist-submit-btn');
+            const clientId = CLIENT_ID || '';
+            if (!clientId) {
+                alert('No client selected. Open a client dashboard first.');
+                return;
+            }
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Saving...';
             try {
-                const items = _checklistItems.map(i => ({ text: i.text, checked: i.checked }));
+                const items = SUMMARY_SECTIONS.map(s => ({
+                    id: s.id,
+                    num: s.num,
+                    title: s.title,
+                    status: _summaryData[s.id].status,
+                    notes: _summaryData[s.id].notes
+                }));
                 const resp = await fetch('/api/checklist/submit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ checklist_type: _getChecklistType(), items })
+                    body: JSON.stringify({ checklist_type: 'daily_summary', client_id: clientId, items })
                 });
                 const data = await resp.json();
                 if (data.status === 'success') {
+                    // Show preview
+                    const preview = document.getElementById('summary-preview');
+                    preview.textContent = generateSummaryText();
+                    preview.style.display = 'block';
+                    document.getElementById('checklist-copy-btn').style.display = 'inline-flex';
                     btn.innerHTML = '<i class="fas fa-check" style="margin-right:6px;"></i> Saved!';
                     btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
                     setTimeout(() => {
-                        btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit';
+                        btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Save & Preview';
                         btn.style.background = 'linear-gradient(135deg, #7c3aed, #6d28d9)';
                         btn.disabled = false;
                     }, 2000);
                 } else {
-                    alert(data.message || 'Failed to save checklist.');
-                    btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit';
+                    alert(data.message || 'Failed to save summary.');
+                    btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Save & Preview';
                     btn.disabled = false;
                 }
             } catch (e) {
-                alert('Failed to save checklist.');
-                btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit';
+                alert('Failed to save summary.');
+                btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Save & Preview';
                 btn.disabled = false;
             }
         }
 
+        function copySummary() {
+            const text = generateSummaryText();
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById('checklist-copy-btn');
+                btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied!';
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy';
+                }, 1500);
+            }).catch(() => {
+                // Fallback for older browsers
+                const ta = document.createElement('textarea');
+                ta.value = generateSummaryText();
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                const btn = document.getElementById('checklist-copy-btn');
+                btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied!';
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy';
+                }, 1500);
+            });
+        }
+
         // Load checklist status on page load (for badge)
-        if (USER_TYPE !== 'client') {
-            fetch('/api/checklist/status').then(r => r.json()).then(data => {
-                const type = USER_TYPE === 'trader' ? 'trader' : 'admin';
-                const template = type === 'trader' ? TRADER_CHECKLIST : ADMIN_CHECKLIST;
+        if (USER_TYPE !== 'client' && CLIENT_ID) {
+            fetch(`/api/checklist/status?client_id=${encodeURIComponent(CLIENT_ID)}`).then(r => r.json()).then(data => {
                 if (data.checklists && data.checklists.length) {
-                    const saved = data.checklists.find(c => c.checklist_type === type);
-                    if (saved && saved.items) {
-                        const checked = saved.items.filter(i => i.checked).length;
-                        updateChecklistBadge(checked, template.length);
+                    const saved = data.checklists[0];
+                    if (saved.items && Array.isArray(saved.items)) {
+                        let filled = 0;
+                        saved.items.forEach(item => {
+                            if (item.status === 'ok' || (item.status === 'warn' && item.notes && item.notes.trim())) filled++;
+                        });
+                        updateChecklistBadge(filled, SUMMARY_SECTIONS.length);
                     }
                 }
             }).catch(() => {});

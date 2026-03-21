@@ -5257,29 +5257,28 @@ def api_quality_scan_dates():
 @app.route('/api/checklist/submit', methods=['POST'])
 @require_session
 def api_submit_checklist():
-    """Submit a daily checklist."""
+    """Submit a daily checklist (per client)."""
     from dashboard.database import save_daily_checklist
     session_user = request.session_user
     user_type = session_user.get('user_type')
     user_identifier = session_user.get('user_identifier')
 
     data = request.json
-    checklist_type = data.get('checklist_type')  # 'trader' or 'admin'
+    checklist_type = data.get('checklist_type', 'daily_summary')
+    client_id = data.get('client_id', '')
     items = data.get('items', [])
-
-    if checklist_type not in ('trader', 'admin'):
-        return jsonify({'status': 'error', 'message': 'Invalid checklist type'}), 400
 
     if not items:
         return jsonify({'status': 'error', 'message': 'No items provided'}), 400
 
     today = datetime.now().strftime('%Y-%m-%d')
-    save_daily_checklist(today, user_identifier, user_type, checklist_type, items, get_remote_address())
+    save_daily_checklist(today, user_identifier, user_type, checklist_type, items,
+                         get_remote_address(), client_id=client_id)
 
     log_action('CHECKLIST_SUBMIT', user_type, user_identifier, get_remote_address(),
-               f"{checklist_type} checklist: {sum(1 for i in items if i.get('checked'))} / {len(items)} checked")
+               f"{checklist_type} for {client_id}: {len(items)} sections")
 
-    return jsonify({'status': 'success', 'message': 'Checklist saved'})
+    return jsonify({'status': 'success', 'message': 'Daily summary saved'})
 
 
 @app.route('/api/checklist/status')
@@ -5292,12 +5291,16 @@ def api_checklist_status():
     user_type = session_user.get('user_type')
 
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    client_id = request.args.get('client_id', '')
 
     if user_type == 'super_admin':
-        # Super admin sees all checklists
         checklists = get_daily_checklists(date)
     else:
         checklists = get_daily_checklists(date, user_identifier)
+
+    # Filter by client_id if requested
+    if client_id:
+        checklists = [c for c in checklists if c.get('client_id', '') == client_id]
 
     return jsonify({'status': 'success', 'date': date, 'checklists': checklists})
 

@@ -289,7 +289,7 @@ def init_database():
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_quality_scan_date ON quality_scan_results(scan_date, client_id)')
 
-        # Daily checklists table
+        # Daily checklists table (per-client daily summaries)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS daily_checklists (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -297,13 +297,23 @@ def init_database():
                 user_identifier TEXT NOT NULL,
                 user_type TEXT NOT NULL,
                 checklist_type TEXT NOT NULL,
+                client_id TEXT DEFAULT '',
                 items TEXT DEFAULT '[]',
                 submitted_at TEXT NOT NULL,
                 ip_address TEXT,
-                UNIQUE(date, user_identifier, checklist_type)
+                UNIQUE(date, user_identifier, checklist_type, client_id)
             )
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_date ON daily_checklists(date, user_identifier)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_client ON daily_checklists(date, client_id)')
+        # Migration: add client_id column if missing from older schema
+        try:
+            cursor.execute('SELECT client_id FROM daily_checklists LIMIT 1')
+        except Exception:
+            try:
+                cursor.execute('ALTER TABLE daily_checklists ADD COLUMN client_id TEXT DEFAULT ""')
+            except Exception:
+                pass
 
         # System settings key-value store
         cursor.execute('''
@@ -1126,16 +1136,32 @@ def get_quality_scan_results(scan_date: str = None) -> list:
         return results
 
 def save_daily_checklist(date: str, user_identifier: str, user_type: str,
-                         checklist_type: str, items: list, ip_address: str = None):
-    """Save a daily checklist submission."""
+                         checklist_type: str, items: list, ip_address: str = None,
+                         client_id: str = ''):
+    """Save a daily checklist submission (per client)."""
+    _ensure_checklist_client_column()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT OR REPLACE INTO daily_checklists (date, user_identifier, user_type, checklist_type, items, submitted_at, ip_address)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (date, user_identifier, user_type, checklist_type, json.dumps(items),
+            INSERT OR REPLACE INTO daily_checklists (date, user_identifier, user_type, checklist_type, client_id, items, submitted_at, ip_address)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (date, user_identifier, user_type, checklist_type, client_id, json.dumps(items),
               datetime.now().isoformat(), ip_address))
         conn.commit()
+
+
+def _ensure_checklist_client_column():
+    """Ensure client_id column exists in daily_checklists."""
+    try:
+        with get_connection() as conn:
+            conn.execute('SELECT client_id FROM daily_checklists LIMIT 1')
+    except Exception:
+        try:
+            with get_connection() as conn:
+                conn.execute('ALTER TABLE daily_checklists ADD COLUMN client_id TEXT DEFAULT ""')
+                conn.commit()
+        except Exception:
+            pass
 
 # ============ System Settings ============
 
@@ -1192,6 +1218,7 @@ def get_daily_checklists(date: str, user_identifier: str = None) -> list:
             'user_identifier': row['user_identifier'],
             'user_type': row['user_type'],
             'checklist_type': row['checklist_type'],
+            'client_id': row['client_id'] if 'client_id' in row.keys() else '',
             'items': json.loads(row['items']),
             'submitted_at': row['submitted_at'],
         } for row in cursor.fetchall()]
