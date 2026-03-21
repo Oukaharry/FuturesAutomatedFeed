@@ -2087,26 +2087,28 @@ def client_dashboard(client_id):
     session_user = request.session_user
     user_type = session_user.get('user_type')
     
-    # Get client email for version history feature
+    # Get client email and active status for dashboard
     client_email = ''
+    is_active = True
     client_data = get_client_data(client_id)
     if client_data and client_data.get('identity'):
         client_email = client_data['identity'].get('email', '')
+        is_active = client_data['identity'].get('active_status', 'active') != 'inactive'
     
     # Allow super_admin, admin, and trader to access any client dashboard
     if user_type in ['super_admin', 'admin', 'trader']:
         return render_template('index.html', client_id=client_id, user_type=user_type, 
-                               can_edit_hedging=True, client_email=client_email)
+                               can_edit_hedging=True, client_email=client_email, is_active=is_active)
     # Client access: allow own dashboard OR primary KYC can view linked accounts
     if user_type == 'client':
         own_name = session_user.get('user_identifier')
         if client_id == own_name:
             return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=False, client_email=client_email)
+                                   can_edit_hedging=False, client_email=client_email, is_active=is_active)
         # Only primary KYC clients can view linked accounts
         if is_kyc_primary(own_name) and client_id in get_all_kyc_accounts(own_name):
             return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=False, client_email=client_email)
+                                   can_edit_hedging=False, client_email=client_email, is_active=is_active)
     return redirect('/')
 
 # ============ Hierarchy API with Role-Based Access Control ============
@@ -2212,13 +2214,29 @@ def get_hierarchy():
     
     filtered = get_filtered_hierarchy(user_type, user_identifier)
     
+    # Enrich client objects with active_status from DB
+    import copy
+    enriched = copy.deepcopy(filtered)
+    for admin_data in enriched.get('admins', {}).values():
+        for trader_data in admin_data.get('traders', {}).values():
+            for client in trader_data.get('clients', []):
+                cname = client.get('name', '')
+                try:
+                    cd = get_client_data(cname)
+                    if cd and isinstance(cd.get('identity'), dict):
+                        client['active_status'] = cd['identity'].get('active_status', 'active')
+                    else:
+                        client['active_status'] = 'active'
+                except Exception:
+                    client['active_status'] = 'active'
+    
     # Debug logging for empty hierarchy results
-    if not filtered.get('admins') or all(
-        not admin_data.get('traders', {}) for admin_data in filtered.get('admins', {}).values()
+    if not enriched.get('admins') or all(
+        not admin_data.get('traders', {}) for admin_data in enriched.get('admins', {}).values()
     ):
         logging.warning(f"[HIERARCHY] Empty result for user_type={user_type} user_identifier='{user_identifier}' — available trader keys: {[t for a in hierarchy.get('admins', {}).values() for t in a.get('traders', {}).keys()]}")
     
-    return jsonify(filtered)
+    return jsonify(enriched)
 
 from dashboard.financial_overview import calculate_all_financials
 
@@ -4249,6 +4267,7 @@ def api_update_client_profile():
     trader = data.get('trader')
     name = data.get('name')
     category = data.get('category')
+    active_status = data.get('active_status', 'active')
     
     if not admin or not trader or not name or category is None:
          return jsonify({"status": "error", "message": "Missing fields"}), 400
@@ -4256,22 +4275,20 @@ def api_update_client_profile():
     from config.hierarchy import update_client_category
     
     if update_client_category(admin, trader, name, category):
-        # Determine client_id (assuming it's the name)
         client_id = name
         
-        # Also update the dashboard.db logic
         try:
              client_data = get_client_data(client_id)
              if client_data:
                  identity = client_data.get('identity', {})
-                 # Update both for compatibility
                  identity['profile'] = category 
                  identity['category'] = category
+                 identity['active_status'] = active_status
                  update_client_field(client_id, 'identity', identity)
         except Exception as e:
              print(f"Error updating DB identity profile: {e}")
 
-        log_action('UPDATE_CLIENT_PROFILE', session_user.get('user_type'), name, get_remote_address(), f"To: {category}")
+        log_action('UPDATE_CLIENT_PROFILE', session_user.get('user_type'), name, get_remote_address(), f"To: {category}, Status: {active_status}")
         return jsonify({"status": "success"})
     
     return jsonify({"status": "error", "message": "Client not found"}), 404
@@ -4949,6 +4966,16 @@ def run_quality_scan(target_client=None):
             results.append({
                 'client_id': client_name, 'trader': trader, 'admin': admin,
                 'total_issues': len(issues), 'issues': issues, 'health_score': 0.0
+            })
+            continue
+
+        # Skip inactive clients — their stats are still calculated but no quality checks
+        identity = data.get('identity', {})
+        if isinstance(identity, dict) and identity.get('active_status') == 'inactive':
+            results.append({
+                'client_id': client_name, 'trader': trader, 'admin': admin,
+                'total_issues': 0, 'issues': [], 'health_score': 100.0,
+                'skipped': True, 'skip_reason': 'inactive'
             })
             continue
 
