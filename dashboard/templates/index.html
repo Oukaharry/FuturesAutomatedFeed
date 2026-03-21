@@ -3628,14 +3628,14 @@
                             <!-- Payout History -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
                                 <div class="card-header" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,78,59,0.25));color:#34d399;">PAYOUT HISTORY</div>
-                                <div style="display:flex; gap:10px; align-items:center; padding:12px; flex-wrap:wrap;">
-                                    <label style="color:#94a3b8; font-size:0.8rem;">From:</label>
-                                    <input type="date" id="stats-payout-from" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:4px 8px; border-radius:6px; font-size:0.85rem;">
-                                    <label style="color:#94a3b8; font-size:0.8rem;">To:</label>
-                                    <input type="date" id="stats-payout-to" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:4px 8px; border-radius:6px; font-size:0.85rem;">
-                                    <button onclick="filterStatsPayouts()" style="background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; padding:5px 14px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.8rem;">Filter</button>
-                                    <button onclick="document.getElementById('stats-payout-from').value='';document.getElementById('stats-payout-to').value='';filterStatsPayouts();" style="background:rgba(100,116,139,0.2); border:1px solid #475569; color:#94a3b8; padding:5px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem;">Reset</button>
-                                    <span id="stats-payouts-summary" style="margin-left:auto; color:#64748b; font-size:0.8rem;"></span>
+                                <div style="display:flex; gap:6px; align-items:center; padding:8px 12px;">
+                                    <span style="color:#94a3b8; font-size:0.7rem;">From</span>
+                                    <input type="date" id="stats-payout-from" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:2px 6px; border-radius:4px; font-size:0.75rem; width:120px;">
+                                    <span style="color:#94a3b8; font-size:0.7rem;">To</span>
+                                    <input type="date" id="stats-payout-to" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:2px 6px; border-radius:4px; font-size:0.75rem; width:120px;">
+                                    <button onclick="filterStatsPayouts()" style="background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; padding:3px 10px; border-radius:4px; font-weight:600; cursor:pointer; font-size:0.7rem;">Filter</button>
+                                    <button onclick="document.getElementById('stats-payout-from').value='';document.getElementById('stats-payout-to').value='';filterStatsPayouts();" style="background:rgba(100,116,139,0.2); border:1px solid #475569; color:#94a3b8; padding:3px 10px; border-radius:4px; cursor:pointer; font-size:0.7rem;">Reset</button>
+                                    <span id="stats-payouts-summary" style="margin-left:auto; color:#64748b; font-size:0.7rem;"></span>
                                 </div>
                                 <table>
                                     <thead>
