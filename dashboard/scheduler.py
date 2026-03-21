@@ -171,11 +171,48 @@ def _build_daily_summary_text():
         lines.append("")
 
     if trader_stats:
-        lines.append("👤 *Trader Breakdown:*")
-        for t, s in sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1)):
+        # Gamified Trader Health Leaderboard — ranked best to worst
+        ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
+        lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
+        lines.append("")
+        total_traders = len(ranked)
+        for rank, (t, s) in enumerate(ranked, 1):
             avg = round(s['health_sum'] / s['clients'], 1)
-            emoji = '💚' if avg >= 90 else '🟡' if avg >= 70 else '🔴'
-            lines.append(f"  {emoji} {t}: {s['clients']} clients, {s['issues']} issues, {avg}% health")
+            if rank == 1:
+                medal = '🥇'
+            elif rank == 2:
+                medal = '🥈'
+            elif rank == 3:
+                medal = '🥉'
+            else:
+                medal = f'#{rank}'
+            if avg >= 95:
+                title = '👑 Legendary'
+            elif avg >= 90:
+                title = '⭐ Elite'
+            elif avg >= 80:
+                title = '💪 Solid'
+            elif avg >= 70:
+                title = '⚡ Warming Up'
+            elif avg >= 50:
+                title = '🔧 Needs Work'
+            else:
+                title = '🚨 SOS'
+            bar_filled = round(avg / 10)
+            bar_empty = 10 - bar_filled
+            bar = '🟩' * bar_filled + '⬛' * bar_empty
+            lines.append(f"{medal} *{t}* — {title}")
+            lines.append(f"   {bar} *{avg}%* · {s['clients']} clients · {s['issues']} issues")
+        if total_traders > 0:
+            best_name = ranked[0][0]
+            worst_name = ranked[-1][0]
+            best_avg = round(ranked[0][1]['health_sum'] / max(ranked[0][1]['clients'], 1), 1)
+            worst_avg = round(ranked[-1][1]['health_sum'] / max(ranked[-1][1]['clients'], 1), 1)
+            lines.append("")
+            if best_avg >= 90:
+                lines.append(f"🎉 *{best_name}* is on fire! Leading the pack at {best_avg}%")
+            if worst_avg < 50 and total_traders > 1:
+                lines.append(f"📣 *{worst_name}* — time to level up! Let's get those numbers moving 💪")
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: *{len(checklists)}*")
