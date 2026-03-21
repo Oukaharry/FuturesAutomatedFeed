@@ -746,7 +746,10 @@
             background: linear-gradient(135deg, #581c87, #3b0764) !important;
         }
 
-        #evaluations-body {
+        /* Zoom on the TABLE (not just tbody) so header and body sticky
+           columns share the same coordinate space — prevents left-offset
+           mismatch that shifts the Prop Firm column a few px on scroll. */
+        #evaluations-table {
             zoom: 0.75; /* adjust % to taste */
         }
 
