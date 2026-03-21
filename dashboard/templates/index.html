@@ -677,6 +677,13 @@
         .client-view #evaluations-table thead tr:nth-child(2) th:nth-child(1) {
             left: 50px !important;
         }
+        /* Shift group headers left since delete col (40px) is gone in client view */
+        .client-view #evaluations-table thead tr:first-child th.group-header-blue,
+        .client-view #evaluations-table thead tr:first-child th.group-header-green,
+        .client-view #evaluations-table thead tr:first-child th.group-header-orange,
+        .client-view #evaluations-table thead tr:first-child th.group-header-purple {
+            left: 50px !important;
+        }
         /* Prevent clients from editing date inputs - looks identical but non-interactive */
         .client-view input[type="date"].cell-input {
             pointer-events: none;
@@ -724,14 +731,14 @@
         }
 
         /* Phase group headers are sticky BOTH TOP and LEFT (resist being swallowed).
-           They stick to the right edge of the prop firm column (90px) and stay visible
-           until completely scrolled away. */
+           They stick to the right edge of the frozen columns (# 50px + trash 40px = 90px)
+           so they stay visible during horizontal scroll. */
         #evaluations-table thead tr:first-child th.group-header-blue,
         #evaluations-table thead tr:first-child th.group-header-green,
         #evaluations-table thead tr:first-child th.group-header-orange,
         #evaluations-table thead tr:first-child th.group-header-purple {
             position: sticky !important;
-            left: 45px !important;
+            left: 90px !important;
             z-index: 2100 !important; /* Higher than blue header (2000) so phase text appears on top */
             text-align: left !important;
             padding-left: 14px !important;
