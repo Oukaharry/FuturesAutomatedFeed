@@ -1,6 +1,6 @@
 # VPF Futures — 2-Week Quality Improvement Plan
 **Start Date:** March 24, 2026  
-**Team:** 8 Admins · 14 Traders · 104 Clients · QA Team  
+**Team:** 8 Admins · 14 Traders · 70 Clients · QA Team  
 **Goal:** 100% data accuracy and zero client complaints caused by internal errors
 
 ---
@@ -28,7 +28,7 @@ Every client's data passes through **minimum 3 independent checks** — nothing 
 
 ```
 CLIENT DATA
-    ├── LAYER 1: SYSTEM (Automated)        → Catches 70% — runs on ALL 104 clients daily
+    ├── LAYER 1: SYSTEM (Automated)        → Catches 70% — runs on ALL 70 clients daily
     ├── LAYER 2: PROCESS (Checklists)      → Catches 20% — human confirms completeness
     ├── LAYER 3: HUMAN QA (Spot-checks)    → Catches 10% — verifies accuracy & quality
     └── LAYER 4: ACCOUNTABILITY (Tracking) → Makes it all stick — scorecards & escalation

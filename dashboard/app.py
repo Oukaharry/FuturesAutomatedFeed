@@ -5003,6 +5003,10 @@ def run_quality_scan(target_client=None):
             if not has_data:
                 continue
 
+            # Skip defunct prop firms — no point flagging issues on closed firms
+            if prop_firm.lower() in ('funding ticks', 'fundingticks'):
+                continue
+
             # Detect "double dip" — MFF/TopStep accounts with an activation fee
             # These are reset at funded stage so eval-phase fields are intentionally blank
             _dd_firms = ('my funded futures', 'mff', 'topstep', 'top step', 'topstepx')

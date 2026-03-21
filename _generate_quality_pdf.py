@@ -287,7 +287,7 @@ pdf.set_y(110)
 cards = [
     ('TEAM', '8 Admins', RoadmapPDF.BLUE),
     ('TEAM', '14 Traders', RoadmapPDF.GREEN),
-    ('CLIENTS', '104 Active', RoadmapPDF.PURPLE),
+    ('CLIENTS', '70 Active', RoadmapPDF.PURPLE),
 ]
 x_start = 25
 for i, (label, val, color) in enumerate(cards):
@@ -371,14 +371,14 @@ pdf.section_banner('THE 4-LAYER QUALITY SYSTEM', RoadmapPDF.NAVY)
 pdf.body('Every client\'s data passes through minimum 3 independent checks. Nothing can slip through without someone being held accountable.')
 pdf.ln(4)
 
-pdf.layer_card(1, 'SYSTEM (Automated)', 'Runs on ALL 104 clients daily -- catches missing fields, stale data, missed pushes', '70%', RoadmapPDF.BLUE)
+pdf.layer_card(1, 'SYSTEM (Automated)', 'Runs on ALL 70 clients daily -- catches missing fields, stale data, missed pushes', '70%', RoadmapPDF.BLUE)
 pdf.layer_card(2, 'PROCESS (Checklists)', 'Trader & admin daily sign-off -- human confirms completeness', '20%', RoadmapPDF.GREEN)
 pdf.layer_card(3, 'HUMAN QA (Spot-Checks)', 'Random client reviews -- verifies accuracy & note quality', '10%', RoadmapPDF.ORANGE)
 pdf.layer_card(4, 'ACCOUNTABILITY (Tracking)', 'Weekly scorecards, escalation chain -- makes everything stick', '', RoadmapPDF.PURPLE)
 
 pdf.ln(3)
 pdf.bold_body('The Guarantee: No client can be forgotten because:')
-pdf.bullet('The automated scan checks ALL 104 clients every single day', RoadmapPDF.BLUE)
+pdf.bullet('The automated scan checks ALL 70 clients every single day', RoadmapPDF.BLUE)
 pdf.bullet('The checklist forces traders to confirm EVERY client before sign-off', RoadmapPDF.GREEN)
 pdf.bullet('QA rotates through random clients so every one gets spot-checked within 2 weeks', RoadmapPDF.ORANGE)
 
