@@ -300,6 +300,14 @@
                         <option value="BEF">BEF (High Risk)</option>
                     </select>
                 </div>
+
+                <div class="form-group">
+                    <label class="form-label">Status</label>
+                    <select id="editActiveStatus" class="form-select">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
                 
                 <button type="submit" class="btn-gold">
                     <i class="fas fa-save" style="margin-right: 8px;"></i> Save Changes
@@ -348,21 +356,25 @@
                         // Handle strict object format
                         const cName = (typeof client === 'object') ? client.name : client;
                         const cProfile = (typeof client === 'object') ? (client.category || 'PRIVATE') : 'PRIVATE';
+                        const cActive = (typeof client === 'object') ? (client.active_status || 'active') : 'active';
                         
                         // Badge logic
                         const isBEF = cProfile.toUpperCase() === 'BEF';
                         const badgeHTML = isBEF 
                             ? `<span class="client-profile-badge bef">BEF</span>` 
                             : `<span class="client-profile-badge">PVT</span>`;
+                        const inactiveBadge = cActive === 'inactive'
+                            ? `<span style="background:#ef4444;color:#fff;padding:1px 6px;border-radius:4px;font-size:0.65rem;font-weight:600;margin-left:4px;">INACTIVE</span>`
+                            : '';
 
                         return `
-                            <div class="client-item">
+                            <div class="client-item" ${cActive === 'inactive' ? 'style="opacity:0.6;"' : ''}>
                                 <a href="/dashboard/${cName}" class="client-link">
                                     <i class="fas fa-user" style="font-size: 0.8em; color: var(--text-secondary);"></i>
                                     ${cName}
-                                    ${badgeHTML}
+                                    ${badgeHTML}${inactiveBadge}
                                 </a>
-                                <button onclick="editClient('${adminName}', '${traderName}', '${cName}', '${cProfile}')" class="edit-btn" title="Edit Profile">
+                                <button onclick="editClient('${adminName}', '${traderName}', '${cName}', '${cProfile}', '${cActive}')" class="edit-btn" title="Edit Profile">
                                     <i class="fas fa-cog"></i>
                                 </button>
                             </div>
@@ -390,7 +402,7 @@
             });
 
         // --- Modal Functions ---
-        function editClient(admin, trader, name, category) {
+        function editClient(admin, trader, name, category, activeStatus) {
             document.getElementById('editAdmin').value = admin;
             document.getElementById('editTrader').value = trader;
             document.getElementById('editName').value = name;
@@ -399,6 +411,7 @@
             let val = 'PRIVATE';
             if (category && category.toUpperCase() === 'BEF') val = 'BEF';
             document.getElementById('editCategory').value = val;
+            document.getElementById('editActiveStatus').value = activeStatus || 'active';
             
             document.getElementById('editClientModal').style.display = 'block';
         }
@@ -421,7 +434,8 @@
                 admin: document.getElementById('editAdmin').value,
                 trader: document.getElementById('editTrader').value,
                 name: document.getElementById('editName').value,
-                category: document.getElementById('editCategory').value
+                category: document.getElementById('editCategory').value,
+                active_status: document.getElementById('editActiveStatus').value
             };
 
             fetch('/api/update_client_profile', {

@@ -148,6 +148,14 @@
                 {% else %}
                 <input type="hidden" id="editCategory" value="BEF">
                 {% endif %}
+
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="editActiveStatus">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
                 <button type="submit" class="btn">Save Changes</button>
             </form>
         </div>
@@ -182,20 +190,25 @@
                         clients.forEach(client => {
                             const row = tbody.insertRow();
                             const profile = client.category || client.profile || 'PRIVATE';
+                            const activeStatus = client.active_status || 'active';
                             
                             let categoryCell = `<td>${profile}</td>`;
                             if (IS_BEF_ADMIN) {
                                 categoryCell = ''; // Don't render category cell for BEF admin
                             }
 
+                            const inactiveBadge = activeStatus === 'inactive'
+                                ? ' <span style="background:#ef4444;color:#fff;padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;">INACTIVE</span>'
+                                : '';
+
                             row.innerHTML = `
-                                <td>${client.name}</td>
+                                <td>${client.name}${inactiveBadge}</td>
                                 <td>${client.email || ''}</td>
                                 ${categoryCell}
                                 <td>${adminName}</td>
                                 <td>${traderName}</td>
                                 <td>
-                                    <button class="btn" style="margin-right: 5px;" onclick="editClient('${adminName}', '${traderName}', '${client.name}', '${profile}')">Edit</button>
+                                    <button class="btn" style="margin-right: 5px;" onclick="editClient('${adminName}', '${traderName}', '${client.name}', '${profile}', '${activeStatus}')">Edit</button>
                                     <button class="btn" style="background-color: #dc3545; padding: 4px 8px; font-size: 0.8rem;" onclick="removeClient('${adminName}', '${traderName}', '${client.name}')">Remove</button>
                                 </td>
                             `;
@@ -289,7 +302,7 @@
         };
 
         // Edit Modal Functions
-        function editClient(admin, trader, name, category) {
+        function editClient(admin, trader, name, category, activeStatus) {
             document.getElementById('editAdmin').value = admin;
             document.getElementById('editTrader').value = trader;
             document.getElementById('editName').value = name;
@@ -299,6 +312,7 @@
             let val = 'PRIVATE';
             if (category && category.toUpperCase() === 'BEF') val = 'BEF';
             document.getElementById('editCategory').value = val;
+            document.getElementById('editActiveStatus').value = activeStatus || 'active';
             
             document.getElementById('editClientModal').style.display = 'block';
         }
@@ -309,7 +323,8 @@
                 admin: document.getElementById('editAdmin').value,
                 trader: document.getElementById('editTrader').value,
                 name: document.getElementById('editName').value,
-                category: document.getElementById('editCategory').value
+                category: document.getElementById('editCategory').value,
+                active_status: document.getElementById('editActiveStatus').value
             };
 
             fetch('/api/update_client_profile', {
