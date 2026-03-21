@@ -1105,6 +1105,42 @@
         </div>
     </div>
 
+    <!-- Edit Client Profile Modal -->
+    {% if client_id and user_type in ('admin', 'super_admin') %}
+    <div id="edit-client-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:2000; justify-content:center; align-items:center;">
+        <div style="background:#1e293b; border:1px solid rgba(96,165,250,0.3); border-radius:12px; width:420px; max-width:90%; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+            <div style="background:linear-gradient(135deg,rgba(96,165,250,0.15),rgba(59,130,246,0.25)); padding:16px 20px; border-bottom:1px solid rgba(96,165,250,0.2); display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; color:#60a5fa; font-size:1.1rem;">Edit Client</h3>
+                <button onclick="closeClientEditModal()" style="background:none; border:none; color:#94a3b8; font-size:1.5rem; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+                <div>
+                    <label style="color:#60a5fa; font-size:0.8rem; font-weight:600; margin-bottom:4px; display:block;">Name</label>
+                    <input type="text" id="ecm-name" readonly style="width:100%; padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#94a3b8; font-size:0.9rem; box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="color:#60a5fa; font-size:0.8rem; font-weight:600; margin-bottom:4px; display:block;">Category/Profile</label>
+                    <select id="ecm-category" style="width:100%; padding:10px; background:#0f172a; border:1px solid rgba(255,255,255,0.15); border-radius:6px; color:#e2e8f0; font-size:0.9rem; box-sizing:border-box;">
+                        <option value="PRIVATE">Private</option>
+                        <option value="BEF">BEF</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="color:#60a5fa; font-size:0.8rem; font-weight:600; margin-bottom:4px; display:block;">Status</label>
+                    <select id="ecm-active-status" style="width:100%; padding:10px; background:#0f172a; border:1px solid rgba(255,255,255,0.15); border-radius:6px; color:#e2e8f0; font-size:0.9rem; box-sizing:border-box;">
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+                    <button onclick="closeClientEditModal()" style="background:transparent; color:#94a3b8; border:1px solid #475569; padding:8px 20px; border-radius:6px; cursor:pointer;">Cancel</button>
+                    <button onclick="saveClientEdit()" style="background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; border:none; padding:8px 20px; border-radius:6px; font-weight:600; cursor:pointer;">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Version History Panel (Google Sheets Style) -->
     <div id="history-panel" class="history-panel">
         <div class="history-header">
@@ -1176,7 +1212,15 @@
                     <button class="header-action-btn" onclick="downloadCSV()" title="Download evaluation data as CSV" style="color:#4ade80;">
                         <i class="fas fa-download"></i> CSV
                     </button>
-                    <span id="kyc-single-badge" class="header-user-badge">{{ client_id }}</span>
+                    <span id="kyc-single-badge" class="header-user-badge" style="display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-user-circle" style="font-size:0.9rem;"></i>
+                        {{ client_id }}
+                        {% if user_type in ('admin', 'super_admin') %}
+                        <span style="border-left:1px solid rgba(251,191,36,0.3);padding-left:8px;display:flex;gap:6px;">
+                            <i class="fas fa-pen" style="cursor:pointer;font-size:0.7rem;opacity:0.8;" onclick="openClientEditModal()" title="Edit client profile"></i>
+                        </span>
+                        {% endif %}
+                    </span>
                     {% if not is_active %}
                     <span style="background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; padding:4px 12px; border-radius:6px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px;">INACTIVE</span>
                     {% endif %}
@@ -1878,6 +1922,59 @@
         const USER_TYPE = "{{ user_type }}";
         const IS_CLIENT = USER_TYPE === 'client';
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
+
+        // ── Edit Client Profile (pencil icon) ────────────────────────────
+        let ecmAdmin = '', ecmTrader = '';
+        function openClientEditModal() {
+            const modal = document.getElementById('edit-client-modal');
+            if (!modal) return;
+            document.getElementById('ecm-name').value = CLIENT_ID;
+            // Fetch hierarchy to find admin, trader, category, active_status
+            fetch('/api/hierarchy')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status !== 'success') return;
+                    const h = data.hierarchy;
+                    for (const admin of Object.keys(h)) {
+                        for (const trader of Object.keys(h[admin].traders || {})) {
+                            const clients = h[admin].traders[trader].clients || {};
+                            if (CLIENT_ID in clients) {
+                                ecmAdmin = admin;
+                                ecmTrader = trader;
+                                const c = clients[CLIENT_ID];
+                                document.getElementById('ecm-category').value = (c.category || 'PRIVATE').toUpperCase();
+                                document.getElementById('ecm-active-status').value = c.active_status || 'active';
+                                modal.style.display = 'flex';
+                                return;
+                            }
+                        }
+                    }
+                    // Client not found in hierarchy — still show modal with defaults
+                    modal.style.display = 'flex';
+                });
+        }
+        function closeClientEditModal() {
+            document.getElementById('edit-client-modal').style.display = 'none';
+        }
+        function saveClientEdit() {
+            const category = document.getElementById('ecm-category').value;
+            const activeStatus = document.getElementById('ecm-active-status').value;
+            fetch('/api/update_client_profile', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({admin: ecmAdmin, trader: ecmTrader, name: CLIENT_ID, category: category, active_status: activeStatus})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    closeClientEditModal();
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Failed to update'));
+                }
+            })
+            .catch(() => alert('Network error'));
+        }
 
         // ── KYC Account Switcher ──────────────────────────────────────────
         let kycAccounts = [];
