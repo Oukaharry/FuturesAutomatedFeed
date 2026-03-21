@@ -5488,13 +5488,44 @@ def api_daily_summary():
     })
 
 
+@app.route('/api/settings/slack_webhook', methods=['GET'])
+@require_role('super_admin')
+def api_get_slack_webhook():
+    """Get the current Slack webhook URL (masked). Super admin only."""
+    from dashboard.database import get_setting
+    url = get_setting('slack_webhook_url')
+    if url:
+        # Mask the URL for display — show first 40 chars + last 6
+        masked = url[:40] + '...' + url[-6:] if len(url) > 50 else url
+        return jsonify({'status': 'success', 'configured': True, 'masked_url': masked})
+    return jsonify({'status': 'success', 'configured': False, 'masked_url': ''})
+
+
+@app.route('/api/settings/slack_webhook', methods=['POST'])
+@require_role('super_admin')
+def api_set_slack_webhook():
+    """Set the Slack webhook URL. Super admin only."""
+    from dashboard.database import set_setting
+    data = request.get_json(force=True)
+    url = (data.get('url') or '').strip()
+    user = request.session_user.get('user_identifier', '')
+
+    if url and not url.startswith('https://hooks.slack.com/'):
+        return jsonify({'status': 'error', 'message': 'Invalid Slack webhook URL. Must start with https://hooks.slack.com/'}), 400
+
+    set_setting('slack_webhook_url', url, updated_by=user)
+    action = 'configured' if url else 'removed'
+    log_action('SLACK_WEBHOOK', 'super_admin', user, get_remote_address(), f'Slack webhook {action}')
+    return jsonify({'status': 'success', 'message': f'Slack webhook {action} successfully.'})
+
+
 @app.route('/api/quality/send_slack', methods=['POST'])
 @require_role('super_admin')
 def api_send_slack_summary():
     """Manually post the daily quality summary to Slack. Super admin only."""
     from dashboard.scheduler import send_slack_message, _build_daily_summary_text, _get_slack_webhook_url
     if not _get_slack_webhook_url():
-        return jsonify({'status': 'error', 'message': 'SLACK_WEBHOOK_URL not configured. Add it to your .env file.'}), 400
+        return jsonify({'status': 'error', 'message': 'Slack webhook not configured. Paste your webhook URL in the Settings section below.'}), 400
     try:
         text = _build_daily_summary_text()
         ok = send_slack_message(text)

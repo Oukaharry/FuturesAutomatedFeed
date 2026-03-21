@@ -71,11 +71,20 @@ def run_scheduled_quality_scan():
 
 # ── Slack Integration ────────────────────────────────────────────────
 def _get_slack_webhook_url():
-    """Read Slack webhook URL from environment or .env file."""
+    """Read Slack webhook URL from database, then environment, then .env file."""
+    # 1. Check database (set via super admin UI)
+    try:
+        from dashboard.database import get_setting
+        db_url = get_setting('slack_webhook_url')
+        if db_url:
+            return db_url
+    except Exception:
+        pass
+    # 2. Check environment variable
     url = os.environ.get('SLACK_WEBHOOK_URL', '').strip()
     if url:
         return url
-    # Fallback: read from .env file in project root
+    # 3. Fallback: read from .env file in project root
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
     if os.path.isfile(env_path):
         with open(env_path, 'r') as f:

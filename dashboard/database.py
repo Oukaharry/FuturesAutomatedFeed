@@ -305,6 +305,16 @@ def init_database():
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_date ON daily_checklists(date, user_identifier)')
 
+        # System settings key-value store
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_by TEXT DEFAULT ''
+            )
+        ''')
+
         conn.commit()
 
 # ============ Password Hashing ============
@@ -1126,6 +1136,29 @@ def save_daily_checklist(date: str, user_identifier: str, user_type: str,
         ''', (date, user_identifier, user_type, checklist_type, json.dumps(items),
               datetime.now().isoformat(), ip_address))
         conn.commit()
+
+# ============ System Settings ============
+
+def get_setting(key: str) -> str:
+    """Get a system setting by key. Returns empty string if not found."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT value FROM system_settings WHERE key = ?', (key,))
+    row = cursor.fetchone()
+    return row['value'] if row else ''
+
+
+def set_setting(key: str, value: str, updated_by: str = ''):
+    """Set a system setting."""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO system_settings (key, value, updated_at, updated_by)
+        VALUES (?, ?, datetime('now'), ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by
+    ''', (key, value, updated_by))
+    conn.commit()
+
 
 def get_daily_checklists(date: str, user_identifier: str = None) -> list:
     """Get checklists for a date, optionally filtered by user."""
