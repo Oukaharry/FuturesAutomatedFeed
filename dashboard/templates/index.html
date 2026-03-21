@@ -890,7 +890,7 @@
             position: fixed;
             bottom: 24px;
             right: 24px;
-            z-index: 9998;
+            z-index: 100000;
             width: 52px;
             height: 52px;
             border-radius: 50%;
@@ -930,7 +930,7 @@
             position: fixed;
             top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.6);
-            z-index: 9999;
+            z-index: 100001;
             display: none;
         }
         .checklist-panel {
@@ -940,7 +940,7 @@
             max-width: 95vw;
             background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
             border-left: 1px solid rgba(167,139,250,0.3);
-            z-index: 10000;
+            z-index: 100002;
             transition: right 0.3s ease;
             display: flex;
             flex-direction: column;
@@ -1084,6 +1084,45 @@
             white-space: nowrap;
             width: 100%;
         }
+        /* Client selector in panel header */
+        .client-selector-wrap {
+            padding: 0 20px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .client-selector {
+            width: 100%;
+            padding: 9px 12px;
+            background: rgba(0,0,0,0.35);
+            border: 1px solid rgba(167,139,250,0.25);
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23a78bfa' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+        .client-selector:focus { outline: none; border-color: rgba(167,139,250,0.5); }
+        .client-selector option { background: #1e293b; color: #e2e8f0; }
+        /* Client completion indicators */
+        .client-selector-status {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            padding: 8px 20px 0;
+        }
+        .client-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #334155;
+            transition: background 0.2s;
+        }
+        .client-dot.done { background: #22c55e; }
+        .client-dot.partial { background: #f59e0b; }
 
         /* Tighten logout pill at small sizes */
         .header-logout-pill {
@@ -1345,22 +1384,31 @@
 
     <!-- Daily Checklist FAB + Panel (traders/admins only) -->
     {% if user_type in ('trader', 'admin', 'super_admin') %}
-    <button class="checklist-fab" id="checklist-fab" onclick="toggleChecklistPanel()" title="Daily Client Summary">
+    <button class="checklist-fab" id="checklist-fab" onclick="toggleChecklistPanel()" title="Daily Client Summaries">
         <i class="fas fa-clipboard-check"></i>
         <span class="fab-badge pending" id="checklist-fab-badge" style="display:none;"></span>
     </button>
     <div class="checklist-overlay" id="checklist-overlay" onclick="toggleChecklistPanel()"></div>
     <div class="checklist-panel" id="checklist-panel">
         <div class="checklist-panel-header">
-            <h3><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> <span id="checklist-title">Daily Summary</span></h3>
+            <h3><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> Daily Summaries</h3>
             <button onclick="toggleChecklistPanel()" style="background:none; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer; padding:4px;">&times;</button>
         </div>
+        <div class="client-selector-wrap">
+            <select class="client-selector" id="checklist-client-select" onchange="switchChecklistClient(this.value)">
+                <option value="">Loading clients…</option>
+            </select>
+        </div>
+        <div class="client-selector-status" id="checklist-client-dots"></div>
         <div class="checklist-panel-body" id="checklist-panel-body"></div>
         <div class="summary-preview" id="summary-preview"></div>
         <div class="checklist-panel-footer">
             <span class="checklist-progress" id="checklist-progress"></span>
             <button class="checklist-copy-btn" id="checklist-copy-btn" onclick="copySummary()" style="display:none;">
                 <i class="fas fa-copy" style="margin-right:4px;"></i> Copy
+            </button>
+            <button class="checklist-copy-btn" id="checklist-copy-all-btn" onclick="copyAllSummaries()" style="display:none;">
+                <i class="fas fa-copy" style="margin-right:4px;"></i> Copy All
             </button>
             <button class="checklist-submit-btn" id="checklist-submit-btn" onclick="submitChecklist()">
                 <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Save &amp; Preview
@@ -5992,8 +6040,17 @@
               warnPlaceholder: 'e.g. Client to send KYC documents by Friday' }
         ];
 
-        let _summaryData = {};  // { sectionId: { status: 'ok'|'warn', notes: '' } }
+        // Per-client data store: { clientId: { sectionId: { status, notes } } }
+        let _allClientSummaries = {};
+        let _clientList = [];       // [ 'ClientA', 'ClientB', ... ]
+        let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
+
+        function _getDefaultSections() {
+            const d = {};
+            SUMMARY_SECTIONS.forEach(s => { d[s.id] = { status: 'ok', notes: '' }; });
+            return d;
+        }
 
         function toggleChecklistPanel() {
             const panel = document.getElementById('checklist-panel');
@@ -6005,49 +6062,99 @@
             } else {
                 panel.classList.add('open');
                 overlay.style.display = 'block';
-                if (!_checklistLoaded) loadChecklist();
+                if (!_checklistLoaded) loadChecklistClients();
             }
         }
 
-        async function loadChecklist() {
-            const clientId = CLIENT_ID || '';
-            // Update title with client info
-            const titleEl = document.getElementById('checklist-title');
-            titleEl.textContent = clientId ? `Daily Summary — ${clientId}` : 'Daily Summary';
-
-            // Init defaults
-            SUMMARY_SECTIONS.forEach(s => {
-                _summaryData[s.id] = { status: 'ok', notes: '' };
-            });
-
-            // Load existing submission for today
-            if (clientId) {
-                try {
-                    const resp = await fetch(`/api/checklist/status?client_id=${encodeURIComponent(clientId)}`);
-                    const data = await resp.json();
-                    if (data.checklists && data.checklists.length) {
-                        const saved = data.checklists[0];
-                        if (saved.items && Array.isArray(saved.items)) {
-                            saved.items.forEach(item => {
-                                if (_summaryData[item.id]) {
-                                    _summaryData[item.id].status = item.status || 'ok';
-                                    _summaryData[item.id].notes = item.notes || '';
+        async function loadChecklistClients() {
+            // Fetch client list from hierarchy API
+            try {
+                const resp = await fetch('/api/hierarchy');
+                const data = await resp.json();
+                const clients = [];
+                // Walk hierarchy to collect all client names
+                if (data.admins) {
+                    Object.values(data.admins).forEach(admin => {
+                        if (admin.traders) {
+                            Object.values(admin.traders).forEach(trader => {
+                                if (trader.clients) {
+                                    trader.clients.forEach(c => {
+                                        const name = c.name || c;
+                                        if (name && !clients.includes(name)) clients.push(name);
+                                    });
                                 }
                             });
                         }
-                    }
-                } catch (e) { /* use defaults */ }
+                    });
+                }
+                _clientList = clients.sort((a, b) => a.localeCompare(b));
+            } catch (e) {
+                // Fallback: just use current CLIENT_ID if hierarchy fails
+                if (CLIENT_ID) _clientList = [CLIENT_ID];
             }
 
+            // Build dropdown
+            const sel = document.getElementById('checklist-client-select');
+            sel.innerHTML = _clientList.map(c =>
+                `<option value="${c}"${c === CLIENT_ID ? ' selected' : ''}>${c}</option>`
+            ).join('');
+
+            // Init data store for every client
+            _clientList.forEach(c => {
+                if (!_allClientSummaries[c]) _allClientSummaries[c] = _getDefaultSections();
+            });
+
+            // Load saved data for ALL clients in parallel
+            await Promise.all(_clientList.map(c => loadClientData(c)));
+
+            // Select current client or first
+            _activeClient = CLIENT_ID && _clientList.includes(CLIENT_ID) ? CLIENT_ID : (_clientList[0] || '');
+            sel.value = _activeClient;
+
             _checklistLoaded = true;
+            renderChecklist();
+            renderClientDots();
+        }
+
+        async function loadClientData(clientId) {
+            if (!clientId) return;
+            try {
+                const resp = await fetch(`/api/checklist/status?client_id=${encodeURIComponent(clientId)}`);
+                const data = await resp.json();
+                if (data.checklists && data.checklists.length) {
+                    const saved = data.checklists[0];
+                    if (saved.items && Array.isArray(saved.items)) {
+                        if (!_allClientSummaries[clientId]) _allClientSummaries[clientId] = _getDefaultSections();
+                        saved.items.forEach(item => {
+                            if (_allClientSummaries[clientId][item.id]) {
+                                _allClientSummaries[clientId][item.id].status = item.status || 'ok';
+                                _allClientSummaries[clientId][item.id].notes = item.notes || '';
+                            }
+                        });
+                    }
+                }
+            } catch (e) { /* use defaults */ }
+        }
+
+        function switchChecklistClient(clientId) {
+            _activeClient = clientId;
+            // Hide preview when switching
+            document.getElementById('summary-preview').style.display = 'none';
+            document.getElementById('checklist-copy-btn').style.display = 'none';
+            document.getElementById('checklist-copy-all-btn').style.display = 'none';
             renderChecklist();
         }
 
         function renderChecklist() {
             const body = document.getElementById('checklist-panel-body');
+            if (!_activeClient) {
+                body.innerHTML = '<p style="color:#64748b;text-align:center;padding:40px 0;">No clients found.</p>';
+                return;
+            }
+            const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections();
             let filled = 0;
             const html = SUMMARY_SECTIONS.map(s => {
-                const d = _summaryData[s.id];
+                const d = summaryData[s.id];
                 const isOk = d.status === 'ok';
                 const isWarn = d.status === 'warn';
                 if (isOk || (isWarn && d.notes.trim())) filled++;
@@ -6065,41 +6172,69 @@
                 </div>`;
             }).join('');
             body.innerHTML = html;
-            document.getElementById('checklist-progress').textContent = `${filled} / ${SUMMARY_SECTIONS.length} sections completed`;
-            updateChecklistBadge(filled, SUMMARY_SECTIONS.length);
+            document.getElementById('checklist-progress').textContent = `${_activeClient}: ${filled} / ${SUMMARY_SECTIONS.length} sections`;
+            updateChecklistBadge();
+        }
+
+        function renderClientDots() {
+            const dotsEl = document.getElementById('checklist-client-dots');
+            if (!dotsEl || !_clientList.length) return;
+            dotsEl.innerHTML = _clientList.map(c => {
+                const s = _allClientSummaries[c];
+                const filled = s ? SUMMARY_SECTIONS.filter(sec => {
+                    const d = s[sec.id];
+                    return d && (d.status === 'ok' || (d.status === 'warn' && d.notes && d.notes.trim()));
+                }).length : 0;
+                const cls = filled === SUMMARY_SECTIONS.length ? 'done' : filled > 0 ? 'partial' : '';
+                return `<div class="client-dot ${cls}" title="${c}: ${filled}/${SUMMARY_SECTIONS.length}"></div>`;
+            }).join('');
         }
 
         function setSectionStatus(sectionId, status) {
-            _summaryData[sectionId].status = status;
-            if (status === 'ok') _summaryData[sectionId].notes = '';
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            _allClientSummaries[_activeClient][sectionId].status = status;
+            if (status === 'ok') _allClientSummaries[_activeClient][sectionId].notes = '';
             renderChecklist();
-            // Hide preview when editing
             document.getElementById('summary-preview').style.display = 'none';
             document.getElementById('checklist-copy-btn').style.display = 'none';
+            document.getElementById('checklist-copy-all-btn').style.display = 'none';
         }
 
         function setSectionNotes(sectionId, notes) {
-            _summaryData[sectionId].notes = notes;
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            _allClientSummaries[_activeClient][sectionId].notes = notes;
         }
 
-        function updateChecklistBadge(filled, total) {
+        function updateChecklistBadge() {
             const badge = document.getElementById('checklist-fab-badge');
             if (!badge) return;
-            if (filled === total && total > 0) {
+            // Count how many clients are fully filled
+            let doneCount = 0;
+            _clientList.forEach(c => {
+                const s = _allClientSummaries[c];
+                if (!s) return;
+                const filled = SUMMARY_SECTIONS.filter(sec => {
+                    const d = s[sec.id];
+                    return d && (d.status === 'ok' || (d.status === 'warn' && d.notes && d.notes.trim()));
+                }).length;
+                if (filled === SUMMARY_SECTIONS.length) doneCount++;
+            });
+            if (doneCount === _clientList.length && _clientList.length > 0) {
                 badge.className = 'fab-badge done';
                 badge.innerHTML = '<i class="fas fa-check" style="font-size:0.6rem;"></i>';
                 badge.style.display = 'flex';
-            } else if (filled > 0) {
+            } else if (doneCount > 0) {
                 badge.className = 'fab-badge pending';
-                badge.textContent = filled;
+                badge.textContent = `${doneCount}/${_clientList.length}`;
                 badge.style.display = 'flex';
             } else {
                 badge.style.display = 'none';
             }
         }
 
-        function generateSummaryText() {
-            const clientId = CLIENT_ID || 'UNKNOWN';
+        function generateSummaryText(clientId) {
+            clientId = clientId || _activeClient;
+            const summaryData = _allClientSummaries[clientId] || _getDefaultSections();
             const today = new Date();
             const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
             let lines = [];
@@ -6107,7 +6242,7 @@
             lines.push(`📅 ${dateStr}`);
             lines.push('');
             SUMMARY_SECTIONS.forEach(s => {
-                const d = _summaryData[s.id];
+                const d = summaryData[s.id];
                 const icon = d.status === 'ok' ? '✅' : '⚠️';
                 lines.push(`**${s.num}. ${s.title}**`);
                 if (d.status === 'ok') {
@@ -6123,33 +6258,34 @@
 
         async function submitChecklist() {
             const btn = document.getElementById('checklist-submit-btn');
-            const clientId = CLIENT_ID || '';
-            if (!clientId) {
-                alert('No client selected. Open a client dashboard first.');
+            if (!_activeClient) {
+                alert('No client selected.');
                 return;
             }
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Saving...';
             try {
+                const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections();
                 const items = SUMMARY_SECTIONS.map(s => ({
                     id: s.id,
                     num: s.num,
                     title: s.title,
-                    status: _summaryData[s.id].status,
-                    notes: _summaryData[s.id].notes
+                    status: summaryData[s.id].status,
+                    notes: summaryData[s.id].notes
                 }));
                 const resp = await fetch('/api/checklist/submit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ checklist_type: 'daily_summary', client_id: clientId, items })
+                    body: JSON.stringify({ checklist_type: 'daily_summary', client_id: _activeClient, items })
                 });
                 const data = await resp.json();
                 if (data.status === 'success') {
-                    // Show preview
                     const preview = document.getElementById('summary-preview');
-                    preview.textContent = generateSummaryText();
+                    preview.textContent = generateSummaryText(_activeClient);
                     preview.style.display = 'block';
                     document.getElementById('checklist-copy-btn').style.display = 'inline-flex';
+                    document.getElementById('checklist-copy-all-btn').style.display = 'inline-flex';
+                    renderClientDots();
                     btn.innerHTML = '<i class="fas fa-check" style="margin-right:6px;"></i> Saved!';
                     btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
                     setTimeout(() => {
@@ -6169,44 +6305,52 @@
             }
         }
 
-        function copySummary() {
-            const text = generateSummaryText();
-            navigator.clipboard.writeText(text).then(() => {
-                const btn = document.getElementById('checklist-copy-btn');
-                btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied!';
-                setTimeout(() => {
-                    btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy';
-                }, 1500);
-            }).catch(() => {
-                // Fallback for older browsers
+        function _copyText(text) {
+            navigator.clipboard.writeText(text).catch(() => {
                 const ta = document.createElement('textarea');
-                ta.value = generateSummaryText();
+                ta.value = text;
                 ta.style.position = 'fixed';
                 ta.style.left = '-9999px';
                 document.body.appendChild(ta);
                 ta.select();
                 document.execCommand('copy');
                 document.body.removeChild(ta);
-                const btn = document.getElementById('checklist-copy-btn');
-                btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied!';
-                setTimeout(() => {
-                    btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy';
-                }, 1500);
             });
         }
 
-        // Load checklist status on page load (for badge)
-        if (USER_TYPE !== 'client' && CLIENT_ID) {
-            fetch(`/api/checklist/status?client_id=${encodeURIComponent(CLIENT_ID)}`).then(r => r.json()).then(data => {
+        function copySummary() {
+            _copyText(generateSummaryText(_activeClient));
+            const btn = document.getElementById('checklist-copy-btn');
+            btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied!';
+            setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy'; }, 1500);
+        }
+
+        function copyAllSummaries() {
+            const allText = _clientList.map(c => generateSummaryText(c)).join('\n\n');
+            _copyText(allText);
+            const btn = document.getElementById('checklist-copy-all-btn');
+            btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied All!';
+            setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy All'; }, 1500);
+        }
+
+        // Load initial badge state
+        if (USER_TYPE !== 'client') {
+            // Preload in background for badge
+            fetch('/api/checklist/status').then(r => r.json()).then(data => {
                 if (data.checklists && data.checklists.length) {
-                    const saved = data.checklists[0];
-                    if (saved.items && Array.isArray(saved.items)) {
-                        let filled = 0;
-                        saved.items.forEach(item => {
-                            if (item.status === 'ok' || (item.status === 'warn' && item.notes && item.notes.trim())) filled++;
-                        });
-                        updateChecklistBadge(filled, SUMMARY_SECTIONS.length);
-                    }
+                    data.checklists.forEach(cl => {
+                        const cid = cl.client_id || '';
+                        if (!cid) return;
+                        if (!_allClientSummaries[cid]) _allClientSummaries[cid] = _getDefaultSections();
+                        if (cl.items && Array.isArray(cl.items)) {
+                            cl.items.forEach(item => {
+                                if (_allClientSummaries[cid][item.id]) {
+                                    _allClientSummaries[cid][item.id].status = item.status || 'ok';
+                                    _allClientSummaries[cid][item.id].notes = item.notes || '';
+                                }
+                            });
+                        }
+                    });
                 }
             }).catch(() => {});
         }
