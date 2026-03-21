@@ -119,6 +119,9 @@
             <button class="scan-btn" id="run-scan-btn" onclick="runScan()">
                 <i class="fas fa-radar" id="scan-icon"></i> Run Quality Scan
             </button>
+            <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69); margin-left:8px;" title="Post daily summary to Slack">
+                <i class="fab fa-slack"></i> Send to Slack
+            </button>
             </div>
         </div>
 
@@ -336,6 +339,28 @@
             } finally {
                 btn.disabled = false;
                 icon.className = 'fas fa-radar';
+            }
+        }
+
+        async function sendToSlack() {
+            const btn = document.getElementById('slack-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+            try {
+                const resp = await fetch('/api/quality/send_slack', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    btn.innerHTML = '<i class="fas fa-check"></i> Sent!';
+                    setTimeout(() => { btn.innerHTML = '<i class="fab fa-slack"></i> Send to Slack'; }, 3000);
+                } else {
+                    alert(data.message || 'Failed to send to Slack.');
+                    btn.innerHTML = '<i class="fab fa-slack"></i> Send to Slack';
+                }
+            } catch (e) {
+                alert('Failed to send to Slack. Check console.');
+                btn.innerHTML = '<i class="fab fa-slack"></i> Send to Slack';
+            } finally {
+                btn.disabled = false;
             }
         }
 

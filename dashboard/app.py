@@ -5487,6 +5487,28 @@ def api_daily_summary():
         }
     })
 
+
+@app.route('/api/quality/send_slack', methods=['POST'])
+@require_role('super_admin')
+def api_send_slack_summary():
+    """Manually post the daily quality summary to Slack. Super admin only."""
+    from dashboard.scheduler import send_slack_message, _build_daily_summary_text, _get_slack_webhook_url
+    if not _get_slack_webhook_url():
+        return jsonify({'status': 'error', 'message': 'SLACK_WEBHOOK_URL not configured. Add it to your .env file.'}), 400
+    try:
+        text = _build_daily_summary_text()
+        ok = send_slack_message(text)
+        if ok:
+            log_action('SLACK_SUMMARY', 'super_admin', request.session_user.get('user_identifier'),
+                       get_remote_address(), 'Manual Slack summary posted')
+            return jsonify({'status': 'success', 'message': 'Summary posted to Slack.'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Slack post failed — check webhook URL and logs.'}), 502
+    except Exception as e:
+        logging.error(f"Manual Slack post error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/client/import_csv', methods=['POST'])
 @require_role('super_admin')
 def import_client_csv():
