@@ -4127,6 +4127,18 @@ def api_update_client():
     
     if category:
         update_client_category(admin, trader, name, category)
+
+    # Save active_status if provided
+    active_status = request.json.get('active_status')
+    if active_status:
+        try:
+            client_data = get_client_data(name)
+            if client_data:
+                identity = client_data.get('identity', {})
+                identity['active_status'] = active_status
+                update_client_field(name, 'identity', identity)
+        except Exception as e:
+            print(f"Error updating active_status: {e}")
         
     if update_client_details(admin, trader, name, email):
         update_user_email(name, 'client', email)
