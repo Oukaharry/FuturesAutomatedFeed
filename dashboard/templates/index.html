@@ -885,6 +885,141 @@
             font-size: 0.85rem;
         }
 
+        /* ── Daily Checklist Floating Button + Panel ── */
+        .checklist-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9998;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            border: 2px solid rgba(167,139,250,0.4);
+            color: #fff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(109,40,217,0.4);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .checklist-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(109,40,217,0.6);
+        }
+        .checklist-fab .fab-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            font-size: 0.65rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #0f172a;
+        }
+        .checklist-fab .fab-badge.done { background: #22c55e; color: #fff; }
+        .checklist-fab .fab-badge.pending { background: #f59e0b; color: #000; }
+
+        .checklist-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 9999;
+            display: none;
+        }
+        .checklist-panel {
+            position: fixed;
+            top: 0; right: -420px; bottom: 0;
+            width: 400px;
+            max-width: 90vw;
+            background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+            border-left: 1px solid rgba(167,139,250,0.3);
+            z-index: 10000;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -5px 0 25px rgba(0,0,0,0.5);
+        }
+        .checklist-panel.open { right: 0; }
+        .checklist-panel-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .checklist-panel-header h3 {
+            margin: 0;
+            font-size: 1rem;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .checklist-panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+        }
+        .checklist-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .checklist-item:last-child { border-bottom: none; }
+        .checklist-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            margin-top: 2px;
+            accent-color: #7c3aed;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        .checklist-item label {
+            font-size: 0.85rem;
+            color: #cbd5e1;
+            cursor: pointer;
+            line-height: 1.5;
+        }
+        .checklist-item.checked label {
+            color: #64748b;
+            text-decoration: line-through;
+        }
+        .checklist-panel-footer {
+            padding: 16px 20px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .checklist-submit-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #7c3aed, #6d28d9);
+            color: #fff;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .checklist-submit-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .checklist-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .checklist-progress {
+            font-size: 0.78rem;
+            color: #94a3b8;
+            white-space: nowrap;
+        }
+
         /* Tighten logout pill at small sizes */
         .header-logout-pill {
             padding: 5px 10px;
@@ -1142,6 +1277,28 @@
         </button>
         {% endif %}
     </div>
+
+    <!-- Daily Checklist FAB + Panel (traders/admins only) -->
+    {% if user_type in ('trader', 'admin', 'super_admin') %}
+    <button class="checklist-fab" id="checklist-fab" onclick="toggleChecklistPanel()" title="Daily Sign-Off Checklist">
+        <i class="fas fa-clipboard-check"></i>
+        <span class="fab-badge pending" id="checklist-fab-badge" style="display:none;"></span>
+    </button>
+    <div class="checklist-overlay" id="checklist-overlay" onclick="toggleChecklistPanel()"></div>
+    <div class="checklist-panel" id="checklist-panel">
+        <div class="checklist-panel-header">
+            <h3><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> Daily Sign-Off</h3>
+            <button onclick="toggleChecklistPanel()" style="background:none; border:none; color:#94a3b8; font-size:1.2rem; cursor:pointer; padding:4px;">&times;</button>
+        </div>
+        <div class="checklist-panel-body" id="checklist-panel-body"></div>
+        <div class="checklist-panel-footer">
+            <span class="checklist-progress" id="checklist-progress">0 / 0</span>
+            <button class="checklist-submit-btn" id="checklist-submit-btn" onclick="submitChecklist()">
+                <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit
+            </button>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Preview Mode Banner -->
     <div id="preview-banner" class="preview-banner">
@@ -5740,6 +5897,164 @@
         // Auto-refresh every 30s (silent mode: no spinner, preserves scroll/page)
         // This ensures pushed data from the trader app appears on the dashboard
         setInterval(() => updateDashboard(true), 30000);
+
+
+        // ══════════════════════════════════════════════════════════
+        // ── Daily Sign-Off Checklist ─────────────────────────────
+        // ══════════════════════════════════════════════════════════
+        const TRADER_CHECKLIST = [
+            'I confirmed all accounts are visible on Tradovate AND the dashboard',
+            'I verified MT5 name matches client name on every hedging account',
+            'I confirmed Tradovate balance matches the sheet (within $100)',
+            'I checked forexfactory.com for red-zone news before trading',
+            'I verified trades against the correct blueprint before placing',
+            'I confirmed MT5 opposite trade executed after each Tradovate trade',
+            'Every active account has an updated note with today\'s date',
+            'I traded ALL accounts — none were skipped',
+            'All numbers entered are exact to the cent, no rounding'
+        ];
+        const ADMIN_CHECKLIST = [
+            'All challenges needed for tomorrow are purchased',
+            'All failed account subscriptions are cancelled',
+            'All master agreements are signed',
+            'All eligible payouts are requested',
+            'All client emails checked for notifications',
+            'All Discord messages replied to',
+            'Daily summary sent to EVERY client',
+            'All clients are within challenge limit'
+        ];
+
+        let _checklistItems = [];
+        let _checklistLoaded = false;
+
+        function _getChecklistType() {
+            if (USER_TYPE === 'trader') return 'trader';
+            return 'admin'; // admin and super_admin use admin checklist
+        }
+
+        function _getChecklistTemplate() {
+            return _getChecklistType() === 'trader' ? TRADER_CHECKLIST : ADMIN_CHECKLIST;
+        }
+
+        function toggleChecklistPanel() {
+            const panel = document.getElementById('checklist-panel');
+            const overlay = document.getElementById('checklist-overlay');
+            const isOpen = panel.classList.contains('open');
+            if (isOpen) {
+                panel.classList.remove('open');
+                overlay.style.display = 'none';
+            } else {
+                panel.classList.add('open');
+                overlay.style.display = 'block';
+                if (!_checklistLoaded) loadChecklist();
+            }
+        }
+
+        async function loadChecklist() {
+            const template = _getChecklistTemplate();
+            const type = _getChecklistType();
+            // Load existing submission for today
+            try {
+                const resp = await fetch('/api/checklist/status');
+                const data = await resp.json();
+                let saved = null;
+                if (data.checklists && data.checklists.length) {
+                    saved = data.checklists.find(c => c.checklist_type === type);
+                }
+                _checklistItems = template.map((text, i) => ({
+                    id: i,
+                    text: text,
+                    checked: saved ? (saved.items[i] && saved.items[i].checked) : false
+                }));
+            } catch (e) {
+                _checklistItems = template.map((text, i) => ({ id: i, text: text, checked: false }));
+            }
+            _checklistLoaded = true;
+            renderChecklist();
+        }
+
+        function renderChecklist() {
+            const body = document.getElementById('checklist-panel-body');
+            const checked = _checklistItems.filter(i => i.checked).length;
+            const total = _checklistItems.length;
+            body.innerHTML = _checklistItems.map(item => `
+                <div class="checklist-item ${item.checked ? 'checked' : ''}">
+                    <input type="checkbox" id="cl-${item.id}" ${item.checked ? 'checked' : ''}
+                           onchange="toggleChecklistItem(${item.id}, this.checked)">
+                    <label for="cl-${item.id}">${item.text}</label>
+                </div>
+            `).join('');
+            document.getElementById('checklist-progress').textContent = `${checked} / ${total}`;
+            updateChecklistBadge(checked, total);
+        }
+
+        function toggleChecklistItem(id, checked) {
+            _checklistItems[id].checked = checked;
+            renderChecklist();
+        }
+
+        function updateChecklistBadge(checked, total) {
+            const badge = document.getElementById('checklist-fab-badge');
+            if (!badge) return;
+            if (checked === total && total > 0) {
+                badge.className = 'fab-badge done';
+                badge.innerHTML = '<i class="fas fa-check" style="font-size:0.6rem;"></i>';
+                badge.style.display = 'flex';
+            } else if (checked > 0) {
+                badge.className = 'fab-badge pending';
+                badge.textContent = checked;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        async function submitChecklist() {
+            const btn = document.getElementById('checklist-submit-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Saving...';
+            try {
+                const items = _checklistItems.map(i => ({ text: i.text, checked: i.checked }));
+                const resp = await fetch('/api/checklist/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ checklist_type: _getChecklistType(), items })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    btn.innerHTML = '<i class="fas fa-check" style="margin-right:6px;"></i> Saved!';
+                    btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
+                    setTimeout(() => {
+                        btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit';
+                        btn.style.background = 'linear-gradient(135deg, #7c3aed, #6d28d9)';
+                        btn.disabled = false;
+                    }, 2000);
+                } else {
+                    alert(data.message || 'Failed to save checklist.');
+                    btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit';
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('Failed to save checklist.');
+                btn.innerHTML = '<i class="fas fa-paper-plane" style="margin-right:6px;"></i> Submit';
+                btn.disabled = false;
+            }
+        }
+
+        // Load checklist status on page load (for badge)
+        if (USER_TYPE !== 'client') {
+            fetch('/api/checklist/status').then(r => r.json()).then(data => {
+                const type = USER_TYPE === 'trader' ? 'trader' : 'admin';
+                const template = type === 'trader' ? TRADER_CHECKLIST : ADMIN_CHECKLIST;
+                if (data.checklists && data.checklists.length) {
+                    const saved = data.checklists.find(c => c.checklist_type === type);
+                    if (saved && saved.items) {
+                        const checked = saved.items.filter(i => i.checked).length;
+                        updateChecklistBadge(checked, template.length);
+                    }
+                }
+            }).catch(() => {});
+        }
 
     </script>
 </body>
