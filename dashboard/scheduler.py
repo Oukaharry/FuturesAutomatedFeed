@@ -22,23 +22,29 @@ def run_scheduler():
             now = datetime.now()
             today = now.strftime('%Y-%m-%d')
 
-            # 00:00 — Midnight watermark snapshot
-            if now.hour == 0 and now.minute == 0 and _ran_today['watermark'] != today:
-                logging.info("Running midnight watermark update...")
+            # All times in UTC — PythonAnywhere runs UTC
+            # Kenya (EAT) is UTC+3, so we subtract 3 hours:
+            #   00:00 EAT = 21:00 UTC (previous day)
+            #   02:00 EAT = 23:00 UTC (previous day)
+            #   02:05 EAT = 23:05 UTC (previous day)
+
+            # 21:00 UTC (00:00 EAT) — Midnight watermark snapshot
+            if now.hour == 21 and now.minute == 0 and _ran_today['watermark'] != today:
+                logging.info("Running midnight watermark update (00:00 EAT)...")
                 update_all_clients_watermarks()
                 _ran_today['watermark'] = today
                 time.sleep(60)
 
-            # 02:00 — Automated quality scan
-            if now.hour == 2 and now.minute == 0 and _ran_today['quality_scan'] != today:
-                logging.info("Running scheduled quality scan...")
+            # 23:00 UTC (02:00 EAT) — Automated quality scan
+            if now.hour == 23 and now.minute == 0 and _ran_today['quality_scan'] != today:
+                logging.info("Running scheduled quality scan (02:00 EAT)...")
                 run_scheduled_quality_scan()
                 _ran_today['quality_scan'] = today
                 time.sleep(60)
 
-            # 02:05 — Post daily summary to Slack (after scan finishes)
-            if now.hour == 2 and now.minute == 5 and _ran_today['slack_summary'] != today:
-                logging.info("Posting daily quality summary to Slack...")
+            # 23:05 UTC (02:05 EAT) — Post daily summary to Slack
+            if now.hour == 23 and now.minute == 5 and _ran_today['slack_summary'] != today:
+                logging.info("Posting daily quality summary to Slack (02:05 EAT)...")
                 post_slack_summary()
                 _ran_today['slack_summary'] = today
                 time.sleep(60)
