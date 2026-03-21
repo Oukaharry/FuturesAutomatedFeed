@@ -3628,6 +3628,15 @@
                             <!-- Payout History -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
                                 <div class="card-header" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,78,59,0.25));color:#34d399;">PAYOUT HISTORY</div>
+                                <div style="display:flex; gap:10px; align-items:center; padding:12px; flex-wrap:wrap;">
+                                    <label style="color:#94a3b8; font-size:0.8rem;">From:</label>
+                                    <input type="date" id="stats-payout-from" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:4px 8px; border-radius:6px; font-size:0.85rem;">
+                                    <label style="color:#94a3b8; font-size:0.8rem;">To:</label>
+                                    <input type="date" id="stats-payout-to" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:4px 8px; border-radius:6px; font-size:0.85rem;">
+                                    <button onclick="filterStatsPayouts()" style="background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; padding:5px 14px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.8rem;">Filter</button>
+                                    <button onclick="document.getElementById('stats-payout-from').value='';document.getElementById('stats-payout-to').value='';filterStatsPayouts();" style="background:rgba(100,116,139,0.2); border:1px solid #475569; color:#94a3b8; padding:5px 14px; border-radius:6px; cursor:pointer; font-size:0.8rem;">Reset</button>
+                                    <span id="stats-payouts-summary" style="margin-left:auto; color:#64748b; font-size:0.8rem;"></span>
+                                </div>
                                 <table>
                                     <thead>
                                         <tr>
@@ -3637,9 +3646,7 @@
                                             <th style="text-align:right;">Amount</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="stats-payouts-body">
-                                        <tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b;">Loading payouts...</td></tr>
-                                    </tbody>
+                                    <tbody id="stats-payouts-body"></tbody>
                                 </table>
                             </div>
                         
@@ -3673,36 +3680,80 @@
                 console.error('Profit Split card update error:', e2);
             }
 
-            // Load payout history into Stats tab
-            const statsPayoutsBody = document.getElementById('stats-payouts-body');
-            if (statsPayoutsBody) {
-                fetch(`/api/kyc/portfolio?client_id=${encodeURIComponent(CLIENT_ID)}`)
-                    .then(r => r.json())
-                    .then(pData => {
-                        if (pData.status !== 'success') return;
-                        const payouts = pData.payouts || [];
-                        const fmt = v => '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                        if (payouts.length) {
-                            let totalAmt = 0;
-                            statsPayoutsBody.innerHTML = payouts.map(p => {
-                                totalAmt += p.amount;
-                                return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                                    <td style="padding:10px 12px; color:#fbbf24;">${p.prop_firm}</td>
-                                    <td style="padding:10px 12px; color:#94a3b8; font-size:0.85rem;">${p.account}</td>
-                                    <td style="padding:10px 12px; color:#94a3b8;">${p.date}</td>
-                                    <td style="padding:10px 12px; text-align:right; font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
-                                </tr>`;
-                            }).join('') + `<tr style="background:rgba(255,255,255,0.05); font-weight:700;">
-                                <td style="padding:10px 12px;" colspan="3">Total (${payouts.length} payouts)</td>
-                                <td style="padding:10px 12px; text-align:right; color:#34d399;">${fmt(totalAmt)}</td>
-                            </tr>`;
-                        } else {
-                            statsPayoutsBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b;">No payouts found.</td></tr>';
+            // Load payout history into Stats tab from already-loaded evaluations
+            window._statsPayouts = [];
+            if (data.evaluations && data.evaluations.length) {
+                const parseCur = v => { if (!v) return 0; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n; };
+                const fmts = ['M/D/YY','M/D/YYYY','YYYY-MM-DD'];
+                const parsePayDate = s => {
+                    if (!s || typeof s !== 'string') return null;
+                    s = s.trim();
+                    if (!s || s === '-') return null;
+                    // Try MM/DD/YY or MM/DD/YYYY
+                    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+                    if (m) { let y = parseInt(m[3]); if (y < 100) y += 2000; return new Date(y, parseInt(m[1])-1, parseInt(m[2])); }
+                    // ISO
+                    const d = new Date(s);
+                    return isNaN(d.getTime()) ? null : d;
+                };
+                const fmtDate = d => {
+                    if (!d) return '-';
+                    const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                    return `${mo[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+                };
+                data.evaluations.forEach(ev => {
+                    const propFirm = (ev['Prop Firm'] || 'Unknown').trim() || 'Unknown';
+                    const account = (ev['Account #'] || ev['Account #.1'] || '-').toString().trim();
+                    for (let i = 1; i <= 9; i++) {
+                        const amt = parseCur(ev[`Payout ${i}`]);
+                        if (amt !== 0) {
+                            const rawDate = (ev[`Date ${i}`] || '').toString().trim();
+                            const dateObj = parsePayDate(rawDate);
+                            window._statsPayouts.push({ prop_firm: propFirm, account, amount: amt, date: fmtDate(dateObj), dateObj });
                         }
-                    })
-                    .catch(() => {
-                        if (statsPayoutsBody) statsPayoutsBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#ef4444;">Failed to load payouts.</td></tr>';
-                    });
+                    }
+                });
+                // Sort newest first
+                window._statsPayouts.sort((a, b) => (b.dateObj || new Date(0)) - (a.dateObj || new Date(0)));
+            }
+            filterStatsPayouts();
+        }
+
+        function filterStatsPayouts() {
+            const body = document.getElementById('stats-payouts-body');
+            const summary = document.getElementById('stats-payouts-summary');
+            if (!body) return;
+            const fromVal = document.getElementById('stats-payout-from')?.value;
+            const toVal = document.getElementById('stats-payout-to')?.value;
+            const fromD = fromVal ? new Date(fromVal + 'T00:00:00') : null;
+            const toD = toVal ? new Date(toVal + 'T23:59:59') : null;
+            const fmt = v => '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+            let filtered = (window._statsPayouts || []).filter(p => {
+                if (!p.dateObj) return !fromD && !toD;
+                if (fromD && p.dateObj < fromD) return false;
+                if (toD && p.dateObj > toD) return false;
+                return true;
+            });
+
+            if (filtered.length) {
+                let totalAmt = 0;
+                body.innerHTML = filtered.map(p => {
+                    totalAmt += p.amount;
+                    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <td style="padding:10px 12px; color:#fbbf24;">${p.prop_firm}</td>
+                        <td style="padding:10px 12px; color:#94a3b8; font-size:0.85rem;">${p.account}</td>
+                        <td style="padding:10px 12px; color:#94a3b8;">${p.date}</td>
+                        <td style="padding:10px 12px; text-align:right; font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
+                    </tr>`;
+                }).join('') + `<tr style="background:rgba(255,255,255,0.05); font-weight:700;">
+                    <td style="padding:10px 12px;" colspan="3">Total (${filtered.length} payouts)</td>
+                    <td style="padding:10px 12px; text-align:right; color:#34d399;">${fmt(totalAmt)}</td>
+                </tr>`;
+                if (summary) summary.textContent = `${filtered.length} payouts — ${fmt(totalAmt)}`;
+            } else {
+                body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b;">No payouts found.</td></tr>';
+                if (summary) summary.textContent = '';
             }
         }
 
