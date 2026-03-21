@@ -327,8 +327,7 @@ def compute_waterlog_from_db(client_id):
 
     result = []
     hwm_low = 0.0
-    transition_splits = []
-    transition_period_lows = []
+    last_pre_transition_net = 0.0  # net profit of the period immediately before transition
 
     for p in periods_with_vals:
         try:
@@ -339,6 +338,11 @@ def compute_waterlog_from_db(client_id):
 
         # Skip periods that start after the transition end (monthly replaces them)
         if from_d > TRANSITION_END:
+            continue
+
+        # Skip periods that overlap transition range — they get condensed below
+        overlaps_transition = from_d <= TRANSITION_END and to_d >= TRANSITION_START
+        if overlaps_transition:
             continue
 
         # Use sheet-imported values if available; otherwise recompute from daily data
@@ -358,40 +362,39 @@ def compute_waterlog_from_db(client_id):
         else:
             profit_split = 0.0
 
-        # Check if this period overlaps with transition range [2/24, 3/20]
-        overlaps_transition = from_d <= TRANSITION_END and to_d >= TRANSITION_START
+        # Track the net profit of the last pre-transition period
+        last_pre_transition_net = period_low
 
-        if overlaps_transition:
-            transition_splits.append(profit_split)
-            transition_period_lows.append(period_low)
-        else:
-            result.append({
-                'from_date':    _fmt_date(from_d),
-                'to_date':      _fmt_date(to_d),
-                'low':          _fmt_currency(period_low),
-                'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
-                'split_pct':    split_pct,
-            })
-
-    # ── Condensed transition row (2/24 → 3/20) ──────────────────────────
-    if transition_splits:
-        total_split = sum(transition_splits)
-        # Use latest daily value in range for "Net Profit in Progress"
-        condensed_daily = [v for (d, v) in daily
-                          if TRANSITION_START <= d <= TRANSITION_END]
-        condensed_net = (condensed_daily[-1] if condensed_daily
-                         else (transition_period_lows[-1]
-                               if transition_period_lows else 0.0))
         result.append({
-            'from_date':    _fmt_date(TRANSITION_START),
-            'to_date':      _fmt_date(TRANSITION_END),
-            'low':          _fmt_currency(condensed_net),
-            'profit_split': f"${total_split:,.0f}" if total_split > 0 else '$0',
-            'split_pct':    50,
+            'from_date':    _fmt_date(from_d),
+            'to_date':      _fmt_date(to_d),
+            'low':          _fmt_currency(period_low),
+            'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
+            'split_pct':    split_pct,
         })
 
+    # ── Condensed transition row (2/24 → 3/20) ──────────────────────────
+    # Net profit = latest daily value on or before 3/20
+    # Split = 50% of (transition net profit − previous period's net profit)
+    condensed_daily = [v for (d, v) in daily if TRANSITION_START <= d <= TRANSITION_END]
+    transition_net = condensed_daily[-1] if condensed_daily else 0.0
+
+    if transition_net > last_pre_transition_net and transition_net > 0:
+        transition_split = (transition_net - last_pre_transition_net) * 0.5
+    else:
+        transition_split = 0.0
+
+    result.append({
+        'from_date':    _fmt_date(TRANSITION_START),
+        'to_date':      _fmt_date(TRANSITION_END),
+        'low':          _fmt_currency(transition_net),
+        'profit_split': f"${transition_split:,.0f}" if transition_split > 0 else '$0',
+        'split_pct':    50,
+    })
+
     # ── Monthly periods from 3/21 onwards (new split logic) ─────────────
-    last_split_net_profit = hwm_low
+    # Reference = previous period's net profit (not a running HWM)
+    prev_period_net = transition_net
     today = _dt.now().date()
     month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
 
@@ -407,12 +410,10 @@ def compute_waterlog_from_db(client_id):
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
         net_profit = in_range[-1][1] if in_range else 0.0
 
-        # New split: 50% of gain above last split level, no split on negatives
-        if net_profit > last_split_net_profit and net_profit > 0:
-            profit_split = (net_profit - last_split_net_profit) * 0.5
-            # Only lock in HWM for completed months
-            if effective_end >= month_end:
-                last_split_net_profit = net_profit
+        # New split: 50% of (this month net profit − previous period net profit)
+        # No split on negatives or when net profit hasn't grown
+        if net_profit > prev_period_net and net_profit > 0:
+            profit_split = (net_profit - prev_period_net) * 0.5
         else:
             profit_split = 0.0
 
@@ -424,11 +425,15 @@ def compute_waterlog_from_db(client_id):
             'split_pct':    50,
         })
 
+        # For completed months, update the reference point
+        if effective_end >= month_end:
+            prev_period_net = net_profit
+
         month_start = effective_end + timedelta(days=1)
         if month_start > today:
             break
 
     return {
         'periods': result,
-        'last_split_net_profit': last_split_net_profit,
+        'last_split_net_profit': prev_period_net,
     }
