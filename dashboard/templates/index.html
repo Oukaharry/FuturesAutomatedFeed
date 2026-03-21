@@ -286,12 +286,23 @@
 
         /* --- Cell Input Sizing --- */
         .cell-input {
-            font-size: 0.75em !important;
-            padding: 1px 2px !important;
+            font-size: 13px !important;
+            padding: 2px 4px !important;
             box-sizing: border-box;
             width: 100%;
             border: none !important;
             min-width: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
+
+        /* Standardize all text/select/td font inside evaluations table */
+        #evaluations-table tbody td {
+            font-size: 13px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
+        #evaluations-table tbody td select {
+            font-size: 13px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
         }
 
         /* --- Visual Notes --- */
@@ -538,24 +549,25 @@
             position: sticky !important;
             top: 0 !important;
             z-index: 1000 !important;
-            height: 55px !important; /* Locked height for calculation */
+            height: 36px !important; /* Compact group header row */
             background-color: #1e293b !important; /* Fallback opaque bg */
-            box-shadow: 0 1px 0 rgba(255,255,255,0.1); 
+            box-shadow: 0 1px 0 rgba(255,255,255,0.1);
+            font-size: 13px !important;
         }
 
         /* SECOND ROW (Sub Headers) */
         #evaluations-table thead tr:nth-child(2) th {
             position: sticky !important;
-            top: 55px !important; /* Stick below the first row */
+            top: 36px !important; /* Stick below the first row (36px) */
             z-index: 999 !important; /* Slightly below the main headers */
             background-color: #1e293b !important; /* Ensure opaque background */
             box-shadow: 0 1px 0 rgba(255,255,255,0.1);
-            height: 45px; /* Consistent height for sub-headers */
+            height: 32px; /* Compact sub-header row */
         }
 
-        /* Farming sub-header text fitting */
+        /* Sub-header text fitting */
         [class^="sub-header-"] {
-            font-size: 11px !important;
+            font-size: 12px !important;
             white-space: nowrap !important;
             padding: 4px 6px !important;
             text-align: center !important;
@@ -647,7 +659,7 @@
         #evaluations-table thead tr:nth-child(2) th:nth-child(1) {
             position: sticky !important;
             left: 90px !important;
-            top: 55px !important; /* Below Row 1 */
+            top: 36px !important; /* Below Row 1 (36px) */
             z-index: 1050 !important; /* Higher than data cells, lower than group header */
             background-color: #1e293b !important;
             width: 180px;
