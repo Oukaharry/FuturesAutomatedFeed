@@ -196,6 +196,27 @@
         </div>
         <pre id="summary-output" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; color:#e2e8f0; font-size:0.82rem; white-space:pre-wrap; line-height:1.6; min-height:40px; display:none;"></pre>
 
+        <!-- Slack Integration Settings -->
+        <div class="section-title" style="margin-top:32px;"><i class="fab fa-slack" style="color:#E01E5A;"></i> Slack Integration</div>
+        <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:300px;">
+                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">Webhook URL</label>
+                    <input type="text" id="slack-webhook-input" placeholder="Paste your Slack webhook URL here..." style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:100%; box-sizing:border-box; font-family:monospace;">
+                </div>
+                <button onclick="saveSlackWebhook()" style="background:linear-gradient(135deg,#4A154B,#611f69); border:none; color:#fff; padding:8px 20px; border-radius:8px; cursor:pointer; font-size:0.82rem; white-space:nowrap;">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button onclick="testSlackWebhook()" id="test-slack-btn" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; padding:8px 20px; border-radius:8px; cursor:pointer; font-size:0.82rem; white-space:nowrap;">
+                    <i class="fas fa-paper-plane"></i> Test
+                </button>
+                <button onclick="removeSlackWebhook()" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#f87171; padding:8px 16px; border-radius:8px; cursor:pointer; font-size:0.82rem; white-space:nowrap;">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            <div id="slack-status" style="margin-top:10px; font-size:0.8rem; color:#94a3b8;"></div>
+        </div>
+
         <!-- CSV Re-Import Tool -->
         <div class="section-title" style="margin-top:32px;"><i class="fas fa-upload" style="color:#f472b6;"></i> CSV Re-Import</div>
         <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
@@ -231,7 +252,78 @@
             document.getElementById('date-start').value = weekAgo;
             loadResults();
             loadChecklists();
+            loadSlackStatus();
         });
+
+        // ── Slack Settings ──
+        async function loadSlackStatus() {
+            try {
+                const resp = await fetch('/api/settings/slack_webhook');
+                const data = await resp.json();
+                const statusEl = document.getElementById('slack-status');
+                const input = document.getElementById('slack-webhook-input');
+                if (data.configured) {
+                    statusEl.innerHTML = '<i class="fas fa-check-circle" style="color:#4ade80;"></i> Connected — ' + data.masked_url;
+                    input.placeholder = 'Webhook configured (paste new URL to replace)';
+                } else {
+                    statusEl.innerHTML = '<i class="fas fa-exclamation-circle" style="color:#fbbf24;"></i> Not configured — paste your Slack webhook URL above';
+                }
+            } catch(e) { console.error('Failed to load Slack status', e); }
+        }
+
+        async function saveSlackWebhook() {
+            const url = document.getElementById('slack-webhook-input').value.trim();
+            if (!url) { alert('Paste a webhook URL first.'); return; }
+            if (!url.startsWith('https://hooks.slack.com/')) { alert('Invalid URL. Must start with https://hooks.slack.com/'); return; }
+            try {
+                const resp = await fetch('/api/settings/slack_webhook', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ url })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    document.getElementById('slack-webhook-input').value = '';
+                    loadSlackStatus();
+                    document.getElementById('slack-status').innerHTML = '<i class="fas fa-check-circle" style="color:#4ade80;"></i> ' + data.message;
+                } else {
+                    alert(data.message || 'Failed to save.');
+                }
+            } catch(e) { alert('Failed to save webhook URL.'); }
+        }
+
+        async function removeSlackWebhook() {
+            if (!confirm('Remove Slack webhook? Automated summaries will stop.')) return;
+            try {
+                const resp = await fetch('/api/settings/slack_webhook', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ url: '' })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') loadSlackStatus();
+            } catch(e) { alert('Failed to remove webhook.'); }
+        }
+
+        async function testSlackWebhook() {
+            const btn = document.getElementById('test-slack-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+            try {
+                const resp = await fetch('/api/quality/send_slack', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    btn.innerHTML = '<i class="fas fa-check"></i> Sent!';
+                    setTimeout(() => { btn.innerHTML = '<i class="fas fa-paper-plane"></i> Test'; btn.disabled = false; }, 3000);
+                } else {
+                    alert(data.message || 'Failed to send.');
+                    btn.innerHTML = '<i class="fas fa-paper-plane"></i> Test';
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                alert('Test failed.');
+                btn.innerHTML = '<i class="fas fa-paper-plane"></i> Test';
+                btn.disabled = false;
+            }
+        }
 
         function getDateRange() {
             if (currentDateFilter === 'latest') return null;
