@@ -259,6 +259,9 @@
         async function loadSlackStatus() {
             try {
                 const resp = await fetch('/api/settings/slack_webhook');
+                if (!resp.ok) { document.getElementById('slack-status').innerHTML = '<i class="fas fa-exclamation-circle" style="color:#fbbf24;"></i> Not configured — paste your Slack webhook URL above'; return; }
+                const ct = resp.headers.get('content-type') || '';
+                if (!ct.includes('application/json')) { document.getElementById('slack-status').innerHTML = '<i class="fas fa-exclamation-circle" style="color:#fbbf24;"></i> Not configured — paste your Slack webhook URL above'; return; }
                 const data = await resp.json();
                 const statusEl = document.getElementById('slack-status');
                 const input = document.getElementById('slack-webhook-input');
@@ -280,6 +283,16 @@
                     method: 'POST', headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({ url })
                 });
+                if (!resp.ok) {
+                    const ct = resp.headers.get('content-type') || '';
+                    if (ct.includes('application/json')) {
+                        const data = await resp.json();
+                        alert(data.message || 'Server error (' + resp.status + ')');
+                    } else {
+                        alert('Server returned status ' + resp.status + '. Make sure the server has been restarted after the latest update.');
+                    }
+                    return;
+                }
                 const data = await resp.json();
                 if (data.status === 'success') {
                     document.getElementById('slack-webhook-input').value = '';
@@ -298,8 +311,12 @@
                     method: 'POST', headers: {'Content-Type':'application/json'},
                     body: JSON.stringify({ url: '' })
                 });
-                const data = await resp.json();
-                if (data.status === 'success') loadSlackStatus();
+                if (!resp.ok) { alert('Failed to remove — server error ' + resp.status); return; }
+                const ct = resp.headers.get('content-type') || '';
+                if (ct.includes('application/json')) {
+                    const data = await resp.json();
+                    if (data.status === 'success') loadSlackStatus();
+                }
             } catch(e) { alert('Failed to remove webhook.'); }
         }
 
