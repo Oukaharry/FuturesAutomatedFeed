@@ -562,7 +562,7 @@
         }
 
         /* 4. Sticky Columns (Horizontal) - Left Edge */
-        /* First Column (#) */
+        /* First Column (#) - header stays at left:0, body at left:0 (0/0.75=0) */
         #evaluations-table thead tr:first-child th:nth-child(1),
         #evaluations-table tbody td.sticky-col-1 {
             position: sticky !important;
@@ -596,11 +596,14 @@
             background-clip: padding-box !important;
         }
         
-        /* Second Column (Trash) */
-        #evaluations-table thead tr:first-child th:nth-child(2),
-        #evaluations-table tbody td.sticky-col-2 {
+        /* Second Column (Trash) - header at 50px, body compensated for 0.75 zoom */
+        #evaluations-table thead tr:first-child th:nth-child(2) {
             position: sticky !important;
             left: 50px !important;
+        }
+        #evaluations-table tbody td.sticky-col-2 {
+            position: sticky !important;
+            left: 66.67px !important; /* 50px / 0.75 = 66.67px in zoomed tbody */
             z-index: 1005 !important; /* Above normal headers */
             background-color: #1e293b !important;
             border-right: 1px solid rgba(255,255,255,0.1);
@@ -652,10 +655,10 @@
             border-right: 1px solid rgba(255,255,255,0.1);
         }
 
-        /* 3. The Data Cells (Column 3) */
+        /* 3. The Data Cells (Column 3) - compensated for 0.75 zoom */
         #evaluations-table tbody td.sticky-col-3 {
             position: sticky !important;
-            left: 90px !important;
+            left: 120px !important; /* 90px / 0.75 = 120px in zoomed tbody */
             z-index: 100 !important; /* Lower than headers */
             background-color: #1e293b !important; /* Opaque background */
             border-right: 1px solid rgba(255,255,255,0.1);
@@ -672,10 +675,13 @@
             display: none !important;
         }
         /* Shift Prop Firm column left since delete col (40px) is gone */
-        .client-view #evaluations-table tbody td.sticky-col-3,
         .client-view #evaluations-table thead tr:first-child th.group-header-blue.sticky-prop-firm-header,
         .client-view #evaluations-table thead tr:nth-child(2) th:nth-child(1) {
             left: 50px !important;
+        }
+        /* Body cells need zoom-compensated value: 50px / 0.75 = 66.67px */
+        .client-view #evaluations-table tbody td.sticky-col-3 {
+            left: 66.67px !important;
         }
         /* Shift group headers left since delete col (40px) is gone in client view */
         .client-view #evaluations-table thead tr:first-child th.group-header-blue,
@@ -753,10 +759,11 @@
             background: linear-gradient(135deg, #581c87, #3b0764) !important;
         }
 
-        /* Zoom on the TABLE (not just tbody) so header and body sticky
-           columns share the same coordinate space — prevents left-offset
-           mismatch that shifts the Prop Firm column a few px on scroll. */
-        #evaluations-table {
+        /* Zoom on tbody only so sticky thead top values stay in the
+           scroll-container's coordinate space (fixes header row 2
+           sliding up instead of sticking).  Body sticky-col left
+           values are divided by 0.75 below to compensate. */
+        #evaluations-body {
             zoom: 0.75; /* adjust % to taste */
         }
 
