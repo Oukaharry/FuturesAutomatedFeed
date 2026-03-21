@@ -295,16 +295,24 @@ def compute_waterlog_from_db(client_id):
       - For periods without stored values (new periods after import), Low/High
         are computed from daily_watermarks as min/max.
 
-    Returns list of dicts (same shape as fetch_waterlog_data) or None if no
-    periods are stored yet (triggers fall-back to sheet on first load).
+    Returns dict with 'periods' list and 'last_split_net_profit' float,
+    or None if no periods are stored yet (triggers fall-back to sheet).
+
+    Periods before 2/24/2026 use old HWM logic.
+    Periods overlapping 2/24-3/20/2026 are condensed into one transition row.
+    Periods after 3/20/2026 are generated monthly with new split logic:
+      split = 50% of (current_net_profit - last_split_net_profit) if positive.
     """
-    from datetime import datetime as _dt
+    from datetime import datetime as _dt, date as _date
 
     periods_with_vals = get_waterlog_periods_with_values(client_id)
     if not periods_with_vals:
         return None  # No schedule stored — caller falls back to sheet
 
     daily = get_all_daily_watermarks(client_id)  # [(date_obj, float)]
+
+    TRANSITION_START = _date(2026, 2, 24)
+    TRANSITION_END   = _date(2026, 3, 20)
 
     def _fmt_date(d):
         return f"{d.month}/{d.day}/{d.year}"
@@ -319,6 +327,8 @@ def compute_waterlog_from_db(client_id):
 
     result = []
     hwm_low = 0.0
+    transition_splits = []
+    transition_period_lows = []
 
     for p in periods_with_vals:
         try:
@@ -327,23 +337,20 @@ def compute_waterlog_from_db(client_id):
         except Exception:
             continue
 
+        # Skip periods that start after the transition end (monthly replaces them)
+        if from_d > TRANSITION_END:
+            continue
+
         # Use sheet-imported values if available; otherwise recompute from daily data
         if p['period_low'] is not None and p['period_high'] is not None:
             period_low  = float(p['period_low'])
-            period_high = float(p['period_high'])
         else:
             in_range = [v for (d, v) in daily if from_d <= d <= to_d]
             period_low  = min(in_range) if in_range else 0.0
-            period_high = max(in_range) if in_range else 0.0
 
-        # Determine split percentage: use stored value if available, else
-        # 50% for new (post-import) periods, 25 for legacy fallback.
+        # Determine split percentage
         raw_split_pct = p.get('split_pct')
-        if raw_split_pct is not None:
-            split_pct = int(raw_split_pct)
-        else:
-            # Period not yet imported from sheet — default to 50%
-            split_pct = 50
+        split_pct = int(raw_split_pct) if raw_split_pct is not None else 50
 
         if period_low > hwm_low:
             profit_split = (period_low - hwm_low) * split_pct / 100
@@ -351,13 +358,77 @@ def compute_waterlog_from_db(client_id):
         else:
             profit_split = 0.0
 
+        # Check if this period overlaps with transition range [2/24, 3/20]
+        overlaps_transition = from_d <= TRANSITION_END and to_d >= TRANSITION_START
+
+        if overlaps_transition:
+            transition_splits.append(profit_split)
+            transition_period_lows.append(period_low)
+        else:
+            result.append({
+                'from_date':    _fmt_date(from_d),
+                'to_date':      _fmt_date(to_d),
+                'low':          _fmt_currency(period_low),
+                'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
+                'split_pct':    split_pct,
+            })
+
+    # ── Condensed transition row (2/24 → 3/20) ──────────────────────────
+    if transition_splits:
+        total_split = sum(transition_splits)
+        # Use latest daily value in range for "Net Profit in Progress"
+        condensed_daily = [v for (d, v) in daily
+                          if TRANSITION_START <= d <= TRANSITION_END]
+        condensed_net = (condensed_daily[-1] if condensed_daily
+                         else (transition_period_lows[-1]
+                               if transition_period_lows else 0.0))
         result.append({
-            'from_date':    _fmt_date(from_d),
-            'to_date':      _fmt_date(to_d),
-            'low':          _fmt_currency(period_low),
-            'high':         _fmt_currency(period_high),
-            'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
-            'split_pct':    split_pct,
+            'from_date':    _fmt_date(TRANSITION_START),
+            'to_date':      _fmt_date(TRANSITION_END),
+            'low':          _fmt_currency(condensed_net),
+            'profit_split': f"${total_split:,.0f}" if total_split > 0 else '$0',
+            'split_pct':    50,
         })
 
-    return result
+    # ── Monthly periods from 3/21 onwards (new split logic) ─────────────
+    last_split_net_profit = hwm_low
+    today = _dt.now().date()
+    month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
+
+    while month_start <= today:
+        # Monthly window: 21st → 20th of next month
+        if month_start.month == 12:
+            month_end = _date(month_start.year + 1, 1, 20)
+        else:
+            month_end = _date(month_start.year, month_start.month + 1, 20)
+
+        effective_end = min(month_end, today)
+
+        in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
+        net_profit = in_range[-1][1] if in_range else 0.0
+
+        # New split: 50% of gain above last split level, no split on negatives
+        if net_profit > last_split_net_profit and net_profit > 0:
+            profit_split = (net_profit - last_split_net_profit) * 0.5
+            # Only lock in HWM for completed months
+            if effective_end >= month_end:
+                last_split_net_profit = net_profit
+        else:
+            profit_split = 0.0
+
+        result.append({
+            'from_date':    _fmt_date(month_start),
+            'to_date':      _fmt_date(effective_end),
+            'low':          _fmt_currency(net_profit),
+            'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
+            'split_pct':    50,
+        })
+
+        month_start = effective_end + timedelta(days=1)
+        if month_start > today:
+            break
+
+    return {
+        'periods': result,
+        'last_split_net_profit': last_split_net_profit,
+    }

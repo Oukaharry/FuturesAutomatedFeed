@@ -1255,14 +1255,13 @@
                         <tr>
                             <th style="text-align: left; padding-left: 20px;">From</th>
                             <th style="text-align: left; padding-left: 20px;">To</th>
-                            <th style="text-align: left; padding-left: 20px;">Low</th>
-                            <th style="text-align: left; padding-left: 20px;">High</th>
+                            <th style="text-align: left; padding-left: 20px;">Net Profit in Progress</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.18); color: #fbbf24;">Profit Split</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.15); color: #93c5fd;">Split %</th>
                         </tr>
                     </thead>
                     <tbody id="profitshare-body">
-                        <tr><td colspan="6" style="text-align: center;">Loading profit share history...</td></tr>
+                        <tr><td colspan="5" style="text-align: center;">Loading profit share history...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -3696,7 +3695,9 @@
                     elNet.style.color = netProfit >= 0 ? '#4ade80' : '#f87171';
                 }
                 if (elSplit) {
-                    const splitAmt = netProfit > 0 ? netProfit * 0.5 : 0;
+                    // Use last_split_net_profit from waterlog if available
+                    const lsnp = window._lastSplitNetProfit || 0;
+                    const splitAmt = (netProfit > lsnp && netProfit > 0) ? (netProfit - lsnp) * 0.5 : 0;
                     elSplit.textContent = formatMoney(splitAmt);
                     elSplit.style.color = splitAmt > 0 ? '#fbbf24' : '#94a3b8';
                 }
@@ -5496,7 +5497,7 @@
             loadWatermarkData();
             setInterval(loadWatermarkData, 60000);
 
-            // --- Load profit share from Google Sheet ---
+            // --- Load profit share history ---
             const psBody = document.getElementById('profitshare-body');
             const sheetUrl = (currentData && currentData.identity && currentData.identity.sheet_url) ? currentData.identity.sheet_url : ((currentData && currentData.sheet_url) ? currentData.sheet_url : '');
             fetch(`/api/sheet/waterlog?client_id=${encodeURIComponent(clientId)}&sheet_url=${encodeURIComponent(sheetUrl)}`)
@@ -5506,16 +5507,23 @@
                         const today = new Date(); today.setHours(0,0,0,0);
                         const parseDate = s => { const p = s.split('/'); return p.length===3 ? new Date(parseInt(p[2]), parseInt(p[0])-1, parseInt(p[1])) : null; };
 
-                        // ── Update High / Low Watermark cards from the current bi-weekly period ──
-                        const allPeriods = psData.data || [];
-                        const currentPeriod = allPeriods.find(r => {
-                            if (!r.from_date || !r.to_date) return false;
-                            const fd = parseDate(r.from_date.trim()), td = parseDate(r.to_date.trim());
-                            return fd && td && fd <= today && today <= td;
-                        });
-                        if (currentPeriod) {
-                            // Current period found — no card updates needed,
-                            // cards are populated from renderStats cashflow data
+                        // Handle new format (dict with periods + last_split_net_profit) or legacy list
+                        const rawData = psData.data;
+                        const allPeriods = Array.isArray(rawData) ? rawData : (rawData.periods || []);
+                        if (rawData && rawData.last_split_net_profit !== undefined) {
+                            window._lastSplitNetProfit = rawData.last_split_net_profit;
+                            // Re-update the split card with correct value
+                            if (currentData) {
+                                const cs = (currentData.statistics || {}).cashflow_inprogress || {};
+                                const np = cs.net_profit || 0;
+                                const lsnp = rawData.last_split_net_profit;
+                                const elSplit = document.getElementById('split-profit-amount');
+                                if (elSplit) {
+                                    const splitAmt = (np > lsnp && np > 0) ? (np - lsnp) * 0.5 : 0;
+                                    elSplit.textContent = formatMoney(splitAmt);
+                                    elSplit.style.color = splitAmt > 0 ? '#fbbf24' : '#94a3b8';
+                                }
+                            }
                         }
 
                         let rows = allPeriods.filter(r => {
@@ -5526,7 +5534,7 @@
                         // Sort newest first
                         rows.sort((a, b) => { const da = parseDate(a.from_date.trim()), db = parseDate(b.from_date.trim()); return db - da; });
                         if (!rows.length) {
-                            if (psBody) psBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
+                            if (psBody) psBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
                             return;
                         }
                         let psHtml = '';
@@ -5535,7 +5543,6 @@
                             const psNum = parseFloat(psRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const psStyle = `text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psNum > 0 ? '#fbbf24' : '#94a3b8'};`;
                             const splitPct = r.split_pct != null ? r.split_pct : 50;
-                            // Always default to 50% display
                             const splitDisplay = psNum > 0 ? `${splitPct}%` : '—';
                             const splitStyle = psNum > 0
                                 ? 'text-align: left; padding-left: 20px; background: rgba(96,165,250,0.10); color: #93c5fd;'
@@ -5544,18 +5551,17 @@
                                 <td style="text-align: left; padding-left: 20px;">${r.from_date}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
                                 <td style="text-align: left; padding-left: 20px;">${r.low || '$0.00'}</td>
-                                <td style="text-align: left; padding-left: 20px;">${r.high || '$0.00'}</td>
                                 <td style="${psStyle}">${psRaw || '$0'}</td>
                                 <td style="${splitStyle}">${splitDisplay}</td>
                             </tr>`;
                         });
                         if (psBody) psBody.innerHTML = psHtml;
                     } else {
-                        if (psBody) psBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
+                        if (psBody) psBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
                     }
                 })
                 .catch(() => {
-                    if (psBody) psBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
+                    if (psBody) psBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
                 });
         }
         
