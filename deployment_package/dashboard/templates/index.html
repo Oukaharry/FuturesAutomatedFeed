@@ -1431,11 +1431,12 @@
                                 <div class="card">
                                     <div class="card-header">Profitability - Completed</div>
                                     <table class="summary-table">
-                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(s.profitability_completed.challenge_fees)}</td></tr>
-                                        <tr><td>Hedging Results</td><td class="text-right">${formatMoney(s.profitability_completed.hedging_results)}</td></tr>
-                                        <tr><td>Farming Results</td><td class="text-right">${formatMoney(s.profitability_completed.farming_results)}</td></tr>
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.profitability_completed.payouts)}</td></tr>
-                                        <tr><td>Net Profit</td><td class="text-right">${formatMoney(s.profitability_completed.net_profit)}</td></tr>
+                                        <tr><td>Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0))}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.hedging_results || 0)}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.farming_results || 0)}</td></tr>
+                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.profitability_completed.challenge_fees || 0))}</td></tr>
+                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.profitability_completed.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
 
@@ -1478,7 +1479,9 @@
                                             </td>
                                         </tr>
                                         <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
-                                        <tr><td>Sheet Hedging Results</td><td class="text-right">${formatMoney(s.hedging_review.sheet_hedging_results)}</td></tr>
+                                        <tr><td>Sheet Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney(s.hedging_review.sheet_hedging_results)}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
                                         <tr><td>Discrepancy</td><td class="text-right" id="hedging-discrepancy">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.discrepancy) : '<span style="color:#888">N/A</span>'}</td></tr>
                                     </table>
                                     
@@ -1509,11 +1512,12 @@
                                 <div class="card">
                                     <div class="card-header">Current Cashflow - In Progress</div>
                                     <table class="summary-table">
-                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(s.cashflow_inprogress.challenge_fees)}</td></tr>
-                                        <tr><td>Hedging Results</td><td class="text-right">${formatMoney(s.cashflow_inprogress.hedging_results)}</td></tr>
-                                        <tr><td>Farming Results</td><td class="text-right">${formatMoney(s.cashflow_inprogress.farming_results)}</td></tr>
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
-                                        <tr><td>Net Profit</td><td class="text-right">${formatMoney(s.cashflow_inprogress.net_profit)}</td></tr>
+                                        <tr><td>Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
+                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
+                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.cashflow_inprogress.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
                             </div>
