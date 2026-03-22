@@ -472,6 +472,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             "current_balance": 0.0,
             "actual_hedging_results": 0.0,
             "sheet_hedging_results": 0.0,
+            "sheet_hedging_component": 0.0,
+            "sheet_farming_component": 0.0,
             "discrepancy": 0.0
         }
     }
@@ -739,6 +741,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     total_hedging = stats["cashflow_inprogress"]["hedging_results"]
     total_farming = stats["cashflow_inprogress"]["farming_results"]
     stats["hedging_review"]["sheet_hedging_results"] = total_hedging + total_farming
+    stats["hedging_review"]["sheet_hedging_component"] = total_hedging
+    stats["hedging_review"]["sheet_farming_component"] = total_farming
     
     # Debug logging (will be visible in server logs)
     import sys
@@ -876,6 +880,8 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             stats["cashflow_inprogress"]["hedging_results"] +
             stats["cashflow_inprogress"]["farming_results"]
         )
+        stats["hedging_review"]["sheet_hedging_component"] = stats["cashflow_inprogress"]["hedging_results"]
+        stats["hedging_review"]["sheet_farming_component"] = stats["cashflow_inprogress"]["farming_results"]
 
     # --- Calculate Discrepancy ONCE from the final authoritative values ---
     # This is the single source of truth displayed in the Hedging Review card.
