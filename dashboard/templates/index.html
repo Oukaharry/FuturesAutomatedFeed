@@ -2413,6 +2413,8 @@
         let isDatePickerOpen = false;
         let currentNoteTarget = null; // { index, key }
         let sheetHedgingResults = 0; // Store for recalculation
+        let liveActualHedging = 0; // Computed from MT5 Accounts Overview total profit
+        let historicalDep = 0, historicalWith = 0, historicalBal = 0; // Historical account totals
         
         // Wraps openNoteEditor for left-click interaction
         function handleCellClick(event, index, key) {
@@ -3808,6 +3810,19 @@
 
                     // Compute sheet hedging results live from current hedging + farming values
                     sheetHedgingResults = (s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0);
+
+                    // Compute actual hedging results from MT5 Accounts Overview total profit
+                    const mt5Acc = data.account || {};
+                    const mt5Dep = parseFloat(mt5Acc.total_deposits) || 0;
+                    const mt5With = parseFloat(mt5Acc.total_withdrawals) || 0;
+                    const mt5Bal = parseFloat(mt5Acc.balance) || 0;
+                    const histAccts = s.hedging_review.historical_accounts || [];
+                    historicalDep = 0; historicalWith = 0; historicalBal = 0;
+                    histAccts.forEach(a => { historicalDep += a.deposits || 0; historicalWith += a.withdrawals || 0; historicalBal += a.final_balance || 0; });
+                    const combinedDep = mt5Dep + historicalDep;
+                    const combinedWith = mt5With + historicalWith;
+                    const combinedBal = mt5Bal + historicalBal;
+                    liveActualHedging = combinedBal - (combinedDep + combinedWith);
                     statsContainer.innerHTML = `
                             <div class="stats-grid">
                                 <!-- Profitability - Completed -->
@@ -3819,7 +3834,7 @@
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.farming_results || 0)}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.profitability_completed.challenge_fees || 0))}</td></tr>
-                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy</span></td><td class="text-right">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy</span></td><td class="text-right">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.profitability_completed.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
@@ -3862,11 +3877,11 @@
                                                     formatMoney(s.hedging_review.current_balance)}
                                             </td>
                                         </tr>
-                                        <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
+                                        <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
                                         <tr><td>Sheet Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
-                                        <tr><td>Discrepancy</td><td class="text-right" id="hedging-discrepancy">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td>Discrepancy</td><td class="text-right" id="hedging-discrepancy">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - sheetHedgingResults) : '<span style="color:#888">N/A</span>'}</td></tr>
                                     </table>
                                     
                                     <!-- MT5 Accounts Overview Section -->
@@ -3901,7 +3916,7 @@
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
-                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy</span></td><td class="text-right">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy</span></td><td class="text-right">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.cashflow_inprogress.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
@@ -4603,10 +4618,14 @@
                 if (wInput) wInput.value = withdrawals;
             }
             
-            // Formula: Actual Hedging Results = Balance - (Deposits + Withdrawals)
-            // Withdrawals are negative, so deposits + withdrawals = net deposits
-            const netDeposits = deposits + withdrawals;
-            const actualHedging = balance - netDeposits;
+            // Include historical accounts in the computation (same as MT5 Accounts Overview)
+            const combinedDep = deposits + historicalDep;
+            const combinedWith = withdrawals + historicalWith;
+            const combinedBal = balance + historicalBal;
+            
+            // Formula: Actual Hedging Results = Combined Balance - (Combined Deposits + Combined Withdrawals)
+            const actualHedging = combinedBal - (combinedDep + combinedWith);
+            liveActualHedging = actualHedging;
             const discrepancy = actualHedging - sheetHedgingResults;
             
             // Update display
@@ -4628,9 +4647,11 @@
                 if (wInput) wInput.value = withdrawals;
             }
             
-            // Calculate actual hedging and discrepancy
-            const netDeposits = deposits + withdrawals;
-            const actualHedging = balance - netDeposits;
+            // Include historical accounts (same as MT5 Accounts Overview)
+            const combinedDep = deposits + historicalDep;
+            const combinedWith = withdrawals + historicalWith;
+            const combinedBal = balance + historicalBal;
+            const actualHedging = combinedBal - (combinedDep + combinedWith);
             const discrepancy = actualHedging - sheetHedgingResults;
             
             try {
