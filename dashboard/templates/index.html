@@ -3817,9 +3817,9 @@
                                     <div class="card-header">Profitability - Completed</div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.profitability_completed.payouts)}</td></tr>
-                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.profitability_completed.challenge_fees || 0))}</td></tr>
                                         <tr><td>Hedging Results</td><td class="text-right">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0))}</td></tr>
-                                        <tr><td><span title="Actual MT5 Results vs Sheet Results (inherited from Google Sheets)">Discrepancy <span style="font-size:10px;opacity:0.6;">📊 Sheets</span></span></td><td class="text-right">${formatMoney(s.hedging_review.discrepancy)}</td></tr>
+                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.profitability_completed.challenge_fees || 0))}</td></tr>
+                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy <span style="font-size:10px;opacity:0.5;font-style:italic;">inherited from Sheets</span></span></td><td class="text-right">${formatMoney(s.hedging_review.discrepancy)}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.profitability_completed.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
@@ -3895,9 +3895,9 @@
                                     <div class="card-header">Current Cashflow - In Progress</div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
-                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
                                         <tr><td>Hedging Results</td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
-                                        <tr><td><span title="Actual MT5 Results vs Sheet Results (inherited from Google Sheets)">Discrepancy <span style="font-size:10px;opacity:0.6;">📊 Sheets</span></span></td><td class="text-right">${formatMoney(s.hedging_review.discrepancy)}</td></tr>
+                                        <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
+                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy <span style="font-size:10px;opacity:0.5;font-style:italic;">inherited from Sheets</span></span></td><td class="text-right">${formatMoney(s.hedging_review.discrepancy)}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.cashflow_inprogress.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
