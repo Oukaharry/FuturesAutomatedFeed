@@ -1796,21 +1796,36 @@
             const curDep = parseFloat(mt5Account.total_deposits) || 0;
             const curWith = parseFloat(mt5Account.total_withdrawals) || 0;
             const curBal = parseFloat(mt5Account.balance) || 0;
+            const curProfit = curBal - (curDep + curWith);
             const hasHistorical = accounts && accounts.length > 0;
             
-            let totalDep = curDep, totalWith = curWith, totalBal = curBal;
+            let totalDep = curDep, totalWith = curWith, totalBal = curBal, totalProfit = curProfit;
             if (hasHistorical) {
                 accounts.forEach(acc => {
-                    totalDep += acc.deposits || 0;
-                    totalWith += acc.withdrawals || 0;
-                    totalBal += acc.final_balance || 0;
+                    const d = acc.deposits || 0;
+                    const w = acc.withdrawals || 0;
+                    const b = acc.final_balance || 0;
+                    totalDep += d;
+                    totalWith += w;
+                    totalBal += b;
+                    totalProfit += b - (d + w);
                 });
             }
             
+            const thStyle = 'text-align:right;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;';
+            const delCol = IS_CLIENT ? '' : '<col style="width:7%">';
+            const delTh = IS_CLIENT ? '' : '<th></th>';
+            
             let html = '<div style="background:#f8fafc;border-radius:6px;padding:10px;margin-top:5px;border:1px solid #e2e8f0;">';
             html += '<table style="width:100%;font-size:12px;border-collapse:collapse;color:#1e293b;table-layout:fixed;">';
-            html += '<colgroup><col style="width:25%"><col style="width:22%"><col style="width:22%"><col style="width:22%">' + (IS_CLIENT ? '' : '<col style="width:9%">') + '</colgroup>';
-            html += '<tr style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;"><th style="text-align:left;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;">Name</th><th style="text-align:right;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;">Deposits</th><th style="text-align:right;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;">Withdrawals</th><th style="text-align:right;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;">Balance</th>' + (IS_CLIENT ? '' : '<th></th>') + '</tr>';
+            html += '<colgroup><col style="width:20%"><col style="width:18%"><col style="width:18%"><col style="width:18%"><col style="width:18%">' + delCol + '</colgroup>';
+            html += '<tr style="border-bottom:1px solid #e2e8f0;background:#f1f5f9;">';
+            html += '<th style="text-align:left;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;">Name</th>';
+            html += '<th style="' + thStyle + '">Deposits</th>';
+            html += '<th style="' + thStyle + '">Withdrawals</th>';
+            html += '<th style="' + thStyle + '">Balance</th>';
+            html += '<th style="' + thStyle + '">Profit</th>';
+            html += delTh + '</tr>';
             
             // Current MT5 row (highlighted)
             html += `<tr style="border-bottom:1px solid #e2e8f0;background:#eff6ff;">
@@ -1818,17 +1833,23 @@
                 <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(curDep)}</td>
                 <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(curWith)}</td>
                 <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(curBal)}</td>
+                <td style="text-align:right;padding:8px 10px;color:${curProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(curProfit)}</td>
                 ${IS_CLIENT ? '' : '<td></td>'}
             </tr>`;
             
             // Historical account rows
             if (hasHistorical) {
                 accounts.forEach((acc, idx) => {
+                    const d = acc.deposits || 0;
+                    const w = acc.withdrawals || 0;
+                    const b = acc.final_balance || 0;
+                    const p = b - (d + w);
                     html += `<tr style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:8px 10px;color:#475569;">${acc.name || 'MT5 #' + (idx+1)}</td>
-                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(acc.deposits)}</td>
-                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(acc.withdrawals)}</td>
-                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(acc.final_balance)}</td>
+                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(d)}</td>
+                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(w)}</td>
+                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(b)}</td>
+                        <td style="text-align:right;padding:8px 10px;color:${p >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(p)}</td>
                         ${IS_CLIENT ? '' : `<td style="text-align:center;padding:8px 4px;"><button onclick="deleteHistoricalMT5(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;">✕</button></td>`}
                     </tr>`;
                 });
@@ -1840,6 +1861,7 @@
                 <td style="text-align:right;padding:8px 10px;color:#0f172a;">${formatMoney(totalDep)}</td>
                 <td style="text-align:right;padding:8px 10px;color:#0f172a;">${formatMoney(totalWith)}</td>
                 <td style="text-align:right;padding:8px 10px;color:#0f172a;">${formatMoney(totalBal)}</td>
+                <td style="text-align:right;padding:8px 10px;color:${totalProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${formatMoney(totalProfit)}</td>
                 ${IS_CLIENT ? '' : '<td></td>'}
             </tr>`;
             html += '</table></div>';
