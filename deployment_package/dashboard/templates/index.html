@@ -1423,8 +1423,8 @@
                 s.evaluation_data = mergeStatKeys(s.evaluation_data);
                 s.funded_data = mergeStatKeys(s.funded_data);
 
-                // Store sheet hedging results for recalculation
-                sheetHedgingResults = s.hedging_review.sheet_hedging_results || 0;
+                // Compute sheet hedging results live from current hedging + farming values
+                sheetHedgingResults = (s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0);
                 statsContainer.innerHTML = `
                             <div class="stats-grid">
                                 <!-- Profitability - Completed -->
@@ -1479,10 +1479,10 @@
                                             </td>
                                         </tr>
                                         <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
-                                        <tr><td>Sheet Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney(s.hedging_review.sheet_hedging_results)}</td></tr>
-                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.hedging_review.sheet_hedging_component || s.cashflow_inprogress.hedging_results || 0)}</td></tr>
-                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.hedging_review.sheet_farming_component || s.cashflow_inprogress.farming_results || 0)}</td></tr>
-                                        <tr><td>Discrepancy</td><td class="text-right" id="hedging-discrepancy">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.discrepancy) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td>Sheet Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
+                                        <tr><td>Discrepancy</td><td class="text-right" id="hedging-discrepancy">${s.hedging_review.actual_hedging_results !== 0 ? formatMoney(s.hedging_review.actual_hedging_results - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
                                     </table>
                                     
                                     <!-- MT5 Accounts Overview Section -->
