@@ -1466,7 +1466,9 @@ class TraderCompanionApp:
                                    command=self.toggle_auto_push, style="AutoPush.TButton")
         self.auto_btn.pack(side=tk.LEFT, padx=(0, 8))
 
-        ttk.Button(btn_row, text="💾  Save Config", command=self.save_config).pack(side=tk.RIGHT)
+        ttk.Button(btn_row, text="�  Push Hedging Review", command=self.push_hedging_review).pack(side=tk.LEFT, padx=(0, 8))
+
+        ttk.Button(btn_row, text="�💾  Save Config", command=self.save_config).pack(side=tk.RIGHT)
 
         # -- Import Data card --
         import_frame = ttk.LabelFrame(tab_dash, text="📋  Import Data", padding=8)
@@ -1762,6 +1764,76 @@ class TraderCompanionApp:
             self.log(f"❌ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
     
+    def push_hedging_review(self):
+        """Push ONLY Live Hedging Review data (deposits, withdrawals, balance) from MT5."""
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        email = self.client_email_entry.get().strip()
+
+        if not self.client_info:
+            messagebox.showerror("Error", "Please lookup the client first by entering email and clicking 'Lookup'")
+            return
+
+        if not self.pusher.connected:
+            messagebox.showerror("Error", "Please connect to MT5 first")
+            return
+
+        client_name = self.client_info.get('client', '')
+        self.log(f"📊 Pushing Hedging Review for {client_name}...")
+        self.status_var.set("Pushing hedging review...")
+
+        account = self.pusher.get_account_info() or {}
+        if not account:
+            self.log("⚠️ No account info available from MT5", "ERROR")
+            self.status_var.set("Push failed - no MT5 data")
+            return
+
+        deposits = float(account.get('total_deposits', 0) or 0)
+        withdrawals = float(account.get('total_withdrawals', 0) or 0)
+        balance = float(account.get('balance', 0) or 0)
+
+        self.log(f"   Deposits: ${deposits:,.2f}")
+        self.log(f"   Withdrawals: ${withdrawals:,.2f}")
+        self.log(f"   Balance: ${balance:,.2f}")
+
+        payload = {
+            "email": email,
+            "total_deposits": deposits,
+            "total_withdrawals": withdrawals,
+            "current_balance": balance
+        }
+
+        try:
+            response = requests.post(
+                f"{dashboard_url}/api/client/push_hedging_review",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("status") == "success":
+                    hr = data.get("hedging_review", {})
+                    self.log(f"✅ Hedging Review updated for {client_name}")
+                    self.log(f"   Actual Hedging Results: ${hr.get('actual_hedging_results', 0):,.2f}")
+                    self.log(f"   Discrepancy: ${hr.get('discrepancy', 0):,.2f}")
+                    self.status_var.set("Ready - Hedging review pushed!")
+                else:
+                    self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
+                    self.status_var.set("Push failed")
+            else:
+                error_msg = f"HTTP {response.status_code}"
+                try:
+                    error_msg = response.json().get("message", error_msg)
+                except:
+                    pass
+                self.log(f"❌ Push failed: {error_msg}", "ERROR")
+                self.status_var.set("Push failed")
+
+        except Exception as e:
+            self.log(f"❌ Push error: {e}", "ERROR")
+            self.status_var.set("Push failed")
+
     def push_mt5_only(self):
         """Push ONLY MT5 data (deals, positions, account) to recalculate hedging review."""
         dashboard_url = self.url_entry.get().strip().rstrip('/')

@@ -4615,6 +4615,66 @@ def update_hedging_review(client_id):
         "hedging_review": hr
     })
 
+@app.route('/api/client/push_hedging_review', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_push_hedging_review():
+    """
+    Public endpoint - push Live Hedging Review data using client email.
+    Updates deposits, withdrawals, balance and recalculates actual hedging results.
+    Used by the Trader Companion app.
+    """
+    data = request.json
+    email = data.get('email', '').strip().lower()
+
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
+
+    client_id = client_info['client']
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "Client data not found"}), 404
+
+    if 'statistics' not in client_data:
+        client_data['statistics'] = {}
+    if 'hedging_review' not in client_data['statistics']:
+        client_data['statistics']['hedging_review'] = {}
+
+    hr = client_data['statistics']['hedging_review']
+    hr['total_deposits'] = float(data.get('total_deposits', hr.get('total_deposits', 0)))
+    hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
+    hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
+
+    # Recalculate actual hedging results: balance - deposits + withdrawals
+    hr['actual_hedging_results'] = round(
+        hr['current_balance'] - hr['total_deposits'] + hr['total_withdrawals'], 2
+    )
+
+    # Recalculate discrepancy
+    sheet_hr = hr.get('sheet_hedging_results', 0)
+    hr['discrepancy'] = round(hr['actual_hedging_results'] - sheet_hr, 2)
+
+    # Also store in account for consistency
+    if 'account' not in client_data:
+        client_data['account'] = {}
+    client_data['account']['balance'] = hr['current_balance']
+    client_data['account']['total_deposits'] = hr['total_deposits']
+    client_data['account']['total_withdrawals'] = hr['total_withdrawals']
+
+    save_client_data(client_id, client_data)
+
+    log_action('PUSH_HEDGING_REVIEW', 'companion', email, get_remote_address(),
+               f"Hedging review for {client_id}: deposits={hr['total_deposits']}, withdrawals={hr['total_withdrawals']}, balance={hr['current_balance']}, actual={hr['actual_hedging_results']}")
+
+    return jsonify({
+        "status": "success",
+        "message": f"Hedging review updated for {client_id}",
+        "hedging_review": hr
+    })
+
 @app.route('/api/historical_mt5/<client_id>', methods=['POST'])
 @require_session
 def manage_historical_mt5(client_id):
