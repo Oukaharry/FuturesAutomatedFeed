@@ -3049,10 +3049,31 @@ def api_migrate_sheet():
             if wl_periods:
                 save_waterlog_periods(client_id, wl_periods)
         
-        # Get existing data to preserve MT5 account and historical accounts
+        # Get existing data to preserve MT5 account, historical accounts, and deletions
         existing_import_data = get_client_data(client_id) or {}
         existing_mt5 = existing_import_data.get('account') or None
         existing_hist = existing_import_data.get('statistics', {}).get('hedging_review', {}).get('historical_accounts')
+        
+        # Preserve _deleted flags: build fingerprints of previously deleted rows
+        existing_evals = existing_import_data.get('evaluations', [])
+        deleted_fingerprints = set()
+        for ev in existing_evals:
+            if isinstance(ev, dict) and ev.get('_deleted'):
+                acct = str(ev.get('Account #') or ev.get('Account #.1') or '').strip()
+                firm = str(ev.get('Prop Firm') or '').strip()
+                size = str(ev.get('Account Size') or '').strip()
+                if acct:
+                    deleted_fingerprints.add((acct, firm, size))
+        
+        # Re-apply _deleted to matching incoming rows
+        if deleted_fingerprints:
+            for ev in evaluations:
+                if isinstance(ev, dict):
+                    acct = str(ev.get('Account #') or ev.get('Account #.1') or '').strip()
+                    firm = str(ev.get('Prop Firm') or '').strip()
+                    size = str(ev.get('Account Size') or '').strip()
+                    if acct and (acct, firm, size) in deleted_fingerprints:
+                        ev['_deleted'] = True
         
         # Calculate statistics including existing MT5 data and historical accounts
         statistics = calculate_statistics(evaluations, None, existing_mt5 if existing_mt5 else None, xlsx_notes=xlsx_notes,
@@ -6227,7 +6248,30 @@ def push_evaluations():
     data = request.json
     client_id = data.get('client_id') or request.api_user.get('client', 'Client1')
     
-    update_client_field(client_id, 'evaluations', data.get('evaluations', []))
+    new_evals = data.get('evaluations', [])
+    
+    # Preserve _deleted flags from existing data
+    existing_data = get_client_data(client_id) or {}
+    existing_evals = existing_data.get('evaluations', [])
+    deleted_fingerprints = set()
+    for ev in existing_evals:
+        if isinstance(ev, dict) and ev.get('_deleted'):
+            acct = str(ev.get('Account #') or ev.get('Account #.1') or '').strip()
+            firm = str(ev.get('Prop Firm') or '').strip()
+            size = str(ev.get('Account Size') or '').strip()
+            if acct:
+                deleted_fingerprints.add((acct, firm, size))
+    
+    if deleted_fingerprints:
+        for ev in new_evals:
+            if isinstance(ev, dict):
+                acct = str(ev.get('Account #') or ev.get('Account #.1') or '').strip()
+                firm = str(ev.get('Prop Firm') or '').strip()
+                size = str(ev.get('Account Size') or '').strip()
+                if acct and (acct, firm, size) in deleted_fingerprints:
+                    ev['_deleted'] = True
+    
+    update_client_field(client_id, 'evaluations', new_evals)
     log_action('PUSH_EVALUATIONS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
     
     return jsonify({"status": "success", "message": "Evaluations updated"})

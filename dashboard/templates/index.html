@@ -3200,6 +3200,13 @@
                 
                 // Sort by original row number (highest first = latest added at top)
                 rowsToRender.sort((a, b) => b.originalIndex - a.originalIndex);
+
+                // Assign sequential display numbers (no gaps from deleted rows)
+                // After sort, index 0 = highest originalIndex, so number from total down to 1
+                const totalVisible = rowsToRender.length;
+                rowsToRender.forEach((r, i) => {
+                    r.displayNum = totalVisible - i;
+                });
                 
                 // Active count check
                 if (rowsToRender.length === 0) {
@@ -3222,7 +3229,7 @@
                 let rowsBuilt = 0;
 
                 const pageRows = rowsToRender.slice(0, evalPage * EVAL_PAGE_SIZE);
-                pageRows.forEach(({ item: ev, originalIndex: index, rowNum: currentRowNum }) => {
+                pageRows.forEach(({ item: ev, originalIndex: index, rowNum: currentRowNum, displayNum }) => {
                   try {
                     const row = document.createElement('tr');
                     row.id = 'eval-row-' + index;
@@ -3300,7 +3307,7 @@
                     const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased');
 
                     row.innerHTML = `
-                        <td class="sticky-col-1">${index + 1}</td>
+                        <td class="sticky-col-1">${displayNum}</td>
                         <td class="sticky-col-2" style="text-align:center;padding:2px;">
                              ${USER_TYPE === 'super_admin' ? `<button onclick="deleteEvaluation(${index})" 
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
