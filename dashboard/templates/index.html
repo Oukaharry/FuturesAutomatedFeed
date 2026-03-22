@@ -3737,8 +3737,7 @@
                     <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);font-weight:600;color:#fbbf24;">${name}</td>
                     <td style="text-align:center;">${f.evals}</td>
                     <td style="text-align:center;">${f.active}</td>
-                    <td style="text-align:center;">${f.passed}</td>
-                    <td style="text-align:center;">${f.failed}</td>
+                    <td style="text-align:center;">${f.passed + f.failed > 0 ? Math.round(f.passed / (f.passed + f.failed) * 100) + '%' : '—'}</td>
                     <td style="text-align:right;">${fmt(f.payouts)}</td>
                     <td style="text-align:right;">${fmt(f.fees)}</td>
                     <td style="text-align:right;">${fmt(f.hedging)}</td>
@@ -3748,8 +3747,7 @@
                     <td style="position:sticky;left:0;z-index:15;background:inherit;">Totals</td>
                     <td style="text-align:center;">${tot.evals}</td>
                     <td style="text-align:center;">${tot.active}</td>
-                    <td style="text-align:center;">${tot.passed}</td>
-                    <td style="text-align:center;">${tot.failed}</td>
+                    <td style="text-align:center;">${tot.passed + tot.failed > 0 ? Math.round(tot.passed / (tot.passed + tot.failed) * 100) + '%' : '—'}</td>
                     <td style="text-align:right;">${fmt(tot.payouts)}</td>
                     <td style="text-align:right;">${fmt(tot.fees)}</td>
                     <td style="text-align:right;">${fmt(tot.hedging)}</td>
@@ -3913,8 +3911,7 @@
                                             <th style="position:sticky;left:0;z-index:15;background:var(--card-bg);text-align:left;">Prop Firm</th>
                                             <th style="text-align:center;">Evals</th>
                                             <th style="text-align:center;">Active</th>
-                                            <th style="text-align:center;">Passed</th>
-                                            <th style="text-align:center;">Failed</th>
+                                            <th style="text-align:center;">Funded Rate</th>
                                             <th style="text-align:right;">Payouts</th>
                                             <th style="text-align:right;">Fees</th>
                                             <th style="text-align:right;">Hedging</th>
