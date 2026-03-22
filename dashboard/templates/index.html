@@ -3838,7 +3838,7 @@
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.farming_results || 0)}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.profitability_completed.challenge_fees || 0))}</td></tr>
-                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy</span></td><td class="text-right">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td>Discrepancy from Google Sheets</td><td class="text-right">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.profitability_completed.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
@@ -3885,7 +3885,7 @@
                                         <tr><td>Sheet Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
-                                        <tr><td>Discrepancy</td><td class="text-right" id="hedging-discrepancy">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - sheetHedgingResults) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td>Discrepancy from Google Sheets</td><td class="text-right" id="hedging-discrepancy">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - sheetHedgingResults) : '<span style="color:#888">N/A</span>'}</td></tr>
                                     </table>
                                     
                                     <!-- MT5 Accounts Overview Section -->
@@ -3920,7 +3920,7 @@
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
-                                        <tr><td><span title="Difference between actual MT5 hedging results and Google Sheets recorded values">Discrepancy</span></td><td class="text-right">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr><td>Discrepancy from Google Sheets</td><td class="text-right">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(s.cashflow_inprogress.net_profit)}</strong></td></tr>
                                     </table>
                                 </div>
