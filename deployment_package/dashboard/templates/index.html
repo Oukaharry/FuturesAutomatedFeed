@@ -822,6 +822,7 @@
         let sheetHedgingResults = 0; // Store for recalculation
         let liveActualHedging = 0; // Live actual hedging from MT5 overview total profit
         let historicalDep = 0, historicalWith = 0, historicalBal = 0; // Historical account totals
+        let totalPriorActivity = 0; // Sum of all prior activity profits to subtract
 
         // --- Note System ---
         function handleCellClick(event, index, key) {
@@ -1439,7 +1440,10 @@
                 const combinedDep = mt5Dep + historicalDep;
                 const combinedWith = mt5With + historicalWith;
                 const combinedBal = mt5Bal + historicalBal;
-                liveActualHedging = combinedBal - (combinedDep + combinedWith);
+                // Compute total prior activity to subtract from profits
+                totalPriorActivity = (s.hedging_review.current_mt5_prior_activity || 0);
+                histAccts.forEach(a => { totalPriorActivity += a.prior_activity_profit || 0; });
+                liveActualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity;
                 statsContainer.innerHTML = `
                             <div class="stats-grid">
                                 <!-- Profitability - Completed -->
@@ -1509,7 +1513,7 @@
                                             <button class="btn-small" onclick="showAddHistoricalMT5Modal()" style="padding:4px 12px;font-size:11px;">+ Add Previous MT5</button>
                                         </div>
                                         <div id="historical-mt5-list">
-                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {})}
+                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {}, s.hedging_review.current_mt5_prior_activity || 0)}
                                         </div>
                                     </div>
                                     ` : (s.hedging_review.historical_accounts && s.hedging_review.historical_accounts.length > 0 ? `
@@ -1518,7 +1522,7 @@
                                             <span style="font-weight:600;font-size:13px;color:#334155;">📜 MT5 Accounts Overview</span>
                                         </div>
                                         <div>
-                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {})}
+                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {}, s.hedging_review.current_mt5_prior_activity || 0)}
                                         </div>
                                     </div>
                                     ` : '')}
@@ -1740,7 +1744,7 @@
             const totalDep = deposits + historicalDep;
             const totalWith = withdrawals + historicalWith;
             const totalBal = balance + historicalBal;
-            const actualHedging = totalBal - (totalDep + totalWith);
+            const actualHedging = totalBal - (totalDep + totalWith) - totalPriorActivity;
             liveActualHedging = actualHedging;
             const discrepancy = actualHedging - sheetHedgingResults;
             
@@ -1767,7 +1771,7 @@
             const totalDep = deposits + historicalDep;
             const totalWith = withdrawals + historicalWith;
             const totalBal = balance + historicalBal;
-            const actualHedging = totalBal - (totalDep + totalWith);
+            const actualHedging = totalBal - (totalDep + totalWith) - totalPriorActivity;
             const discrepancy = actualHedging - sheetHedgingResults;
             
             try {
@@ -1812,14 +1816,16 @@
         }
 
         // Historical MT5 Accounts Functions
-        function renderHistoricalMT5List(accounts, mt5Account) {
+        function renderHistoricalMT5List(accounts, mt5Account, currentPriorActivity) {
             const curDep = parseFloat(mt5Account.total_deposits) || 0;
             const curWith = parseFloat(mt5Account.total_withdrawals) || 0;
             const curBal = parseFloat(mt5Account.balance) || 0;
             const curProfit = curBal - (curDep + curWith);
+            const curPrior = currentPriorActivity || 0;
             const hasHistorical = accounts && accounts.length > 0;
             
             let totalDep = curDep, totalWith = curWith, totalBal = curBal, totalProfit = curProfit;
+            let sumPrior = curPrior;
             if (hasHistorical) {
                 accounts.forEach(acc => {
                     const d = acc.deposits || 0;
@@ -1829,12 +1835,17 @@
                     totalWith += w;
                     totalBal += b;
                     totalProfit += b - (d + w);
+                    sumPrior += acc.prior_activity_profit || 0;
                 });
             }
+            const adjustedTotalProfit = totalProfit - sumPrior;
             
             const thStyle = 'text-align:left;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;';
+            const colCount = IS_CLIENT ? 5 : 6;
             const delCol = IS_CLIENT ? '' : '<col style="width:7%">';
             const delTh = IS_CLIENT ? '' : '<th></th>';
+            const subTdStyle = 'padding:3px 10px 3px 24px;font-size:11px;color:#64748b;';
+            const subValStyle = 'text-align:left;padding:3px 10px;font-size:11px;';
             
             let html = '<div style="background:#f8fafc;border-radius:6px;padding:10px;margin-top:5px;border:1px solid #e2e8f0;">';
             html += '<table style="width:100%;font-size:12px;border-collapse:collapse;color:#1e293b;table-layout:fixed;">';
@@ -1848,7 +1859,7 @@
             html += delTh + '</tr>';
             
             // Current MT5 row (highlighted)
-            html += `<tr style="border-bottom:1px solid #e2e8f0;background:#eff6ff;">
+            html += `<tr style="border-bottom:${curPrior ? 'none' : '1px solid #e2e8f0'};background:#eff6ff;">
                 <td style="padding:8px 10px;color:#1d4ed8;font-weight:600;">🟢 Current MT5</td>
                 <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(curDep)}</td>
                 <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(curWith)}</td>
@@ -1856,6 +1867,21 @@
                 <td style="text-align:left;padding:8px 10px;color:${curProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(curProfit)}</td>
                 ${IS_CLIENT ? '' : '<td></td>'}
             </tr>`;
+            // Current MT5 prior activity sub-row
+            if (!IS_CLIENT) {
+                html += `<tr style="border-bottom:1px solid #e2e8f0;background:#eff6ff;">
+                    <td style="${subTdStyle}">↳ Prior Activity</td>
+                    <td colspan="3"></td>
+                    <td style="${subValStyle}"><input type="number" step="0.01" id="prior-activity-current" value="${curPrior}" onchange="savePriorActivity('current', this.value)" style="width:100px;padding:2px 6px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;color:#1e293b;text-align:right;"></td>
+                    <td></td>
+                </tr>`;
+            } else if (curPrior) {
+                html += `<tr style="border-bottom:1px solid #e2e8f0;background:#eff6ff;">
+                    <td style="${subTdStyle}">↳ Prior Activity</td>
+                    <td colspan="3"></td>
+                    <td style="${subValStyle}color:#d97706;">${formatMoney(curPrior)}</td>
+                </tr>`;
+            }
             
             // Historical account rows
             if (hasHistorical) {
@@ -1864,7 +1890,8 @@
                     const w = acc.withdrawals || 0;
                     const b = acc.final_balance || 0;
                     const p = b - (d + w);
-                    html += `<tr style="border-bottom:1px solid #f1f5f9;">
+                    const accPrior = acc.prior_activity_profit || 0;
+                    html += `<tr style="border-bottom:${accPrior || !IS_CLIENT ? 'none' : '1px solid #f1f5f9'};">
                         <td style="padding:8px 10px;color:#475569;">${acc.name || 'MT5 #' + (idx+1)}</td>
                         <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(d)}</td>
                         <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(w)}</td>
@@ -1872,16 +1899,41 @@
                         <td style="text-align:left;padding:8px 10px;color:${p >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(p)}</td>
                         ${IS_CLIENT ? '' : `<td style="text-align:center;padding:8px 4px;"><button onclick="deleteHistoricalMT5(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;">✕</button></td>`}
                     </tr>`;
+                    // Historical account prior activity sub-row
+                    if (!IS_CLIENT) {
+                        html += `<tr style="border-bottom:1px solid #f1f5f9;">
+                            <td style="${subTdStyle}">↳ Prior Activity</td>
+                            <td colspan="3"></td>
+                            <td style="${subValStyle}"><input type="number" step="0.01" id="prior-activity-hist-${idx}" value="${accPrior}" onchange="savePriorActivity(${idx}, this.value)" style="width:100px;padding:2px 6px;font-size:11px;background:#fff;border:1px solid #cbd5e1;border-radius:4px;color:#1e293b;text-align:right;"></td>
+                            <td></td>
+                        </tr>`;
+                    } else if (accPrior) {
+                        html += `<tr style="border-bottom:1px solid #f1f5f9;">
+                            <td style="${subTdStyle}">↳ Prior Activity</td>
+                            <td colspan="3"></td>
+                            <td style="${subValStyle}color:#d97706;">${formatMoney(accPrior)}</td>
+                        </tr>`;
+                    }
                 });
             }
             
-            // Totals row
+            // Prior Activity Deduction row (if any prior activity exists)
+            if (sumPrior) {
+                html += `<tr style="border-top:1px solid #cbd5e1;background:#f1f5f9;">
+                    <td style="padding:6px 10px;color:#d97706;font-size:11px;">PRIOR ACTIVITY TOTAL</td>
+                    <td colspan="3"></td>
+                    <td style="text-align:left;padding:6px 10px;color:#d97706;font-weight:600;font-size:11px;">-${formatMoney(sumPrior)}</td>
+                    ${IS_CLIENT ? '' : '<td></td>'}
+                </tr>`;
+            }
+            
+            // Totals row (adjusted for prior activity)
             html += `<tr style="border-top:2px solid #cbd5e1;font-weight:600;background:#f1f5f9;">
                 <td style="padding:8px 10px;color:#0f172a;">TOTALS</td>
                 <td style="text-align:left;padding:8px 10px;color:#0f172a;">${formatMoney(totalDep)}</td>
                 <td style="text-align:left;padding:8px 10px;color:#0f172a;">${formatMoney(totalWith)}</td>
                 <td style="text-align:left;padding:8px 10px;color:#0f172a;">${formatMoney(totalBal)}</td>
-                <td style="text-align:left;padding:8px 10px;color:${totalProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${formatMoney(totalProfit)}</td>
+                <td style="text-align:left;padding:8px 10px;color:${adjustedTotalProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${formatMoney(adjustedTotalProfit)}</td>
                 ${IS_CLIENT ? '' : '<td></td>'}
             </tr>`;
             html += '</table></div>';
@@ -2027,6 +2079,41 @@
                     return deleteHistoricalMT5(index, retryCount + 1);
                 }
                 
+                showSaveStatus('failed', error.message);
+            }
+        }
+
+        async function savePriorActivity(target, value, retryCount = 0) {
+            const priorProfit = parseFloat(value) || 0;
+            try {
+                const response = await fetch(`/api/historical_mt5/${CLIENT_ID}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'set_prior_activity',
+                        target: target,
+                        prior_activity_profit: priorProfit
+                    })
+                });
+                if (response.status === 401) {
+                    alert('Your session has expired. Please log in again.');
+                    window.location.href = '/login';
+                    return;
+                }
+                const data = await response.json();
+                if (data.status === 'success') {
+                    showSaveStatus('saved');
+                    updateDashboard();
+                } else {
+                    throw new Error(data.message || 'Failed to save');
+                }
+            } catch (error) {
+                console.error('Prior activity save error:', error);
+                if (retryCount < 3) {
+                    const delay = Math.pow(2, retryCount) * 1000;
+                    await new Promise(r => setTimeout(r, delay));
+                    return savePriorActivity(target, value, retryCount + 1);
+                }
                 showSaveStatus('failed', error.message);
             }
         }

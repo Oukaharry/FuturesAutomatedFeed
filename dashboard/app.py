@@ -4797,6 +4797,21 @@ def manage_historical_mt5(client_id):
                        f"Deleted historical MT5 for {client_id}: {deleted.get('name')}")
         else:
             return jsonify({"status": "error", "message": "Invalid index"}), 400
+    
+    elif action == 'set_prior_activity':
+        target = data.get('target')  # 'current' or integer index for historical
+        prior_profit = float(data.get('prior_activity_profit', 0))
+        if target == 'current':
+            hr['current_mt5_prior_activity'] = prior_profit
+            log_action('PRIOR_ACTIVITY_SET', user_type, user_identifier, get_remote_address(),
+                       f"Set current MT5 prior activity for {client_id}: {prior_profit}")
+        elif isinstance(target, int) and 0 <= target < len(hr['historical_accounts']):
+            hr['historical_accounts'][target]['prior_activity_profit'] = prior_profit
+            log_action('PRIOR_ACTIVITY_SET', user_type, user_identifier, get_remote_address(),
+                       f"Set historical MT5 #{target} prior activity for {client_id}: {prior_profit}")
+        else:
+            return jsonify({"status": "error", "message": "Invalid target"}), 400
+    
     else:
         return jsonify({"status": "error", "message": "Invalid action"}), 400
     
