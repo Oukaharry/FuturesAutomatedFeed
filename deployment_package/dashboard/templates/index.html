@@ -1812,7 +1812,7 @@
                 });
             }
             
-            const thStyle = 'text-align:right;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;';
+            const thStyle = 'text-align:left;padding:8px 10px;color:#475569;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;';
             const delCol = IS_CLIENT ? '' : '<col style="width:7%">';
             const delTh = IS_CLIENT ? '' : '<th></th>';
             
@@ -1830,10 +1830,10 @@
             // Current MT5 row (highlighted)
             html += `<tr style="border-bottom:1px solid #e2e8f0;background:#eff6ff;">
                 <td style="padding:8px 10px;color:#1d4ed8;font-weight:600;">🟢 Current MT5</td>
-                <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(curDep)}</td>
-                <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(curWith)}</td>
-                <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(curBal)}</td>
-                <td style="text-align:right;padding:8px 10px;color:${curProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(curProfit)}</td>
+                <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(curDep)}</td>
+                <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(curWith)}</td>
+                <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(curBal)}</td>
+                <td style="text-align:left;padding:8px 10px;color:${curProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(curProfit)}</td>
                 ${IS_CLIENT ? '' : '<td></td>'}
             </tr>`;
             
@@ -1846,10 +1846,10 @@
                     const p = b - (d + w);
                     html += `<tr style="border-bottom:1px solid #f1f5f9;">
                         <td style="padding:8px 10px;color:#475569;">${acc.name || 'MT5 #' + (idx+1)}</td>
-                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(d)}</td>
-                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(w)}</td>
-                        <td style="text-align:right;padding:8px 10px;color:#1e293b;">${formatMoney(b)}</td>
-                        <td style="text-align:right;padding:8px 10px;color:${p >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(p)}</td>
+                        <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(d)}</td>
+                        <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(w)}</td>
+                        <td style="text-align:left;padding:8px 10px;color:#1e293b;">${formatMoney(b)}</td>
+                        <td style="text-align:left;padding:8px 10px;color:${p >= 0 ? '#16a34a' : '#dc2626'};font-weight:600;">${formatMoney(p)}</td>
                         ${IS_CLIENT ? '' : `<td style="text-align:center;padding:8px 4px;"><button onclick="deleteHistoricalMT5(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;">✕</button></td>`}
                     </tr>`;
                 });
@@ -1858,10 +1858,10 @@
             // Totals row
             html += `<tr style="border-top:2px solid #cbd5e1;font-weight:600;background:#f1f5f9;">
                 <td style="padding:8px 10px;color:#0f172a;">TOTALS</td>
-                <td style="text-align:right;padding:8px 10px;color:#0f172a;">${formatMoney(totalDep)}</td>
-                <td style="text-align:right;padding:8px 10px;color:#0f172a;">${formatMoney(totalWith)}</td>
-                <td style="text-align:right;padding:8px 10px;color:#0f172a;">${formatMoney(totalBal)}</td>
-                <td style="text-align:right;padding:8px 10px;color:${totalProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${formatMoney(totalProfit)}</td>
+                <td style="text-align:left;padding:8px 10px;color:#0f172a;">${formatMoney(totalDep)}</td>
+                <td style="text-align:left;padding:8px 10px;color:#0f172a;">${formatMoney(totalWith)}</td>
+                <td style="text-align:left;padding:8px 10px;color:#0f172a;">${formatMoney(totalBal)}</td>
+                <td style="text-align:left;padding:8px 10px;color:${totalProfit >= 0 ? '#16a34a' : '#dc2626'};font-weight:700;">${formatMoney(totalProfit)}</td>
                 ${IS_CLIENT ? '' : '<td></td>'}
             </tr>`;
             html += '</table></div>';
