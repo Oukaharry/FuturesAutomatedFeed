@@ -973,12 +973,24 @@ def recalculate_all_stats():
             existing_hist = existing_hr.get('historical_accounts')
             old_fees = client_data.get('statistics', {}).get('profitability_completed', {}).get('challenge_fees', 0)
             new_stats = calculate_statistics(evals, mt5_account=existing_mt5, historical_accounts=existing_hist)
+            # ALWAYS preserve hedging_review MT5-derived fields
+            new_hr = new_stats.setdefault('hedging_review', {})
+            new_hr['total_deposits'] = existing_hr.get('total_deposits', 0)
+            new_hr['total_withdrawals'] = existing_hr.get('total_withdrawals', 0)
+            new_hr['current_balance'] = existing_hr.get('current_balance', 0)
+            new_hr['actual_hedging_results'] = existing_hr.get('actual_hedging_results', 0)
             # Preserve historical account fields
             if existing_hist:
-                new_stats.setdefault('hedging_review', {})['historical_accounts'] = existing_hist
-                new_stats['hedging_review']['historical_deposits'] = existing_hr.get('historical_deposits', 0)
-                new_stats['hedging_review']['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
-                new_stats['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
+                new_hr['historical_accounts'] = existing_hist
+                new_hr['historical_deposits'] = existing_hr.get('historical_deposits', 0)
+                new_hr['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
+                new_hr['historical_balance'] = existing_hr.get('historical_balance', 0)
+            # Recalculate discrepancy + net_profit with preserved MT5 values
+            new_hr['discrepancy'] = round(new_hr['actual_hedging_results'] - new_hr.get('sheet_hedging_results', 0), 2)
+            disc = new_hr['discrepancy']
+            for sk in ["profitability_completed", "cashflow_inprogress"]:
+                sec = new_stats[sk]
+                sec["net_profit"] = round(sec["payouts"] + sec["hedging_results"] + sec["farming_results"] - sec["challenge_fees"] + disc, 2)
             new_fees = new_stats.get('profitability_completed', {}).get('challenge_fees', 0)
             save_client_data(client_id, {'statistics': new_stats})
             results.append({"client_id": client_id, "old_fees": old_fees, "new_fees": new_fees, "changed": abs(float(new_fees) - float(old_fees)) > 0.01})
@@ -1240,26 +1252,30 @@ def api_client_push():
                 statistics['hedging_review']['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
                 statistics['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
             
-            # Push-once: if hedging_review was already populated (non-zero deposits
-            # or balance), keep the MT5-derived values but update sheet-derived values.
-            # Only the first push or manual edits via /api/hedging_review can set MT5 fields.
-            if existing_hr.get('total_deposits', 0) != 0 or existing_hr.get('current_balance', 0) != 0:
-                app.logger.info(f"📌 Hedging review already populated — preserving MT5 values, updating sheet values")
-                new_hr = statistics.get('hedging_review', {})
-                # Preserve MT5-derived fields from existing manual/push edits
-                new_hr['total_deposits'] = existing_hr.get('total_deposits', 0)
-                new_hr['total_withdrawals'] = existing_hr.get('total_withdrawals', 0)
-                new_hr['current_balance'] = existing_hr.get('current_balance', 0)
-                new_hr['actual_hedging_results'] = existing_hr.get('actual_hedging_results', 0)
-                # Preserve historical account fields
-                if existing_hr.get('historical_accounts'):
-                    new_hr['historical_accounts'] = existing_hr['historical_accounts']
-                    new_hr['historical_deposits'] = existing_hr.get('historical_deposits', 0)
-                    new_hr['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
-                    new_hr['historical_balance'] = existing_hr.get('historical_balance', 0)
-                # Recalculate discrepancy with fresh sheet_hedging_results
-                new_hr['discrepancy'] = round(new_hr['actual_hedging_results'] - new_hr.get('sheet_hedging_results', 0), 2)
-                statistics['hedging_review'] = new_hr
+            # ALWAYS preserve hedging_review MT5-derived fields from existing data.
+            # Only manual edits via /api/hedging_review or /api/client/push_hedging_review can set MT5 fields.
+            # Push Data should never overwrite live hedging review values.
+            app.logger.info(f"📌 Preserving hedging review MT5 values — push data never overwrites")
+            new_hr = statistics.get('hedging_review', {})
+            # Preserve MT5-derived fields from existing manual/push edits
+            new_hr['total_deposits'] = existing_hr.get('total_deposits', 0)
+            new_hr['total_withdrawals'] = existing_hr.get('total_withdrawals', 0)
+            new_hr['current_balance'] = existing_hr.get('current_balance', 0)
+            new_hr['actual_hedging_results'] = existing_hr.get('actual_hedging_results', 0)
+            # Preserve historical account fields
+            if existing_hr.get('historical_accounts'):
+                new_hr['historical_accounts'] = existing_hr['historical_accounts']
+                new_hr['historical_deposits'] = existing_hr.get('historical_deposits', 0)
+                new_hr['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
+                new_hr['historical_balance'] = existing_hr.get('historical_balance', 0)
+            # Recalculate discrepancy with preserved MT5 values + fresh sheet values
+            new_hr['discrepancy'] = round(new_hr['actual_hedging_results'] - new_hr.get('sheet_hedging_results', 0), 2)
+            statistics['hedging_review'] = new_hr
+            # Recalculate net_profit with the corrected discrepancy
+            disc = new_hr['discrepancy']
+            for section_key in ["profitability_completed", "cashflow_inprogress"]:
+                sec = statistics[section_key]
+                sec["net_profit"] = round(sec["payouts"] + sec["hedging_results"] + sec["farming_results"] - sec["challenge_fees"] + disc, 2)
             
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
@@ -2123,16 +2139,26 @@ def api_delete_evaluation():
     # Recalculate statistics with existing MT5 + historical accounts
     from utils.data_processor import calculate_statistics
     existing_mt5 = client_data.get('account') or None
-    existing_hist = client_data.get('statistics', {}).get('hedging_review', {}).get('historical_accounts')
+    existing_hr_del = client_data.get('statistics', {}).get('hedging_review', {})
+    existing_hist = existing_hr_del.get('historical_accounts')
     new_stats = calculate_statistics(evaluations, None, existing_mt5 if existing_mt5 else None,
                                      historical_accounts=existing_hist)
-    # Preserve historical accounts
+    # ALWAYS preserve hedging_review MT5-derived fields
+    new_hr = new_stats.setdefault('hedging_review', {})
+    new_hr['total_deposits'] = existing_hr_del.get('total_deposits', 0)
+    new_hr['total_withdrawals'] = existing_hr_del.get('total_withdrawals', 0)
+    new_hr['current_balance'] = existing_hr_del.get('current_balance', 0)
+    new_hr['actual_hedging_results'] = existing_hr_del.get('actual_hedging_results', 0)
     if existing_hist:
-        old_hr = client_data.get('statistics', {}).get('hedging_review', {})
-        new_stats.setdefault('hedging_review', {})['historical_accounts'] = existing_hist
-        new_stats['hedging_review']['historical_deposits'] = old_hr.get('historical_deposits', 0)
-        new_stats['hedging_review']['historical_withdrawals'] = old_hr.get('historical_withdrawals', 0)
-        new_stats['hedging_review']['historical_balance'] = old_hr.get('historical_balance', 0)
+        new_hr['historical_accounts'] = existing_hist
+        new_hr['historical_deposits'] = existing_hr_del.get('historical_deposits', 0)
+        new_hr['historical_withdrawals'] = existing_hr_del.get('historical_withdrawals', 0)
+        new_hr['historical_balance'] = existing_hr_del.get('historical_balance', 0)
+    new_hr['discrepancy'] = round(new_hr['actual_hedging_results'] - new_hr.get('sheet_hedging_results', 0), 2)
+    disc = new_hr['discrepancy']
+    for sk in ["profitability_completed", "cashflow_inprogress"]:
+        sec = new_stats[sk]
+        sec["net_profit"] = round(sec["payouts"] + sec["hedging_results"] + sec["farming_results"] - sec["challenge_fees"] + disc, 2)
     client_data['statistics'] = new_stats
     
     # Save with history tracking - the previous version contains the deleted row
