@@ -2839,11 +2839,25 @@ def api_client_push():
                 statistics['hedging_review']['historical_balance'] = existing_hr.get('historical_balance', 0)
             
             # Push-once: if hedging_review was already populated (non-zero deposits
-            # or balance), keep the existing values. Only the first push or manual
-            # edits via /api/hedging_review can set these.
+            # or balance), keep the MT5-derived values but update sheet-derived values.
+            # Only the first push or manual edits via /api/hedging_review can set MT5 fields.
             if existing_hr.get('total_deposits', 0) != 0 or existing_hr.get('current_balance', 0) != 0:
-                app.logger.info(f"📌 Hedging review already populated — preserving existing values (push-once)")
-                statistics['hedging_review'] = existing_hr
+                app.logger.info(f"📌 Hedging review already populated — preserving MT5 values, updating sheet values")
+                new_hr = statistics.get('hedging_review', {})
+                # Preserve MT5-derived fields from existing manual/push edits
+                new_hr['total_deposits'] = existing_hr.get('total_deposits', 0)
+                new_hr['total_withdrawals'] = existing_hr.get('total_withdrawals', 0)
+                new_hr['current_balance'] = existing_hr.get('current_balance', 0)
+                new_hr['actual_hedging_results'] = existing_hr.get('actual_hedging_results', 0)
+                # Preserve historical account fields
+                if existing_hr.get('historical_accounts'):
+                    new_hr['historical_accounts'] = existing_hr['historical_accounts']
+                    new_hr['historical_deposits'] = existing_hr.get('historical_deposits', 0)
+                    new_hr['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
+                    new_hr['historical_balance'] = existing_hr.get('historical_balance', 0)
+                # Recalculate discrepancy with fresh sheet_hedging_results
+                new_hr['discrepancy'] = round(new_hr['actual_hedging_results'] - new_hr.get('sheet_hedging_results', 0), 2)
+                statistics['hedging_review'] = new_hr
             
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
