@@ -2104,11 +2104,11 @@ def client_dashboard(client_id):
         own_name = session_user.get('user_identifier')
         if client_id == own_name:
             return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=False, client_email=client_email, is_active=is_active)
+                                   can_edit_hedging=True, client_email=client_email, is_active=is_active)
         # Only primary KYC clients can view linked accounts
         if is_kyc_primary(own_name) and client_id in get_all_kyc_accounts(own_name):
             return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=False, client_email=client_email, is_active=is_active)
+                                   can_edit_hedging=True, client_email=client_email, is_active=is_active)
     return redirect('/')
 
 # ============ Hierarchy API with Role-Based Access Control ============
@@ -4564,11 +4564,8 @@ def update_hedging_review(client_id):
     user_type = session_user.get('user_type')
     user_identifier = session_user.get('user_identifier')
     
-    # Only allow traders, admins, and super_admins to edit
-    if user_type not in ['trader', 'admin', 'super_admin']:
-        log_action('HEDGING_EDIT_DENIED', user_type, user_identifier, get_remote_address(), 
-                   f"Client tried to edit hedging for: {client_id}", False)
-        return jsonify({"status": "error", "message": "Only traders, admins, and super admins can edit hedging review"}), 403
+    # Allow all authenticated users to edit their own hedging review
+    # Traders/admins/super_admins can edit any client they have access to
     
     # Check if user can access this client
     if not can_access_client(user_type, user_identifier, client_id):
@@ -4593,8 +4590,16 @@ def update_hedging_review(client_id):
     hr['total_deposits'] = float(data.get('total_deposits', hr.get('total_deposits', 0)))
     hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
     hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
-    hr['actual_hedging_results'] = float(data.get('actual_hedging_results', hr.get('actual_hedging_results', 0)))
-    hr['discrepancy'] = float(data.get('discrepancy', hr.get('discrepancy', 0)))
+
+    # Auto-negate withdrawals if entered as positive
+    if hr['total_withdrawals'] > 0:
+        hr['total_withdrawals'] = -hr['total_withdrawals']
+
+    # Recalculate: actual = balance - (deposits + withdrawals), withdrawals are negative
+    net_deposits = hr['total_deposits'] + hr['total_withdrawals']
+    hr['actual_hedging_results'] = round(hr['current_balance'] - net_deposits, 2)
+    sheet_hr = hr.get('sheet_hedging_results', 0)
+    hr['discrepancy'] = round(hr['actual_hedging_results'] - sheet_hr, 2)
     
     # Also store in account for consistency with MT5 push
     if 'account' not in client_data:
@@ -4648,10 +4653,14 @@ def api_push_hedging_review():
     hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
     hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
 
-    # Recalculate actual hedging results: balance - deposits + withdrawals
-    hr['actual_hedging_results'] = round(
-        hr['current_balance'] - hr['total_deposits'] + hr['total_withdrawals'], 2
-    )
+    # Auto-negate withdrawals if entered as positive
+    if hr['total_withdrawals'] > 0:
+        hr['total_withdrawals'] = -hr['total_withdrawals']
+
+    # Recalculate actual hedging results: balance - (deposits + withdrawals)
+    # Withdrawals are negative, so deposits + withdrawals = net deposits
+    net_deposits = hr['total_deposits'] + hr['total_withdrawals']
+    hr['actual_hedging_results'] = round(hr['current_balance'] - net_deposits, 2)
 
     # Recalculate discrepancy
     sheet_hr = hr.get('sheet_hedging_results', 0)

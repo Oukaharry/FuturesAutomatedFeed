@@ -1704,12 +1704,19 @@
         // Hedging Review Manual Edit Functions
         function updateHedgingCalc() {
             const deposits = parseFloat(document.getElementById('hedging-deposits')?.value) || 0;
-            const withdrawals = parseFloat(document.getElementById('hedging-withdrawals')?.value) || 0;
+            let withdrawals = parseFloat(document.getElementById('hedging-withdrawals')?.value) || 0;
             const balance = parseFloat(document.getElementById('hedging-balance')?.value) || 0;
             
-            // Formula: Actual Hedging Results = Balance - (Deposits - Withdrawals)
-            // Note: withdrawals should be negative, so we add them
-            const netDeposits = deposits + withdrawals;  // withdrawals is negative
+            // Auto-negate withdrawals if entered as positive
+            if (withdrawals > 0) {
+                withdrawals = -withdrawals;
+                const wInput = document.getElementById('hedging-withdrawals');
+                if (wInput) wInput.value = withdrawals;
+            }
+            
+            // Formula: Actual Hedging Results = Balance - (Deposits + Withdrawals)
+            // Withdrawals are negative, so deposits + withdrawals = net deposits
+            const netDeposits = deposits + withdrawals;
             const actualHedging = balance - netDeposits;
             const discrepancy = actualHedging - sheetHedgingResults;
             
@@ -1722,8 +1729,15 @@
         
         async function saveHedgingReview(retryCount = 0) {
             const deposits = parseFloat(document.getElementById('hedging-deposits')?.value) || 0;
-            const withdrawals = parseFloat(document.getElementById('hedging-withdrawals')?.value) || 0;
+            let withdrawals = parseFloat(document.getElementById('hedging-withdrawals')?.value) || 0;
             const balance = parseFloat(document.getElementById('hedging-balance')?.value) || 0;
+            
+            // Auto-negate withdrawals if entered as positive
+            if (withdrawals > 0) {
+                withdrawals = -withdrawals;
+                const wInput = document.getElementById('hedging-withdrawals');
+                if (wInput) wInput.value = withdrawals;
+            }
             
             // Calculate actual hedging and discrepancy
             const netDeposits = deposits + withdrawals;
