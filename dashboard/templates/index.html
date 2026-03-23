@@ -1042,6 +1042,10 @@
         .prop-field-input::-webkit-outer-spin-button, .prop-field-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .prop-field-input::placeholder { color: #475569; }
         .prop-field-input:focus { border-color: rgba(167,139,250,0.5); outline: none; }
+        .prop-field-full { flex: 1 1 100%; min-width: 100%; }
+        .prop-field-textarea { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.75rem; resize: vertical; min-height: 28px; font-family: inherit; box-sizing: border-box; }
+        .prop-field-textarea::placeholder { color: #475569; }
+        .prop-field-textarea:focus { border-color: rgba(167,139,250,0.5); outline: none; }
 
         /* Preview output box */
         .summary-preview {
@@ -6208,12 +6212,12 @@
               template: (f) => `${f.renewals || 0} renewal(s), ${f.cancellations || 0} cancellation(s)` },
             { id: 'trading_delays', num: 3, title: 'Trading / Operational Delays',
               okText: 'All accounts traded on schedule — no delays or issues.',
-              fields: [{ key: 'delay_mins', label: 'Delay (mins)' }],
-              template: (f) => `${f.delay_mins || 0} min trading delay` },
+              fields: [{ key: 'details', label: 'Details', type: 'text' }],
+              template: (f) => f.details || 'Trading delay reported' },
             { id: 'payout_requests', num: 4, title: 'Payout Requests',
               okText: 'No payout requests pending.',
-              fields: [{ key: 'amount', label: 'Amount ($)', prefix: '$' }],
-              template: (f) => `$${f.amount || 0} payout requested — awaiting approval` },
+              fields: [{ key: 'count', label: 'Payouts Requested' }],
+              template: (f) => `${f.count || 0} payout(s) requested — awaiting approval` },
             { id: 'payout_confirm', num: 5, title: 'Payout Confirmation & Sheet Update',
               okText: 'All confirmed payouts recorded — sheet is up to date.',
               fields: [{ key: 'amount', label: 'Amount ($)', prefix: '$' }],
@@ -6384,6 +6388,13 @@
                             const safePf = pf.replace(/'/g, "\\'");
                             const fieldInputs = !isAllGood ? s.fields.map(f => {
                                 const val = (pn.fields && pn.fields[f.key]) || '';
+                                if (f.type === 'text') {
+                                    return `<div class="prop-field-group prop-field-full">
+                                        <label class="prop-field-label">${f.label}</label>
+                                        <textarea class="prop-field-textarea" placeholder="Describe the issue..."
+                                            oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">${val}</textarea>
+                                    </div>`;
+                                }
                                 return `<div class="prop-field-group">
                                     <label class="prop-field-label">${f.label}</label>
                                     <input type="number" class="prop-field-input" value="${val}" min="0" step="any"
