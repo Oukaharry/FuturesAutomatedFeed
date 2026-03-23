@@ -2255,7 +2255,8 @@
                     }
                     kycAccounts = data.accounts;
                     isKycPrimary = data.is_primary;
-                    document.getElementById('kyc-single-badge').style.display = 'none';
+                    const singleBadge = document.getElementById('kyc-single-badge');
+                    if (singleBadge) singleBadge.style.display = 'none';
                     document.getElementById('kyc-switcher-wrap').style.display = 'block';
                     const list = document.getElementById('kyc-dropdown-list');
                     list.innerHTML = kycAccounts.map(a => `
