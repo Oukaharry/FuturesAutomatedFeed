@@ -1958,8 +1958,8 @@
             </div>
 
             <!-- Trade History -->
-            <h3>Trade History</h3>
-            <table id="history-table">
+            <h3 style="cursor:pointer;" onclick="const t=document.getElementById('history-table');const m=document.getElementById('no-history-msg');const a=this.querySelector('.th-arrow'); if(t)t.style.display=t.style.display==='none'?'':'none'; if(m)m.style.display=m.style.display==='none'?'':'none'; a.textContent=t&&t.style.display==='none'?'▸':'▾';"><span class="th-arrow">▸</span> Trade History</h3>
+            <table id="history-table" style="display:none;">
                 <thead>
                     <tr>
                         <th>#</th>
@@ -1976,7 +1976,7 @@
                 </thead>
                 <tbody id="history-body"></tbody>
             </table>
-            <div id="no-history-msg" class="no-data">Waiting for data...</div>
+            <div id="no-history-msg" class="no-data" style="display:none;">Waiting for data...</div>
         </div>
 
         <!-- Hedge Accounts Tab -->
@@ -4062,7 +4062,7 @@
                                 <!-- Hedging section toggle -->
                                 <div style="order:3; grid-column: 1 / -1; display:flex; justify-content:center; margin: -8px 0 -12px;">
                                     <button onclick="const w=document.getElementById('hedging-details-wrap'); const a=this.querySelector('.hd-arrow'); w.style.display=w.style.display==='none'?'grid':'none'; a.textContent=w.style.display==='none'?'▸':'▾';" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
-                                        <span class="hd-arrow">▸</span> Hedging Details & MT5 Accounts
+                                        <span class="hd-arrow">▸</span> Live Hedging Review & MT5 Accounts Overview
                                     </button>
                                 </div>
                                 <div id="hedging-details-wrap" style="order:4; grid-column: 1 / -1; display:none; grid-template-columns: repeat(2, 1fr); gap:20px;">
@@ -4161,7 +4161,8 @@
                             
                             <!-- Payout History -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
-                                <div class="card-header" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,78,59,0.25));color:#34d399;">PAYOUT HISTORY</div>
+                                <div class="card-header" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,78,59,0.25));color:#34d399;cursor:pointer;" onclick="const w=this.nextElementSibling; w.style.display=w.style.display==='none'?'':'none'; this.querySelector('.ph-arrow').textContent=w.style.display==='none'?'▸':'▾';"><span class="ph-arrow">▸</span> PAYOUT HISTORY</div>
+                                <div style="display:none;">
                                 <div style="display:flex; gap:6px; align-items:center; padding:8px 12px;">
                                     <span style="color:#94a3b8; font-size:0.7rem;">From</span>
                                     <input type="date" id="stats-payout-from" style="padding:2px 6px; font-size:0.75rem; width:120px;">
@@ -4182,6 +4183,7 @@
                                     </thead>
                                     <tbody id="stats-payouts-body"></tbody>
                                 </table>
+                                </div>
                             </div>
                         
                         `;
