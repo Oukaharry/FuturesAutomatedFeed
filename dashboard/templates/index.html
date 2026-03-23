@@ -928,11 +928,7 @@
         .checklist-fab .fab-badge.pending { background: #f59e0b; color: #000; }
 
         .checklist-overlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.6);
-            z-index: 100001;
-            display: none;
+            display: none !important;
         }
         .checklist-panel {
             position: fixed;
@@ -1402,7 +1398,7 @@
         <i class="fas fa-clipboard-check"></i>
         <span class="fab-badge pending" id="checklist-fab-badge" style="display:none;"></span>
     </button>
-    <div class="checklist-overlay" id="checklist-overlay" onclick="toggleChecklistPanel()"></div>
+    <div class="checklist-overlay" id="checklist-overlay"></div>
     <div class="checklist-panel" id="checklist-panel">
         <div class="checklist-panel-header">
             <h3><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> Daily Summaries</h3>
