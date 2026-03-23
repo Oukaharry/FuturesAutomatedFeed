@@ -1207,38 +1207,185 @@
 
         /* Tables & Content */
         .tab-content {
-            background: var(--card-bg) !important;
-            padding: 12px 16px !important;
-            border: 1px solid var(--border-color) !important;
-            border-radius: 12px !important;
+            background: linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.6) 100%) !important;
+            padding: 20px !important;
+            border: 1px solid rgba(255,255,255,0.06) !important;
+            border-radius: 14px !important;
             overflow: clip !important;
             color: var(--text-primary) !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+            backdrop-filter: blur(8px);
+        }
+        
+        /* Cards inside tab content */
+        .card {
+            background: linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.7) 100%) !important;
+            border: 1px solid rgba(255,255,255,0.06) !important;
+            border-radius: 14px !important;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.2) !important;
+        }
+        .card-header {
+            border-bottom-color: rgba(255,255,255,0.06) !important;
+            font-size: 0.95rem !important;
+        }
+
+        /* Stats grid layout */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        /* Section headings inside tab content */
+        .tab-content h3, .card h3 {
+            font-size: 1.05rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.2px;
+        }
+
+        /* Primary action buttons */
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+            color: #fff !important;
+            border: none !important;
+            padding: 8px 18px !important;
+            border-radius: 10px !important;
+            font-size: 0.85rem !important;
+            font-weight: 600 !important;
+            cursor: pointer !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            transition: all 0.2s ease !important;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.3) !important;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px) !important;
+            box-shadow: 0 4px 14px rgba(59,130,246,0.4) !important;
+        }
+
+        /* Section header (flex row with title + actions) */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        /* Filter / toolbar bars */
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            background: linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.7));
+            padding: 12px 18px;
+            border-radius: 12px;
+            border: 1px solid rgba(96,165,250,0.12);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            margin-bottom: 16px;
+        }
+
+        /* Secondary / outline buttons */
+        .btn-secondary {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #94a3b8;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+            color: #e2e8f0;
+        }
+
+        /* Danger-themed button */
+        .btn-danger {
+            background: rgba(248,113,113,0.12);
+            border: 1px solid rgba(248,113,113,0.25);
+            color: #f87171;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-danger:hover {
+            background: rgba(248,113,113,0.2);
         }
         
         /* Table Elements */
         table {
             color: var(--text-primary) !important;
+            border-collapse: separate !important;
+            border-spacing: 0 !important;
+            width: 100%;
+        }
+        table:not(#evaluations-table) {
+            background: rgba(15,23,42,0.4) !important;
+            border-radius: 10px !important;
+            overflow: hidden !important;
         }
         th {
-            background: rgba(15, 23, 42, 0.8) !important;
-            color: white !important;
+            background: rgba(10,15,30,0.85) !important;
+            color: #94a3b8 !important;
             text-align: left !important;
-            border-bottom: 1px solid var(--border-color) !important;
+            border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+            padding: 10px 14px !important;
+            font-size: 0.75rem !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.5px !important;
+            font-weight: 600 !important;
         }
         td {
-            border-bottom: 1px solid var(--border-color) !important;
+            border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+            padding: 8px 14px !important;
+        }
+        /* Summary table cells should keep their own padding */
+        .summary-table td {
+            padding: 10px 0 !important;
+            border-bottom: 1px dashed rgba(255,255,255,0.06) !important;
         }
         tr:hover td {
-            background: rgba(255,255,255,0.05) !important;
+            background: rgba(251,191,36,0.04) !important;
         }
 
         /* Inputs */
         input, select, textarea {
             background: rgba(15, 23, 42, 0.6) !important;
-            border: 1px solid var(--border-color) !important;
+            border: 1px solid rgba(255,255,255,0.08) !important;
             color: white !important;
+            border-radius: 8px;
+            transition: all 0.2s ease;
         }
-        input:focus { border-color: var(--accent-color) !important; }
+        input:focus, select:focus, textarea:focus {
+            border-color: rgba(96,165,250,0.5) !important;
+            box-shadow: 0 0 0 3px rgba(96,165,250,0.1);
+            outline: none;
+        }
+
+        /* No-data messages */
+        .no-data {
+            text-align: center;
+            padding: 40px 20px;
+            color: #64748b;
+            font-size: 0.88rem;
+        }
+
+        /* Dividers */
+        hr {
+            border: none !important;
+            border-top: 1px solid rgba(255,255,255,0.06) !important;
+            margin: 24px 0 !important;
+        }
 
         /* History Panel Overrides */
         .history-panel {
@@ -1804,7 +1951,7 @@
 
         <!-- Hedge Accounts Tab -->
         <div id="hedge" class="tab-content">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div class="section-header">
                 <h3>Hedge Accounts Configuration</h3>
                 <button class="btn-primary" onclick="addHedgeAccount()">+ Add Hedge Account</button>
             </div>
@@ -1825,7 +1972,7 @@
             </table>
             <div id="no-hedge-accounts-msg" class="no-data">No hedge accounts configured. Add one to get started.</div>
             
-            <hr style="margin: 30px 0; border-top: 1px solid #334155;">
+            <hr>
 
             <h3>Open Positions (Live)</h3>
             <table id="positions-table">
@@ -1851,7 +1998,7 @@
 
         <!-- Prop Firm Accounts Tab -->
         <div id="prop" class="tab-content">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div class="section-header">
                 <h3>Prop Firm Configuration</h3>
                 <button class="btn-primary" onclick="addPropAccount()">+ Add Prop Account</button>
             </div>
@@ -1878,7 +2025,7 @@
 
         <!-- VPS Tab -->
         <div id="vps" class="tab-content">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div class="section-header">
                 <h3>VPS Management</h3>
                 <button class="btn-primary" onclick="addVPSAccount()">+ Add VPS</button>
             </div>
@@ -1900,13 +2047,13 @@
 
         <!-- Payment Info Tab -->
         <div id="payment" class="tab-content">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div class="section-header">
                 <h3>Payment Info</h3>
                 <button class="btn-primary" onclick="addPaymentInfo()">+ Add Card</button>
             </div>
 
             <!-- Shared Address Section -->
-            <div id="payment-address-section" style="background: var(--card-bg, #1e293b); border: 1px solid var(--border-color, #334155); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div id="payment-address-section" style="background: linear-gradient(135deg, rgba(30,41,59,0.6), rgba(15,23,42,0.5)); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 2px 10px rgba(0,0,0,0.15);">
                 <h4 style="margin: 0 0 12px 0; color: var(--text-muted, #94a3b8); font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;">Billing Address</h4>
                 <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px;">
                     <div>
@@ -1953,19 +2100,19 @@
         <!-- Issues Tab (traders/admins only) -->
         {% if user_type != 'client' %}
         <div id="issues" class="tab-content">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+            <div class="section-header">
                 <h3 style="color:#f87171; margin:0; display:flex; align-items:center; gap:8px;">
                     <i class="fas fa-exclamation-triangle"></i> Data Quality Issues
                 </h3>
                 <div style="display:flex; align-items:center; gap:10px;">
-                    <select id="issues-severity-filter" onchange="filterIssuesTable()" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:0.85rem;">
+                    <select id="issues-severity-filter" onchange="filterIssuesTable()" style="padding:6px 10px; font-size:0.85rem;">
                         <option value="">All Severities</option>
                         <option value="critical">Critical</option>
                         <option value="high">High</option>
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                     </select>
-                    <button onclick="loadClientIssues()" style="background:rgba(248,113,113,0.15); border:1px solid rgba(248,113,113,0.3); color:#f87171; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:500;">
+                    <button class="btn-danger" onclick="loadClientIssues()">
                         <i class="fas fa-sync-alt" style="margin-right:4px;"></i> Refresh
                     </button>
                 </div>
@@ -1976,15 +2123,15 @@
             <div id="issues-empty" style="display:none; text-align:center; padding:40px; color:#4ade80;">
                 <i class="fas fa-check-circle" style="font-size:2rem; margin-bottom:10px;"></i><br>No issues found — all data looks good!
             </div>
-            <table id="issues-table" style="display:none; width:100%; border-collapse:collapse;">
+            <table id="issues-table" style="display:none;">
                 <thead>
-                    <tr style="border-bottom:1px solid #334155;">
-                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Severity</th>
-                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Issue</th>
-                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Detail</th>
-                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Row</th>
-                        <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Est. Date</th>
-                        <th style="text-align:center; padding:10px 12px; color:#94a3b8; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;">Go To</th>
+                    <tr>
+                        <th>Severity</th>
+                        <th>Issue</th>
+                        <th>Detail</th>
+                        <th>Row</th>
+                        <th>Est. Date</th>
+                        <th style="text-align:center;">Go To</th>
                     </tr>
                 </thead>
                 <tbody id="issues-table-body"></tbody>
@@ -1995,18 +2142,18 @@
         <!-- KYC Portfolio Tab (Primary KYC clients only) -->
         <div id="kyc-portfolio" class="tab-content">
             <div class="card" style="margin-top: 20px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;">
+                <div class="section-header" style="margin-bottom:20px;">
                     <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px;">
                         <i class="fas fa-users"></i> Combined KYC Portfolio
                     </h3>
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <div style="display:flex; align-items:center; gap:6px;">
                             <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">From</label>
-                            <input type="date" id="kyc-date-from" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:0.85rem;">
+                            <input type="date" id="kyc-date-from" style="padding:6px 10px; font-size:0.85rem;">
                         </div>
                         <div style="display:flex; align-items:center; gap:6px;">
                             <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">To</label>
-                            <input type="date" id="kyc-date-to" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155; border-radius:6px; padding:6px 10px; font-size:0.85rem;">
+                            <input type="date" id="kyc-date-to" style="padding:6px 10px; font-size:0.85rem;">
                         </div>
                         <button onclick="loadKycPortfolio()" style="background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
                             <i class="fas fa-filter"></i> Apply
@@ -3997,9 +4144,9 @@
                                 <div class="card-header" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,78,59,0.25));color:#34d399;">PAYOUT HISTORY</div>
                                 <div style="display:flex; gap:6px; align-items:center; padding:8px 12px;">
                                     <span style="color:#94a3b8; font-size:0.7rem;">From</span>
-                                    <input type="date" id="stats-payout-from" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:2px 6px; border-radius:4px; font-size:0.75rem; width:120px;">
+                                    <input type="date" id="stats-payout-from" style="padding:2px 6px; font-size:0.75rem; width:120px;">
                                     <span style="color:#94a3b8; font-size:0.7rem;">To</span>
-                                    <input type="date" id="stats-payout-to" style="background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:2px 6px; border-radius:4px; font-size:0.75rem; width:120px;">
+                                    <input type="date" id="stats-payout-to" style="padding:2px 6px; font-size:0.75rem; width:120px;">
                                     <button onclick="filterStatsPayouts()" style="background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; padding:3px 10px; border-radius:4px; font-weight:600; cursor:pointer; font-size:0.7rem;">Filter</button>
                                     <button onclick="document.getElementById('stats-payout-from').value='';document.getElementById('stats-payout-to').value='';filterStatsPayouts();" style="background:rgba(100,116,139,0.2); border:1px solid #475569; color:#94a3b8; padding:3px 10px; border-radius:4px; cursor:pointer; font-size:0.7rem;">Reset</button>
                                     <span id="stats-payouts-summary" style="margin-left:auto; color:#64748b; font-size:0.7rem;"></span>
