@@ -1217,16 +1217,32 @@
             backdrop-filter: blur(8px);
         }
         
-        /* Cards inside tab content */
-        .card {
+        /* Cards inside tab content (except stats tab — keeps original style.css design) */
+        :not(#stats) > .card,
+        :not(#stats) > * > .card {
             background: linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.7) 100%) !important;
             border: 1px solid rgba(255,255,255,0.06) !important;
             border-radius: 14px !important;
             box-shadow: 0 2px 12px rgba(0,0,0,0.2) !important;
         }
-        .card-header {
+        :not(#stats) > .card .card-header,
+        :not(#stats) > * > .card .card-header {
             border-bottom-color: rgba(255,255,255,0.06) !important;
             font-size: 0.95rem !important;
+        }
+
+        /* Stats tab — let style.css card design shine through */
+        #stats .card {
+            background: var(--card-bg) !important;
+            background-image: var(--gradient-card) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: var(--radius) !important;
+            box-shadow: var(--shadow-sm) !important;
+        }
+        #stats .card:hover {
+            transform: translateY(-5px) !important;
+            box-shadow: var(--shadow-lg), var(--shadow-glow) !important;
+            border-color: rgba(251, 191, 36, 0.3) !important;
         }
 
         /* Stats grid layout */
