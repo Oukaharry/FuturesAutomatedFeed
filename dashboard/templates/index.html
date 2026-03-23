@@ -6552,10 +6552,12 @@
             const disabled = _disabledPropFirms[_activeClient] || new Set();
             let filled = 0;
 
-            // Prop firm toggle bar (shown once at top)
+            // Prop firm toggle bar (shown once at top, collapsed by default)
             const toggleBar = allFirms.length > 0 ? `<div style="margin-bottom:12px; padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px;">
-                <div style="font-size:0.7rem; color:#64748b; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Prop Firms (click to toggle off)</div>
-                <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                <div onclick="const el=this.nextElementSibling; const arr=this.querySelector('.toggle-arrow'); el.style.display=el.style.display==='none'?'flex':'none'; arr.textContent=el.style.display==='none'?'▸':'▾';" style="font-size:0.7rem; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; display:flex; align-items:center; gap:4px; user-select:none;">
+                    <span class="toggle-arrow" style="font-size:0.8rem;">▸</span> Prop Firms (click to toggle off)${disabled.size > 0 ? ' <span style="color:#f87171; margin-left:4px;">(' + disabled.size + ' hidden)</span>' : ''}
+                </div>
+                <div style="display:none; flex-wrap:wrap; gap:4px; margin-top:6px;">
                     ${allFirms.map(pf => {
                         const isOff = disabled.has(pf);
                         const safePf = pf.replace(/'/g, "\\'");
