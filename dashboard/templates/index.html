@@ -1060,6 +1060,8 @@
             white-space: pre-wrap;
             line-height: 1.6;
             display: none;
+            flex: 1;
+            overflow-y: auto;
         }
         .checklist-panel-footer {
             padding: 12px 20px;
@@ -6241,6 +6243,8 @@
         let _clientList = [];       // [ 'ClientA', 'ClientB', ... ]
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
+        let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Take Profit Trader'];
 
         function _getDefaultSections() {
             const d = {};
@@ -6249,14 +6253,33 @@
         }
 
         function _getClientPropFirms() {
-            // Extract unique prop firm names from the client's evaluations
+            // Return managed prop firms that the client actually trades (from evaluations), minus disabled ones
             if (!currentData || !currentData.evaluations) return [];
-            const firms = new Set();
+            const clientFirms = new Set();
             currentData.evaluations.forEach(ev => {
                 const pf = (ev['Prop Firm'] || '').trim();
-                if (pf) firms.add(pf);
+                if (pf) clientFirms.add(pf);
             });
-            return Array.from(firms).sort((a, b) => a.localeCompare(b));
+            const disabled = _disabledPropFirms[_activeClient] || new Set();
+            return MANAGED_PROP_FIRMS.filter(pf => clientFirms.has(pf) && !disabled.has(pf));
+        }
+
+        function _getAllClientPropFirms() {
+            // All managed prop firms present in evaluations (including disabled) for toggle UI
+            if (!currentData || !currentData.evaluations) return [];
+            const clientFirms = new Set();
+            currentData.evaluations.forEach(ev => {
+                const pf = (ev['Prop Firm'] || '').trim();
+                if (pf) clientFirms.add(pf);
+            });
+            return MANAGED_PROP_FIRMS.filter(pf => clientFirms.has(pf));
+        }
+
+        function togglePropFirmDisabled(propFirm) {
+            if (!_disabledPropFirms[_activeClient]) _disabledPropFirms[_activeClient] = new Set();
+            const set = _disabledPropFirms[_activeClient];
+            if (set.has(propFirm)) set.delete(propFirm); else set.add(propFirm);
+            renderChecklist();
         }
 
         function _initPropNotes(sectionId) {
@@ -6378,7 +6401,22 @@
             }
             const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections();
             const propFirms = _getClientPropFirms();
+            const allFirms = _getAllClientPropFirms();
+            const disabled = _disabledPropFirms[_activeClient] || new Set();
             let filled = 0;
+
+            // Prop firm toggle bar (shown once at top)
+            const toggleBar = allFirms.length > 0 ? `<div style="margin-bottom:12px; padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px;">
+                <div style="font-size:0.7rem; color:#64748b; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Prop Firms (click to toggle off)</div>
+                <div style="display:flex; flex-wrap:wrap; gap:4px;">
+                    ${allFirms.map(pf => {
+                        const isOff = disabled.has(pf);
+                        const safePf = pf.replace(/'/g, "\\'");
+                        return `<button onclick="togglePropFirmDisabled('${safePf}')" style="padding:3px 10px; border-radius:5px; font-size:0.72rem; cursor:pointer; border:1px solid ${isOff ? 'rgba(255,255,255,0.08)' : 'rgba(34,197,94,0.3)'}; background:${isOff ? 'rgba(255,255,255,0.03)' : 'rgba(34,197,94,0.1)'}; color:${isOff ? '#475569' : '#6ee7b7'}; text-decoration:${isOff ? 'line-through' : 'none'}; transition:all 0.15s;">${pf}</button>`;
+                    }).join('')}
+                </div>
+            </div>` : '';
+
             const html = SUMMARY_SECTIONS.map(s => {
                 const d = summaryData[s.id];
                 const isOk = d.status === 'ok';
@@ -6435,7 +6473,7 @@
                     ${notesHtml}
                 </div>`;
             }).join('');
-            body.innerHTML = html;
+            body.innerHTML = toggleBar + html;
             document.getElementById('checklist-progress').textContent = `${_activeClient}: ${filled} / ${SUMMARY_SECTIONS.length} sections`;
             updateChecklistBadge();
         }
@@ -6535,7 +6573,8 @@
                 if (d.status === 'ok') {
                     lines.push(`${icon} ${s.okText}`);
                 } else if (typeof d.notes === 'object' && d.notes !== null) {
-                    const propFirms = Object.keys(d.notes);
+                    const disabled = _disabledPropFirms[clientId] || new Set();
+                    const propFirms = Object.keys(d.notes).filter(pf => !disabled.has(pf));
                     if (propFirms.length > 0) {
                         propFirms.forEach(pf => {
                             const pn = d.notes[pf];
