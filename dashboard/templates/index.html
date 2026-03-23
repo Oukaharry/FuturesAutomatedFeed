@@ -6212,8 +6212,8 @@
         const SUMMARY_SECTIONS = [
             { id: 'challenge_purchase', num: 1, title: 'Challenge Purchase Status',
               okText: 'All challenges purchased and funded — no pending orders.',
-              fields: [{ key: 'amount', label: 'Pending Amount ($)', prefix: '$' }],
-              template: (f) => `$${f.amount || 0} challenge pending purchase` },
+              fields: [{ key: 'count', label: 'Pending Challenges to Purchase' }],
+              template: (f) => `${f.count || 0} challenge(s) pending purchase` },
             { id: 'renewal_cancel', num: 2, title: 'Renewal / Cancellation Check',
               okText: 'No renewals or cancellations needed today.',
               fields: [{ key: 'renewals', label: 'Renewals' }, { key: 'cancellations', label: 'Cancellations' }],
@@ -6232,8 +6232,8 @@
               template: (f) => `$${f.amount || 0} payout confirmed — sheet updated` },
             { id: 'action_items', num: 6, title: 'Client Action Items',
               okText: 'No client action required at this time.',
-              fields: [{ key: 'items', label: 'Items Pending' }],
-              template: (f) => `${f.items || 0} action item(s) pending` }
+              fields: [{ key: 'details', label: 'Details', type: 'text' }],
+              template: (f) => f.details || 'Action items pending' }
         ];
 
         // Per-client data store: { clientId: { sectionId: { status, notes } } }
