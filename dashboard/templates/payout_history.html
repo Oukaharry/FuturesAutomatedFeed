@@ -6,303 +6,219 @@
     <title>Payout History - TradeOpss</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* Chart Styles */
+        /* ── PAYOUT HISTORY — Style Guide Aligned ── */
+
+        /* Value colors */
+        .positive { color: #2dd4bf; font-weight: 700 !important; }
+        .negative { color: #f87171; font-weight: 500; }
+        .neutral  { color: #7898be; }
+        .val-glow { text-shadow: 0 0 10px rgba(52,211,153,0.4); }
+        .text-green-bright { color: #4ade80 !important; }
+        .text-red-bright   { color: #f87171 !important; }
+
+        /* ── NAVBAR ── */
+        .modern-nav {
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22);
+            position: relative;
+        }
+        .nav-links {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            background: none;
+            padding: 0;
+            border: none;
+        }
+        .tab-btn {
+            color: #7898be;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: color 0.15s ease, background 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 7px;
+            border-bottom: 2px solid transparent;
+            background: transparent;
+            letter-spacing: 0.01em;
+        }
+        .tab-btn i { font-size: 0.82rem; opacity: 0.7; transition: opacity 0.15s ease; }
+        .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .tab-btn:hover i { opacity: 1; }
+        .tab-btn.active { color: #fbbf24; border-bottom: 2px solid #fbbf24; font-weight: 600; }
+        .tab-btn.active i { opacity: 1; color: #fbbf24; }
+
+        /* Icon-only nav action buttons */
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28);
+            background: rgba(251,191,36,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover { background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 14px rgba(251,191,36,0.18); }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25);
+            background: rgba(239,68,68,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.5); box-shadow: 0 0 14px rgba(239,68,68,0.18); }
+
+        /* ── PROFILE TOGGLE (All/BEF/Private filter) ── */
+        .profile-toggle {
+            display: inline-flex;
+            background: #0a0f1e;
+            border: 1px solid #1a2848;
+            border-radius: 8px;
+            padding: 3px;
+            gap: 2px;
+        }
+        .filter-btn {
+            padding: 5px 14px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: #6b88b0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.72rem; font-weight: 700;
+            letter-spacing: 0.07em; text-transform: uppercase;
+            cursor: pointer; transition: all 0.15s ease;
+        }
+        .filter-btn:hover { color: #c8d8f0; background: rgba(255,255,255,0.05); }
+        .filter-btn.active {
+            background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+            color: #e0eaff;
+            box-shadow: 0 2px 8px rgba(1,3,10,0.6), inset 0 1px 0 rgba(100,150,240,0.2);
+        }
+
+        /* ── SECTION PANELS ── */
+        .section-panel {
+            background: var(--card-bg);
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-navy);
+        }
+        .section-heading {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 1.1rem; font-weight: 700;
+            color: #fff; margin: 0; letter-spacing: -0.01em;
+        }
+
+        /* ── CHART ── */
         .chart-section {
             display: flex;
             justify-content: center;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
         }
         .chart-box {
-            background: rgba(30, 41, 59, 0.6);
+            background: var(--card-bg);
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
             padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            box-shadow: var(--shadow-navy);
             width: 100%;
             max-width: 500px;
             position: relative;
             height: 350px;
         }
 
+        /* ── TABLE ── */
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 14px;
+            border: 1px solid #162040;
+            box-shadow: var(--shadow-navy);
+            margin-bottom: 24px;
+        }
         .finance-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
-            background: rgba(30, 41, 59, 0.6);
-            border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--card-bg);
+            border: none;
+            color: var(--text-primary);
         }
         .finance-table th, .finance-table td {
-            padding: 10px 12px;
-            text-align: right;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 11px 14px;
+            border-bottom: 1px solid #162040;
             font-size: 0.85rem;
             vertical-align: middle;
-            color: #f8fafc;
         }
         .finance-table th {
-            text-align: center;
-            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
-            border-bottom: 2px solid #3b82f6 !important;
-            color: #94a3b8;
-            font-weight: 700;
+            background: linear-gradient(90deg, #172554 0%, #0f172a 100%) !important;
+            color: #94a3b8 !important;
+            border-bottom: 1px solid #162040 !important;
+            font-size: 0.75rem; font-weight: 700;
+            letter-spacing: 0.05em; text-transform: uppercase;
             white-space: nowrap;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 0.05em;
         }
-        .finance-table td:first-child {
-            text-align: left;
-            font-weight: 600;
+        .finance-table td { color: var(--text-primary) !important; }
+        .finance-table td:first-child { color: #fff !important; font-weight: 600; text-align: left; }
+        .finance-table tr:hover td { background: rgba(30,58,138,0.06) !important; }
+        .finance-table tr:last-child td { border-bottom: none !important; }
+        .total-row td {
+            background: linear-gradient(90deg,#172554,#0f172a) !important;
             color: #fff !important;
+            font-weight: 700;
+            border-top: 2px solid #1e3a8a !important;
         }
-        .finance-table tr:hover {
-            background: rgba(59, 130, 246, 0.05) !important;
-        }
-        .positive { 
-            color: #34d399 !important; 
-            font-weight: 700 !important; 
-            text-shadow: 0 0 10px rgba(52, 211, 153, 0.2);
-        }
-        .val-glow {
-            text-shadow: 0 0 10px rgba(52, 211, 153, 0.4);
-        }
-        .negative { color: #ef4444; font-weight: 500; }
-        .neutral { color: #94a3b8; }
-        .table-responsive {
-            overflow-x: auto;
+
+        /* ── FORM FILTERS ── */
+        select.form-select-dark, input.form-input-dark {
+            background: rgba(1,3,10,0.7);
+            color: #e8eeff;
+            border: 1px solid #162040;
             border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            background: rgba(30, 41, 59, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 7px 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.84rem;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.15s ease;
+        }
+        select.form-select-dark:focus, input.form-input-dark:focus {
+            border-color: #2a4a8a;
+            box-shadow: 0 0 0 3px rgba(30,58,138,0.2);
         }
 
-        /* Modern Navigation - Gemini Inspired */
-        .modern-nav {
-            background: #0f172a;
-            border: none;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            border-radius: 16px;
-            padding: 0 24px;
-            height: 64px;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
-            position: relative;
-        }
-
-        .nav-brand {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 800;
-            font-size: 1.1rem;
-            color: #f8fafc;
-            letter-spacing: -0.02em;
-        }
-
-        .brand-logo {
-            height: 45px;
-            width: auto;
-            display: block;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 8px;
-            background: none;
-            padding: 0;
-            border-radius: 0;
-            border: none;
-        }
-
-        .nav-item {
-            text-decoration: none;
-            color: #94a3b8;
-            font-weight: 600;
-            font-size: 0.9rem;
-            padding: 8px 16px;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-        }
-
-        .nav-item:hover {
-            color: #f8fafc;
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .nav-item.active {
-            background: #3b82f6;
-            color: white;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        .nav-actions {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
-        .action-link {
-            color: #94a3b8;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-        }
-        .action-link:hover { color: #3b82f6; }
-
-        .logout-btn-nav {
-            background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
-            text-decoration: none;
-            padding: 8px 16px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-            transition: all 0.2s;
-        }
-        .logout-btn-nav:hover {
-            background: #fecaca;
-            color: #dc2626;
-        }
-
-        /* --- Dark Theme Overrides (TradeOpss) --- */
-        :root {
-            --bg-dark: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --accent-color: #fbbf24;
-            --border-color: rgba(255,255,255,0.1);
-        }
-
-        body {
-            background-color: var(--bg-dark) !important;
-            color: var(--text-primary) !important;
-        }
-
-        /* Nav - Updated to match Dashboard Theme */
-        .modern-nav {
-            background: #0f172a;
-            border: none;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            border-radius: 16px;
-            padding: 0 24px;
-            height: 64px;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
-            position: relative;
-        }
-        
-        .nav-links {
-            display: flex;
-            gap: 8px;
-            background: none;
-            padding: 0;
-            border-radius: 0;
-            border: none;
-        }
-        
-        /* Replaces .nav-item class styling */
-        .tab-btn {
-            color: #94a3b8;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.82rem;
-            transition: color 0.15s ease, border-color 0.15s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 16px;
-            border-radius: 6px;
-            border-bottom: 2px solid transparent;
-            background: transparent;
-        }
-        .tab-btn:hover {
-            color: #f8fafc;
-            background: rgba(255,255,255,0.04);
-        }
-        .tab-btn.active {
-            color: #fbbf24;
-            border-bottom: 2px solid #fbbf24;
-            background: transparent;
-            font-weight: 600;
-        }
-        
-        /* Hide old classes if unused */
-        .nav-brand, .action-link { display: none; }
-
-        /* Charts & Containers */
-        .chart-box {
-            background: var(--card-bg) !important;
-            border: 1px solid var(--border-color) !important;
-            box-shadow: none !important;
-        }
-
-        /* Tables */
-        .finance-table, .table-responsive {
-            background: var(--card-bg) !important;
-            border: 1px solid var(--border-color) !important;
-            box-shadow: none !important;
-            color: var(--text-primary) !important;
-        }
-        .finance-table th {
-            background: rgba(15, 23, 42, 0.8) !important;
-            color: var(--text-secondary) !important;
-            border-bottom: 1px solid var(--border-color) !important;
-        }
-        .finance-table td {
-            border-bottom: 1px solid var(--border-color) !important;
-            color: var(--text-primary) !important;
-        }
-        .finance-table td:first-child {
-            color: #fff !important;
-        }
-        .finance-table tr:hover {
-            background: rgba(255,255,255,0.05) !important;
-        }
-
-        /* ── MOBILE RESPONSIVE ── */
+        /* ── MOBILE ── */
         @media (max-width: 768px) {
-            .modern-nav {
-                height: auto !important;
-                flex-wrap: wrap;
-                padding: 10px 12px;
-                gap: 6px;
-                justify-content: center;
-                margin-bottom: 16px;
-            }
-            .modern-nav .brand {
-                position: static !important;
-                transform: none !important;
-                width: 100%;
-                display: flex;
-                justify-content: center;
-            }
-            .modern-nav .brand img {
-                width: 70px !important;
-                height: 70px !important;
-            }
-            .nav-links { flex-wrap: wrap; justify-content: center; gap: 4px; }
-            .tab-btn { font-size: 0.78rem !important; padding: 6px 9px !important; }
+            .modern-nav { height:auto !important; flex-wrap:wrap; padding:10px 12px; gap:6px; justify-content:center; margin-bottom:16px; }
+            .modern-nav .brand { position:static !important; transform:none !important; width:100%; display:flex; justify-content:center; }
+            .modern-nav .brand img { width:70px !important; }
+            .nav-links { flex-wrap:wrap; justify-content:center; gap:4px; }
+            .tab-btn { font-size:0.78rem !important; padding:6px 9px !important; }
         }
     </style>
 </head>
-<body style="background-color: #f8fafc;">
+<body>
     <div class="container" style="max-width: 100%">
         
         <nav class="modern-nav">
             <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <!-- Logo with 'App Icon' styling to blend better -->
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
             </div>
             
@@ -313,40 +229,32 @@
                 <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
                 <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
                 <a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>
-                
-                <div style="height: 20px; width: 1px; background: rgba(255,255,255,0.08); margin: 0 6px;"></div>
-                
-                <a href="/change-password" class="tab-btn">
-                    <i class="fas fa-key"></i> Change Password
-                </a>
-                <a href="/logout" class="tab-btn">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
+            </div>
+
+            <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
+                <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+                <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
             </div>
         </nav>
 
-        <header style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end;">
+        <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
             <div>
-                <h1 style="font-size: 1.5rem; color: #f8fafc; margin: 0; margin-bottom: 4px;">Payout History</h1>
-                <div style="color: #64748b; font-size: 0.9rem; margin: 0;">
-                    Detailed log of all payouts received
-                </div>
+                <h1 style="font-size: 1.5rem; margin: 0 0 4px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; letter-spacing: -0.02em;">Payout History</h1>
+                <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Detailed log of all payouts received</p>
             </div>
-             <!-- Filter Section (Matches Client Performance style) -->
-             {% if not is_bef_admin %}
-             <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+            {% if not is_bef_admin %}
+            <div class="profile-toggle">
                 <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
                 <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
                 <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
             </div>
             {% endif %}
-        </header>
+        </div>
         
-        <form method="get" action="{{ url_for('payout_history') }}" 
-              style="background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; display: flex; align-items: flex-end; gap: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); flex-wrap: wrap;">
+        <form method="get" action="{{ url_for('payout_history') }}" class="section-panel" style="display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap;">
             <div>
-                <label for="prop_firm" style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 5px;">Prop Firm</label>
-                <select id="prop_firm" name="prop_firm" style="padding: 8px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 0.95rem; min-width: 200px; background: #0f172a; color: #f8fafc;">
+                <label for="prop_firm" style="display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7898be; margin-bottom: 6px;">Prop Firm</label>
+                <select id="prop_firm" name="prop_firm" class="form-select-dark" style="min-width: 200px;">
                     <option value="">All Prop Firms</option>
                     {% for firm in prop_firms %}
                         <option value="{{ firm }}" {% if selected_prop_firm == firm %}selected{% endif %}>{{ firm }}</option>
@@ -354,21 +262,18 @@
                 </select>
             </div>
             <div>
-                <label for="start_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 5px;">Start Date</label>
-                <input type="date" id="start_date" name="start_date" value="{{ start_date if start_date else '' }}" 
-                       style="padding: 8px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 0.95rem; background: #0f172a; color: #f8fafc;">
+                <label for="start_date" style="display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7898be; margin-bottom: 6px;">Start Date</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date if start_date else '' }}" class="form-input-dark">
             </div>
             <div>
-                <label for="end_date" style="display: block; font-size: 0.85rem; font-weight: 600; color: #94a3b8; margin-bottom: 5px;">End Date</label>
-                <input type="date" id="end_date" name="end_date" value="{{ end_date if end_date else '' }}"
-                       style="padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem;">
+                <label for="end_date" style="display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7898be; margin-bottom: 6px;">End Date</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date if end_date else '' }}" class="form-input-dark">
             </div>
-            <button type="submit" 
-                    style="padding: 8px 16px; background-color: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+            <button type="submit" style="padding: 8px 18px; background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%); color: #e0eaff; border: 1px solid rgba(100,150,240,0.2); border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer; transition: all 0.15s ease;">
                 Apply Filters
             </button>
             {% if start_date or end_date or selected_prop_firm %}
-                <a href="{{ url_for('payout_history') }}" style="color: #64748b; text-decoration: none; font-size: 0.9rem; align-self: center;">Clear Filters</a>
+                <a href="{{ url_for('payout_history') }}" style="color: #7898be; text-decoration: none; font-size: 0.85rem; align-self: center;">Clear</a>
             {% endif %}
         </form>
 
@@ -447,8 +352,8 @@
                     {% endfor %}
                     
                     {% if payouts %}
-                    <tr style="background-color: #f1f5f9; font-weight: 700; border-top: 2px solid #cbd5e1;">
-                        <td colspan="6" style="text-align: right; color: #0f172a;">Total Payouts</td>
+                    <tr class="total-row">
+                        <td colspan="6" style="text-align: right;">Total Payouts</td>
                         <td class="positive">{{ "$%0.2f"|format(ns_payouts_total.val) }}</td>
                     </tr>
                     {% endif %}
