@@ -1,14 +1,14 @@
 ﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-    /* TradeOpss Theme - Dark Luxury */
-    --bg-color: #0f172a; /* Slate 900 - Deep Navy Background */
-    --card-bg: #1e293b; /* Slate 800 - Card Background */
-    --text-primary: #f8fafc; /* Slate 50 - Primary Text */
-    --text-secondary: #94a3b8; /* Slate 400 - Secondary Text */
+    /* TradeOpss Theme - Deep Navy Contrast */
+    --bg-color: #05070d; /* Near-black navy base */
+    --card-bg: #0d1424; /* Dark navy card surfaces */
+    --text-primary: #eef2ff; /* Cool bright white */
+    --text-secondary: #8ba4c8; /* Mid navy-blue secondary */
     
     --admin-bg: #172554; /* Blue 950 */
-    --admin-text: #60a5fa; /* Blue 400 */
+    --admin-text: #7baef0; /* Softer blue label */
     --admin-border: #1e3a8a; /* Blue 900 */
     
     --trader-bg: #052e16; /* Green 950 */
@@ -28,12 +28,13 @@
     --warning-color: #fbbf24; /* Amber 400 */
     --danger-color: #f87171; /* Red 400 */
     
-    --border-color: #334155; /* Slate 700 */
+    --border-color: #192848; /* Navy-tinted border */
     
-    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+    --shadow-sm: 0 1px 4px 0 rgba(3, 5, 12, 0.6);
+    --shadow-md: 0 4px 12px -1px rgba(3, 5, 12, 0.7), 0 1px 0 rgba(30, 58, 138, 0.12);
+    --shadow-lg: 0 10px 28px -3px rgba(3, 5, 12, 0.8), 0 1px 0 rgba(30, 58, 138, 0.15);
     --shadow-glow: 0 0 20px rgba(251, 191, 36, 0.15); /* Gold Glow */
+    --shadow-navy: 0 8px 24px rgba(3, 5, 12, 0.8), 0 1px 0 rgba(61, 95, 160, 0.2); /* Navy depth */
     
     --radius: 16px;
     --font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -48,8 +49,9 @@ body {
     font-family: var(--font-family);
     background-color: var(--bg-color);
     background-image: 
-        radial-gradient(circle at 15% 50%, rgba(251, 191, 36, 0.03) 0%, transparent 25%),
-        radial-gradient(circle at 85% 30%, rgba(37, 99, 235, 0.03) 0%, transparent 25%);
+        radial-gradient(circle at 15% 50%, rgba(251, 191, 36, 0.04) 0%, transparent 30%),
+        radial-gradient(circle at 85% 30%, rgba(23, 37, 84, 0.18) 0%, transparent 40%),
+        radial-gradient(circle at 50% 100%, rgba(14, 22, 50, 0.3) 0%, transparent 60%);
     background-attachment: fixed;
     color: var(--text-primary);
     margin: 0;

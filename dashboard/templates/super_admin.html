@@ -9,13 +9,15 @@
     <style>
         /* Modern Styles Override/Extension */
         .admin-card {
-            background: rgba(30, 41, 59, 0.4); /* Dark transparency */
+            background: var(--card-bg);
             border: 1px solid var(--border-color);
+            border-top: 1px solid #253660; /* lighter navy highlight */
             border-radius: var(--radius);
             margin-bottom: 24px;
-            padding: 2px; /* For border effect */
+            padding: 2px;
             position: relative;
             overflow: hidden;
+            box-shadow: var(--shadow-navy);
         }
 
         .admin-header {
@@ -51,18 +53,21 @@
         }
 
         .trader-item {
-            background: linear-gradient(180deg, #0f172a 0%, #334155 100%); /* Slate Gradient Body */
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: linear-gradient(180deg, #0d1424 0%, #111b30 100%);
+            border: 1px solid #192848;
+            border-left: 2px solid #1e3a8a; /* navy left accent */
+            border-top: 1px solid #253660;
             border-radius: 8px;
             margin-bottom: 16px;
             transition: all 0.2s;
             overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 6px 20px rgba(3, 5, 12, 0.7), 0 1px 0 rgba(30, 58, 138, 0.15);
         }
         
         .trader-item:hover {
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            border-color: #2a4a88;
+            border-left-color: #3d62b0;
+            box-shadow: 0 8px 28px rgba(3, 5, 12, 0.8), 0 0 0 1px rgba(30,58,138,0.3);
         }
 
         .trader-header {
@@ -159,10 +164,12 @@
         .stat-card-modern {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
+            border-top: 1px solid #253660; /* navy highlight edge */
             border-radius: var(--radius);
             padding: 24px;
             position: relative;
             overflow: hidden;
+            box-shadow: 0 4px 16px rgba(3, 5, 12, 0.65), 0 1px 0 rgba(30, 58, 138, 0.1);
         }
         
         .stat-label-modern {
@@ -187,10 +194,11 @@
         }
         
         .modal-content {
-            background: #1e293b;
+            background: #0d1424;
             color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid #192848;
+            border-top: 1px solid #3d5fa0;
+            box-shadow: 0 30px 60px -12px rgba(3, 5, 12, 0.9), 0 1px 0 rgba(61,95,160,0.25);
         }
         
         .welcome-hero {
@@ -210,20 +218,20 @@
             border-radius: 8px;
         }
         .tab-btn:hover {
-            color: #60a5fa;
-            background: rgba(59, 130, 246, 0.08); /* Subtle Blue Hover */
+            color: #93c5fd;
+            background: rgba(30, 58, 138, 0.15); /* Subtle Navy Hover */
         }
         .tab-btn.active {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); /* Gemini Blue */
+            background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%); /* Deep Navy */
             color: #ffffff;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            box-shadow: 0 4px 12px rgba(23, 37, 84, 0.4);
             font-weight: 600;
         }
         
         .modern-nav {
-            background: #0f172a;
-            border: none;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            background: #09101e;
+            border: 1px solid #192848;
+            border-top: 1px solid #253660; /* lighter navy top edge */
             border-radius: 16px;
             padding: 0 24px;
             height: 64px;
@@ -231,17 +239,19 @@
             justify-content: flex-end;
             align-items: center;
             margin-bottom: 20px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
+            box-shadow: 0 8px 24px rgba(3, 5, 12, 0.7), 0 1px 0 rgba(30,58,138,0.2);
             position: relative;
         }
         
-        /* User Management Header - Lighter Blue Gradient */
+        /* User Management Header - Deep Navy Gradient */
         .admin-header {
-            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
-            border-bottom: 2px solid #60a5fa;
+            background: linear-gradient(90deg, #1e3a8a 0%, #172554 100%);
+            border-top: 1px solid #3d5fa0; /* bright navy top highlight */
+            border-bottom: 2px solid #0f2060;
             position: relative;
             overflow: hidden;
             padding: 16px 24px;
+            box-shadow: 0 4px 20px rgba(3, 5, 12, 0.8), inset 0 1px 0 rgba(100, 140, 220, 0.18);
         }
         .admin-header::before {
             display: none;
@@ -249,8 +259,8 @@
         
         /* Table Headers - Matching the Gradient Style */
         .group-header-blue {
-            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
-            border-bottom: 2px solid #3b82f6 !important; /* Bright blue bottom line */
+            background: linear-gradient(90deg, #172554 0%, #0f172a 100%) !important;
+            border-bottom: 2px solid #1e3a8a !important; /* Deep navy bottom line */
             color: #94a3b8 !important;
             font-weight: 700 !important;
             text-transform: uppercase;
@@ -263,25 +273,30 @@
         /* --- GRADIENT SECTION STYLES --- */
         
         .admin-header {
-            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%) !important;
-            border-bottom: 1px solid rgba(255,255,255,0.1) !important;
-            border-top: 1px solid rgba(255,255,255,0.2) !important;
+            background: linear-gradient(90deg, #1e3a8a 0%, #172554 100%) !important;
+            border-top: 1px solid #3d5fa0 !important;
+            border-bottom: 2px solid #0f2060 !important;
+            box-shadow: 0 4px 20px rgba(3,5,12,0.8), inset 0 1px 0 rgba(100,140,220,0.18) !important;
         }
         
         .trader-header {
-             background: linear-gradient(90deg, #059669 0%, #047857 100%) !important;
-             border-bottom: 1px solid rgba(255,255,255,0.1);
-             border-top: 1px solid rgba(255,255,255,0.2);
+             background: linear-gradient(90deg, #065f46 0%, #047857 100%) !important;
+             border-top: 1px solid #10a070 !important; /* green top highlight */
+             border-bottom: 1px solid #033d2a !important;
+             box-shadow: inset 0 1px 0 rgba(16,185,129,0.15);
         }
         
         .client-tag {
-             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
-             border: 1px solid rgba(255,255,255,0.15) !important;
-             color: #fbbf24 !important; /* Gold text for names */
+             background: linear-gradient(135deg, #0d1424 0%, #080e1a 100%) !important;
+             border: 1px solid #192848 !important;
+             border-top: 1px solid #253660 !important;
+             color: #fbbf24 !important;
+             box-shadow: 0 2px 8px rgba(3, 5, 12, 0.6);
         }
         .client-tag:hover {
-             background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
+             background: linear-gradient(135deg, #131e36 0%, #0d1424 100%) !important;
              border-color: #fbbf24 !important;
+             box-shadow: 0 4px 16px rgba(3, 5, 12, 0.7), 0 0 0 1px rgba(251,191,36,0.15);
         }
 
         /* Form Inputs & Buttons */
@@ -292,9 +307,9 @@
             transition: all 0.2s;
         }
         .form-dark:focus {
-            border-color: #60a5fa !important;
+            border-color: #3b82f6 !important;
             background: rgba(15, 23, 42, 0.8) !important;
-            box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+            box-shadow: 0 0 0 2px rgba(30, 58, 138, 0.3);
         }
         
         .btn-gold {
@@ -430,10 +445,10 @@
                         <div id="total-traders" style="font-size:2rem; font-weight:800; color: #34d399; text-shadow: 0 0 20px rgba(52, 211, 153, 0.4); pointer-events: none;">0</div>
                     </div>
 
-                    <!-- CLIENTS: Blue Gradient -->
-                    <div id="stat-card-client" class="stat-box-modern" onclick="window.openUserListModal('client')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
-                        <div style="font-size:0.8rem; color: #93c5fd; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 5px;">CLIENTS</div>
-                        <div id="total-clients" style="font-size:2rem; font-weight:800; color: #60a5fa; text-shadow: 0 0 20px rgba(96, 165, 250, 0.4); pointer-events: none;">0</div>
+                    <!-- CLIENTS: Deep Navy Gradient -->
+                    <div id="stat-card-client" class="stat-box-modern" onclick="window.openUserListModal('client')" style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(23, 37, 84, 0.7) 100%); border: 1px solid rgba(30, 58, 138, 0.6); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
+                        <div style="font-size:0.8rem; color: #7baef0; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 5px;">CLIENTS</div>
+                        <div id="total-clients" style="font-size:2rem; font-weight:800; color: #5a90d8; text-shadow: 0 0 20px rgba(30, 58, 138, 0.5); pointer-events: none;">0</div>
                     </div>
                 </div>
                 
@@ -523,9 +538,9 @@
                     </div>
                     
                     <!-- Total Deposits -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                        <div class="stat-label-modern" style="color: #93c5fd !important; font-weight: 700;">Total Deposits</div>
-                        <div id="grand-total-deposits" class="stat-value-modern" style="color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">$0.00</div>
+                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(23, 37, 84, 0.7) 100%); border: 1px solid rgba(30, 58, 138, 0.6); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #7baef0 !important; font-weight: 700;">Total Deposits</div>
+                        <div id="grand-total-deposits" class="stat-value-modern" style="color: #5a90d8 !important; text-shadow: 0 0 20px rgba(30, 58, 138, 0.4);">$0.00</div>
                     </div>
                     
                     <!-- Challenge Fees -->
@@ -610,7 +625,7 @@
     <div id="userListModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10000; background: rgba(0,0,0,0.8);">
         <!-- Helper container to center content reliably -->
         <div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;">
-            <div class="modal-content" style="width: 90%; max-width: 800px; height: 80vh; background: #1e293b; border: 2px solid #60a5fa; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+            <div class="modal-content" style="width: 90%; max-width: 800px; height: 80vh; background: #1e293b; border: 2px solid #1e3a8a; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
                 
                 <!-- Header -->
                 <div class="modal-header" style="padding: 15px 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
@@ -623,9 +638,9 @@
                      <table class="user-list-table" style="width: 100%; border-collapse: collapse;">
                         <thead style="position: sticky; top: 0; background: #334155; color: white; z-index: 5;">
                             <tr>
-                                <th id="col-user" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">User</th>
-                                <th id="col-parent" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">Parent</th>
-                                <th id="col-actions" style="text-align: right; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">Actions</th>
+                                <th id="col-user" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">User</th>
+                                <th id="col-parent" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Parent</th>
+                                <th id="col-actions" style="text-align: right; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="userListBody"></tbody>
@@ -642,32 +657,32 @@
 
     <!-- Edit User Modal -->
     <div id="editUserModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10050; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); align-items: center; justify-content: center;">
-        <div style="width: 90%; max-width: 480px; background: linear-gradient(165deg, #1a2332 0%, #0f172a 100%); border: 1px solid rgba(96,165,250,0.2); border-radius: 16px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6), 0 0 40px rgba(59,130,246,0.08);">
+        <div style="width: 90%; max-width: 480px; background: linear-gradient(165deg, #1a2332 0%, #0f172a 100%); border: 1px solid rgba(30,58,138,0.4); border-radius: 16px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6), 0 0 40px rgba(23,37,84,0.15);">
             <!-- Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(139,92,246,0.1) 100%); border-bottom: 1px solid rgba(96,165,250,0.15); border-radius: 16px 16px 0 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: linear-gradient(135deg, rgba(30,58,138,0.25) 0%, rgba(23,37,84,0.2) 100%); border-bottom: 1px solid rgba(30,58,138,0.35); border-radius: 16px 16px 0 0;">
                 <h3 id="editModalTitle" style="margin: 0; color: #f1f5f9; font-size: 1.15rem; font-weight: 700;">Edit User</h3>
                 <span onclick="closeEditUserModal()" style="cursor: pointer; font-size: 1.4rem; color: #94a3b8; transition: color 0.2s;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">&times;</span>
             </div>
             <!-- Body -->
             <div style="padding: 24px;">
                 <div style="margin-bottom: 18px;">
-                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Name</label>
-                    <input type="text" id="editUserName" placeholder="Name" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='rgba(96,165,250,0.25)'">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Name</label>
+                    <input type="text" id="editUserName" placeholder="Name" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#1e3a8a'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
                 </div>
                 <div style="margin-bottom: 18px;">
-                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Email</label>
-                    <input type="email" id="editUserEmail" placeholder="user@example.com" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='rgba(96,165,250,0.25)'">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Email</label>
+                    <input type="email" id="editUserEmail" placeholder="user@example.com" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#1e3a8a'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
                 </div>
                 <div style="margin-bottom: 18px; display:none;" id="editClientCategoryGroup">
-                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Category/Profile</label>
-                    <select id="editUserCategory" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Category/Profile</label>
+                    <select id="editUserCategory" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
                          <option value="Private">Private</option>
                          <option value="BEF">BEF</option>
                     </select>
                 </div>
                 <div style="margin-bottom: 18px; display:none;" id="editClientStatusGroup">
-                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Status</label>
-                    <select id="editUserActiveStatus" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Status</label>
+                    <select id="editUserActiveStatus" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
                          <option value="active">Active</option>
                          <option value="inactive">Inactive</option>
                     </select>
@@ -681,7 +696,7 @@
 
                 <div style="margin-top: 24px; display: flex; gap: 10px; justify-content: flex-end;">
                     <button onclick="closeEditUserModal()" style="padding: 10px 20px; background: transparent; border: 1px solid rgba(148,163,184,0.3); color: #cbd5e1; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(148,163,184,0.5)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(148,163,184,0.3)'">Cancel</button>
-                    <button onclick="submitEditUser()" style="padding: 10px 20px; background: linear-gradient(135deg, #3b82f6, #2563eb); border: none; color: white; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(59,130,246,0.35); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 6px 16px rgba(59,130,246,0.5)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(59,130,246,0.35)';this.style.transform='translateY(0)'">Save Changes</button>
+                    <button onclick="submitEditUser()" style="padding: 10px 20px; background: linear-gradient(135deg, #1e3a8a, #172554); border: none; color: white; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(23,37,84,0.5); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 6px 16px rgba(23,37,84,0.7)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(23,37,84,0.5)';this.style.transform='translateY(0)'">Save Changes</button>
                 </div>
             </div>
         </div>
