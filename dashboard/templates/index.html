@@ -6200,28 +6200,28 @@
         const SUMMARY_SECTIONS = [
             { id: 'challenge_purchase', num: 1, title: 'Challenge Purchase Status',
               okText: 'All challenges purchased and funded — no pending orders.',
-              fields: [{ key: 'amount', label: 'Pending Amount ($)', prefix: '$' }],
-              template: (f) => `$${f.amount || 0} challenge pending purchase` },
+              fields: [{ key: 'count', label: 'Challenges to Purchase' }],
+              template: (f, pf) => `Purchase ${f.count || 0} ${pf} account${(f.count||0)==1?'':'s'}` },
             { id: 'renewal_cancel', num: 2, title: 'Renewal / Cancellation Check',
               okText: 'No renewals or cancellations needed today.',
               fields: [{ key: 'renewals', label: 'Renewals' }, { key: 'cancellations', label: 'Cancellations' }],
-              template: (f) => `${f.renewals || 0} renewal(s), ${f.cancellations || 0} cancellation(s)` },
+              template: (f, pf) => `${f.renewals || 0} renewal(s), ${f.cancellations || 0} cancellation(s)` },
             { id: 'trading_delays', num: 3, title: 'Trading / Operational Delays',
               okText: 'All accounts traded on schedule — no delays or issues.',
               fields: [{ key: 'details', label: 'Details', type: 'text' }],
-              template: (f) => f.details || 'Trading delay reported' },
+              template: (f, pf) => f.details || 'Trading delay reported' },
             { id: 'payout_requests', num: 4, title: 'Payout Requests',
               okText: 'No payout requests pending.',
               fields: [{ key: 'count', label: 'Payouts Requested' }],
-              template: (f) => `${f.count || 0} payout(s) requested — awaiting approval` },
+              template: (f, pf) => `${f.count || 0} ${pf} payout${(f.count||0)==1?'':'s'} requested — awaiting approval` },
             { id: 'payout_confirm', num: 5, title: 'Payout Confirmation & Sheet Update',
               okText: 'All confirmed payouts recorded — sheet is up to date.',
-              fields: [{ key: 'amount', label: 'Amount ($)', prefix: '$' }],
-              template: (f) => `$${f.amount || 0} payout confirmed — sheet updated` },
+              fields: [{ key: 'count', label: 'Payouts Confirmed' }],
+              template: (f, pf) => `${f.count || 0} ${pf} payout${(f.count||0)==1?'':'s'} confirmed — sheet updated` },
             { id: 'action_items', num: 6, title: 'Client Action Items',
               okText: 'No client action required at this time.',
               fields: [{ key: 'items', label: 'Items Pending' }],
-              template: (f) => `${f.items || 0} action item(s) pending` }
+              template: (f, pf) => `${f.items || 0} action item(s) pending` }
         ];
 
         // Per-client data store: { clientId: { sectionId: { status, notes } } }
@@ -6530,7 +6530,7 @@
                             if (pn.status === 'ok') {
                                 lines.push(`  ✅ ${pf}: All Good`);
                             } else if (pn.fields && Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0')) {
-                                lines.push(`  ⚠️ ${pf}: ${s.template(pn.fields)}`);
+                                lines.push(`  ⚠️ ${s.template(pn.fields, pf)}`);
                             } else {
                                 lines.push(`  ❓ ${pf}: Pending`);
                             }
