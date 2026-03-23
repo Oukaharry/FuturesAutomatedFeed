@@ -1035,9 +1035,13 @@
         .prop-note-allgood { padding: 2px 8px; border: 1px solid rgba(34,197,94,0.3); border-radius: 5px; background: rgba(34,197,94,0.08); color: #6ee7b7; font-size: 0.7rem; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
         .prop-note-allgood:hover { background: rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.5); }
         .prop-note-allgood.active { background: rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.6); color: #4ade80; font-weight: 600; }
-        .prop-note-textarea { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.75rem; resize: vertical; min-height: 28px; font-family: inherit; box-sizing: border-box; }
-        .prop-note-textarea::placeholder { color: #475569; }
-        .prop-note-textarea:focus { border-color: rgba(167,139,250,0.5); outline: none; }
+        .prop-fields-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .prop-field-group { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 100px; }
+        .prop-field-label { font-size: 0.65rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+        .prop-field-input { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.8rem; font-family: inherit; box-sizing: border-box; -moz-appearance: textfield; }
+        .prop-field-input::-webkit-outer-spin-button, .prop-field-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .prop-field-input::placeholder { color: #475569; }
+        .prop-field-input:focus { border-color: rgba(167,139,250,0.5); outline: none; }
 
         /* Preview output box */
         .summary-preview {
@@ -6196,22 +6200,28 @@
         const SUMMARY_SECTIONS = [
             { id: 'challenge_purchase', num: 1, title: 'Challenge Purchase Status',
               okText: 'All challenges purchased and funded — no pending orders.',
-              warnPlaceholder: 'e.g. Waiting on 50K TopStep challenge — payment processing' },
+              fields: [{ key: 'amount', label: 'Pending Amount ($)', prefix: '$' }],
+              template: (f) => `$${f.amount || 0} challenge pending purchase` },
             { id: 'renewal_cancel', num: 2, title: 'Renewal / Cancellation Check',
               okText: 'No renewals or cancellations needed today.',
-              warnPlaceholder: 'e.g. Apex 150K failed — cancellation submitted' },
+              fields: [{ key: 'renewals', label: 'Renewals' }, { key: 'cancellations', label: 'Cancellations' }],
+              template: (f) => `${f.renewals || 0} renewal(s), ${f.cancellations || 0} cancellation(s)` },
             { id: 'trading_delays', num: 3, title: 'Trading / Operational Delays',
               okText: 'All accounts traded on schedule — no delays or issues.',
-              warnPlaceholder: 'e.g. MT5 connection lost for 20 mins, resolved at 10:30 AM' },
+              fields: [{ key: 'delay_mins', label: 'Delay (mins)' }],
+              template: (f) => `${f.delay_mins || 0} min trading delay` },
             { id: 'payout_requests', num: 4, title: 'Payout Requests',
               okText: 'No payout requests pending.',
-              warnPlaceholder: 'e.g. $500 payout requested on Apex 100K #2 — awaiting approval' },
+              fields: [{ key: 'amount', label: 'Amount ($)', prefix: '$' }],
+              template: (f) => `$${f.amount || 0} payout requested — awaiting approval` },
             { id: 'payout_confirm', num: 5, title: 'Payout Confirmation & Sheet Update',
               okText: 'All confirmed payouts recorded — sheet is up to date.',
-              warnPlaceholder: 'e.g. FTMO $1,200 payout confirmed — sheet updated' },
+              fields: [{ key: 'amount', label: 'Amount ($)', prefix: '$' }],
+              template: (f) => `$${f.amount || 0} payout confirmed — sheet updated` },
             { id: 'action_items', num: 6, title: 'Client Action Items',
               okText: 'No client action required at this time.',
-              warnPlaceholder: 'e.g. Client to send KYC documents by Friday' }
+              fields: [{ key: 'items', label: 'Items Pending' }],
+              template: (f) => `${f.items || 0} action item(s) pending` }
         ];
 
         // Per-client data store: { clientId: { sectionId: { status, notes } } }
@@ -6244,7 +6254,12 @@
             const propFirms = _getClientPropFirms();
             if (typeof d.notes !== 'object' || d.notes === null) d.notes = {};
             propFirms.forEach(pf => {
-                if (!(pf in d.notes)) d.notes[pf] = { status: '', text: '' };
+                if (!(pf in d.notes)) d.notes[pf] = { status: '', fields: {} };
+                // Migrate legacy text-based entries
+                if (d.notes[pf].text !== undefined && !d.notes[pf].fields) {
+                    d.notes[pf].fields = {};
+                    delete d.notes[pf].text;
+                }
             });
             return d.notes;
         }
@@ -6257,7 +6272,11 @@
             if (propFirms.length === 0) return false;
             return propFirms.every(pf => {
                 const pn = d.notes[pf];
-                return pn && (pn.status === 'ok' || (pn.text && pn.text.trim()));
+                if (!pn) return false;
+                if (pn.status === 'ok') return true;
+                // Check if any field has a non-zero value
+                if (pn.fields) return Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0');
+                return false;
             });
         }
 
@@ -6359,23 +6378,29 @@
                     if (propFirms.length > 0) {
                         const notes = _initPropNotes(s.id);
                         notesHtml = '<div class="prop-notes-list">' + propFirms.map(pf => {
-                            const pn = notes[pf] || { status: '', text: '' };
+                            const pn = notes[pf] || { status: '', fields: {} };
                             const isAllGood = pn.status === 'ok';
                             const safeId = s.id;
                             const safePf = pf.replace(/'/g, "\\'");
+                            const fieldInputs = !isAllGood ? s.fields.map(f => {
+                                const val = (pn.fields && pn.fields[f.key]) || '';
+                                return `<div class="prop-field-group">
+                                    <label class="prop-field-label">${f.label}</label>
+                                    <input type="number" class="prop-field-input" value="${val}" min="0" step="any"
+                                        placeholder="0"
+                                        oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">
+                                </div>`;
+                            }).join('') : '';
                             return `<div class="prop-note-row">
                                 <div class="prop-note-header">
                                     <span class="prop-note-name">${pf}</span>
                                     <button class="prop-note-allgood ${isAllGood ? 'active' : ''}" onclick="setPropAllGood('${safeId}','${safePf}')">✅ All Good</button>
                                 </div>
-                                ${!isAllGood ? `<textarea class="prop-note-textarea" placeholder="Notes for ${pf}..."
-                                    oninput="setPropNote('${safeId}','${safePf}',this.value)">${pn.text || ''}</textarea>` : ''}
+                                ${fieldInputs ? `<div class="prop-fields-row">${fieldInputs}</div>` : ''}
                             </div>`;
                         }).join('') + '</div>';
                     } else {
-                        const legacyNotes = typeof d.notes === 'string' ? d.notes : '';
-                        notesHtml = `<textarea class="summary-notes-input" placeholder="${s.warnPlaceholder}"
-                            oninput="setSectionNotes('${s.id}', this.value)">${legacyNotes}</textarea>`;
+                        notesHtml = '<div class="prop-notes-list"><p style="color:#64748b;font-size:0.75rem;text-align:center;">No prop firms found for this client.</p></div>';
                     }
                 }
 
@@ -6424,14 +6449,15 @@
             _allClientSummaries[_activeClient][sectionId].notes = notes;
         }
 
-        function setPropNote(sectionId, propFirm, text) {
+        function setPropField(sectionId, propFirm, fieldKey, value) {
             if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
             const notes = _allClientSummaries[_activeClient][sectionId].notes;
             if (typeof notes === 'object' && notes !== null) {
-                if (!notes[propFirm]) notes[propFirm] = { status: '', text: '' };
-                notes[propFirm].text = text;
-                // If they type notes, clear the allGood status
-                if (text.trim()) notes[propFirm].status = 'note';
+                if (!notes[propFirm]) notes[propFirm] = { status: '', fields: {} };
+                if (!notes[propFirm].fields) notes[propFirm].fields = {};
+                notes[propFirm].fields[fieldKey] = value;
+                // If they enter a value, mark as note status
+                if (value && value !== '0') notes[propFirm].status = 'note';
             }
         }
 
@@ -6439,10 +6465,10 @@
             if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
             const notes = _allClientSummaries[_activeClient][sectionId].notes;
             if (typeof notes === 'object' && notes !== null) {
-                if (!notes[propFirm]) notes[propFirm] = { status: '', text: '' };
+                if (!notes[propFirm]) notes[propFirm] = { status: '', fields: {} };
                 // Toggle: if already ok, unset it
                 notes[propFirm].status = notes[propFirm].status === 'ok' ? '' : 'ok';
-                if (notes[propFirm].status === 'ok') notes[propFirm].text = '';
+                if (notes[propFirm].status === 'ok') notes[propFirm].fields = {};
             }
             renderChecklist();
         }
@@ -6496,8 +6522,8 @@
                             const pn = d.notes[pf];
                             if (pn.status === 'ok') {
                                 lines.push(`  ✅ ${pf}: All Good`);
-                            } else if (pn.text && pn.text.trim()) {
-                                lines.push(`  ⚠️ ${pf}: ${pn.text.trim()}`);
+                            } else if (pn.fields && Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0')) {
+                                lines.push(`  ⚠️ ${pf}: ${s.template(pn.fields)}`);
                             } else {
                                 lines.push(`  ❓ ${pf}: Pending`);
                             }
