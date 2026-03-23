@@ -6,67 +6,83 @@
     <title>Data Quality Dashboard - VPF Futures</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+        body { background: #01030a; color: #e2e8f0; font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
 
-        /* Nav */
+        /* ── NAVBAR ── */
         .modern-nav {
-            background: #0f172a;
-            border: none;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            border-radius: 16px;
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
             padding: 0 24px;
             height: 64px;
             display: flex;
-            justify-content: flex-end;
+            justify-content: center;
             align-items: center;
             margin-bottom: 20px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22);
             position: relative;
         }
         .nav-links {
             display: flex;
-            gap: 8px;
+            gap: 4px;
+            align-items: center;
             background: none;
             padding: 0;
-            border-radius: 0;
             border: none;
         }
         .tab-btn {
-            color: #94a3b8;
+            color: #7898be;
             text-decoration: none;
-            font-weight: 500;
-            font-size: 0.82rem;
-            transition: color 0.15s ease, border-color 0.15s ease;
+            font-weight: 600;
+            font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: color 0.15s ease, background 0.15s ease;
             display: flex;
             align-items: center;
             gap: 6px;
-            padding: 8px 16px;
-            border-radius: 6px;
+            padding: 7px 13px;
+            border-radius: 7px;
             border-bottom: 2px solid transparent;
             background: transparent;
+            letter-spacing: 0.01em;
             cursor: pointer;
         }
-        .tab-btn:hover {
-            color: #f8fafc;
-            background: rgba(255,255,255,0.04);
+        .tab-btn i { font-size: 0.82rem; opacity: 0.7; transition: opacity 0.15s ease; }
+        .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .tab-btn:hover i { opacity: 1; }
+        .tab-btn.active { color: #fbbf24; border-bottom: 2px solid #fbbf24; font-weight: 600; }
+        .tab-btn.active i { opacity: 1; color: #fbbf24; }
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28);
+            background: rgba(251,191,36,0.07);
+            text-decoration: none; transition: all 0.18s ease;
         }
-        .tab-btn.active {
-            color: #fbbf24;
-            border-bottom: 2px solid #fbbf24;
-            background: transparent;
-            font-weight: 600;
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover { background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 14px rgba(251,191,36,0.18); }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25);
+            background: rgba(239,68,68,0.07);
+            text-decoration: none; transition: all 0.18s ease;
         }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.5); box-shadow: 0 0 14px rgba(239,68,68,0.18); }
 
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
         /* Summary Cards */
         .summary-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px; }
-        .summary-card { background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.06); border-radius:12px; padding:20px; }
-        .summary-card .label { font-size:0.8rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+        .summary-card { background:#090f1e; border:1px solid #162040; border-top:1px solid #1e3060; border-radius:12px; padding:20px; box-shadow:0 4px 16px rgba(1,3,10,0.5); }
+        .summary-card .label { font-size:0.8rem; color:#7898be; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; font-weight:600; }
         .summary-card .value { font-size:2rem; font-weight:700; }
-        .summary-card .sub { font-size:0.78rem; color:#64748b; margin-top:4px; }
+        .summary-card .sub { font-size:0.78rem; color:#4a6080; margin-top:4px; }
         .green { color:#4ade80; } .yellow { color:#fbbf24; } .red { color:#f87171; } .blue { color:#60a5fa; } .purple { color:#a78bfa; }
 
         /* Action bar */
@@ -75,8 +91,9 @@
         .scan-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(34,197,94,0.3); }
         .scan-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
         .filter-group { display:flex; gap:8px; align-items:center; }
-        .filter-btn { background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.1); color:#94a3b8; padding:6px 14px; border-radius:8px; font-size:0.8rem; cursor:pointer; transition:all 0.2s; }
-        .filter-btn:hover, .filter-btn.active { background:rgba(96,165,250,0.15); border-color:rgba(96,165,250,0.3); color:#60a5fa; }
+        .filter-btn { background:#090f1e; border:1px solid #1a2848; color:#7098b8; padding:6px 14px; border-radius:8px; font-size:0.8rem; cursor:pointer; transition:all 0.2s; font-family:'Plus Jakarta Sans',sans-serif; font-weight:600; }
+        .filter-btn:hover { background:rgba(30,48,96,0.3); border-color:#2a4a8a; color:#a8c8f0; }
+        .filter-btn.active { background:linear-gradient(135deg,#1e3a8a 0%,#172554 100%); border-color:#2a4a8a; color:#e0eaff; box-shadow:0 2px 8px rgba(1,3,10,0.6); }
 
 
         .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:0.72rem; font-weight:600; }
@@ -91,32 +108,37 @@
         .issue-pill { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.7rem; margin:1px; }
 
         /* Issues detail table */
-        .issues-detail-table { width:100%; border-collapse:separate; border-spacing:0; background:rgba(15,23,42,0.5); border-radius:12px; overflow:hidden; }
-        .issues-detail-table thead th { background:rgba(10,15,30,0.9); padding:10px 14px; font-size:0.75rem; text-transform:uppercase; color:#94a3b8; letter-spacing:0.5px; text-align:left; position:sticky; top:0; cursor:pointer; user-select:none; }
+        .issues-detail-table { width:100%; border-collapse:separate; border-spacing:0; background:#090f1e; border-radius:12px; overflow:hidden; }
+        .issues-detail-table thead th { background:linear-gradient(90deg,#172554 0%,#0f172a 100%); padding:10px 14px; font-size:0.75rem; text-transform:uppercase; color:#94a3b8; letter-spacing:0.5px; text-align:left; position:sticky; top:0; cursor:pointer; user-select:none; border-bottom:1px solid #162040; font-weight:700; }
         .issues-detail-table thead th:hover { color:#e2e8f0; }
-        .issues-detail-table tbody td { padding:8px 14px; font-size:0.82rem; border-top:1px solid rgba(255,255,255,0.03); }
-        .issues-detail-table tbody tr:hover { background:rgba(251,191,36,0.06); }
+        .issues-detail-table tbody td { padding:8px 14px; font-size:0.82rem; border-top:1px solid #162040; color:#c8d8ee; }
+        .issues-detail-table tbody tr:hover { background:rgba(30,58,138,0.1); }
         .issues-detail-table tbody tr { cursor:pointer; transition:background 0.15s; }
-        .go-link { color:#60a5fa; text-decoration:none; font-weight:600; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:6px; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.2); transition:all 0.2s; }
-        .go-link:hover { background:rgba(96,165,250,0.2); border-color:rgba(96,165,250,0.4); }
-        .issue-search { background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 14px; border-radius:8px; font-size:0.85rem; width:280px; }
-        .issue-search::placeholder { color:#64748b; }
-        .issue-type-filter { background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:6px 12px; border-radius:8px; font-size:0.82rem; }
-        .issue-type-filter option { background:#1e293b; color:#e2e8f0; }
+        .go-link { color:#60a5fa; text-decoration:none; font-weight:600; font-size:0.8rem; display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:6px; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.3); transition:all 0.2s; }
+        .go-link:hover { background:rgba(96,165,250,0.2); border-color:rgba(96,165,250,0.5); }
+        .issue-search { background:rgba(1,3,10,0.8); border:1px solid #162040; color:#e2e8f0; padding:8px 14px; border-radius:8px; font-size:0.85rem; width:280px; font-family:'IBM Plex Mono',monospace; }
+        .issue-search::placeholder { color:#4a6080; }
+        .issue-type-filter { background:rgba(1,3,10,0.8); border:1px solid #162040; color:#e2e8f0; padding:6px 12px; border-radius:8px; font-size:0.82rem; font-family:'IBM Plex Mono',monospace; }
+        .issue-type-filter option { background:#090f1e; color:#e2e8f0; }
         .empty-state { text-align:center; padding:60px 20px; color:#64748b; }
         .empty-state i { font-size:3rem; margin-bottom:12px; opacity:0.3; }
 
         /* Checklist section */
-        .section-title { font-size:1.1rem; font-weight:600; color:#e2e8f0; margin:28px 0 14px 0; display:flex; align-items:center; gap:8px; }
+        .section-title { font-size:1.1rem; font-weight:700; color:#e8eeff; margin:28px 0 14px 0; display:flex; align-items:center; gap:8px; font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
         .checklist-status-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; margin-bottom:24px; }
-        .checklist-card { background:rgba(30,41,59,0.5); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px; }
-        .checklist-card .user { font-weight:600; font-size:0.9rem; margin-bottom:6px; }
-        .checklist-card .info { font-size:0.78rem; color:#94a3b8; }
+        .checklist-card { background:#090f1e; border:1px solid #162040; border-top:1px solid #1e3060; border-radius:10px; padding:14px; box-shadow:0 2px 10px rgba(1,3,10,0.4); }
+        .checklist-card .user { font-weight:600; font-size:0.9rem; margin-bottom:6px; color:#e8eeff; }
+        .checklist-card .info { font-size:0.78rem; color:#7898be; }
         .checklist-card .check-count { font-size:1.2rem; font-weight:700; }
 
         @media (max-width: 768px) {
             .summary-row { grid-template-columns:1fr 1fr; }
             .action-bar { flex-direction:column; align-items:stretch; }
+            .modern-nav { height:auto !important; flex-wrap:wrap; padding:10px 12px; gap:6px; justify-content:center; margin-bottom:16px; }
+            .modern-nav .brand { position:static !important; transform:none !important; width:100%; display:flex; justify-content:center; }
+            .modern-nav .brand img { width:70px !important; }
+            .nav-links { flex-wrap:wrap; justify-content:center; gap:4px; }
+            .tab-btn { font-size:0.78rem !important; padding:6px 9px !important; }
         }
     </style>
 </head>
@@ -131,16 +153,17 @@
             <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
             <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
             <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
-            <a href="/quality_dashboard" class="tab-btn active"><i class="fas fa-clipboard-check"></i> Data Quality</a>
-            <div style="height: 20px; width: 1px; background: rgba(255,255,255,0.08); margin: 0 6px;"></div>
-            <a href="/change-password" class="tab-btn"><i class="fas fa-key"></i> Password</a>
-            <a href="/logout" class="tab-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <a href="/quality_dashboard" class="tab-btn active" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>
+        </div>
+        <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
+            <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+            <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
         </div>
     </nav>
 
     <div class="container">
         <!-- Date Filter Bar (controls ALL stats on this page) -->
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; background:linear-gradient(135deg,rgba(15,23,42,0.8),rgba(30,41,59,0.7)); padding:14px 20px; border-radius:12px; border:1px solid rgba(96,165,250,0.15); box-shadow:0 2px 12px rgba(0,0,0,0.2);">
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:20px; flex-wrap:wrap; background:#090f1e; padding:14px 20px; border-radius:12px; border:1px solid #162040; border-top:1px solid #1e3060; box-shadow:0 4px 16px rgba(1,3,10,0.5);">
             <span style="font-size:0.88rem; color:#e2e8f0; font-weight:700; margin-right:6px;"><i class="fas fa-calendar-alt" style="margin-right:5px; color:#60a5fa;"></i> Period:</span>
             <button class="filter-btn active" id="date-btn-latest" onclick="setDateFilter('latest')">Latest</button>
             <button class="filter-btn" id="date-btn-today" onclick="setDateFilter('today')">Today</button>
@@ -239,15 +262,15 @@
                 <i class="fas fa-copy"></i> Copy
             </button>
         </div>
-        <pre id="summary-output" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; color:#e2e8f0; font-size:0.82rem; white-space:pre-wrap; line-height:1.6; min-height:40px; display:none;"></pre>
+        <pre id="summary-output" style="background:#090f1e; border:1px solid #162040; border-top:1px solid #1e3060; border-radius:12px; padding:16px; color:#e2e8f0; font-size:0.82rem; white-space:pre-wrap; line-height:1.6; min-height:40px; display:none;"></pre>
 
         <!-- Slack Integration Settings -->
         <div class="section-title" style="margin-top:32px;"><i class="fab fa-slack" style="color:#E01E5A;"></i> Slack Integration</div>
-        <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+        <div style="background:#090f1e; border:1px solid #162040; border-top:1px solid #1e3060; border-radius:12px; padding:20px; box-shadow:0 4px 16px rgba(1,3,10,0.4);">
             <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
                 <div style="flex:1; min-width:300px;">
-                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">Webhook URL</label>
-                    <input type="text" id="slack-webhook-input" placeholder="Paste your Slack webhook URL here..." style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:100%; box-sizing:border-box; font-family:monospace;">
+                    <label style="display:block; font-size:0.78rem; color:#7898be; margin-bottom:4px;">Webhook URL</label>
+                    <input type="text" id="slack-webhook-input" placeholder="Paste your Slack webhook URL here..." style="background:rgba(1,3,10,0.8); border:1px solid #162040; color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:100%; box-sizing:border-box; font-family:monospace;">
                 </div>
                 <button onclick="saveSlackWebhook()" style="background:linear-gradient(135deg,#4A154B,#611f69); border:none; color:#fff; padding:8px 20px; border-radius:8px; cursor:pointer; font-size:0.82rem; white-space:nowrap;">
                     <i class="fas fa-save"></i> Save
@@ -264,12 +287,12 @@
 
         <!-- Daily Summaries Slack Webhook -->
         <div class="section-title" style="margin-top:24px;"><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> Daily Summaries Slack Channel</div>
-        <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
-            <p style="font-size:0.78rem; color:#64748b; margin:0 0 12px 0;">Separate webhook for Daily Summary posts from the client dashboard (different from Quality Reports above).</p>
+        <div style="background:#090f1e; border:1px solid #162040; border-top:1px solid #1e3060; border-radius:12px; padding:20px; box-shadow:0 4px 16px rgba(1,3,10,0.4);">
+            <p style="font-size:0.78rem; color:#4a6080; margin:0 0 12px 0;">Separate webhook for Daily Summary posts from the client dashboard (different from Quality Reports above).</p>
             <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
                 <div style="flex:1; min-width:300px;">
-                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">Webhook URL</label>
-                    <input type="text" id="slack-daily-webhook-input" placeholder="Paste your Daily Summaries Slack webhook URL here..." style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:100%; box-sizing:border-box; font-family:monospace;">
+                    <label style="display:block; font-size:0.78rem; color:#7898be; margin-bottom:4px;">Webhook URL</label>
+                    <input type="text" id="slack-daily-webhook-input" placeholder="Paste your Daily Summaries Slack webhook URL here..." style="background:rgba(1,3,10,0.8); border:1px solid #162040; color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:100%; box-sizing:border-box; font-family:monospace;">
                 </div>
                 <button onclick="saveDailySlackWebhook()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9); border:none; color:#fff; padding:8px 20px; border-radius:8px; cursor:pointer; font-size:0.82rem; white-space:nowrap;">
                     <i class="fas fa-save"></i> Save
@@ -283,15 +306,15 @@
 
         <!-- CSV Re-Import Tool -->
         <div class="section-title" style="margin-top:32px;"><i class="fas fa-upload" style="color:#f472b6;"></i> CSV Re-Import</div>
-        <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+        <div style="background:#090f1e; border:1px solid #162040; border-top:1px solid #1e3060; border-radius:12px; padding:20px; box-shadow:0 4px 16px rgba(1,3,10,0.4);">
             <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
                 <div>
-                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">Client Name</label>
-                    <input type="text" id="import-client-id" placeholder="e.g. John Smith" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:220px;">
+                    <label style="display:block; font-size:0.78rem; color:#7898be; margin-bottom:4px;">Client Name</label>
+                    <input type="text" id="import-client-id" placeholder="e.g. John Smith" style="background:rgba(1,3,10,0.8); border:1px solid #162040; color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:220px;">
                 </div>
                 <div>
-                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">CSV File</label>
-                    <input type="file" id="import-csv-file" accept=".csv" style="font-size:0.82rem; color:#94a3b8;">
+                    <label style="display:block; font-size:0.78rem; color:#7898be; margin-bottom:4px;">CSV File</label>
+                    <input type="file" id="import-csv-file" accept=".csv" style="font-size:0.82rem; color:#7898be;">
                 </div>
                 <button onclick="importCSV()" style="background:linear-gradient(135deg,#db2777,#be185d); border:none; color:#fff; padding:8px 20px; border-radius:8px; cursor:pointer; font-size:0.82rem;">
                     <i class="fas fa-file-import"></i> Import
