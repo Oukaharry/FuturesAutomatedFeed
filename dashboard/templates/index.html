@@ -4059,8 +4059,15 @@
 
                                 <!-- (EV merged into Profitability header) -->
 
+                                <!-- Hedging section toggle -->
+                                <div style="order:3; grid-column: 1 / -1; display:flex; justify-content:center; margin: -8px 0 -12px;">
+                                    <button onclick="const w=document.getElementById('hedging-details-wrap'); const a=this.querySelector('.hd-arrow'); w.style.display=w.style.display==='none'?'grid':'none'; a.textContent=w.style.display==='none'?'▸':'▾';" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
+                                        <span class="hd-arrow">▸</span> Hedging Details & MT5 Accounts
+                                    </button>
+                                </div>
+                                <div id="hedging-details-wrap" style="order:4; grid-column: 1 / -1; display:none; grid-template-columns: repeat(2, 1fr); gap:20px;">
                                 <!-- Live Hedging Review -->
-                                <div class="card" style="order:3;">
+                                <div class="card">
                                     <div class="card-header">Live Hedging Review
                                         ${canEditHedging ? '<button class="btn-small" onclick="saveHedgingReview()" style="float:right;padding:2px 8px;font-size:11px;">💾 Save</button>' : ''}
                                     </div>
@@ -4098,7 +4105,7 @@
                                 </div>
 
                                 <!-- MT5 Accounts Overview -->
-                                <div class="card" style="order:4;">
+                                <div class="card">
                                     <div class="card-header">📜 MT5 Accounts Overview
                                         ${canEditHedging ? '<button class="btn-small" onclick="showAddHistoricalMT5Modal()" style="float:right;padding:4px 12px;font-size:11px;">+ Add Previous MT5</button>' : ''}
                                     </div>
@@ -4106,6 +4113,7 @@
                                         ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {}, s.hedging_review.current_mt5_prior_activity || 0)}
                                     </div>
                                 </div>
+                                </div><!-- end hedging-details-wrap -->
 
                                 <!-- Net Profit In Progress -->
                                 <div class="card" style="order:2;">
