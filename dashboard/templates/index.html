@@ -1245,12 +1245,26 @@
             border-color: rgba(251, 191, 36, 0.3) !important;
         }
 
-        /* Stats grid layout */
+        /* Stats grid layout — 2 per row, equal height */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 20px;
             margin-bottom: 24px;
+        }
+        .stats-grid > .card {
+            margin-bottom: 0 !important;
+            display: flex;
+            flex-direction: column;
+        }
+        .stats-grid > .card .card-header {
+            flex-shrink: 0;
+        }
+        .stats-grid > .card .summary-table {
+            flex: 1;
+        }
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: 1fr; }
         }
 
         /* Section headings inside tab content */
