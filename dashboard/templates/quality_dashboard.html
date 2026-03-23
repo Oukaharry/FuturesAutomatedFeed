@@ -10,12 +10,54 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
 
-        /* Nav (same as super_admin) */
-        .modern-nav { display:flex; justify-content:center; align-items:center; padding:10px 20px; background:linear-gradient(135deg,rgba(15,23,42,0.98),rgba(30,41,59,0.95)); border-bottom:1px solid rgba(255,255,255,0.06); position:sticky; top:0; z-index:100; backdrop-filter:blur(12px); }
-        .nav-links { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
-        .tab-btn { display:inline-flex; align-items:center; gap:5px; padding:8px 14px; border-radius:8px; font-size:0.85rem; font-weight:500; color:#94a3b8; text-decoration:none; transition:all 0.2s; border:none; background:transparent; cursor:pointer; }
-        .tab-btn:hover { background:rgba(255,255,255,0.06); color:#e2e8f0; }
-        .tab-btn.active { background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(16,185,129,0.3)); color:#4ade80; border:1px solid rgba(34,197,94,0.3); }
+        /* Nav */
+        .modern-nav {
+            background: #0f172a;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
+            position: relative;
+        }
+        .nav-links {
+            display: flex;
+            gap: 8px;
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            border: none;
+        }
+        .tab-btn {
+            color: #94a3b8;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.82rem;
+            transition: color 0.15s ease, border-color 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            border-bottom: 2px solid transparent;
+            background: transparent;
+            cursor: pointer;
+        }
+        .tab-btn:hover {
+            color: #f8fafc;
+            background: rgba(255,255,255,0.04);
+        }
+        .tab-btn.active {
+            color: #fbbf24;
+            border-bottom: 2px solid #fbbf24;
+            background: transparent;
+            font-weight: 600;
+        }
 
         .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
@@ -80,6 +122,9 @@
 </head>
 <body>
     <nav class="modern-nav">
+        <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
+        </div>
         <div class="nav-links">
             <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
             <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
@@ -87,9 +132,9 @@
             <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
             <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
             <a href="/quality_dashboard" class="tab-btn active"><i class="fas fa-clipboard-check"></i> Data Quality</a>
-            <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
-            <a href="/change-password" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);"><i class="fas fa-key"></i> Password</a>
-            <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);"><i class="fas fa-sign-out-alt"></i> Logout</a>
+            <div style="height: 20px; width: 1px; background: rgba(255,255,255,0.08); margin: 0 6px;"></div>
+            <a href="/change-password" class="tab-btn"><i class="fas fa-key"></i> Password</a>
+            <a href="/logout" class="tab-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
         </div>
     </nav>
 

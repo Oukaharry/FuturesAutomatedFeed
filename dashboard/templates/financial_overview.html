@@ -180,51 +180,52 @@
 
         /* Modern Nav - Slate 900 Theme (Added to match Super Admin) */
         .modern-nav {
-            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important; /* Blue Gradient */
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 8px; /* var(--radius) fallback */
-            padding: 0 24px !important;
-            height: 80px;
+            background: #0f172a;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 0 24px;
+            height: 64px;
             display: flex;
             justify-content: flex-end;
             align-items: center;
             margin-bottom: 20px;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
             position: relative;
         }
         
         .nav-links {
             display: flex;
             gap: 8px;
-            background: rgba(15, 23, 42, 0.6);
-            padding: 6px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            border: none;
         }
         
         .tab-btn {
-            color: var(--text-secondary);
+            color: #94a3b8;
             text-decoration: none;
             font-weight: 500;
-            font-size: 0.95rem;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 0.82rem;
+            transition: color 0.15s ease, border-color 0.15s ease;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             padding: 8px 16px;
-            border-radius: 8px;
-            border: none; /* Reset */
+            border-radius: 6px;
+            border-bottom: 2px solid transparent;
+            background: transparent;
         }
         .tab-btn:hover {
             color: #f8fafc;
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255,255,255,0.04);
         }
         .tab-btn.active {
-            background: #3b82f6 !important; /* Solide Blue */
-            color: #ffffff !important;
+            color: #fbbf24;
+            border-bottom: 2px solid #fbbf24;
+            background: transparent;
             font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            border: none;
         }
 
         /* ── MOBILE RESPONSIVE ── */
@@ -268,13 +269,14 @@
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
                 <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
                 <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
+                <a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>
                 
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
+                <div style="height: 20px; width: 1px; background: rgba(255,255,255,0.08); margin: 0 6px;"></div>
                 
-                <a href="/change-password" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                <a href="/change-password" class="tab-btn">
                     <i class="fas fa-key"></i> Change Password
                 </a>
-                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
+                <a href="/logout" class="tab-btn">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </a>
             </div>
