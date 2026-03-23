@@ -1420,6 +1420,9 @@
             <button class="checklist-copy-btn" id="checklist-copy-all-btn" onclick="copyAllSummaries()" style="display:none;">
                 <i class="fas fa-copy" style="margin-right:4px;"></i> Copy All
             </button>
+            <button class="checklist-copy-btn" id="checklist-slack-btn" onclick="sendSummaryToSlack()" style="display:none;">
+                <i class="fab fa-slack" style="margin-right:4px;"></i> Send to Slack
+            </button>
             <button class="checklist-submit-btn" id="checklist-submit-btn" onclick="submitChecklist()">
                 <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Save &amp; Preview
             </button>
@@ -6528,6 +6531,7 @@
                     preview.style.display = 'block';
                     document.getElementById('checklist-copy-btn').style.display = 'inline-flex';
                     document.getElementById('checklist-copy-all-btn').style.display = 'inline-flex';
+                    document.getElementById('checklist-slack-btn').style.display = 'inline-flex';
                     renderClientDots();
                     btn.innerHTML = '<i class="fas fa-check" style="margin-right:6px;"></i> Saved!';
                     btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
@@ -6574,6 +6578,40 @@
             const btn = document.getElementById('checklist-copy-all-btn');
             btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied All!';
             setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy All'; }, 1500);
+        }
+
+        async function sendSummaryToSlack() {
+            const btn = document.getElementById('checklist-slack-btn');
+            const text = generateSummaryText(_activeClient);
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fab fa-slack" style="margin-right:4px;"></i> Sending...';
+            try {
+                const resp = await fetch('/api/checklist/send_slack', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, client_id: _activeClient })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Sent!';
+                    btn.style.borderColor = 'rgba(34,197,94,0.5)';
+                    btn.style.color = '#4ade80';
+                    setTimeout(() => {
+                        btn.innerHTML = '<i class="fab fa-slack" style="margin-right:4px;"></i> Send to Slack';
+                        btn.style.borderColor = '';
+                        btn.style.color = '';
+                        btn.disabled = false;
+                    }, 2000);
+                } else {
+                    alert(data.message || 'Failed to send to Slack.');
+                    btn.innerHTML = '<i class="fab fa-slack" style="margin-right:4px;"></i> Send to Slack';
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('Failed to send to Slack.');
+                btn.innerHTML = '<i class="fab fa-slack" style="margin-right:4px;"></i> Send to Slack';
+                btn.disabled = false;
+            }
         }
 
         // Load initial badge state

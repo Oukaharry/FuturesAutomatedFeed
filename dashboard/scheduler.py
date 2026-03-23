@@ -107,6 +107,11 @@ def send_slack_message(text):
     if not webhook_url:
         logging.warning("Slack webhook URL not configured — skipping Slack post.")
         return False
+    return send_slack_to_webhook(webhook_url, text)
+
+
+def send_slack_to_webhook(webhook_url, text):
+    """Post a message to a specific Slack webhook URL."""
     try:
         payload = json.dumps({'text': text}).encode('utf-8')
         req = Request(webhook_url, data=payload, headers={'Content-Type': 'application/json'})

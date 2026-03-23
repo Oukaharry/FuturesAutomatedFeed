@@ -5728,6 +5728,71 @@ def api_send_slack_summary():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+# ── Daily Summaries Slack ─────────────────────────────────────────
+
+@app.route('/api/settings/slack_daily_webhook', methods=['GET'])
+@require_role('super_admin')
+def api_get_slack_daily_webhook():
+    """Get the Daily Summaries Slack webhook URL (masked)."""
+    from dashboard.database import get_setting
+    url = get_setting('slack_daily_summaries_webhook_url')
+    if url:
+        masked = url[:40] + '...' + url[-6:] if len(url) > 50 else url
+        return jsonify({'status': 'success', 'configured': True, 'masked_url': masked})
+    return jsonify({'status': 'success', 'configured': False, 'masked_url': ''})
+
+
+@app.route('/api/settings/slack_daily_webhook', methods=['POST'])
+@require_role('super_admin')
+def api_set_slack_daily_webhook():
+    """Set the Daily Summaries Slack webhook URL. Super admin only."""
+    from dashboard.database import set_setting
+    data = request.get_json(force=True)
+    url = (data.get('url') or '').strip()
+    user = request.session_user.get('user_identifier', '')
+    if url and not url.startswith('https://hooks.slack.com/'):
+        return jsonify({'status': 'error', 'message': 'Invalid Slack webhook URL.'}), 400
+    set_setting('slack_daily_summaries_webhook_url', url, updated_by=user)
+    action = 'configured' if url else 'removed'
+    log_action('SLACK_DAILY_WEBHOOK', 'super_admin', user, get_remote_address(), f'Daily summaries Slack webhook {action}')
+    return jsonify({'status': 'success', 'message': f'Daily summaries Slack webhook {action}.'})
+
+
+@app.route('/api/checklist/send_slack', methods=['POST'])
+@require_session
+def api_send_checklist_slack():
+    """Send a daily summary to the Daily Summaries Slack channel."""
+    from dashboard.database import get_setting
+    from dashboard.scheduler import send_slack_to_webhook
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier', '')
+
+    if user_type == 'client':
+        return jsonify({'status': 'error', 'message': 'Not authorized'}), 403
+
+    webhook_url = get_setting('slack_daily_summaries_webhook_url')
+    if not webhook_url:
+        return jsonify({'status': 'error', 'message': 'Daily Summaries Slack webhook not configured. Ask a super admin to set it up.'}), 400
+
+    data = request.get_json(force=True)
+    summary_text = (data.get('text') or '').strip()
+    if not summary_text:
+        return jsonify({'status': 'error', 'message': 'No summary text provided.'}), 400
+
+    try:
+        ok = send_slack_to_webhook(webhook_url, summary_text)
+        if ok:
+            log_action('SLACK_DAILY_SUMMARY', user_type, user_identifier,
+                       get_remote_address(), f'Daily summary sent to Slack for {data.get("client_id", "")}')
+            return jsonify({'status': 'success', 'message': 'Summary sent to Slack!'})
+        else:
+            return jsonify({'status': 'error', 'message': 'Slack post failed — check webhook URL.'}), 502
+    except Exception as e:
+        logging.error(f"Daily summary Slack post error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/client/import_csv', methods=['POST'])
 @require_role('super_admin')
 def import_client_csv():

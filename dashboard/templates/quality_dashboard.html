@@ -217,6 +217,25 @@
             <div id="slack-status" style="margin-top:10px; font-size:0.8rem; color:#94a3b8;"></div>
         </div>
 
+        <!-- Daily Summaries Slack Webhook -->
+        <div class="section-title" style="margin-top:24px;"><i class="fas fa-clipboard-check" style="color:#a78bfa;"></i> Daily Summaries Slack Channel</div>
+        <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
+            <p style="font-size:0.78rem; color:#64748b; margin:0 0 12px 0;">Separate webhook for Daily Summary posts from the client dashboard (different from Quality Reports above).</p>
+            <div style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:300px;">
+                    <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px;">Webhook URL</label>
+                    <input type="text" id="slack-daily-webhook-input" placeholder="Paste your Daily Summaries Slack webhook URL here..." style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:0.85rem; width:100%; box-sizing:border-box; font-family:monospace;">
+                </div>
+                <button onclick="saveDailySlackWebhook()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9); border:none; color:#fff; padding:8px 20px; border-radius:8px; cursor:pointer; font-size:0.82rem; white-space:nowrap;">
+                    <i class="fas fa-save"></i> Save
+                </button>
+                <button onclick="removeDailySlackWebhook()" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#f87171; padding:8px 16px; border-radius:8px; cursor:pointer; font-size:0.82rem; white-space:nowrap;">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            <div id="slack-daily-status" style="margin-top:10px; font-size:0.8rem; color:#94a3b8;"></div>
+        </div>
+
         <!-- CSV Re-Import Tool -->
         <div class="section-title" style="margin-top:32px;"><i class="fas fa-upload" style="color:#f472b6;"></i> CSV Re-Import</div>
         <div style="background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:20px;">
@@ -253,6 +272,7 @@
             loadResults();
             loadChecklists();
             loadSlackStatus();
+            loadDailySlackStatus();
         });
 
         // ── Slack Settings ──
@@ -340,6 +360,56 @@
                 btn.innerHTML = '<i class="fas fa-paper-plane"></i> Test';
                 btn.disabled = false;
             }
+        }
+
+        // ── Daily Summaries Slack Settings ──
+        async function loadDailySlackStatus() {
+            try {
+                const resp = await fetch('/api/settings/slack_daily_webhook');
+                const data = await resp.json();
+                const statusEl = document.getElementById('slack-daily-status');
+                const input = document.getElementById('slack-daily-webhook-input');
+                if (data.configured) {
+                    statusEl.innerHTML = '<i class="fas fa-check-circle" style="color:#4ade80;"></i> Connected: <code style="color:#a78bfa;">' + data.masked_url + '</code>';
+                    input.placeholder = 'Webhook configured (paste new URL to replace)';
+                } else {
+                    statusEl.innerHTML = '<i class="fas fa-exclamation-circle" style="color:#fbbf24;"></i> Not configured — paste your Daily Summaries Slack webhook URL above';
+                }
+            } catch(e) { console.error('Failed to load Daily Slack status', e); }
+        }
+
+        async function saveDailySlackWebhook() {
+            const url = document.getElementById('slack-daily-webhook-input').value.trim();
+            if (!url) { alert('Paste a webhook URL first.'); return; }
+            if (!url.startsWith('https://hooks.slack.com/')) { alert('Invalid URL. Must start with https://hooks.slack.com/'); return; }
+            try {
+                const resp = await fetch('/api/settings/slack_daily_webhook', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ url })
+                });
+                if (!resp.ok) { alert('Server error ' + resp.status); return; }
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    document.getElementById('slack-daily-webhook-input').value = '';
+                    loadDailySlackStatus();
+                    document.getElementById('slack-daily-status').innerHTML = '<i class="fas fa-check-circle" style="color:#4ade80;"></i> ' + data.message;
+                } else {
+                    alert(data.message || 'Failed to save.');
+                }
+            } catch(e) { alert('Error saving: ' + e.message); }
+        }
+
+        async function removeDailySlackWebhook() {
+            if (!confirm('Remove Daily Summaries Slack webhook?')) return;
+            try {
+                const resp = await fetch('/api/settings/slack_daily_webhook', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ url: '' })
+                });
+                if (!resp.ok) { alert('Failed to remove.'); return; }
+                const data = await resp.json();
+                if (data.status === 'success') loadDailySlackStatus();
+            } catch(e) { alert('Failed to remove webhook.'); }
         }
 
         function getDateRange() {
