@@ -6,251 +6,283 @@
     <title>Financial Overview - TradeOpss</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* Table Styles inherited from style.css (tradeopss) */
-        
-        .positive { color: #10b981; font-weight: 500; }
-        .negative { color: #ef4444; font-weight: 500; }
-        .neutral { color: #94a3b8; }
-        
-        .back-link { 
-            display: inline-flex; 
-            align-items: center; 
-            margin-bottom: 0; 
-            text-decoration: none; 
-            color: #3b82f6; 
-            font-weight: 500;
+        /* ── FINANCIAL OVERVIEW — Style Guide Aligned ── */
+
+        /* Value colors */
+        .positive { color: #2dd4bf; font-weight: 600; }
+        .negative { color: #f87171; font-weight: 600; }
+        .neutral  { color: #7898be; }
+        .text-green-bright { color: #4ade80 !important; }
+        .text-red-bright   { color: #f87171 !important; }
+
+        /* ── NAVBAR ── */
+        .modern-nav {
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22);
+            position: relative;
         }
-        .back-link:hover { text-decoration: underline; }
-        
-        /* Make table scrollable if too wide */
-        .table-responsive {
-            overflow-x: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Shadow fallback */
-            /* Background handled by global css */
+        .nav-links {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            background: none;
+            padding: 0;
+            border: none;
         }
-        .summary-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .summary-card {
-            background: rgba(30, 41, 59, 0.6);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .card-label {
-            font-size: 0.85rem;
-            color: #94a3b8;
-            text-transform: uppercase;
+        .tab-btn {
+            color: #7898be;
+            text-decoration: none;
             font-weight: 600;
-            margin-bottom: 8px;
+            font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: color 0.15s ease, background 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 7px;
+            border-bottom: 2px solid transparent;
+            background: transparent;
+            letter-spacing: 0.01em;
         }
-        .card-value {
-            font-size: 1.8rem;
+        .tab-btn i { font-size: 0.82rem; opacity: 0.7; transition: opacity 0.15s ease; }
+        .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .tab-btn:hover i { opacity: 1; }
+        .tab-btn.active { color: #fbbf24; border-bottom: 2px solid #fbbf24; font-weight: 600; }
+        .tab-btn.active i { opacity: 1; color: #fbbf24; }
+
+        /* Icon-only nav action buttons */
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28);
+            background: rgba(251,191,36,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover { background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 14px rgba(251,191,36,0.18); }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25);
+            background: rgba(239,68,68,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.5); box-shadow: 0 0 14px rgba(239,68,68,0.18); }
+
+        /* ── FILTER BUTTONS (All/BEF/Private) ── */
+        .filter-btn {
+            padding: 5px 14px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: #6b88b0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.72rem;
             font-weight: 700;
-            color: #f8fafc;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.15s ease;
         }
-        .badge-count {
-            background: rgba(255, 255, 255, 0.1);
-            color: #cbd5e1;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.75rem;
+        .filter-btn:hover { color: #c8d8f0; background: rgba(255,255,255,0.05); }
+        .filter-btn.active {
+            background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+            color: #e0eaff;
+            box-shadow: 0 2px 8px rgba(1,3,10,0.6), inset 0 1px 0 rgba(100,150,240,0.2);
+        }
+
+        /* ── PROFILE TOGGLE (ALL/BEF/PRIVATE links) ── */
+        .profile-toggle {
+            display: inline-flex;
+            background: #0a0f1e;
+            border: 1px solid #1a2848;
+            border-radius: 8px;
+            padding: 3px;
+            gap: 2px;
+        }
+        .profile-toggle .toggle-btn {
+            padding: 5px 14px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: #6b88b0;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            transition: all 0.15s ease;
+        }
+        .profile-toggle .toggle-btn:hover { color: #c8d8f0; background: rgba(255,255,255,0.05); }
+        .profile-toggle .toggle-btn.active {
+            background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+            color: #e0eaff;
+            box-shadow: 0 2px 8px rgba(1,3,10,0.6), inset 0 1px 0 rgba(100,150,240,0.2);
+        }
+
+        /* ── STAT CARDS ── */
+        .stat-card-label {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.68rem;
             font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
         }
+        .stat-card-value {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1;
+        }
+
+        /* ── SECTION PANELS ── */
+        .section-panel {
+            background: var(--card-bg);
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-navy);
+        }
+        .section-heading {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #fff;
+            margin: 0;
+            letter-spacing: -0.01em;
+        }
+
+        /* ── CHARTS ── */
         .charts-container {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 20px;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
         }
         .chart-card {
-            background: rgba(30, 41, 59, 0.6);
+            background: var(--card-bg);
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
             padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            box-shadow: var(--shadow-navy);
             min-height: 350px;
             display: flex;
             flex-direction: column;
         }
         .chart-title {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #f8fafc;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #e8eeff;
             margin-bottom: 20px;
             text-align: center;
+            letter-spacing: 0.01em;
+            text-transform: uppercase;
         }
-        .chart-wrapper {
-            flex: 1;
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }
-        .text-green-bright { color: #4ade80 !important; }
-        .text-red-bright { color: #f87171 !important; }
-        .bg-dark { background-color: #0f172a !important; }
-        
-        /* Updated Toggle Group for Dark Theme */
-        .toggle-group {
-            display: flex;
-            gap: 5px;
-            align-items: center;
-        }
-        .toggle-btn {
-            background: rgba(255,255,255,0.05); /* Transparent dark */
-            border: 1px solid transparent;
-            padding: 4px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            color: #94a3b8; /* text-secondary */
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        .toggle-btn:hover {
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-        }
-        .toggle-btn.active {
-            background: #3b82f6;
-            color: white;
-            border-color: #3b82f6;
-        }
+        .chart-wrapper { flex: 1; position: relative; width: 100%; }
 
-        /* --- Dark Theme Overrides (TradeOpss) --- */
-        :root {
-            --bg-dark: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --accent-color: #fbbf24;
-            --border-color: rgba(255,255,255,0.1);
+        /* ── TABLE ── */
+        .table-responsive {
+            overflow-x: auto;
+            border-radius: 14px;
+            border: 1px solid #162040;
+            box-shadow: var(--shadow-navy);
+            margin-bottom: 24px;
         }
-
-        body {
-            background-color: var(--bg-dark) !important;
-            color: var(--text-primary) !important;
-        }
-
-        h1, h2, h3, h4, h5 { color: var(--text-primary) !important; }
-
-        /* Tables */
-        .finance-table, .table-responsive {
-            background: var(--card-bg) !important;
-            border: 1px solid var(--border-color) !important;
-            box-shadow: none !important;
-            color: var(--text-primary) !important;
+        .finance-table {
+            background: var(--card-bg);
+            border: none;
+            color: var(--text-primary);
         }
         .finance-table th {
-            background: rgba(15, 23, 42, 0.8) !important;
-            color: var(--text-secondary) !important;
-            border-bottom: 1px solid var(--border-color) !important;
+            background: linear-gradient(90deg, #172554 0%, #0f172a 100%) !important;
+            color: #94a3b8 !important;
+            border-bottom: 1px solid #162040 !important;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            padding: 12px 16px;
         }
         .finance-table td {
-            border-bottom: 1px solid var(--border-color) !important;
+            border-bottom: 1px solid #162040 !important;
             color: var(--text-primary) !important;
+            padding: 12px 16px;
         }
-        .finance-table td:first-child {
+        .finance-table td:first-child { color: #fff !important; font-weight: 600; }
+        .finance-table tr:hover td { background: rgba(30,58,138,0.06) !important; }
+        .finance-table tr:last-child td { border-bottom: none !important; }
+
+        /* Group header variants */
+        .group-header-blue   { background: linear-gradient(90deg,#172554,#0f172a) !important; border-bottom: 2px solid #1e3a8a !important; color: #94a3b8 !important; text-align:center; }
+        .group-header-green  { background: linear-gradient(90deg,#052e16,#0a1a0a) !important; border-bottom: 2px solid #065f46 !important; color: #6ee7b7 !important; text-align:center; }
+        .group-header-purple { background: linear-gradient(90deg,#3b0764,#1e1035) !important; border-bottom: 2px solid #7c3aed !important; color: #c4b5fd !important; text-align:center; }
+        .group-header-orange { background: linear-gradient(90deg,#431407,#1c0a02) !important; border-bottom: 2px solid #c2410c !important; color: #fdba74 !important; text-align:center; }
+
+        .badge-count {
+            background: rgba(30,58,138,0.25);
+            color: #7baef0;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 700;
+            border: 1px solid rgba(30,58,138,0.35);
+        }
+
+        /* Total row */
+        .total-row td {
+            background: linear-gradient(90deg,#172554,#0f172a) !important;
             color: #fff !important;
-        }
-        .finance-table tr:hover {
-            background: rgba(255,255,255,0.05) !important;
-        }
-
-        /* Summary Cards */
-        .summary-card {
-            background: var(--card-bg) !important;
-            border: 1px solid var(--border-color) !important;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
-        }
-        .card-label { color: var(--text-secondary) !important; }
-        .card-value { color: var(--text-primary) !important; }
-
-        /* Links */
-        .back-link { color: var(--accent-color) !important; }
-        
-        /* Charts Backgrounds if transparent, they work. If specific bg set in JS, might need more work. */
-
-        /* Modern Nav - Slate 900 Theme (Added to match Super Admin) */
-        .modern-nav {
-            background: #0f172a;
-            border: none;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            border-radius: 16px;
-            padding: 0 24px;
-            height: 64px;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4);
-            position: relative;
-        }
-        
-        .nav-links {
-            display: flex;
-            gap: 8px;
-            background: none;
-            padding: 0;
-            border-radius: 0;
-            border: none;
-        }
-        
-        .tab-btn {
-            color: #94a3b8;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.82rem;
-            transition: color 0.15s ease, border-color 0.15s ease;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 16px;
-            border-radius: 6px;
-            border-bottom: 2px solid transparent;
-            background: transparent;
-        }
-        .tab-btn:hover {
-            color: #f8fafc;
-            background: rgba(255,255,255,0.04);
-        }
-        .tab-btn.active {
-            color: #fbbf24;
-            border-bottom: 2px solid #fbbf24;
-            background: transparent;
-            font-weight: 600;
+            font-weight: 700;
+            border-top: 2px solid #1e3a8a !important;
         }
 
-        /* ── MOBILE RESPONSIVE ── */
+        /* Select / dropdown inputs */
+        select.form-select-dark {
+            background: rgba(1,3,10,0.7);
+            color: #e8eeff;
+            border: 1px solid #162040;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.84rem;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.15s ease;
+        }
+        select.form-select-dark:focus { border-color: #2a4a8a; box-shadow: 0 0 0 3px rgba(30,58,138,0.2); }
+
+        /* ── MOBILE ── */
         @media (max-width: 768px) {
-            .modern-nav {
-                height: auto !important;
-                flex-wrap: wrap;
-                padding: 10px 12px;
-                gap: 6px;
-                justify-content: center;
-                margin-bottom: 16px;
-            }
-            .modern-nav .brand {
-                position: static !important;
-                transform: none !important;
-                width: 100%;
-                display: flex;
-                justify-content: center;
-            }
-            .modern-nav .brand img {
-                width: 70px !important;
-                height: 70px !important;
-            }
-            .nav-links { flex-wrap: wrap; justify-content: center; gap: 4px; }
-            .tab-btn { font-size: 0.78rem !important; padding: 6px 9px !important; }
+            .modern-nav { height:auto !important; flex-wrap:wrap; padding:10px 12px; gap:6px; justify-content:center; margin-bottom:16px; }
+            .modern-nav .brand { position:static !important; transform:none !important; width:100%; display:flex; justify-content:center; }
+            .modern-nav .brand img { width:70px !important; }
+            .nav-links { flex-wrap:wrap; justify-content:center; gap:4px; }
+            .tab-btn { font-size:0.78rem !important; padding:6px 9px !important; }
         }
     </style>
 </head>
@@ -259,7 +291,6 @@
         <!-- Modern Navigation -->
         <nav class="modern-nav">
              <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <!-- Logo with 'App Icon' styling to blend better -->
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
             </div>
             
@@ -270,26 +301,21 @@
                 <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
                 <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
                 <a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>
-                
-                <div style="height: 20px; width: 1px; background: rgba(255,255,255,0.08); margin: 0 6px;"></div>
-                
-                <a href="/change-password" class="tab-btn">
-                    <i class="fas fa-key"></i> Change Password
-                </a>
-                <a href="/logout" class="tab-btn">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
+            </div>
+
+            <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
+                <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+                <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
             </div>
         </nav>
 
-        <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px;">
+        <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px;">
             <div>
-                <h1 style="font-size: 1.5rem; margin: 0; color: #fff; margin-bottom: 4px;">Financial Overview</h1>
+                <h1 style="font-size: 1.5rem; margin: 0 0 4px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; letter-spacing: -0.02em;">Financial Overview</h1>
                 <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Consolidated report across all clients and prop firms</p>
             </div>
-            <!-- Filter Section (Matches Client Performance style) -->
             {% if not is_bef_admin %}
-            <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">
+            <div class="profile-toggle">
                 <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
                 <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
                 <button class="filter-btn" onclick="setFilter('Private')" id="filter-private">Private</button>
@@ -333,28 +359,28 @@
         {% endfor %}
 
         <!-- EV Intelligence Section -->
-        <div style="background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color); padding: 24px; margin-bottom: 30px; box-shadow: var(--shadow-lg);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 20px;">
+        <div class="section-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <i class="fas fa-chart-bar" style="color: var(--accent-color); font-size: 1.5rem;"></i>
-                    <h2 style="margin: 0; font-size: 1.5rem; color: #fff;">Performance Intelligence</h2>
+                    <i class="fas fa-chart-bar" style="color: var(--accent-color); font-size: 1.3rem;"></i>
+                    <h2 class="section-heading">Performance Intelligence</h2>
                 </div>
                 
-                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-                    <!-- Data Source Filter (Moved Here) -->
-                    <div class="toggle-group" style="background: rgba(15, 23, 42, 0.6); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <span style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 600; margin-right: 8px; align-self: center;">PROFILE:</span>
-                        <a href="?profile=ALL" class="toggle-btn {% if selected_profile|upper == 'ALL' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">ALL</a>
-                        <a href="?profile=BEF" class="toggle-btn {% if selected_profile|upper == 'BEF' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">BEF</a>
-                        <a href="?profile=PRIVATE" class="toggle-btn {% if selected_profile|upper == 'PRIVATE' %}active{% endif %}" style="text-decoration: none; padding: 4px 10px;">PRIVATE</a>
+                <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <!-- Profile Toggle -->
+                    <div class="profile-toggle">
+                        <span style="color:#7898be; font-family:'Plus Jakarta Sans',sans-serif; font-size:0.68rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding: 5px 8px; align-self:center;">PROFILE</span>
+                        <a href="?profile=ALL" class="toggle-btn {% if selected_profile|upper == 'ALL' %}active{% endif %}">ALL</a>
+                        <a href="?profile=BEF" class="toggle-btn {% if selected_profile|upper == 'BEF' %}active{% endif %}">BEF</a>
+                        <a href="?profile=PRIVATE" class="toggle-btn {% if selected_profile|upper == 'PRIVATE' %}active{% endif %}">PRIVATE</a>
                     </div>
     
                     <!-- Firm Filter -->
-                    <div style="display: flex; align-items: center; gap: 8px; background: rgba(15, 23, 42, 0.6); padding: 6px 16px; border-radius: 8px; border: 1px solid var(--border-color);">
-                        <i class="fas fa-filter" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
-                        <span style="color: var(--text-secondary); font-size: 0.8rem; font-weight: 600;">FIRM:</span>
-                        <select id="firmFocusSelect" onchange="updateFirmDisplay()" style="background: #1e293b; color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 4px 8px; outline: none; font-family: var(--font-family); font-weight: 500; font-size: 0.9rem; cursor: pointer; min-width: 140px;">
-                            <option value="ALL" style="background-color: #1e293b;">All Prop Firms</option>
+                    <div style="display: flex; align-items: center; gap: 8px; background: #0a0f1e; padding: 5px 14px; border-radius: 8px; border: 1px solid #1a2848;">
+                        <i class="fas fa-filter" style="color: #7898be; font-size: 0.78rem;"></i>
+                        <span style="color: #7898be; font-family:'Plus Jakarta Sans',sans-serif; font-size:0.68rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;">FIRM</span>
+                        <select id="firmFocusSelect" onchange="updateFirmDisplay()" class="form-select-dark" style="min-width:140px;">
+                            <option value="ALL">All Prop Firms</option>
                             {% for firm in overview.keys()|sort %}
                             <option value="{{ firm }}">{{ firm }}</option>
                             {% endfor %}
@@ -364,56 +390,56 @@
             </div>
 
             <!-- Stats Grid (Matching User Screenshot) -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;">
                 
                 <!-- Row 1 -->
                 <!-- Total Payouts -->
-                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #6ee7b7 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Payouts</div>
-                    <div id="card-payouts" style="font-size: 2rem; font-weight: 800; color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">{{ "$%0.2f"|format(ns.pay) }}</div>
+                    <div id="card-payouts" style="font-size: 1.45rem; font-weight: 700; color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">{{ "$%0.2f"|format(ns.pay) }}</div>
                 </div>
 
                 <!-- Total Deposits -->
-                <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #93c5fd !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Deposits</div>
-                    <div id="card-deposits" style="font-size: 2rem; font-weight: 800; color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">{{ "$%0.2f"|format(deposits_values[-1] if deposits_values else 0) }}</div>
+                    <div id="card-deposits" style="font-size: 1.45rem; font-weight: 700; color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">{{ "$%0.2f"|format(deposits_values[-1] if deposits_values else 0) }}</div>
                 </div>
 
                 <!-- Challenge Fees -->
-                <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #fca5a5 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Challenge Fees</div>
-                    <div id="card-fees" style="font-size: 2rem; font-weight: 800; color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
+                    <div id="card-fees" style="font-size: 1.45rem; font-weight: 700; color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
                 </div>
 
                 <!-- Row 2 -->
                 <!-- Net Profit -->
-                <div style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #d8b4fe !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Net Profit</div>
-                    <div id="card-net" style="font-size: 2rem; font-weight: 800; color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">{{ "$%0.2f"|format(ns.net) }}</div>
+                    <div id="card-net" style="font-size: 1.45rem; font-weight: 700; color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">{{ "$%0.2f"|format(ns.net) }}</div>
                 </div>
 
                 <!-- Hedging Results -->
-                <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #bae6fd !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Hedging Results</div>
-                    <div id="card-hedge" style="font-size: 2rem; font-weight: 800; color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">{{ "$%0.2f"|format(ns.hedge) }}</div>
+                    <div id="card-hedge" style="font-size: 1.45rem; font-weight: 700; color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">{{ "$%0.2f"|format(ns.hedge) }}</div>
                 </div>
 
                 <!-- Farming Results -->
-                <div style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #d9f99d !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Farming Results</div>
-                    <div id="card-farming" style="font-size: 2rem; font-weight: 800; color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">{{ "$%0.2f"|format(ns.farm) }}</div>
+                    <div id="card-farming" style="font-size: 1.45rem; font-weight: 700; color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">{{ "$%0.2f"|format(ns.farm) }}</div>
                 </div>
 
                 <!-- Expected Value -->
-                <div style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #fde047 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Expected Value (EV)</div>
-                    <div id="card-ev" style="font-size: 2rem; font-weight: 800; color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);">{{ "$%0.2f"|format(global_stats.expected_value|default(0)) }}</div>
+                    <div id="card-ev" style="font-size: 1.45rem; font-weight: 700; color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);">{{ "$%0.2f"|format(global_stats.expected_value|default(0)) }}</div>
                 </div>
 
                 <!-- EV / Day -->
-                <div style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(131, 24, 67, 0.6) 100%); border: 1px solid rgba(244, 114, 182, 0.4); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                <div style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(131, 24, 67, 0.6) 100%); border: 1px solid rgba(244, 114, 182, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #fbcfe8 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">EV / Day</div>
-                    <div id="card-ev-day" style="font-size: 2rem; font-weight: 800; color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">{{ "$%0.2f"|format(global_stats.ev_per_day|default(0)) }}</div>
+                    <div id="card-ev-day" style="font-size: 1.45rem; font-weight: 700; color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">{{ "$%0.2f"|format(global_stats.ev_per_day|default(0)) }}</div>
                 </div>
                 
                 <!-- Active/Passed/Failed Status List -->
@@ -441,7 +467,7 @@
         <div class="chart-card" style="margin-bottom: 30px; height: 400px;">
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 20px; gap: 15px;">
                 <h3 class="chart-title" style="margin-bottom: 0;">Portfolio Metric:</h3>
-                <select id="chartMetricSelect" onchange="updateGrowthChart(this.value)" style="padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background-color: #0f172a; font-size: 1rem; font-weight: 600; color: #f8fafc; cursor: pointer; outline: none; box-shadow: 0 1px 2px rgba(0,0,0,0.2);">
+                <select id="chartMetricSelect" onchange="updateGrowthChart(this.value)" class="form-select-dark">
                     <option value="net_profit" style="background-color: #0f172a; color: #f8fafc;">Net Profit (Trading)</option>
                     <option value="payouts" style="background-color: #0f172a; color: #f8fafc;">Total Payouts</option>
                     <option value="deposits">Total Deposits</option>
@@ -568,7 +594,7 @@
                     </tr>
                     {% endfor %}
                     
-                    <tr style="background-color: #1e293b; color: white; font-weight: bold; border-top: 2px solid #0f172a;">
+                    <tr class="total-row">
                         <td style="padding-left: 20px; color: white;">TOTAL</td>
                         <td style="text-align: center; background-color: #334155; color: white;">{{ ns.acc }}</td>
                         <td style="text-align: center; background-color: #334155; color: white;">{{ ns.active }}</td>
