@@ -1183,13 +1183,15 @@
             box-shadow: none !important;
             gap: 2px !important;
         }
+        .tabs::-webkit-scrollbar { display: none; }
         
         .tab-btn {
             background: transparent !important;
             color: var(--text-secondary) !important;
             border: none !important;
             border-bottom: 2px solid transparent !important;
-            padding: 8px 14px !important;
+            padding: 6px 10px !important;
+            font-size: 0.78rem !important;
             text-align: center !important;
             justify-content: center !important;
             border-radius: 6px !important;
@@ -1279,50 +1281,51 @@
             border-color: rgba(251,191,36,0.5) !important;
             color: #fbbf24 !important;
         }
-        /* Modern Nav Bar Styles (Super Admin) */
+        /* Modern Nav Bar Styles */
         .modern-nav {
-            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: var(--radius);
-            padding: 0 24px;
-            height: 80px;
             display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            margin-bottom: 32px;
-            box-shadow: var(--shadow-sm);
-            position: relative;
-        }
-        
-        .tab-btn {
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.95rem;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            display: flex;
-            align-items: center;
             justify-content: center;
-            gap: 8px;
-            padding: 8px 16px;
+            align-items: center;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(30,41,59,0.95));
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+            margin-bottom: 0;
+        }
+
+        .tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 8px 14px;
             border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #94a3b8;
+            text-decoration: none;
+            transition: all 0.2s;
             border: none;
+            background: transparent;
+            cursor: pointer;
         }
         .tab-btn:hover {
-            color: #60a5fa;
-            background: rgba(59, 130, 246, 0.08);
+            background: rgba(255,255,255,0.06);
+            color: #e2e8f0;
         }
         .tab-btn.active {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-            color: #ffffff;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-            font-weight: 600;
+            background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.3));
+            color: #4ade80;
+            border: 1px solid rgba(34,197,94,0.3);
         }
 
         .nav-links {
             display: flex;
-            gap: 8px;
-            overflow: auto;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         @keyframes spin {
@@ -1386,19 +1389,7 @@
     </style>
 </head>
 <body class="{% if user_type == 'client' %}client-view{% endif %}">
-    <!-- Top-right tools (Version History + CSV) -->
-    <div class="top-right-tools">
-        {% if user_type in ('admin', 'super_admin') %}
-        <button class="tool-btn" onclick="openHistoryPanel()" title="View version history (Ctrl+H)">
-            <i class="fas fa-history"></i> Version History
-        </button>
-        {% endif %}
-        {% if client_id %}
-        <button class="tool-btn" onclick="downloadCSV()" title="Download evaluation data as CSV" style="color:#4ade80;">
-            <i class="fas fa-download"></i> CSV
-        </button>
-        {% endif %}
-    </div>
+
 
     <!-- Daily Checklist FAB + Panel (traders/admins only) -->
     {% if user_type in ('trader', 'admin', 'super_admin') %}
@@ -1498,23 +1489,21 @@
 
     <div class="container">
         {% if user_type == 'super_admin' %}
-        <nav class="modern-nav">
-            <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 300px; height: auto; object-fit: contain;">
+        <nav class="modern-nav" style="justify-content:space-between; padding:8px 20px;">
+            <div class="brand" style="flex-shrink:0;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width:90px; height:auto; object-fit:contain; display:block;">
             </div>
-            <div class="nav-links">
+            <div class="nav-links" style="flex:1; justify-content:center;">
                 <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
                 <a href="/client_performance" class="tab-btn active"><i class="fas fa-users"></i> Clients</a>
                 <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
-                <a href="/change-password" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
-                    <i class="fas fa-key"></i> Change Password
-                </a>
-                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
+            </div>
+            <div style="flex-shrink:0; display:flex; align-items:center; gap:6px;">
+                <div style="height:20px; width:1px; background:rgba(255,255,255,0.1); margin:0 2px;"></div>
+                <a href="/change-password" class="tab-btn" style="border:1px solid rgba(255,255,255,0.1);"><i class="fas fa-key"></i> Password</a>
+                <a href="/logout" class="tab-btn" style="border:1px solid rgba(255,255,255,0.1);"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </nav>
         {% endif %}
@@ -1524,7 +1513,7 @@
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
                      style="width: 40px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
                 {% endif %}
-                <div class="tabs" style="margin-bottom:0; flex:1; display:flex; justify-content:center;">
+                <div class="tabs" style="margin-bottom:0; display:flex; align-items:center; flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none;">
                     <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
                     <button class="tab-btn" onclick="openTab('stats')">Stats</button>
                     <button class="tab-btn" onclick="openTab('waterlog')">Profit Split</button>
@@ -1538,23 +1527,48 @@
                     </button>
                     {% endif %}
                 </div>
-                <div class="status" style="display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0;">
-                    {% if client_id %}
-                    <span id="kyc-single-badge" class="header-user-badge" style="display:flex;align-items:center;gap:8px;">
-                        <i class="fas fa-user-circle" style="font-size:0.9rem;"></i>
+                <!-- Version History + CSV: between Issues and Last Edit -->
+                {% if user_type in ('admin', 'super_admin') %}
+                <button onclick="openHistoryPanel()" title="Version History" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:rgba(30,41,59,0.7);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;white-space:nowrap;box-shadow:none;letter-spacing:normal;font-weight:500;transform:none;">
+                    <i class="fas fa-history" style="font-size:10px;"></i> History
+                </button>
+                {% endif %}
+                {% if client_id %}
+                <button onclick="downloadCSV()" title="Download CSV" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);color:#4ade80;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;white-space:nowrap;box-shadow:none;letter-spacing:normal;font-weight:500;transform:none;">
+                    <i class="fas fa-download" style="font-size:10px;"></i> CSV
+                </button>
+                {% endif %}
+                <!-- Last Edit (admin/super_admin only) -->
+                {% if user_type in ('admin', 'super_admin') %}
+                <span id="activity-edit" style="display:none; font-size:11px; color:#94a3b8; background:rgba(30,41,59,0.6); padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); flex-shrink:0; white-space:nowrap; line-height:1.4;" title="">
+                    <i class="fas fa-edit" style="color:#a78bfa; margin-right:3px; vertical-align:middle;"></i><span id="activity-edit-time"></span><br><span id="activity-edit-by" style="color:#64748b; font-size:10px; padding-left:16px;"></span>
+                </span>
+                {% endif %}
+                <!-- Client name dropdown at farthest right -->
+                {% if client_id %}
+                {% if not is_active %}
+                <span style="background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; padding:4px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; letter-spacing:0.5px; flex-shrink:0;">INACTIVE</span>
+                {% endif %}
+                <div style="position:relative; flex-shrink:0; margin-left:auto;">
+                    <button onclick="toggleClientMenu(event)" style="display:flex; align-items:center; gap:6px; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.3); color:#60a5fa; padding:6px 12px; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; white-space:nowrap;">
+                        <i class="fas fa-user-circle"></i>
                         {{ client_id }}
-                    </span>
-                    {% if not is_active %}
-                    <span style="background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; padding:4px 12px; border-radius:6px; font-size:0.75rem; font-weight:700; letter-spacing:0.5px;">INACTIVE</span>
-                    {% endif %}
-                    {% endif %}
-                    <a href="/logout" class="header-logout-pill">
-                        Logout
-                    </a>
+                        <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
+                    </button>
+                <div id="client-menu-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
+                        <a href="/change-password" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#94a3b8; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
+                            <i class="fas fa-key" style="color:#f59e0b;"></i> Change Password
+                        </a>
+                        <div style="height:1px; background:rgba(255,255,255,0.06);"></div>
+                        <a href="/logout" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#f87171; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(248,113,113,0.08)'" onmouseout="this.style.background=''">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </div>
                 </div>
+                {% endif %}
             </div>
-            <!-- Secondary bar: KYC Portfolio, KYC Switcher, Change Password -->
-            <div id="header-secondary-bar" style="display:flex; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border-top:1px solid rgba(255,255,255,0.06); padding:6px 20px; justify-content:center; align-items:center; gap:12px;">
+            <!-- Secondary bar: KYC Portfolio, KYC Switcher -->
+            <div id="header-secondary-bar" style="display:flex; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border-top:1px solid rgba(255,255,255,0.06); padding:6px 20px; justify-content:flex-start; align-items:center; gap:12px; overflow-x:auto;">
                 <button class="tab-btn" id="kyc-portfolio-tab-btn" onclick="openTab('kyc-portfolio')" style="display:none; background:linear-gradient(135deg,rgba(168,85,247,0.2),rgba(88,28,135,0.4)); border:1px solid rgba(192,132,252,0.4); padding:6px 16px; font-size:0.85rem;">
                     <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
                 </button>
@@ -1569,18 +1583,6 @@
                         <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
                     </div>
                 </div>
-                {% endif %}
-                <a href="/change-password" style="display:flex; align-items:center; gap:5px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); color:#f59e0b; padding:6px 14px; border-radius:8px; font-size:0.85rem; font-weight:500; text-decoration:none;">
-                    <i class="fas fa-key" style="font-size:0.75rem;"></i> Password
-                </a>
-                <!-- Last Activity Indicators (admin/super_admin only) -->
-                {% if user_type in ('admin', 'super_admin') %}
-                <span id="activity-push" style="display:none; font-size:0.78rem; color:#94a3b8; background:rgba(30,41,59,0.6); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                    <i class="fas fa-upload" style="color:#60a5fa; margin-right:3px;"></i> Last Push: <span id="activity-push-time">--</span>
-                </span>
-                <span id="activity-edit" style="display:none; font-size:0.78rem; color:#94a3b8; background:rgba(30,41,59,0.6); padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
-                    <i class="fas fa-edit" style="color:#a78bfa; margin-right:3px;"></i> Last Edit: <span id="activity-edit-time">--</span>
-                </span>
                 {% endif %}
             </div>
         </header>
@@ -4552,8 +4554,11 @@
             if (act.last_edit_at && editEl) {
                 const ago = timeAgo(act.last_edit_at);
                 if (ago) {
-                    const by = act.last_edit_by ? ` by ${act.last_edit_by}` : '';
-                    document.getElementById('activity-edit-time').textContent = ago + by;
+                    const by = act.last_edit_by ? act.last_edit_by : '';
+                    document.getElementById('activity-edit-time').textContent = ago;
+                    const byEl = document.getElementById('activity-edit-by');
+                    if (byEl) byEl.textContent = by ? 'by ' + by : '';
+                    editEl.setAttribute('title', 'Last Edit: ' + ago + (by ? ' by ' + by : ''));
                     editEl.style.display = '';
                 }
             }
@@ -6200,28 +6205,28 @@
         const SUMMARY_SECTIONS = [
             { id: 'challenge_purchase', num: 1, title: 'Challenge Purchase Status',
               okText: 'All challenges purchased and funded — no pending orders.',
-              fields: [{ key: 'count', label: 'Challenges to Purchase' }],
-              template: (f, pf) => `Purchase ${f.count || 0} ${pf} account${(f.count||0)==1?'':'s'}` },
+              fields: [{ key: 'amount', label: 'Pending Amount ($)', prefix: '$' }],
+              template: (f) => `$${f.amount || 0} challenge pending purchase` },
             { id: 'renewal_cancel', num: 2, title: 'Renewal / Cancellation Check',
               okText: 'No renewals or cancellations needed today.',
               fields: [{ key: 'renewals', label: 'Renewals' }, { key: 'cancellations', label: 'Cancellations' }],
-              template: (f, pf) => `${f.renewals || 0} renewal(s), ${f.cancellations || 0} cancellation(s)` },
+              template: (f) => `${f.renewals || 0} renewal(s), ${f.cancellations || 0} cancellation(s)` },
             { id: 'trading_delays', num: 3, title: 'Trading / Operational Delays',
               okText: 'All accounts traded on schedule — no delays or issues.',
               fields: [{ key: 'details', label: 'Details', type: 'text' }],
-              template: (f, pf) => f.details || 'Trading delay reported' },
+              template: (f) => f.details || 'Trading delay reported' },
             { id: 'payout_requests', num: 4, title: 'Payout Requests',
               okText: 'No payout requests pending.',
               fields: [{ key: 'count', label: 'Payouts Requested' }],
-              template: (f, pf) => `${f.count || 0} ${pf} payout${(f.count||0)==1?'':'s'} requested — awaiting approval` },
+              template: (f) => `${f.count || 0} payout(s) requested — awaiting approval` },
             { id: 'payout_confirm', num: 5, title: 'Payout Confirmation & Sheet Update',
               okText: 'All confirmed payouts recorded — sheet is up to date.',
-              fields: [{ key: 'count', label: 'Payouts Confirmed' }],
-              template: (f, pf) => `${f.count || 0} ${pf} payout${(f.count||0)==1?'':'s'} confirmed — sheet updated` },
+              fields: [{ key: 'amount', label: 'Amount ($)', prefix: '$' }],
+              template: (f) => `$${f.amount || 0} payout confirmed — sheet updated` },
             { id: 'action_items', num: 6, title: 'Client Action Items',
               okText: 'No client action required at this time.',
               fields: [{ key: 'items', label: 'Items Pending' }],
-              template: (f, pf) => `${f.items || 0} action item(s) pending` }
+              template: (f) => `${f.items || 0} action item(s) pending` }
         ];
 
         // Per-client data store: { clientId: { sectionId: { status, notes } } }
@@ -6530,7 +6535,7 @@
                             if (pn.status === 'ok') {
                                 lines.push(`  ✅ ${pf}: All Good`);
                             } else if (pn.fields && Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0')) {
-                                lines.push(`  ⚠️ ${s.template(pn.fields, pf)}`);
+                                lines.push(`  ⚠️ ${pf}: ${s.template(pn.fields)}`);
                             } else {
                                 lines.push(`  ❓ ${pf}: Pending`);
                             }
@@ -6703,6 +6708,42 @@
                 }
             }).catch(() => {});
         }
+
+        // ── Dropdown toggles ──
+        function toggleNavLogout(event) {
+            event.stopPropagation();
+            const d = document.getElementById('nav-logout-dropdown');
+            if (!d) return;
+            if (d.style.display === 'none' || !d.style.display) {
+                const btn = event.currentTarget;
+                const r = btn.getBoundingClientRect();
+                d.style.top = (r.bottom + 6) + 'px';
+                d.style.right = (window.innerWidth - r.right) + 'px';
+                d.style.display = 'block';
+            } else {
+                d.style.display = 'none';
+            }
+        }
+        function toggleClientMenu(event) {
+            event.stopPropagation();
+            const d = document.getElementById('client-menu-dropdown');
+            if (!d) return;
+            if (d.style.display === 'none' || !d.style.display) {
+                const btn = event.currentTarget;
+                const r = btn.getBoundingClientRect();
+                d.style.top = (r.bottom + 6) + 'px';
+                d.style.right = (window.innerWidth - r.right) + 'px';
+                d.style.display = 'block';
+            } else {
+                d.style.display = 'none';
+            }
+        }
+        document.addEventListener('click', function() {
+            ['nav-logout-dropdown', 'client-menu-dropdown'].forEach(id => {
+                const d = document.getElementById(id);
+                if (d) d.style.display = 'none';
+            });
+        });
 
     </script>
 </body>
