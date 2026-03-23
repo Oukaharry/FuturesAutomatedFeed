@@ -1521,6 +1521,9 @@
                     <button class="tab-btn" onclick="openTab('prop')">Prop Firm Accounts</button>
                     <button class="tab-btn" onclick="openTab('vps')">VPS</button>
                     <button class="tab-btn" onclick="openTab('payment')">Payment Info</button>
+                    <button class="tab-btn" id="kyc-portfolio-tab-btn" onclick="openTab('kyc-portfolio')" style="display:none; background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(88,28,135,0.3)); border:1px solid rgba(192,132,252,0.3);">
+                        <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
+                    </button>
                     {% if user_type != 'client' %}
                     <button class="tab-btn" onclick="openTab('issues')" id="issues-tab-btn" style="color:#f87171;">
                         <i class="fas fa-exclamation-triangle" style="margin-right:4px;font-size:0.75rem;"></i>Issues <span id="issues-count-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.7rem;margin-left:4px;min-width:18px;text-align:center;display:inline-block;"></span>
@@ -1549,38 +1552,32 @@
                 {% if not is_active %}
                 <span style="background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; padding:4px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; letter-spacing:0.5px; flex-shrink:0;">INACTIVE</span>
                 {% endif %}
-                <div style="position:relative; flex-shrink:0; margin-left:auto;">
-                    <button onclick="toggleClientMenu(event)" style="display:flex; align-items:center; gap:6px; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.3); color:#60a5fa; padding:6px 12px; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; white-space:nowrap;">
-                        <i class="fas fa-user-circle"></i>
-                        {{ client_id }}
-                        <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
-                    </button>
-                <div id="client-menu-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
-                        <a href="/change-password" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#94a3b8; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
-                            <i class="fas fa-key" style="color:#f59e0b;"></i> Change Password
-                        </a>
-                        <div style="height:1px; background:rgba(255,255,255,0.06);"></div>
-                        <a href="/logout" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#f87171; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(248,113,113,0.08)'" onmouseout="this.style.background=''">
-                            <i class="fas fa-sign-out-alt"></i> Logout
-                        </a>
+                <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:auto;">
+                    <div id="kyc-switcher-wrap" style="display:none; position:relative;">
+                        <button id="kyc-switcher-btn" onclick="toggleKycDropdown(event)" style="cursor:pointer; border:1px solid rgba(96,165,250,0.3); background:rgba(96,165,250,0.1); padding:6px 14px; border-radius:8px; display:flex; align-items:center; gap:6px; color:#60a5fa; font-size:0.82rem; font-weight:500; white-space:nowrap;">
+                            <i class="fas fa-exchange-alt" style="font-size:0.7rem;"></i>
+                            <span id="kyc-current-name">{{ client_id }}</span>
+                            <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
+                        </button>
+                        <div id="kyc-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
+                            <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
+                        </div>
                     </div>
-                </div>
-                {% endif %}
-            </div>
-            <!-- Secondary bar: KYC Portfolio, KYC Switcher -->
-            <div id="header-secondary-bar" style="display:flex; background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(30,41,59,0.9)); border-top:1px solid rgba(255,255,255,0.06); padding:6px 20px; justify-content:flex-start; align-items:center; gap:12px; overflow-x:auto;">
-                <button class="tab-btn" id="kyc-portfolio-tab-btn" onclick="openTab('kyc-portfolio')" style="display:none; background:linear-gradient(135deg,rgba(168,85,247,0.2),rgba(88,28,135,0.4)); border:1px solid rgba(192,132,252,0.4); padding:6px 16px; font-size:0.85rem;">
-                    <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
-                </button>
-                {% if client_id %}
-                <div id="kyc-switcher-wrap" style="display:none; position:relative;">
-                    <button id="kyc-switcher-btn" onclick="toggleKycDropdown()" style="cursor:pointer; border:1px solid rgba(96,165,250,0.3); background:rgba(96,165,250,0.1); padding:6px 14px; border-radius:8px; display:flex; align-items:center; gap:6px; color:#60a5fa; font-size:0.85rem; font-weight:500;">
-                        <i class="fas fa-exchange-alt" style="font-size:0.75rem;"></i>
-                        <span id="kyc-current-name">{{ client_id }}</span>
-                        <i class="fas fa-chevron-down" style="font-size:0.65rem; opacity:0.7;"></i>
-                    </button>
-                    <div id="kyc-dropdown" style="display:none; position:absolute; top:100%; right:0; margin-top:6px; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;">
-                        <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
+                    <div style="position:relative;">
+                        <button onclick="toggleClientMenu(event)" style="display:flex; align-items:center; gap:6px; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.3); color:#60a5fa; padding:6px 12px; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; white-space:nowrap;">
+                            <i class="fas fa-user-circle"></i>
+                            {{ client_id }}
+                            <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
+                        </button>
+                        <div id="client-menu-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
+                            <a href="/change-password" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#94a3b8; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
+                                <i class="fas fa-key" style="color:#f59e0b;"></i> Change Password
+                            </a>
+                            <div style="height:1px; background:rgba(255,255,255,0.06);"></div>
+                            <a href="/logout" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#f87171; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(248,113,113,0.08)'" onmouseout="this.style.background=''">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </a>
+                        </div>
                     </div>
                 </div>
                 {% endif %}
@@ -2405,9 +2402,19 @@
             document.getElementById('kyc-date-from').value = `${y}-${m}-01`;
             document.getElementById('kyc-date-to').value = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
         }
-        function toggleKycDropdown() {
+        function toggleKycDropdown(event) {
+            event.stopPropagation();
             const dd = document.getElementById('kyc-dropdown');
-            dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+            if (dd.style.display === 'none' || !dd.style.display) {
+                const btn = event.currentTarget;
+                const r = btn.getBoundingClientRect();
+                dd.style.top = (r.bottom + 6) + 'px';
+                dd.style.right = (window.innerWidth - r.right) + 'px';
+                dd.style.left = '';
+                dd.style.display = 'block';
+            } else {
+                dd.style.display = 'none';
+            }
         }
         // Close dropdown on outside click
         document.addEventListener('click', function(e) {
@@ -6739,7 +6746,7 @@
             }
         }
         document.addEventListener('click', function() {
-            ['nav-logout-dropdown', 'client-menu-dropdown'].forEach(id => {
+            ['nav-logout-dropdown', 'client-menu-dropdown', 'kyc-dropdown'].forEach(id => {
                 const d = document.getElementById(id);
                 if (d) d.style.display = 'none';
             });
