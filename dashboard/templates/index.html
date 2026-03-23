@@ -1532,22 +1532,10 @@
                     </button>
                     {% endif %}
                 </div>
-                <!-- Version History + CSV: between Issues and Last Edit -->
-                {% if user_type in ('admin', 'super_admin') %}
-                <button onclick="openHistoryPanel()" title="Version History" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:rgba(30,41,59,0.7);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;white-space:nowrap;box-shadow:none;letter-spacing:normal;font-weight:500;transform:none;">
-                    <i class="fas fa-history" style="font-size:10px;"></i> History
-                </button>
-                {% endif %}
                 {% if client_id %}
                 <button onclick="downloadCSV()" title="Download CSV" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.25);color:#4ade80;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;flex-shrink:0;white-space:nowrap;box-shadow:none;letter-spacing:normal;font-weight:500;transform:none;">
                     <i class="fas fa-download" style="font-size:10px;"></i> CSV
                 </button>
-                {% endif %}
-                <!-- Last Edit (admin/super_admin only) -->
-                {% if user_type in ('admin', 'super_admin') %}
-                <span id="activity-edit" style="display:none; font-size:11px; color:#94a3b8; background:rgba(30,41,59,0.6); padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); flex-shrink:0; white-space:nowrap; line-height:1.4;" title="">
-                    <i class="fas fa-edit" style="color:#a78bfa; margin-right:3px; vertical-align:middle;"></i><span id="activity-edit-time"></span><br><span id="activity-edit-by" style="color:#64748b; font-size:10px; padding-left:16px;"></span>
-                </span>
                 {% endif %}
                 <!-- Client name dropdown at farthest right -->
                 {% if client_id %}
@@ -1585,6 +1573,17 @@
                 {% endif %}
             </div>
         </header>
+
+        {% if user_type in ('admin', 'super_admin') %}
+        <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:4px 16px; background:rgba(15,23,42,0.5); border-bottom:1px solid rgba(255,255,255,0.04);">
+            <button onclick="openHistoryPanel()" title="Version History" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#64748b;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#64748b'">
+                <i class="fas fa-history" style="font-size:10px;"></i> History
+            </button>
+            <span id="activity-edit" style="display:none; font-size:10px; color:#64748b; white-space:nowrap; line-height:1.3;" title="">
+                <i class="fas fa-edit" style="color:#7c3aed; margin-right:3px; font-size:9px; vertical-align:middle;"></i><span id="activity-edit-time"></span> <span id="activity-edit-by" style="color:#475569; font-size:10px;"></span>
+            </span>
+        </div>
+        {% endif %}
 
         <!-- Profitability Waterlog / Profit Split Tab -->
         <div id="waterlog" class="tab-content">
