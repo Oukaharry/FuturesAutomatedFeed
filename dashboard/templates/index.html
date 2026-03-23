@@ -6612,14 +6612,14 @@
 
                 return `
                 <div class="summary-section" data-section="${s.id}">
-                    <div class="summary-section-header">
-                        <div class="summary-section-title"><span class="section-num">${s.num}.</span>${s.title}</div>
-                        <div class="summary-status-toggle">
+                    <div class="summary-section-header" onclick="const body=this.nextElementSibling; const arr=this.querySelector('.section-arrow'); if(body){body.style.display=body.style.display==='none'?'':'none'; arr.textContent=body.style.display==='none'?'▸':'▾';}" style="cursor:pointer; user-select:none;">
+                        <div class="summary-section-title"><span class="section-arrow" style="font-size:0.8rem; margin-right:2px;">▸</span><span class="section-num">${s.num}.</span>${s.title}</div>
+                        <div class="summary-status-toggle" onclick="event.stopPropagation()">
                             <button class="${isOk ? 'active-ok' : ''}" onclick="setSectionStatus('${s.id}','ok')">✅ All Good</button>
                             <button class="${isWarn ? 'active-warn' : ''}" onclick="setSectionStatus('${s.id}','warn')">⚠️ Notes</button>
                         </div>
                     </div>
-                    ${notesHtml}
+                    <div style="display:none;">${notesHtml}</div>
                 </div>`;
             }).join('');
             body.innerHTML = toggleBar + html;
