@@ -1030,6 +1030,19 @@
         }
         .summary-notes-input::placeholder { color: #475569; }
         .summary-notes-input:focus { border-color: rgba(167,139,250,0.5); outline: none; }
+
+        /* Prop firm sub-sections inside notes */
+        .prop-notes-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .prop-note-row { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 8px 10px; }
+        .prop-note-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .prop-note-name { font-size: 0.78rem; font-weight: 600; color: #cbd5e1; flex: 1; }
+        .prop-note-allgood { padding: 2px 8px; border: 1px solid rgba(34,197,94,0.3); border-radius: 5px; background: rgba(34,197,94,0.08); color: #6ee7b7; font-size: 0.7rem; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+        .prop-note-allgood:hover { background: rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.5); }
+        .prop-note-allgood.active { background: rgba(34,197,94,0.25); border-color: rgba(34,197,94,0.6); color: #4ade80; font-weight: 600; }
+        .prop-note-textarea { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.75rem; resize: vertical; min-height: 28px; font-family: inherit; box-sizing: border-box; }
+        .prop-note-textarea::placeholder { color: #475569; }
+        .prop-note-textarea:focus { border-color: rgba(167,139,250,0.5); outline: none; }
+
         /* Preview output box */
         .summary-preview {
             background: rgba(0,0,0,0.4);
@@ -6194,8 +6207,43 @@
 
         function _getDefaultSections() {
             const d = {};
-            SUMMARY_SECTIONS.forEach(s => { d[s.id] = { status: 'ok', notes: '' }; });
+            SUMMARY_SECTIONS.forEach(s => { d[s.id] = { status: 'ok', notes: {} }; });
             return d;
+        }
+
+        function _getClientPropFirms() {
+            // Extract unique prop firm names from the client's evaluations
+            if (!currentData || !currentData.evaluations) return [];
+            const firms = new Set();
+            currentData.evaluations.forEach(ev => {
+                const pf = (ev['Prop Firm'] || '').trim();
+                if (pf) firms.add(pf);
+            });
+            return Array.from(firms).sort((a, b) => a.localeCompare(b));
+        }
+
+        function _initPropNotes(sectionId) {
+            // Ensure notes object has entries for all current prop firms
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            const d = _allClientSummaries[_activeClient][sectionId];
+            const propFirms = _getClientPropFirms();
+            if (typeof d.notes !== 'object' || d.notes === null) d.notes = {};
+            propFirms.forEach(pf => {
+                if (!(pf in d.notes)) d.notes[pf] = { status: '', text: '' };
+            });
+            return d.notes;
+        }
+
+        function _isSectionComplete(d) {
+            // A section is complete if status is 'ok', or if all prop firms are addressed
+            if (d.status === 'ok') return true;
+            if (typeof d.notes !== 'object' || d.notes === null) return false;
+            const propFirms = _getClientPropFirms();
+            if (propFirms.length === 0) return false;
+            return propFirms.every(pf => {
+                const pn = d.notes[pf];
+                return pn && (pn.status === 'ok' || (pn.text && pn.text.trim()));
+            });
         }
 
         function toggleChecklistPanel() {
@@ -6253,7 +6301,15 @@
                         saved.items.forEach(item => {
                             if (_allClientSummaries[clientId][item.id]) {
                                 _allClientSummaries[clientId][item.id].status = item.status || 'ok';
-                                _allClientSummaries[clientId][item.id].notes = item.notes || '';
+                                // Handle both old string notes and new object notes
+                                const n = item.notes;
+                                if (typeof n === 'object' && n !== null) {
+                                    _allClientSummaries[clientId][item.id].notes = n;
+                                } else if (typeof n === 'string' && n.trim()) {
+                                    _allClientSummaries[clientId][item.id].notes = n;
+                                } else {
+                                    _allClientSummaries[clientId][item.id].notes = {};
+                                }
                             }
                         });
                     }
@@ -6277,12 +6333,39 @@
                 return;
             }
             const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections();
+            const propFirms = _getClientPropFirms();
             let filled = 0;
             const html = SUMMARY_SECTIONS.map(s => {
                 const d = summaryData[s.id];
                 const isOk = d.status === 'ok';
                 const isWarn = d.status === 'warn';
-                if (isOk || (isWarn && d.notes.trim())) filled++;
+                if (isOk || (isWarn && _isSectionComplete(d))) filled++;
+
+                let notesHtml = '';
+                if (isWarn) {
+                    if (propFirms.length > 0) {
+                        const notes = _initPropNotes(s.id);
+                        notesHtml = '<div class="prop-notes-list">' + propFirms.map(pf => {
+                            const pn = notes[pf] || { status: '', text: '' };
+                            const isAllGood = pn.status === 'ok';
+                            const safeId = s.id;
+                            const safePf = pf.replace(/'/g, "\\'");
+                            return `<div class="prop-note-row">
+                                <div class="prop-note-header">
+                                    <span class="prop-note-name">${pf}</span>
+                                    <button class="prop-note-allgood ${isAllGood ? 'active' : ''}" onclick="setPropAllGood('${safeId}','${safePf}')">✅ All Good</button>
+                                </div>
+                                ${!isAllGood ? `<textarea class="prop-note-textarea" placeholder="Notes for ${pf}..."
+                                    oninput="setPropNote('${safeId}','${safePf}',this.value)">${pn.text || ''}</textarea>` : ''}
+                            </div>`;
+                        }).join('') + '</div>';
+                    } else {
+                        const legacyNotes = typeof d.notes === 'string' ? d.notes : '';
+                        notesHtml = `<textarea class="summary-notes-input" placeholder="${s.warnPlaceholder}"
+                            oninput="setSectionNotes('${s.id}', this.value)">${legacyNotes}</textarea>`;
+                    }
+                }
+
                 return `
                 <div class="summary-section" data-section="${s.id}">
                     <div class="summary-section-header">
@@ -6292,8 +6375,7 @@
                             <button class="${isWarn ? 'active-warn' : ''}" onclick="setSectionStatus('${s.id}','warn')">⚠️ Notes</button>
                         </div>
                     </div>
-                    ${isWarn ? `<textarea class="summary-notes-input" placeholder="${s.warnPlaceholder}"
-                        oninput="setSectionNotes('${s.id}', this.value)">${d.notes}</textarea>` : ''}
+                    ${notesHtml}
                 </div>`;
             }).join('');
             body.innerHTML = html;
@@ -6308,7 +6390,7 @@
                 const s = _allClientSummaries[c];
                 const filled = s ? SUMMARY_SECTIONS.filter(sec => {
                     const d = s[sec.id];
-                    return d && (d.status === 'ok' || (d.status === 'warn' && d.notes && d.notes.trim()));
+                    return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d)));
                 }).length : 0;
                 const cls = filled === SUMMARY_SECTIONS.length ? 'done' : filled > 0 ? 'partial' : '';
                 return `<div class="client-dot ${cls}" title="${c}: ${filled}/${SUMMARY_SECTIONS.length}"></div>`;
@@ -6318,7 +6400,7 @@
         function setSectionStatus(sectionId, status) {
             if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
             _allClientSummaries[_activeClient][sectionId].status = status;
-            if (status === 'ok') _allClientSummaries[_activeClient][sectionId].notes = '';
+            if (status === 'ok') _allClientSummaries[_activeClient][sectionId].notes = {};
             renderChecklist();
             document.getElementById('summary-preview').style.display = 'none';
             document.getElementById('checklist-copy-btn').style.display = 'none';
@@ -6326,8 +6408,32 @@
         }
 
         function setSectionNotes(sectionId, notes) {
+            // Legacy fallback for when no prop firms exist
             if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
             _allClientSummaries[_activeClient][sectionId].notes = notes;
+        }
+
+        function setPropNote(sectionId, propFirm, text) {
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            const notes = _allClientSummaries[_activeClient][sectionId].notes;
+            if (typeof notes === 'object' && notes !== null) {
+                if (!notes[propFirm]) notes[propFirm] = { status: '', text: '' };
+                notes[propFirm].text = text;
+                // If they type notes, clear the allGood status
+                if (text.trim()) notes[propFirm].status = 'note';
+            }
+        }
+
+        function setPropAllGood(sectionId, propFirm) {
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            const notes = _allClientSummaries[_activeClient][sectionId].notes;
+            if (typeof notes === 'object' && notes !== null) {
+                if (!notes[propFirm]) notes[propFirm] = { status: '', text: '' };
+                // Toggle: if already ok, unset it
+                notes[propFirm].status = notes[propFirm].status === 'ok' ? '' : 'ok';
+                if (notes[propFirm].status === 'ok') notes[propFirm].text = '';
+            }
+            renderChecklist();
         }
 
         function updateChecklistBadge() {
@@ -6340,7 +6446,7 @@
                 if (!s) return;
                 const filled = SUMMARY_SECTIONS.filter(sec => {
                     const d = s[sec.id];
-                    return d && (d.status === 'ok' || (d.status === 'warn' && d.notes && d.notes.trim()));
+                    return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d)));
                 }).length;
                 if (filled === SUMMARY_SECTIONS.length) doneCount++;
             });
@@ -6372,8 +6478,24 @@
                 lines.push(`**${s.num}. ${s.title}**`);
                 if (d.status === 'ok') {
                     lines.push(`${icon} ${s.okText}`);
+                } else if (typeof d.notes === 'object' && d.notes !== null) {
+                    const propFirms = Object.keys(d.notes);
+                    if (propFirms.length > 0) {
+                        propFirms.forEach(pf => {
+                            const pn = d.notes[pf];
+                            if (pn.status === 'ok') {
+                                lines.push(`  ✅ ${pf}: All Good`);
+                            } else if (pn.text && pn.text.trim()) {
+                                lines.push(`  ⚠️ ${pf}: ${pn.text.trim()}`);
+                            } else {
+                                lines.push(`  ❓ ${pf}: Pending`);
+                            }
+                        });
+                    } else {
+                        lines.push(`${icon} Attention needed — details pending.`);
+                    }
                 } else {
-                    lines.push(`${icon} ${d.notes.trim() || 'Attention needed — details pending.'}`);
+                    lines.push(`${icon} ${(d.notes || '').toString().trim() || 'Attention needed — details pending.'}`);
                 }
                 lines.push('');
             });
@@ -6471,7 +6593,14 @@
                             cl.items.forEach(item => {
                                 if (_allClientSummaries[cid][item.id]) {
                                     _allClientSummaries[cid][item.id].status = item.status || 'ok';
-                                    _allClientSummaries[cid][item.id].notes = item.notes || '';
+                                    const n = item.notes;
+                                    if (typeof n === 'object' && n !== null) {
+                                        _allClientSummaries[cid][item.id].notes = n;
+                                    } else if (typeof n === 'string' && n.trim()) {
+                                        _allClientSummaries[cid][item.id].notes = n;
+                                    } else {
+                                        _allClientSummaries[cid][item.id].notes = {};
+                                    }
                                 }
                             });
                         }
