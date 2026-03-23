@@ -4038,8 +4038,8 @@
                     statsContainer.innerHTML = `
                             <div class="stats-grid">
                                 <!-- Profitability - Completed -->
-                                <div class="card">
-                                    <div class="card-header">Profitability - Completed</div>
+                                <div class="card" style="order:1;">
+                                    <div class="card-header">Profitability - Completed <span style="margin-left:auto;font-size:0.8rem;font-weight:500;color:#94a3b8;">EV: <strong style="color:#fbbf24;">${formatMoney(s.expected_value)}</strong></span></div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.profitability_completed.payouts)}</td></tr>
                                         <tr><td>Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0))}</td></tr>
@@ -4057,16 +4057,10 @@
                                     </table>
                                 </div>
 
-                                <!-- Expected Value -->
-                                <div class="card">
-                                    <div class="card-header">Expected Value - Completed</div>
-                                    <table class="summary-table">
-                                        <tr><td>EV</td><td class="text-right">${formatMoney(s.expected_value)}</td></tr>
-                                    </table>
-                                </div>
+                                <!-- (EV merged into Profitability header) -->
 
                                 <!-- Live Hedging Review -->
-                                <div class="card">
+                                <div class="card" style="order:3;">
                                     <div class="card-header">Live Hedging Review
                                         ${canEditHedging ? '<button class="btn-small" onclick="saveHedgingReview()" style="float:right;padding:2px 8px;font-size:11px;">💾 Save</button>' : ''}
                                     </div>
@@ -4101,32 +4095,20 @@
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
                                         <tr><td>Discrepancy from Google Sheets</td><td class="text-right" id="hedging-discrepancy">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - sheetHedgingResults) : '<span style="color:#888">N/A</span>'}</td></tr>
                                     </table>
-                                    
-                                    <!-- MT5 Accounts Overview Section -->
-                                    ${canEditHedging ? `
-                                    <div style="margin-top:15px;padding-top:12px;border-top:1px solid #334155;">
-                                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                                            <span style="font-weight:600;font-size:13px;color:#e2e8f0;">📜 MT5 Accounts Overview</span>
-                                            <button class="btn-small" onclick="showAddHistoricalMT5Modal()" style="padding:4px 12px;font-size:11px;">+ Add Previous MT5</button>
-                                        </div>
-                                        <div id="historical-mt5-list">
-                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {}, s.hedging_review.current_mt5_prior_activity || 0)}
-                                        </div>
+                                </div>
+
+                                <!-- MT5 Accounts Overview -->
+                                <div class="card" style="order:4;">
+                                    <div class="card-header">📜 MT5 Accounts Overview
+                                        ${canEditHedging ? '<button class="btn-small" onclick="showAddHistoricalMT5Modal()" style="float:right;padding:4px 12px;font-size:11px;">+ Add Previous MT5</button>' : ''}
                                     </div>
-                                    ` : (s.hedging_review.historical_accounts && s.hedging_review.historical_accounts.length > 0 ? `
-                                    <div style="margin-top:15px;padding-top:12px;border-top:1px solid #334155;">
-                                        <div style="margin-bottom:10px;">
-                                            <span style="font-weight:600;font-size:13px;color:#e2e8f0;">📜 MT5 Accounts Overview</span>
-                                        </div>
-                                        <div>
-                                            ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {}, s.hedging_review.current_mt5_prior_activity || 0)}
-                                        </div>
+                                    <div id="historical-mt5-list" style="padding:0 14px 14px;">
+                                        ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {}, s.hedging_review.current_mt5_prior_activity || 0)}
                                     </div>
-                                    ` : '')}
                                 </div>
 
                                 <!-- Net Profit In Progress -->
-                                <div class="card">
+                                <div class="card" style="order:2;">
                                     <div class="card-header">Net Profit In Progress</div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
