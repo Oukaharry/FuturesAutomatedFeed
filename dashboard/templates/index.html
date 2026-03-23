@@ -1526,11 +1526,6 @@
                     <button class="tab-btn" id="kyc-portfolio-tab-btn" onclick="openTab('kyc-portfolio')" style="display:none; background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(88,28,135,0.3)); border:1px solid rgba(192,132,252,0.3);">
                         <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
                     </button>
-                    {% if user_type != 'client' %}
-                    <button class="tab-btn" onclick="openTab('issues')" id="issues-tab-btn" style="color:#f87171;">
-                        <i class="fas fa-exclamation-triangle" style="margin-right:4px;font-size:0.75rem;"></i>Issues <span id="issues-count-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:0.7rem;margin-left:4px;min-width:18px;text-align:center;display:inline-block;"></span>
-                    </button>
-                    {% endif %}
                 </div>
                 <!-- Client name dropdown at farthest right -->
                 {% if client_id %}
@@ -1569,14 +1564,20 @@
             </div>
         </header>
 
-        {% if client_id or user_type in ('admin', 'super_admin') %}
+        {% if client_id or user_type != 'client' %}
         <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:4px 16px; background:rgba(15,23,42,0.5); border-bottom:1px solid rgba(255,255,255,0.04);">
+            {% if user_type != 'client' %}
+            <button onclick="openTab('issues')" id="issues-tab-btn" title="Issues" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#f87171;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#fca5a5'" onmouseout="this.style.color='#f87171'">
+                <i class="fas fa-exclamation-triangle" style="font-size:10px;"></i> Issues <span id="issues-count-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.65rem;min-width:16px;text-align:center;display:inline-block;"></span>
+            </button>
+            {% endif %}
             {% if client_id %}
             <button onclick="downloadCSV()" title="Download CSV" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#4ade80;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#86efac'" onmouseout="this.style.color='#4ade80'">
                 <i class="fas fa-download" style="font-size:10px;"></i> CSV
             </button>
             {% endif %}
             {% if user_type in ('admin', 'super_admin') %}
+            <span style="color:rgba(255,255,255,0.08);">|</span>
             <button onclick="openHistoryPanel()" title="Version History" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#64748b;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#64748b'">
                 <i class="fas fa-history" style="font-size:10px;"></i> History
             </button>
