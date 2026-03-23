@@ -1412,19 +1412,21 @@
         <div class="client-selector-status" id="checklist-client-dots"></div>
         <div class="checklist-panel-body" id="checklist-panel-body"></div>
         <div class="summary-preview" id="summary-preview"></div>
-        <div class="checklist-panel-footer">
+        <div class="checklist-panel-footer" id="checklist-footer-edit">
             <span class="checklist-progress" id="checklist-progress"></span>
-            <button class="checklist-copy-btn" id="checklist-copy-btn" onclick="copySummary()" style="display:none;">
-                <i class="fas fa-copy" style="margin-right:4px;"></i> Copy
-            </button>
-            <button class="checklist-copy-btn" id="checklist-copy-all-btn" onclick="copyAllSummaries()" style="display:none;">
-                <i class="fas fa-copy" style="margin-right:4px;"></i> Copy All
-            </button>
-            <button class="checklist-copy-btn" id="checklist-slack-btn" onclick="sendSummaryToSlack()" style="display:none;">
-                <i class="fab fa-slack" style="margin-right:4px;"></i> Send to Slack
-            </button>
             <button class="checklist-submit-btn" id="checklist-submit-btn" onclick="submitChecklist()">
                 <i class="fas fa-paper-plane" style="margin-right:6px;"></i> Save &amp; Preview
+            </button>
+        </div>
+        <div class="checklist-panel-footer" id="checklist-footer-preview" style="display:none;">
+            <button class="checklist-copy-btn" onclick="goBackToChecklist()" style="flex:none;">
+                <i class="fas fa-arrow-left" style="margin-right:4px;"></i> Back
+            </button>
+            <button class="checklist-copy-btn" id="checklist-copy-btn" onclick="copySummary()">
+                <i class="fas fa-copy" style="margin-right:4px;"></i> Copy
+            </button>
+            <button class="checklist-submit-btn" id="checklist-slack-btn" onclick="confirmAndSendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);">
+                <i class="fab fa-slack" style="margin-right:6px;"></i> Send to Slack
             </button>
         </div>
     </div>
@@ -6318,10 +6320,8 @@
 
         function switchChecklistClient(clientId) {
             _activeClient = clientId;
-            // Hide preview when switching
-            document.getElementById('summary-preview').style.display = 'none';
-            document.getElementById('checklist-copy-btn').style.display = 'none';
-            document.getElementById('checklist-copy-all-btn').style.display = 'none';
+            // Reset to editing view
+            goBackToChecklist();
             renderChecklist();
         }
 
@@ -6401,9 +6401,7 @@
             _allClientSummaries[_activeClient][sectionId].status = status;
             if (status === 'ok') _allClientSummaries[_activeClient][sectionId].notes = {};
             renderChecklist();
-            document.getElementById('summary-preview').style.display = 'none';
-            document.getElementById('checklist-copy-btn').style.display = 'none';
-            document.getElementById('checklist-copy-all-btn').style.display = 'none';
+            goBackToChecklist();
         }
 
         function setSectionNotes(sectionId, notes) {
@@ -6529,9 +6527,10 @@
                     const preview = document.getElementById('summary-preview');
                     preview.textContent = generateSummaryText(_activeClient);
                     preview.style.display = 'block';
-                    document.getElementById('checklist-copy-btn').style.display = 'inline-flex';
-                    document.getElementById('checklist-copy-all-btn').style.display = 'inline-flex';
-                    document.getElementById('checklist-slack-btn').style.display = 'inline-flex';
+                    // Switch to preview mode: hide checklist body, show preview footer
+                    document.getElementById('checklist-panel-body').style.display = 'none';
+                    document.getElementById('checklist-footer-edit').style.display = 'none';
+                    document.getElementById('checklist-footer-preview').style.display = 'flex';
                     renderClientDots();
                     btn.innerHTML = '<i class="fas fa-check" style="margin-right:6px;"></i> Saved!';
                     btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
@@ -6576,8 +6575,23 @@
             const allText = _clientList.map(c => generateSummaryText(c)).join('\n\n');
             _copyText(allText);
             const btn = document.getElementById('checklist-copy-all-btn');
-            btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied All!';
-            setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy All'; }, 1500);
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Copied All!';
+                setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy" style="margin-right:4px;"></i> Copy All'; }, 1500);
+            }
+        }
+
+        function goBackToChecklist() {
+            // Switch back to editing mode
+            document.getElementById('summary-preview').style.display = 'none';
+            document.getElementById('checklist-panel-body').style.display = '';
+            document.getElementById('checklist-footer-edit').style.display = 'flex';
+            document.getElementById('checklist-footer-preview').style.display = 'none';
+        }
+
+        function confirmAndSendToSlack() {
+            if (!confirm('Send this daily summary to Slack?\n\nThis will post to the Daily Summaries channel and cannot be undone.')) return;
+            sendSummaryToSlack();
         }
 
         async function sendSummaryToSlack() {
