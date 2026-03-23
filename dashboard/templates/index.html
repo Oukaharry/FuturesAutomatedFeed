@@ -1527,37 +1527,39 @@
                         <i class="fas fa-users" style="margin-right:4px;"></i> KYC Portfolio
                     </button>
                 </div>
-                <!-- Client name dropdown at farthest right -->
+                <!-- Client name + actions at farthest right -->
                 {% if client_id %}
                 {% if not is_active %}
                 <span style="background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; padding:4px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; letter-spacing:0.5px; flex-shrink:0;">INACTIVE</span>
                 {% endif %}
-                <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+                <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                     <div id="kyc-switcher-wrap" style="display:none; position:relative;">
                         <button id="kyc-switcher-btn" onclick="toggleKycDropdown(event)" style="cursor:pointer; border:1px solid rgba(96,165,250,0.3); background:rgba(96,165,250,0.1); padding:6px 12px; border-radius:8px; display:flex; align-items:center; gap:5px; color:#60a5fa; font-size:0.78rem; font-weight:500; white-space:nowrap; box-shadow:none; transform:none;">
                             <i class="fas fa-exchange-alt" style="font-size:0.7rem;"></i>
                             <span id="kyc-current-name">{{ client_id }}</span>
                             <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
                         </button>
-                        <div id="kyc-dropdown" style="display:none; position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
+                        <div id="kyc-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
                             <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
                         </div>
                     </div>
-                    <!-- Avatar button with dropdown (Change Password / Logout) -->
-                    <div style="position:relative;">
-                        <button onclick="toggleClientMenu(event)" title="{{ client_id }}" style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#3b82f6,#6366f1); border:2px solid rgba(99,102,241,0.5); color:#fff; font-size:0.95rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(99,102,241,0.4); flex-shrink:0; padding:0; text-transform:uppercase; letter-spacing:0;">
-                            {{ client_id[0] | upper }}
+                    <span style="display:flex; align-items:center; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.3); border-radius:8px; overflow:hidden; white-space:nowrap;">
+                        <span style="display:flex; align-items:center; gap:6px; color:#60a5fa; padding:6px 12px; font-size:0.82rem; font-weight:600;">
+                            <i class="fas fa-user-circle"></i> {{ client_id }}
+                        </span>
+                        {% if user_type == 'client' %}
+                        <button onclick="openChangePasswordModal()" title="Change Password" style="display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-left:1px solid rgba(96,165,250,0.2);color:#f59e0b;padding:6px 10px;cursor:pointer;font-size:0.78rem;" onmouseover="this.style.background='rgba(245,158,11,0.1)'" onmouseout="this.style.background='transparent'">
+                            <i class="fas fa-key"></i>
                         </button>
-                        <div id="client-menu-dropdown" style="display:none; position:absolute; top:calc(100% + 6px); right:0; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
-                            <a href="/change-password" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#94a3b8; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
-                                <i class="fas fa-key" style="color:#f59e0b;"></i> Change Password
-                            </a>
-                            <div style="height:1px; background:rgba(255,255,255,0.06);"></div>
-                            <a href="/logout" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#f87171; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(248,113,113,0.08)'" onmouseout="this.style.background=''">
-                                <i class="fas fa-sign-out-alt"></i> Logout
-                            </a>
-                        </div>
-                    </div>
+                        <a href="/logout" title="Logout" style="display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-left:1px solid rgba(96,165,250,0.2);color:#f87171;padding:6px 10px;cursor:pointer;font-size:0.78rem;text-decoration:none;" onmouseover="this.style.background='rgba(248,113,113,0.1)'" onmouseout="this.style.background='transparent'">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </a>
+                        {% else %}
+                        <button onclick="openResetPasswordModal()" title="Reset Client Password" style="display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-left:1px solid rgba(96,165,250,0.2);color:#f59e0b;padding:6px 10px;cursor:pointer;font-size:0.78rem;" onmouseover="this.style.background='rgba(245,158,11,0.1)'" onmouseout="this.style.background='transparent'">
+                            <i class="fas fa-key"></i>
+                        </button>
+                        {% endif %}
+                    </span>
                 </div>
                 {% endif %}
             </div>
@@ -6768,24 +6770,117 @@
                 d.style.display = 'none';
             }
         }
-        function toggleClientMenu(event) {
-            event.stopPropagation();
-            const d = document.getElementById('client-menu-dropdown');
-            if (!d) return;
-            const opening = (d.style.display === 'none' || !d.style.display);
-            if (opening) {
-                const kycDd = document.getElementById('kyc-dropdown');
-                if (kycDd) kycDd.style.display = 'none';
-            }
-            d.style.display = opening ? 'block' : 'none';
-        }
         document.addEventListener('click', function() {
-            ['nav-logout-dropdown', 'client-menu-dropdown', 'kyc-dropdown'].forEach(id => {
+            ['nav-logout-dropdown', 'kyc-dropdown'].forEach(id => {
                 const d = document.getElementById(id);
                 if (d) d.style.display = 'none';
             });
         });
 
+        // ── Password modals ──
+        function openChangePasswordModal() {
+            document.getElementById('change-pw-modal').style.display = 'flex';
+            document.getElementById('cpw-current').value = '';
+            document.getElementById('cpw-new').value = '';
+            document.getElementById('cpw-confirm').value = '';
+            document.getElementById('cpw-msg').style.display = 'none';
+        }
+        function closeChangePasswordModal() {
+            document.getElementById('change-pw-modal').style.display = 'none';
+        }
+        async function submitChangePassword() {
+            const cur = document.getElementById('cpw-current').value;
+            const nw = document.getElementById('cpw-new').value;
+            const cf = document.getElementById('cpw-confirm').value;
+            const msg = document.getElementById('cpw-msg');
+            msg.style.display = 'none';
+
+            if (!cur || !nw || !cf) { msg.textContent = 'All fields required'; msg.style.background = '#fee2e2'; msg.style.color = '#dc2626'; msg.style.display = 'block'; return; }
+            if (nw !== cf) { msg.textContent = 'New passwords do not match'; msg.style.background = '#fee2e2'; msg.style.color = '#dc2626'; msg.style.display = 'block'; return; }
+            if (nw.length < 8) { msg.textContent = 'Password must be at least 8 characters'; msg.style.background = '#fee2e2'; msg.style.color = '#dc2626'; msg.style.display = 'block'; return; }
+
+            try {
+                const r = await fetch('/api/auth/change_password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_password: cur, new_password: nw }) });
+                const d = await r.json();
+                if (r.ok) {
+                    msg.textContent = 'Password changed successfully!';
+                    msg.style.background = '#dcfce7'; msg.style.color = '#16a34a'; msg.style.display = 'block';
+                    setTimeout(() => closeChangePasswordModal(), 1500);
+                } else {
+                    msg.textContent = d.message || 'Failed to change password';
+                    msg.style.background = '#fee2e2'; msg.style.color = '#dc2626'; msg.style.display = 'block';
+                }
+            } catch(e) {
+                msg.textContent = 'Network error'; msg.style.background = '#fee2e2'; msg.style.color = '#dc2626'; msg.style.display = 'block';
+            }
+        }
+
+        function openResetPasswordModal() {
+            document.getElementById('reset-pw-modal').style.display = 'flex';
+            document.getElementById('rpw-msg').style.display = 'none';
+            document.getElementById('rpw-result').style.display = 'none';
+        }
+        function closeResetPasswordModal() {
+            document.getElementById('reset-pw-modal').style.display = 'none';
+        }
+        async function submitResetPassword() {
+            const msg = document.getElementById('rpw-msg');
+            const result = document.getElementById('rpw-result');
+            msg.style.display = 'none';
+            result.style.display = 'none';
+
+            try {
+                const r = await fetch('/api/user/reset_password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: CLIENT_ID, user_type: 'client' }) });
+                const d = await r.json();
+                if (r.ok) {
+                    result.textContent = 'Temporary password: ' + d.temporary_password;
+                    result.style.display = 'block';
+                    msg.textContent = 'Password reset successfully';
+                    msg.style.background = '#dcfce7'; msg.style.color = '#16a34a'; msg.style.display = 'block';
+                } else {
+                    msg.textContent = d.message || 'Failed to reset password';
+                    msg.style.background = '#fee2e2'; msg.style.color = '#dc2626'; msg.style.display = 'block';
+                }
+            } catch(e) {
+                msg.textContent = 'Network error'; msg.style.background = '#fee2e2'; msg.style.color = '#dc2626'; msg.style.display = 'block';
+            }
+        }
+
     </script>
+
+    <!-- Client Change Password Modal -->
+    <div id="change-pw-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:30000; align-items:center; justify-content:center;" onclick="if(event.target===this)closeChangePasswordModal()">
+        <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:24px; width:360px; max-width:90vw; box-shadow:0 16px 48px rgba(0,0,0,0.5);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="color:#f8fafc; font-size:1rem; margin:0;"><i class="fas fa-key" style="color:#f59e0b; margin-right:6px;"></i>Change Password</h3>
+                <button onclick="closeChangePasswordModal()" style="background:none; border:none; color:#64748b; font-size:1.2rem; cursor:pointer;">&times;</button>
+            </div>
+            <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); border-radius:8px; padding:10px 12px; margin-bottom:16px; font-size:0.8rem; color:#fbbf24;">
+                Default password is <strong>Test@123</strong> — enter it as your current password if you haven't changed it yet.
+            </div>
+            <div id="cpw-msg" style="display:none; padding:10px 12px; border-radius:8px; margin-bottom:12px; font-size:0.82rem;"></div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <input id="cpw-current" type="password" placeholder="Current password" style="width:100%; padding:10px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#f8fafc; font-size:0.85rem;">
+                <input id="cpw-new" type="password" placeholder="New password (min 8 chars)" style="width:100%; padding:10px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#f8fafc; font-size:0.85rem;">
+                <input id="cpw-confirm" type="password" placeholder="Confirm new password" style="width:100%; padding:10px 12px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#f8fafc; font-size:0.85rem;">
+                <button onclick="submitChangePassword()" style="width:100%; padding:10px; background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; border:none; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer;">Update Password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Reset Client Password Modal -->
+    <div id="reset-pw-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:30000; align-items:center; justify-content:center;" onclick="if(event.target===this)closeResetPasswordModal()">
+        <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:24px; width:360px; max-width:90vw; box-shadow:0 16px 48px rgba(0,0,0,0.5);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="color:#f8fafc; font-size:1rem; margin:0;"><i class="fas fa-key" style="color:#f59e0b; margin-right:6px;"></i>Reset Client Password</h3>
+                <button onclick="closeResetPasswordModal()" style="background:none; border:none; color:#64748b; font-size:1.2rem; cursor:pointer;">&times;</button>
+            </div>
+            <p style="color:#94a3b8; font-size:0.85rem; margin-bottom:16px;">This will generate a new temporary password for <strong style="color:#60a5fa;">{{ client_id }}</strong>.</p>
+            <div id="rpw-msg" style="display:none; padding:10px 12px; border-radius:8px; margin-bottom:12px; font-size:0.82rem;"></div>
+            <div id="rpw-result" style="display:none; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:8px; padding:12px; margin-bottom:12px; color:#4ade80; font-size:0.85rem; font-family:monospace; word-break:break-all;"></div>
+            <button onclick="submitResetPassword()" style="width:100%; padding:10px; background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; border:none; border-radius:8px; font-weight:600; font-size:0.85rem; cursor:pointer;">Reset Password</button>
+        </div>
+    </div>
+
 </body>
 </html>
