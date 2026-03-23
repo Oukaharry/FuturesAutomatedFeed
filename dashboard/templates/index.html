@@ -1182,7 +1182,8 @@
             color: var(--text-secondary) !important;
             border: none !important;
             border-bottom: 2px solid transparent !important;
-            padding: 8px 14px !important;
+            padding: 6px 10px !important;
+            font-size: 0.78rem !important;
             text-align: center !important;
             justify-content: center !important;
             border-radius: 6px !important;
@@ -1480,31 +1481,21 @@
 
     <div class="container">
         {% if user_type == 'super_admin' %}
-        <nav class="modern-nav">
-            <div class="brand" style="position: absolute; left: 90px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 300px; height: auto; object-fit: contain;">
+        <nav class="modern-nav" style="justify-content:space-between; padding:8px 20px;">
+            <div class="brand" style="flex-shrink:0;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width:90px; height:auto; object-fit:contain; display:block;">
             </div>
-            <div class="nav-links">
+            <div class="nav-links" style="flex:1; justify-content:center;">
                 <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
                 <a href="/client_performance" class="tab-btn active"><i class="fas fa-users"></i> Clients</a>
                 <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
-                <div style="position:relative;">
-                    <button onclick="toggleNavLogout(event)" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
-                        <i class="fas fa-sign-out-alt"></i> Logout <i class="fas fa-chevron-down" style="font-size:0.6rem; margin-left:2px; opacity:0.7;"></i>
-                    </button>
-                    <div id="nav-logout-dropdown" style="display:none; position:absolute; top:calc(100% + 6px); right:0; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;">
-                        <a href="/change-password" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#94a3b8; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
-                            <i class="fas fa-key" style="color:#f59e0b;"></i> Change Password
-                        </a>
-                        <div style="height:1px; background:rgba(255,255,255,0.06);"></div>
-                        <a href="/logout" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#f87171; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(248,113,113,0.08)'" onmouseout="this.style.background=''">
-                            <i class="fas fa-sign-out-alt"></i> Logout
-                        </a>
-                    </div>
-                </div>
+            </div>
+            <div style="flex-shrink:0; display:flex; align-items:center; gap:6px;">
+                <div style="height:20px; width:1px; background:rgba(255,255,255,0.1); margin:0 2px;"></div>
+                <a href="/change-password" class="tab-btn" style="border:1px solid rgba(255,255,255,0.1);"><i class="fas fa-key"></i> Password</a>
+                <a href="/logout" class="tab-btn" style="border:1px solid rgba(255,255,255,0.1);"><i class="fas fa-sign-out-alt"></i> Logout</a>
             </div>
         </nav>
         {% endif %}
@@ -1556,7 +1547,7 @@
                         {{ client_id }}
                         <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
                     </button>
-                    <div id="client-menu-dropdown" style="display:none; position:absolute; top:calc(100% + 6px); right:0; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:9999; overflow:hidden;">
+                <div id="client-menu-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
                         <a href="/change-password" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#94a3b8; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
                             <i class="fas fa-key" style="color:#f59e0b;"></i> Change Password
                         </a>
@@ -6684,12 +6675,30 @@
         function toggleNavLogout(event) {
             event.stopPropagation();
             const d = document.getElementById('nav-logout-dropdown');
-            if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
+            if (!d) return;
+            if (d.style.display === 'none' || !d.style.display) {
+                const btn = event.currentTarget;
+                const r = btn.getBoundingClientRect();
+                d.style.top = (r.bottom + 6) + 'px';
+                d.style.right = (window.innerWidth - r.right) + 'px';
+                d.style.display = 'block';
+            } else {
+                d.style.display = 'none';
+            }
         }
         function toggleClientMenu(event) {
             event.stopPropagation();
             const d = document.getElementById('client-menu-dropdown');
-            if (d) d.style.display = d.style.display === 'none' ? 'block' : 'none';
+            if (!d) return;
+            if (d.style.display === 'none' || !d.style.display) {
+                const btn = event.currentTarget;
+                const r = btn.getBoundingClientRect();
+                d.style.top = (r.bottom + 6) + 'px';
+                d.style.right = (window.innerWidth - r.right) + 'px';
+                d.style.display = 'block';
+            } else {
+                d.style.display = 'none';
+            }
         }
         document.addEventListener('click', function() {
             ['nav-logout-dropdown', 'client-menu-dropdown'].forEach(id => {
