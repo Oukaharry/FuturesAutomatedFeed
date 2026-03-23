@@ -1,11 +1,11 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
     /* TradeOpss Theme - Deep Navy Contrast */
-    --bg-color: #05070d; /* Near-black navy base */
-    --card-bg: #0d1424; /* Dark navy card surfaces */
-    --text-primary: #eef2ff; /* Cool bright white */
-    --text-secondary: #8ba4c8; /* Mid navy-blue secondary */
+    --bg-color: #01030a; /* Deepest navy-black */
+    --card-bg: #090f1e; /* Dark navy-indigo card surface */
+    --text-primary: #e8eeff; /* Cool blue-white */
+    --text-secondary: #7898be; /* Teal-shifted navy secondary */
     
     --admin-bg: #172554; /* Blue 950 */
     --admin-text: #7baef0; /* Softer blue label */
@@ -24,40 +24,43 @@
     --accent-hover: #d97706; /* Amber 600 */
     --accent-glow: rgba(251, 191, 36, 0.3);
     
-    --success-color: #34d399; /* Emerald 400 */
+    --success-color: #2dd4bf; /* Teal-emerald (15% teal mix) */
     --warning-color: #fbbf24; /* Amber 400 */
     --danger-color: #f87171; /* Red 400 */
     
-    --border-color: #192848; /* Navy-tinted border */
+    --border-color: #162040; /* Deep navy tinted border */
     
-    --shadow-sm: 0 1px 4px 0 rgba(3, 5, 12, 0.6);
-    --shadow-md: 0 4px 12px -1px rgba(3, 5, 12, 0.7), 0 1px 0 rgba(30, 58, 138, 0.12);
-    --shadow-lg: 0 10px 28px -3px rgba(3, 5, 12, 0.8), 0 1px 0 rgba(30, 58, 138, 0.15);
-    --shadow-glow: 0 0 20px rgba(251, 191, 36, 0.15); /* Gold Glow */
-    --shadow-navy: 0 8px 24px rgba(3, 5, 12, 0.8), 0 1px 0 rgba(61, 95, 160, 0.2); /* Navy depth */
+    --shadow-sm: 0 1px 4px 0 rgba(1, 3, 10, 0.7);
+    --shadow-md: 0 4px 12px -1px rgba(1, 3, 10, 0.8), 0 1px 0 rgba(30, 58, 138, 0.14);
+    --shadow-lg: 0 10px 28px -3px rgba(1, 3, 10, 0.9), 0 1px 0 rgba(30, 58, 138, 0.18);
+    --shadow-glow: 0 0 20px rgba(251, 191, 36, 0.15);
+    --shadow-navy: 0 8px 24px rgba(1, 3, 10, 0.85), 0 1px 0 rgba(61, 95, 160, 0.22);
     
-    --radius: 16px;
+    --radius: 14px;
     --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     
     /* Gradients */
-    --gradient-header: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    --gradient-primary: linear-gradient(135deg, #d97706 0%, #b45309 100%); /* Gold Gradient */
-    --gradient-card: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.7) 100%);
+    --gradient-header: linear-gradient(135deg, #0d1628 0%, #01030a 100%);
+    --gradient-primary: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+    --gradient-card: linear-gradient(180deg, rgba(9, 15, 30, 0.85) 0%, rgba(1, 3, 10, 0.85) 100%);
 }
 
 body {
     font-family: var(--font-family);
     background-color: var(--bg-color);
     background-image: 
-        radial-gradient(circle at 15% 50%, rgba(251, 191, 36, 0.04) 0%, transparent 30%),
-        radial-gradient(circle at 85% 30%, rgba(23, 37, 84, 0.18) 0%, transparent 40%),
-        radial-gradient(circle at 50% 100%, rgba(14, 22, 50, 0.3) 0%, transparent 60%);
+        radial-gradient(circle at 15% 50%, rgba(251, 191, 36, 0.05) 0%, transparent 28%),
+        radial-gradient(circle at 85% 20%, rgba(30, 58, 138, 0.20) 0%, transparent 38%),
+        radial-gradient(circle at 50% 100%, rgba(10, 15, 40, 0.35) 0%, transparent 55%);
     background-attachment: fixed;
     color: var(--text-primary);
     margin: 0;
     padding: 12px 16px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
 }
 
 .container {
