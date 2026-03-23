@@ -1534,22 +1534,21 @@
                 {% endif %}
                 <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                     <div id="kyc-switcher-wrap" style="display:none; position:relative;">
-                        <button id="kyc-switcher-btn" onclick="toggleKycDropdown(event)" style="cursor:pointer; border:1px solid rgba(96,165,250,0.3); background:rgba(96,165,250,0.1); padding:6px 14px; border-radius:8px; display:flex; align-items:center; gap:6px; color:#60a5fa; font-size:0.82rem; font-weight:500; white-space:nowrap;">
+                        <button id="kyc-switcher-btn" onclick="toggleKycDropdown(event)" style="cursor:pointer; border:1px solid rgba(96,165,250,0.3); background:rgba(96,165,250,0.1); padding:6px 12px; border-radius:8px; display:flex; align-items:center; gap:5px; color:#60a5fa; font-size:0.78rem; font-weight:500; white-space:nowrap; box-shadow:none; transform:none;">
                             <i class="fas fa-exchange-alt" style="font-size:0.7rem;"></i>
                             <span id="kyc-current-name">{{ client_id }}</span>
                             <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
                         </button>
-                        <div id="kyc-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
+                        <div id="kyc-dropdown" style="display:none; position:absolute; top:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
                             <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
                         </div>
                     </div>
+                    <!-- Avatar button with dropdown (Change Password / Logout) -->
                     <div style="position:relative;">
-                        <button onclick="toggleClientMenu(event)" style="display:flex; align-items:center; gap:6px; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.3); color:#60a5fa; padding:6px 12px; border-radius:8px; font-size:0.82rem; font-weight:600; cursor:pointer; white-space:nowrap;">
-                            <i class="fas fa-user-circle"></i>
-                            {{ client_id }}
-                            <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
+                        <button onclick="toggleClientMenu(event)" title="{{ client_id }}" style="width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#3b82f6,#6366f1); border:2px solid rgba(99,102,241,0.5); color:#fff; font-size:0.95rem; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(99,102,241,0.4); flex-shrink:0; padding:0; text-transform:uppercase; letter-spacing:0;">
+                            {{ client_id[0] | upper }}
                         </button>
-                        <div id="client-menu-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
+                        <div id="client-menu-dropdown" style="display:none; position:absolute; top:calc(100% + 6px); right:0; background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; min-width:185px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
                             <a href="/change-password" style="display:flex; align-items:center; gap:8px; padding:10px 16px; color:#94a3b8; text-decoration:none; font-size:0.85rem;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background=''">
                                 <i class="fas fa-key" style="color:#f59e0b;"></i> Change Password
                             </a>
@@ -2410,11 +2409,8 @@
             event.stopPropagation();
             const dd = document.getElementById('kyc-dropdown');
             if (dd.style.display === 'none' || !dd.style.display) {
-                const btn = event.currentTarget;
-                const r = btn.getBoundingClientRect();
-                dd.style.top = (r.bottom + 6) + 'px';
-                dd.style.right = (window.innerWidth - r.right) + 'px';
-                dd.style.left = '';
+                const clientDd = document.getElementById('client-menu-dropdown');
+                if (clientDd) clientDd.style.display = 'none';
                 dd.style.display = 'block';
             } else {
                 dd.style.display = 'none';
@@ -6776,15 +6772,12 @@
             event.stopPropagation();
             const d = document.getElementById('client-menu-dropdown');
             if (!d) return;
-            if (d.style.display === 'none' || !d.style.display) {
-                const btn = event.currentTarget;
-                const r = btn.getBoundingClientRect();
-                d.style.top = (r.bottom + 6) + 'px';
-                d.style.right = (window.innerWidth - r.right) + 'px';
-                d.style.display = 'block';
-            } else {
-                d.style.display = 'none';
+            const opening = (d.style.display === 'none' || !d.style.display);
+            if (opening) {
+                const kycDd = document.getElementById('kyc-dropdown');
+                if (kycDd) kycDd.style.display = 'none';
             }
+            d.style.display = opening ? 'block' : 'none';
         }
         document.addEventListener('click', function() {
             ['nav-logout-dropdown', 'client-menu-dropdown', 'kyc-dropdown'].forEach(id => {
