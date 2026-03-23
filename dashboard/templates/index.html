@@ -6213,48 +6213,27 @@
         }
 
         async function loadChecklistClients() {
-            // Fetch client list from hierarchy API
-            try {
-                const resp = await fetch('/api/hierarchy');
-                const data = await resp.json();
-                const clients = [];
-                // Walk hierarchy to collect all client names
-                if (data.admins) {
-                    Object.values(data.admins).forEach(admin => {
-                        if (admin.traders) {
-                            Object.values(admin.traders).forEach(trader => {
-                                if (trader.clients) {
-                                    trader.clients.forEach(c => {
-                                        const name = c.name || c;
-                                        if (name && !clients.includes(name)) clients.push(name);
-                                    });
-                                }
-                            });
-                        }
-                    });
-                }
-                _clientList = clients.sort((a, b) => a.localeCompare(b));
-            } catch (e) {
-                // Fallback: just use current CLIENT_ID if hierarchy fails
-                if (CLIENT_ID) _clientList = [CLIENT_ID];
-            }
+            // Only load the current client being viewed
+            _clientList = CLIENT_ID ? [CLIENT_ID] : [];
 
-            // Build dropdown
+            // Build dropdown (single client, hide selector)
             const sel = document.getElementById('checklist-client-select');
             sel.innerHTML = _clientList.map(c =>
-                `<option value="${c}"${c === CLIENT_ID ? ' selected' : ''}>${c}</option>`
+                `<option value="${c}" selected>${c}</option>`
             ).join('');
+            // Hide the dropdown since we only show the current client
+            document.querySelector('.client-selector-wrap').style.display = 'none';
+            document.getElementById('checklist-client-dots').style.display = 'none';
 
-            // Init data store for every client
+            // Init data store
             _clientList.forEach(c => {
                 if (!_allClientSummaries[c]) _allClientSummaries[c] = _getDefaultSections();
             });
 
-            // Load saved data for ALL clients in parallel
+            // Load saved data for current client only
             await Promise.all(_clientList.map(c => loadClientData(c)));
 
-            // Select current client or first
-            _activeClient = CLIENT_ID && _clientList.includes(CLIENT_ID) ? CLIENT_ID : (_clientList[0] || '');
+            _activeClient = CLIENT_ID || '';
             sel.value = _activeClient;
 
             _checklistLoaded = true;
