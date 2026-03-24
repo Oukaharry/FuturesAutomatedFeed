@@ -6913,14 +6913,14 @@
             const today = new Date();
             const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
             let lines = [];
-            lines.push(`📋 **DAILY SUMMARY — ${clientId}**`);
-            lines.push(`📅 ${dateStr}`);
             if (CLIENT_TRADER_NAME) lines.push(`👤 Trader: ${CLIENT_TRADER_NAME}`);
             if (CLIENT_ADMIN_NAME) {
-                // Tag admin by Slack member ID if available, else fall back to plain name
                 const adminTag = CLIENT_ADMIN_SLACK_ID ? `<@${CLIENT_ADMIN_SLACK_ID}>` : `@${CLIENT_ADMIN_NAME}`;
                 lines.push(`🏢 Admin: ${adminTag}`);
             }
+            lines.push('');
+            lines.push(`📋 **DAILY SUMMARY — ${clientId}**`);
+            lines.push(`📅 ${dateStr}`);
             lines.push('');
             SUMMARY_SECTIONS.forEach(s => {
                 const d = summaryData[s.id];
