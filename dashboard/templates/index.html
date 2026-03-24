@@ -4103,7 +4103,7 @@
                 if (ev._deleted) return;
                 const name = String(ev['Prop Firm']||'').trim() || 'Unknown';
                 if (!name || name === 'Unknown') return;
-                if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedging:0};
+                if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
                 const f = firms[name];
                 f.evals++;
                 const st = String(ev['Status P1']||'').toLowerCase();
@@ -4114,35 +4114,45 @@
                 f.fees += pc(ev['Fee']) + pc(ev['Activation Fee']);
                 ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5',
                  'Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1',
-                 'Hedge Result 6','Hedge Result 7'].forEach(c => { f.hedging += pc(ev[c]); });
-                f.hedging += pc(ev['Farming Profit']);
+                 'Hedge Result 6','Hedge Result 7'].forEach(c => { f.hedge += pc(ev[c]); });
+                f.farming += pc(ev['Farming Profit']);
                 for (let i=1;i<=9;i++) f.payouts += pc(ev['Payout '+i]);
             });
             const fmt = v => formatMoney(v);
             const rows = Object.entries(firms).sort((a,b)=>b[1].payouts-a[1].payouts);
-            const tot = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedging:0};
+            const tot = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
             rows.forEach(([,f])=>{ for(const k in tot) tot[k]+=f[k]; });
-            return rows.map(([name,f]) => `
-                <tr>
-                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);font-weight:600;color:#fbbf24;">${name}</td>
-                    <td style="text-align:left;">${f.evals}</td>
-                    <td style="text-align:left;">${f.active}</td>
-                    <td style="text-align:left;">${f.passed + f.failed > 0 ? Math.round(f.passed / (f.passed + f.failed) * 100) + '%' : '—'}</td>
-                    <td style="text-align:left;">${fmt(f.payouts)}</td>
-                    <td style="text-align:left;">${fmt(f.fees)}</td>
-                    <td style="text-align:left;">${fmt(f.hedging)}</td>
-                    <td style="text-align:left;">${fmt(f.payouts - f.fees + f.hedging)}</td>
-                </tr>`).join('') + `
-                <tr class="font-bold" style="background:rgba(255,255,255,0.05);">
-                    <td style="position:sticky;left:0;z-index:15;background:inherit;">Totals</td>
-                    <td style="text-align:left;">${tot.evals}</td>
-                    <td style="text-align:left;">${tot.active}</td>
-                    <td style="text-align:left;">${tot.passed + tot.failed > 0 ? Math.round(tot.passed / (tot.passed + tot.failed) * 100) + '%' : '—'}</td>
-                    <td style="text-align:left;">${fmt(tot.payouts)}</td>
-                    <td style="text-align:left;">${fmt(tot.fees)}</td>
-                    <td style="text-align:left;">${fmt(tot.hedging)}</td>
-                    <td style="text-align:left;">${fmt(tot.payouts - tot.fees + tot.hedging)}</td>
+            return rows.map(([name,f]) => {
+                const net = f.payouts - f.fees + f.hedge + f.farming;
+                return `
+                <tr style="border-bottom:1px solid #1e293b;">
+                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#fbbf24;">${name}</td>
+                    <td style="text-align:center;">${f.evals}</td>
+                    <td style="text-align:center;color:#fff;">${f.active}</td>
+                    <td style="text-align:center;color:#34d399;">${f.passed}</td>
+                    <td style="text-align:center;color:#f87171;">${f.failed}</td>
+                    <td style="text-align:right;color:#34d399;">${fmt(f.payouts)}</td>
+                    <td style="text-align:right;color:#f87171;">${fmt(f.fees)}</td>
+                    <td style="text-align:right;color:#38bdf8;">${fmt(f.hedge)}</td>
+                    <td style="text-align:right;color:#a3e635;">${fmt(f.farming)}</td>
+                    <td style="text-align:right;padding-right:16px;font-weight:700;color:${net >= 0 ? '#c084fc' : '#f87171'};">${fmt(net)}</td>
                 </tr>`;
+            }).join('') + (() => {
+                const tNet = tot.payouts - tot.fees + tot.hedge + tot.farming;
+                return `
+                <tr class="font-bold" style="background:rgba(255,255,255,0.05);">
+                    <td style="position:sticky;left:0;z-index:15;background:inherit;padding:10px 16px;">Totals</td>
+                    <td style="text-align:center;">${tot.evals}</td>
+                    <td style="text-align:center;color:#fff;">${tot.active}</td>
+                    <td style="text-align:center;color:#34d399;">${tot.passed}</td>
+                    <td style="text-align:center;color:#f87171;">${tot.failed}</td>
+                    <td style="text-align:right;color:#34d399;">${fmt(tot.payouts)}</td>
+                    <td style="text-align:right;color:#f87171;">${fmt(tot.fees)}</td>
+                    <td style="text-align:right;color:#38bdf8;">${fmt(tot.hedge)}</td>
+                    <td style="text-align:right;color:#a3e635;">${fmt(tot.farming)}</td>
+                    <td style="text-align:right;padding-right:16px;font-weight:700;color:${tNet >= 0 ? '#c084fc' : '#f87171'};">${fmt(tNet)}</td>
+                </tr>`;
+            })();
         }
 
         function renderStats(data) {
@@ -4322,14 +4332,16 @@
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th style="position:sticky;left:0;z-index:15;background:var(--card-bg);text-align:left;">Prop Firm</th>
-                                            <th style="text-align:left;">Evals</th>
-                                            <th style="text-align:left;">Active</th>
-                                            <th style="text-align:left;">Funded Rate</th>
-                                            <th style="text-align:left;">Payouts</th>
-                                            <th style="text-align:left;">Fees</th>
-                                            <th style="text-align:left;">Hedging</th>
-                                            <th style="text-align:left;">Net Profit</th>
+                                            <th style="position:sticky;left:0;z-index:15;background:var(--card-bg);text-align:left;padding-left:16px;">Prop Firm</th>
+                                            <th style="text-align:center;">Evals</th>
+                                            <th style="text-align:center;">Active</th>
+                                            <th style="text-align:center;">Passed</th>
+                                            <th style="text-align:center;">Failed</th>
+                                            <th style="text-align:right;">Payouts</th>
+                                            <th style="text-align:right;">Fees</th>
+                                            <th style="text-align:right;">Hedge</th>
+                                            <th style="text-align:right;">Farming</th>
+                                            <th style="text-align:right;padding-right:16px;">Net Profit</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -4338,10 +4350,18 @@
                                 </table>
                             </div>
                             
-                            <!-- Payout History -->
-                            <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
-                                <div class="card-header" style="background:linear-gradient(180deg,#060a14,#04060e);border-bottom:1px solid #162040;color:#34d399;cursor:pointer;justify-content:flex-start;gap:8px;" onclick="const w=this.nextElementSibling; w.style.display=w.style.display==='none'?'':'none'; this.querySelector('.ph-arrow').textContent=w.style.display==='none'?'▸':'▾';"><span class="ph-arrow">▸</span> PAYOUT HISTORY</div>
-                                <div style="display:none;">
+                            <!-- All Payouts -->
+                            <div style="margin-top:30px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                                    <h4 style="color: #94a3b8; margin: 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                                        <i class="fas fa-money-bill-wave" style="margin-right: 6px;"></i> ALL PAYOUTS
+                                        <span id="stats-payouts-count" style="font-size:0.8rem; color:#64748b; font-weight:400; margin-left:6px;"></span>
+                                    </h4>
+                                    <button onclick="const s=document.getElementById('stats-payouts-detail');const b=this; if(s.style.display==='none'){s.style.display='';b.innerHTML='<i class=\\'fas fa-eye-slash\\'></i> Hide Payouts';}else{s.style.display='none';b.innerHTML='<i class=\\'fas fa-eye\\'></i> See All Payouts';}" style="background:linear-gradient(135deg,rgba(16,185,129,0.2),rgba(6,78,59,0.5)); border:1px solid rgba(52,211,153,0.4); color:#34d399; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                                        <i class="fas fa-eye"></i> See All Payouts
+                                    </button>
+                                </div>
+                                <div id="stats-payouts-detail" style="display:none;">
                                 <div style="display:flex; gap:6px; align-items:center; padding:8px 12px;">
                                     <span style="color:#94a3b8; font-size:0.7rem;">From</span>
                                     <input type="date" id="stats-payout-from" style="padding:2px 6px; font-size:0.75rem; width:120px;">
@@ -4437,6 +4457,7 @@
         function filterStatsPayouts() {
             const body = document.getElementById('stats-payouts-body');
             const summary = document.getElementById('stats-payouts-summary');
+            const countEl = document.getElementById('stats-payouts-count');
             if (!body) return;
             const fromVal = document.getElementById('stats-payout-from')?.value;
             const toVal = document.getElementById('stats-payout-to')?.value;
@@ -4444,7 +4465,12 @@
             const toD = toVal ? new Date(toVal + 'T23:59:59') : null;
             const fmt = v => '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-            let filtered = (window._statsPayouts || []).filter(p => {
+            // Compute total payouts (unfiltered) for header
+            const allPayouts = window._statsPayouts || [];
+            const allTotal = allPayouts.reduce((s, p) => s + p.amount, 0);
+            if (countEl) countEl.textContent = `(${allPayouts.length} PAYOUTS — ${fmt(allTotal)})`;
+
+            let filtered = allPayouts.filter(p => {
                 if (!p.dateObj) return !fromD && !toD;
                 if (fromD && p.dateObj < fromD) return false;
                 if (toD && p.dateObj > toD) return false;
