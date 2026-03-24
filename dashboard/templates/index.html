@@ -4136,20 +4136,34 @@
             rows.forEach(([,f])=>{ for(const k in tot) tot[k]+=f[k]; });
             return rows.map(([name,f]) => {
                 const net = f.payouts - f.fees + f.hedge + f.farming;
+                const hedgingTotal = f.hedge + f.farming;
+                const rowId = 'pf-' + name.replace(/[^a-zA-Z0-9]/g,'_');
                 return `
-                <tr style="border-bottom:1px solid #1e293b;">
+                <tr style="border-bottom:1px solid #1e293b;" class="pf-main-row">
                     <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#fbbf24;">${name}</td>
                     <td style="text-align:center;">${f.evals}</td>
                     <td style="text-align:center;color:#fff;">${f.active}</td>
                     <td style="text-align:center;">${f.passed + f.failed > 0 ? '<span style="color:' + (Math.round(f.passed / (f.passed + f.failed) * 100) >= 40 ? '#34d399' : Math.round(f.passed / (f.passed + f.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(f.passed / (f.passed + f.failed) * 100) + '%</span>' : '—'}</td>
                     <td style="text-align:right;color:#34d399;">${fmt(f.payouts)}</td>
                     <td style="text-align:right;color:#f87171;">${fmt(f.fees)}</td>
-                    <td style="text-align:right;color:#38bdf8;">${fmt(f.hedge)}</td>
-                    <td style="text-align:right;color:#a3e635;">${fmt(f.farming)}</td>
+                    <td style="text-align:right;color:#38bdf8;"><span onclick="const r1=document.getElementById('${rowId}-h');const r2=document.getElementById('${rowId}-f');[r1,r2].forEach(r=>{if(r)r.style.display=r.style.display==='none'?'table-row':'none';});" style="cursor:pointer;">${fmt(hedgingTotal)} <span style='font-size:10px;color:#60a5fa;margin-left:2px;'>&#9654;</span></span></td>
                     <td style="text-align:right;padding-right:16px;font-weight:700;color:${net >= 0 ? '#c084fc' : '#f87171'};">${fmt(net)}</td>
+                </tr>
+                <tr id="${rowId}-h" style="display:none;background:rgba(56,189,248,0.05);">
+                    <td style="padding-left:32px;font-size:12px;color:#94a3b8;">↳ Hedging</td>
+                    <td colspan="5"></td>
+                    <td style="text-align:right;font-size:12px;color:#38bdf8;">${fmt(f.hedge)}</td>
+                    <td></td>
+                </tr>
+                <tr id="${rowId}-f" style="display:none;border-bottom:1px solid #1e293b;background:rgba(56,189,248,0.05);">
+                    <td style="padding-left:32px;font-size:12px;color:#94a3b8;">↳ Farming</td>
+                    <td colspan="5"></td>
+                    <td style="text-align:right;font-size:12px;color:#a3e635;">${fmt(f.farming)}</td>
+                    <td></td>
                 </tr>`;
             }).join('') + (() => {
                 const tNet = tot.payouts - tot.fees + tot.hedge + tot.farming;
+                const tHedgingTotal = tot.hedge + tot.farming;
                 return `
                 <tr class="font-bold" style="background:rgba(255,255,255,0.05);">
                     <td style="position:sticky;left:0;z-index:15;background:inherit;padding:10px 16px;">Totals</td>
@@ -4158,8 +4172,7 @@
                     <td style="text-align:center;">${tot.passed + tot.failed > 0 ? '<span style="color:' + (Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 40 ? '#34d399' : Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(tot.passed / (tot.passed + tot.failed) * 100) + '%</span>' : '—'}</td>
                     <td style="text-align:right;color:#34d399;">${fmt(tot.payouts)}</td>
                     <td style="text-align:right;color:#f87171;">${fmt(tot.fees)}</td>
-                    <td style="text-align:right;color:#38bdf8;">${fmt(tot.hedge)}</td>
-                    <td style="text-align:right;color:#a3e635;">${fmt(tot.farming)}</td>
+                    <td style="text-align:right;color:#38bdf8;">${fmt(tHedgingTotal)}</td>
                     <td style="text-align:right;padding-right:16px;font-weight:700;color:${tNet >= 0 ? '#c084fc' : '#f87171'};">${fmt(tNet)}</td>
                 </tr>`;
             })();
@@ -4241,10 +4254,10 @@
                                     <div class="card-header">Profitability - Completed <span style="margin-left:auto;font-size:0.8rem;font-weight:500;color:#94a3b8;">EV: <strong style="color:#fbbf24;">${formatMoney(s.expected_value)}</strong></span></div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.profitability_completed.payouts)}</td></tr>
-                                        <tr><td>Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0))}</td></tr>
+                                        <tr><td>Hedging Results <span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display==='none'?'':'none';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0))}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.profitability_completed.farming_results || 0)}</td></tr>
-                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#fbbf24;">↳ Discrepancy</td><td class="text-right" style="font-size:12px;color:#fbbf24;">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#fbbf24;">↳ Discrepancy from Google Sheets</td><td class="text-right" style="font-size:12px;color:#fbbf24;">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.profitability_completed.challenge_fees || 0))}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(
                                             (s.profitability_completed.payouts || 0) +
@@ -4319,10 +4332,10 @@
                                     <div class="card-header">Net Profit In Progress</div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
-                                        <tr><td>Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
+                                        <tr><td>Hedging Results <span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display==='none'?'':'none';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
-                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#fbbf24;">↳ Discrepancy</td><td class="text-right" style="font-size:12px;color:#fbbf24;">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
+                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#fbbf24;">↳ Discrepancy from Google Sheets</td><td class="text-right" style="font-size:12px;color:#fbbf24;">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - ((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))) : '<span style="color:#888">N/A</span>'}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(
                                             (s.cashflow_inprogress.payouts || 0) +
@@ -4338,7 +4351,7 @@
                             
                             <!-- By Prop Firm -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
-                                <div class="card-header" style="background:linear-gradient(180deg,#060a14,#04060e);border-bottom:1px solid #162040;color:#fbbf24;">BY PROP FIRM</div>
+                                <div class="card-header" style="background:linear-gradient(180deg,#0f172a,#060a14);border-bottom:1px solid #162040;color:#94a3b8;font-size:0.95rem;font-weight:700;letter-spacing:0.05em;gap:8px;"><i class="fas fa-building" style="opacity:0.6;"></i> BY PROP FIRM</div>
                                 <table>
                                     <thead>
                                         <tr>
@@ -4348,8 +4361,7 @@
                                             <th style="text-align:center;">Funded Rate</th>
                                             <th style="text-align:right;">Payouts</th>
                                             <th style="text-align:right;">Fees</th>
-                                            <th style="text-align:right;">Hedge</th>
-                                            <th style="text-align:right;">Farming</th>
+                                            <th style="text-align:right;">Hedging Results</th>
                                             <th style="text-align:right;padding-right:16px;">Net Profit</th>
                                         </tr>
                                     </thead>
