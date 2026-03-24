@@ -2156,24 +2156,30 @@ def client_dashboard(client_id):
     _profile = get_client_profile(client_id) or {}
     client_trader_name = _profile.get('trader', '')
     client_admin_name = _profile.get('admin', '')
+    # Look up admin's Slack member ID for direct tagging
+    _admin_data = SYSTEM_HIERARCHY.get('admins', {}).get(client_admin_name, {})
+    client_admin_slack_id = _admin_data.get('slack_user_id', '')
 
     # Allow super_admin, admin, and trader to access any client dashboard
     if user_type in ['super_admin', 'admin', 'trader']:
         return render_template('index.html', client_id=client_id, user_type=user_type, 
                                can_edit_hedging=True, client_email=client_email, is_active=is_active,
-                               client_trader_name=client_trader_name, client_admin_name=client_admin_name)
+                               client_trader_name=client_trader_name, client_admin_name=client_admin_name,
+                               client_admin_slack_id=client_admin_slack_id)
     # Client access: allow own dashboard OR primary KYC can view linked accounts
     if user_type == 'client':
         own_name = session_user.get('user_identifier')
         if client_id == own_name:
             return render_template('index.html', client_id=client_id, user_type=user_type, 
                                    can_edit_hedging=True, client_email=client_email, is_active=is_active,
-                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name)
+                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name,
+                                   client_admin_slack_id=client_admin_slack_id)
         # Only primary KYC clients can view linked accounts
         if is_kyc_primary(own_name) and client_id in get_all_kyc_accounts(own_name):
             return render_template('index.html', client_id=client_id, user_type=user_type, 
                                    can_edit_hedging=True, client_email=client_email, is_active=is_active,
-                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name)
+                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name,
+                                   client_admin_slack_id=client_admin_slack_id)
     return redirect('/')
 
 # ============ Hierarchy API with Role-Based Access Control ============
@@ -4182,6 +4188,7 @@ def api_delete_user():
 def api_update_admin():
     name = request.json.get('name')
     email = request.json.get('email')
+    slack_user_id = request.json.get('slack_user_id', None)
     new_name = request.json.get('new_name', '').strip()
     if not name: return jsonify({"status": "error", "message": "Name required"}), 400
     
@@ -4193,7 +4200,7 @@ def api_update_admin():
         log_action('RENAME_ADMIN', 'admin', f'{name} -> {new_name}', get_remote_address())
         return jsonify({"status": "success"})
     
-    if update_admin_details(name, email):
+    if update_admin_details(name, email, slack_user_id=slack_user_id):
         update_user_email(name, 'admin', email)
         log_action('UPDATE_ADMIN', 'admin', name, get_remote_address())
         return jsonify({"status": "success"})

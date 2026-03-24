@@ -42,10 +42,12 @@ def add_admin(admin_name, email=""):
         return True
     return False
 
-def update_admin_details(admin_name, email):
+def update_admin_details(admin_name, email, slack_user_id=None):
     reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
         SYSTEM_HIERARCHY["admins"][admin_name]["email"] = email
+        if slack_user_id is not None:  # allow clearing by passing ''
+            SYSTEM_HIERARCHY["admins"][admin_name]["slack_user_id"] = slack_user_id.strip()
         save_hierarchy(SYSTEM_HIERARCHY)
         return True
     return False
