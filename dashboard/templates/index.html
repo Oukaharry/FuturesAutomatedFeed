@@ -4131,6 +4131,20 @@
                 for (let i=1;i<=9;i++) f.payouts += pc(ev['Payout '+i]);
             });
             const fmt = v => formatMoney(v);
+            const firmTextColor = (name) => {
+                const v = (name || '').toLowerCase().replace(/[^a-z]/g, '');
+                if (v.includes('myfunded') || v.includes('mffu')) return '#FFD700';
+                if (v.includes('funding')) return '#ffcc99';
+                if (v.includes('tradeday')) return '#FFFFFF';
+                if (v.includes('topstep')) return '#FFFF00';
+                if (v.includes('alpha')) return '#27ae60';
+                if (v.includes('tradeify')) return '#e2e8f0';
+                if (v.includes('fundednext')) return '#a855f6';
+                if (v.includes('lucid')) return '#9ca3af';
+                if (v.includes('apex')) return '#60a5fa';
+                if (v.includes('take profit') || v.includes('takeprofit')) return '#f472b6';
+                return '#fbbf24';
+            };
             const rows = Object.entries(firms).sort((a,b)=>b[1].payouts-a[1].payouts);
             const tot = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
             rows.forEach(([,f])=>{ for(const k in tot) tot[k]+=f[k]; });
@@ -4140,7 +4154,7 @@
                 const rowId = 'pf-' + name.replace(/[^a-zA-Z0-9]/g,'_');
                 return `
                 <tr style="border-bottom:1px solid #1e293b;" class="pf-main-row">
-                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#fbbf24;">${name}</td>
+                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:${firmTextColor(name)};">${name}</td>
                     <td style="text-align:left;">${f.evals}</td>
                     <td style="text-align:left;color:#fff;">${f.active}</td>
                     <td style="text-align:left;">${f.passed + f.failed > 0 ? '<span style="color:' + (Math.round(f.passed / (f.passed + f.failed) * 100) >= 40 ? '#34d399' : Math.round(f.passed / (f.passed + f.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(f.passed / (f.passed + f.failed) * 100) + '%</span>' : '—'}</td>
