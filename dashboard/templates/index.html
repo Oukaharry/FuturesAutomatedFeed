@@ -4141,8 +4141,7 @@
                     <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#fbbf24;">${name}</td>
                     <td style="text-align:center;">${f.evals}</td>
                     <td style="text-align:center;color:#fff;">${f.active}</td>
-                    <td style="text-align:center;color:#34d399;">${f.passed}</td>
-                    <td style="text-align:center;color:#f87171;">${f.failed}</td>
+                    <td style="text-align:center;">${f.passed + f.failed > 0 ? '<span style="color:' + (Math.round(f.passed / (f.passed + f.failed) * 100) >= 40 ? '#34d399' : Math.round(f.passed / (f.passed + f.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(f.passed / (f.passed + f.failed) * 100) + '%</span>' : '—'}</td>
                     <td style="text-align:right;color:#34d399;">${fmt(f.payouts)}</td>
                     <td style="text-align:right;color:#f87171;">${fmt(f.fees)}</td>
                     <td style="text-align:right;color:#38bdf8;">${fmt(f.hedge)}</td>
@@ -4156,8 +4155,7 @@
                     <td style="position:sticky;left:0;z-index:15;background:inherit;padding:10px 16px;">Totals</td>
                     <td style="text-align:center;">${tot.evals}</td>
                     <td style="text-align:center;color:#fff;">${tot.active}</td>
-                    <td style="text-align:center;color:#34d399;">${tot.passed}</td>
-                    <td style="text-align:center;color:#f87171;">${tot.failed}</td>
+                    <td style="text-align:center;">${tot.passed + tot.failed > 0 ? '<span style="color:' + (Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 40 ? '#34d399' : Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(tot.passed / (tot.passed + tot.failed) * 100) + '%</span>' : '—'}</td>
                     <td style="text-align:right;color:#34d399;">${fmt(tot.payouts)}</td>
                     <td style="text-align:right;color:#f87171;">${fmt(tot.fees)}</td>
                     <td style="text-align:right;color:#38bdf8;">${fmt(tot.hedge)}</td>
@@ -4347,8 +4345,7 @@
                                             <th style="position:sticky;left:0;z-index:15;background:var(--card-bg);text-align:left;padding-left:16px;">Prop Firm</th>
                                             <th style="text-align:center;">Evals</th>
                                             <th style="text-align:center;">Active</th>
-                                            <th style="text-align:center;">Passed</th>
-                                            <th style="text-align:center;">Failed</th>
+                                            <th style="text-align:center;">Funded Rate</th>
                                             <th style="text-align:right;">Payouts</th>
                                             <th style="text-align:right;">Fees</th>
                                             <th style="text-align:right;">Hedge</th>
