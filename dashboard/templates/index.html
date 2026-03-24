@@ -1135,8 +1135,8 @@
         .prop-fields-row { display: flex; gap: 8px; flex-wrap: wrap; }
         .prop-field-group { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 100px; }
         .prop-field-label { font-size: 0.65rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
-        .prop-field-input { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.8rem; font-family: inherit; box-sizing: border-box; -moz-appearance: textfield; }
-        .prop-field-input::-webkit-outer-spin-button, .prop-field-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .prop-field-input { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.8rem; font-family: inherit; box-sizing: border-box; -moz-appearance: textfield; appearance: textfield; }
+        .prop-field-input::-webkit-outer-spin-button, .prop-field-input::-webkit-inner-spin-button { -webkit-appearance: none; appearance: none; margin: 0; }
         .prop-field-input::placeholder { color: #475569; }
         .prop-field-input:focus { border-color: rgba(167,139,250,0.5); outline: none; }
         .prop-field-full { flex: 1 1 100%; min-width: 100%; }
@@ -2595,6 +2595,8 @@
         const USER_TYPE = "{{ user_type }}";
         const IS_CLIENT = USER_TYPE === 'client';
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
+        const CLIENT_TRADER_NAME = "{{ client_trader_name|default('') }}";
+        const CLIENT_ADMIN_NAME = "{{ client_admin_name|default('') }}";
 
         // ── KYC Account Switcher ──────────────────────────────────────────
         let kycAccounts = [];
@@ -6912,6 +6914,8 @@
             let lines = [];
             lines.push(`📋 **DAILY SUMMARY — ${clientId}**`);
             lines.push(`📅 ${dateStr}`);
+            if (CLIENT_TRADER_NAME) lines.push(`👤 Trader: ${CLIENT_TRADER_NAME}`);
+            if (CLIENT_ADMIN_NAME)  lines.push(`🏢 Admin: ${CLIENT_ADMIN_NAME}`);
             lines.push('');
             SUMMARY_SECTIONS.forEach(s => {
                 const d = summaryData[s.id];
