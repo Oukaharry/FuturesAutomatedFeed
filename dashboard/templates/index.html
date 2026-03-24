@@ -2134,25 +2134,37 @@
             </div>
 
             <!-- Trade History -->
-            <h3 style="cursor:pointer;" onclick="const t=document.getElementById('history-table');const m=document.getElementById('no-history-msg');const a=this.querySelector('.th-arrow'); if(t)t.style.display=t.style.display==='none'?'':'none'; if(m)m.style.display=m.style.display==='none'?'':'none'; a.textContent=t&&t.style.display==='none'?'▸':'▾';"><span class="th-arrow">▸</span> Trade History</h3>
-            <table id="history-table" style="display:none;">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Ticket</th>
-                        <th>Symbol</th>
-                        <th>Type</th>
-                        <th>Volume</th>
-                        <th id="history-time-th" style="cursor: pointer; user-select: none; white-space: nowrap;" onclick="toggleHistorySort()">Time &#x25BC;</th>
-                        <th>Price</th>
-                        <th>Comment</th>
-                        <th>Swap</th>
-                        <th>Profit</th>
-                    </tr>
-                </thead>
-                <tbody id="history-body"></tbody>
-            </table>
-            <div id="no-history-msg" class="no-data" style="display:none;">Waiting for data...</div>
+            <div style="margin-top:30px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <h4 style="color: #94a3b8; margin: 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <i class="fas fa-history" style="margin-right: 6px;"></i> Trade History
+                        <span id="trade-history-count" style="font-size:0.8rem; color:#64748b; font-weight:400; margin-left:6px;"></span>
+                    </h4>
+                    <button id="trade-history-toggle-btn" onclick="const s=document.getElementById('trade-history-detail'); if(s.style.display==='none'){s.style.display='';this.innerHTML='<i class=\'fas fa-eye-slash\'></i> Hide Trades';}else{s.style.display='none';this.innerHTML='<i class=\'fas fa-eye\'></i> See All Trades';}" style="background:linear-gradient(135deg,rgba(96,165,250,0.2),rgba(37,99,235,0.5)); border:1px solid rgba(96,165,250,0.4); color:#60a5fa; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                        <i class="fas fa-eye"></i> See All Trades
+                    </button>
+                </div>
+                <div id="trade-history-detail" style="display:none;">
+                    <table id="history-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Ticket</th>
+                                <th>Symbol</th>
+                                <th>Type</th>
+                                <th>Volume</th>
+                                <th id="history-time-th" style="cursor: pointer; user-select: none; white-space: nowrap;" onclick="toggleHistorySort()">Time &#x25BC;</th>
+                                <th>Price</th>
+                                <th>Comment</th>
+                                <th>Swap</th>
+                                <th>Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-body"></tbody>
+                    </table>
+                    <div id="no-history-msg" class="no-data">Waiting for data...</div>
+                </div>
+            </div>
         </div>
 
         <!-- Hedge Accounts Tab -->
@@ -4984,7 +4996,10 @@
             const histBody = document.getElementById('history-body');
             const noHistMsg = document.getElementById('no-history-msg');
             const histTable = document.getElementById('history-table');
+            const countEl = document.getElementById('trade-history-count');
             const deals = (currentData && currentData.deals) ? currentData.deals : [];
+
+            if (countEl) countEl.textContent = deals.length > 0 ? `(${deals.length} TRADES)` : '';
 
             histBody.innerHTML = '';
             if (deals.length > 0) {
