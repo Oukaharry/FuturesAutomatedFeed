@@ -4262,9 +4262,9 @@
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(
                                             (s.profitability_completed.payouts || 0) +
                                             (s.profitability_completed.hedging_results || 0) +
-                                            (s.profitability_completed.farming_results || 0) -
-                                            (s.profitability_completed.challenge_fees || 0) +
-                                            ((mt5Dep !== 0 || mt5Bal !== 0) ? (liveActualHedging - sheetHedgingResults) : 0)
+                                            (s.profitability_completed.farming_results || 0) +
+                                            ((mt5Dep !== 0 || mt5Bal !== 0) ? (liveActualHedging - sheetHedgingResults) : 0) -
+                                            (s.profitability_completed.challenge_fees || 0)
                                         )}</strong></td></tr>
                                     </table>
                                 </div>
@@ -4340,9 +4340,9 @@
                                         <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong>${formatMoney(
                                             (s.cashflow_inprogress.payouts || 0) +
                                             (s.cashflow_inprogress.hedging_results || 0) +
-                                            (s.cashflow_inprogress.farming_results || 0) -
-                                            (s.cashflow_inprogress.challenge_fees || 0) +
-                                            ((mt5Dep !== 0 || mt5Bal !== 0) ? (liveActualHedging - sheetHedgingResults) : 0)
+                                            (s.cashflow_inprogress.farming_results || 0) +
+                                            ((mt5Dep !== 0 || mt5Bal !== 0) ? (liveActualHedging - sheetHedgingResults) : 0) -
+                                            (s.cashflow_inprogress.challenge_fees || 0)
                                         )}</strong></td></tr>
                                     </table>
                                 </div>
