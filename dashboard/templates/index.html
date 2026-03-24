@@ -690,8 +690,8 @@
             left: 90px !important; /* After # (50px) + Trash (40px) */
             top: 0 !important;
             z-index: 2000 !important; /* Substantially Higher than Data Cells */
-            width: 180px !important; /* Fixed width for stability */
-            min-width: 180px !important;
+            width: 200px !important; /* Fixed width for stability */
+            min-width: 200px !important;
             /* Box shadow to match the glowing header style + right separator */
             box-shadow: inset 0 1px 0 rgba(251,191,36,0.12), inset 0 -10px 20px -10px rgba(37, 99, 235, 0.24) !important;
             background-color: #172554 !important; /* Fallback opaque background */
@@ -707,8 +707,8 @@
             top: 36px !important; /* Below Row 1 (36px) */
             z-index: 1050 !important; /* Higher than data cells, lower than group header */
             background: linear-gradient(180deg, #22345a, #17233f) !important;
-            width: 180px;
-            min-width: 180px;
+            width: 200px;
+            min-width: 200px;
             border-right: 1px solid rgba(45,74,130,0.55);
         }
 
@@ -1489,8 +1489,26 @@
         }
         /* Summary table cells should keep their own padding */
         .summary-table td {
-            padding: 10px 0 !important;
-            border-bottom: 1px dashed rgba(255,255,255,0.06) !important;
+            padding: 11px 4px !important;
+            border-bottom: 1px solid rgba(22,32,64,0.45) !important;
+            font-size: 0.88rem !important;
+            vertical-align: middle !important;
+        }
+        .summary-table td.text-right {
+            text-align: right !important;
+            font-size: 0.97rem !important;
+            font-weight: 700 !important;
+            color: #e8eeff !important;
+            letter-spacing: -0.01em !important;
+            font-variant-numeric: tabular-nums !important;
+        }
+        .summary-table tr:last-child td {
+            border-bottom: none !important;
+            padding-top: 14px !important;
+        }
+        .summary-table tr:last-child td.text-right {
+            font-size: 1.05rem !important;
+            color: #fbbf24 !important;
         }
         tr:hover td {
             background: rgba(251,191,36,0.04) !important;
