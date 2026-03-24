@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.5.0/css/flag-icon.min.css" rel="stylesheet">
     <style>
         /* Version History Sidebar Styles - Google Sheets Style */
@@ -352,6 +353,11 @@
         /* ============ Enhanced Table Scrolling ============ */
         .table-scroll-wrapper {
             position: relative;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            overflow: clip;
+            box-shadow: 0 8px 32px rgba(1,3,10,0.85), 0 1px 0 rgba(30,58,138,0.22);
         }
 
         .scroll-controls {
@@ -359,9 +365,9 @@
             justify-content: space-between;
             align-items: center;
             padding: 8px 12px;
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            border-bottom: 1px solid var(--border-color);
-            border-radius: var(--radius) var(--radius) 0 0;
+            background: linear-gradient(135deg, #131c30, #0a0f1e);
+            border-bottom: 1px solid #162040;
+            border-radius: 0;
             overflow-x: auto;
             gap: 16px;
             flex-wrap: nowrap;
@@ -389,34 +395,70 @@
         }
 
         .scroll-btn {
-            background: #1e293b;
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 6px;
-            padding: 4px 8px;
+            background: rgba(30,41,59,0.5);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-top: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px;
+            padding: 5px 14px;
             cursor: pointer;
-            font-size: 12px;
-            font-weight: 500;
-            color: #94a3b8;
-            transition: all 0.15s ease;
+            font-size: 0.72rem;
+            font-weight: 700;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #7898be;
+            transition: all 0.18s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 2px;
+            gap: 5px;
             white-space: nowrap;
             flex: 1;
+            box-shadow: 0 2px 8px rgba(1,3,10,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
         }
 
         .scroll-btn:hover {
-            background: #334155;
-            border-color: rgba(255,255,255,0.2);
-            color: #f8fafc;
+            background: rgba(30,58,138,0.25);
+            border-color: rgba(96,130,220,0.35);
+            color: #e8eeff;
+            box-shadow: 0 4px 14px rgba(1,3,10,0.5), inset 0 1px 0 rgba(100,140,220,0.15);
         }
 
         .scroll-btn:active {
-            background: #0f172a;
-            transform: scale(0.98);
+            transform: scale(0.97);
         }
 
+        /* Per-phase active colours */
+        #scroll-btn-info.active-section {
+            background: rgba(30,58,138,0.28);
+            border-color: rgba(96,130,230,0.5);
+            border-top-color: rgba(120,160,255,0.4);
+            color: #93c5fd;
+            box-shadow: 0 3px 12px rgba(30,58,138,0.45), inset 0 1px 0 rgba(100,140,220,0.2);
+        }
+        #scroll-btn-eval.active-section {
+            background: rgba(6,78,59,0.35);
+            border-color: rgba(16,185,129,0.45);
+            border-top-color: rgba(52,211,153,0.35);
+            color: #6ee7b7;
+            box-shadow: 0 3px 12px rgba(6,78,59,0.5), inset 0 1px 0 rgba(52,211,153,0.2);
+        }
+        #scroll-btn-funded.active-section {
+            background: rgba(120,53,15,0.35);
+            border-color: rgba(251,146,60,0.45);
+            border-top-color: rgba(251,170,90,0.35);
+            color: #fdba74;
+            box-shadow: 0 3px 12px rgba(120,53,15,0.5), inset 0 1px 0 rgba(251,146,60,0.2);
+        }
+        #scroll-btn-farm.active-section {
+            background: rgba(88,28,135,0.35);
+            border-color: rgba(167,139,250,0.45);
+            border-top-color: rgba(192,162,255,0.35);
+            color: #c4b5fd;
+            box-shadow: 0 3px 12px rgba(88,28,135,0.5), inset 0 1px 0 rgba(167,139,250,0.2);
+        }
+
+        /* Generic fallback (e.g. Add button active-section) */
         .scroll-btn.active-section {
             background: rgba(251,191,36,0.15);
             border-color: rgba(251,191,36,0.5);
@@ -438,21 +480,23 @@
         /* Custom scrollbar styling */
         .table-container::-webkit-scrollbar {
             height: 14px;
+            width: 14px;
         }
         
         .table-container::-webkit-scrollbar-track {
-            background: #f1f5f9;
+            background: linear-gradient(180deg, #04060f, #07091a);
             border-radius: 7px;
         }
         
         .table-container::-webkit-scrollbar-thumb {
-            background: linear-gradient(135deg, #94a3b8, #64748b);
+            background: linear-gradient(180deg, #162040, #0d1628);
             border-radius: 7px;
-            border: 2px solid #f1f5f9;
+            border: 2px solid #07091a;
+            box-shadow: inset 0 1px 0 rgba(30,58,138,0.25);
         }
         
         .table-container::-webkit-scrollbar-thumb:hover {
-            background: linear-gradient(135deg, #64748b, #475569);
+            background: linear-gradient(180deg, #1e3060, #162040);
         }
         
         /* Scroll shadow indicators REMOVED for cleaner look */
@@ -550,8 +594,8 @@
             top: 0 !important;
             z-index: 1000 !important;
             height: 36px !important; /* Compact group header row */
-            background-color: #1e293b !important; /* Fallback opaque bg */
-            box-shadow: 0 1px 0 rgba(255,255,255,0.1);
+            background-color: #16203d !important; /* Fallback opaque bg */
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.08), 0 1px 0 rgba(255,255,255,0.06);
             font-size: 13px !important;
         }
 
@@ -560,8 +604,8 @@
             position: sticky !important;
             top: 36px !important; /* Stick below the first row (36px) */
             z-index: 999 !important; /* Slightly below the main headers */
-            background-color: #1e293b !important; /* Ensure opaque background */
-            box-shadow: 0 1px 0 rgba(255,255,255,0.1);
+            background: linear-gradient(180deg, #22345a, #17233f) !important;
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.08), 0 1px 0 rgba(255,255,255,0.06);
             height: 32px; /* Compact sub-header row */
             text-align: center !important;
         }
@@ -581,8 +625,8 @@
             position: sticky !important;
             left: 0 !important;
             z-index: 1005 !important; /* Above normal headers */
-            background-color: #1e293b !important;
-            border-right: 1px solid rgba(255,255,255,0.1);
+            background: linear-gradient(180deg, #1a2947, #121b31) !important;
+            border-right: 1px solid rgba(45,74,130,0.55);
             width: 50px !important;
             min-width: 50px !important;
             /* Fix content visibility issues */
@@ -605,7 +649,7 @@
             top: 0 !important;
             left: 0 !important;
             height: auto !important;
-            background-color: #1e293b !important;
+            background: linear-gradient(180deg, #22345a, #17233f) !important;
             background-clip: padding-box !important;
         }
         
@@ -618,8 +662,8 @@
             position: sticky !important;
             left: 66.67px !important; /* 50px / 0.75 = 66.67px in zoomed tbody */
             z-index: 1005 !important; /* Above normal headers */
-            background-color: #1e293b !important;
-            border-right: 1px solid rgba(255,255,255,0.1);
+            background: linear-gradient(180deg, #1a2947, #121b31) !important;
+            border-right: 1px solid rgba(45,74,130,0.55);
             width: 40px !important;
             min-width: 40px !important;
             /* Fix content visibility issues */
@@ -632,7 +676,7 @@
         #evaluations-table thead tr:first-child th:nth-child(2) {
             z-index: 10001 !important; /* Slightly above # */
             top: 0 !important;
-            background-color: #1e293b !important;
+            background: linear-gradient(180deg, #22345a, #17233f) !important;
             background-clip: padding-box !important;
         }
 
@@ -646,13 +690,13 @@
             left: 90px !important; /* After # (50px) + Trash (40px) */
             top: 0 !important;
             z-index: 2000 !important; /* Substantially Higher than Data Cells */
-            width: 180px !important; /* Fixed width for stability */
-            min-width: 180px !important;
+            width: 200px !important; /* Fixed width for stability */
+            min-width: 200px !important;
             /* Box shadow to match the glowing header style + right separator */
-            box-shadow: inset 0 -10px 20px -10px rgba(59, 130, 246, 0.3) !important;
-            background-color: #0f172a !important; /* Fallback opaque background */
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.12), inset 0 -10px 20px -10px rgba(37, 99, 235, 0.24) !important;
+            background-color: #172554 !important; /* Fallback opaque background */
             /* Re-apply gradient if needed, but opaque is safer for sticky */
-            background: linear-gradient(135deg, #1e3a8a, #0f172a) !important;
+            background: linear-gradient(135deg, #1e3a8a, #172554) !important;
         }
 
         /* 2. The Sub Header (Row 2, "Prop Firm") */
@@ -662,10 +706,10 @@
             left: 90px !important;
             top: 36px !important; /* Below Row 1 (36px) */
             z-index: 1050 !important; /* Higher than data cells, lower than group header */
-            background-color: #1e293b !important;
-            width: 180px;
-            min-width: 180px;
-            border-right: 1px solid rgba(255,255,255,0.1);
+            background: linear-gradient(180deg, #22345a, #17233f) !important;
+            width: 200px;
+            min-width: 200px;
+            border-right: 1px solid rgba(45,74,130,0.55);
         }
 
         /* 3. The Data Cells (Column 3) - compensated for 0.75 zoom */
@@ -764,12 +808,36 @@
             top: 0 !important; /* Maintain vertical stickiness */
             /* Ensure opaque background so nothing shows through */
             background-clip: border-box !important;
+            color: #f8fafc !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.03em !important;
+        }
+
+        #evaluations-table thead tr:first-child th.group-header-blue {
+            background: linear-gradient(135deg, #1e3a8a, #172554) !important;
+            border-bottom: 2px solid #3b82f6 !important;
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.12), inset 0 -10px 20px -10px rgba(59,130,246,0.22) !important;
+        }
+
+        #evaluations-table thead tr:first-child th.group-header-green {
+            background: linear-gradient(135deg, #065f46, #064e3b) !important;
+            border-bottom: 2px solid #10b981 !important;
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.12), inset 0 -10px 20px -10px rgba(16,185,129,0.2) !important;
+        }
+
+        #evaluations-table thead tr:first-child th.group-header-orange {
+            background: linear-gradient(135deg, #9f1239, #881337) !important;
+            border-bottom: 2px solid #f43f5e !important;
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.12), inset 0 -10px 20px -10px rgba(244,63,94,0.2) !important;
         }
 
         /* Purple header needs even higher z-index to resist blue column overlap */
         #evaluations-table thead tr:first-child th.group-header-purple {
             z-index: 2150 !important;
             background: linear-gradient(135deg, #581c87, #3b0764) !important;
+            border-bottom: 2px solid #a855f7 !important;
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.12), inset 0 -10px 20px -10px rgba(168,85,247,0.2) !important;
         }
 
         /* Zoom on tbody only so sticky thead top values stay in the
@@ -783,17 +851,41 @@
 
         /* --- Dark Theme Overrides (TradeOpss) --- */
         :root {
-            --bg-dark: #0f172a;
-            --card-bg: #1e293b;
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
+            --bg-dark: #01030a;
+            --card-bg: #090f1e;
+            --text-primary: #e8eeff;
+            --text-secondary: #7898be;
             --accent-color: #fbbf24;
-            --border-color: rgba(255,255,255,0.1);
+            --border-color: #162040;
         }
 
         body {
-            background-color: var(--bg-dark) !important;
+            background-color: #01030a !important;
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(251,191,36,0.05) 0%, transparent 28%),
+                radial-gradient(circle at 85% 20%, rgba(30,58,138,0.20) 0%, transparent 38%),
+                radial-gradient(circle at 50% 100%, rgba(10,15,40,0.35) 0%, transparent 55%);
+            background-attachment: fixed;
             color: var(--text-primary) !important;
+            font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif !important;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif !important;
+            letter-spacing: -0.01em;
+        }
+        table, th, td, button, input, select, textarea, label, p, span, div {
+            font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
+        }
+        body::after {
+            content: '';
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 72px;
+            background: linear-gradient(to top, rgba(1,3,10,0.75), transparent);
+            pointer-events: none;
+            z-index: 999;
         }
         
         .container {
@@ -813,18 +905,23 @@
 
         /* Header & Controls */
         header {
-            background: #0f172a !important;
-            backdrop-filter: blur(16px) !important;
-            border-bottom: 1px solid rgba(255,255,255,0.05) !important;
-            padding: 8px 32px !important;
-            border-radius: 16px !important;
-            margin-bottom: 0 !important;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+            background: #07091a !important;
+            border: 1px solid #162040 !important;
+            border-top: 1px solid #1e3060 !important;
+            border-radius: 14px !important;
+            padding: 0 24px !important;
+            height: 64px !important;
+            margin-bottom: 8px !important;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22) !important;
             overflow: visible !important;
             /* Must stay above ALL sticky table headers (max z-index 10001) */
             position: sticky;
             top: 0;
             z-index: 10100;
+        }
+        /* Admin nav is not sticky; header sticks at top of viewport once admin nav scrolls away */
+        .modern-nav ~ header {
+            top: 0 !important;
         }
         /* Fix h1 so it can shrink and truncate */
         .header-combined-bar h1 {
@@ -1156,14 +1253,14 @@
         }
 
         /* Tabs: shrink but scroll internally (you already have this, confirm it's applied) */
-        .tab-btn {
+        header .tab-btn {
             border: none !important;
             outline: none !important;
             box-shadow: none !important;
         }
 
-        .tab-btn:focus,
-        .tab-btn:focus-visible {
+        header .tab-btn:focus,
+        header .tab-btn:focus-visible {
             outline: none !important;
             box-shadow: none !important;
             border: none !important;
@@ -1187,43 +1284,48 @@
         }
         .tabs::-webkit-scrollbar { display: none; }
         
-        .tab-btn {
+        header .tab-btn {
             background: transparent !important;
             color: var(--text-secondary) !important;
             border: none !important;
             border-bottom: 2px solid transparent !important;
             padding: 6px 10px !important;
             font-size: 0.78rem !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+            font-weight: 600 !important;
             text-align: center !important;
             justify-content: center !important;
             border-radius: 6px !important;
         }
-        .tab-btn:hover { background: rgba(255,255,255,0.07) !important; color: var(--text-primary) !important; }
-        .tab-btn.active {
-            color: var(--accent-color) !important;
-            background: rgba(251, 191, 36, 0.1) !important;
-            border-bottom-color: var(--accent-color) !important;
+        header .tab-btn:hover { background: rgba(30,48,96,0.22) !important; color: #e8eeff !important; }
+        header .tab-btn.active {
+            color: #fbbf24 !important;
+            background: rgba(30,58,138,0.2) !important;
+            border-bottom: 2px solid #fbbf24 !important;
+            font-weight: 600 !important;
+            box-shadow: 0 3px 12px rgba(1,3,10,0.5), inset 0 1px 0 rgba(100,140,220,0.15) !important;
         }
 
         /* Tables & Content */
         .tab-content {
-            background: linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.6) 100%) !important;
+            background: linear-gradient(180deg, #0d1628 0%, #090f1e 100%) !important;
             padding: 20px !important;
-            border: 1px solid rgba(255,255,255,0.06) !important;
+            border: 1px solid #162040 !important;
+            border-top: 1px solid #1e3060 !important;
             border-radius: 14px !important;
             overflow: clip !important;
             color: var(--text-primary) !important;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-            backdrop-filter: blur(8px);
+            box-shadow: 0 8px 28px rgba(1,3,10,0.9), 0 1px 0 rgba(30,58,138,0.25);
         }
         
         /* Cards inside tab content (except stats tab — keeps original style.css design) */
         :not(#stats) > .card,
         :not(#stats) > * > .card {
-            background: linear-gradient(180deg, rgba(30,41,59,0.7) 0%, rgba(15,23,42,0.7) 100%) !important;
-            border: 1px solid rgba(255,255,255,0.06) !important;
+            background: linear-gradient(180deg, #131c30 0%, #0a0f1e 100%) !important;
+            border: 1px solid #162040 !important;
+            border-top: 1px solid #1e3060 !important;
             border-radius: 14px !important;
-            box-shadow: 0 2px 12px rgba(0,0,0,0.2) !important;
+            box-shadow: 0 6px 24px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.2) !important;
         }
         :not(#stats) > .card .card-header,
         :not(#stats) > * > .card .card-header {
@@ -1276,23 +1378,27 @@
 
         /* Primary action buttons */
         .btn-primary {
-            background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
-            color: #fff !important;
-            border: none !important;
-            padding: 8px 18px !important;
-            border-radius: 10px !important;
-            font-size: 0.85rem !important;
-            font-weight: 600 !important;
+            background: linear-gradient(135deg, #111827, #07091a) !important;
+            color: #fbbf24 !important;
+            border: 1px solid #1e3a8a !important;
+            padding: 5px 12px !important;
+            border-radius: 8px !important;
+            font-size: 0.78rem !important;
+            font-weight: 700 !important;
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
             cursor: pointer !important;
             display: inline-flex !important;
             align-items: center !important;
-            gap: 6px !important;
+            gap: 5px !important;
             transition: all 0.2s ease !important;
-            box-shadow: 0 2px 8px rgba(59,130,246,0.3) !important;
+            box-shadow: 0 2px 8px rgba(4,6,14,0.6), inset 0 1px 0 rgba(30,58,138,0.18) !important;
+            letter-spacing: 0.01em !important;
         }
         .btn-primary:hover {
             transform: translateY(-1px) !important;
-            box-shadow: 0 4px 14px rgba(59,130,246,0.4) !important;
+            background: linear-gradient(135deg, #162040, #0a0f1e) !important;
+            border-color: #fbbf24 !important;
+            box-shadow: 0 4px 14px rgba(251,191,36,0.18) !important;
         }
 
         /* Section header (flex row with title + actions) */
@@ -1360,29 +1466,49 @@
             width: 100%;
         }
         table:not(#evaluations-table) {
-            background: rgba(15,23,42,0.4) !important;
+            background: rgba(4,6,14,0.8) !important;
+            border: 1px solid #111c34 !important;
             border-radius: 10px !important;
             overflow: hidden !important;
         }
         th {
-            background: rgba(10,15,30,0.85) !important;
-            color: #94a3b8 !important;
+            background: linear-gradient(180deg, #060a14, #04060e) !important;
+            color: #7898be !important;
             text-align: left !important;
-            border-bottom: 1px solid rgba(255,255,255,0.06) !important;
+            border-bottom: 1px solid #162040 !important;
             padding: 10px 14px !important;
-            font-size: 0.75rem !important;
+            font-size: 0.72rem !important;
             text-transform: uppercase !important;
-            letter-spacing: 0.5px !important;
-            font-weight: 600 !important;
+            letter-spacing: 0.6px !important;
+            font-weight: 700 !important;
+            font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif !important;
         }
         td {
-            border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+            border-bottom: 1px solid rgba(22,32,64,0.5) !important;
             padding: 8px 14px !important;
         }
         /* Summary table cells should keep their own padding */
         .summary-table td {
-            padding: 10px 0 !important;
-            border-bottom: 1px dashed rgba(255,255,255,0.06) !important;
+            padding: 11px 4px !important;
+            border-bottom: 1px solid rgba(22,32,64,0.45) !important;
+            font-size: 0.88rem !important;
+            vertical-align: middle !important;
+        }
+        .summary-table td.text-right {
+            text-align: right !important;
+            font-size: 0.97rem !important;
+            font-weight: 700 !important;
+            color: #e8eeff !important;
+            letter-spacing: -0.01em !important;
+            font-variant-numeric: tabular-nums !important;
+        }
+        .summary-table tr:last-child td {
+            border-bottom: none !important;
+            padding-top: 14px !important;
+        }
+        .summary-table tr:last-child td.text-right {
+            font-size: 1.05rem !important;
+            color: #fbbf24 !important;
         }
         tr:hover td {
             background: rgba(251,191,36,0.04) !important;
@@ -1465,46 +1591,96 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 10px 20px;
-            background: linear-gradient(135deg, rgba(15,23,42,0.98), rgba(30,41,59,0.95));
-            border-bottom: 1px solid rgba(255,255,255,0.06);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(12px);
-            margin-bottom: 0;
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 0 24px;
+            height: 64px;
+            margin-bottom: 12px;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22);
         }
 
         .tab-btn {
+            color: #7898be;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: color 0.15s ease, background 0.15s ease;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: #94a3b8;
-            text-decoration: none;
-            transition: all 0.2s;
-            border: none;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 7px;
+            border-bottom: 2px solid transparent;
             background: transparent;
+            letter-spacing: 0.01em;
             cursor: pointer;
         }
-        .tab-btn:hover {
-            background: rgba(255,255,255,0.06);
-            color: #e2e8f0;
+        .tab-btn i {
+            font-size: 0.82rem;
+            opacity: 0.7;
+            transition: opacity 0.15s ease, color 0.15s ease;
         }
+        .tab-btn:hover {
+            color: #e8eeff;
+            background: rgba(30,48,96,0.22);
+        }
+        .tab-btn:hover i { opacity: 1; }
         .tab-btn.active {
             background: linear-gradient(135deg, rgba(34,197,94,0.2), rgba(16,185,129,0.3));
             color: #4ade80;
             border: 1px solid rgba(34,197,94,0.3);
         }
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28);
+            background: rgba(251,191,36,0.07);
+            text-decoration: none;
+            transition: all 0.18s ease;
+        }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover { background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 14px rgba(251,191,36,0.18); }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25);
+            background: rgba(239,68,68,0.07);
+            text-decoration: none;
+            transition: all 0.18s ease;
+        }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.5); box-shadow: 0 0 14px rgba(239,68,68,0.15); }
+
+        /* Modern-nav top bar: match super_admin active style exactly */
+        .modern-nav .tab-btn.active {
+            background: rgba(30, 58, 138, 0.2);
+            color: #fbbf24;
+            border-bottom: 2px solid #fbbf24;
+            font-weight: 600;
+            box-shadow: 0 3px 12px rgba(1,3,10,0.5), inset 0 1px 0 rgba(100,140,220,0.15);
+        }
+        .modern-nav .tab-btn.active i {
+            opacity: 1;
+            color: #fbbf24;
+        }
+        .modern-nav .tab-btn:hover {
+            color: #e8eeff;
+            background: rgba(30,48,96,0.22);
+        }
 
         .nav-links {
             display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-            justify-content: center;
+            gap: 4px;
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            border: none;
+            align-items: center;
         }
 
         @keyframes spin {
@@ -1668,7 +1844,7 @@
 
     <div class="container">
         {% if user_type == 'super_admin' %}
-        <nav class="modern-nav" style="justify-content:space-between; padding:8px 20px;">
+        <nav class="modern-nav" style="justify-content:space-between;">
             <div class="brand" style="flex-shrink:0;">
                 <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width:90px; height:auto; object-fit:contain; display:block;">
             </div>
@@ -1681,8 +1857,8 @@
             </div>
             <div style="flex-shrink:0; display:flex; align-items:center; gap:6px;">
                 <div style="height:20px; width:1px; background:rgba(255,255,255,0.1); margin:0 2px;"></div>
-                <a href="/change-password" class="tab-btn" style="border:1px solid rgba(255,255,255,0.1);"><i class="fas fa-key"></i> Password</a>
-                <a href="/logout" class="tab-btn" style="border:1px solid rgba(255,255,255,0.1);"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+                <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
             </div>
         </nav>
         {% endif %}
@@ -1771,13 +1947,13 @@
             <div class="card" style="margin-top: 20px;">
                 <h3 style="color: #60a5fa; margin-bottom: 20px;">Profit Split</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-                    <div style="background: rgba(30, 41, 59, 0.5); padding: 20px; border-radius: 8px; border-left: 4px solid #4ade80;">
-                         <div style="font-size: 0.9em; color: #94a3b8; margin-bottom: 6px;">Net Profit (In Progress)</div>
-                         <div id="split-net-profit" style="font-size: 2em; font-weight: bold; color: #4ade80;">Loading...</div>
+                    <div style="background: rgba(4,6,14,0.9); padding: 20px; border-radius: 10px; border-left: 4px solid #4ade80; border: 1px solid #111c34; border-left: 4px solid #4ade80;">
+                         <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Net Profit (In Progress)</div>
+                         <div id="split-net-profit" style="font-size: 1.9em; font-weight: bold; color: #4ade80;">Loading...</div>
                     </div>
-                    <div style="background: rgba(30, 41, 59, 0.5); padding: 20px; border-radius: 8px; border-left: 4px solid #fbbf24;">
-                         <div style="font-size: 0.9em; color: #94a3b8; margin-bottom: 6px;">Profit Split (50%)</div>
-                         <div id="split-profit-amount" style="font-size: 2em; font-weight: bold; color: #fbbf24;">Loading...</div>
+                    <div style="background: rgba(4,6,14,0.9); padding: 20px; border-radius: 10px; border: 1px solid #111c34; border-left: 4px solid #fbbf24;">
+                         <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Profit Split (50%)</div>
+                         <div id="split-profit-amount" style="font-size: 1.9em; font-weight: bold; color: #fbbf24;">Loading...</div>
                     </div>
                 </div>
                 
@@ -2083,8 +2259,8 @@
             </div>
 
             <!-- Shared Address Section -->
-            <div id="payment-address-section" style="background: linear-gradient(135deg, rgba(30,41,59,0.6), rgba(15,23,42,0.5)); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 2px 10px rgba(0,0,0,0.15);">
-                <h4 style="margin: 0 0 12px 0; color: var(--text-muted, #94a3b8); font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;">Billing Address</h4>
+            <div id="payment-address-section" style="background: linear-gradient(180deg, #060a14, #04060e); border: 1px solid #162040; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 18px rgba(1,3,10,0.7);">
+                <h4 style="margin: 0 0 12px 0; color: #7898be; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;">Billing Address</h4>
                 <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px;">
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:3px;">Address</label>
@@ -2171,9 +2347,9 @@
 
         <!-- KYC Portfolio Tab (Primary KYC clients only) -->
         <div id="kyc-portfolio" class="tab-content">
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" style="margin-top: 20px; background: linear-gradient(180deg, #060d1e 0%, #030710 100%) !important; border: 1px solid #162040 !important;">
                 <div class="section-header" style="margin-bottom:20px;">
-                    <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px;">
+                    <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; letter-spacing:-0.01em;">
                         <i class="fas fa-users"></i> Combined KYC Portfolio
                     </h3>
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -2224,7 +2400,7 @@
                 </div>
 
                 <!-- Mini Stats -->
-                <div style="display: flex; gap: 30px; margin-bottom: 24px; padding: 12px 20px; background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;">
+                <div style="display: flex; gap: 30px; margin-bottom: 24px; padding: 12px 20px; background: linear-gradient(90deg, #060a14 0%, #04060e 100%); border: 1px solid #162040; border-radius: 10px;">
                     <div style="display:flex; gap:8px; align-items:center;">
                         <span style="color:#94a3b8;">Active</span>
                         <span id="kyc-active" style="font-weight:700; color:#fff;">0</span>
@@ -4139,7 +4315,7 @@
                             
                             <!-- By Prop Firm -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
-                                <div class="card-header" style="background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(217,119,6,0.25));color:#fbbf24;">BY PROP FIRM</div>
+                                <div class="card-header" style="background:linear-gradient(180deg,#060a14,#04060e);border-bottom:1px solid #162040;color:#fbbf24;">BY PROP FIRM</div>
                                 <table>
                                     <thead>
                                         <tr>
@@ -4161,7 +4337,7 @@
                             
                             <!-- Payout History -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
-                                <div class="card-header" style="background:linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,78,59,0.25));color:#34d399;cursor:pointer;" onclick="const w=this.nextElementSibling; w.style.display=w.style.display==='none'?'':'none'; this.querySelector('.ph-arrow').textContent=w.style.display==='none'?'▸':'▾';"><span class="ph-arrow">▸</span> PAYOUT HISTORY</div>
+                                <div class="card-header" style="background:linear-gradient(180deg,#060a14,#04060e);border-bottom:1px solid #162040;color:#34d399;cursor:pointer;justify-content:flex-start;gap:8px;" onclick="const w=this.nextElementSibling; w.style.display=w.style.display==='none'?'':'none'; this.querySelector('.ph-arrow').textContent=w.style.display==='none'?'▸':'▾';"><span class="ph-arrow">▸</span> PAYOUT HISTORY</div>
                                 <div style="display:none;">
                                 <div style="display:flex; gap:6px; align-items:center; padding:8px 12px;">
                                     <span style="color:#94a3b8; font-size:0.7rem;">From</span>
