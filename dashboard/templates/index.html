@@ -4141,24 +4141,24 @@
                 return `
                 <tr style="border-bottom:1px solid #1e293b;" class="pf-main-row">
                     <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#fbbf24;">${name}</td>
-                    <td style="text-align:center;">${f.evals}</td>
-                    <td style="text-align:center;color:#fff;">${f.active}</td>
-                    <td style="text-align:center;">${f.passed + f.failed > 0 ? '<span style="color:' + (Math.round(f.passed / (f.passed + f.failed) * 100) >= 40 ? '#34d399' : Math.round(f.passed / (f.passed + f.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(f.passed / (f.passed + f.failed) * 100) + '%</span>' : '—'}</td>
-                    <td style="text-align:right;color:#34d399;">${fmt(f.payouts)}</td>
-                    <td style="text-align:right;color:#f87171;">${fmt(f.fees)}</td>
-                    <td style="text-align:right;color:#38bdf8;"><span onclick="const r1=document.getElementById('${rowId}-h');const r2=document.getElementById('${rowId}-f');[r1,r2].forEach(r=>{if(r)r.style.display=r.style.display==='none'?'table-row':'none';});" style="cursor:pointer;">${fmt(hedgingTotal)} <span style='font-size:10px;color:#60a5fa;margin-left:2px;'>&#9654;</span></span></td>
-                    <td style="text-align:right;padding-right:16px;font-weight:700;color:${net >= 0 ? '#c084fc' : '#f87171'};">${fmt(net)}</td>
+                    <td style="text-align:left;">${f.evals}</td>
+                    <td style="text-align:left;color:#fff;">${f.active}</td>
+                    <td style="text-align:left;">${f.passed + f.failed > 0 ? '<span style="color:' + (Math.round(f.passed / (f.passed + f.failed) * 100) >= 40 ? '#34d399' : Math.round(f.passed / (f.passed + f.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(f.passed / (f.passed + f.failed) * 100) + '%</span>' : '—'}</td>
+                    <td style="text-align:left;color:#34d399;">${fmt(f.payouts)}</td>
+                    <td style="text-align:left;color:#f87171;">${fmt(f.fees)}</td>
+                    <td style="text-align:left;color:#38bdf8;"><span onclick="const r1=document.getElementById('${rowId}-h');const r2=document.getElementById('${rowId}-f');[r1,r2].forEach(r=>{if(r)r.style.display=r.style.display==='none'?'table-row':'none';});" style="cursor:pointer;">${fmt(hedgingTotal)} <span style='font-size:10px;color:#60a5fa;margin-left:2px;'>&#9654;</span></span></td>
+                    <td style="text-align:left;padding-right:16px;font-weight:700;color:${net >= 0 ? '#c084fc' : '#f87171'};">${fmt(net)}</td>
                 </tr>
                 <tr id="${rowId}-h" style="display:none;background:rgba(56,189,248,0.05);">
                     <td style="padding-left:32px;font-size:12px;color:#94a3b8;">↳ Hedging</td>
                     <td colspan="5"></td>
-                    <td style="text-align:right;font-size:12px;color:#38bdf8;">${fmt(f.hedge)}</td>
+                    <td style="text-align:left;font-size:12px;color:#38bdf8;">${fmt(f.hedge)}</td>
                     <td></td>
                 </tr>
                 <tr id="${rowId}-f" style="display:none;border-bottom:1px solid #1e293b;background:rgba(56,189,248,0.05);">
                     <td style="padding-left:32px;font-size:12px;color:#94a3b8;">↳ Farming</td>
                     <td colspan="5"></td>
-                    <td style="text-align:right;font-size:12px;color:#a3e635;">${fmt(f.farming)}</td>
+                    <td style="text-align:left;font-size:12px;color:#a3e635;">${fmt(f.farming)}</td>
                     <td></td>
                 </tr>`;
             }).join('') + (() => {
@@ -4167,13 +4167,13 @@
                 return `
                 <tr class="font-bold" style="background:rgba(255,255,255,0.05);">
                     <td style="position:sticky;left:0;z-index:15;background:inherit;padding:10px 16px;">Totals</td>
-                    <td style="text-align:center;">${tot.evals}</td>
-                    <td style="text-align:center;color:#fff;">${tot.active}</td>
-                    <td style="text-align:center;">${tot.passed + tot.failed > 0 ? '<span style="color:' + (Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 40 ? '#34d399' : Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(tot.passed / (tot.passed + tot.failed) * 100) + '%</span>' : '—'}</td>
-                    <td style="text-align:right;color:#34d399;">${fmt(tot.payouts)}</td>
-                    <td style="text-align:right;color:#f87171;">${fmt(tot.fees)}</td>
-                    <td style="text-align:right;color:#38bdf8;">${fmt(tHedgingTotal)}</td>
-                    <td style="text-align:right;padding-right:16px;font-weight:700;color:${tNet >= 0 ? '#c084fc' : '#f87171'};">${fmt(tNet)}</td>
+                    <td style="text-align:left;">${tot.evals}</td>
+                    <td style="text-align:left;color:#fff;">${tot.active}</td>
+                    <td style="text-align:left;">${tot.passed + tot.failed > 0 ? '<span style="color:' + (Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 40 ? '#34d399' : Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(tot.passed / (tot.passed + tot.failed) * 100) + '%</span>' : '—'}</td>
+                    <td style="text-align:left;color:#34d399;">${fmt(tot.payouts)}</td>
+                    <td style="text-align:left;color:#f87171;">${fmt(tot.fees)}</td>
+                    <td style="text-align:left;color:#38bdf8;">${fmt(tHedgingTotal)}</td>
+                    <td style="text-align:left;padding-right:16px;font-weight:700;color:${tNet >= 0 ? '#c084fc' : '#f87171'};">${fmt(tNet)}</td>
                 </tr>`;
             })();
         }
@@ -4356,13 +4356,13 @@
                                     <thead>
                                         <tr>
                                             <th style="position:sticky;left:0;z-index:15;background:var(--card-bg);text-align:left;padding-left:16px;">Prop Firm</th>
-                                            <th style="text-align:center;">Evals</th>
-                                            <th style="text-align:center;">Active</th>
-                                            <th style="text-align:center;">Funded Rate</th>
-                                            <th style="text-align:right;">Payouts</th>
-                                            <th style="text-align:right;">Fees</th>
-                                            <th style="text-align:right;">Hedging Results</th>
-                                            <th style="text-align:right;padding-right:16px;">Net Profit</th>
+                                            <th style="text-align:left;">Evals</th>
+                                            <th style="text-align:left;">Active</th>
+                                            <th style="text-align:left;">Funded Rate</th>
+                                            <th style="text-align:left;">Payouts</th>
+                                            <th style="text-align:left;">Fees</th>
+                                            <th style="text-align:left;">Hedging Results</th>
+                                            <th style="text-align:left;padding-right:16px;">Net Profit</th>
                                         </tr>
                                     </thead>
                                     <tbody>
