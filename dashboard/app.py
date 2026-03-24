@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, redirect, url_for
+from flask import Flask, render_template, jsonify, request, redirect, url_for, g
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import threading
@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import logging
+import time
 
 # Add project root to sys.path to import config and dashboard modules properly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,7 +21,7 @@ from dashboard.financial_overview import calculate_propfirm_overview, get_payout
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
     update_admin_details, update_trader_details, update_client_details, update_client_category,
-    get_client_by_email, get_user_by_email,
+    get_client_by_email, get_user_by_email, get_client_profile,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader,
     rename_admin, rename_trader, rename_client
@@ -61,7 +62,7 @@ except ImportError:
 except Exception as e:
     logging.error(f"Failed to start Watermark Scheduler: {e}")
 
-# Initialize logging to file - RESTART MODE (Overwrite) - WITH AUTO-FLUSH AND FSYNC
+# Initialize logging to file - APPEND MODE (persists across restarts) - WITH AUTO-FLUSH AND FSYNC
 class UnbufferedFileHandler(logging.FileHandler):
     def emit(self, record):
         super().emit(record)
@@ -73,19 +74,75 @@ class UnbufferedFileHandler(logging.FileHandler):
             except:
                 pass
 
+# Path for the rolling 1-hour recent log
+_RECENT_LOG_PATH = 'dashboard/server_recent.log'
+_RECENT_LOG_RE = re.compile(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+)\]')
+
+def _purge_recent_log(log_path=_RECENT_LOG_PATH, hours=1):
+    """Trim log_path in-place, keeping only entries from the last `hours` hours."""
+    try:
+        cutoff = datetime.now() - timedelta(hours=hours)
+        with open(log_path, 'r', encoding='utf-8', errors='replace') as fh:
+            lines = fh.readlines()
+        kept = []
+        for line in lines:
+            m = _RECENT_LOG_RE.match(line)
+            if m:
+                try:
+                    ts = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S,%f')
+                    if ts >= cutoff:
+                        kept.append(line)
+                    # else: drop — older than the window
+                except ValueError:
+                    kept.append(line)  # unparseable timestamp → keep
+            else:
+                # Continuation / blank lines: keep only if we have recent content
+                if kept:
+                    kept.append(line)
+        with open(log_path, 'w', encoding='utf-8') as fh:
+            fh.writelines(kept)
+    except (FileNotFoundError, IOError):
+        pass
+
+def _start_recent_log_purger(log_path=_RECENT_LOG_PATH, interval_minutes=5):
+    """Daemon thread: prune entries older than 1 hour from the recent log every 5 minutes."""
+    def _worker():
+        while True:
+            time.sleep(interval_minutes * 60)
+            _purge_recent_log(log_path)
+    t = threading.Thread(target=_worker, daemon=True, name='recent-log-purger')
+    t.start()
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
-    force=True, # Py3.8+ Override previous configs
+    force=True,  # Py3.8+ Override previous configs
     handlers=[
         logging.StreamHandler(),
-        UnbufferedFileHandler('dashboard/server.log', mode='w', encoding='utf-8')  # 'w' mode overwrites file on start, utf-8 encoding
+        # Full log: append mode — accumulates across restarts (days of history)
+        UnbufferedFileHandler('dashboard/server.log', mode='a', encoding='utf-8'),
+        # Recent log: cleared on restart, background thread keeps it to last 1 hour only
+        UnbufferedFileHandler(_RECENT_LOG_PATH, mode='w', encoding='utf-8'),
     ]
 )
+
+# Start the background thread that prunes server_recent.log every 5 minutes
+_start_recent_log_purger()
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
+
+# ============ Request Duration Logging ============
+@app.before_request
+def _log_request_start():
+    g._request_start = time.monotonic()
+
+@app.after_request
+def _log_request_end(response):
+    duration_ms = (time.monotonic() - getattr(g, '_request_start', time.monotonic())) * 1000
+    logging.info('[REQUEST] %s %s -> %s (%.1fms)', request.method, request.path, response.status_code, duration_ms)
+    return response
 
 # ============ Rate Limiting ============
 # Note: For local development, use higher limits. 
@@ -2095,20 +2152,28 @@ def client_dashboard(client_id):
         client_email = client_data['identity'].get('email', '')
         is_active = client_data['identity'].get('active_status', 'active') != 'inactive'
     
+    # Look up the client's parent trader and admin for display in reports
+    _profile = get_client_profile(client_id) or {}
+    client_trader_name = _profile.get('trader', '')
+    client_admin_name = _profile.get('admin', '')
+
     # Allow super_admin, admin, and trader to access any client dashboard
     if user_type in ['super_admin', 'admin', 'trader']:
         return render_template('index.html', client_id=client_id, user_type=user_type, 
-                               can_edit_hedging=True, client_email=client_email, is_active=is_active)
+                               can_edit_hedging=True, client_email=client_email, is_active=is_active,
+                               client_trader_name=client_trader_name, client_admin_name=client_admin_name)
     # Client access: allow own dashboard OR primary KYC can view linked accounts
     if user_type == 'client':
         own_name = session_user.get('user_identifier')
         if client_id == own_name:
             return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=True, client_email=client_email, is_active=is_active)
+                                   can_edit_hedging=True, client_email=client_email, is_active=is_active,
+                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name)
         # Only primary KYC clients can view linked accounts
         if is_kyc_primary(own_name) and client_id in get_all_kyc_accounts(own_name):
             return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=True, client_email=client_email, is_active=is_active)
+                                   can_edit_hedging=True, client_email=client_email, is_active=is_active,
+                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name)
     return redirect('/')
 
 # ============ Hierarchy API with Role-Based Access Control ============
