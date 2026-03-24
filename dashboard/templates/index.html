@@ -4107,6 +4107,21 @@
                });
         }
 
+        function firmTextColor(name) {
+            const v = (name || '').toLowerCase().replace(/[^a-z]/g, '');
+            if (v.includes('myfunded') || v.includes('mffu')) return '#FFD700';
+            if (v.includes('funding')) return '#ffcc99';
+            if (v.includes('tradeday')) return '#FFFFFF';
+            if (v.includes('topstep')) return '#FFFF00';
+            if (v.includes('alpha')) return '#27ae60';
+            if (v.includes('tradeify')) return '#e2e8f0';
+            if (v.includes('fundednext')) return '#a855f6';
+            if (v.includes('lucid')) return '#9ca3af';
+            if (v.includes('apex')) return '#60a5fa';
+            if (v.includes('takeprofit') || v.includes('take profit')) return '#f472b6';
+            return '#fbbf24';
+        }
+
         function buildByPropFirmRows(data) {
             const evals = data.evaluations || [];
             const firms = {};
@@ -4131,20 +4146,6 @@
                 for (let i=1;i<=9;i++) f.payouts += pc(ev['Payout '+i]);
             });
             const fmt = v => formatMoney(v);
-            const firmTextColor = (name) => {
-                const v = (name || '').toLowerCase().replace(/[^a-z]/g, '');
-                if (v.includes('myfunded') || v.includes('mffu')) return '#FFD700';
-                if (v.includes('funding')) return '#ffcc99';
-                if (v.includes('tradeday')) return '#FFFFFF';
-                if (v.includes('topstep')) return '#FFFF00';
-                if (v.includes('alpha')) return '#27ae60';
-                if (v.includes('tradeify')) return '#e2e8f0';
-                if (v.includes('fundednext')) return '#a855f6';
-                if (v.includes('lucid')) return '#9ca3af';
-                if (v.includes('apex')) return '#60a5fa';
-                if (v.includes('take profit') || v.includes('takeprofit')) return '#f472b6';
-                return '#fbbf24';
-            };
             const rows = Object.entries(firms).sort((a,b)=>b[1].payouts-a[1].payouts);
             const tot = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
             rows.forEach(([,f])=>{ for(const k in tot) tot[k]+=f[k]; });
@@ -4518,7 +4519,7 @@
                     totalAmt += p.amount;
                     const payLink = '/dashboard/' + encodeURIComponent(CLIENT_ID) + '?highlight_account=' + encodeURIComponent(p.account) + '&highlight_payout=' + p.payout_num;
                     return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; transition:background 0.15s;" onclick="window.location.href='${payLink}'" onmouseover="this.style.background='rgba(96,165,250,0.1)'" onmouseout="this.style.background='transparent'" title="Click to view this payout">
-                        <td style="padding:10px 12px; color:#fbbf24;">${p.prop_firm}</td>
+                        <td style="padding:10px 12px; color:${firmTextColor(p.prop_firm)};">${p.prop_firm}</td>
                         <td style="padding:10px 12px; color:#94a3b8; font-size:0.85rem;">${p.account}</td>
                         <td style="padding:10px 12px; color:#94a3b8;">${p.date}</td>
                         <td style="padding:10px 12px; text-align:right; font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
