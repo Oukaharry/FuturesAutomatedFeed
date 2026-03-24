@@ -848,6 +848,13 @@
                          <option value="inactive">Inactive</option>
                     </select>
                 </div>
+                <div style="margin-bottom: 18px; display:none;" id="editAdminSlackGroup">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">
+                        <i class="fab fa-slack" style="margin-right:5px; color:#4A154B;"></i>Slack Member ID
+                    </label>
+                    <input type="text" id="editAdminSlackUserId" placeholder="e.g. U0123ABCDEF" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; box-sizing:border-box;" onfocus="this.style.borderColor='#4A154B'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
+                    <div style="font-size:0.72rem; color:#64748b; margin-top:4px;">Find it in Slack: click the admin's profile &rarr; <em>More</em> &rarr; <em>Copy member ID</em>. Used for @tagging in daily report messages.</div>
+                </div>
 
                 <!-- Hidden fields -->
                 <input type="hidden" id="editUserType">
@@ -968,7 +975,7 @@
                     if (type === 'admin') {
                         if(hierarchyData.admins) {
                             Object.entries(hierarchyData.admins).forEach(([name, data]) => {
-                                rows.push({ name, email: data.email, parent: null, url: '#', type: 'admin' });
+                                rows.push({ name, email: data.email, slack_user_id: data.slack_user_id || '', parent: null, url: '#', type: 'admin' });
                             });
                         }
                     } else if (type === 'trader') {
@@ -1049,7 +1056,7 @@
                              btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
                          } else {
                              btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
-                             btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}')" style="${editStyle}">Edit</button>`;
+                             btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'  )" style="${editStyle}">Edit</button>`;
                          }
                          // Reset Password button (all user types)
                          const resetStyle = "color:#60a5fa; border:1px solid #1e3a5f; background:rgba(30,58,95,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:5px;";
@@ -1065,7 +1072,7 @@
                             ? `'client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}'` 
                             : (type==='trader') 
                                 ? `'trader', '${safeName}', '${safeEmail}', '${r.admin}'` 
-                                : `'admin', '${safeName}', '${safeEmail}'`;
+                                : `'admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'`;
 
                          html += `
                             <tr style="border-bottom: 1px solid #334155;">
@@ -1102,7 +1109,7 @@
 
         // --- Edit / Delete User Logic ---
         
-        function openEditUserModal(type, name, email, parent1, parent2, extra, activeStatus) {
+        function openEditUserModal(type, name, email, parent1, parent2, extra, activeStatus, slackUserId) {
              if(event) event.stopPropagation();
              
              // Clean up escaped values
@@ -1110,6 +1117,7 @@
              const cleanEmail = (email && email !== 'undefined' && email !== 'null') ? email.replace(/\\'/g, "'") : '';
              const cleanCategory = (extra && extra !== 'undefined' && extra !== 'null') ? extra : 'Private';
              const cleanActive = (activeStatus && activeStatus !== 'undefined' && activeStatus !== 'null') ? activeStatus : 'active';
+             const cleanSlack = (slackUserId && slackUserId !== 'undefined' && slackUserId !== 'null') ? slackUserId : '';
              
              // Populate modal fields
              document.getElementById('editModalTitle').textContent = 'Edit ' + type.charAt(0).toUpperCase() + type.slice(1);
@@ -1123,14 +1131,22 @@
              // Show category and status dropdowns only for clients
              const catGroup = document.getElementById('editClientCategoryGroup');
              const statusGroup = document.getElementById('editClientStatusGroup');
+             const slackGroup = document.getElementById('editAdminSlackGroup');
              if (type === 'client') {
                  catGroup.style.display = 'block';
                  statusGroup.style.display = 'block';
+                 slackGroup.style.display = 'none';
                  document.getElementById('editUserCategory').value = cleanCategory;
                  document.getElementById('editUserActiveStatus').value = cleanActive;
+             } else if (type === 'admin') {
+                 catGroup.style.display = 'none';
+                 statusGroup.style.display = 'none';
+                 slackGroup.style.display = 'block';
+                 document.getElementById('editAdminSlackUserId').value = cleanSlack;
              } else {
                  catGroup.style.display = 'none';
                  statusGroup.style.display = 'none';
+                 slackGroup.style.display = 'none';
              }
              
              // Show modal — must use display:flex for centering, plus .show class
@@ -1169,6 +1185,9 @@
             }
             
             if (type !== 'admin') payload.admin = admin;
+            if (type === 'admin') {
+                payload.slack_user_id = document.getElementById('editAdminSlackUserId').value.trim();
+            }
             if (type === 'client') {
                 payload.trader = trader;
                 payload.category = category;
@@ -1510,8 +1529,9 @@
             const esc = (s) => (s || '').replace(/[\\']/g, '\\$&').replace(/"/g, '&quot;');
 
             Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                const sAdmin = esc(adminName);
+                    const sAdmin = esc(adminName);
                 const sAdminEmail = esc(adminData.email);
+                const sAdminSlack = esc(adminData.slack_user_id || '');
 
                 // Admin Card
                 const card = document.createElement('div');
@@ -1547,7 +1567,7 @@
                     </div>
                     <div class="action-buttons" style="display:flex; gap:8px; align-items:center;">
                         <a href="/admin/${encodeURIComponent(adminName)}" onclick="event.stopPropagation()" style="color:var(--text-secondary); text-decoration:none;" title="View Dashboard"><i class="fas fa-external-link-alt" style="font-size:0.9rem;"></i></a>
-                        <button type="button" onclick="openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:0 2px;" title="Edit API/Info"><i class="fas fa-edit" style="font-size:0.9rem;"></i></button>
+                        <button type="button" onclick="openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}', null, null, null, null, '${sAdminSlack}')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:0 2px;" title="Edit API/Info"><i class="fas fa-edit" style="font-size:0.9rem;"></i></button>
                         <button type="button" onclick="deleteUser('admin', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Admin"><i class="fas fa-trash" style="font-size:0.9rem;"></i></button>
                     </div>
                 `;
