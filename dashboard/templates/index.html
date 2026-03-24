@@ -4410,10 +4410,10 @@
                                 <table>
                                     <thead>
                                         <tr>
-                                            <th style="text-align:left;">Prop Firm</th>
-                                            <th style="text-align:left;">Account</th>
-                                            <th style="text-align:left;">Date</th>
-                                            <th style="text-align:right;">Amount</th>
+                                            <th style="text-align:left;cursor:pointer;user-select:none;" onclick="sortStatsPayouts('prop_firm')">Prop Firm <span id="sort-icon-prop_firm" style="font-size:10px;color:#64748b;"></span></th>
+                                            <th style="text-align:left;cursor:pointer;user-select:none;" onclick="sortStatsPayouts('account')">Account <span id="sort-icon-account" style="font-size:10px;color:#64748b;"></span></th>
+                                            <th style="text-align:left;cursor:pointer;user-select:none;" onclick="sortStatsPayouts('date')">Date <span id="sort-icon-date" style="font-size:10px;color:#64748b;"></span></th>
+                                            <th style="text-align:right;cursor:pointer;user-select:none;" onclick="sortStatsPayouts('amount')">Amount <span id="sort-icon-amount" style="font-size:10px;color:#64748b;"></span></th>
                                         </tr>
                                     </thead>
                                     <tbody id="stats-payouts-body"></tbody>
@@ -4490,6 +4490,19 @@
             filterStatsPayouts();
         }
 
+        window._payoutSortCol = 'date';
+        window._payoutSortAsc = false;
+
+        function sortStatsPayouts(col) {
+            if (window._payoutSortCol === col) {
+                window._payoutSortAsc = !window._payoutSortAsc;
+            } else {
+                window._payoutSortCol = col;
+                window._payoutSortAsc = col === 'prop_firm' || col === 'account';
+            }
+            filterStatsPayouts();
+        }
+
         function filterStatsPayouts() {
             const body = document.getElementById('stats-payouts-body');
             const summary = document.getElementById('stats-payouts-summary');
@@ -4511,6 +4524,26 @@
                 if (fromD && p.dateObj < fromD) return false;
                 if (toD && p.dateObj > toD) return false;
                 return true;
+            });
+
+            // Apply sort
+            const sc = window._payoutSortCol;
+            const asc = window._payoutSortAsc;
+            filtered.sort((a, b) => {
+                let va, vb;
+                if (sc === 'prop_firm') { va = a.prop_firm.toLowerCase(); vb = b.prop_firm.toLowerCase(); }
+                else if (sc === 'account') { va = a.account.toLowerCase(); vb = b.account.toLowerCase(); }
+                else if (sc === 'date') { va = a.dateObj || new Date(0); vb = b.dateObj || new Date(0); }
+                else { va = a.amount; vb = b.amount; }
+                if (va < vb) return asc ? -1 : 1;
+                if (va > vb) return asc ? 1 : -1;
+                return 0;
+            });
+
+            // Update sort icons
+            ['prop_firm','account','date','amount'].forEach(c => {
+                const el = document.getElementById('sort-icon-' + c);
+                if (el) el.textContent = c === sc ? (asc ? '\u25B2' : '\u25BC') : '';
             });
 
             if (filtered.length) {
