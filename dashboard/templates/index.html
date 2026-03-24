@@ -4351,7 +4351,7 @@
                             
                             <!-- By Prop Firm -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
-                                <div class="card-header" style="background:linear-gradient(180deg,#0f172a,#060a14);border-bottom:1px solid #162040;color:#94a3b8;font-size:0.95rem;font-weight:700;letter-spacing:0.05em;gap:8px;"><i class="fas fa-building" style="opacity:0.6;"></i> BY PROP FIRM</div>
+                                <div class="card-header" style="background:linear-gradient(180deg,#0f172a,#060a14);border-bottom:1px solid #162040;color:#94a3b8;font-size:0.95rem;font-weight:700;letter-spacing:0.05em;gap:8px;justify-content:flex-start;"><i class="fas fa-building" style="opacity:0.6;"></i> BY PROP FIRM</div>
                                 <table>
                                     <thead>
                                         <tr>
@@ -4465,7 +4465,7 @@
                         if (amt !== 0) {
                             const rawDate = (ev[`Date ${i}`] || '').toString().trim();
                             const dateObj = parsePayDate(rawDate);
-                            window._statsPayouts.push({ prop_firm: propFirm, account, amount: amt, date: fmtDate(dateObj), dateObj });
+                            window._statsPayouts.push({ prop_firm: propFirm, account, amount: amt, date: fmtDate(dateObj), dateObj, payout_num: i });
                         }
                     }
                 });
@@ -4502,7 +4502,8 @@
                 let totalAmt = 0;
                 body.innerHTML = filtered.map(p => {
                     totalAmt += p.amount;
-                    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                    const payLink = '/dashboard/' + encodeURIComponent(CLIENT_ID) + '?highlight_account=' + encodeURIComponent(p.account) + '&highlight_payout=' + p.payout_num;
+                    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; transition:background 0.15s;" onclick="window.location.href='${payLink}'" onmouseover="this.style.background='rgba(96,165,250,0.1)'" onmouseout="this.style.background='transparent'" title="Click to view this payout">
                         <td style="padding:10px 12px; color:#fbbf24;">${p.prop_firm}</td>
                         <td style="padding:10px 12px; color:#94a3b8; font-size:0.85rem;">${p.account}</td>
                         <td style="padding:10px 12px; color:#94a3b8;">${p.date}</td>
