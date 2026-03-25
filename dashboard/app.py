@@ -5357,9 +5357,9 @@ def run_quality_scan(target_client=None):
                                        'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
                                        'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
-            # Daily summary not sent check (weekdays only)
+            # Daily summary tracking (weekdays only) — info only, no score impact
             if today_weekday < 5 and client_name not in summary_sent_clients:
-                issues.append({'check': 'Daily summary not sent', 'severity': 'high',
+                issues.append({'check': 'Daily summary not sent', 'severity': 'info',
                                'detail': 'No daily summary submitted today for this client',
                                'estimated_date': scan_date_str})
 
@@ -5393,7 +5393,7 @@ def run_quality_scan(target_client=None):
                 })
 
             # Calculate health score (100 - deductions)
-            severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3}
+            severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
             deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
             health_score = max(0.0, 100.0 - deduction)
 
@@ -5577,6 +5577,51 @@ def api_quality_scan_dates():
         return jsonify({'status': 'success', 'dates': dates})
     except Exception as e:
         return jsonify({'status': 'success', 'dates': []})
+
+
+@app.route('/api/quality/summary_status')
+@require_role('super_admin')
+def api_summary_status():
+    """Get daily summary submission status for all clients, grouped by trader."""
+    from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
+    from dashboard.database import get_summary_status_for_date
+    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    submissions = get_summary_status_for_date(date)
+    sent_map = {s['client_id']: s for s in submissions}
+    all_clients = hierarchy_get_all_clients()
+    traders = {}  # trader -> {sent: [...], not_sent: [...]}
+    for client_name in all_clients:
+        profile = get_client_profile(client_name)
+        trader = (profile.get('trader', '') if profile else '') or 'Unassigned'
+        if trader not in traders:
+            traders[trader] = {'sent': [], 'not_sent': []}
+        if client_name in sent_map:
+            s = sent_map[client_name]
+            traders[trader]['sent'].append({
+                'client_id': client_name,
+                'submitted_by': s['submitted_by'],
+                'submitted_at': s['submitted_at']
+            })
+        else:
+            traders[trader]['not_sent'].append(client_name)
+    # Build response
+    total_clients = len(all_clients)
+    total_sent = len(sent_map)
+    result = []
+    for trader, data in sorted(traders.items()):
+        result.append({
+            'trader': trader,
+            'total': len(data['sent']) + len(data['not_sent']),
+            'sent_count': len(data['sent']),
+            'sent': data['sent'],
+            'not_sent': data['not_sent']
+        })
+    return jsonify({
+        'status': 'success', 'date': date,
+        'total_clients': total_clients, 'total_sent': total_sent,
+        'total_not_sent': total_clients - total_sent,
+        'traders': result
+    })
 
 
 @app.route('/api/admin/repair_db', methods=['POST'])

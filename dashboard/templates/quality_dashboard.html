@@ -113,6 +113,7 @@
         .badge-high { background:rgba(249,115,22,0.15); color:#fb923c; }
         .badge-medium { background:rgba(251,191,36,0.15); color:#fbbf24; }
         .badge-low { background:rgba(148,163,184,0.15); color:#94a3b8; }
+        .badge-info { background:rgba(96,165,250,0.15); color:#60a5fa; }
 
         .issue-pill { display:inline-block; padding:2px 6px; border-radius:4px; font-size:0.7rem; margin:1px; }
 
@@ -234,6 +235,7 @@
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
                 <option value="warning">Warning</option>
+                <option value="info">Info</option>
             </select>
             <select id="issue-type-filter" class="issue-type-filter" onchange="renderIssuesTable()">
                 <option value="all">All Issue Types</option>
@@ -265,8 +267,20 @@
             </table>
         </div>
 
+        <!-- Daily Summary Tracker -->
+        <div class="section-title" style="margin-top:32px;">
+            <i class="fas fa-paper-plane" style="color:#4ade80;"></i> Daily Summary Tracker
+            <span id="summary-tracker-badge" style="margin-left:8px; font-size:0.78rem; padding:2px 10px; border-radius:12px; font-weight:600;"></span>
+            <button onclick="loadSummaryStatus()" style="margin-left:12px; background:linear-gradient(135deg,#22c55e,#16a34a); border:none; color:#fff; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+        <div id="summary-tracker-container" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px;">
+            <div class="empty-state" style="grid-column:1/-1;"><i class="fas fa-paper-plane" style="font-size:2rem; opacity:0.3; margin-bottom:8px;"></i><div>Loading summary status...</div></div>
+        </div>
+
         <!-- Daily Checklists -->
-        <div class="section-title"><i class="fas fa-tasks" style="color:#a78bfa;"></i> Today's Checklists</div>
+        <div class="section-title" style="margin-top:32px;"><i class="fas fa-tasks" style="color:#a78bfa;"></i> Today's Checklists</div>
         <div class="checklist-status-grid" id="checklist-grid">
             <div class="empty-state" style="grid-column:1/-1;"><div>Loading checklists...</div></div>
         </div>
@@ -367,6 +381,7 @@
             document.getElementById('date-start').value = weekAgo;
             loadResults();
             loadChecklists();
+            loadSummaryStatus();
             loadSlackStatus();
             loadDailySlackStatus();
         });
@@ -839,6 +854,58 @@
                 console.error('Failed to load checklists:', e);
             }
         }
+
+        async function loadSummaryStatus() {
+            const container = document.getElementById('summary-tracker-container');
+            const badge = document.getElementById('summary-tracker-badge');
+            try {
+                const resp = await fetch('/api/quality/summary_status');
+                const data = await resp.json();
+                if (data.status !== 'success') { container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>Failed to load</div></div>'; return; }
+                const pct = data.total_clients > 0 ? Math.round(data.total_sent / data.total_clients * 100) : 0;
+                const badgeColor = pct === 100 ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171';
+                badge.textContent = `${data.total_sent}/${data.total_clients} sent (${pct}%)`;
+                badge.style.background = badgeColor + '22';
+                badge.style.color = badgeColor;
+                badge.style.border = `1px solid ${badgeColor}44`;
+
+                if (!data.traders || data.traders.length === 0) {
+                    container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>No clients found</div></div>';
+                    return;
+                }
+                container.innerHTML = data.traders.map(t => {
+                    const tPct = t.total > 0 ? Math.round(t.sent_count / t.total * 100) : 0;
+                    const tColor = tPct === 100 ? '#4ade80' : tPct >= 50 ? '#fbbf24' : '#f87171';
+                    const sentHtml = t.sent.map(s => {
+                        const time = s.submitted_at ? s.submitted_at.split('T')[1]?.substring(0,5) || '' : '';
+                        return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
+                            <i class="fas fa-circle-check" style="color:#4ade80;font-size:0.7rem;"></i>
+                            <span style="color:#e2e8f0;font-size:0.8rem;">${s.client_id}</span>
+                            <span style="color:#4a6080;font-size:0.72rem;margin-left:auto;">${time}</span>
+                        </div>`;
+                    }).join('');
+                    const notSentHtml = t.not_sent.map(c => {
+                        return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
+                            <i class="fas fa-circle-xmark" style="color:#f87171;font-size:0.7rem;"></i>
+                            <span style="color:#94a3b8;font-size:0.8rem;">${c}</span>
+                        </div>`;
+                    }).join('');
+                    return `<div style="background:#090f1e;border:1px solid #162040;border-top:1px solid #1e3060;border-radius:12px;padding:16px;box-shadow:0 4px 16px rgba(1,3,10,0.5);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <span style="font-weight:700;color:#e2e8f0;font-size:0.92rem;"><i class="fas fa-user-tie" style="color:#60a5fa;margin-right:6px;"></i>${t.trader}</span>
+                            <span style="font-size:0.78rem;font-weight:600;color:${tColor};">${t.sent_count}/${t.total}</span>
+                        </div>
+                        <div class="health-bar" style="margin-bottom:12px;"><div class="health-fill" style="width:${tPct}%;background:${tColor};"></div></div>
+                        ${sentHtml ? '<div style="margin-bottom:8px;">' + sentHtml + '</div>' : ''}
+                        ${notSentHtml || ''}
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load summary status:', e);
+                container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>Failed to load summary status</div></div>';
+            }
+        }
+
         async function importCSV() {
             const clientId = document.getElementById('import-client-id').value.trim();
             const fileInput = document.getElementById('import-csv-file');

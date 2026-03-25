@@ -1358,6 +1358,23 @@ def get_checklist_clients_for_date(date: str) -> set:
         return set()
 
 
+def get_summary_status_for_date(date: str) -> list:
+    """Return all daily_summary checklist submissions for the given date with user/client details."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT client_id, user_identifier, submitted_at FROM daily_checklists "
+                "WHERE date = ? AND checklist_type = 'daily_summary' AND client_id != '' "
+                "ORDER BY submitted_at DESC",
+                (date,)
+            )
+            return [{'client_id': row['client_id'], 'submitted_by': row['user_identifier'],
+                     'submitted_at': row['submitted_at']} for row in cursor.fetchall()]
+    except Exception:
+        return []
+
+
 def get_weekly_scan_results(end_date: str = None, days: int = 7) -> list:
     """Get quality scan results for a date range (default: last 7 days)."""
     try:

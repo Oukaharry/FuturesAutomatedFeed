@@ -3910,7 +3910,7 @@
             }
             if (empty) empty.style.display = 'none';
             if (table) table.style.display = 'table';
-            const sevColors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#60a5fa',warning:'#a78bfa'};
+            const sevColors = {critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#60a5fa',warning:'#a78bfa',info:'#38bdf8'};
             tbody.innerHTML = filtered.map(i => {
                 const rowNum = i.row !== null && i.row !== undefined ? `Row ${i.row + 1}` : '-';
                 const color = sevColors[i.severity] || '#94a3b8';
