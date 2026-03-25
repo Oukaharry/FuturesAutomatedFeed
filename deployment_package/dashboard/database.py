@@ -1214,6 +1214,25 @@ def save_quality_scan_results(scan_date: str, results: list):
     """Save quality scan results for all clients."""
     with get_connection() as conn:
         cursor = conn.cursor()
+        # Self-healing: ensure the table exists even on upgraded deployments
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quality_scan_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_date TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                trader TEXT,
+                admin TEXT,
+                total_issues INTEGER DEFAULT 0,
+                issues TEXT DEFAULT '[]',
+                health_score REAL DEFAULT 100.0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Flush WAL before writing to reduce corruption risk
+        try:
+            cursor.execute('PRAGMA wal_checkpoint(PASSIVE)')
+        except Exception:
+            pass
         cursor.execute('DELETE FROM quality_scan_results WHERE scan_date = ?', (scan_date,))
         for r in results:
             cursor.execute('''
