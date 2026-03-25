@@ -3824,9 +3824,16 @@
                     }, 300);
                 }
 
-                // Hash-based deep link: #eval-row-N from quality dashboard
+                // Hash-based deep link from quality dashboard
                 const hashTarget = window.location.hash;
-                if (hashTarget && hashTarget.startsWith('#eval-row-')) {
+                if (hashTarget === '#hedge' || hashTarget === '#prop') {
+                    const tabId = hashTarget.substring(1);
+                    openTab(tabId);
+                    setTimeout(() => {
+                        const section = document.getElementById(tabId);
+                        if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 200);
+                } else if (hashTarget && hashTarget.startsWith('#eval-row-')) {
                     // Uncheck active filter so inactive/failed rows are visible
                     const activeFilterCb = document.getElementById('activeFilter');
                     if (activeFilterCb && activeFilterCb.checked) {

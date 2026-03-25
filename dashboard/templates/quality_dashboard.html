@@ -652,6 +652,7 @@
                         check: issue.check,
                         detail: issue.detail || '',
                         row: issue.row !== undefined ? issue.row : null,
+                        tab: issue.tab || null,
                         estimated_date: issue.estimated_date || '-'
                     });
                 });
@@ -716,9 +717,14 @@
 
             tbody.innerHTML = items.map(i => {
                 const rowLabel = i.row !== null ? `Row ${i.row + 1}` : '-';
-                const link = i.row !== null
-                    ? `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}`
-                    : `/dashboard/${encodeURIComponent(i.client)}`;
+                let link;
+                if (i.tab) {
+                    link = `/dashboard/${encodeURIComponent(i.client)}#${i.tab}`;
+                } else if (i.row !== null) {
+                    link = `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}`;
+                } else {
+                    link = `/dashboard/${encodeURIComponent(i.client)}`;
+                }
                 return `<tr onclick="window.open('${link}', '_blank')">
                     <td style="color:#e2e8f0; font-weight:500;">${i.client}</td>
                     <td style="color:#94a3b8;">${i.trader}</td>

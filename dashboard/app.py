@@ -5358,6 +5358,35 @@ def run_quality_scan(target_client=None):
                                    'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
                                    'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
+        # Hedge account or Prop Firm missing check
+        # Raise exactly 2 issues (one pointing to each tab) only when BOTH are unfilled.
+        # If either hedge or prop accounts have credentials, suppress both issues.
+        hedge_accounts = data.get('hedge_accounts', [])
+        prop_accounts = data.get('prop_accounts', [])
+        _hedge_filled = any(
+            str(hacc.get('login', '') or '').strip() or str(hacc.get('password', '') or '').strip()
+            for hacc in hedge_accounts
+        )
+        _prop_filled = any(
+            str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
+            for pa in prop_accounts
+        )
+        if not _hedge_filled and not _prop_filled:
+            issues.append({
+                'check': 'Hedge account or Prop Firm missing',
+                'severity': 'high',
+                'tab': 'hedge',
+                'detail': 'No hedge account credentials found — fill in Hedge Accounts tab',
+                'estimated_date': scan_date_str
+            })
+            issues.append({
+                'check': 'Hedge account or Prop Firm missing',
+                'severity': 'high',
+                'tab': 'prop',
+                'detail': 'No prop firm credentials found — fill in Prop Firm Accounts tab',
+                'estimated_date': scan_date_str
+            })
+
         # Calculate health score (100 - deductions)
         severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3}
         deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
