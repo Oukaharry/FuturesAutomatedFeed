@@ -5404,6 +5404,14 @@ def api_run_quality_scan():
         save_warning = str(e)
         logging.warning(f'Quality scan results could not be saved: {e}')
 
+    # Compute display stats after filtering out infrastructure scan errors
+    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    for r in results:
+        r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+        r['total_issues'] = len(r['issues'])
+        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
+        r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+
     total_issues = sum(r['total_issues'] for r in results)
     clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
     avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
