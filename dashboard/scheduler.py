@@ -150,6 +150,14 @@ def _build_daily_summary_text():
     checklists = get_daily_checklists(date)
     total_clients = len(hierarchy_get_all_clients())
 
+    # Filter out infrastructure scan errors and recalculate scores
+    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    for r in scan_results:
+        r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+        r['total_issues'] = len(r['issues'])
+        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
+        r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+
     clients_healthy = sum(1 for r in scan_results if r['health_score'] >= 90)
     clients_warning = sum(1 for r in scan_results if 70 <= r['health_score'] < 90)
     clients_critical = sum(1 for r in scan_results if r['health_score'] < 70)

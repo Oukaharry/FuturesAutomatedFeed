@@ -5671,6 +5671,14 @@ def api_weekly_scorecard():
     if not results:
         return jsonify({'status': 'success', 'scorecard': {}, 'message': 'No scan data for this period.'})
 
+    # Filter out infrastructure scan errors and recalculate scores
+    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    for r in results:
+        r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+        r['total_issues'] = len(r['issues'])
+        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
+        r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+
     start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=days - 1)).strftime('%Y-%m-%d')
 
     # Aggregate by trader
@@ -5761,6 +5769,14 @@ def api_daily_summary():
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     scan_results = get_quality_scan_results(date)
     checklists = get_daily_checklists(date)
+
+    # Filter out infrastructure scan errors and recalculate scores
+    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    for r in scan_results:
+        r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+        r['total_issues'] = len(r['issues'])
+        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
+        r['health_score'] = max(0.0, round(100.0 - deduction, 1))
 
     all_clients = get_all_clients()
     total_clients = len(all_clients)
