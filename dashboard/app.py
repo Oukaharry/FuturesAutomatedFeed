@@ -5973,7 +5973,7 @@ def api_set_slack_daily_webhook():
 @require_session
 def api_send_checklist_slack():
     """Send a daily summary to the Daily Summaries Slack channel."""
-    from dashboard.database import get_setting
+    from dashboard.database import get_setting, save_daily_checklist
     from dashboard.scheduler import send_slack_to_webhook
     session_user = request.session_user
     user_type = session_user.get('user_type')
@@ -5988,14 +5988,21 @@ def api_send_checklist_slack():
 
     data = request.get_json(force=True)
     summary_text = (data.get('text') or '').strip()
+    client_id = (data.get('client_id') or '').strip()
     if not summary_text:
         return jsonify({'status': 'error', 'message': 'No summary text provided.'}), 400
 
     try:
         ok = send_slack_to_webhook(webhook_url, summary_text)
         if ok:
+            # Record the daily summary so it shows in the tracker
+            if client_id:
+                today = datetime.now().strftime('%Y-%m-%d')
+                save_daily_checklist(today, user_identifier, user_type, 'daily_summary',
+                                     [{'id': 'slack_sent', 'title': 'Sent to Slack', 'status': 'ok', 'notes': ''}],
+                                     get_remote_address(), client_id=client_id)
             log_action('SLACK_DAILY_SUMMARY', user_type, user_identifier,
-                       get_remote_address(), f'Daily summary sent to Slack for {data.get("client_id", "")}')
+                       get_remote_address(), f'Daily summary sent to Slack for {client_id}')
             return jsonify({'status': 'success', 'message': 'Summary sent to Slack!'})
         else:
             return jsonify({'status': 'error', 'message': 'Slack post failed — check webhook URL.'}), 502
