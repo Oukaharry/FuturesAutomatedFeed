@@ -1344,6 +1344,20 @@ def get_daily_checklists(date: str, user_identifier: str = None) -> list:
         } for row in cursor.fetchall()]
 
 
+def get_checklist_clients_for_date(date: str) -> set:
+    """Return set of client_ids that have a daily_summary checklist submitted for the given date."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT client_id FROM daily_checklists WHERE date = ? AND checklist_type = 'daily_summary' AND client_id != ''",
+                (date,)
+            )
+            return {row['client_id'] for row in cursor.fetchall()}
+    except Exception:
+        return set()
+
+
 def get_weekly_scan_results(end_date: str = None, days: int = 7) -> list:
     """Get quality scan results for a date range (default: last 7 days)."""
     try:
