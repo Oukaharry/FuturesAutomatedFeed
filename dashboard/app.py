@@ -5198,7 +5198,16 @@ def run_quality_scan(target_client=None):
         profile = get_client_profile(client_name)
         trader = profile.get('trader', '') if profile else ''
         admin = profile.get('admin', '') if profile else ''
-        data = get_client_data(client_name)
+        try:
+            data = get_client_data(client_name)
+        except Exception:
+            results.append({
+                'client_id': client_name, 'trader': trader, 'admin': admin,
+                'total_issues': 1, 'issues': [{'check': 'Data load error', 'severity': 'critical',
+                    'detail': 'Failed to load client data from database', 'estimated_date': scan_date_str}],
+                'health_score': 0.0
+            })
+            continue
 
         issues = []
 
@@ -5361,15 +5370,17 @@ def run_quality_scan(target_client=None):
         # Hedge account or Prop Firm missing check
         # Raise exactly 2 issues (one pointing to each tab) only when BOTH are unfilled.
         # If either hedge or prop accounts have credentials, suppress both issues.
-        hedge_accounts = data.get('hedge_accounts', [])
-        prop_accounts = data.get('prop_accounts', [])
+        hedge_accounts = data.get('hedge_accounts') or []
+        prop_accounts = data.get('prop_accounts') or []
         _hedge_filled = any(
             str(hacc.get('login', '') or '').strip() or str(hacc.get('password', '') or '').strip()
             for hacc in hedge_accounts
+            if isinstance(hacc, dict)
         )
         _prop_filled = any(
             str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
             for pa in prop_accounts
+            if isinstance(pa, dict)
         )
         if not _hedge_filled and not _prop_filled:
             issues.append({
