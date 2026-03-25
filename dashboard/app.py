@@ -5186,15 +5186,13 @@ def run_quality_scan(target_client=None):
     If target_client is given, only scan that one client.
     """
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
-    from dashboard.database import get_client_data, get_client_activity, get_checklist_clients_for_date
+    from dashboard.database import get_client_data, get_client_activity
 
     all_clients = [target_client] if target_client else hierarchy_get_all_clients()
     results = []
     now = datetime.now()
     today_weekday = now.weekday()  # 0=Mon, 6=Sun
     scan_date_str = now.strftime('%Y-%m-%d')
-    # Pre-fetch which clients have daily summaries sent today
-    summary_sent_clients = get_checklist_clients_for_date(scan_date_str) if today_weekday < 5 else set()
 
     for client_name in all_clients:
         profile = get_client_profile(client_name)
@@ -5356,41 +5354,6 @@ def run_quality_scan(target_client=None):
                         issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
                                        'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
                                        'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
-
-            # Daily summary tracking (weekdays only) — info only, no score impact
-            if today_weekday < 5 and client_name not in summary_sent_clients:
-                issues.append({'check': 'Daily summary not sent', 'severity': 'info',
-                               'detail': 'No daily summary submitted today for this client',
-                               'estimated_date': scan_date_str})
-
-            # Hedge account or Prop Firm missing check
-            hedge_accounts = data.get('hedge_accounts') or []
-            prop_accounts = data.get('prop_accounts') or []
-            _hedge_filled = any(
-                str(hacc.get('login', '') or '').strip() or str(hacc.get('password', '') or '').strip()
-                for hacc in hedge_accounts
-                if isinstance(hacc, dict)
-            )
-            _prop_filled = any(
-                str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
-                for pa in prop_accounts
-                if isinstance(pa, dict)
-            )
-            if not _hedge_filled and not _prop_filled:
-                issues.append({
-                    'check': 'Hedge account or Prop Firm missing',
-                    'severity': 'high',
-                    'tab': 'hedge',
-                    'detail': 'No hedge account credentials found — fill in Hedge Accounts tab',
-                    'estimated_date': scan_date_str
-                })
-                issues.append({
-                    'check': 'Hedge account or Prop Firm missing',
-                    'severity': 'high',
-                    'tab': 'prop',
-                    'detail': 'No prop firm credentials found — fill in Prop Firm Accounts tab',
-                    'estimated_date': scan_date_str
-                })
 
             # Calculate health score (100 - deductions)
             severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
