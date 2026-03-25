@@ -860,8 +860,10 @@
         async function loadSummaryStatus() {
             const container = document.getElementById('summary-tracker-container');
             const badge = document.getElementById('summary-tracker-badge');
+            // Show loading state
+            container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><i class="fas fa-spinner fa-spin" style="font-size:1.5rem; opacity:0.5; margin-bottom:8px;"></i><div>Loading summary status...</div></div>';
             try {
-                const resp = await fetch('/api/quality/summary_status');
+                const resp = await fetch('/api/quality/summary_status?_t=' + Date.now());
                 const data = await resp.json();
                 if (data.status !== 'success') { container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>Failed to load</div></div>'; return; }
                 const pct = data.total_clients > 0 ? Math.round(data.total_sent / data.total_clients * 100) : 0;
