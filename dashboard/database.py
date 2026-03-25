@@ -1359,20 +1359,50 @@ def get_checklist_clients_for_date(date: str) -> set:
 
 
 def get_summary_status_for_date(date: str) -> list:
-    """Return all daily_summary checklist submissions for the given date with user/client details."""
+    """Return all daily_summary checklist submissions for the given date with user/client details.
+    Merges data from daily_checklists table AND audit_log to ensure all sends are captured."""
+    results = {}  # client_id -> {client_id, submitted_by, submitted_at}
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
+            # Source 1: daily_checklists table
             cursor.execute(
                 "SELECT client_id, user_identifier, submitted_at FROM daily_checklists "
                 "WHERE date = ? AND checklist_type = 'daily_summary' AND client_id != '' "
                 "ORDER BY submitted_at DESC",
                 (date,)
             )
-            return [{'client_id': row['client_id'], 'submitted_by': row['user_identifier'],
-                     'submitted_at': row['submitted_at']} for row in cursor.fetchall()]
+            for row in cursor.fetchall():
+                cid = row['client_id']
+                if cid not in results:
+                    results[cid] = {'client_id': cid, 'submitted_by': row['user_identifier'],
+                                    'submitted_at': row['submitted_at']}
+
+            # Source 2: audit_log — captures sends even if daily_checklists record is missing
+            cursor.execute(
+                "SELECT user_identifier, details, timestamp FROM audit_log "
+                "WHERE action IN ('CHECKLIST_SUBMIT', 'SLACK_DAILY_SUMMARY') "
+                "AND timestamp LIKE ? AND success = 1 "
+                "ORDER BY timestamp DESC",
+                (date + '%',)
+            )
+            for row in cursor.fetchall():
+                details = row['details'] or ''
+                client_id = ''
+                # Parse client_id from log details
+                if ' for ' in details:
+                    # "daily_summary for ClientName: 8 sections" or "Daily summary sent to Slack for ClientName"
+                    part = details.split(' for ', 1)[1]
+                    # Remove trailing ": N sections" pattern if present
+                    import re
+                    part = re.sub(r':\s*\d+\s+sections?\s*$', '', part).strip()
+                    client_id = part
+                if client_id and client_id not in results:
+                    results[client_id] = {'client_id': client_id, 'submitted_by': row['user_identifier'],
+                                          'submitted_at': row['timestamp']}
     except Exception:
-        return []
+        pass
+    return list(results.values())
 
 
 def get_weekly_scan_results(end_date: str = None, days: int = 7) -> list:
