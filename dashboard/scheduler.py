@@ -142,9 +142,15 @@ def _build_daily_summary_text():
     from dashboard.database import get_quality_scan_results, get_daily_checklists
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients
 
-    now = datetime.now()
-    date = now.strftime('%Y-%m-%d')
-    weekday = now.strftime('%A')
+    # Use Kenyan time (UTC+3) with a 2 AM rollover — the scheduler fires
+    # at ~02:05 EAT, but we want the previous Kenyan day's data.
+    from datetime import timezone, timedelta as _tz_td_sched
+    _kenyan_tz = timezone(_tz_td_sched(hours=3))
+    kenyan_now = datetime.now(tz=_kenyan_tz)
+    # Subtract 2 hours so anything before 2 AM still counts as the previous day
+    effective = kenyan_now - _tz_td_sched(hours=2)
+    date = effective.strftime('%Y-%m-%d')
+    weekday = effective.strftime('%A')
 
     scan_results = get_quality_scan_results(date)
     checklists = get_daily_checklists(date)

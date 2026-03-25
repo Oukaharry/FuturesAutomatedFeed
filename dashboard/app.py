@@ -5565,11 +5565,14 @@ def api_summary_status():
     from dashboard.database import get_summary_status_for_date, get_setting, get_client_data
     import json as _json
 
-    # Use Kenyan time (UTC+3) as default date
+    # Use Kenyan time (UTC+3) as default date, but the "day" doesn't roll
+    # over until 2:00 AM Kenyan time so late-night activity stays with the
+    # previous day.  Subtracting 2 hours achieves this.
     from datetime import timezone, timedelta as _td
     _kenyan_tz = timezone(_td(hours=3))
     kenyan_now = datetime.now(tz=_kenyan_tz)
-    date = request.args.get('date', kenyan_now.strftime('%Y-%m-%d'))
+    tracker_day = (kenyan_now - _td(hours=2)).strftime('%Y-%m-%d')
+    date = request.args.get('date', tracker_day)
     submissions = get_summary_status_for_date(date)
 
     # Convert timestamps from UTC to Kenyan time (UTC+3)
@@ -5856,7 +5859,12 @@ def api_daily_summary():
     from dashboard.database import get_quality_scan_results, get_daily_checklists
     from config.hierarchy import get_all_clients, get_client_profile
 
-    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    # Default date uses Kenyan time with 2 AM rollover — the "day" doesn't
+    # change until 2:00 AM Kenyan time so the summary covers the full day.
+    from datetime import timezone, timedelta as _td_ds
+    _kenyan_now_ds = datetime.now(tz=timezone(_td_ds(hours=3)))
+    _default_date = (_kenyan_now_ds - _td_ds(hours=2)).strftime('%Y-%m-%d')
+    date = request.args.get('date', _default_date)
     scan_results = get_quality_scan_results(date)
     checklists = get_daily_checklists(date)
 
