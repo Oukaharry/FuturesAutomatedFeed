@@ -5463,7 +5463,7 @@ def api_run_quality_scan():
 @app.route('/api/quality/client/<client_id>', methods=['GET'])
 @require_role('admin', 'trader', 'super_admin')
 def api_quality_client(client_id):
-    """Get quality issues for a single client. Loads saved results first, falls back to live scan."""
+    """Get quality issues for a single client. Loads saved results; only super admins trigger live scans."""
     user_type = request.session_user.get('user_type')
     user_identifier = request.session_user.get('user_identifier')
     if not can_access_client(user_type, user_identifier, client_id):
@@ -5476,16 +5476,24 @@ def api_quality_client(client_id):
         if saved:
             for r in saved:
                 if r.get('client_id') == client_id:
+                    # Filter out infrastructure errors (DB corruption etc) for non-super-admins
+                    if user_type != 'super_admin':
+                        issues = r.get('issues', [])
+                        filtered = [i for i in issues if i.get('check') != 'Scan error']
+                        r = dict(r, issues=filtered, total_issues=len(filtered))
+                        if not filtered:
+                            r['health_score'] = 100.0
                     return jsonify({"status": "success", "data": r})
     except Exception:
-        pass  # Fall through to live scan
-    # No saved results for this client — run a live scan
-    try:
-        results = run_quality_scan(target_client=client_id)
-        if results:
-            return jsonify({"status": "success", "data": results[0]})
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Scan failed: {str(e)}"}), 500
+        pass
+    # No saved results — only super admins should trigger a live scan
+    if user_type == 'super_admin':
+        try:
+            results = run_quality_scan(target_client=client_id)
+            if results:
+                return jsonify({"status": "success", "data": results[0]})
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Scan failed: {str(e)}"}), 500
     return jsonify({"status": "success", "data": empty})
 
 
