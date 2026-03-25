@@ -4158,30 +4158,32 @@
                 const net = f.payouts - f.fees + f.hedge + f.farming;
                 const hedgingTotal = f.hedge + f.farming;
                 const rowId = 'pf-' + name.replace(/[^a-zA-Z0-9]/g,'_');
+                const fundedPct = f.passed + f.failed > 0 ? Math.round(f.passed / (f.passed + f.failed) * 100) : null;
                 return `
                 <tr style="border-bottom:1px solid #1e293b;" class="pf-main-row">
-                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:${firmTextColor(name)};">${name}</td>
+                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#e2e8f0;">${name}</td>
                     <td style="text-align:left;">${f.evals}</td>
-                    <td style="text-align:left;color:#fff;">${f.active}</td>
-                    <td style="text-align:left;">${f.passed + f.failed > 0 ? '<span style="color:' + (Math.round(f.passed / (f.passed + f.failed) * 100) >= 40 ? '#34d399' : Math.round(f.passed / (f.passed + f.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(f.passed / (f.passed + f.failed) * 100) + '%</span>' : '—'}</td>
+                    <td style="text-align:left;">${f.active}</td>
+                    <td style="text-align:left;">${fundedPct !== null ? '<span style="color:' + (fundedPct >= 40 ? '#34d399' : '#f87171') + '">' + fundedPct + '%</span>' : '—'}</td>
                     <td style="text-align:left;color:#34d399;">${fmt(f.payouts)}</td>
                     <td style="text-align:left;color:#f87171;">${fmt(f.fees)}</td>
-                    <td style="text-align:left;color:#38bdf8;">${fmt(hedgingTotal)}</td>
-                    <td style="text-align:left;padding-right:16px;font-weight:700;color:${net >= 0 ? '#c084fc' : '#f87171'};">${fmt(net)}</td>
+                    <td style="text-align:left;color:${hedgingTotal >= 0 ? '#34d399' : '#f87171'};">${fmt(hedgingTotal)}</td>
+                    <td style="text-align:left;padding-right:16px;font-weight:700;color:${net >= 0 ? '#34d399' : '#f87171'};">${fmt(net)}</td>
                 </tr>`;
             }).join('') + (() => {
                 const tNet = tot.payouts - tot.fees + tot.hedge + tot.farming;
                 const tHedgingTotal = tot.hedge + tot.farming;
+                const tFundedPct = tot.passed + tot.failed > 0 ? Math.round(tot.passed / (tot.passed + tot.failed) * 100) : null;
                 return `
                 <tr class="font-bold" style="background:rgba(255,255,255,0.05);">
                     <td style="position:sticky;left:0;z-index:15;background:inherit;padding:10px 16px;">Totals</td>
                     <td style="text-align:left;">${tot.evals}</td>
-                    <td style="text-align:left;color:#fff;">${tot.active}</td>
-                    <td style="text-align:left;">${tot.passed + tot.failed > 0 ? '<span style="color:' + (Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 40 ? '#34d399' : Math.round(tot.passed / (tot.passed + tot.failed) * 100) >= 20 ? '#fbbf24' : '#f87171') + '">' + Math.round(tot.passed / (tot.passed + tot.failed) * 100) + '%</span>' : '—'}</td>
+                    <td style="text-align:left;">${tot.active}</td>
+                    <td style="text-align:left;">${tFundedPct !== null ? '<span style="color:' + (tFundedPct >= 40 ? '#34d399' : '#f87171') + '">' + tFundedPct + '%</span>' : '—'}</td>
                     <td style="text-align:left;color:#34d399;">${fmt(tot.payouts)}</td>
                     <td style="text-align:left;color:#f87171;">${fmt(tot.fees)}</td>
-                    <td style="text-align:left;color:#38bdf8;">${fmt(tHedgingTotal)}</td>
-                    <td style="text-align:left;padding-right:16px;font-weight:700;color:${tNet >= 0 ? '#c084fc' : '#f87171'};">${fmt(tNet)}</td>
+                    <td style="text-align:left;color:${tHedgingTotal >= 0 ? '#34d399' : '#f87171'};">${fmt(tHedgingTotal)}</td>
+                    <td style="text-align:left;padding-right:16px;font-weight:700;color:${tNet >= 0 ? '#34d399' : '#f87171'};">${fmt(tNet)}</td>
                 </tr>`;
             })();
         }
@@ -4545,7 +4547,7 @@
                     totalAmt += p.amount;
                     const payLink = '/dashboard/' + encodeURIComponent(CLIENT_ID) + '?highlight_account=' + encodeURIComponent(p.account) + '&highlight_payout=' + p.payout_num;
                     return `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; transition:background 0.15s;" onclick="window.location.href='${payLink}'" onmouseover="this.style.background='rgba(96,165,250,0.1)'" onmouseout="this.style.background='transparent'" title="Click to view this payout">
-                        <td style="padding:10px 12px; color:${firmTextColor(p.prop_firm)};">${p.prop_firm}</td>
+                        <td style="padding:10px 12px; color:#e2e8f0;">${p.prop_firm}</td>
                         <td style="padding:10px 12px; color:#94a3b8; font-size:0.85rem;">${p.account}</td>
                         <td style="padding:10px 12px; color:#94a3b8;">${p.date}</td>
                         <td style="padding:10px 12px; text-align:right; font-weight:700; color:#34d399;">${fmt(p.amount)}</td>
