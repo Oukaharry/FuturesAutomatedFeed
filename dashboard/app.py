@@ -5565,8 +5565,25 @@ def api_summary_status():
     from dashboard.database import get_summary_status_for_date, get_setting, get_client_data
     import json as _json
 
-    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    # Use Kenyan time (UTC+3) as default date
+    from datetime import timezone, timedelta as _td
+    _kenyan_tz = timezone(_td(hours=3))
+    kenyan_now = datetime.now(tz=_kenyan_tz)
+    date = request.args.get('date', kenyan_now.strftime('%Y-%m-%d'))
     submissions = get_summary_status_for_date(date)
+
+    # Convert timestamps from UTC to Kenyan time (UTC+3)
+    for s in submissions:
+        ts = s.get('submitted_at', '')
+        if ts:
+            try:
+                dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                s['submitted_at'] = dt.astimezone(_kenyan_tz).isoformat()
+            except Exception:
+                pass
+
     sent_map = {s['client_id']: s for s in submissions}
     all_clients = hierarchy_get_all_clients()
 

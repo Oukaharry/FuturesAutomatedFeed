@@ -1360,8 +1360,20 @@ def get_checklist_clients_for_date(date: str) -> set:
 
 def get_summary_status_for_date(date: str) -> list:
     """Return all daily_summary checklist submissions for the given date with user/client details.
-    Merges data from daily_checklists table AND audit_log to ensure all sends are captured."""
+    Merges data from daily_checklists table AND audit_log to ensure all sends are captured.
+    Date is expected in Kenyan time (UTC+3)."""
     results = {}  # client_id -> {client_id, submitted_by, submitted_at}
+
+    # Compute UTC date range for the Kenyan date (UTC+3)
+    # Kenyan midnight = UTC 21:00 previous day
+    from datetime import timedelta as _td
+    try:
+        kenyan_date = datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return []
+    utc_start = (kenyan_date - _td(hours=3)).strftime('%Y-%m-%dT%H:%M')  # previous day 21:00 UTC
+    utc_end = (kenyan_date + _td(days=1) - _td(hours=3)).strftime('%Y-%m-%dT%H:%M')  # current day 21:00 UTC
+
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -1378,13 +1390,13 @@ def get_summary_status_for_date(date: str) -> list:
                     results[cid] = {'client_id': cid, 'submitted_by': row['user_identifier'],
                                     'submitted_at': row['submitted_at']}
 
-            # Source 2: audit_log — captures sends even if daily_checklists record is missing
+            # Source 2: audit_log — use UTC range matching the Kenyan date
             cursor.execute(
                 "SELECT user_identifier, details, timestamp FROM audit_log "
                 "WHERE action IN ('CHECKLIST_SUBMIT', 'SLACK_DAILY_SUMMARY') "
-                "AND timestamp LIKE ? AND success = 1 "
+                "AND timestamp >= ? AND timestamp < ? AND success = 1 "
                 "ORDER BY timestamp DESC",
-                (date + '%',)
+                (utc_start, utc_end)
             )
             for row in cursor.fetchall():
                 details = row['details'] or ''
