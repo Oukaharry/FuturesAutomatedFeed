@@ -8,9 +8,10 @@ import time
 
 # --- Simple In-Memory Cache to fix performance ---
 class SimpleCache:
-    def __init__(self):
+    def __init__(self, max_keys=50):
         self._cache = {}
         self._ttl = 300 # 5 minutes default
+        self._max_keys = max_keys
 
     def get(self, key):
         if key in self._cache:
@@ -22,14 +23,28 @@ class SimpleCache:
         return None
 
     def set(self, key, value, ttl=None):
+        # Evict expired entries first, then oldest if still over limit
+        if len(self._cache) >= self._max_keys:
+            self._evict()
         expiration = time.time() + (ttl or self._ttl)
         self._cache[key] = (value, expiration)
+
+    def _evict(self):
+        now = time.time()
+        # Remove expired entries
+        expired = [k for k, (_, exp) in self._cache.items() if now >= exp]
+        for k in expired:
+            del self._cache[k]
+        # If still over limit, remove oldest entries
+        while len(self._cache) >= self._max_keys:
+            oldest_key = min(self._cache, key=lambda k: self._cache[k][1])
+            del self._cache[oldest_key]
 
     def clear(self):
         self._cache = {}
 
 
-_overview_cache = SimpleCache()
+_overview_cache = SimpleCache(max_keys=50)
 
 def col_idx_to_letter(n):
     """

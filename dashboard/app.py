@@ -62,7 +62,9 @@ except ImportError:
 except Exception as e:
     logging.error(f"Failed to start Watermark Scheduler: {e}")
 
-# Initialize logging to file - APPEND MODE (persists across restarts) - WITH AUTO-FLUSH AND FSYNC
+from logging.handlers import RotatingFileHandler
+
+# Initialize logging to file - WITH AUTO-FLUSH AND FSYNC
 class UnbufferedFileHandler(logging.FileHandler):
     def emit(self, record):
         super().emit(record)
@@ -119,8 +121,9 @@ logging.basicConfig(
     force=True,  # Py3.8+ Override previous configs
     handlers=[
         logging.StreamHandler(),
-        # Full log: append mode — accumulates across restarts (days of history)
-        UnbufferedFileHandler('dashboard/server.log', mode='a', encoding='utf-8'),
+        # Full log: rotating — max 10 MB, keep 3 backups (30 MB total max)
+        RotatingFileHandler('dashboard/server.log', mode='a', encoding='utf-8',
+                            maxBytes=10*1024*1024, backupCount=3),
         # Recent log: cleared on restart, background thread keeps it to last 1 hour only
         UnbufferedFileHandler(_RECENT_LOG_PATH, mode='w', encoding='utf-8'),
     ]
@@ -2443,6 +2446,16 @@ def recalculate_all_stats():
         except Exception as e:
             results.append({"client_id": client_id, "error": str(e)})
     return jsonify({"status": "success", "recalculated": len(results), "results": results})
+
+@app.route('/api/super_admin/cleanup_database', methods=['POST'])
+@require_session
+def api_cleanup_database():
+    """Run database cleanup: prune old history, audit log, expired sessions."""
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    from dashboard.database import cleanup_database
+    results = cleanup_database()
+    return jsonify({"status": "success", "cleaned": results})
 
 @app.route('/api/client/update_source', methods=['POST'])
 @require_session

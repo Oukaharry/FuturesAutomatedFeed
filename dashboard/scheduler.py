@@ -12,7 +12,7 @@ from dashboard.watermark_service import save_daily_profit
 stop_event = threading.Event()
 
 # Track which jobs already ran today to avoid double-runs
-_ran_today = {'watermark': None, 'quality_scan': None, 'slack_summary': None}
+_ran_today = {'watermark': None, 'quality_scan': None, 'slack_summary': None, 'db_cleanup': None}
 
 
 def run_scheduler():
@@ -47,6 +47,13 @@ def run_scheduler():
                 logging.info("Posting daily quality summary to Slack (02:05 EAT)...")
                 post_slack_summary()
                 _ran_today['slack_summary'] = today
+                time.sleep(60)
+
+            # 23:15 UTC (02:15 EAT) — Daily database cleanup
+            if now.hour == 23 and now.minute == 15 and _ran_today['db_cleanup'] != today:
+                logging.info("Running daily database cleanup (02:15 EAT)...")
+                run_database_cleanup()
+                _ran_today['db_cleanup'] = today
                 time.sleep(60)
 
             time.sleep(30)  # Check every 30s
@@ -238,6 +245,18 @@ def post_slack_summary():
         send_slack_message(text)
     except Exception as e:
         logging.error(f"Failed to build/post Slack summary: {e}")
+
+
+# ── Database Cleanup ─────────────────────────────────────────────────
+def run_database_cleanup():
+    """Run daily database cleanup: prune data_history, audit_log, expired sessions."""
+    try:
+        from dashboard.database import cleanup_database
+        results = cleanup_database()
+        logging.info(f"Database cleanup results: {results}")
+    except Exception as e:
+        logging.error(f"Database cleanup failed: {e}")
+
 
 def update_all_clients_watermarks():
     try:

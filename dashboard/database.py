@@ -1042,14 +1042,33 @@ def get_client_data(client_id: str) -> dict:
         return None
 
 def get_all_clients() -> dict:
-    """Get all client data."""
+    """Get all client data in a single query (avoids N+1 pattern)."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT client_id FROM clients_data')
+        cursor.execute('SELECT * FROM clients_data')
         clients = {}
         for row in cursor.fetchall():
             client_id = row['client_id']
-            clients[client_id] = get_client_data(client_id)
+            try:
+                identity = json.loads(row['identity'] or '{}') or {}
+            except Exception:
+                identity = {}
+            clients[client_id] = {
+                'deals': json.loads(row['deals']),
+                'positions': json.loads(row['positions']),
+                'account': json.loads(row['account']),
+                'evaluations': json.loads(row['evaluations']),
+                'statistics': json.loads(row['statistics']),
+                'dropdown_options': json.loads(row['dropdown_options']),
+                'identity': identity,
+                'sheet_url': identity.get('sheet_url') if isinstance(identity, dict) else None,
+                'last_updated': row['last_updated'],
+                'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
+                'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
+                'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
+                'payment_info': json.loads(row['payment_info'] or '[]'),
+                'payment_address': json.loads(row['payment_address'] or '{}'),
+            }
         return clients
 
 def delete_client_data(client_id: str) -> bool:
@@ -1523,17 +1542,26 @@ def get_latest_version(client_id: str) -> int:
         row = cursor.fetchone()
         return row['max_version'] or 0
 
-def cleanup_old_history(client_id: str = None, keep_versions: int = 100) -> int:
+def cleanup_old_history(client_id: str = None, keep_versions: int = 10) -> int:
     """
     Clean up old history entries, keeping only the latest N versions per client.
+    Also deletes any history entries older than 30 days regardless of version count.
     
     Returns the number of deleted entries.
     """
+    cutoff = (datetime.now() - timedelta(days=30)).isoformat()
     with get_connection() as conn:
         cursor = conn.cursor()
+        total_deleted = 0
         
         if client_id:
-            # Delete for specific client
+            clients = [client_id]
+        else:
+            cursor.execute('SELECT DISTINCT client_id FROM data_history')
+            clients = [row['client_id'] for row in cursor.fetchall()]
+        
+        for cid in clients:
+            # Delete versions beyond keep_versions limit
             cursor.execute('''
                 DELETE FROM data_history 
                 WHERE client_id = ? AND version NOT IN (
@@ -1542,31 +1570,47 @@ def cleanup_old_history(client_id: str = None, keep_versions: int = 100) -> int:
                     ORDER BY version DESC 
                     LIMIT ?
                 )
-            ''', (client_id, client_id, keep_versions))
-        else:
-            # Get all client IDs
-            cursor.execute('SELECT DISTINCT client_id FROM data_history')
-            clients = [row['client_id'] for row in cursor.fetchall()]
+            ''', (cid, cid, keep_versions))
+            total_deleted += cursor.rowcount
             
-            total_deleted = 0
-            for cid in clients:
-                cursor.execute('''
-                    DELETE FROM data_history 
-                    WHERE client_id = ? AND version NOT IN (
-                        SELECT version FROM data_history 
-                        WHERE client_id = ? 
-                        ORDER BY version DESC 
-                        LIMIT ?
-                    )
-                ''', (cid, cid, keep_versions))
-                total_deleted += cursor.rowcount
-            
-            conn.commit()
-            return total_deleted
+            # Also delete anything older than 30 days
+            cursor.execute('''
+                DELETE FROM data_history 
+                WHERE client_id = ? AND created_at < ?
+            ''', (cid, cutoff))
+            total_deleted += cursor.rowcount
         
+        conn.commit()
+        return total_deleted
+
+
+def cleanup_audit_log(keep_days: int = 30) -> int:
+    """Delete audit log entries older than keep_days. Returns count deleted."""
+    cutoff = (datetime.now() - timedelta(days=keep_days)).isoformat()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM audit_log WHERE timestamp < ?', (cutoff,))
         deleted = cursor.rowcount
         conn.commit()
         return deleted
+
+
+def cleanup_database() -> dict:
+    """
+    Master cleanup: prune data_history, audit_log, and expired sessions.
+    Returns a summary dict of rows deleted per table.
+    """
+    import logging
+    results = {}
+    
+    results['data_history'] = cleanup_old_history(keep_versions=10)
+    results['audit_log'] = cleanup_audit_log(keep_days=30)
+    cleanup_expired_sessions()
+    results['sessions'] = 'cleaned'
+    
+    total = sum(v for v in results.values() if isinstance(v, int))
+    logging.info(f"Database cleanup complete: {results} ({total} rows deleted)")
+    return results
 
 # ============ Audit Logging ============
 
