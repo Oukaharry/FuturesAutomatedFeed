@@ -5419,27 +5419,32 @@ def run_quality_scan(target_client=None):
 @require_role('super_admin')
 def api_run_quality_scan():
     """Run quality scan on all clients. Super admin only."""
-    from dashboard.database import save_quality_scan_results
-    results = run_quality_scan()
-    scan_date = datetime.now().strftime('%Y-%m-%d')
-    save_quality_scan_results(scan_date, results)
+    try:
+        from dashboard.database import save_quality_scan_results
+        results = run_quality_scan()
+        scan_date = datetime.now().strftime('%Y-%m-%d')
+        save_quality_scan_results(scan_date, results)
 
-    total_issues = sum(r['total_issues'] for r in results)
-    clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
-    avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
+        total_issues = sum(r['total_issues'] for r in results)
+        clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
+        avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
 
-    log_action('QUALITY_SCAN', 'super_admin', request.session_user.get('user_identifier'),
-               get_remote_address(), f"Scanned {len(results)} clients, {total_issues} total issues")
+        log_action('QUALITY_SCAN', 'super_admin', request.session_user.get('user_identifier'),
+                   get_remote_address(), f"Scanned {len(results)} clients, {total_issues} total issues")
 
-    return jsonify({
-        'status': 'success',
-        'scan_date': scan_date,
-        'total_clients': len(results),
-        'clients_with_issues': clients_with_issues,
-        'total_issues': total_issues,
-        'avg_health_score': round(avg_health, 1),
-        'results': results
-    })
+        return jsonify({
+            'status': 'success',
+            'scan_date': scan_date,
+            'total_clients': len(results),
+            'clients_with_issues': clients_with_issues,
+            'total_issues': total_issues,
+            'avg_health_score': round(avg_health, 1),
+            'results': results
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Scan failed: {str(e)}'}), 500
 
 
 @app.route('/api/quality/client/<client_id>', methods=['GET'])

@@ -3093,7 +3093,16 @@ def run_quality_scan(target_client=None):
         profile = get_client_profile(client_name)
         trader = profile.get('trader', '') if profile else ''
         admin = profile.get('admin', '') if profile else ''
-        data = get_client_data(client_name)
+        try:
+            data = get_client_data(client_name)
+        except Exception:
+            results.append({
+                'client_id': client_name, 'trader': trader, 'admin': admin,
+                'total_issues': 1, 'issues': [{'check': 'Data load error', 'severity': 'critical',
+                    'detail': 'Failed to load client data from database', 'estimated_date': scan_date_str}],
+                'health_score': 0.0
+            })
+            continue
 
         issues = []
 
@@ -3230,15 +3239,17 @@ def run_quality_scan(target_client=None):
                                    'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
                                    'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
-        hedge_accounts = data.get('hedge_accounts', [])
-        prop_accounts = data.get('prop_accounts', [])
+        hedge_accounts = data.get('hedge_accounts') or []
+        prop_accounts = data.get('prop_accounts') or []
         _hedge_filled = any(
             str(hacc.get('login', '') or '').strip() or str(hacc.get('password', '') or '').strip()
             for hacc in hedge_accounts
+            if isinstance(hacc, dict)
         )
         _prop_filled = any(
             str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
             for pa in prop_accounts
+            if isinstance(pa, dict)
         )
         if not _hedge_filled and not _prop_filled:
             issues.append({
@@ -3276,27 +3287,32 @@ def run_quality_scan(target_client=None):
 @require_role('super_admin')
 def api_run_quality_scan():
     """Run quality scan on all clients. Super admin only."""
-    from dashboard.database import save_quality_scan_results
-    results = run_quality_scan()
-    scan_date = datetime.now().strftime('%Y-%m-%d')
-    save_quality_scan_results(scan_date, results)
+    try:
+        from dashboard.database import save_quality_scan_results
+        results = run_quality_scan()
+        scan_date = datetime.now().strftime('%Y-%m-%d')
+        save_quality_scan_results(scan_date, results)
 
-    total_issues = sum(r['total_issues'] for r in results)
-    clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
-    avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
+        total_issues = sum(r['total_issues'] for r in results)
+        clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
+        avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
 
-    log_action('QUALITY_SCAN', 'super_admin', request.session_user.get('user_identifier'),
-               get_remote_address(), f"Scanned {len(results)} clients, {total_issues} total issues")
+        log_action('QUALITY_SCAN', 'super_admin', request.session_user.get('user_identifier'),
+                   get_remote_address(), f"Scanned {len(results)} clients, {total_issues} total issues")
 
-    return jsonify({
-        'status': 'success',
-        'scan_date': scan_date,
-        'total_clients': len(results),
-        'clients_with_issues': clients_with_issues,
-        'total_issues': total_issues,
-        'avg_health_score': round(avg_health, 1),
-        'results': results
-    })
+        return jsonify({
+            'status': 'success',
+            'scan_date': scan_date,
+            'total_clients': len(results),
+            'clients_with_issues': clients_with_issues,
+            'total_issues': total_issues,
+            'avg_health_score': round(avg_health, 1),
+            'results': results
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Scan failed: {str(e)}'}), 500
 
 # ============ Main Entry Point ============
 
