@@ -5968,6 +5968,108 @@ def api_daily_summary():
 
     lines.append(f"📋 Checklists submitted today: **{checklist_count}**")
     lines.append("")
+
+    # ── Daily Summary Submission Tracker ──
+    try:
+        from dashboard.database import get_summary_status_for_date, get_setting, get_client_data
+        from config.hierarchy import get_client_profile as _gcp
+        from datetime import timezone, timedelta as _td
+        import json as _json_mod
+
+        _kenyan_tz = timezone(_td(hours=3))
+        submissions = get_summary_status_for_date(date)
+        # Convert timestamps to Kenyan time
+        for s in submissions:
+            ts = s.get('submitted_at', '')
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    s['submitted_at'] = dt.astimezone(_kenyan_tz).isoformat()
+                except Exception:
+                    pass
+
+        sent_map = {s['client_id']: s for s in submissions}
+        excluded_traders = set(_json_mod.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+        excluded_clients = set(_json_mod.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+
+        # Build per-trader summary submission data
+        tracker_traders = {}  # trader -> {sent: [{client_id, time}], total: int}
+        tracked_total = 0
+        for client_name in all_clients:
+            profile = _gcp(client_name)
+            trader = (profile.get('trader', '') if profile else '') or 'Unassigned'
+            if trader in excluded_traders or client_name in excluded_clients:
+                continue
+            try:
+                cdata = get_client_data(client_name)
+                if cdata and isinstance(cdata.get('identity'), dict):
+                    if cdata['identity'].get('active_status') == 'inactive':
+                        continue
+            except Exception:
+                pass
+            tracked_total += 1
+            if trader not in tracker_traders:
+                tracker_traders[trader] = {'sent': [], 'total': 0}
+            tracker_traders[trader]['total'] += 1
+            if client_name in sent_map:
+                ts = sent_map[client_name].get('submitted_at', '')
+                tracker_traders[trader]['sent'].append(ts)
+
+        # Compute avg time per trader and rank
+        tracker_ranked = []
+        tracker_nosend = []
+        for t, d in tracker_traders.items():
+            sent_count = len(d['sent'])
+            if sent_count > 0:
+                # Parse times and compute average minutes since midnight
+                minutes_list = []
+                for ts in d['sent']:
+                    try:
+                        dt = datetime.fromisoformat(ts)
+                        minutes_list.append(dt.hour * 60 + dt.minute)
+                    except Exception:
+                        pass
+                avg_minutes = round(sum(minutes_list) / len(minutes_list)) if minutes_list else 1440
+                avg_hh = avg_minutes // 60
+                avg_mm = avg_minutes % 60
+                avg_time_str = f"{avg_hh:02d}:{avg_mm:02d}"
+                tracker_ranked.append((t, sent_count, d['total'], avg_minutes, avg_time_str))
+            else:
+                tracker_nosend.append((t, d['total']))
+
+        # Sort by avg time ascending (earliest first)
+        tracker_ranked.sort(key=lambda x: x[3])
+        total_sent_summary = sum(x[1] for x in tracker_ranked)
+
+        lines.append("📬 **DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)**")
+        pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0
+        lines.append(f"✅ {total_sent_summary}/{tracked_total} sent ({pct}%)")
+        lines.append("")
+        if tracker_ranked:
+            lines.append("⏰ **Sent (ranked by earliest avg time):**")
+            for rank, (t, sent, total, _avg_m, avg_t) in enumerate(tracker_ranked, 1):
+                if rank == 1:
+                    medal = '🥇'
+                elif rank == 2:
+                    medal = '🥈'
+                elif rank == 3:
+                    medal = '🥉'
+                else:
+                    medal = f'`#{rank}`'
+                complete = ' ✅' if sent == total else ''
+                lines.append(f"{medal} **{t}** — {sent}/{total}{complete} · avg {avg_t}")
+            lines.append("")
+        if tracker_nosend:
+            lines.append("❌ **Not submitted:**")
+            for t, total in sorted(tracker_nosend):
+                lines.append(f"⚠️ **{t}** — 0/{total} sent")
+            lines.append("")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
     lines.append("—")
 
     summary_text = "\n".join(lines)
