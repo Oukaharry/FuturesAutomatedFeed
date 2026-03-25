@@ -5419,32 +5419,97 @@ def run_quality_scan(target_client=None):
 @require_role('super_admin')
 def api_run_quality_scan():
     """Run quality scan on all clients. Super admin only."""
+    # Step 1: run the scan (reads client data only)
     try:
-        from dashboard.database import save_quality_scan_results
         results = run_quality_scan()
-        scan_date = datetime.now().strftime('%Y-%m-%d')
-        save_quality_scan_results(scan_date, results)
-
-        total_issues = sum(r['total_issues'] for r in results)
-        clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
-        avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
-
-        log_action('QUALITY_SCAN', 'super_admin', request.session_user.get('user_identifier'),
-                   get_remote_address(), f"Scanned {len(results)} clients, {total_issues} total issues")
-
-        return jsonify({
-            'status': 'success',
-            'scan_date': scan_date,
-            'total_clients': len(results),
-            'clients_with_issues': clients_with_issues,
-            'total_issues': total_issues,
-            'avg_health_score': round(avg_health, 1),
-            'results': results
-        })
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': f'Scan failed: {str(e)}'}), 500
+
+    scan_date = datetime.now().strftime('%Y-%m-%d')
+
+    # Step 2: persist results — non-fatal if the DB is in a bad state
+    save_warning = None
+    try:
+        from dashboard.database import save_quality_scan_results
+        save_quality_scan_results(scan_date, results)
+    except Exception as e:
+        save_warning = str(e)
+        logging.warning(f'Quality scan results could not be saved: {e}')
+
+    total_issues = sum(r['total_issues'] for r in results)
+    clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
+    avg_health = sum(r['health_score'] for r in results) / len(results) if results else 0
+
+    try:
+        log_action('QUALITY_SCAN', 'super_admin', request.session_user.get('user_identifier'),
+                   get_remote_address(), f'Scanned {len(results)} clients, {total_issues} total issues')
+    except Exception:
+        pass
+
+    resp = {
+        'status': 'success',
+        'scan_date': scan_date,
+        'total_clients': len(results),
+        'clients_with_issues': clients_with_issues,
+        'total_issues': total_issues,
+        'avg_health_score': round(avg_health, 1),
+        'results': results
+    }
+    if save_warning:
+        resp['save_warning'] = f'Results not persisted ({save_warning}). Run DB Repair to fix.'
+    return jsonify(resp)
+
+
+@app.route('/api/admin/db_repair', methods=['POST'])
+@require_role('super_admin')
+def api_db_repair():
+    """Attempt to repair the SQLite database: WAL checkpoint + re-init tables."""
+    from dashboard.database import get_connection, init_database
+    report = {}
+
+    # 1. Integrity check
+    try:
+        with get_connection() as conn:
+            rows = conn.execute('PRAGMA integrity_check').fetchall()
+            checks = [r[0] for r in rows]
+            report['integrity_check'] = checks
+            report['integrity_ok'] = (checks == ['ok'])
+    except Exception as e:
+        report['integrity_check'] = [str(e)]
+        report['integrity_ok'] = False
+
+    # 2. WAL checkpoint — flushes the write-ahead log back into the main file
+    try:
+        with get_connection() as conn:
+            conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        report['wal_checkpoint'] = 'ok'
+    except Exception as e:
+        report['wal_checkpoint'] = str(e)
+
+    # 3. Re-run init_database to create any missing tables
+    try:
+        init_database()
+        report['reinit_tables'] = 'ok'
+    except Exception as e:
+        report['reinit_tables'] = str(e)
+
+    # 4. Quick VACUUM to defragment (only if integrity passed)
+    if report.get('integrity_ok'):
+        try:
+            with get_connection() as conn:
+                conn.execute('VACUUM')
+            report['vacuum'] = 'ok'
+        except Exception as e:
+            report['vacuum'] = str(e)
+    else:
+        report['vacuum'] = 'skipped (integrity not ok)'
+
+    overall = 'repaired' if report.get('reinit_tables') == 'ok' else 'partial'
+    log_action('DB_REPAIR', 'super_admin', request.session_user.get('user_identifier'),
+               get_remote_address(), f'DB repair: integrity_ok={report.get("integrity_ok")}')
+    return jsonify({'status': overall, 'report': report})
 
 
 @app.route('/api/quality/client/<client_id>', methods=['GET'])
