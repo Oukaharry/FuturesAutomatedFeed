@@ -5484,13 +5484,13 @@ def api_quality_client(client_id):
         if saved:
             for r in saved:
                 if r.get('client_id') == client_id:
-                    # Filter out infrastructure errors (DB corruption etc) for non-super-admins
-                    if user_type != 'super_admin':
-                        issues = r.get('issues', [])
-                        filtered = [i for i in issues if i.get('check') != 'Scan error']
-                        r = dict(r, issues=filtered, total_issues=len(filtered))
-                        if not filtered:
-                            r['health_score'] = 100.0
+                    # Filter out infrastructure errors (DB corruption etc) —
+                    # those belong on the quality dashboard, not per-client views
+                    issues = r.get('issues', [])
+                    filtered = [i for i in issues if i.get('check') != 'Scan error']
+                    r = dict(r, issues=filtered, total_issues=len(filtered))
+                    if not filtered:
+                        r['health_score'] = 100.0
                     return jsonify({"status": "success", "data": r})
     except Exception:
         pass
