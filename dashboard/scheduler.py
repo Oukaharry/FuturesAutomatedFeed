@@ -287,17 +287,19 @@ def _build_daily_summary_text():
                 pass
             tracked_total += 1
             if trader not in tracker_traders:
-                tracker_traders[trader] = {'sent': [], 'total': 0}
+                tracker_traders[trader] = {'sent': [], 'not_sent': [], 'total': 0}
             tracker_traders[trader]['total'] += 1
             if client_name in sent_map:
                 ts = sent_map[client_name].get('submitted_at', '')
                 tracker_traders[trader]['sent'].append(ts)
+            else:
+                tracker_traders[trader]['not_sent'].append(client_name)
 
-        tracker_ranked = []
-        tracker_nosend = []
+        tracker_complete = []   # 100% — will be ranked
+        tracker_incomplete = [] # partial or zero sends
         for t, d in tracker_traders.items():
             sent_count = len(d['sent'])
-            if sent_count > 0:
+            if sent_count == d['total']:
                 minutes_list = []
                 for ts in d['sent']:
                     try:
@@ -309,20 +311,21 @@ def _build_daily_summary_text():
                 avg_hh = avg_minutes // 60
                 avg_mm = avg_minutes % 60
                 avg_time_str = f"{avg_hh:02d}:{avg_mm:02d}"
-                tracker_ranked.append((t, sent_count, d['total'], avg_minutes, avg_time_str))
+                tracker_complete.append((t, sent_count, d['total'], avg_minutes, avg_time_str))
             else:
-                tracker_nosend.append((t, d['total']))
+                tracker_incomplete.append((t, sent_count, d['total'], d['not_sent']))
 
-        tracker_ranked.sort(key=lambda x: x[3])
-        total_sent_summary = sum(x[1] for x in tracker_ranked)
+        tracker_complete.sort(key=lambda x: x[3])
+        tracker_incomplete.sort(key=lambda x: x[0])
+        total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
         lines.append("📬 *DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)*")
         pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0
         lines.append(f"✅ {total_sent_summary}/{tracked_total} sent ({pct}%)")
         lines.append("")
-        if tracker_ranked:
-            lines.append("⏰ *Sent (ranked by earliest avg time):*")
-            for rank, (t, sent, total, _avg_m, avg_t) in enumerate(tracker_ranked, 1):
+        if tracker_complete:
+            lines.append("🏆 *Complete (ranked by earliest avg time):*")
+            for rank, (t, sent, total, _avg_m, avg_t) in enumerate(tracker_complete, 1):
                 if rank == 1:
                     medal = '🥇'
                 elif rank == 2:
@@ -331,14 +334,16 @@ def _build_daily_summary_text():
                     medal = '🥉'
                 else:
                     medal = f'#{rank}'
-                complete = ' ✅' if sent == total else ''
-                lines.append(f"{medal} *{t}* — {sent}/{total}{complete} · avg {avg_t}")
+                lines.append(f"{medal} *{t}* — {sent}/{total} ✅ · avg {avg_t}")
             lines.append("")
-        if tracker_nosend:
-            lines.append("❌ *Not submitted:*")
-            for t, total in sorted(tracker_nosend):
-                lines.append(f"⚠️ *{t}* — 0/{total} sent")
+        if tracker_incomplete:
+            lines.append("❌ *Incomplete — missing clients:*")
+            for t, sent, total, missing in tracker_incomplete:
+                lines.append(f"⚠️ *{t}* — {sent}/{total} sent")
+                lines.append(f"   ⛔ {', '.join(missing)}")
             lines.append("")
+        lines.append("👁️ _We track everything — every submission, every miss, every second._")
+        lines.append("")
     except Exception as e:
         import traceback
         traceback.print_exc()
