@@ -5562,15 +5562,42 @@ def api_quality_scan_dates():
 def api_summary_status():
     """Get daily summary submission status for all clients, grouped by trader."""
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
-    from dashboard.database import get_summary_status_for_date
+    from dashboard.database import get_summary_status_for_date, get_setting, get_client_data
+    import json as _json
+
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     submissions = get_summary_status_for_date(date)
     sent_map = {s['client_id']: s for s in submissions}
     all_clients = hierarchy_get_all_clients()
+
+    # Load exclusion settings
+    excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+    excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+
     traders = {}  # trader -> {sent: [...], not_sent: [...]}
+    tracked_count = 0
     for client_name in all_clients:
         profile = get_client_profile(client_name)
         trader = (profile.get('trader', '') if profile else '') or 'Unassigned'
+
+        # Skip excluded traders entirely
+        if trader in excluded_traders:
+            continue
+
+        # Skip excluded clients
+        if client_name in excluded_clients:
+            continue
+
+        # Skip inactive clients by default
+        try:
+            cdata = get_client_data(client_name)
+            if cdata and isinstance(cdata.get('identity'), dict):
+                if cdata['identity'].get('active_status') == 'inactive':
+                    continue
+        except Exception:
+            pass
+
+        tracked_count += 1
         if trader not in traders:
             traders[trader] = {'sent': [], 'not_sent': []}
         if client_name in sent_map:
@@ -5583,8 +5610,7 @@ def api_summary_status():
         else:
             traders[trader]['not_sent'].append(client_name)
     # Build response
-    total_clients = len(all_clients)
-    total_sent = len(sent_map)
+    total_sent = sum(len(d['sent']) for d in traders.values())
     result = []
     for trader, data in sorted(traders.items()):
         result.append({
@@ -5596,10 +5622,49 @@ def api_summary_status():
         })
     return jsonify({
         'status': 'success', 'date': date,
-        'total_clients': total_clients, 'total_sent': total_sent,
-        'total_not_sent': total_clients - total_sent,
+        'total_clients': tracked_count, 'total_sent': total_sent,
+        'total_not_sent': tracked_count - total_sent,
+        'excluded_traders': sorted(excluded_traders),
+        'excluded_clients': sorted(excluded_clients),
         'traders': result
     })
+
+
+@app.route('/api/quality/summary_tracker_exclude', methods=['POST'])
+@require_role('super_admin')
+def api_summary_tracker_exclude():
+    """Toggle a trader or client exclusion from the Daily Summary Tracker."""
+    from dashboard.database import get_setting, set_setting
+    import json as _json
+
+    data = request.get_json(force=True)
+    exclude_type = data.get('type')  # 'trader' or 'client'
+    name = (data.get('name') or '').strip()
+    action = data.get('action', 'toggle')  # 'add', 'remove', or 'toggle'
+
+    if exclude_type not in ('trader', 'client') or not name:
+        return jsonify({'status': 'error', 'message': 'Invalid type or name'}), 400
+
+    key = f'summary_tracker_excluded_{"traders" if exclude_type == "trader" else "clients"}'
+    current = set(_json.loads(get_setting(key) or '[]'))
+
+    if action == 'add':
+        current.add(name)
+    elif action == 'remove':
+        current.discard(name)
+    else:  # toggle
+        if name in current:
+            current.discard(name)
+        else:
+            current.add(name)
+
+    user_id = request.session_user.get('user_identifier', '')
+    set_setting(key, _json.dumps(sorted(current)), updated_by=user_id)
+
+    log_action('SUMMARY_TRACKER_EXCLUDE', 'super_admin', user_id,
+               get_remote_address(), f'{action} {exclude_type}: {name}')
+
+    return jsonify({'status': 'success', 'excluded': sorted(current)})
 
 
 @app.route('/api/admin/repair_db', methods=['POST'])

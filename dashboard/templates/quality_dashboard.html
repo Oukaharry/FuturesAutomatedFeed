@@ -274,6 +274,25 @@
             <button onclick="loadSummaryStatus()" style="margin-left:12px; background:linear-gradient(135deg,#22c55e,#16a34a); border:none; color:#fff; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
                 <i class="fas fa-sync-alt"></i> Refresh
             </button>
+            <button onclick="toggleTrackerExclusions()" id="tracker-manage-btn" style="margin-left:8px; background:rgba(100,116,139,0.2); border:1px solid rgba(100,116,139,0.3); color:#94a3b8; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
+                <i class="fas fa-eye-slash"></i> Manage Exclusions
+            </button>
+        </div>
+        <div id="tracker-exclusion-panel" style="display:none; background:#090f1e; border:1px solid #162040; border-radius:12px; padding:16px; margin-bottom:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <span style="font-weight:700; color:#e2e8f0; font-size:0.88rem;"><i class="fas fa-eye-slash" style="color:#f87171; margin-right:6px;"></i>Excluded from Tracking</span>
+                <span style="font-size:0.72rem; color:#4a6080;">Inactive clients are always excluded</span>
+            </div>
+            <div style="display:flex; gap:24px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                    <div style="font-size:0.78rem; color:#60a5fa; font-weight:600; margin-bottom:6px;">Excluded Traders</div>
+                    <div id="excluded-traders-list" style="font-size:0.8rem; color:#94a3b8;">None</div>
+                </div>
+                <div style="flex:1; min-width:200px;">
+                    <div style="font-size:0.78rem; color:#60a5fa; font-weight:600; margin-bottom:6px;">Excluded Clients</div>
+                    <div id="excluded-clients-list" style="font-size:0.8rem; color:#94a3b8;">None</div>
+                </div>
+            </div>
         </div>
         <div id="summary-tracker-container" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:16px;">
             <div class="empty-state" style="grid-column:1/-1;"><i class="fas fa-paper-plane" style="font-size:2rem; opacity:0.3; margin-bottom:8px;"></i><div>Loading summary status...</div></div>
@@ -857,6 +876,55 @@
             }
         }
 
+        let _trackerExcludedTraders = [];
+        let _trackerExcludedClients = [];
+
+        function toggleTrackerExclusions() {
+            const panel = document.getElementById('tracker-exclusion-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function renderExclusionPanel() {
+            const tList = document.getElementById('excluded-traders-list');
+            const cList = document.getElementById('excluded-clients-list');
+            if (_trackerExcludedTraders.length === 0) {
+                tList.innerHTML = '<span style="color:#4a6080;">None</span>';
+            } else {
+                tList.innerHTML = _trackerExcludedTraders.map(t =>
+                    `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);border-radius:6px;padding:2px 8px;margin:2px;">
+                        <span>${t}</span>
+                        <i class="fas fa-times" style="cursor:pointer;color:#f87171;font-size:0.7rem;" onclick="toggleExclude('trader','${t.replace(/'/g, "\\'")}')"></i>
+                    </div>`
+                ).join('');
+            }
+            if (_trackerExcludedClients.length === 0) {
+                cList.innerHTML = '<span style="color:#4a6080;">None</span>';
+            } else {
+                cList.innerHTML = _trackerExcludedClients.map(c =>
+                    `<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.2);border-radius:6px;padding:2px 8px;margin:2px;">
+                        <span>${c}</span>
+                        <i class="fas fa-times" style="cursor:pointer;color:#f87171;font-size:0.7rem;" onclick="toggleExclude('client','${c.replace(/'/g, "\\'")}')"></i>
+                    </div>`
+                ).join('');
+            }
+        }
+
+        async function toggleExclude(type, name) {
+            try {
+                const resp = await fetch('/api/quality/summary_tracker_exclude', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type, name, action: 'toggle' })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    loadSummaryStatus();
+                }
+            } catch (e) {
+                console.error('Failed to toggle exclusion:', e);
+            }
+        }
+
         async function loadSummaryStatus() {
             const container = document.getElementById('summary-tracker-container');
             const badge = document.getElementById('summary-tracker-badge');
@@ -866,6 +934,12 @@
                 const resp = await fetch('/api/quality/summary_status?_t=' + Date.now());
                 const data = await resp.json();
                 if (data.status !== 'success') { container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div>Failed to load</div></div>'; return; }
+
+                // Store exclusion lists
+                _trackerExcludedTraders = data.excluded_traders || [];
+                _trackerExcludedClients = data.excluded_clients || [];
+                renderExclusionPanel();
+
                 const pct = data.total_clients > 0 ? Math.round(data.total_sent / data.total_clients * 100) : 0;
                 const badgeColor = pct === 100 ? '#4ade80' : pct >= 50 ? '#fbbf24' : '#f87171';
                 badge.textContent = `${data.total_sent}/${data.total_clients} sent (${pct}%)`;
@@ -885,6 +959,7 @@
                         return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
                             <i class="fas fa-circle-check" style="color:#4ade80;font-size:0.7rem;"></i>
                             <span style="color:#e2e8f0;font-size:0.8rem;">${s.client_id}</span>
+                            <i class="fas fa-eye-slash" title="Exclude ${s.client_id}" style="cursor:pointer;color:#334155;font-size:0.6rem;margin-left:2px;opacity:0;transition:opacity 0.2s;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0" onclick="toggleExclude('client','${s.client_id.replace(/'/g, "\\'")}')"></i>
                             <span style="color:#4a6080;font-size:0.72rem;margin-left:auto;">${time}</span>
                         </div>`;
                     }).join('');
@@ -892,11 +967,15 @@
                         return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
                             <i class="fas fa-circle-xmark" style="color:#f87171;font-size:0.7rem;"></i>
                             <span style="color:#94a3b8;font-size:0.8rem;">${c}</span>
+                            <i class="fas fa-eye-slash" title="Exclude ${c}" style="cursor:pointer;color:#334155;font-size:0.6rem;margin-left:2px;opacity:0;transition:opacity 0.2s;" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0" onclick="toggleExclude('client','${c.replace(/'/g, "\\'")}')"></i>
                         </div>`;
                     }).join('');
                     return `<div style="background:#090f1e;border:1px solid #162040;border-top:1px solid #1e3060;border-radius:12px;padding:16px;box-shadow:0 4px 16px rgba(1,3,10,0.5);">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                            <span style="font-weight:700;color:#e2e8f0;font-size:0.92rem;"><i class="fas fa-user-tie" style="color:#60a5fa;margin-right:6px;"></i>${t.trader}</span>
+                            <span style="font-weight:700;color:#e2e8f0;font-size:0.92rem;">
+                                <i class="fas fa-user-tie" style="color:#60a5fa;margin-right:6px;"></i>${t.trader}
+                                <i class="fas fa-eye-slash" title="Exclude trader ${t.trader}" style="cursor:pointer;color:#334155;font-size:0.6rem;margin-left:6px;" onmouseenter="this.style.color='#f87171'" onmouseleave="this.style.color='#334155'" onclick="toggleExclude('trader','${t.trader.replace(/'/g, "\\'")}')"></i>
+                            </span>
                             <span style="font-size:0.78rem;font-weight:600;color:${tColor};">${t.sent_count}/${t.total}</span>
                         </div>
                         <div class="health-bar" style="margin-bottom:12px;"><div class="health-fill" style="width:${tPct}%;background:${tColor};"></div></div>
