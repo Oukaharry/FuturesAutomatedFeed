@@ -198,6 +198,21 @@ def _build_daily_summary_text():
             lines.append(f"  • {check}: {count} occurrences")
         lines.append("")
 
+    # Downtime alert — list every client with stale days
+    downtime_clients = []
+    for r in scan_results:
+        for iss in r['issues']:
+            if iss['check'] == 'Downtime detected':
+                downtime_clients.append((r.get('trader', 'Unknown'), r['client_id'], iss['detail']))
+    if downtime_clients:
+        lines.append("🚨 *DOWNTIME ALERT — CRITICAL*")
+        lines.append(f"⚠️ {len(downtime_clients)} account(s) with stale trading days:")
+        for trader, client, detail in sorted(downtime_clients):
+            # Extract the stale day names from detail
+            stale_part = detail.split('Stale day(s) found: ')[-1].split(' —')[0] if 'Stale day(s) found: ' in detail else detail
+            lines.append(f"  🔴 *{client}* ({trader}) — {stale_part}")
+        lines.append("")
+
     if trader_stats:
         # Gamified Trader Health Leaderboard — ranked best to worst
         ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
