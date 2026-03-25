@@ -19,12 +19,61 @@ def get_db_path():
 @contextmanager
 def get_connection():
     """Context manager for database connections."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL')
     try:
         yield conn
     finally:
         conn.close()
+
+def check_and_repair_database():
+    """Run integrity check and attempt recovery if database is corrupted.
+    Returns (ok: bool, message: str)."""
+    import shutil
+    try:
+        with get_connection() as conn:
+            result = conn.execute('PRAGMA integrity_check').fetchone()
+            if result and result[0] == 'ok':
+                return True, 'Database integrity OK'
+    except Exception as e:
+        pass  # Fall through to repair
+
+    # Database is corrupt — attempt dump-and-rebuild recovery
+    backup_path = DB_PATH + '.corrupt.' + datetime.now().strftime('%Y%m%d_%H%M%S')
+    new_path = DB_PATH + '.new'
+    try:
+        # Backup the corrupt file
+        shutil.copy2(DB_PATH, backup_path)
+
+        # Try to dump what we can from the corrupt DB
+        src = sqlite3.connect(DB_PATH)
+        lines = []
+        try:
+            for line in src.iterdump():
+                lines.append(line)
+        except Exception:
+            pass  # Get what we can
+        finally:
+            src.close()
+
+        if lines:
+            # Rebuild into a new DB
+            dst = sqlite3.connect(new_path)
+            dst.executescript('\n'.join(lines))
+            dst.close()
+
+            # Swap files
+            os.replace(new_path, DB_PATH)
+            init_database()  # Ensure all tables exist
+            return True, f'Database repaired via dump-rebuild. Corrupt backup: {os.path.basename(backup_path)}'
+        else:
+            # Nothing recoverable — reinitialize from scratch
+            os.remove(DB_PATH)
+            init_database()
+            return True, f'Database was unrecoverable — reinitialized empty. Corrupt backup: {os.path.basename(backup_path)}'
+    except Exception as e:
+        return False, f'Repair failed: {str(e)}'
 
 def init_database():
     """Initialize the database with required tables."""

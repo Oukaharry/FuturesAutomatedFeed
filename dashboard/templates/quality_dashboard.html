@@ -215,8 +215,8 @@
             <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69); margin-left:8px;" title="Post daily summary to Slack">
                 <i class="fab fa-slack"></i> Send to Slack
             </button>
-            <button class="scan-btn" id="repair-btn" onclick="repairDb()" style="background:linear-gradient(135deg,#b45309,#92400e); margin-left:8px;" title="Repair database: WAL checkpoint + reinitialize tables">
-                <i class="fas fa-wrench"></i> DB Repair
+            <button class="scan-btn" id="repair-btn" onclick="repairDB()" style="background:linear-gradient(135deg,#ef4444,#b91c1c); margin-left:8px;" title="Repair corrupted database">
+                <i class="fas fa-wrench"></i> Repair DB
             </button>
             </div>
         </div>
@@ -652,33 +652,25 @@
             setTimeout(() => { toast.classList.add('hiding'); setTimeout(() => toast.remove(), 300); }, type === 'error' ? 6000 : 4000);
         }
 
-        async function repairDb() {
+        async function repairDB() {
+            if (!confirm('This will attempt to repair a corrupted database. Proceed?')) return;
             const btn = document.getElementById('repair-btn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Repairing...';
             try {
-                const resp = await fetch('/api/admin/db_repair', { method: 'POST' });
+                const resp = await fetch('/api/admin/repair_db', { method: 'POST' });
                 const data = await resp.json();
-                const r = data.report || {};
-                const ok = r.integrity_ok;
-                const detail = [
-                    `Integrity: ${ok ? '✓ ok' : '✗ malformed'}`,
-                    `WAL: ${r.wal_checkpoint || '?'}`,
-                    `Tables reinit: ${r.reinit_tables || '?'}`,
-                    r.vacuum ? `Vacuum: ${r.vacuum}` : ''
-                ].filter(Boolean).join(' · ');
-                if (ok) {
-                    showToast('success', 'DB Repair complete', detail);
+                if (data.status === 'success') {
+                    showToast('success', 'Database repaired', data.message);
+                    setTimeout(() => loadResults(), 1000);
                 } else {
-                    showToast('error', 'DB still malformed after repair', detail + ' — manual recovery needed on server (see console).');
-                    console.warn('DB Repair report:', r);
-                    console.warn('Manual recovery: SSH into PythonAnywhere, run: sqlite3 db.sqlite ".recover" | sqlite3 new.db, then replace old db file and reload app.');
+                    showToast('error', 'Repair failed', data.message || 'Unknown error');
                 }
-            } catch(e) {
-                showToast('error', 'DB Repair failed', e.message);
+            } catch (e) {
+                showToast('error', 'Repair failed', e.message);
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-wrench"></i> DB Repair';
+                btn.innerHTML = '<i class="fas fa-wrench"></i> Repair DB';
             }
         }
 

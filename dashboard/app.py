@@ -5200,217 +5200,212 @@ def run_quality_scan(target_client=None):
         admin = profile.get('admin', '') if profile else ''
         try:
             data = get_client_data(client_name)
-        except Exception:
+
+            issues = []
+
+            if not data:
+                issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'Client has no saved data in database',
+                               'estimated_date': scan_date_str})
+                results.append({
+                    'client_id': client_name, 'trader': trader, 'admin': admin,
+                    'total_issues': len(issues), 'issues': issues, 'health_score': 0.0
+                })
+                continue
+
+            # Skip inactive clients — their stats are still calculated but no quality checks
+            identity = data.get('identity', {})
+            if isinstance(identity, dict) and identity.get('active_status') == 'inactive':
+                results.append({
+                    'client_id': client_name, 'trader': trader, 'admin': admin,
+                    'total_issues': 0, 'issues': [], 'health_score': 100.0,
+                    'skipped': True, 'skip_reason': 'inactive'
+                })
+                continue
+
+            evaluations = data.get('evaluations', [])
+
+            # Inject cell notes so checks like "Negative Hedge Net, no note" can see them
+            try:
+                notes = get_client_notes(client_name)
+                for i, ev in enumerate(evaluations):
+                    if i in notes:
+                        ev['_notes'] = notes[i]
+            except Exception:
+                pass
+
+            if not evaluations:
+                issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows',
+                               'estimated_date': scan_date_str})
+
+            # Activity tracking
+            activity = get_client_activity(client_name) or {}
+            last_push = activity.get('last_push_at')
+            if last_push:
+                try:
+                    push_dt = datetime.fromisoformat(last_push)
+                    hours_since_push = (now - push_dt).total_seconds() / 3600
+                    # Flag if >24h since last push on a weekday (Mon-Fri)
+                    if hours_since_push > 24 and today_weekday < 5:
+                        issues.append({'check': 'No recent MT5 push', 'severity': 'high',
+                                       'detail': f'Last push {hours_since_push:.0f}h ago',
+                                       'estimated_date': push_dt.strftime('%Y-%m-%d')})
+                except (ValueError, TypeError):
+                    pass
+
+            # Check each evaluation row
+            total_checks = 0
+            for idx, ev in enumerate(evaluations):
+                row_label = f'Row {idx + 1}'
+                # Skip internal/deleted rows
+                if ev.get('_deleted'):
+                    continue
+
+                status_p1 = str(ev.get('Status P1', '') or '').strip().lower()
+                status_p2 = str(ev.get('Status', '') or '').strip().lower()
+                is_active = status_p1 not in ('fail', 'breach', 'sl', 'completed', 'complete', '')
+
+                prop_firm = str(ev.get('Prop Firm', '') or '').strip()
+                acct_size = str(ev.get('Account Size', '') or '').strip()
+                has_data = bool(prop_firm or acct_size)
+                total_checks += 1
+
+                if not has_data:
+                    continue
+
+                # Skip defunct prop firms — no point flagging issues on closed firms
+                if prop_firm.lower() in ('funding ticks', 'fundingticks'):
+                    continue
+
+                # Detect "double dip" — MFF/TopStep accounts with an activation fee
+                # These are reset at funded stage so eval-phase fields are intentionally blank
+                _dd_firms = ('my funded futures', 'mff', 'topstep', 'top step', 'topstepx')
+                activation_fee = str(ev.get('Activation Fee', '') or '').strip()
+                is_double_dip = (
+                    prop_firm.lower() in _dd_firms
+                    and bool(activation_fee)
+                )
+
+                # Status blank on non-empty row
+                if not status_p1 and has_data and not is_double_dip:
+                    issues.append({'check': 'Status blank', 'severity': 'medium', 'row': idx,
+                                   'detail': f'{row_label}: Has data but no Status P1',
+                                   'estimated_date': _estimate_issue_date(ev, 'Status blank', scan_date_str)})
+
+                # Empty Fee
+                fee = str(ev.get('Fee', '') or '').strip()
+                if not fee and has_data and not is_double_dip:
+                    issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
+                                   'detail': f'{row_label}: Fee not filled in',
+                                   'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
+
+                # Empty Account Size
+                if not acct_size and prop_firm and not is_double_dip:
+                    issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
+                                   'detail': f'{row_label}: Account Size blank',
+                                   'estimated_date': _estimate_issue_date(ev, 'Empty Account Size', scan_date_str)})
+
+                # Empty Account #
+                acct_num = str(ev.get('Account #', '') or '').strip()
+                acct_num2 = str(ev.get('Account #.1', '') or '').strip()
+                if is_active and not acct_num and not acct_num2:
+                    # For double dips, only the funded-phase account # matters
+                    if not is_double_dip or not acct_num2:
+                        issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
+                                       'detail': f'{row_label}: Active but no account number',
+                                       'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
+
+                # Empty Activation Fee on funded rows
+                activation = str(ev.get('Activation Fee', '') or '').strip()
+                if status_p2 in ('funded', 'live', 'payout') and not activation:
+                    issues.append({'check': 'Empty Activation Fee', 'severity': 'medium', 'row': idx,
+                                   'detail': f'{row_label}: Funded but no activation fee',
+                                   'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
+
+                # Active account: at least one cell must contain a weekday name (Mon-Fri)
+                _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
+                _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
+                if not _inactive_p1 and not _inactive_p2 and status_p1:
+                    weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+                                'mon', 'tue', 'wed', 'thu', 'fri',
+                                'tues', 'weds', 'thurs'}
+                    has_weekday = False
+                    for val in ev.values():
+                        s = str(val or '').strip().lower()
+                        if any(wd in s for wd in weekdays):
+                            has_weekday = True
+                            break
+                    if not has_weekday:
+                        issues.append({'check': 'No current day value', 'severity': 'medium', 'row': idx,
+                                       'detail': f'{row_label}: Active account has no cell with a weekday (Mon-Fri)',
+                                       'estimated_date': _estimate_issue_date(ev, 'No current day value', scan_date_str)})
+
+                # Negative Hedge Net without note
+                def _parse_num(v):
+                    try: return float(str(v).replace('$', '').replace(',', '').strip())
+                    except (ValueError, TypeError): return None
+
+                hedge_net = _parse_num(ev.get('Hedge Net', ''))
+                if hedge_net is not None and hedge_net < 0:
+                    cell_notes = ev.get('_notes', {}) or {}
+                    has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
+                    notes_col = str(ev.get('Notes', '') or '').strip()
+                    has_note = has_any_note or bool(notes_col)
+                    if not has_note:
+                        issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
+                                       'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
+                                       'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
+
+            # Hedge account or Prop Firm missing check
+            hedge_accounts = data.get('hedge_accounts') or []
+            prop_accounts = data.get('prop_accounts') or []
+            _hedge_filled = any(
+                str(hacc.get('login', '') or '').strip() or str(hacc.get('password', '') or '').strip()
+                for hacc in hedge_accounts
+                if isinstance(hacc, dict)
+            )
+            _prop_filled = any(
+                str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
+                for pa in prop_accounts
+                if isinstance(pa, dict)
+            )
+            if not _hedge_filled and not _prop_filled:
+                issues.append({
+                    'check': 'Hedge account or Prop Firm missing',
+                    'severity': 'high',
+                    'tab': 'hedge',
+                    'detail': 'No hedge account credentials found — fill in Hedge Accounts tab',
+                    'estimated_date': scan_date_str
+                })
+                issues.append({
+                    'check': 'Hedge account or Prop Firm missing',
+                    'severity': 'high',
+                    'tab': 'prop',
+                    'detail': 'No prop firm credentials found — fill in Prop Firm Accounts tab',
+                    'estimated_date': scan_date_str
+                })
+
+            # Calculate health score (100 - deductions)
+            severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3}
+            deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
+            health_score = max(0.0, 100.0 - deduction)
+
+            results.append({
+                'client_id': client_name,
+                'trader': trader,
+                'admin': admin,
+                'total_issues': len(issues),
+                'issues': issues,
+                'health_score': round(health_score, 1)
+            })
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
             results.append({
                 'client_id': client_name, 'trader': trader, 'admin': admin,
-                'total_issues': 1, 'issues': [{'check': 'Data load error', 'severity': 'critical',
-                    'detail': 'Failed to load client data from database', 'estimated_date': scan_date_str}],
+                'total_issues': 1, 'issues': [{'check': 'Scan error', 'severity': 'critical',
+                    'detail': f'Error scanning client: {str(exc)}', 'estimated_date': scan_date_str}],
                 'health_score': 0.0
             })
-            continue
-
-        issues = []
-
-        if not data:
-            issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'Client has no saved data in database',
-                           'estimated_date': scan_date_str})
-            results.append({
-                'client_id': client_name, 'trader': trader, 'admin': admin,
-                'total_issues': len(issues), 'issues': issues, 'health_score': 0.0
-            })
-            continue
-
-        # Skip inactive clients — their stats are still calculated but no quality checks
-        identity = data.get('identity', {})
-        if isinstance(identity, dict) and identity.get('active_status') == 'inactive':
-            results.append({
-                'client_id': client_name, 'trader': trader, 'admin': admin,
-                'total_issues': 0, 'issues': [], 'health_score': 100.0,
-                'skipped': True, 'skip_reason': 'inactive'
-            })
-            continue
-
-        evaluations = data.get('evaluations', [])
-
-        # Inject cell notes so checks like "Negative Hedge Net, no note" can see them
-        try:
-            notes = get_client_notes(client_name)
-            for i, ev in enumerate(evaluations):
-                if i in notes:
-                    ev['_notes'] = notes[i]
-        except Exception:
-            pass
-
-        if not evaluations:
-            issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows',
-                           'estimated_date': scan_date_str})
-
-        # Activity tracking
-        activity = get_client_activity(client_name) or {}
-        last_push = activity.get('last_push_at')
-        if last_push:
-            try:
-                push_dt = datetime.fromisoformat(last_push)
-                hours_since_push = (now - push_dt).total_seconds() / 3600
-                # Flag if >24h since last push on a weekday (Mon-Fri)
-                if hours_since_push > 24 and today_weekday < 5:
-                    issues.append({'check': 'No recent MT5 push', 'severity': 'high',
-                                   'detail': f'Last push {hours_since_push:.0f}h ago',
-                                   'estimated_date': push_dt.strftime('%Y-%m-%d')})
-            except (ValueError, TypeError):
-                pass
-        # (Removed: 'No MT5 push ever' check — not a data quality issue)
-
-        # Check each evaluation row
-        total_checks = 0
-        for idx, ev in enumerate(evaluations):
-            row_label = f'Row {idx + 1}'
-            # Skip internal/deleted rows
-            if ev.get('_deleted'):
-                continue
-
-            status_p1 = str(ev.get('Status P1', '') or '').strip().lower()
-            status_p2 = str(ev.get('Status', '') or '').strip().lower()
-            is_active = status_p1 not in ('fail', 'breach', 'sl', 'completed', 'complete', '')
-
-            prop_firm = str(ev.get('Prop Firm', '') or '').strip()
-            acct_size = str(ev.get('Account Size', '') or '').strip()
-            has_data = bool(prop_firm or acct_size)
-            total_checks += 1
-
-            if not has_data:
-                continue
-
-            # Skip defunct prop firms — no point flagging issues on closed firms
-            if prop_firm.lower() in ('funding ticks', 'fundingticks'):
-                continue
-
-            # Detect "double dip" — MFF/TopStep accounts with an activation fee
-            # These are reset at funded stage so eval-phase fields are intentionally blank
-            _dd_firms = ('my funded futures', 'mff', 'topstep', 'top step', 'topstepx')
-            activation_fee = str(ev.get('Activation Fee', '') or '').strip()
-            is_double_dip = (
-                prop_firm.lower() in _dd_firms
-                and bool(activation_fee)
-            )
-
-            # Status blank on non-empty row
-            if not status_p1 and has_data and not is_double_dip:
-                issues.append({'check': 'Status blank', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Has data but no Status P1',
-                               'estimated_date': _estimate_issue_date(ev, 'Status blank', scan_date_str)})
-
-
-
-            # Empty Fee
-            fee = str(ev.get('Fee', '') or '').strip()
-            if not fee and has_data and not is_double_dip:
-                issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
-                               'detail': f'{row_label}: Fee not filled in',
-                               'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
-
-            # Empty Account Size
-            if not acct_size and prop_firm and not is_double_dip:
-                issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
-                               'detail': f'{row_label}: Account Size blank',
-                               'estimated_date': _estimate_issue_date(ev, 'Empty Account Size', scan_date_str)})
-
-            # Empty Account #
-            acct_num = str(ev.get('Account #', '') or '').strip()
-            acct_num2 = str(ev.get('Account #.1', '') or '').strip()
-            if is_active and not acct_num and not acct_num2:
-                # For double dips, only the funded-phase account # matters
-                if not is_double_dip or not acct_num2:
-                    issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
-                                   'detail': f'{row_label}: Active but no account number',
-                                   'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
-
-            # Empty Activation Fee on funded rows
-            activation = str(ev.get('Activation Fee', '') or '').strip()
-            if status_p2 in ('funded', 'live', 'payout') and not activation:
-                issues.append({'check': 'Empty Activation Fee', 'severity': 'medium', 'row': idx,
-                               'detail': f'{row_label}: Funded but no activation fee',
-                               'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
-
-            # Active account: at least one cell must contain a weekday name (Mon-Fri)
-            # Only applies to accounts visible under "Active Only" filter
-            _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
-            _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
-            if not _inactive_p1 and not _inactive_p2 and status_p1:
-                weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-                            'mon', 'tue', 'wed', 'thu', 'fri',
-                            'tues', 'weds', 'thurs'}
-                has_weekday = False
-                for val in ev.values():
-                    s = str(val or '').strip().lower()
-                    if any(wd in s for wd in weekdays):
-                        has_weekday = True
-                        break
-                if not has_weekday:
-                    issues.append({'check': 'No current day value', 'severity': 'medium', 'row': idx,
-                                   'detail': f'{row_label}: Active account has no cell with a weekday (Mon-Fri)',
-                                   'estimated_date': _estimate_issue_date(ev, 'No current day value', scan_date_str)})
-
-            # Negative Hedge Net without note
-            def _parse_num(v):
-                try: return float(str(v).replace('$', '').replace(',', '').strip())
-                except (ValueError, TypeError): return None
-
-            hedge_net = _parse_num(ev.get('Hedge Net', ''))
-            if hedge_net is not None and hedge_net < 0:
-                cell_notes = ev.get('_notes', {}) or {}
-                has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
-                notes_col = str(ev.get('Notes', '') or '').strip()
-                has_note = has_any_note or bool(notes_col)
-                if not has_note:
-                    issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
-                                   'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
-                                   'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
-
-        # Hedge account or Prop Firm missing check
-        # Raise exactly 2 issues (one pointing to each tab) only when BOTH are unfilled.
-        # If either hedge or prop accounts have credentials, suppress both issues.
-        hedge_accounts = data.get('hedge_accounts') or []
-        prop_accounts = data.get('prop_accounts') or []
-        _hedge_filled = any(
-            str(hacc.get('login', '') or '').strip() or str(hacc.get('password', '') or '').strip()
-            for hacc in hedge_accounts
-            if isinstance(hacc, dict)
-        )
-        _prop_filled = any(
-            str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
-            for pa in prop_accounts
-            if isinstance(pa, dict)
-        )
-        if not _hedge_filled and not _prop_filled:
-            issues.append({
-                'check': 'Hedge account or Prop Firm missing',
-                'severity': 'high',
-                'tab': 'hedge',
-                'detail': 'No hedge account credentials found — fill in Hedge Accounts tab',
-                'estimated_date': scan_date_str
-            })
-            issues.append({
-                'check': 'Hedge account or Prop Firm missing',
-                'severity': 'high',
-                'tab': 'prop',
-                'detail': 'No prop firm credentials found — fill in Prop Firm Accounts tab',
-                'estimated_date': scan_date_str
-            })
-
-        # Calculate health score (100 - deductions)
-        severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3}
-        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
-        health_score = max(0.0, 100.0 - deduction)
-
-        results.append({
-            'client_id': client_name,
-            'trader': trader,
-            'admin': admin,
-            'total_issues': len(issues),
-            'issues': issues,
-            'health_score': round(health_score, 1)
-        })
 
     return results
 
@@ -5462,54 +5457,7 @@ def api_run_quality_scan():
     return jsonify(resp)
 
 
-@app.route('/api/admin/db_repair', methods=['POST'])
-@require_role('super_admin')
-def api_db_repair():
-    """Attempt to repair the SQLite database: WAL checkpoint + re-init tables."""
-    from dashboard.database import get_connection, init_database
-    report = {}
 
-    # 1. Integrity check
-    try:
-        with get_connection() as conn:
-            rows = conn.execute('PRAGMA integrity_check').fetchall()
-            checks = [r[0] for r in rows]
-            report['integrity_check'] = checks
-            report['integrity_ok'] = (checks == ['ok'])
-    except Exception as e:
-        report['integrity_check'] = [str(e)]
-        report['integrity_ok'] = False
-
-    # 2. WAL checkpoint — flushes the write-ahead log back into the main file
-    try:
-        with get_connection() as conn:
-            conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
-        report['wal_checkpoint'] = 'ok'
-    except Exception as e:
-        report['wal_checkpoint'] = str(e)
-
-    # 3. Re-run init_database to create any missing tables
-    try:
-        init_database()
-        report['reinit_tables'] = 'ok'
-    except Exception as e:
-        report['reinit_tables'] = str(e)
-
-    # 4. Quick VACUUM to defragment (only if integrity passed)
-    if report.get('integrity_ok'):
-        try:
-            with get_connection() as conn:
-                conn.execute('VACUUM')
-            report['vacuum'] = 'ok'
-        except Exception as e:
-            report['vacuum'] = str(e)
-    else:
-        report['vacuum'] = 'skipped (integrity not ok)'
-
-    overall = 'repaired' if report.get('reinit_tables') == 'ok' else 'partial'
-    log_action('DB_REPAIR', 'super_admin', request.session_user.get('user_identifier'),
-               get_remote_address(), f'DB repair: integrity_ok={report.get("integrity_ok")}')
-    return jsonify({'status': overall, 'report': report})
 
 
 @app.route('/api/quality/client/<client_id>', methods=['GET'])
@@ -5589,12 +5537,29 @@ def api_quality_results():
 @require_role('super_admin')
 def api_quality_scan_dates():
     """Get list of all dates that have scan results."""
-    from dashboard.database import get_connection
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT DISTINCT scan_date FROM quality_scan_results ORDER BY scan_date DESC')
-        dates = [row['scan_date'] for row in cursor.fetchall()]
-    return jsonify({'status': 'success', 'dates': dates})
+    try:
+        from dashboard.database import get_connection
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT DISTINCT scan_date FROM quality_scan_results ORDER BY scan_date DESC')
+            dates = [row['scan_date'] for row in cursor.fetchall()]
+        return jsonify({'status': 'success', 'dates': dates})
+    except Exception as e:
+        return jsonify({'status': 'success', 'dates': []})
+
+
+@app.route('/api/admin/repair_db', methods=['POST'])
+@app.route('/api/admin/db_repair', methods=['POST'])
+@require_role('super_admin')
+def api_repair_database():
+    """Attempt to repair a corrupted SQLite database. Super admin only."""
+    from dashboard.database import check_and_repair_database
+    ok, message = check_and_repair_database()
+    log_action('DB_REPAIR', 'super_admin', request.session_user.get('user_identifier'),
+               get_remote_address(), message)
+    if ok:
+        return jsonify({'status': 'success', 'message': message})
+    return jsonify({'status': 'error', 'message': message}), 500
 
 
 # ============ Daily Checklists ============
