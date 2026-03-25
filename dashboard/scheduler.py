@@ -208,9 +208,12 @@ def _build_daily_summary_text():
         lines.append("🚨 *DOWNTIME ALERT — CRITICAL*")
         lines.append(f"⚠️ {len(downtime_clients)} account(s) with stale trading days:")
         for trader, client, detail in sorted(downtime_clients):
-            # Extract the stale day names from detail
+            acct = ''
+            if '[' in detail and ']' in detail:
+                acct = detail.split('[')[1].split(']')[0]
             stale_part = detail.split('Stale day(s) found: ')[-1].split(' —')[0] if 'Stale day(s) found: ' in detail else detail
-            lines.append(f"  🔴 *{client}* ({trader}) — {stale_part}")
+            acct_tag = f" · {acct}" if acct and acct != 'no acct#' else ''
+            lines.append(f"  🔴 *{client}* ({trader}{acct_tag}) — {stale_part}")
         lines.append("")
 
     if trader_stats:

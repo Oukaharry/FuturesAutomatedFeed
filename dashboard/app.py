@@ -5370,8 +5370,9 @@ def run_quality_scan(target_client=None):
                     if stale_days:
                         stale_names = sorted([_day_names[d] for d in stale_days], key=lambda n: list(_day_names.values()).index(n))
                         allowed_names = ' & '.join(_day_names[d] for d in sorted(_allowed_days))
+                        _acct_display = acct_num or acct_num2 or 'no acct#'
                         issues.append({'check': 'Downtime detected', 'severity': 'critical', 'row': idx,
-                                       'detail': f'{row_label}: Stale day(s) found: {", ".join(stale_names)} — expected only {allowed_names}',
+                                       'detail': f'{row_label} [{_acct_display}]: Stale day(s) found: {", ".join(stale_names)} — expected only {allowed_names}',
                                        'estimated_date': scan_date_str})
 
                 # Negative Hedge Net without note
@@ -5965,8 +5966,13 @@ def api_daily_summary():
         lines.append("🚨 **DOWNTIME ALERT — CRITICAL**")
         lines.append(f"⚠️ {len(downtime_clients)} account(s) with stale trading days:")
         for trader, client, detail in sorted(downtime_clients):
+            # Extract account # from detail  "Row N [ACCT]: Stale day(s) found: ..."
+            acct = ''
+            if '[' in detail and ']' in detail:
+                acct = detail.split('[')[1].split(']')[0]
             stale_part = detail.split('Stale day(s) found: ')[-1].split(' —')[0] if 'Stale day(s) found: ' in detail else detail
-            lines.append(f"  🔴 **{client}** ({trader}) — {stale_part}")
+            acct_tag = f" · {acct}" if acct and acct != 'no acct#' else ''
+            lines.append(f"  🔴 **{client}** ({trader}{acct_tag}) — {stale_part}")
         lines.append("")
 
     if trader_stats:
