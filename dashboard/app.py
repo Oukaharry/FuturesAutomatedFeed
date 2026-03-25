@@ -5498,21 +5498,21 @@ def api_quality_results():
         # Collect unique scan dates
         scan_dates = sorted(set(r['scan_date'] for r in results))
 
+        # Filter out scan errors and recalculate health scores BEFORE deduplication
+        severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+        for r in results:
+            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+            r['total_issues'] = len(r['issues'])
+            deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
+            r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+
         # For multi-day ranges, deduplicate: keep only the LATEST scan per client
-        # This gives an accurate current-state view even when looking across days
         client_latest = {}
         for r in results:
             cid = r['client_id']
             if cid not in client_latest or r['scan_date'] > client_latest[cid]['scan_date']:
                 client_latest[cid] = r
         deduped = list(client_latest.values())
-
-        # Filter out scan errors from results — they're infrastructure noise, not quality issues
-        for r in results:
-            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
-            r['total_issues'] = len(r['issues'])
-            if not r['issues']:
-                r['health_score'] = 100.0
 
         total_issues = sum(r['total_issues'] for r in deduped)
         clients_with_issues = sum(1 for r in deduped if r['total_issues'] > 0)
