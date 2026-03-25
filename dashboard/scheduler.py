@@ -198,23 +198,12 @@ def _build_daily_summary_text():
             lines.append(f"  • {check}: {count} occurrences")
         lines.append("")
 
-    # Downtime alert — list every client with stale days
+    # Collect downtime data (will be rendered at the bottom)
     downtime_clients = []
     for r in scan_results:
         for iss in r['issues']:
             if iss['check'] == 'Downtime detected':
                 downtime_clients.append((r.get('trader', 'Unknown'), r['client_id'], iss['detail']))
-    if downtime_clients:
-        lines.append("🚨 *DOWNTIME ALERT — CRITICAL*")
-        lines.append(f"⚠️ {len(downtime_clients)} account(s) with stale trading days:")
-        for trader, client, detail in sorted(downtime_clients):
-            acct = ''
-            if '[' in detail and ']' in detail:
-                acct = detail.split('[')[1].split(']')[0]
-            stale_part = detail.split('Stale day(s) found: ')[-1].split(' —')[0] if 'Stale day(s) found: ' in detail else detail
-            acct_tag = f" · {acct}" if acct and acct != 'no acct#' else ''
-            lines.append(f"  🔴 *{client}* ({trader}{acct_tag}) — {stale_part}")
-        lines.append("")
 
     if trader_stats:
         # Gamified Trader Health Leaderboard — ranked best to worst
@@ -365,6 +354,24 @@ def _build_daily_summary_text():
     except Exception as e:
         import traceback
         traceback.print_exc()
+
+    # ── Downtime Alert (bottom of message for maximum visibility) ──
+    if downtime_clients:
+        lines.append("━" * 30)
+        lines.append("")
+        lines.append("🚨🚨🚨 *DOWNTIME ALERT — ZERO TOLERANCE* 🚨🚨🚨")
+        lines.append(f"⚠️ *{len(downtime_clients)} account(s) have stale trading days. This means the account was NOT traded on those days.*")
+        lines.append("")
+        for trader, client, detail in sorted(downtime_clients):
+            acct = ''
+            if '[' in detail and ']' in detail:
+                acct = detail.split('[')[1].split(']')[0]
+            stale_part = detail.split('Stale day(s) found: ')[-1].split(' —')[0] if 'Stale day(s) found: ' in detail else detail
+            acct_tag = f" · {acct}" if acct and acct != 'no acct#' else ''
+            lines.append(f"  🔴 *{client}* ({trader}{acct_tag}) — {stale_part}")
+        lines.append("")
+        lines.append("‼️ *Downtime is unacceptable. Every trading day must be accounted for. Traders responsible for these accounts must explain immediately.*")
+        lines.append("")
 
     return "\n".join(lines)
 
