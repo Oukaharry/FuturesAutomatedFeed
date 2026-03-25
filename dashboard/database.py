@@ -1359,30 +1359,37 @@ def get_checklist_clients_for_date(date: str) -> set:
 
 
 def get_summary_status_for_date(date: str) -> list:
-    """Return all daily_summary checklist submissions for the given date with user/client details.
-    Merges data from daily_checklists table AND audit_log to ensure all sends are captured.
-    Date is expected in Kenyan time (UTC+3)."""
+    """Return all daily_summary checklist submissions for the given date.
+    Merges data from daily_checklists table AND audit_log.
+
+    The 24-hour window runs from 23:05 UTC day-1 to 23:05 UTC day
+    (= 2:05 AM Kenyan → 2:05 AM Kenyan).  The `date` parameter is the
+    UTC date (server runs UTC).
+    """
     results = {}  # client_id -> {client_id, submitted_by, submitted_at}
 
-    # Compute UTC date range for the Kenyan date (UTC+3)
-    # Kenyan midnight = UTC 21:00 previous day
     from datetime import timedelta as _td
     try:
-        kenyan_date = datetime.strptime(date, '%Y-%m-%d')
+        utc_date = datetime.strptime(date, '%Y-%m-%d')
     except ValueError:
         return []
-    utc_start = (kenyan_date - _td(hours=3)).strftime('%Y-%m-%dT%H:%M')  # previous day 21:00 UTC
-    utc_end = (kenyan_date + _td(days=1) - _td(hours=3)).strftime('%Y-%m-%dT%H:%M')  # current day 21:00 UTC
+
+    # Window: 23:05 UTC previous day → 23:05 UTC this day
+    # = 2:05 AM Kenyan day → 2:05 AM Kenyan day+1
+    utc_start = (utc_date - _td(days=1)).strftime('%Y-%m-%d') + 'T23:05'
+    utc_end = utc_date.strftime('%Y-%m-%d') + 'T23:05'
 
     try:
         with get_connection() as conn:
             cursor = conn.cursor()
-            # Source 1: daily_checklists table
+            # Source 1: daily_checklists — filter by submitted_at timestamp
+            # so the window is exactly 23:05→23:05 UTC
             cursor.execute(
                 "SELECT client_id, user_identifier, submitted_at FROM daily_checklists "
-                "WHERE date = ? AND checklist_type = 'daily_summary' AND client_id != '' "
+                "WHERE checklist_type = 'daily_summary' AND client_id != '' "
+                "AND submitted_at >= ? AND submitted_at < ? "
                 "ORDER BY submitted_at DESC",
-                (date,)
+                (utc_start, utc_end)
             )
             for row in cursor.fetchall():
                 cid = row['client_id']
@@ -1390,7 +1397,7 @@ def get_summary_status_for_date(date: str) -> list:
                     results[cid] = {'client_id': cid, 'submitted_by': row['user_identifier'],
                                     'submitted_at': row['submitted_at']}
 
-            # Source 2: audit_log — use UTC range matching the Kenyan date
+            # Source 2: audit_log — same 23:05→23:05 UTC window
             cursor.execute(
                 "SELECT user_identifier, details, timestamp FROM audit_log "
                 "WHERE action IN ('CHECKLIST_SUBMIT', 'SLACK_DAILY_SUMMARY') "
@@ -1401,11 +1408,8 @@ def get_summary_status_for_date(date: str) -> list:
             for row in cursor.fetchall():
                 details = row['details'] or ''
                 client_id = ''
-                # Parse client_id from log details
                 if ' for ' in details:
-                    # "daily_summary for ClientName: 8 sections" or "Daily summary sent to Slack for ClientName"
                     part = details.split(' for ', 1)[1]
-                    # Remove trailing ": N sections" pattern if present
                     import re
                     part = re.sub(r':\s*\d+\s+sections?\s*$', '', part).strip()
                     client_id = part
