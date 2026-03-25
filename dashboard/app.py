@@ -5484,10 +5484,10 @@ def api_quality_client(client_id):
         if saved:
             for r in saved:
                 if r.get('client_id') == client_id:
-                    # Filter out infrastructure errors (DB corruption etc) —
-                    # those belong on the quality dashboard, not per-client views
+                    # Filter out issues that belong on the quality dashboard, not per-client views
+                    _hidden = {'Scan error', 'Daily summary not sent', 'Hedge account or Prop Firm missing'}
                     issues = r.get('issues', [])
-                    filtered = [i for i in issues if i.get('check') != 'Scan error']
+                    filtered = [i for i in issues if i.get('check') not in _hidden]
                     r = dict(r, issues=filtered, total_issues=len(filtered))
                     if not filtered:
                         r['health_score'] = 100.0
