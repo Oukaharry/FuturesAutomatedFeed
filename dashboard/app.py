@@ -5463,15 +5463,30 @@ def api_run_quality_scan():
 @app.route('/api/quality/client/<client_id>', methods=['GET'])
 @require_role('admin', 'trader', 'super_admin')
 def api_quality_client(client_id):
-    """Run quality scan for a single client. Accessible by admins and traders."""
+    """Get quality issues for a single client. Loads saved results first, falls back to live scan."""
     user_type = request.session_user.get('user_type')
     user_identifier = request.session_user.get('user_identifier')
     if not can_access_client(user_type, user_identifier, client_id):
         return jsonify({"status": "error", "message": "Access denied"}), 403
-    results = run_quality_scan(target_client=client_id)
-    if results:
-        return jsonify({"status": "success", "data": results[0]})
-    return jsonify({"status": "success", "data": {"client_id": client_id, "issues": [], "health_score": 100.0}})
+    empty = {"client_id": client_id, "issues": [], "health_score": 100.0}
+    # Try loading from saved scan results first (faster, no DB corruption risk)
+    try:
+        from dashboard.database import get_quality_scan_results
+        saved = get_quality_scan_results()  # latest scan
+        if saved:
+            for r in saved:
+                if r.get('client_id') == client_id:
+                    return jsonify({"status": "success", "data": r})
+    except Exception:
+        pass  # Fall through to live scan
+    # No saved results for this client — run a live scan
+    try:
+        results = run_quality_scan(target_client=client_id)
+        if results:
+            return jsonify({"status": "success", "data": results[0]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Scan failed: {str(e)}"}), 500
+    return jsonify({"status": "success", "data": empty})
 
 
 @app.route('/api/quality/results')
