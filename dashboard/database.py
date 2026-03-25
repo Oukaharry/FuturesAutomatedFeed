@@ -1119,21 +1119,69 @@ def update_client_field(client_id: str, field: str, value) -> bool:
 
 # ============ Quality Scan Functions ============
 
-def save_quality_scan_results(scan_date: str, results: list):
-    """Save quality scan results for all clients."""
+def _repair_quality_table():
+    """Drop and recreate the quality_scan_results table when corruption is detected."""
+    print("[DB REPAIR] quality_scan_results table is malformed — rebuilding...")
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('DELETE FROM quality_scan_results WHERE scan_date = ?', (scan_date,))
-        for r in results:
-            cursor.execute('''
-                INSERT INTO quality_scan_results (scan_date, client_id, trader, admin, total_issues, issues, health_score)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
-                  r['total_issues'], json.dumps(r['issues']), r['health_score']))
+        cursor.execute('DROP TABLE IF EXISTS quality_scan_results')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quality_scan_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_date TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                trader TEXT,
+                admin TEXT,
+                total_issues INTEGER DEFAULT 0,
+                issues TEXT DEFAULT '[]',
+                health_score REAL DEFAULT 100.0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_quality_scan_date ON quality_scan_results(scan_date, client_id)')
         conn.commit()
+    print("[DB REPAIR] quality_scan_results table rebuilt successfully")
+
+def save_quality_scan_results(scan_date: str, results: list):
+    """Save quality scan results for all clients."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('DELETE FROM quality_scan_results WHERE scan_date = ?', (scan_date,))
+            for r in results:
+                cursor.execute('''
+                    INSERT INTO quality_scan_results (scan_date, client_id, trader, admin, total_issues, issues, health_score)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
+                      r['total_issues'], json.dumps(r['issues']), r['health_score']))
+            conn.commit()
+    except sqlite3.DatabaseError as e:
+        if 'malformed' in str(e).lower():
+            _repair_quality_table()
+            # Retry once after repair
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                for r in results:
+                    cursor.execute('''
+                        INSERT INTO quality_scan_results (scan_date, client_id, trader, admin, total_issues, issues, health_score)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
+                          r['total_issues'], json.dumps(r['issues']), r['health_score']))
+                conn.commit()
+        else:
+            raise
 
 def get_quality_scan_results(scan_date: str = None) -> list:
     """Get quality scan results. If no date, returns latest scan."""
+    try:
+        return _get_quality_scan_results_inner(scan_date)
+    except sqlite3.DatabaseError as e:
+        if 'malformed' in str(e).lower():
+            _repair_quality_table()
+            return []  # Table was rebuilt empty
+        raise
+
+def _get_quality_scan_results_inner(scan_date: str = None) -> list:
     with get_connection() as conn:
         cursor = conn.cursor()
         if not scan_date:
@@ -1249,6 +1297,15 @@ def get_daily_checklists(date: str, user_identifier: str = None) -> list:
 
 def get_weekly_scan_results(end_date: str = None, days: int = 7) -> list:
     """Get quality scan results for a date range (default: last 7 days)."""
+    try:
+        return _get_weekly_scan_results_inner(end_date, days)
+    except sqlite3.DatabaseError as e:
+        if 'malformed' in str(e).lower():
+            _repair_quality_table()
+            return []
+        raise
+
+def _get_weekly_scan_results_inner(end_date: str = None, days: int = 7) -> list:
     with get_connection() as conn:
         cursor = conn.cursor()
         if not end_date:

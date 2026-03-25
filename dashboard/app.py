@@ -5465,54 +5465,59 @@ def api_quality_client(client_id):
 @require_role('super_admin')
 def api_quality_results():
     """Get quality scan results. Supports ?date=, ?start=&end= for ranges. Super admin only."""
-    from dashboard.database import get_quality_scan_results, get_weekly_scan_results
-    scan_date = request.args.get('date')
-    start_date = request.args.get('start')
-    end_date = request.args.get('end')
+    try:
+        from dashboard.database import get_quality_scan_results, get_weekly_scan_results
+        scan_date = request.args.get('date')
+        start_date = request.args.get('start')
+        end_date = request.args.get('end')
 
-    if start_date and end_date:
-        # Date range query
-        try:
-            s = datetime.strptime(start_date, '%Y-%m-%d')
-            e = datetime.strptime(end_date, '%Y-%m-%d')
-            days = (e - s).days + 1
-            results = get_weekly_scan_results(end_date, days)
-        except ValueError:
-            return jsonify({'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
-    else:
-        results = get_quality_scan_results(scan_date)
-    if not results:
-        return jsonify({'status': 'success', 'results': [], 'total_clients': 0,
-                        'clients_with_issues': 0, 'total_issues': 0, 'avg_health_score': 0,
-                        'scan_dates': [],
-                        'message': 'No scan results for this date range.'})
+        if start_date and end_date:
+            # Date range query
+            try:
+                s = datetime.strptime(start_date, '%Y-%m-%d')
+                e = datetime.strptime(end_date, '%Y-%m-%d')
+                days = (e - s).days + 1
+                results = get_weekly_scan_results(end_date, days)
+            except ValueError:
+                return jsonify({'status': 'error', 'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        else:
+            results = get_quality_scan_results(scan_date)
+        if not results:
+            return jsonify({'status': 'success', 'results': [], 'total_clients': 0,
+                            'clients_with_issues': 0, 'total_issues': 0, 'avg_health_score': 0,
+                            'scan_dates': [],
+                            'message': 'No scan results for this date range.'})
 
-    # Collect unique scan dates
-    scan_dates = sorted(set(r['scan_date'] for r in results))
+        # Collect unique scan dates
+        scan_dates = sorted(set(r['scan_date'] for r in results))
 
-    # For multi-day ranges, deduplicate: keep only the LATEST scan per client
-    # This gives an accurate current-state view even when looking across days
-    client_latest = {}
-    for r in results:
-        cid = r['client_id']
-        if cid not in client_latest or r['scan_date'] > client_latest[cid]['scan_date']:
-            client_latest[cid] = r
-    deduped = list(client_latest.values())
+        # For multi-day ranges, deduplicate: keep only the LATEST scan per client
+        # This gives an accurate current-state view even when looking across days
+        client_latest = {}
+        for r in results:
+            cid = r['client_id']
+            if cid not in client_latest or r['scan_date'] > client_latest[cid]['scan_date']:
+                client_latest[cid] = r
+        deduped = list(client_latest.values())
 
-    total_issues = sum(r['total_issues'] for r in deduped)
-    clients_with_issues = sum(1 for r in deduped if r['total_issues'] > 0)
-    avg_health = sum(r['health_score'] for r in deduped) / len(deduped) if deduped else 0
+        total_issues = sum(r['total_issues'] for r in deduped)
+        clients_with_issues = sum(1 for r in deduped if r['total_issues'] > 0)
+        avg_health = sum(r['health_score'] for r in deduped) / len(deduped) if deduped else 0
 
-    return jsonify({
-        'status': 'success',
-        'scan_date': scan_dates[-1] if scan_dates else None,
-        'scan_dates': scan_dates,
-        'total_clients': len(deduped),
-        'clients_with_issues': clients_with_issues,
-        'total_issues': total_issues,
-        'avg_health_score': round(avg_health, 1),
-        'results': results  # Full results (all days) for the issues table
-    })
+        return jsonify({
+            'status': 'success',
+            'scan_date': scan_dates[-1] if scan_dates else None,
+            'scan_dates': scan_dates,
+            'total_clients': len(deduped),
+            'clients_with_issues': clients_with_issues,
+            'total_issues': total_issues,
+            'avg_health_score': round(avg_health, 1),
+            'results': results  # Full results (all days) for the issues table
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Failed to load results: {str(e)}'}), 500
 
 
 @app.route('/api/quality/scan_dates')
