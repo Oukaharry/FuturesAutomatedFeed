@@ -733,6 +733,8 @@
             results.forEach(r => {
                 if (r.trader) traderSet.add(r.trader);
                 r.issues.forEach(issue => {
+                    // Skip infrastructure errors — these are not actionable quality issues
+                    if (issue.check === 'Scan error') return;
                     typeSet.add(issue.check);
                     allIssuesFlat.push({
                         client: r.client_id,

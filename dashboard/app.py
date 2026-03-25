@@ -5507,6 +5507,13 @@ def api_quality_results():
                 client_latest[cid] = r
         deduped = list(client_latest.values())
 
+        # Filter out scan errors from results — they're infrastructure noise, not quality issues
+        for r in results:
+            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+            r['total_issues'] = len(r['issues'])
+            if not r['issues']:
+                r['health_score'] = 100.0
+
         total_issues = sum(r['total_issues'] for r in deduped)
         clients_with_issues = sum(1 for r in deduped if r['total_issues'] > 0)
         avg_health = sum(r['health_score'] for r in deduped) / len(deduped) if deduped else 0
