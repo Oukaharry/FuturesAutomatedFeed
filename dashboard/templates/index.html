@@ -1774,9 +1774,6 @@
             <button class="checklist-copy-btn" onclick="goBackToChecklist()" style="flex:none;">
                 <i class="fas fa-arrow-left" style="margin-right:4px;"></i> Back
             </button>
-            <select id="slack-channel-select" style="background:#1a1035; border:1px solid rgba(129,140,248,0.3); color:#a5b4fc; padding:6px 10px; border-radius:8px; font-size:0.78rem; cursor:pointer; max-width:160px;">
-                <option value="">Loading channels…</option>
-            </select>
             <button class="checklist-submit-btn" id="checklist-slack-btn" onclick="confirmAndSendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);">
                 <i class="fab fa-slack" style="margin-right:6px;"></i> Send to Slack
             </button>
@@ -6828,7 +6825,7 @@
             });
 
             // Load saved data for current client + trade count enabled list + slack channels
-            await Promise.all([..._clientList.map(c => loadClientData(c)), _loadTradeCountClients(), loadSlackChannels()]);
+            await Promise.all([..._clientList.map(c => loadClientData(c)), _loadTradeCountClients()]);
 
             _activeClient = CLIENT_ID || '';
             sel.value = _activeClient;
@@ -7200,46 +7197,21 @@
             document.getElementById('checklist-footer-preview').style.display = 'none';
         }
 
-        let _slackChannels = [];
-
-        async function loadSlackChannels() {
-            try {
-                const resp = await fetch('/api/settings/slack_channels?_t=' + Date.now());
-                const data = await resp.json();
-                _slackChannels = data.channels || [];
-                const sel = document.getElementById('slack-channel-select');
-                if (_slackChannels.length === 0) {
-                    sel.innerHTML = '<option value="">Default channel</option>';
-                } else if (_slackChannels.length === 1) {
-                    sel.innerHTML = `<option value="${_slackChannels[0].id}">${_slackChannels[0].name}</option>`;
-                } else {
-                    sel.innerHTML = _slackChannels.map(ch =>
-                        `<option value="${ch.id}">${ch.name}</option>`
-                    ).join('');
-                }
-            } catch(e) {
-                document.getElementById('slack-channel-select').innerHTML = '<option value="">Default channel</option>';
-            }
-        }
-
         function confirmAndSendToSlack() {
-            const sel = document.getElementById('slack-channel-select');
-            const chName = sel.options[sel.selectedIndex]?.text || 'Slack';
-            if (!confirm(`Send this daily summary to #${chName}?\n\nThis cannot be undone.`)) return;
+            if (!confirm('Send this daily summary to Slack?\n\nThis will post to the Daily Summaries channel and cannot be undone.')) return;
             sendSummaryToSlack();
         }
 
         async function sendSummaryToSlack() {
             const btn = document.getElementById('checklist-slack-btn');
             const text = generateSummaryText(_activeClient);
-            const channelId = document.getElementById('slack-channel-select').value;
             btn.disabled = true;
             btn.innerHTML = '<i class="fab fa-slack" style="margin-right:4px;"></i> Sending...';
             try {
                 const resp = await fetch('/api/checklist/send_slack', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, client_id: _activeClient, channel_id: channelId })
+                    body: JSON.stringify({ text, client_id: _activeClient })
                 });
                 const data = await resp.json();
                 if (data.status === 'success') {
