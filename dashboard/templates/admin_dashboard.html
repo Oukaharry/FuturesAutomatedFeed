@@ -6,458 +6,691 @@
     <title>Admin Dashboard - TradeOpss</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-            gap: 24px;
-            margin-top: 20px;
+        /* ── NAVBAR ── */
+        .modern-nav {
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 0 24px;
+            height: 68px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22);
+            position: sticky;
+            top: 12px;
+            z-index: 500;
         }
+        .nav-links { display: flex; gap: 4px; align-items: center; }
+        .tab-btn {
+            color: #7898be; text-decoration: none; font-weight: 600; font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            padding: 7px 13px; border-radius: 7px; border-bottom: 2px solid transparent;
+            background: transparent; letter-spacing: 0.01em;
+            display: flex; align-items: center; gap: 6px;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .tab-btn.active { color: #fbbf24; border-bottom: 2px solid #fbbf24; font-weight: 600; }
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28); background: rgba(251,191,36,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover { background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 14px rgba(251,191,36,0.18); }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.5); box-shadow: 0 0 14px rgba(239,68,68,0.18); }
 
-        .trader-card {
+        /* ── DARK-BLUE SCROLLBAR (issues table) ── */
+        .issues-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
+        .issues-scroll::-webkit-scrollbar-track { background: #07091a; border-radius: 4px; }
+        .issues-scroll::-webkit-scrollbar-thumb { background: #1e3a8a; border-radius: 4px; border: 1px solid #0d1848; }
+        .issues-scroll::-webkit-scrollbar-thumb:hover { background: #2e50a0; }
+        .issues-scroll::-webkit-scrollbar-corner { background: #07091a; }
+        .issues-scroll { scrollbar-color: #1e3a8a #07091a; scrollbar-width: thin; }
+
+        /* ── ADMIN CARD ── */
+        .admin-card {
             background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 24px;
-            color: var(--text-primary);
             border: 1px solid var(--border-color);
-            background-image: var(--gradient-card);
+            border-top: 1px solid #1e3060;
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            padding: 2px;
             position: relative;
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
+            box-shadow: var(--shadow-navy);
         }
-
-        .trader-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; width: 4px; height: 100%;
-            background: var(--gradient-primary);
-            opacity: 0.5;
-        }
-
-        .trader-header {
+        .admin-header {
+            background: linear-gradient(90deg, #1e3a8a 0%, #172554 100%);
+            border-top: 1px solid #2e50a0;
+            border-bottom: 2px solid #0c1848;
+            box-shadow: 0 4px 20px rgba(1,3,10,0.85), inset 0 1px 0 rgba(80,120,210,0.18);
+            padding: 16px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .admin-title-group { display: flex; align-items: center; gap: 12px; }
+        .admin-name {
+            font-size: 1rem; font-weight: 700; color: #fff;
+            font-family: 'Space Grotesk', sans-serif; letter-spacing: -0.02em;
         }
 
-        .trader-name {
-            font-size: 1.25rem;
-            font-weight: 700;
-            background: linear-gradient(90deg, #fff, #94a3b8);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        /* ── BADGES ── */
+        .badge {
+            padding: 3px 9px; border-radius: 999px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.62rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.09em;
         }
+        .badge-admin  { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+        .badge-trader { background: rgba(45,212,191,0.12);  color: #2dd4bf; border: 1px solid rgba(45,212,191,0.28); }
 
-        .client-list-container {
-            flex: 1;
-            margin-bottom: 20px;
-        }
-
-        .client-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 12px;
-            margin-bottom: 8px;
-            background: rgba(15, 23, 42, 0.4);
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
+        /* ── TRADER ITEMS ── */
+        .trader-list { padding: 16px; }
+        .trader-item {
+            background: linear-gradient(180deg, #090f1e 0%, #0c1428 100%);
+            border: 1px solid #162040;
+            border-left: 2px solid #1e3a8a;
+            border-top: 1px solid #1e3060;
+            border-radius: 10px;
+            margin-bottom: 14px;
             transition: all 0.2s ease;
+            overflow: hidden;
+            box-shadow: 0 6px 20px rgba(1,3,10,0.75), 0 1px 0 rgba(30,58,138,0.15);
+        }
+        .trader-item:hover {
+            border-color: #244068; border-left-color: #3558a8;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.85), 0 0 0 1px rgba(30,58,138,0.28);
+        }
+        .trader-header {
+            padding: 12px 16px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: linear-gradient(90deg, #065f46 0%, #047857 100%);
+            border-top: 1px solid #10a070;
+            border-bottom: 1px solid #033d2a;
+        }
+        .trader-name {
+            font-weight: 700; color: #fff;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: -0.01em; font-size: 0.92rem;
         }
 
-        .client-item:hover {
-            background: rgba(30, 41, 59, 0.6);
-            border-color: rgba(251, 191, 36, 0.2);
-            transform: translateX(4px);
-        }
-
-        .client-link {
-            text-decoration: none;
-            color: var(--text-primary);
+        /* ── CLIENT TAGS ── */
+        .client-list { padding: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
+        .client-tag-wrapper { display: flex; align-items: stretch; border-radius: 6px; overflow: hidden; }
+        .client-tag {
+            background: linear-gradient(135deg, #0d1424, #080e1a);
+            border: 1px solid #192848;
+            border-top: 1px solid #253660;
+            border-right: none;
+            padding: 6px 12px;
+            border-radius: 6px 0 0 6px;
+            font-size: 0.82rem;
+            display: flex; align-items: center;
+            color: #e8c97a; text-decoration: none;
+            transition: all 0.2s cubic-bezier(0.4,0,0.2,1);
+            box-shadow: 0 1px 3px rgba(1,3,10,0.4);
             font-weight: 500;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: 0.01em;
         }
-
-        .client-profile-badge {
-            font-size: 0.7rem;
-            padding: 2px 8px;
-            border-radius: 99px;
-            background: rgba(59, 130, 246, 0.1);
-            color: #60a5fa;
-            border: 1px solid rgba(59, 130, 246, 0.2);
+        .client-tag:hover {
+            background: linear-gradient(135deg, #131e36, #0d1424);
+            border-color: #fbbf24; color: #fbbf24;
+            box-shadow: 0 4px 16px rgba(3,5,12,0.7), 0 0 0 1px rgba(251,191,36,0.15);
         }
-
-        .client-profile-badge.bef {
-            background: rgba(234, 179, 8, 0.1);
-            color: #facc15;
-            border-color: rgba(234, 179, 8, 0.2);
-        }
-
-        .edit-btn {
-            background: transparent;
-            border: none;
+        .client-tag i { color: #fbbf24; margin-right: 8px; font-size: 0.85rem; }
+        .client-tag.is-inactive { opacity: 0.55; }
+        .client-edit-btn {
+            background: rgba(30,58,138,0.15);
+            border: 1px solid #192848;
+            border-top: 1px solid #253660;
+            border-left: 1px solid rgba(255,255,255,0.06);
+            border-radius: 0 6px 6px 0;
+            padding: 0 9px;
+            display: flex; align-items: center;
+            cursor: pointer; transition: all 0.15s ease;
             color: var(--text-secondary);
-            cursor: pointer;
-            padding: 4px;
-            opacity: 0.5;
-            transition: all 0.2s;
         }
-        
-        .edit-btn:hover {
-            opacity: 1;
-            color: var(--accent-color);
+        .client-edit-btn:hover { background: rgba(251,191,36,0.12); color: #fbbf24; }
+        .client-edit-btn i { font-size: 0.72rem; }
+
+        /* inline badges inside tags */
+        .client-badge-bef {
+            background: rgba(234,179,8,0.15); color: #facc15;
+            border: 1px solid rgba(234,179,8,0.25); border-radius: 99px;
+            font-size: 0.6rem; font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+            padding: 1px 6px; margin-left: 6px;
+        }
+        .client-badge-inactive {
+            background: rgba(239,68,68,0.18); color: #f87171;
+            border: 1px solid rgba(239,68,68,0.28); border-radius: 99px;
+            font-size: 0.6rem; font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+            padding: 1px 6px; margin-left: 4px;
         }
 
-        /* Modal Styling */
+        /* ── STAT BOXES ── */
+        .stat-row { display: flex; gap: 16px; margin-bottom: 28px; }
+        .stat-box { flex: 1; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid; }
+        .stat-box .stat-lbl {
+            font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em;
+            margin-bottom: 5px; text-transform: uppercase;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .stat-box .stat-val { font-size: 2rem; font-weight: 800; }
+
+        /* ── MODAL ── */
         .modal {
-            display: none; 
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            background: rgba(0,0,0,0.8); 
-            z-index: 1000;
-            backdrop-filter: blur(5px);
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 1000; backdrop-filter: blur(4px);
         }
-        
         .modal-content {
-            background: var(--card-bg);
-            margin: 10% auto;
-            padding: 32px;
-            width: 400px;
-            border-radius: var(--radius);
-            position: relative;
-            border: 1px solid var(--border-color);
-            box-shadow: var(--shadow-lg), var(--shadow-glow);
+            background: #0d1424; color: var(--text-primary);
+            border: 1px solid #192848; border-top: 1px solid #3d5fa0;
+            box-shadow: 0 30px 60px -12px rgba(3,5,12,0.9), 0 1px 0 rgba(61,95,160,0.25);
+            margin: 8% auto; padding: 32px;
+            width: 420px; max-width: 95vw;
+            border-radius: var(--radius); position: relative;
         }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-label {
-            display: block; 
-            margin-bottom: 8px; 
-            font-weight: 600; 
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
-        
-        .form-input, .form-select {
-            width: 100%; 
-            padding: 10px 12px; 
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--border-color); 
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-family: inherit;
-        }
-        
-        .form-input:focus, .form-select:focus {
-            outline: none;
-            border-color: var(--accent-color);
-            box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.1);
-        }
-
         .modal-close {
-            position: absolute; 
-            right: 20px; 
-            top: 20px; 
-            font-size: 24px; 
-            cursor: pointer;
-            color: var(--text-secondary);
-            transition: color 0.2s;
+            position: absolute; right: 20px; top: 20px;
+            font-size: 22px; cursor: pointer; color: var(--text-secondary);
+            background: none; border: none; transition: color 0.15s ease; line-height: 1;
         }
-        
         .modal-close:hover { color: var(--text-primary); }
-
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-secondary); font-size: 0.85rem; }
+        .form-dark {
+            background: rgba(1,3,10,0.6); border: 1px solid #162040;
+            color: #e8eeff; font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.84rem; border-radius: 8px; padding: 10px;
+            width: 100%; box-sizing: border-box;
+        }
+        .form-dark:focus {
+            border-color: #2a4a8a; background: rgba(1,3,10,0.85);
+            box-shadow: 0 0 0 3px rgba(30,58,138,0.2); outline: none;
+        }
         .btn-gold {
-            background: var(--gradient-primary);
-            color: #0f172a;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            cursor: pointer;
-            width: 100%;
-            font-weight: 700;
-            transition: all 0.3s;
+            background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+            color: #0a0800; font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700; border: none; padding: 12px 24px;
+            border-radius: 8px; cursor: pointer; width: 100%; font-size: 0.95rem;
+            box-shadow: 0 2px 10px rgba(251,191,36,0.3); transition: all 0.18s ease;
         }
-        
-        .btn-gold:hover {
-            box-shadow: var(--shadow-glow);
-            transform: translateY(-2px);
-        }
+        .btn-gold:hover { box-shadow: 0 4px 18px rgba(251,191,36,0.45); transform: translateY(-1px); filter: brightness(1.06); }
 
-        .modern-nav {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(16px);
-            padding: 0 32px;
-            height: 80px;
-            margin-bottom: 40px;
-            border-radius: var(--radius);
-            box-shadow: var(--shadow-lg);
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            position: sticky; top: 20px; z-index: 99;
-        }
-
-        /* ── MOBILE RESPONSIVE ── */
+        /* ── MOBILE ── */
         @media (max-width: 768px) {
-            .modern-nav {
-                height: auto !important;
-                flex-wrap: wrap;
-                padding: 10px 12px;
-                gap: 6px;
-                justify-content: center;
-                margin-bottom: 16px;
-            }
-            .modern-nav .brand {
-                position: static !important;
-                transform: none !important;
-                width: 100%;
-                display: flex;
-                justify-content: center;
-            }
-            .modern-nav .brand img {
-                width: 70px !important;
-                height: 70px !important;
-            }
+            .modern-nav { height: auto; flex-wrap: wrap; padding: 10px 12px; gap: 6px; justify-content: center; margin-bottom: 16px; }
+            .modern-nav .brand { position: static !important; transform: none !important; width: 100%; display: flex; justify-content: center; }
             .nav-links { flex-wrap: wrap; justify-content: center; gap: 4px; }
             .tab-btn { font-size: 0.78rem !important; padding: 6px 9px !important; }
+            .stat-row { flex-wrap: wrap; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Modern Nav -->
-        <nav class="modern-nav">
-            <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 24px;">
-                <div style="text-align: right; line-height: 1.2;">
-                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">{{ admin_name }}</div>
-                    <div style="font-size: 0.75rem; color: var(--accent-color); text-transform: uppercase;">Administrator</div>
-                </div>
-                
-                <div style="height: 32px; width: 1px; background: var(--border-color);"></div>
-                
-                <a href="/change-password" class="tab-btn" style="padding: 8px 16px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 8px;">
-                    <i class="fas fa-key"></i> Change Password
-                </a>
-                <a href="/logout" class="tab-btn" style="padding: 8px 16px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 8px;">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
-            </div>
-        </nav>
+<div class="container">
 
-        <div class="welcome-hero" style="margin-bottom: 30px;">
-            <h1 style="font-size: 2rem; margin-bottom: 8px;">Managed Traders</h1>
-            <p style="color: var(--text-secondary);">Manage client profiles and view trader portfolios.</p>
+    <!-- NAVBAR -->
+    <nav class="modern-nav">
+        <div class="brand" style="position:absolute;left:24px;top:50%;transform:translateY(-50%);z-index:200;">
+            <a href="/admin/{{ admin_name }}" style="display:block;line-height:0;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width:100px;height:auto;object-fit:contain;">
+            </a>
         </div>
+        <div style="position:absolute;right:24px;top:50%;transform:translateY(-50%);display:flex;gap:8px;align-items:center;">
+            <button class="tab-btn" id="issues-tab-btn" onclick="toggleIssuesPanel()" style="color:#7898be;border-bottom:2px solid transparent;position:relative;">
+                <i class="fas fa-circle-exclamation"></i> Issues
+                <span id="issues-nav-badge" style="display:none;position:absolute;top:-2px;right:-4px;background:#ef4444;color:#fff;font-size:0.55rem;font-family:'IBM Plex Mono',monospace;font-weight:700;padding:1px 5px;border-radius:99px;line-height:1.4;min-width:18px;text-align:center;"></span>
+            </button>
+            <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+            <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
+        </div>
+    </nav>
 
-        <div id="content" class="dashboard-grid">
-            <!-- Loading State -->
-            <div style="grid-column: 1/-1; text-align: center; padding: 80px; color: var(--text-secondary);">
-                <i class="fas fa-circle-notch fa-spin" style="font-size: 2.5rem; color: var(--accent-color); margin-bottom: 24px;"></i>
-                <p>Loading administration panel...</p>
-            </div>
+    <!-- PAGE HEADING -->
+    <div style="margin-bottom:20px;">
+        <h1 style="font-size:1.5rem;margin-bottom:4px;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;letter-spacing:-0.02em;">Admin Dashboard</h1>
+        <p style="color:var(--text-secondary);margin:0;font-size:0.9rem;">Welcome, <strong style="color:var(--text-primary);">{{ admin_name }}</strong> — manage your traders and client portfolios.</p>
+    </div>
+
+    <!-- STAT BOXES -->
+    <div class="stat-row">
+        <div class="stat-box" style="background:linear-gradient(135deg,rgba(5,150,105,0.15),rgba(4,120,87,0.6));border-color:rgba(5,150,105,0.4);">
+            <div class="stat-lbl" style="color:#4ade80;">Traders</div>
+            <div class="stat-val" style="color:#4ade80;text-shadow:0 0 20px rgba(74,222,128,0.4);" id="stat-traders">—</div>
+        </div>
+        <div class="stat-box" style="background:linear-gradient(135deg,rgba(30,58,138,0.15),rgba(23,37,84,0.6));border-color:rgba(30,58,138,0.4);">
+            <div class="stat-lbl" style="color:#7baef0;">Clients</div>
+            <div class="stat-val" style="color:#93c5fd;text-shadow:0 0 20px rgba(147,197,253,0.3);" id="stat-clients">—</div>
+        </div>
+        <div class="stat-box" style="background:linear-gradient(135deg,rgba(217,119,6,0.15),rgba(180,83,9,0.6));border-color:rgba(217,119,6,0.4);">
+            <div class="stat-lbl" style="color:#fde047;">Active Clients</div>
+            <div class="stat-val" style="color:#fbbf24;text-shadow:0 0 20px rgba(251,191,36,0.4);" id="stat-active">—</div>
         </div>
     </div>
 
-    <!-- Edit Client Modal -->
-    <div id="editClientModal" class="modal">
-        <div class="modal-content">
-            <span class="modal-close" onclick="closeEditModal()">&times;</span>
-            <h2 style="margin-top: 0; margin-bottom: 24px; color: var(--text-primary);">Edit Client Profile</h2>
-            <form id="editClientForm">
-                <input type="hidden" id="editAdmin">
-                <input type="hidden" id="editTrader">
-                <input type="hidden" id="editName">
-                
-                <div class="form-group">
-                    <label class="form-label">Client Name</label>
-                    <div id="editNameDisplay" style="padding: 10px; background: rgba(255,255,255,0.05); border-radius: 6px; color: var(--text-secondary);"></div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Risk Profile / Category</label>
-                    <select id="editCategory" class="form-select">
-                        <option value="PRIVATE">Private (Standard)</option>
-                        <option value="BEF">BEF (High Risk)</option>
-                    </select>
-                </div>
+    <!-- ADMIN NAME + SEPARATOR -->
+    <div id="issues-identity-bar" style="display:none;align-items:center;gap:14px;margin-bottom:16px;">
+        <div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:1.1rem;font-weight:700;color:#e8eeff;letter-spacing:-0.01em;">{{ admin_name }}</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#fbbf24;margin-top:1px;">Administrator</div>
+        </div>
+        <div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(30,58,138,0.6),rgba(30,58,138,0.1));"></div>
+    </div>
 
-                <div class="form-group">
-                    <label class="form-label">Status</label>
-                    <select id="editActiveStatus" class="form-select">
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
+    <!-- ISSUES PANEL (hidden by default) -->
+    <div id="issues-panel" style="display:none;margin-bottom:24px;">
+        <div style="background:#090f1e;border:1px solid #1e3060;border-top:2px solid #3b63c4;border-radius:14px;overflow:hidden;box-shadow:0 8px 28px rgba(1,3,10,0.9),0 1px 0 rgba(59,99,196,0.25);">
+            <!-- Panel header -->
+            <div style="background:linear-gradient(90deg,#1a1a2e 0%,#16213e 100%);border-bottom:1px solid #1e3060;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+                <div style="flex:1;display:flex;align-items:center;gap:10px;">
+                    <i class="fas fa-circle-exclamation" style="color:#f87171;font-size:1rem;"></i>
+                    <span style="font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:1rem;color:#e8eeff;">Issues — My Traders &amp; Clients</span>
+                    <span id="issues-count-badge" style="background:rgba(239,68,68,0.2);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:12px;font-size:0.7rem;font-family:'IBM Plex Mono',monospace;font-weight:700;padding:2px 10px;"></span>
                 </div>
-                
-                <button type="submit" class="btn-gold">
-                    <i class="fas fa-save" style="margin-right: 8px;"></i> Save Changes
+                <button onclick="toggleIssuesPanel()" style="flex-shrink:0;width:auto;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.38);border-radius:7px;color:#f87171;padding:5px 12px;cursor:pointer;font-size:0.75rem;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;transition:all 0.15s;white-space:nowrap;" onmouseover="this.style.background='rgba(239,68,68,0.24)';this.style.color='#fca5a5'" onmouseout="this.style.background='rgba(239,68,68,0.12)';this.style.color='#f87171'">
+                    <i class="fas fa-xmark"></i> Close
                 </button>
-            </form>
+            </div>
+            <!-- Filters row -->
+            <div style="padding:10px 20px;display:grid;grid-template-columns:1fr 120px 1fr 1fr auto;gap:8px;align-items:center;border-bottom:1px solid #162040;">
+                <input type="text" id="issue-search" placeholder="Search…" oninput="renderIssuesTable()"
+                    style="background:rgba(1,3,10,0.7);border:1px solid #1e3060;color:#e8eeff;padding:6px 10px;border-radius:8px;font-size:0.78rem;font-family:'IBM Plex Mono',monospace;outline:none;width:100%;box-sizing:border-box;" />
+                <select id="issue-severity-filter" onchange="renderIssuesTable()"
+                    style="background:#0b1225;border:1px solid #1e3060;color:#c8d8f0;padding:6px 8px;border-radius:8px;font-size:0.75rem;font-family:'IBM Plex Mono',monospace;width:100%;box-sizing:border-box;">
+                    <option value="all">Severity</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                </select>
+                <select id="issue-type-filter" onchange="renderIssuesTable()"
+                    style="background:#0b1225;border:1px solid #1e3060;color:#c8d8f0;padding:6px 8px;border-radius:8px;font-size:0.75rem;font-family:'IBM Plex Mono',monospace;width:100%;box-sizing:border-box;">
+                    <option value="all">Issue Type</option>
+                </select>
+                <select id="issue-trader-filter" onchange="renderIssuesTable()"
+                    style="background:#0b1225;border:1px solid #1e3060;color:#c8d8f0;padding:6px 8px;border-radius:8px;font-size:0.75rem;font-family:'IBM Plex Mono',monospace;width:100%;box-sizing:border-box;">
+                    <option value="all">All Traders</option>
+                </select>
+                <button onclick="loadAdminIssues()" title="Refresh"
+                    style="background:rgba(59,99,196,0.18);border:1px solid rgba(59,99,196,0.4);color:#93c5fd;padding:6px 10px;border-radius:8px;cursor:pointer;font-size:0.78rem;font-family:'Space Grotesk',sans-serif;font-weight:600;white-space:nowrap;transition:all 0.15s;"
+                    onmouseover="this.style.background='rgba(59,99,196,0.32)'" onmouseout="this.style.background='rgba(59,99,196,0.18)'">
+                    <i class="fas fa-rotate-right"></i>
+                </button>
+            </div>
+            <!-- Table -->
+            <div class="issues-scroll" style="max-height:480px;overflow-y:auto;overflow-x:hidden;">
+                <table style="width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;">
+                    <thead>
+                        <tr>
+                            <th onclick="sortIssuesBy('client')"  style="background:linear-gradient(90deg,#172554 0%,#0f172a 100%);padding:10px 12px;font-size:0.72rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.5px;text-align:left;position:sticky;top:0;cursor:pointer;border-bottom:1px solid #162040;font-weight:700;width:16%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Client <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                            <th onclick="sortIssuesBy('trader')"  style="background:linear-gradient(90deg,#172554 0%,#0f172a 100%);padding:10px 12px;font-size:0.72rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.5px;text-align:left;position:sticky;top:0;cursor:pointer;border-bottom:1px solid #162040;font-weight:700;width:14%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Trader <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                            <th onclick="sortIssuesBy('severity')" style="background:linear-gradient(90deg,#172554 0%,#0f172a 100%);padding:10px 12px;font-size:0.72rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.5px;text-align:left;position:sticky;top:0;cursor:pointer;border-bottom:1px solid #162040;font-weight:700;width:10%;">Sev. <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                            <th onclick="sortIssuesBy('check')"    style="background:linear-gradient(90deg,#172554 0%,#0f172a 100%);padding:10px 12px;font-size:0.72rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.5px;text-align:left;position:sticky;top:0;cursor:pointer;border-bottom:1px solid #162040;font-weight:700;width:18%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Issue <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                            <th style="background:linear-gradient(90deg,#172554 0%,#0f172a 100%);padding:10px 12px;font-size:0.72rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.5px;text-align:left;position:sticky;top:0;border-bottom:1px solid #162040;font-weight:700;width:30%;">Detail</th>
+                            <th onclick="sortIssuesBy('estimated_date')" style="background:linear-gradient(90deg,#172554 0%,#0f172a 100%);padding:10px 12px;font-size:0.72rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.5px;text-align:left;position:sticky;top:0;cursor:pointer;border-bottom:1px solid #162040;font-weight:700;width:8%;">Date <i class="fas fa-sort" style="opacity:0.4;"></i></th>
+                            <th style="background:linear-gradient(90deg,#172554 0%,#0f172a 100%);padding:10px 12px;font-size:0.72rem;text-transform:uppercase;color:#94a3b8;letter-spacing:0.5px;text-align:left;position:sticky;top:0;border-bottom:1px solid #162040;font-weight:700;width:4%;">Go</th>
+                        </tr>
+                    </thead>
+                    <tbody id="issues-detail-body">
+                        <tr><td colspan="7" style="text-align:center;padding:50px;color:#64748b;">
+                            <i class="fas fa-triangle-exclamation" style="font-size:2rem;opacity:0.3;display:block;margin-bottom:10px;"></i>
+                            Click <strong style="color:#f97316;">Issues</strong> to load quality data for your traders.
+                        </td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-    
-    <script>
-        const adminName = "{{ admin_name }}";
-        
-        // --- Fetch & Render Logic ---
-        fetch('/api/hierarchy')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('content');
-                container.innerHTML = '';
-                
-                if (data.status === 'error' || !data.admins || !data.admins[adminName]) {
-                    container.innerHTML = `<div style="padding: 40px; text-align: center; color: var(--danger-color);">Admin Access Error</div>`;
-                    return;
+
+    <!-- CONTENT -->
+    <div id="content">
+        <div style="text-align:center;padding:80px;color:var(--text-secondary);">
+            <i class="fas fa-circle-notch fa-spin" style="font-size:2rem;color:var(--accent-color);margin-bottom:16px;display:block;"></i>
+            <p style="margin:0;">Loading administration panel...</p>
+        </div>
+    </div>
+
+</div>
+
+<!-- EDIT CLIENT MODAL -->
+<div id="editClientModal" class="modal">
+    <div class="modal-content">
+        <button class="modal-close" onclick="closeEditModal()">&times;</button>
+        <h2 style="margin-top:0;margin-bottom:24px;font-family:'Plus Jakarta Sans',sans-serif;font-size:1.1rem;font-weight:700;color:#fff;">Edit Client Profile</h2>
+        <form id="editClientForm">
+            <input type="hidden" id="editAdmin">
+            <input type="hidden" id="editTrader">
+            <input type="hidden" id="editName">
+            <div class="form-group">
+                <label class="form-label">Client Name</label>
+                <div id="editNameDisplay" style="padding:10px;background:rgba(255,255,255,0.04);border:1px solid #162040;border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:0.84rem;"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Risk Profile / Category</label>
+                <select id="editCategory" class="form-dark">
+                    <option value="PRIVATE">Private (Standard)</option>
+                    <option value="BEF">BEF (High Risk)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Status</label>
+                <select id="editActiveStatus" class="form-dark">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-gold"><i class="fas fa-save" style="margin-right:8px;"></i>Save Changes</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const adminName = "{{ admin_name }}";
+
+    fetch('/api/hierarchy')
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('content');
+            container.innerHTML = '';
+
+            if (data.status === 'error' || !data.admins || !data.admins[adminName]) {
+                container.innerHTML = `<div style="padding:40px;text-align:center;color:var(--danger-color);">Admin Access Error</div>`;
+                return;
+            }
+
+            const adminData = data.admins[adminName];
+            const traders = adminData.traders || {};
+
+            if (Object.keys(traders).length === 0) {
+                container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-secondary);">No traders assigned to this admin.</div>`;
+                return;
+            }
+
+            let totalTraders = 0, totalClients = 0, totalActive = 0;
+
+            // Outer admin card
+            const adminCard = document.createElement('div');
+            adminCard.className = 'admin-card';
+            adminCard.innerHTML = `
+                <div class="admin-header">
+                    <div class="admin-title-group">
+                        <div class="admin-name">${adminName}</div>
+                        <span class="badge badge-admin">Admin</span>
+                    </div>
+                    <span style="font-size:0.8rem;color:rgba(255,255,255,0.55);" id="trader-count-label"></span>
+                </div>
+                <div class="trader-list" id="trader-list-inner"></div>
+            `;
+            container.appendChild(adminCard);
+
+            const traderListEl = adminCard.querySelector('#trader-list-inner');
+
+            Object.entries(traders).forEach(([traderName, traderData]) => {
+                totalTraders++;
+                let clients = [];
+                if (Array.isArray(traderData)) {
+                    clients = traderData;
+                } else if (traderData && traderData.clients) {
+                    clients = traderData.clients;
                 }
 
-                const adminData = data.admins[adminName];
-                const traders = adminData.traders || {};
-
-                if (Object.keys(traders).length === 0) {
-                    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">No traders assigned to this admin.</div>`;
-                    return;
-                }
-
-                Object.entries(traders).forEach(([traderName, traderData]) => {
-                    const traderCard = document.createElement('div');
-                    traderCard.className = 'trader-card';
-
-                    // Determine Clients List
-                    let clients = [];
-                    if (Array.isArray(traderData)) {
-                        clients = traderData; // Legacy format
-                    } else if (traderData && traderData.clients) {
-                        clients = traderData.clients;
-                    }
-
-                    // Render Clients
-                    const clientsHTML = clients.map(client => {
-                        // Handle strict object format
-                        const cName = (typeof client === 'object') ? client.name : client;
-                        const cProfile = (typeof client === 'object') ? (client.category || 'PRIVATE') : 'PRIVATE';
-                        const cActive = (typeof client === 'object') ? (client.active_status || 'active') : 'active';
-                        
-                        // Badge logic
-                        const isBEF = cProfile.toUpperCase() === 'BEF';
-                        const badgeHTML = isBEF 
-                            ? `<span class="client-profile-badge bef">BEF</span>` 
-                            : `<span class="client-profile-badge">PVT</span>`;
-                        const inactiveBadge = cActive === 'inactive'
-                            ? `<span style="background:#ef4444;color:#fff;padding:1px 6px;border-radius:4px;font-size:0.65rem;font-weight:600;margin-left:4px;">INACTIVE</span>`
-                            : '';
-
-                        return `
-                            <div class="client-item" ${cActive === 'inactive' ? 'style="opacity:0.6;"' : ''}>
-                                <a href="/dashboard/${cName}" class="client-link">
-                                    <i class="fas fa-user" style="font-size: 0.8em; color: var(--text-secondary);"></i>
-                                    ${cName}
-                                    ${badgeHTML}${inactiveBadge}
-                                </a>
-                                <button onclick="editClient('${adminName}', '${traderName}', '${cName}', '${cProfile}', '${cActive}')" class="edit-btn" title="Edit Profile">
-                                    <i class="fas fa-cog"></i>
-                                </button>
-                            </div>
-                        `;
-                    }).join('');
-
-                    traderCard.innerHTML = `
-                        <div class="trader-header">
-                            <div class="trader-name">
-                                <i class="fas fa-briefcase" style="margin-right: 8px; color: var(--accent-color);"></i>
-                                ${traderName}
-                            </div>
-                            <span class="status" style="font-size: 0.75rem;">${clients.length} Clients</span>
-                        </div>
-                        <div class="client-list-container">
-                            ${clients.length > 0 ? clientsHTML : '<div style="color: var(--text-secondary); font-size: 0.9em; font-style: italic; padding: 10px;">No clients assigned</div>'}
+                const clientsHTML = clients.map(client => {
+                    const cName    = (typeof client === 'object') ? client.name : client;
+                    const cProfile = (typeof client === 'object') ? (client.category || 'PRIVATE') : 'PRIVATE';
+                    const cActive  = (typeof client === 'object') ? (client.active_status || 'active') : 'active';
+                    totalClients++;
+                    if (cActive !== 'inactive') totalActive++;
+                    const isBEF      = cProfile.toUpperCase() === 'BEF';
+                    const isInactive = cActive === 'inactive';
+                    return `
+                        <div class="client-tag-wrapper">
+                            <a href="/dashboard/${encodeURIComponent(cName)}" class="client-tag${isInactive ? ' is-inactive' : ''}">
+                                <i class="fas fa-user"></i>${cName}
+                                ${isBEF      ? '<span class="client-badge-bef">BEF</span>'   : ''}
+                                ${isInactive ? '<span class="client-badge-inactive">Off</span>' : ''}
+                            </a>
+                            <button class="client-edit-btn" onclick="editClient('${adminName}','${traderName}','${cName}','${cProfile}','${cActive}')" title="Edit client">
+                                <i class="fas fa-cog"></i>
+                            </button>
                         </div>
                     `;
-                    container.appendChild(traderCard);
-                });
-            })
-            .catch(err => {
-                console.error(err);
-                document.getElementById('content').innerHTML = `<div style="text-align:center; color: var(--danger-color);">System Error: Failed to load hierarchy.</div>`;
+                }).join('');
+
+                const traderItem = document.createElement('div');
+                traderItem.className = 'trader-item';
+                traderItem.innerHTML = `
+                    <div class="trader-header">
+                        <div class="trader-name"><i class="fas fa-user-tie" style="margin-right:8px;opacity:0.85;"></i>${traderName}</div>
+                        <span class="badge badge-trader">${clients.length} client${clients.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="client-list">
+                        ${clients.length > 0 ? clientsHTML : '<span style="color:var(--text-secondary);font-size:0.85rem;font-style:italic;">No clients assigned</span>'}
+                    </div>
+                `;
+                traderListEl.appendChild(traderItem);
             });
 
-        // --- Modal Functions ---
-        function editClient(admin, trader, name, category, activeStatus) {
-            document.getElementById('editAdmin').value = admin;
-            document.getElementById('editTrader').value = trader;
-            document.getElementById('editName').value = name;
-            document.getElementById('editNameDisplay').textContent = name;
-            
-            let val = 'PRIVATE';
-            if (category && category.toUpperCase() === 'BEF') val = 'BEF';
-            document.getElementById('editCategory').value = val;
-            document.getElementById('editActiveStatus').value = activeStatus || 'active';
-            
-            document.getElementById('editClientModal').style.display = 'block';
-        }
-        
-        function closeEditModal() {
-            document.getElementById('editClientModal').style.display = 'none';
-        }
+            document.getElementById('stat-traders').textContent = totalTraders;
+            document.getElementById('stat-clients').textContent = totalClients;
+            document.getElementById('stat-active').textContent  = totalActive;
+            document.getElementById('trader-count-label').textContent = totalTraders + ' trader' + (totalTraders !== 1 ? 's' : '');
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('content').innerHTML = `<div style="text-align:center;color:var(--danger-color);padding:40px;">System Error: Failed to load hierarchy.</div>`;
+        });
 
-        window.onclick = function(event) {
-            const modal = document.getElementById('editClientModal');
-            if (event.target == modal) closeEditModal();
-        }
-        
-        document.getElementById('editClientForm').onsubmit = function(e) {
-            e.preventDefault();
-            const originalBtnText = document.querySelector('.btn-gold').innerHTML;
-            document.querySelector('.btn-gold').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
-            
-            const data = {
-                admin: document.getElementById('editAdmin').value,
-                trader: document.getElementById('editTrader').value,
-                name: document.getElementById('editName').value,
-                category: document.getElementById('editCategory').value,
+    function editClient(admin, trader, name, category, activeStatus) {
+        document.getElementById('editAdmin').value = admin;
+        document.getElementById('editTrader').value = trader;
+        document.getElementById('editName').value = name;
+        document.getElementById('editNameDisplay').textContent = name;
+        document.getElementById('editCategory').value = (category && category.toUpperCase() === 'BEF') ? 'BEF' : 'PRIVATE';
+        document.getElementById('editActiveStatus').value = activeStatus || 'active';
+        document.getElementById('editClientModal').style.display = 'block';
+    }
+
+    function closeEditModal() {
+        document.getElementById('editClientModal').style.display = 'none';
+    }
+
+    window.onclick = function(e) {
+        if (e.target === document.getElementById('editClientModal')) closeEditModal();
+    };
+
+    document.getElementById('editClientForm').onsubmit = function(e) {
+        e.preventDefault();
+        const btn = document.querySelector('.btn-gold');
+        const original = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>Saving...';
+
+        fetch('/api/update_client_profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                admin:         document.getElementById('editAdmin').value,
+                trader:        document.getElementById('editTrader').value,
+                name:          document.getElementById('editName').value,
+                category:      document.getElementById('editCategory').value,
                 active_status: document.getElementById('editActiveStatus').value
-            };
+            })
+        })
+        .then(res => res.json())
+        .then(result => {
+            if (result.status === 'success') {
+                location.reload();
+            } else {
+                alert('Error: ' + result.message);
+                btn.innerHTML = original;
+            }
+        })
+        .catch(() => {
+            alert('Connection error');
+            btn.innerHTML = original;
+        });
+    };
+    // ── ISSUES PANEL ──────────────────────────────────────────────────────────
+    let allIssuesFlat = [];
+    let issuesSortCol = 'severity';
+    let issuesSortAsc = true;
+    let issuesLoaded = false;
 
-            fetch('/api/update_client_profile', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            })
-            .then(res => res.json())
-            .then(result => {
-                if (result.status === 'success') {
-                    // Success notification could be toast, using alert specifically requested by logic context usually
-                    location.reload();
-                } else {
-                    alert('Error: ' + result.message);
-                    document.querySelector('.btn-gold').innerHTML = originalBtnText;
-                }
-            })
-            .catch(err => {
-                alert('Connection error');
-                document.querySelector('.btn-gold').innerHTML = originalBtnText;
+    function toggleIssuesPanel() {
+        const panel   = document.getElementById('issues-panel');
+        const idBar   = document.getElementById('issues-identity-bar');
+        const btn     = document.getElementById('issues-tab-btn');
+        const open    = panel.style.display === 'none';
+        panel.style.display  = open ? 'block' : 'none';
+        idBar.style.display  = open ? 'flex'  : 'none';
+        if (open) {
+            btn.style.color = '#93c5fd';
+            btn.style.borderBottom = '2px solid #93c5fd';
+            if (!issuesLoaded) loadAdminIssues();
+        } else {
+            btn.style.color = '#7898be';
+            btn.style.borderBottom = '2px solid transparent';
+        }
+    }
+
+    async function loadAdminIssues() {
+        const tbody = document.getElementById('issues-detail-body');
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#64748b;"><i class="fas fa-circle-notch fa-spin" style="font-size:1.5rem;color:#f97316;display:block;margin-bottom:10px;"></i>Loading issues…</td></tr>';
+        try {
+            const resp = await fetch('/api/quality/admin_issues');
+            const data = await resp.json();
+            if (data.status !== 'success') {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:#f87171;">${data.message || 'Failed to load issues'}</td></tr>`;
+                return;
+            }
+            buildFlatIssues(data.results || []);
+            // Update nav badge
+            const total = data.total_issues || 0;
+            const navBadge = document.getElementById('issues-nav-badge');
+            if (total > 0) { navBadge.textContent = total; navBadge.style.display = 'inline-block'; }
+            else { navBadge.style.display = 'none'; }
+            issuesLoaded = true;
+            renderIssuesTable();
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:#f87171;">Connection error: ${e.message}</td></tr>`;
+        }
+    }
+
+    function buildFlatIssues(results) {
+        allIssuesFlat = [];
+        const typeSet = new Set();
+        const traderSet = new Set();
+        results.forEach(r => {
+            if (r.trader) traderSet.add(r.trader);
+            (r.issues || []).forEach(issue => {
+                if (issue.check === 'Scan error') return;
+                typeSet.add(issue.check);
+                allIssuesFlat.push({
+                    client: r.client_id,
+                    trader: r.trader || '-',
+                    severity: issue.severity,
+                    check: issue.check,
+                    detail: issue.detail || '',
+                    row: issue.row !== undefined ? issue.row : null,
+                    tab: issue.tab || null,
+                    estimated_date: issue.estimated_date || '-'
+                });
             });
+        });
+        const typeFilter = document.getElementById('issue-type-filter');
+        typeFilter.innerHTML = '<option value="all">All Issue Types</option>' +
+            [...typeSet].sort().map(t => `<option value="${t}">${t}</option>`).join('');
+        const traderFilter = document.getElementById('issue-trader-filter');
+        traderFilter.innerHTML = '<option value="all">All Traders</option>' +
+            [...traderSet].sort().map(t => `<option value="${t}">${t}</option>`).join('');
+    }
+
+    function sortIssuesBy(col) {
+        if (issuesSortCol === col) issuesSortAsc = !issuesSortAsc;
+        else { issuesSortCol = col; issuesSortAsc = true; }
+        renderIssuesTable();
+    }
+
+    function renderIssuesTable() {
+        const tbody      = document.getElementById('issues-detail-body');
+        const search     = (document.getElementById('issue-search').value || '').toLowerCase();
+        const sevFilter  = document.getElementById('issue-severity-filter').value;
+        const typeFilter = document.getElementById('issue-type-filter').value;
+        const tradFilter = document.getElementById('issue-trader-filter').value;
+
+        let items = allIssuesFlat.filter(i => {
+            if (sevFilter  !== 'all' && i.severity !== sevFilter) return false;
+            if (typeFilter !== 'all' && i.check !== typeFilter)   return false;
+            if (tradFilter !== 'all' && i.trader !== tradFilter)  return false;
+            if (search && !i.client.toLowerCase().includes(search) &&
+                !i.trader.toLowerCase().includes(search) &&
+                !i.check.toLowerCase().includes(search) &&
+                !i.detail.toLowerCase().includes(search)) return false;
+            return true;
+        });
+
+        const sevOrder = {critical:0, high:1, medium:2, warning:3, low:4, info:5};
+        items.sort((a, b) => {
+            let cmp = 0;
+            if (issuesSortCol === 'severity') cmp = (sevOrder[a.severity]||5) - (sevOrder[b.severity]||5);
+            else if (issuesSortCol === 'client') cmp = a.client.localeCompare(b.client);
+            else if (issuesSortCol === 'trader') cmp = a.trader.localeCompare(b.trader);
+            else if (issuesSortCol === 'check')  cmp = a.check.localeCompare(b.check);
+            else if (issuesSortCol === 'estimated_date') cmp = (a.estimated_date || '').localeCompare(b.estimated_date || '');
+            return issuesSortAsc ? cmp : -cmp;
+        });
+
+        const countBadge = document.getElementById('issues-count-badge');
+        countBadge.textContent = items.length + ' issue' + (items.length !== 1 ? 's' : '');
+
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#64748b;">No issues match the current filters — great work!</td></tr>';
+            return;
+        }
+
+        const sevBadge = s => {
+            const map = {critical:'rgba(239,68,68,0.3),#fca5a5',high:'rgba(249,115,22,0.15),#fb923c',medium:'rgba(251,191,36,0.15),#fbbf24',warning:'rgba(251,191,36,0.15),#fbbf24',low:'rgba(148,163,184,0.15),#94a3b8',info:'rgba(96,165,250,0.15),#60a5fa'};
+            const [bg, color] = (map[s] || map['low']).split(',');
+            return `<span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:0.72rem;font-weight:600;background:${bg};color:${color};">${s}</span>`;
         };
-    </script>
+
+        const trunc = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        tbody.innerHTML = items.map(i => {
+            let link;
+            if (i.tab)      link = `/dashboard/${encodeURIComponent(i.client)}#${i.tab}`;
+            else if (i.row !== null) link = `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}`;
+            else            link = `/dashboard/${encodeURIComponent(i.client)}`;
+            return `<tr onclick="window.open('${link}','_blank')" style="cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='rgba(30,58,138,0.1)'" onmouseout="this.style.background=''">
+                <td style="padding:8px 10px;font-size:0.82rem;color:#e2e8f0;font-weight:500;border-top:1px solid #162040;${trunc}">${i.client}</td>
+                <td style="padding:8px 10px;font-size:0.82rem;color:#94a3b8;border-top:1px solid #162040;${trunc}">${i.trader}</td>
+                <td style="padding:8px 10px;border-top:1px solid #162040;">${sevBadge(i.severity)}</td>
+                <td style="padding:8px 10px;font-size:0.82rem;color:#e2e8f0;border-top:1px solid #162040;${trunc}">${i.check}</td>
+                <td style="padding:8px 10px;font-size:0.78rem;color:#94a3b8;border-top:1px solid #162040;${trunc}" title="${i.detail.replace(/"/g,'&quot;')}">${i.detail}</td>
+                <td style="padding:8px 10px;font-size:0.78rem;color:#64748b;border-top:1px solid #162040;${trunc}">${i.estimated_date || '-'}</td>
+                <td style="padding:8px 6px;border-top:1px solid #162040;text-align:center;"><a href="${link}" target="_blank" onclick="event.stopPropagation();" style="color:#60a5fa;font-size:0.9rem;" title="Open"><i class="fas fa-arrow-up-right-from-square"></i></a></td>
+            </tr>`;
+        }).join('');
+    }
+</script>
 </body>
 </html>
