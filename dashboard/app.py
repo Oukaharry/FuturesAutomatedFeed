@@ -5720,6 +5720,52 @@ def api_summary_tracker_exclude():
     return jsonify({'status': 'success', 'excluded': sorted(current)})
 
 
+@app.route('/api/quality/trade_count_toggle', methods=['POST'])
+@require_role('super_admin')
+def api_trade_count_toggle():
+    """Toggle a client for trade-count tracking in the daily summary (off by default)."""
+    from dashboard.database import get_setting, set_setting
+    import json as _json
+
+    data = request.get_json(force=True)
+    client_name = (data.get('client') or '').strip()
+    action = data.get('action', 'toggle')  # 'add', 'remove', or 'toggle'
+
+    if not client_name:
+        return jsonify({'status': 'error', 'message': 'Client name required'}), 400
+
+    key = 'trade_count_enabled_clients'
+    current = set(_json.loads(get_setting(key) or '[]'))
+
+    if action == 'add':
+        current.add(client_name)
+    elif action == 'remove':
+        current.discard(client_name)
+    else:
+        if client_name in current:
+            current.discard(client_name)
+        else:
+            current.add(client_name)
+
+    user_id = request.session_user.get('user_identifier', '')
+    set_setting(key, _json.dumps(sorted(current)), updated_by=user_id)
+
+    log_action('TRADE_COUNT_TOGGLE', 'super_admin', user_id,
+               get_remote_address(), f'{action} client: {client_name}')
+
+    return jsonify({'status': 'success', 'enabled_clients': sorted(current)})
+
+
+@app.route('/api/quality/trade_count_clients')
+@require_role('super_admin')
+def api_trade_count_clients():
+    """Return list of clients with trade-count tracking enabled."""
+    from dashboard.database import get_setting
+    import json as _json
+    enabled = sorted(set(_json.loads(get_setting('trade_count_enabled_clients') or '[]')))
+    return jsonify({'status': 'success', 'enabled_clients': enabled})
+
+
 @app.route('/api/admin/repair_db', methods=['POST'])
 @app.route('/api/admin/db_repair', methods=['POST'])
 @require_role('super_admin')
@@ -6115,6 +6161,61 @@ def api_daily_summary():
         lines.append("👁️ _We track everything — every submission, every miss, every second._")
         lines.append("")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+    # ── Trade Count Section (toggled off by default per client) ──
+    try:
+        from dashboard.database import get_setting as _gs_tc, get_client_data as _gcd_tc
+        import json as _json_tc
+        _tc_enabled = set(_json_tc.loads(_gs_tc('trade_count_enabled_clients') or '[]'))
+        if _tc_enabled:
+            _tc_weekday_tokens = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+                                  'mon', 'tue', 'wed', 'thu', 'fri',
+                                  'tues', 'weds', 'thurs'}
+            _tc_today_wd = datetime.strptime(date, '%Y-%m-%d').strftime('%A').lower()
+            _tc_today_tokens = {_tc_today_wd, _tc_today_wd[:3]}  # e.g. {'thursday', 'thu'}
+            _tc_entries = []  # (client, [(firm, count), ...])
+            for _tc_client in sorted(_tc_enabled):
+                try:
+                    _tc_data = _gcd_tc(_tc_client)
+                    if not _tc_data:
+                        continue
+                    _tc_evals = _tc_data.get('evaluations', [])
+                    _tc_firm_counts = {}  # prop_firm -> count of rows traded today
+                    for _tc_ev in _tc_evals:
+                        if _tc_ev.get('_deleted'):
+                            continue
+                        _tc_sp1 = str(_tc_ev.get('Status P1', '') or '').strip().lower()
+                        _tc_sp2 = str(_tc_ev.get('Status', '') or '').strip().lower()
+                        if any(k in _tc_sp1 for k in ('fail', 'breach', 'delete', 'closed', 'sl')):
+                            continue
+                        if any(k in _tc_sp2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete')):
+                            continue
+                        if not _tc_sp1:
+                            continue
+                        # Check if any cell contains today's weekday
+                        _tc_has_today = False
+                        for _tv in _tc_ev.values():
+                            _ts = str(_tv or '').strip().lower()
+                            if any(tok in _ts for tok in _tc_today_tokens):
+                                _tc_has_today = True
+                                break
+                        if _tc_has_today:
+                            _tc_firm = str(_tc_ev.get('Prop Firm', '') or '').strip() or 'Unknown'
+                            _tc_firm_counts[_tc_firm] = _tc_firm_counts.get(_tc_firm, 0) + 1
+                    if _tc_firm_counts:
+                        _tc_entries.append((_tc_client, sorted(_tc_firm_counts.items())))
+                except Exception:
+                    pass
+            if _tc_entries:
+                lines.append("📊 **# of times account traded today**")
+                for _tc_client, _tc_firms in _tc_entries:
+                    lines.append(f"**{_tc_client}:**")
+                    for _tc_f, _tc_c in _tc_firms:
+                        lines.append(f"  {_tc_f} - {_tc_c}")
+                lines.append("")
+    except Exception:
         import traceback
         traceback.print_exc()
 
