@@ -6383,12 +6383,91 @@ def api_set_slack_daily_webhook():
     return jsonify({'status': 'success', 'message': f'Daily summaries Slack webhook {action}.'})
 
 
+# ── Slack Channels for Daily Summaries ────────────────────────────
+
+@app.route('/api/settings/slack_channels', methods=['GET'])
+@require_session
+def api_get_slack_channels():
+    """List configured Slack channels for daily summaries. Any authenticated user can read."""
+    from dashboard.database import get_setting
+    import json as _json
+    channels = _json.loads(get_setting('slack_daily_channels') or '[]')
+    # Mask webhook URLs for non-admins
+    user_type = request.session_user.get('user_type', '')
+    result = []
+    for ch in channels:
+        entry = {'id': ch['id'], 'name': ch['name']}
+        if user_type == 'super_admin':
+            url = ch.get('webhook_url', '')
+            entry['masked_url'] = (url[:40] + '...' + url[-6:]) if len(url) > 50 else url
+        result.append(entry)
+    return jsonify({'status': 'success', 'channels': result})
+
+
+@app.route('/api/settings/slack_channels', methods=['POST'])
+@require_role('super_admin')
+def api_add_slack_channel():
+    """Add a named Slack channel for daily summaries."""
+    from dashboard.database import get_setting, set_setting
+    import json as _json, hashlib as _hashlib
+
+    data = request.get_json(force=True)
+    name = (data.get('name') or '').strip()
+    url = (data.get('webhook_url') or '').strip()
+
+    if not name:
+        return jsonify({'status': 'error', 'message': 'Channel name is required.'}), 400
+    if not url or not url.startswith('https://hooks.slack.com/'):
+        return jsonify({'status': 'error', 'message': 'Invalid Slack webhook URL.'}), 400
+
+    channels = _json.loads(get_setting('slack_daily_channels') or '[]')
+
+    # Check for duplicate name
+    if any(ch['name'].lower() == name.lower() for ch in channels):
+        return jsonify({'status': 'error', 'message': f'Channel "{name}" already exists.'}), 400
+
+    channel_id = _hashlib.sha256(f'{name}:{url}:{datetime.now().isoformat()}'.encode()).hexdigest()[:12]
+    channels.append({'id': channel_id, 'name': name, 'webhook_url': url})
+
+    user = request.session_user.get('user_identifier', '')
+    set_setting('slack_daily_channels', _json.dumps(channels), updated_by=user)
+    log_action('SLACK_CHANNEL_ADD', 'super_admin', user, get_remote_address(), f'Added Slack channel: {name}')
+
+    return jsonify({'status': 'success', 'message': f'Channel "{name}" added.', 'channel_id': channel_id})
+
+
+@app.route('/api/settings/slack_channels/<channel_id>', methods=['DELETE'])
+@require_role('super_admin')
+def api_delete_slack_channel(channel_id):
+    """Remove a Slack channel by ID."""
+    from dashboard.database import get_setting, set_setting
+    import json as _json
+
+    channels = _json.loads(get_setting('slack_daily_channels') or '[]')
+    original_len = len(channels)
+    removed_name = ''
+    for ch in channels:
+        if ch['id'] == channel_id:
+            removed_name = ch['name']
+            break
+    channels = [ch for ch in channels if ch['id'] != channel_id]
+    if len(channels) == original_len:
+        return jsonify({'status': 'error', 'message': 'Channel not found.'}), 404
+
+    user = request.session_user.get('user_identifier', '')
+    set_setting('slack_daily_channels', _json.dumps(channels), updated_by=user)
+    log_action('SLACK_CHANNEL_REMOVE', 'super_admin', user, get_remote_address(), f'Removed Slack channel: {removed_name}')
+
+    return jsonify({'status': 'success', 'message': f'Channel "{removed_name}" removed.'})
+
+
 @app.route('/api/checklist/send_slack', methods=['POST'])
 @require_session
 def api_send_checklist_slack():
-    """Send a daily summary to the Daily Summaries Slack channel."""
+    """Send a daily summary to a selected Slack channel."""
     from dashboard.database import get_setting, save_daily_checklist
     from dashboard.scheduler import send_slack_to_webhook
+    import json as _json
     session_user = request.session_user
     user_type = session_user.get('user_type')
     user_identifier = session_user.get('user_identifier', '')
@@ -6396,28 +6475,42 @@ def api_send_checklist_slack():
     if user_type == 'client':
         return jsonify({'status': 'error', 'message': 'Not authorized'}), 403
 
-    webhook_url = get_setting('slack_daily_summaries_webhook_url')
-    if not webhook_url:
-        return jsonify({'status': 'error', 'message': 'Daily Summaries Slack webhook not configured. Ask a super admin to set it up.'}), 400
-
     data = request.get_json(force=True)
     summary_text = (data.get('text') or '').strip()
     client_id = (data.get('client_id') or '').strip()
+    channel_id = (data.get('channel_id') or '').strip()
+
     if not summary_text:
         return jsonify({'status': 'error', 'message': 'No summary text provided.'}), 400
+
+    # Resolve webhook URL: try channel_id first, fall back to legacy single webhook
+    webhook_url = ''
+    channel_name = ''
+    if channel_id:
+        channels = _json.loads(get_setting('slack_daily_channels') or '[]')
+        for ch in channels:
+            if ch['id'] == channel_id:
+                webhook_url = ch.get('webhook_url', '')
+                channel_name = ch.get('name', '')
+                break
+    if not webhook_url:
+        # Fallback to legacy single webhook
+        webhook_url = get_setting('slack_daily_summaries_webhook_url')
+        channel_name = 'Default'
+    if not webhook_url:
+        return jsonify({'status': 'error', 'message': 'No Slack channel configured. Ask a super admin to set one up.'}), 400
 
     try:
         ok = send_slack_to_webhook(webhook_url, summary_text)
         if ok:
-            # Record the daily summary so it shows in the tracker
             if client_id:
                 today = datetime.now().strftime('%Y-%m-%d')
                 save_daily_checklist(today, user_identifier, user_type, 'daily_summary',
                                      [{'id': 'slack_sent', 'title': 'Sent to Slack', 'status': 'ok', 'notes': ''}],
                                      get_remote_address(), client_id=client_id)
             log_action('SLACK_DAILY_SUMMARY', user_type, user_identifier,
-                       get_remote_address(), f'Daily summary sent to Slack for {client_id}')
-            return jsonify({'status': 'success', 'message': 'Summary sent to Slack!'})
+                       get_remote_address(), f'Daily summary sent to Slack ({channel_name}) for {client_id}')
+            return jsonify({'status': 'success', 'message': f'Summary sent to #{channel_name}!'})
         else:
             return jsonify({'status': 'error', 'message': 'Slack post failed — check webhook URL.'}), 502
     except Exception as e:
