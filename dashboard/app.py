@@ -5578,6 +5578,44 @@ def api_quality_results():
         return jsonify({'status': 'error', 'message': f'Failed to load results: {str(e)}'}), 500
 
 
+@app.route('/api/quality/admin_issues')
+@require_role('admin', 'super_admin')
+def api_admin_issues():
+    """Return latest quality scan results filtered for a specific admin's traders/clients. Admin role only."""
+    try:
+        from dashboard.database import get_quality_scan_results
+        session_user = request.session_user
+        if session_user.get('user_type') == 'super_admin':
+            admin_name = request.args.get('admin', '')
+        else:
+            admin_name = session_user.get('user_identifier', '')
+        if not admin_name:
+            return jsonify({'status': 'error', 'message': 'Admin name required'}), 400
+        results = get_quality_scan_results()  # latest scan
+        # Filter for this admin only
+        filtered = [r for r in results if (r.get('admin') or '').lower() == admin_name.lower()]
+        # Strip scan errors, recalculate health
+        severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+        for r in filtered:
+            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+            r['total_issues'] = len(r['issues'])
+            deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
+            r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+        total_issues = sum(r['total_issues'] for r in filtered)
+        return jsonify({
+            'status': 'success',
+            'admin': admin_name,
+            'total_clients': len(filtered),
+            'clients_with_issues': sum(1 for r in filtered if r['total_issues'] > 0),
+            'total_issues': total_issues,
+            'results': filtered
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Failed to load admin issues: {str(e)}'}), 500
+
+
 @app.route('/api/quality/scan_dates')
 @require_role('super_admin')
 def api_quality_scan_dates():
