@@ -3865,7 +3865,7 @@
             if (loading) loading.style.display = 'block';
             if (empty) empty.style.display = 'none';
             if (table) table.style.display = 'none';
-            fetch(`/api/quality/client/${encodeURIComponent(clientId)}`)
+            fetch(`/api/quality/client/${encodeURIComponent(clientId)}?rescan=1`)
                 .then(r => r.json())
                 .then(data => {
                     if (loading) loading.style.display = 'none';

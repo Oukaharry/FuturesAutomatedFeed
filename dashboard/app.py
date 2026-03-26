@@ -5480,12 +5480,45 @@ def api_run_quality_scan():
 @app.route('/api/quality/client/<client_id>', methods=['GET'])
 @require_role('admin', 'trader', 'super_admin')
 def api_quality_client(client_id):
-    """Get quality issues for a single client. Loads saved results; only super admins trigger live scans."""
+    """Get quality issues for a single client. Loads saved results; ?rescan=1 triggers a live re-scan."""
     user_type = request.session_user.get('user_type')
     user_identifier = request.session_user.get('user_identifier')
     if not can_access_client(user_type, user_identifier, client_id):
         return jsonify({"status": "error", "message": "Access denied"}), 403
     empty = {"client_id": client_id, "issues": [], "health_score": 100.0}
+    _hidden = {'Scan error', 'Daily summary not sent', 'Hedge account or Prop Firm missing'}
+
+    # If rescan=1, run a live scan for this client and update the stored results
+    if request.args.get('rescan') == '1':
+        try:
+            results = run_quality_scan(target_client=client_id)
+            if results:
+                r = results[0]
+                # Persist the updated result into today's scan row for this client
+                try:
+                    from dashboard.database import get_connection
+                    scan_date = datetime.now().strftime('%Y-%m-%d')
+                    with get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute('DELETE FROM quality_scan_results WHERE scan_date = ? AND client_id = ?',
+                                       (scan_date, client_id))
+                        cursor.execute('''INSERT INTO quality_scan_results
+                                          (scan_date, client_id, trader, admin, total_issues, issues, health_score)
+                                          VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                                       (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
+                                        r['total_issues'], json.dumps(r['issues']), r['health_score']))
+                        conn.commit()
+                except Exception:
+                    pass  # Non-fatal — still return live results
+                issues = r.get('issues', [])
+                filtered = [i for i in issues if i.get('check') not in _hidden]
+                r = dict(r, issues=filtered, total_issues=len(filtered))
+                if not filtered:
+                    r['health_score'] = 100.0
+                return jsonify({"status": "success", "data": r})
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Scan failed: {str(e)}"}), 500
+
     # Try loading from saved scan results first (faster, no DB corruption risk)
     try:
         from dashboard.database import get_quality_scan_results
@@ -5493,8 +5526,6 @@ def api_quality_client(client_id):
         if saved:
             for r in saved:
                 if r.get('client_id') == client_id:
-                    # Filter out issues that belong on the quality dashboard, not per-client views
-                    _hidden = {'Scan error', 'Daily summary not sent', 'Hedge account or Prop Firm missing'}
                     issues = r.get('issues', [])
                     filtered = [i for i in issues if i.get('check') not in _hidden]
                     r = dict(r, issues=filtered, total_issues=len(filtered))
