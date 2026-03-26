@@ -3,282 +3,371 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trader Dashboard - TradeOpss</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>Trader Portal - TradeOpss</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 24px;
-            margin-top: 40px;
-        }
-
-        .client-card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 24px;
-            text-decoration: none;
-            color: var(--text-primary);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
+        /* ── NAVBAR ── */
+        .modern-nav {
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 0 24px;
+            height: 68px;
             display: flex;
-            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22);
+            position: sticky;
+            top: 12px;
+            z-index: 500;
+        }
+        .tab-btn {
+            color: #7898be; text-decoration: none; font-weight: 600; font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            padding: 7px 13px; border-radius: 7px; border-bottom: 2px solid transparent;
+            background: transparent; letter-spacing: 0.01em;
+            display: flex; align-items: center; gap: 6px;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28); background: rgba(251,191,36,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover { background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 14px rgba(251,191,36,0.18); }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.5); box-shadow: 0 0 14px rgba(239,68,68,0.18); }
+
+        /* ── STAT BOXES ── */
+        .stat-row { display: flex; gap: 16px; margin-bottom: 28px; }
+        .stat-box { flex: 1; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid; }
+        .stat-box .stat-lbl {
+            font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em;
+            margin-bottom: 5px; text-transform: uppercase;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .stat-box .stat-val { font-size: 2rem; font-weight: 800; }
+
+        /* ── MAIN CARD ── */
+        .trader-card {
+            background: var(--card-bg);
             border: 1px solid var(--border-color);
-            background-image: var(--gradient-card);
-            min-height: 180px;
+            border-top: 1px solid #1e3060;
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: var(--shadow-navy);
         }
-
-        .client-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; width: 4px; height: 100%;
-            background: var(--gradient-primary);
-            opacity: 0.7;
-            transition: width 0.3s ease;
+        .trader-card-header {
+            background: linear-gradient(90deg, #065f46 0%, #047857 100%);
+            border-top: 1px solid #10a070;
+            border-bottom: 2px solid #033d2a;
+            padding: 18px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-
-        .client-card:hover {
-            transform: translateY(-5px);
-            box-shadow: var(--shadow-glow), var(--shadow-lg);
-            border-color: rgba(251, 191, 36, 0.4);
-        }
-
-        .client-card:hover::before {
-            width: 6px;
-            opacity: 1;
-        }
-
-        /* Glassmorphism for card content */
-        .client-name {
-            font-size: 1.4rem;
+        .trader-card-title {
+            font-family: 'Space Grotesk', sans-serif;
             font-weight: 700;
-            margin-bottom: 8px;
+            font-size: 1.05rem;
+            color: #fff;
             letter-spacing: -0.01em;
-            background: linear-gradient(90deg, #fff, #cbd5e1);
-            background-clip: text;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .client-meta {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-bottom: auto; /* Pushes arrow to bottom */
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding-top: 10px;
-            border-top: 1px solid rgba(255,255,255,0.05);
-            margin-top: 10px;
+            gap: 10px;
         }
+        .badge {
+            padding: 3px 9px; border-radius: 999px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.62rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.09em;
+        }
+        .badge-green { background: rgba(45,212,191,0.15); color: #2dd4bf; border: 1px solid rgba(45,212,191,0.3); }
 
-        .action-arrow {
-            margin-top: 20px;
-            align-self: flex-end;
-            font-weight: 600;
-            font-size: 0.9rem;
-            color: var(--accent-color);
+        /* ── CLIENT CARD GRID ── */
+        .client-grid {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
+        }
+        .client-card {
+            background: linear-gradient(160deg, #090f1e 0%, #060b18 100%);
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-left: 3px solid var(--c-accent, #1e3a8a);
+            border-radius: 12px;
+            padding: 20px 18px 16px;
+            text-decoration: none;
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+            box-shadow: 0 4px 16px rgba(1,3,10,0.7), 0 1px 0 rgba(30,58,138,0.14);
+            position: relative;
+            overflow: hidden;
+        }
+        .client-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, var(--c-glow, rgba(30,58,138,0.05)) 0%, transparent 60%);
+            pointer-events: none;
+        }
+        .client-card:hover {
+            border-color: rgba(251,191,36,0.5);
+            border-left-color: #fbbf24;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.85), 0 0 0 1px rgba(251,191,36,0.15);
+            transform: translateY(-3px);
+        }
+        .client-card.is-inactive { opacity: 0.5; }
+        .client-card-icon {
+            width: 36px; height: 36px; border-radius: 9px;
+            background: var(--c-icon-bg, rgba(30,58,138,0.2));
+            border: 1px solid var(--c-icon-bd, rgba(30,58,138,0.4));
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 14px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .client-card-icon i { color: var(--c-icon, #7baef0); font-size: 0.9rem; }
+        .client-card:hover .client-card-icon { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.35); }
+        .client-card:hover .client-card-icon i { color: #fbbf24; }
+        .client-card-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            color: #e8eeff;
+            letter-spacing: -0.01em;
+            margin-bottom: 6px;
+            line-height: 1.3;
+        }
+        .client-card-meta {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
             display: flex;
             align-items: center;
             gap: 6px;
-            transition: all 0.2s ease;
-            opacity: 0.8;
+            padding-top: 10px;
+            border-top: 1px solid #162040;
+            margin-top: 10px;
         }
-
-        .client-card:hover .action-arrow {
-            gap: 12px;
-            color: #fff;
-            opacity: 1;
+        .client-card-badges {
+            display: flex; gap: 5px; margin-bottom: 4px; flex-wrap: wrap;
         }
-
-        .modern-nav {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(16px);
-            padding: 0 32px;
-            height: 80px;
-            margin-bottom: 40px;
-            border-radius: var(--radius);
-            box-shadow: var(--shadow-lg);
+        .client-card-footer {
+            margin-top: auto;
+            padding-top: 14px;
             display: flex;
             justify-content: flex-end;
             align-items: center;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            position: sticky;
-            top: 20px;
-            z-index: 100;
+            gap: 5px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: #3b556a;
+            transition: color 0.15s;
+        }
+        .client-card:hover .client-card-footer { color: #fbbf24; }
+        .badge-bef {
+            background: rgba(234,179,8,0.15); color: #facc15;
+            border: 1px solid rgba(234,179,8,0.25); border-radius: 99px;
+            font-size: 0.6rem; font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+            padding: 1px 6px;
+        }
+        .badge-inactive {
+            background: rgba(239,68,68,0.18); color: #f87171;
+            border: 1px solid rgba(239,68,68,0.28); border-radius: 99px;
+            font-size: 0.6rem; font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+            padding: 1px 6px;
         }
 
-        .welcome-hero h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        /* ── EMPTY / ERROR STATES ── */
+        .state-box {
+            text-align: center;
+            padding: 64px 40px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+        }
+        .state-icon-wrap {
+            width: 72px; height: 72px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
         }
 
-        /* ── MOBILE RESPONSIVE ── */
+        /* ── MOBILE ── */
         @media (max-width: 768px) {
-            .modern-nav {
-                height: auto !important;
-                flex-wrap: wrap;
-                padding: 10px 12px;
-                gap: 6px;
-                justify-content: center;
-                margin-bottom: 16px;
-            }
-            .modern-nav .brand {
-                position: static !important;
-                transform: none !important;
-                width: 100%;
-                display: flex;
-                justify-content: center;
-            }
-            .modern-nav .brand img {
-                width: 70px !important;
-                height: 70px !important;
-            }
-            .nav-links { flex-wrap: wrap; justify-content: center; gap: 4px; }
-            .tab-btn { font-size: 0.78rem !important; padding: 6px 9px !important; }
+            .modern-nav { height: auto; flex-wrap: wrap; padding: 10px 12px; gap: 6px; justify-content: center; margin-bottom: 16px; }
+            .modern-nav .brand { position: static !important; transform: none !important; width: 100%; display: flex; justify-content: center; }
+            .stat-row { flex-wrap: wrap; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Navigation -->
-        <nav class="modern-nav">
-            <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 24px;">
-                <div style="text-align: right; line-height: 1.2;">
-                    <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">{{ trader_name }}</div>
-                    <div style="font-size: 0.75rem; color: var(--accent-color); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Trader Portal</div>
-                </div>
-                
-                <div style="height: 32px; width: 1px; background: var(--border-color);"></div>
-                
-                <a href="/change-password" class="tab-btn" style="padding: 8px 16px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 8px;">
-                    <i class="fas fa-key"></i> Change Password
-                </a>
-                <a href="/logout" class="tab-btn" style="padding: 8px 16px; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 8px;">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
-            </div>
-        </nav>
+<div class="container">
 
-        <!-- Dynamic Client Load -->
-        <div id="content" class="dashboard-grid">
-            <!-- Loading State -->
-            <div style="grid-column: 1/-1; text-align: center; padding: 80px; color: var(--text-secondary);">
-                <i class="fas fa-circle-notch fa-spin" style="font-size: 2.5rem; color: var(--accent-color); margin-bottom: 24px; filter: drop-shadow(0 0 10px var(--accent-glow));"></i>
-                <p style="font-size: 1.1rem;">Loading your portfolio...</p>
-            </div>
+    <!-- NAVBAR -->
+    <nav class="modern-nav">
+        <div class="brand" style="position:absolute;left:24px;top:50%;transform:translateY(-50%);z-index:200;">
+            <a href="/trader/{{ trader_name }}" style="display:block;line-height:0;">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width:100px;height:auto;object-fit:contain;">
+            </a>
+        </div>
+        <div style="position:absolute;right:24px;top:50%;transform:translateY(-50%);display:flex;gap:8px;align-items:center;">
+            <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+            <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
+        </div>
+    </nav>
+
+    <!-- PAGE HEADER -->
+    <div style="margin-bottom:24px;">
+        <h1 style="font-size:1.5rem;margin-bottom:4px;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;letter-spacing:-0.02em;">Trader Portal</h1>
+        <p style="color:var(--text-secondary);margin:0;font-size:0.9rem;">Welcome back, <strong style="color:var(--text-primary);">{{ trader_name }}</strong> — your active client portfolio.</p>
+    </div>
+
+    <!-- STAT ROW -->
+    <div class="stat-row">
+        <div class="stat-box" style="background:linear-gradient(135deg,rgba(5,150,105,0.15),rgba(4,120,87,0.6));border-color:rgba(5,150,105,0.4);">
+            <div class="stat-lbl" style="color:#4ade80;">Total Clients</div>
+            <div class="stat-val" style="color:#4ade80;text-shadow:0 0 20px rgba(74,222,128,0.4);" id="stat-total">—</div>
+        </div>
+        <div class="stat-box" style="background:linear-gradient(135deg,rgba(30,58,138,0.15),rgba(23,37,84,0.6));border-color:rgba(30,58,138,0.4);">
+            <div class="stat-lbl" style="color:#7baef0;">Active</div>
+            <div class="stat-val" style="color:#7baef0;text-shadow:0 0 20px rgba(30,58,138,0.5);" id="stat-active">—</div>
+        </div>
+        <div class="stat-box" style="background:linear-gradient(135deg,rgba(239,68,68,0.1),rgba(185,28,28,0.4));border-color:rgba(239,68,68,0.3);">
+            <div class="stat-lbl" style="color:#f87171;">Inactive</div>
+            <div class="stat-val" style="color:#f87171;text-shadow:0 0 20px rgba(239,68,68,0.4);" id="stat-inactive">—</div>
         </div>
     </div>
 
-    <script>
-        const traderName = "{{ trader_name }}";
-        
-        fetch('/api/hierarchy')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('content');
-                
-                if (data.status === 'error') {
-                    throw new Error(data.message);
-                }
+    <!-- CLIENT CARD -->
+    <div id="content">
+        <div style="text-align:center;padding:80px 0;color:var(--text-secondary);">
+            <i class="fas fa-circle-notch fa-spin" style="font-size:2rem;color:#4ade80;margin-bottom:20px;display:block;"></i>
+            <p style="font-family:'Plus Jakarta Sans',sans-serif;font-size:1rem;">Loading your portfolio…</p>
+        </div>
+    </div>
 
-                // Find visible clients for this trader
-                let clients = [];
-                const norm = s => String(s).trim().toLowerCase();
-                const targetTrader = norm(traderName);
+</div>
 
-                // Deep search logic (adapts to hierarchy structure)
-                if (data.admins) {
-                    Object.values(data.admins).forEach(admin => {
-                        if (admin && admin.traders) {
-                            // Can be object or list depending on legacy
-                            const traders = admin.traders;
-                            // If object (new structure)
-                            if (typeof traders === 'object' && !Array.isArray(traders)) {
-                                Object.entries(traders).forEach(([tName, tData]) => {
-                                    if (norm(tName) === targetTrader) {
-                                        clients = tData.clients || (Array.isArray(tData) ? tData : []);
-                                    }
-                                });
+<script>
+    const traderName = "{{ trader_name }}";
+
+    fetch('/api/hierarchy')
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('content');
+
+            if (data.status === 'error') throw new Error(data.message);
+
+            let clients = [];
+            const norm = s => String(s).trim().toLowerCase();
+            const targetTrader = norm(traderName);
+
+            if (data.admins) {
+                Object.values(data.admins).forEach(admin => {
+                    if (admin && admin.traders && typeof admin.traders === 'object' && !Array.isArray(admin.traders)) {
+                        Object.entries(admin.traders).forEach(([tName, tData]) => {
+                            if (norm(tName) === targetTrader) {
+                                clients = tData.clients || (Array.isArray(tData) ? tData : []);
                             }
-                        }
-                    });
-                }
-
-                container.innerHTML = ''; // Clear loading
-
-                if (!clients || clients.length === 0) {
-                    container.innerHTML = `
-                        <div style="grid-column: 1/-1; text-align: center; padding: 60px; background: var(--card-bg); border-radius: var(--radius); border: 1px dashed var(--border-color);">
-                            <div style="background: rgba(255,255,255,0.05); width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;">
-                                <i class="fas fa-folder-open" style="font-size: 2rem; color: var(--text-secondary); opacity: 0.7;"></i>
-                            </div>
-                            <h3 style="margin-bottom: 8px; color: var(--text-primary);">No Clients Assigned</h3>
-                            <p style="color: var(--text-secondary); max-width: 400px; margin: 0 auto;">Contact your administrator to have clients assigned to your portfolio.</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                // Deduplicate clients
-                const uniqueClients = [...new Set(clients.map(c => (typeof c === 'object' ? c.name : c)))];
-
-                // Inject Hero Header if not exists
-                if (!document.getElementById('clients-header')) {
-                    const hero = document.createElement('div');
-                    hero.id = 'clients-header';
-                    hero.className = 'welcome-hero';
-                    hero.style.gridColumn = '1/-1';
-                    hero.style.marginBottom = '20px';
-                    hero.innerHTML = `
-                        <h1>Your Portfolio</h1>
-                        <p style="color: var(--text-secondary); font-size: 1.1rem; max-width: 600px;">
-                            You are managing <strong>${uniqueClients.length}</strong> active client accounts. 
-                            Select a client below to view detailed performance metrics.
-                        </p>
-                    `;
-                    container.appendChild(hero);
-                }
-
-                uniqueClients.forEach(clientName => {
-                    const card = document.createElement('a');
-                    card.href = `/dashboard/${clientName}`;
-                    card.className = 'client-card';
-                    card.innerHTML = `
-                        <div style="flex: 1;">
-                            <div class="client-name">${clientName}</div>
-                            <div class="client-meta">
-                                <i class="fas fa-shield-alt" style="color: var(--success-color);"></i> 
-                                Managed Account
-                            </div>
-                        </div>
-                        <div class="action-arrow">
-                            Access Dashboard <i class="fas fa-arrow-right"></i>
-                        </div>
-                    `;
-                    container.appendChild(card);
+                        });
+                    }
                 });
-            })
-            .catch(err => {
-                console.error(err);
-                document.getElementById('content').innerHTML = `
-                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; background: rgba(239, 68, 68, 0.1); border-radius: var(--radius); border: 1px solid var(--danger-color);">
-                        <i class="fas fa-exclamation-triangle" style="color: var(--danger-color); font-size: 2rem; margin-bottom: 16px;"></i>
-                        <h3 style="color: var(--danger-color);">Connection Error</h3>
-                        <p style="color: var(--text-secondary);">Failed to load client list. Please refresh the page.</p>
-                    </div>
-                `;
+            }
+
+            const allClients = clients.map(c =>
+                (typeof c === 'object') ? c : { name: c, category: 'PRIVATE', active_status: 'active' }
+            );
+
+            const seen = new Set();
+            const uniqueClients = allClients.filter(c => {
+                if (seen.has(c.name)) return false;
+                seen.add(c.name);
+                return true;
             });
-    </script>
+
+            const totalActive   = uniqueClients.filter(c => c.active_status !== 'inactive').length;
+            const totalInactive = uniqueClients.length - totalActive;
+
+            document.getElementById('stat-total').textContent    = uniqueClients.length;
+            document.getElementById('stat-active').textContent   = totalActive;
+            document.getElementById('stat-inactive').textContent = totalInactive;
+
+            if (uniqueClients.length === 0) {
+                container.innerHTML = `
+                    <div class="state-box">
+                        <div class="state-icon-wrap" style="background:rgba(255,255,255,0.04);border:1px dashed #162040;">
+                            <i class="fas fa-folder-open" style="font-size:1.8rem;color:#3b536a;"></i>
+                        </div>
+                        <h3 style="color:var(--text-primary);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;margin-bottom:8px;">No Clients Assigned</h3>
+                        <p style="color:var(--text-secondary);max-width:360px;margin:0 auto;font-size:0.9rem;">Contact your administrator to have clients assigned to your portfolio.</p>
+                    </div>`;
+                return;
+            }
+
+            const cardAccents = [
+                { border:'#1e3a8a', iconBg:'rgba(30,58,138,0.22)',  iconBd:'rgba(30,58,138,0.45)',  icon:'#7baef0', glow:'rgba(30,58,138,0.06)'   },
+                { border:'#065f46', iconBg:'rgba(6,95,70,0.22)',    iconBd:'rgba(6,95,70,0.45)',    icon:'#34d399', glow:'rgba(52,211,153,0.06)'  },
+                { border:'#7c3aed', iconBg:'rgba(124,58,237,0.22)', iconBd:'rgba(124,58,237,0.45)', icon:'#a78bfa', glow:'rgba(167,139,250,0.06)' },
+                { border:'#0f766e', iconBg:'rgba(15,118,110,0.22)', iconBd:'rgba(15,118,110,0.45)', icon:'#2dd4bf', glow:'rgba(45,212,191,0.06)'  },
+                { border:'#b45309', iconBg:'rgba(180,83,9,0.22)',   iconBd:'rgba(180,83,9,0.45)',   icon:'#fbbf24', glow:'rgba(251,191,36,0.06)'  },
+                { border:'#be123c', iconBg:'rgba(190,18,60,0.22)',  iconBd:'rgba(190,18,60,0.45)',  icon:'#fb7185', glow:'rgba(251,113,133,0.06)' },
+            ];
+            const cardsHTML = uniqueClients.map((c, idx) => {
+                const isBEF      = (c.category || '').toUpperCase() === 'BEF';
+                const isInactive = c.active_status === 'inactive';
+                const acc = cardAccents[idx % cardAccents.length];
+                return `
+                    <a href="/dashboard/${encodeURIComponent(c.name)}" class="client-card${isInactive ? ' is-inactive' : ''}" style="--c-accent:${acc.border};--c-icon-bg:${acc.iconBg};--c-icon-bd:${acc.iconBd};--c-icon:${acc.icon};--c-glow:${acc.glow};">
+                        <div class="client-card-icon"><i class="fas fa-user"></i></div>
+                        <div class="client-card-name">${c.name}</div>
+                        ${(isBEF || isInactive) ? `<div class="client-card-badges">${isBEF ? '<span class="badge-bef">BEF</span>' : ''}${isInactive ? '<span class="badge-inactive">Inactive</span>' : ''}</div>` : ''}
+                        <div class="client-card-meta"><i class="fas fa-shield-halved" style="color:#2dd4bf;"></i> Managed Account</div>
+                        <div class="client-card-footer">Open Dashboard <i class="fas fa-arrow-right"></i></div>
+                    </a>`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="trader-card">
+                    <div class="trader-card-header">
+                        <div class="trader-card-title">
+                            <i class="fas fa-user-tie" style="opacity:0.85;"></i>
+                            ${traderName}
+                        </div>
+                        <span class="badge badge-green">${uniqueClients.length} client${uniqueClients.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="client-grid">${cardsHTML}</div>
+                </div>`;
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('content').innerHTML = `
+                <div class="state-box" style="border-color:rgba(239,68,68,0.35);background:rgba(239,68,68,0.06);">
+                    <div class="state-icon-wrap" style="background:rgba(239,68,68,0.1);">
+                        <i class="fas fa-triangle-exclamation" style="font-size:1.8rem;color:#f87171;"></i>
+                    </div>
+                    <h3 style="color:#f87171;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;margin-bottom:8px;">Connection Error</h3>
+                    <p style="color:var(--text-secondary);font-size:0.9rem;">Failed to load client list. Please refresh the page.</p>
+                </div>`;
+        });
+</script>
 </body>
 </html>
