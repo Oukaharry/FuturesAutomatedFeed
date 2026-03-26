@@ -832,6 +832,27 @@
             box-shadow: inset 0 1px 0 rgba(251,191,36,0.12), inset 0 -10px 20px -10px rgba(244,63,94,0.2) !important;
         }
 
+        /* ── Excel-style column letter row (admin/trader/super_admin only) ─────── */
+        #evaluations-table thead tr.excel-col-row th {
+            font-size: 9px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            color: #93aed4;
+            background: linear-gradient(180deg, #17233f, #111b30) !important;
+            padding: 2px 4px !important;
+            text-align: center !important;
+            font-weight: 700;
+            border-bottom: 1px solid rgba(45, 74, 130, 0.5) !important;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+            min-width: unset !important;
+            position: sticky;
+            z-index: 1500;
+        }
+        #evaluations-table thead tr.excel-col-row th.sticky-prop-firm-col {
+            position: sticky !important;
+            z-index: 2050 !important;
+        }
+
         /* Purple header needs even higher z-index to resist blue column overlap */
         #evaluations-table thead tr:first-child th.group-header-purple {
             z-index: 2150 !important;
@@ -3505,13 +3526,62 @@
         function fixSubHeaderTop() {
             const row1 = document.querySelector('#evaluations-table thead tr:first-child');
             if (!row1) return;
-            const h = row1.getBoundingClientRect().height;
+            const h1 = row1.getBoundingClientRect().height;
+            const row2 = document.querySelector('#evaluations-table thead tr:nth-child(2)');
             document.querySelectorAll('#evaluations-table thead tr:nth-child(2) th').forEach(th => {
-                th.style.setProperty('top', h + 'px', 'important');
+                th.style.setProperty('top', h1 + 'px', 'important');
             });
+            // Position the excel column-letter row (3rd row) below both sticky header rows
+            if (row2) {
+                const h2 = row2.getBoundingClientRect().height;
+                document.querySelectorAll('#evaluations-table thead tr.excel-col-row th').forEach(th => {
+                    th.style.setProperty('top', (h1 + h2) + 'px', 'important');
+                });
+            }
         }
 
-        document.addEventListener('DOMContentLoaded', fixSubHeaderTop);
+        /**
+         * Inject an Excel-style column letter row (A, B, C … AA, AB …) into the
+         * evaluations table thead.  Only shown for admin / trader / super_admin.
+         */
+        function injectExcelColumnRow() {
+            if (IS_CLIENT) return;
+
+            const thead = document.querySelector('#evaluations-table thead');
+            if (!thead) return;
+            if (thead.querySelector('tr.excel-col-row')) return; // already injected
+
+            // Extend rowspan of the frozen # and 🗑️ headers from 2 → 3
+            const firstRow = thead.querySelector('tr:first-child');
+            if (firstRow) {
+                firstRow.querySelectorAll('th[rowspan]').forEach(th => {
+                    th.setAttribute('rowspan', '3');
+                });
+            }
+
+            // Read all sub-header <th> elements (2nd row)
+            const subHeaderRow = thead.querySelectorAll('tr')[1];
+            if (!subHeaderRow) return;
+            const subHeaders = Array.from(subHeaderRow.querySelectorAll('th'));
+
+            const letterRow = document.createElement('tr');
+            letterRow.className = 'excel-col-row';
+
+            subHeaders.forEach((th, i) => {
+                const lth = document.createElement('th');
+                lth.textContent = getColLetter(i + 1);
+                // Carry over sticky class so Prop Firm column stays frozen
+                if (th.classList.contains('sticky-prop-firm-col')) {
+                    lth.classList.add('sticky-prop-firm-col');
+                    lth.style.left = th.style.left || '';
+                }
+                letterRow.appendChild(lth);
+            });
+
+            thead.appendChild(letterRow);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => { injectExcelColumnRow(); fixSubHeaderTop(); });
         window.addEventListener('resize', fixSubHeaderTop);
 
         function renderEvaluationsTable(resetPage = true) {
