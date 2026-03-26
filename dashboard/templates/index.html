@@ -2435,17 +2435,14 @@
                             <th style="text-align:left; padding-left:16px;">Account</th>
                             <th style="text-align:center;">Evals</th>
                             <th style="text-align:center;">Active</th>
-                            <th style="text-align:center;">Passed</th>
-                            <th style="text-align:center;">Failed</th>
                             <th style="text-align:right;">Payouts</th>
                             <th style="text-align:right;">Fees</th>
-                            <th style="text-align:right;">Hedge</th>
-                            <th style="text-align:right;">Farming</th>
+                            <th style="text-align:right;">Hedging Results</th>
                             <th style="text-align:right; padding-right:16px;">Net Profit</th>
                         </tr>
                     </thead>
                     <tbody id="kyc-portfolio-body">
-                        <tr><td colspan="10" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
+                        <tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">Loading KYC portfolio data...</td></tr>
                     </tbody>
                 </table>
 
@@ -2684,17 +2681,14 @@
                                 </td>
                                 <td style="text-align:center;">${a.eval_count}</td>
                                 <td style="text-align:center; color:#fff;">${a.active}</td>
-                                <td style="text-align:center; color:#34d399;">${a.passed}</td>
-                                <td style="text-align:center; color:#f87171;">${a.failed}</td>
                                 <td style="text-align:right; color:#34d399;">${fmt(a.payouts)}</td>
                                 <td style="text-align:right; color:#f87171;">${fmt(a.fees)}</td>
-                                <td style="text-align:right; color:#38bdf8;">${fmt(a.hedge)}</td>
-                                <td style="text-align:right; color:#a3e635;">${fmt(a.farming)}</td>
+                                <td style="text-align:right;">${fmt(a.hedge + a.farming)}</td>
                                 <td style="text-align:right; padding-right:16px; font-weight:700; color:${a.net >= 0 ? '#c084fc' : '#f87171'};">${fmt(a.net)}</td>
                             </tr>
                         `).join('');
                     } else {
-                        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748b;">No KYC account data available.</td></tr>';
                     }
                     
                     // Prop firm breakdown table
