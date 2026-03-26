@@ -2057,6 +2057,10 @@
                             <th class="sub-header-orange">Date 3</th>
                             <th class="sub-header-orange">Payout 4</th>
                             <th class="sub-header-orange">Date 4</th>
+                            <th class="sub-header-orange">Payout 5</th>
+                            <th class="sub-header-orange">Date 5</th>
+                            <th class="sub-header-orange">Payout 6</th>
+                            <th class="sub-header-orange">Date 6</th>
 
                             <!-- FARMING PHASE (35-65 -> 35-125) -->
                             <!-- Dynamic Day Columns Header Script? No, hardcoded to 30 days now -->
@@ -3337,7 +3341,7 @@
              'Hedge Result 4.1','Hedge Result 5.1','Hedge Result 6','Hedge Result 7'
             ].forEach(k => fd += _numVal(ev[k]));
             if (status === 'Completed') {
-                let pay = 0; for (let i = 1; i <= 4; i++) pay += _numVal(ev['Payout ' + i]);
+                let pay = 0; for (let i = 1; i <= 6; i++) pay += _numVal(ev['Payout ' + i]);
                 let days = 0; for (let i = 1; i <= 50; i++) days += _numVal(ev['Hedge Day ' + i]);
                 return formatCurrencyValue(pay + fd + p1 - fee - actFee + days);
             }
@@ -3735,6 +3739,10 @@
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3'), 'Date 3')}
                         ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4', IS_CLIENT), 'Payout 4')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4'), 'Date 4')}
+                        ${cell(getInputHtml(getVal('Payout 5'), 'text', index, 'Payout 5', IS_CLIENT), 'Payout 5')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 5')), 'date', index, 'Date 5'), 'Date 5')}
+                        ${cell(getInputHtml(getVal('Payout 6'), 'text', index, 'Payout 6', IS_CLIENT), 'Payout 6')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 6')), 'date', index, 'Date 6'), 'Date 6')}
 
                         ${generateDayColumns(ev, cell, index, currentRowNum, IS_CLIENT)}
                     `;
@@ -3977,25 +3985,26 @@
                 'Hedge Result 7': 'Z',
                 'Hedge Net.1': 'AA',
                 'Payout 1': 'AB', 'Date 1': 'AC', 'Payout 2': 'AD', 'Date 2': 'AE',
-                'Payout 3': 'AF', 'Date 3': 'AG', 'Payout 4': 'AH', 'Date 4': 'AI'
+                'Payout 3': 'AF', 'Date 3': 'AG', 'Payout 4': 'AH', 'Date 4': 'AI',
+                'Payout 5': 'AJ', 'Date 5': 'AK', 'Payout 6': 'AL', 'Date 6': 'AM'
             };
             if (map[key]) return map[key];
             
             // Generate dynamic farming columns
-            // Prop Day 1 starts at AK (37)
+            // Prop Day 1 starts at AO (41) after Farming Net (AN)
             if (key.startsWith('Prop Day ')) {
                 const day = parseInt(key.replace('Prop Day ', ''));
                 if (!isNaN(day)) {
-                    // Prop Day 1 = AK (37)
-                    // Prop Day 2 = AM (39) ...
-                    return getColLetter(37 + (day-1)*2);
+                    // Prop Day 1 = AO (41)
+                    // Prop Day 2 = AQ (43) ... (2 cols per day in sheet: Prop Day, Hedge Day)
+                    return getColLetter(41 + (day-1)*2);
                 }
             }
              if (key.startsWith('Hedge Day ')) {
                 const day = parseInt(key.replace('Hedge Day ', ''));
                 if (!isNaN(day)) {
-                    // Hedge Day 1 = AL (38)
-                    return getColLetter(38 + (day-1)*2);
+                    // Hedge Day 1 = AP (42)
+                    return getColLetter(42 + (day-1)*2);
                 }
             }
             return null;

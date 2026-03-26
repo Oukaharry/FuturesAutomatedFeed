@@ -558,7 +558,7 @@ def recalculate_hedge_nets(evaluations):
         activation_fee = _num(ev.get('Activation Fee'))
 
         if status == 'Completed':
-            sum_payouts = sum(_num(ev.get(f'Payout {i}')) for i in range(1, 5))
+            sum_payouts = sum(_num(ev.get(f'Payout {i}')) for i in range(1, 7))
             sum_days = sum(_num(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
             ev['Hedge Net.1'] = sum_payouts + sum_funded + sum_phase1 - fee - activation_fee + sum_days
         elif status == 'Fail':
