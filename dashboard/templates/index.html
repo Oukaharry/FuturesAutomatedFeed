@@ -6677,8 +6677,15 @@
             { id: 'action_items', num: 6, title: 'Client Action Items',
               okText: 'No client action required at this time.',
               fields: [{ key: 'details', label: 'Details', type: 'text' }],
-              template: (f) => f.details || 'Action items pending' }
+              template: (f) => f.details || 'Action items pending' },
+            { id: 'trade_count', num: 7, title: '# of times account traded today',
+              okText: 'Trade counts recorded.',
+              fields: [{ key: 'count', label: '# of trades' }],
+              template: (f) => `${f.count || 0} trade(s) today`,
+              conditional: true }
         ];
+
+        let _tradeCountEnabledClients = new Set();
 
         // Per-client data store: { clientId: { sectionId: { status, notes } } }
         let _allClientSummaries = {};
@@ -6771,6 +6778,16 @@
             }
         }
 
+        async function _loadTradeCountClients() {
+            try {
+                const resp = await fetch('/api/quality/trade_count_clients?_t=' + Date.now());
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    _tradeCountEnabledClients = new Set(data.enabled_clients || []);
+                }
+            } catch (e) { /* ignore — section just won't show */ }
+        }
+
         async function loadChecklistClients() {
             // Only load the current client being viewed
             _clientList = CLIENT_ID ? [CLIENT_ID] : [];
@@ -6789,8 +6806,8 @@
                 if (!_allClientSummaries[c]) _allClientSummaries[c] = _getDefaultSections();
             });
 
-            // Load saved data for current client only
-            await Promise.all(_clientList.map(c => loadClientData(c)));
+            // Load saved data for current client + trade count enabled list
+            await Promise.all([..._clientList.map(c => loadClientData(c)), _loadTradeCountClients()]);
 
             _activeClient = CLIENT_ID || '';
             sel.value = _activeClient;
@@ -6861,7 +6878,12 @@
                 </div>
             </div>` : '';
 
-            const html = SUMMARY_SECTIONS.map(s => {
+            const visibleSections = SUMMARY_SECTIONS.filter(s => {
+                if (s.conditional && s.id === 'trade_count') return _tradeCountEnabledClients.has(_activeClient);
+                return true;
+            });
+
+            const html = visibleSections.map(s => {
                 const d = summaryData[s.id];
                 const isOk = d.status === 'ok';
                 const isWarn = d.status === 'warn';
@@ -6918,21 +6940,29 @@
                 </div>`;
             }).join('');
             body.innerHTML = toggleBar + html;
-            document.getElementById('checklist-progress').textContent = `${_activeClient}: ${filled} / ${SUMMARY_SECTIONS.length} sections`;
+            document.getElementById('checklist-progress').textContent = `${_activeClient}: ${filled} / ${visibleSections.length} sections`;
             updateChecklistBadge();
+        }
+
+        function _visibleSectionsFor(clientId) {
+            return SUMMARY_SECTIONS.filter(s => {
+                if (s.conditional && s.id === 'trade_count') return _tradeCountEnabledClients.has(clientId);
+                return true;
+            });
         }
 
         function renderClientDots() {
             const dotsEl = document.getElementById('checklist-client-dots');
             if (!dotsEl || !_clientList.length) return;
             dotsEl.innerHTML = _clientList.map(c => {
+                const vis = _visibleSectionsFor(c);
                 const s = _allClientSummaries[c];
-                const filled = s ? SUMMARY_SECTIONS.filter(sec => {
+                const filled = s ? vis.filter(sec => {
                     const d = s[sec.id];
                     return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d)));
                 }).length : 0;
-                const cls = filled === SUMMARY_SECTIONS.length ? 'done' : filled > 0 ? 'partial' : '';
-                return `<div class="client-dot ${cls}" title="${c}: ${filled}/${SUMMARY_SECTIONS.length}"></div>`;
+                const cls = filled === vis.length ? 'done' : filled > 0 ? 'partial' : '';
+                return `<div class="client-dot ${cls}" title="${c}: ${filled}/${vis.length}"></div>`;
             }).join('');
         }
 
@@ -6982,11 +7012,12 @@
             _clientList.forEach(c => {
                 const s = _allClientSummaries[c];
                 if (!s) return;
-                const filled = SUMMARY_SECTIONS.filter(sec => {
+                const vis = _visibleSectionsFor(c);
+                const filled = vis.filter(sec => {
                     const d = s[sec.id];
                     return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d)));
                 }).length;
-                if (filled === SUMMARY_SECTIONS.length) doneCount++;
+                if (filled === vis.length) doneCount++;
             });
             if (doneCount === _clientList.length && _clientList.length > 0) {
                 badge.className = 'fab-badge done';
@@ -7016,7 +7047,11 @@
             lines.push(`📋 **DAILY SUMMARY — ${clientId}**`);
             lines.push(`📅 ${dateStr}`);
             lines.push('');
-            SUMMARY_SECTIONS.forEach(s => {
+            const genSections = SUMMARY_SECTIONS.filter(s => {
+                if (s.conditional && s.id === 'trade_count') return _tradeCountEnabledClients.has(clientId);
+                return true;
+            });
+            genSections.forEach(s => {
                 const d = summaryData[s.id];
                 const icon = d.status === 'ok' ? '✅' : '⚠️';
                 lines.push(`**${s.num}. ${s.title}**`);
