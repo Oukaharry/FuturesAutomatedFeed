@@ -4147,7 +4147,7 @@
                 ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5',
                  'Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1',
                  'Hedge Result 6','Hedge Result 7'].forEach(c => { f.hedge += pc(ev[c]); });
-                f.farming += pc(ev['Farming Profit']);
+                for (let i=1;i<=50;i++) f.farming += pc(ev['Hedge Day '+i]);
                 for (let i=1;i<=9;i++) f.payouts += pc(ev['Payout '+i]);
             });
             const fmt = v => formatMoney(v);
