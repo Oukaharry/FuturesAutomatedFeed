@@ -4158,6 +4158,9 @@
                 tot.hedge = cf.hedging_results || 0;
                 tot.farming = cf.farming_results || 0;
             }
+            // Include MT5 discrepancy in totals so net profit matches Net Profit In Progress
+            const discrepancy = (typeof liveActualHedging !== 'undefined' && typeof sheetHedgingResults !== 'undefined' && (typeof mt5Dep !== 'undefined') && (mt5Dep !== 0 || mt5Bal !== 0)) ? (liveActualHedging - sheetHedgingResults) : 0;
+            tot.discrepancy = discrepancy;
             return rows.map(([name,f]) => {
                 const net = f.payouts - f.fees + f.hedge + f.farming;
                 const hedgingTotal = f.hedge + f.farming;
@@ -4175,8 +4178,8 @@
                     <td style="text-align:left;padding-right:16px;font-weight:700;color:${net >= 0 ? '#34d399' : '#f87171'};">${fmt(net)}</td>
                 </tr>`;
             }).join('') + (() => {
-                const tNet = tot.payouts - tot.fees + tot.hedge + tot.farming;
-                const tHedgingTotal = tot.hedge + tot.farming;
+                const tHedgingTotal = tot.hedge + tot.farming + tot.discrepancy;
+                const tNet = tot.payouts - tot.fees + tHedgingTotal;
                 const tFundedPct = tot.passed + tot.failed > 0 ? Math.round(tot.passed / (tot.passed + tot.failed) * 100) : null;
                 return `
                 <tr class="font-bold" style="background:rgba(255,255,255,0.05);">

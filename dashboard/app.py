@@ -4033,7 +4033,8 @@ def api_kyc_portfolio():
                             'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
                             'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
                     acc_stats["hedge"] += parse_currency(ev.get(col))
-                acc_stats["farming"] += parse_currency(ev.get('Farming Profit'))
+                for di in range(1, 51):
+                    acc_stats["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
 
             # Payouts from ALL evals filtered by individual payout date
             for ev in all_evals:
@@ -4092,7 +4093,8 @@ def api_kyc_portfolio():
                         'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
                 pf["hedge"] += parse_currency(ev.get(col))
-            pf["farming"] += parse_currency(ev.get('Farming Profit'))
+            for di in range(1, 51):
+                pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
 
             for j in range(1, 10):
                 pf["payouts"] += parse_currency(ev.get(f'Payout {j}'))
