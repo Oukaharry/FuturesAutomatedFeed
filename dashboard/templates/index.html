@@ -2459,17 +2459,14 @@
                             <th style="text-align:left; padding-left:16px;">Prop Firm</th>
                             <th style="text-align:center;">Evals</th>
                             <th style="text-align:center;">Active</th>
-                            <th style="text-align:center;">Passed</th>
-                            <th style="text-align:center;">Failed</th>
                             <th style="text-align:right;">Payouts</th>
                             <th style="text-align:right;">Fees</th>
-                            <th style="text-align:right;">Hedge</th>
-                            <th style="text-align:right;">Farming</th>
+                            <th style="text-align:right;">Hedging Results</th>
                             <th style="text-align:right; padding-right:16px;">Net Profit</th>
                         </tr>
                     </thead>
                     <tbody id="kyc-propfirm-body">
-                        <tr><td colspan="10" style="text-align:center; padding:20px; color:#64748b;">Loading...</td></tr>
+                        <tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">Loading...</td></tr>
                     </tbody>
                 </table>
 
@@ -2708,17 +2705,14 @@
                                 <td style="padding:10px 16px; font-weight:600; color:#fbbf24;">${pf.name}</td>
                                 <td style="text-align:center;">${pf.evals}</td>
                                 <td style="text-align:center; color:#fff;">${pf.active}</td>
-                                <td style="text-align:center; color:#34d399;">${pf.passed}</td>
-                                <td style="text-align:center; color:#f87171;">${pf.failed}</td>
                                 <td style="text-align:right; color:#34d399;">${fmt(pf.payouts)}</td>
                                 <td style="text-align:right; color:#f87171;">${fmt(pf.fees)}</td>
-                                <td style="text-align:right; color:#38bdf8;">${fmt(pf.hedge)}</td>
-                                <td style="text-align:right; color:#a3e635;">${fmt(pf.farming)}</td>
+                                <td style="text-align:right;">${fmt(pf.hedge + pf.farming)}</td>
                                 <td style="text-align:right; padding-right:16px; font-weight:700; color:${pf.net >= 0 ? '#c084fc' : '#f87171'};">${fmt(pf.net)}</td>
                             </tr>
                         `).join('');
                     } else {
-                        pfBody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:20px; color:#64748b;">No prop firm data.</td></tr>';
+                        pfBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">No prop firm data.</td></tr>';
                     }
                     
                     // All payouts table
