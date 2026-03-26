@@ -6788,6 +6788,24 @@
             } catch (e) { /* ignore — section just won't show */ }
         }
 
+        async function toggleClientTradeCount() {
+            if (!_activeClient) return;
+            try {
+                const resp = await fetch('/api/quality/trade_count_toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client: _activeClient, action: 'toggle' })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    _tradeCountEnabledClients = new Set(data.enabled_clients || []);
+                    renderChecklist();
+                }
+            } catch (e) {
+                console.error('Failed to toggle trade count:', e);
+            }
+        }
+
         async function loadChecklistClients() {
             // Only load the current client being viewed
             _clientList = CLIENT_ID ? [CLIENT_ID] : [];
@@ -6878,6 +6896,13 @@
                 </div>
             </div>` : '';
 
+            // Trade count toggle for current client
+            const tcEnabled = _tradeCountEnabledClients.has(_activeClient);
+            const tcToggle = `<div style="margin-bottom:12px; padding:8px 12px; background:rgba(129,140,248,0.06); border:1px solid rgba(129,140,248,0.15); border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:0.78rem; color:#94a3b8;"><i class="fas fa-chart-bar" style="color:#818cf8; margin-right:6px;"></i># of times traded today</span>
+                <button onclick="toggleClientTradeCount()" style="padding:3px 12px; border-radius:6px; font-size:0.72rem; cursor:pointer; border:1px solid ${tcEnabled ? 'rgba(129,140,248,0.4)' : 'rgba(255,255,255,0.08)'}; background:${tcEnabled ? 'rgba(129,140,248,0.15)' : 'rgba(255,255,255,0.03)'}; color:${tcEnabled ? '#a5b4fc' : '#475569'}; transition:all 0.15s;">${tcEnabled ? '✅ Enabled' : 'Off'}</button>
+            </div>`;
+
             const visibleSections = SUMMARY_SECTIONS.filter(s => {
                 if (s.conditional && s.id === 'trade_count') return _tradeCountEnabledClients.has(_activeClient);
                 return true;
@@ -6939,7 +6964,7 @@
                     <div style="display:none;">${notesHtml}</div>
                 </div>`;
             }).join('');
-            body.innerHTML = toggleBar + html;
+            body.innerHTML = toggleBar + tcToggle + html;
             document.getElementById('checklist-progress').textContent = `${_activeClient}: ${filled} / ${visibleSections.length} sections`;
             updateChecklistBadge();
         }

@@ -5759,7 +5759,7 @@ def api_summary_tracker_exclude():
 
 
 @app.route('/api/quality/trade_count_toggle', methods=['POST'])
-@require_role('super_admin')
+@require_session
 def api_trade_count_toggle():
     """Toggle a client for trade-count tracking in the daily summary (off by default)."""
     from dashboard.database import get_setting, set_setting
@@ -5786,16 +5786,17 @@ def api_trade_count_toggle():
             current.add(client_name)
 
     user_id = request.session_user.get('user_identifier', '')
+    user_type = request.session_user.get('user_type', '')
     set_setting(key, _json.dumps(sorted(current)), updated_by=user_id)
 
-    log_action('TRADE_COUNT_TOGGLE', 'super_admin', user_id,
+    log_action('TRADE_COUNT_TOGGLE', user_type, user_id,
                get_remote_address(), f'{action} client: {client_name}')
 
     return jsonify({'status': 'success', 'enabled_clients': sorted(current)})
 
 
 @app.route('/api/quality/trade_count_clients')
-@require_role('super_admin')
+@require_session
 def api_trade_count_clients():
     """Return list of clients with trade-count tracking enabled."""
     from dashboard.database import get_setting
