@@ -4132,9 +4132,7 @@
             const firms = {};
             const pc = (v) => { try { return parseFloat(String(v||'').replace(/[$,]/g,'').trim()) || 0; } catch(e) { return 0; } };
             evals.forEach(ev => {
-                if (ev._deleted) return;
                 const name = String(ev['Prop Firm']||'').trim() || 'Unknown';
-                if (!name || name === 'Unknown') return;
                 if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
                 const f = firms[name];
                 f.evals++;
