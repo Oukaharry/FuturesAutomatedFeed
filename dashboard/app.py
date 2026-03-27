@@ -6257,61 +6257,6 @@ def api_daily_summary():
         import traceback
         traceback.print_exc()
 
-    # ── Trade Count Section (toggled off by default per client) ──
-    try:
-        from dashboard.database import get_setting as _gs_tc, get_client_data as _gcd_tc
-        import json as _json_tc
-        _tc_enabled = set(_json_tc.loads(_gs_tc('trade_count_enabled_clients') or '[]'))
-        if _tc_enabled:
-            _tc_weekday_tokens = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-                                  'mon', 'tue', 'wed', 'thu', 'fri',
-                                  'tues', 'weds', 'thurs'}
-            _tc_today_wd = datetime.strptime(date, '%Y-%m-%d').strftime('%A').lower()
-            _tc_today_tokens = {_tc_today_wd, _tc_today_wd[:3]}  # e.g. {'thursday', 'thu'}
-            _tc_entries = []  # (client, [(firm, count), ...])
-            for _tc_client in sorted(_tc_enabled):
-                try:
-                    _tc_data = _gcd_tc(_tc_client)
-                    if not _tc_data:
-                        continue
-                    _tc_evals = _tc_data.get('evaluations', [])
-                    _tc_firm_counts = {}  # prop_firm -> count of rows traded today
-                    for _tc_ev in _tc_evals:
-                        if _tc_ev.get('_deleted'):
-                            continue
-                        _tc_sp1 = str(_tc_ev.get('Status P1', '') or '').strip().lower()
-                        _tc_sp2 = str(_tc_ev.get('Status', '') or '').strip().lower()
-                        if any(k in _tc_sp1 for k in ('fail', 'breach', 'delete', 'closed', 'sl')):
-                            continue
-                        if any(k in _tc_sp2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete')):
-                            continue
-                        if not _tc_sp1:
-                            continue
-                        # Check if any cell contains today's weekday
-                        _tc_has_today = False
-                        for _tv in _tc_ev.values():
-                            _ts = str(_tv or '').strip().lower()
-                            if any(tok in _ts for tok in _tc_today_tokens):
-                                _tc_has_today = True
-                                break
-                        if _tc_has_today:
-                            _tc_firm = str(_tc_ev.get('Prop Firm', '') or '').strip() or 'Unknown'
-                            _tc_firm_counts[_tc_firm] = _tc_firm_counts.get(_tc_firm, 0) + 1
-                    if _tc_firm_counts:
-                        _tc_entries.append((_tc_client, sorted(_tc_firm_counts.items())))
-                except Exception:
-                    pass
-            if _tc_entries:
-                lines.append("📊 **# of times account traded today**")
-                for _tc_client, _tc_firms in _tc_entries:
-                    lines.append(f"**{_tc_client}:**")
-                    for _tc_f, _tc_c in _tc_firms:
-                        lines.append(f"  {_tc_f} - {_tc_c}")
-                lines.append("")
-    except Exception:
-        import traceback
-        traceback.print_exc()
-
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
         lines.append("━" * 30)
