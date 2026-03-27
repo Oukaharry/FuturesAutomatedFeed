@@ -5868,6 +5868,15 @@
                 value = formatDateForInput(value);
             }
             
+            // Strip $ and commas from money fields so we store clean numeric values
+            const moneyPrefixes = ['Payout', 'Fee', 'Activation Fee', 'Hedge Result', 'Hedge Day', 'Prop Day'];
+            if (moneyPrefixes.some(p => key.startsWith(p)) && value) {
+                const stripped = value.replace(/[$,]/g, '').trim();
+                if (stripped !== '' && !isNaN(stripped)) {
+                    value = stripped;
+                }
+            }
+            
             currentData.evaluations[index][key] = value;
             
             // Debounce: batch rapid edits into a single save (400ms window)

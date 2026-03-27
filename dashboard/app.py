@@ -2848,6 +2848,27 @@ def api_client_push():
     if "evaluations" in data and data["evaluations"]:
         evaluations = data["evaluations"]
         app.logger.info(f"   Using {len(evaluations)} NEW evaluations from push")
+
+        # Preserve dashboard-edited fields that the push should NOT overwrite.
+        # The push carries evaluations from the Google Sheet / trader app, but
+        # payouts, dates, fees, and statuses may have been edited on the dashboard
+        # after the last sheet sync.  Keep those DB values intact.
+        DASHBOARD_OWNED_KEYS = {
+            'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
+            'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+            'Fee', 'Activation Fee',
+            'Status', 'Status Funded', 'Status P1',
+            'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
+            'Date Purchased',
+        }
+        existing_evals_push = existing_data.get('evaluations', [])
+        for i, ev in enumerate(evaluations):
+            if i < len(existing_evals_push):
+                ex = existing_evals_push[i]
+                for key in DASHBOARD_OWNED_KEYS:
+                    existing_val = ex.get(key)
+                    if existing_val and str(existing_val).strip() not in ('', '-'):
+                        ev[key] = existing_val
     else:
         evaluations = existing_data.get("evaluations", [])
         app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
@@ -6785,6 +6806,13 @@ def update_data():
                     'Hedge Result 4.1', 'Hedge Result 5.1',
                     'Hedge Result 6', 'Hedge Result 7',
                 }
+                # Payout/date fields that should only be overwritten by explicit user edits
+                # (prevents a stale browser tab from reverting dashboard-entered payouts)
+                PAYOUT_KEYS = {
+                    'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
+                    'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+                }
+                PROTECTED_KEYS = PUSH_SOURCED_KEYS | PAYOUT_KEYS
 
                 # Fields the user explicitly touched in this edit session
                 # (sent by frontend so we can distinguish intentional clears from stale data)
@@ -6807,7 +6835,7 @@ def update_data():
                             if k.startswith('_') and k not in ev:
                                 ev[k] = v
                         
-                        for key in PUSH_SOURCED_KEYS:
+                        for key in PROTECTED_KEYS:
                             # If the user explicitly cleared this field, respect the clear
                             if key in explicitly_changed:
                                 continue
