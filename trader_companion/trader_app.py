@@ -45,6 +45,12 @@ except ImportError:
     print("Tkinter not available - running in console mode")
 
 try:
+    import customtkinter as ctk
+    CTK_AVAILABLE = True
+except ImportError:
+    CTK_AVAILABLE = False
+
+try:
     import MetaTrader5 as mt5
     MT5_AVAILABLE = True
 except Exception as e:
@@ -1225,182 +1231,258 @@ class MT5DataPusher:
 
 class TraderCompanionApp:
     """GUI Application for the Trader Companion."""
-    
+
+    # ── Design System (FuturesEngine-inspired Dark Theme) ──
+    C_BG        = "#0D1117"   # GitHub dark background
+    C_BG_SEC    = "#161B22"   # Card / secondary surface
+    C_BG_THIRD  = "#1C2333"   # Tertiary / input fields
+    C_BORDER    = "#30363D"   # Subtle borders
+    C_ACCENT    = "#0969DA"   # Blue accent
+    C_ACCENT_HV = "#218BFF"   # Blue hover
+    C_GOLD      = "#F59E0B"   # Amber gold (brand)
+    C_SUCCESS   = "#1A7F37"   # Green
+    C_ERROR     = "#CF222E"   # Red
+    C_TEXT      = "#E6EDF3"   # Primary text
+    C_TEXT_DIM  = "#8B949E"   # Muted text
+    C_TEXT_DARK = "#24292F"   # Dark text (for light pill backgrounds)
+
+    PROP_FIRM_COLORS = {
+        "My Funded Futures": "#3B8ED0",
+        "MFFU":             "#3B8ED0",
+        "TopStep":          "#DA3633",
+        "Apex":             "#E67E22",
+        "Funded Next":      "#E91E63",
+        "FundingTicks":     "#F1C40F",
+        "TradeDay":         "#9B59B6",
+        "Tradeify":         "#1ABC9C",
+        "Alpha Futures":    "#2980B9",
+    }
+
+    PHASE_BADGE = {
+        "Challenge": ("#FEF3C7", "#92400E"),   # warm-yellow bg, brown text
+        "Funded":    ("#D1FAE5", "#065F46"),   # green bg, dark-green text
+        "Farming":   ("#DBEAFE", "#1E40AF"),   # blue bg, dark-blue text
+    }
+
     def __init__(self):
-        self.root = tk.Tk()
+        # ── CTk root window ──
+        if CTK_AVAILABLE:
+            ctk.set_appearance_mode("Dark")
+            ctk.set_default_color_theme("blue")
+            self.root = ctk.CTk()
+        else:
+            self.root = tk.Tk()
         self.root.title(f"Trader Companion v{APP_VERSION}")
-        self.root.geometry("770x850")
-        self.root.minsize(720, 650)
-        self.root.configure(bg='#0a0e1a')
+        self.root.geometry("820x920")
+        self.root.minsize(780, 700)
+        if CTK_AVAILABLE:
+            self.root.configure(fg_color=self.C_BG)
+        else:
+            self.root.configure(bg=self.C_BG)
         self.root.resizable(True, True)
-        
+
         # Set Window Icon
         try:
             if hasattr(sys, '_MEIPASS'):
                 icon_path = os.path.join(sys._MEIPASS, 'logo.png')
             else:
                 icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
-            
             if os.path.exists(icon_path):
                 icon = tk.PhotoImage(file=icon_path)
                 self.root.iconphoto(True, icon)
-        except Exception as e:
-            print(f"Error loading icon: {e}")
-        
-        # Create canvas for scrolling
-        self.main_canvas = tk.Canvas(self.root, bg='#0a0e1a', highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.main_canvas)
-        
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
-        )
-        
-        self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw",
-                                        tags="inner_frame")
-        self.main_canvas.configure(yscrollcommand=scrollbar.set)
-        
-        self.main_canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        except Exception:
+            pass
 
-        # Keep inner frame width = canvas width so content stretches fully
-        def _resize_inner(event):
-            self.main_canvas.itemconfig("inner_frame", width=event.width)
-        self.main_canvas.bind("<Configure>", _resize_inner)
-        
-        # Enable mousewheel scrolling
-        def _on_mousewheel(event):
-            self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        self.main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        
         self.pusher = MT5DataPusher()
         self.auto_push_enabled = False
         self.auto_push_thread = None
-        self.client_info = None  # Stores looked-up hierarchy info
+        self.client_info = None
 
         # Auto-trade scheduler state
         self.auto_trade_enabled = False
         self.auto_trade_thread = None
         self._auto_trade_stop = threading.Event()
-        self._auto_trade_scheduled_dt = None  # the randomized datetime
-        
+        self._auto_trade_scheduled_dt = None
+
         self.setup_ui()
         self.load_config()
         
+    # ── Helper: create a section card ──
+    def _section_card(self, parent, title="", icon="", **kw):
+        """Create a styled card frame with optional title strip."""
+        card = ctk.CTkFrame(parent, fg_color=self.C_BG_SEC, corner_radius=10,
+                            border_width=1, border_color=self.C_BORDER) if CTK_AVAILABLE else \
+               tk.Frame(parent, bg='#161B22')
+        if title and CTK_AVAILABLE:
+            hdr = ctk.CTkFrame(card, fg_color="transparent", height=32)
+            hdr.pack(fill="x", padx=12, pady=(10, 0))
+            if icon:
+                ctk.CTkLabel(hdr, text=icon, font=("Segoe UI", 16)).pack(side="left", padx=(0, 8))
+            ctk.CTkLabel(hdr, text=title, font=("Segoe UI", 12, "bold"),
+                         text_color=self.C_GOLD).pack(side="left")
+        return card
+
+    # ── Helper: styled CTk entry ──
+    def _ctk_entry(self, parent, width=200, show=None, placeholder=None):
+        if CTK_AVAILABLE:
+            kw = dict(width=width, height=32, fg_color=self.C_BG_THIRD,
+                      border_color=self.C_BORDER, text_color=self.C_TEXT,
+                      font=("Segoe UI", 11))
+            if show:
+                kw["show"] = show
+            if placeholder:
+                kw["placeholder_text"] = placeholder
+            return ctk.CTkEntry(parent, **kw)
+        else:
+            e = ttk.Entry(parent, width=width // 8)
+            if show:
+                e.configure(show=show)
+            return e
+
+    # ── Helper: styled CTk button ──
+    def _ctk_button(self, parent, text="", command=None, fg=None, hover=None, width=140, **kw):
+        fg = fg or self.C_ACCENT
+        hover = hover or self.C_ACCENT_HV
+        if CTK_AVAILABLE:
+            return ctk.CTkButton(parent, text=text, command=command,
+                                 fg_color=fg, hover_color=hover,
+                                 font=("Segoe UI", 11, "bold"),
+                                 corner_radius=6, height=34, width=width, **kw)
+        else:
+            return ttk.Button(parent, text=text, command=command)
+
+    # ── Helper: status pill ──
+    def _status_pill(self, parent, text, bg_color, text_color):
+        if CTK_AVAILABLE:
+            pill = ctk.CTkFrame(parent, fg_color=bg_color, corner_radius=8, height=22)
+            ctk.CTkLabel(pill, text=text, font=("Segoe UI", 9, "bold"),
+                         text_color=text_color).pack(padx=8, pady=2)
+            return pill
+        else:
+            lbl = tk.Label(parent, text=text, bg=bg_color, fg=text_color,
+                           font=("Segoe UI", 9, "bold"), padx=6, pady=1)
+            return lbl
+
     def setup_ui(self):
-        """Setup the user interface with tabbed modern layout."""
-        style = ttk.Style()
-        style.theme_use('clam')
+        """Setup the modern CTk user interface."""
+        # ── Scrollable main area ──
+        if CTK_AVAILABLE:
+            self.main_scroll = ctk.CTkScrollableFrame(self.root, fg_color=self.C_BG)
+            self.main_scroll.pack(fill="both", expand=True)
+            main = self.main_scroll
+        else:
+            # Fallback: canvas-based scroll
+            self.main_canvas = tk.Canvas(self.root, bg=self.C_BG, highlightthickness=0)
+            sb = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
+            self.scrollable_frame = ttk.Frame(self.main_canvas)
+            self.scrollable_frame.bind("<Configure>",
+                lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")))
+            self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw", tags="inner")
+            self.main_canvas.configure(yscrollcommand=sb.set)
+            self.main_canvas.pack(side="left", fill="both", expand=True)
+            sb.pack(side="right", fill="y")
+            def _mw(e): self.main_canvas.yview_scroll(int(-1*(e.delta/120)), "units")
+            self.main_canvas.bind_all("<MouseWheel>", _mw)
+            main = self.scrollable_frame
 
-        # ── Modern Dark Palette ──
-        BG       = '#0a0e1a'   # deep navy
-        CARD     = '#111827'   # card surface
-        BORDER   = '#1e293b'   # subtle border
-        FG       = '#e2e8f0'   # primary text
-        FG_DIM   = '#94a3b8'   # muted text
-        ACCENT   = '#f59e0b'   # amber gold
-        ACCENT2  = '#3b82f6'   # blue
-        GREEN    = '#22c55e'
-        RED      = '#ef4444'
+        # ── Header Banner ──
+        if CTK_AVAILABLE:
+            hdr_frame = ctk.CTkFrame(main, fg_color=self.C_BG_SEC, corner_radius=12,
+                                     border_width=1, border_color=self.C_BORDER, height=72)
+            hdr_frame.pack(fill="x", padx=16, pady=(12, 6))
+            hdr_frame.pack_propagate(False)
+            # Gold color strip left
+            ctk.CTkFrame(hdr_frame, width=5, fg_color=self.C_GOLD,
+                         corner_radius=0).pack(side="left", fill="y")
+            hdr_inner = ctk.CTkFrame(hdr_frame, fg_color="transparent")
+            hdr_inner.pack(fill="both", expand=True, padx=14)
+            ctk.CTkLabel(hdr_inner, text=f"TRADER COMPANION  v{APP_VERSION}",
+                         font=("Segoe UI", 20, "bold"),
+                         text_color=self.C_GOLD).pack(side="left", pady=10)
+            ctk.CTkLabel(hdr_inner, text="Data Manager  ·  Trading Engine",
+                         font=("Segoe UI", 11), text_color=self.C_TEXT_DIM).pack(side="left", padx=(14, 0))
+            # Connection status dot
+            self._conn_dot = ctk.CTkFrame(hdr_inner, width=10, height=10,
+                                          fg_color="#EF4444", corner_radius=5)
+            self._conn_dot.pack(side="right", padx=(0, 4))
+            ctk.CTkLabel(hdr_inner, text="MT5", font=("Segoe UI", 9),
+                         text_color=self.C_TEXT_DIM).pack(side="right", padx=(0, 4))
 
-        # ── Global Styles ──
-        style.configure('TFrame', background=BG)
-        style.configure('TLabel', background=BG, foreground=FG, font=('Segoe UI', 10))
-        style.configure('TLabelframe', background=CARD, foreground=ACCENT, borderwidth=2, relief='groove')
-        style.configure('TLabelframe.Label', background=CARD, foreground=ACCENT, font=('Segoe UI', 11, 'bold'))
-        style.configure('TButton', font=('Segoe UI', 10, 'bold'), padding=6)
-        style.configure('Header.TLabel', font=('Segoe UI', 18, 'bold'), foreground=ACCENT)
-        style.configure('Status.TLabel', font=('Segoe UI', 10), foreground=GREEN)
-        style.configure('Error.TLabel', font=('Segoe UI', 10), foreground=RED)
-        style.configure('Dim.TLabel', background=BG, foreground=FG_DIM, font=('Segoe UI', 9, 'italic'))
-        style.configure('CardBG.TFrame', background=CARD)
-        style.configure('CardBG.TLabel', background=CARD, foreground=FG, font=('Segoe UI', 10))
-        style.configure('CardDim.TLabel', background=CARD, foreground=FG_DIM, font=('Segoe UI', 9, 'italic'))
-        style.configure('SectionHead.TLabel', background=CARD, foreground=ACCENT, font=('Segoe UI', 11, 'bold'))
+        # ━━━━━━━━━━━━━━━━━━  TABVIEW  ━━━━━━━━━━━━━━━━━━
+        if CTK_AVAILABLE:
+            self.notebook = ctk.CTkTabview(main, fg_color=self.C_BG,
+                                           segmented_button_fg_color=self.C_BG_SEC,
+                                           segmented_button_selected_color=self.C_ACCENT,
+                                           segmented_button_unselected_color=self.C_BG_THIRD,
+                                           text_color=self.C_TEXT,
+                                           corner_radius=10)
+            self.notebook.pack(fill="x", padx=16, pady=(4, 4))
+            tab_dash  = self.notebook.add("  Dashboard  ")
+            tab_trade = self.notebook.add("  Trading Engine  ")
+            tab_tools = self.notebook.add("  Tools  ")
+        else:
+            style = ttk.Style(); style.theme_use('clam')
+            self.notebook = ttk.Notebook(main)
+            self.notebook.pack(fill="x", padx=16, pady=(4, 4))
+            tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Dashboard")
+            tab_trade = ttk.Frame(self.notebook); self.notebook.add(tab_trade, text="Trading Engine")
+            tab_tools = ttk.Frame(self.notebook); self.notebook.add(tab_tools, text="Tools")
 
-        # Notebook tab styling
-        style.configure('TNotebook', background=BG, borderwidth=0)
-        style.configure('TNotebook.Tab', background=BORDER, foreground=FG_DIM,
-                        font=('Segoe UI', 10, 'bold'), padding=[18, 8])
-        style.map('TNotebook.Tab',
-                  background=[('selected', CARD), ('!selected', BORDER)],
-                  foreground=[('selected', ACCENT), ('!selected', FG_DIM)])
+        # ═══════════════════  TAB 1 — DASHBOARD  ═══════════════════
+        self._build_dashboard_tab(tab_dash)
 
-        # Entry styling
-        style.configure('TEntry', fieldbackground='#1e293b', foreground=FG, insertcolor=FG)
-        style.configure('TCombobox', fieldbackground='#1e293b', foreground=FG)
-        style.map('TCombobox', fieldbackground=[('readonly', '#1e293b')],
-                  foreground=[('readonly', FG)])
+        # ═══════════════════  TAB 2 — TRADING ENGINE  ═══════════════════
+        self._build_trading_engine_ui(tab_trade)
 
-        # Buy / Sell button styles
-        style.configure("Buy.TButton", foreground="white", background=GREEN, font=('Segoe UI', 12, 'bold'), padding=10)
-        style.configure("Sell.TButton", foreground="white", background=RED, font=('Segoe UI', 12, 'bold'), padding=10)
-        style.map("Buy.TButton", background=[("active", "#16a34a")])
-        style.map("Sell.TButton", background=[("active", "#dc2626")])
+        # ═══════════════════  STATUS LOG  ═══════════════════
+        if CTK_AVAILABLE:
+            log_card = ctk.CTkFrame(main, fg_color=self.C_BG_SEC, corner_radius=10,
+                                    border_width=1, border_color=self.C_BORDER)
+            log_card.pack(fill="both", expand=True, padx=16, pady=(2, 6))
+            ctk.CTkLabel(log_card, text="STATUS LOG", font=("Segoe UI", 10, "bold"),
+                         text_color=self.C_TEXT_DIM).pack(anchor="w", padx=12, pady=(8, 2))
+            self.log_text = tk.Text(log_card, height=8, bg=self.C_BG, fg="#22c55e",
+                                    font=("Consolas", 9), insertbackground="white",
+                                    relief="flat", borderwidth=0, wrap="word")
+            self.log_text.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        else:
+            log_frame = ttk.LabelFrame(main, text="Status Log", padding=4)
+            log_frame.pack(fill="both", expand=True, padx=16, pady=(2, 6))
+            self.log_text = scrolledtext.ScrolledText(log_frame, height=8, bg='#0a0e1a',
+                                                       fg='#22c55e', font=('Consolas', 9),
+                                                       insertbackground='white', relief='flat')
+            self.log_text.pack(fill="both", expand=True)
 
-        style.configure("AutoPush.TButton", foreground="black", background=ACCENT2)
-        style.map("AutoPush.TButton", background=[("active", "#2563eb")])
+        # ── Status bar ──
+        self.status_var = tk.StringVar(value="Ready — enter your email to get started")
+        if CTK_AVAILABLE:
+            self.status_label = ctk.CTkLabel(main, textvariable=self.status_var,
+                                             font=("Segoe UI", 10),
+                                             text_color=self.C_SUCCESS)
+            self.status_label.pack(fill="x", padx=16, pady=(0, 8))
+        else:
+            self.status_label = ttk.Label(main, textvariable=self.status_var)
+            self.status_label.pack(fill="x", padx=16, pady=(0, 8))
 
-        # ── Main container ──
-        main_frame = ttk.Frame(self.scrollable_frame, padding=12)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # State for smart auto-push
+        self.last_deal_ticket = 0
+        self.last_deal_count = 0
+        self.auto_push_thread = None
 
-        # ── Header ──
-        header_canvas = tk.Canvas(main_frame, height=70, bg=BG, highlightthickness=0)
-        header_canvas.pack(fill=tk.X, pady=(0, 10))
+    # ── Build Dashboard Tab ──
+    def _build_dashboard_tab(self, parent):
+        """Build the Dashboard tab with CTk cards."""
+        # ── Connection Target ──
+        conn_card = self._section_card(parent, "CONNECTION TARGET", "🌐")
+        conn_card.pack(fill="x", padx=6, pady=(6, 4))
 
-        def _draw_header(canvas, width=None):
-            w = width or canvas.winfo_width() or 700
-            canvas.delete('all')
-            # Gradient
-            steps = 40
-            for i in range(steps):
-                ratio = i / steps
-                r = int(30 * (1 - ratio) + 10 * ratio)
-                g = int(58 * (1 - ratio) + 14 * ratio)
-                b = int(138 * (1 - ratio) + 26 * ratio)
-                color = f'#{r:02x}{g:02x}{b:02x}'
-                y0 = i * (70 / steps)
-                y1 = y0 + (70 / steps) + 1
-                canvas.create_rectangle(0, y0, w, y1, fill=color, outline=color)
-            cx = w // 2
-            title_size = max(14, min(22, w // 30))
-            canvas.create_text(cx, 28, text="Trader Companion 2.0",
-                               font=('Segoe UI', title_size, 'bold'), fill='#f59e0b')
-            canvas.create_text(cx, 55, text="Data Manager  •  Trading Engine",
-                               font=('Segoe UI', 10), fill='#94a3b8')
+        conn_inner = ctk.CTkFrame(conn_card, fg_color="transparent") if CTK_AVAILABLE else \
+                     tk.Frame(conn_card, bg="#161B22")
+        conn_inner.pack(fill="x", padx=12, pady=(4, 10))
 
-        _draw_header(header_canvas, 700)
-        header_canvas.bind('<Configure>', lambda e: _draw_header(header_canvas, e.width))
-
-        # ━━━━━━━━━━━━━━━━━━  NOTEBOOK (TABS)  ━━━━━━━━━━━━━━━━━━
-        self.notebook = ttk.Notebook(main_frame)
-        self.notebook.pack(fill=tk.X, pady=(0, 6))
-
-        # ── Tab 1: Dashboard ──
-        tab_dash = ttk.Frame(self.notebook, style='TFrame')
-        self.notebook.add(tab_dash, text='  📊  Dashboard  ')
-
-        # ── Tab 2: Trading Engine ──
-        tab_trade = ttk.Frame(self.notebook, style='TFrame')
-        self.notebook.add(tab_trade, text='  ⚡  Trading Engine  ')
-
-        # ── Tab 3: Tools & Settings ──
-        tab_tools = ttk.Frame(self.notebook, style='TFrame')
-        self.notebook.add(tab_tools, text='  🛠  Tools & Settings  ')
-
-        # ═══════════════════════════════════════════════════════════
-        #  TAB 1 — DASHBOARD
-        # ═══════════════════════════════════════════════════════════
-
-        # -- Connection Target card --
-        conn_frame = ttk.LabelFrame(tab_dash, text="🌐  Connection Target", padding=8)
-        conn_frame.pack(fill=tk.X, padx=6, pady=(6, 3))
-
-        conn_row = ttk.Frame(conn_frame, style='CardBG.TFrame')
-        conn_row.pack(fill=tk.X)
-        ttk.Label(conn_row, text="Target:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(0, 8))
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(conn_inner, text="Target:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 8))
 
         self.target_var = tk.StringVar()
         self.url_keys = ["TradeOpps (Production)", "Localhost (Development)"]
@@ -1408,17 +1490,32 @@ class TraderCompanionApp:
             "TradeOpps (Production)": "https://www.tradeopss.com",
             "Localhost (Development)": "http://127.0.0.1:5001"
         }
-        self.url_selector = ttk.Combobox(conn_row, textvariable=self.target_var,
-                                         state="readonly", width=32)
-        self.url_selector['values'] = self.url_keys
-        self.url_selector.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.url_selector.current(0)
 
-        # Hidden entry for backward compat
-        self.url_entry = ttk.Entry(tab_dash)
+        if CTK_AVAILABLE:
+            self.url_selector = ctk.CTkComboBox(conn_inner, variable=self.target_var,
+                                                values=self.url_keys, state="readonly",
+                                                width=280, height=32,
+                                                fg_color=self.C_BG_THIRD,
+                                                border_color=self.C_BORDER,
+                                                button_color=self.C_ACCENT,
+                                                dropdown_fg_color=self.C_BG_SEC,
+                                                dropdown_hover_color=self.C_BG_THIRD,
+                                                text_color=self.C_TEXT,
+                                                font=("Segoe UI", 11))
+            self.url_selector.pack(side="left", padx=(0, 8))
+            self.url_selector.set(self.url_keys[0])
+        else:
+            self.url_selector = ttk.Combobox(conn_inner, textvariable=self.target_var,
+                                             state="readonly", width=32)
+            self.url_selector['values'] = self.url_keys
+            self.url_selector.pack(side="left", fill="x", expand=True)
+            self.url_selector.current(0)
+
+        # Hidden entry for backward-compat URL storage
+        self.url_entry = ttk.Entry(parent)
         self.url_entry.insert(0, self.url_values["TradeOpps (Production)"])
 
-        def on_target_change(event):
+        def on_target_change(event=None):
             selection = self.target_var.get()
             if "Localhost" in selection:
                 password = simpledialog.askstring("Developer Access",
@@ -1426,128 +1523,150 @@ class TraderCompanionApp:
                 if password == "tradeopss@123":
                     self.url_entry.delete(0, tk.END)
                     self.url_entry.insert(0, self.url_values[selection])
-                    self.log(f"Switched to Localhost")
+                    self.log("Switched to Localhost")
                     self.status_var.set("Target: Localhost (Dev)")
                 else:
                     messagebox.showerror("Access Denied", "Incorrect password.")
-                    self.url_selector.current(0)
+                    if CTK_AVAILABLE:
+                        self.url_selector.set(self.url_keys[0])
+                    else:
+                        self.url_selector.current(0)
                     self.url_entry.delete(0, tk.END)
                     self.url_entry.insert(0, self.url_values["TradeOpps (Production)"])
             else:
                 self.url_entry.delete(0, tk.END)
                 self.url_entry.insert(0, self.url_values[selection])
-                self.log(f"Switched to Production")
+                self.log("Switched to Production")
                 self.status_var.set("Target: Production")
 
-        self.url_selector.bind("<<ComboboxSelected>>", on_target_change)
+        if CTK_AVAILABLE:
+            self.url_selector.configure(command=lambda _: on_target_change())
+        else:
+            self.url_selector.bind("<<ComboboxSelected>>", on_target_change)
 
-        # -- Client Identification card --
-        id_frame = ttk.LabelFrame(tab_dash, text="👤  Client Identification", padding=8)
-        id_frame.pack(fill=tk.X, padx=6, pady=3)
+        # ── Client Identification ──
+        id_card = self._section_card(parent, "CLIENT IDENTIFICATION", "👤")
+        id_card.pack(fill="x", padx=6, pady=4)
 
-        email_frame = ttk.Frame(id_frame, style='CardBG.TFrame')
-        email_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(email_frame, text="Client Email:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
-        self.client_email_entry = ttk.Entry(email_frame, width=36)
-        self.client_email_entry.pack(side=tk.LEFT, padx=5)
-        self.lookup_btn = ttk.Button(email_frame, text="🔍 Lookup", command=self.lookup_client)
-        self.lookup_btn.pack(side=tk.LEFT, padx=5)
+        id_inner = ctk.CTkFrame(id_card, fg_color="transparent") if CTK_AVAILABLE else \
+                   tk.Frame(id_card, bg="#161B22")
+        id_inner.pack(fill="x", padx=12, pady=(4, 10))
+
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(id_inner, text="Email:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 8))
+        self.client_email_entry = self._ctk_entry(id_inner, width=260, placeholder="client@email.com")
+        self.client_email_entry.pack(side="left", padx=(0, 8))
+        self.lookup_btn = self._ctk_button(id_inner, text="Lookup", command=self.lookup_client, width=100)
+        self.lookup_btn.pack(side="left")
 
         self.hierarchy_var = tk.StringVar(value="Enter email and click Lookup")
-        self.hierarchy_label = ttk.Label(id_frame, textvariable=self.hierarchy_var,
-                                         style='CardDim.TLabel')
-        self.hierarchy_label.pack(fill=tk.X, pady=(4, 0))
+        if CTK_AVAILABLE:
+            self.hierarchy_label = ctk.CTkLabel(id_card, textvariable=self.hierarchy_var,
+                                                font=("Segoe UI", 10, "italic"),
+                                                text_color=self.C_TEXT_DIM)
+        else:
+            self.hierarchy_label = ttk.Label(id_card, textvariable=self.hierarchy_var)
+        self.hierarchy_label.pack(fill="x", padx=12, pady=(0, 8))
 
-        # -- Push Actions card --
-        push_frame = ttk.LabelFrame(tab_dash, text="📤  Data Push", padding=8)
-        push_frame.pack(fill=tk.X, padx=6, pady=3)
+        # ── Data Push ──
+        push_card = self._section_card(parent, "DATA PUSH", "📤")
+        push_card.pack(fill="x", padx=6, pady=4)
 
-        btn_row = ttk.Frame(push_frame, style='CardBG.TFrame')
-        btn_row.pack(fill=tk.X)
+        push_inner = ctk.CTkFrame(push_card, fg_color="transparent") if CTK_AVAILABLE else \
+                     tk.Frame(push_card, bg="#161B22")
+        push_inner.pack(fill="x", padx=12, pady=(4, 10))
 
-        self.push_btn = ttk.Button(btn_row, text="📤  Push Data", command=self.push_data)
-        self.push_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.push_btn = self._ctk_button(push_inner, text="Push Data", command=self.push_data,
+                                         fg=self.C_SUCCESS, hover="#16a34a", width=120)
+        self.push_btn.pack(side="left", padx=(0, 6))
 
-        self.auto_btn = ttk.Button(btn_row, text="🔄  Auto-Push",
-                                   command=self.toggle_auto_push, style="AutoPush.TButton")
-        self.auto_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.auto_btn = self._ctk_button(push_inner, text="Auto-Push", command=self.toggle_auto_push,
+                                         fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=120)
+        self.auto_btn.pack(side="left", padx=(0, 6))
 
-        ttk.Button(btn_row, text="�  Push Hedging Review", command=self.push_hedging_review).pack(side=tk.LEFT, padx=(0, 8))
+        self._ctk_button(push_inner, text="Hedging Review", command=self.push_hedging_review,
+                         fg="#6366F1", hover="#4F46E5", width=140).pack(side="left", padx=(0, 6))
 
-        ttk.Button(btn_row, text="�💾  Save Config", command=self.save_config).pack(side=tk.RIGHT)
+        self._ctk_button(push_inner, text="Save Config", command=self.save_config,
+                         fg=self.C_BG_THIRD, hover=self.C_BORDER, width=110).pack(side="right")
 
-        # -- Import Data card --
-        import_frame = ttk.LabelFrame(tab_dash, text="📋  Import Data", padding=8)
-        import_frame.pack(fill=tk.X, padx=6, pady=3)
+        # ── Import Data ──
+        imp_card = self._section_card(parent, "IMPORT DATA", "📋")
+        imp_card.pack(fill="x", padx=6, pady=4)
 
-        source_row = ttk.Frame(import_frame, style='CardBG.TFrame')
-        source_row.pack(fill=tk.X, pady=(0, 4))
-        ttk.Label(source_row, text="Source:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
+        imp_inner = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
+                    tk.Frame(imp_card, bg="#161B22")
+        imp_inner.pack(fill="x", padx=12, pady=(4, 4))
+
         self.import_source = tk.StringVar(value="sheet")
-        ttk.Radiobutton(source_row, text="Google Sheets", variable=self.import_source,
-                        value="sheet", command=self._toggle_import_source).pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Radiobutton(source_row, text="CSV File", variable=self.import_source,
-                        value="csv", command=self._toggle_import_source).pack(side=tk.LEFT)
+        if CTK_AVAILABLE:
+            ctk.CTkRadioButton(imp_inner, text="Google Sheets", variable=self.import_source,
+                               value="sheet", command=self._toggle_import_source,
+                               font=("Segoe UI", 11), text_color=self.C_TEXT,
+                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 14))
+            ctk.CTkRadioButton(imp_inner, text="CSV File", variable=self.import_source,
+                               value="csv", command=self._toggle_import_source,
+                               font=("Segoe UI", 11), text_color=self.C_TEXT,
+                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left")
+        else:
+            ttk.Radiobutton(imp_inner, text="Google Sheets", variable=self.import_source,
+                            value="sheet", command=self._toggle_import_source).pack(side="left", padx=(0, 12))
+            ttk.Radiobutton(imp_inner, text="CSV File", variable=self.import_source,
+                            value="csv", command=self._toggle_import_source).pack(side="left")
 
-        self.sheet_input_frame = ttk.Frame(import_frame, style='CardBG.TFrame')
-        self.sheet_input_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(self.sheet_input_frame, text="Sheet URL:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
-        self.sheet_url_entry = ttk.Entry(self.sheet_input_frame, width=46)
-        self.sheet_url_entry.pack(side=tk.LEFT, padx=5)
+        # Sheet URL row
+        self.sheet_input_frame = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
+                                 tk.Frame(imp_card, bg="#161B22")
+        self.sheet_input_frame.pack(fill="x", padx=12, pady=4)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(self.sheet_input_frame, text="URL:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6))
+        self.sheet_url_entry = self._ctk_entry(self.sheet_input_frame, width=380, placeholder="Google Sheet URL...")
+        self.sheet_url_entry.pack(side="left", fill="x", expand=True)
 
-        self.csv_input_frame = ttk.Frame(import_frame, style='CardBG.TFrame')
-        ttk.Label(self.csv_input_frame, text="CSV File:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
+        # CSV row (hidden by default)
+        self.csv_input_frame = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
+                               tk.Frame(imp_card, bg="#161B22")
         self.csv_path_var = tk.StringVar()
-        self.csv_path_entry = ttk.Entry(self.csv_input_frame, textvariable=self.csv_path_var,
-                                        width=36, state='readonly')
-        self.csv_path_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.csv_input_frame, text="Browse…", command=self._browse_csv).pack(side=tk.LEFT, padx=2)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(self.csv_input_frame, text="File:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6))
+            self.csv_path_entry = ctk.CTkEntry(self.csv_input_frame, textvariable=self.csv_path_var,
+                                               width=280, height=32, state="disabled",
+                                               fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
+                                               text_color=self.C_TEXT)
+        else:
+            self.csv_path_entry = ttk.Entry(self.csv_input_frame, textvariable=self.csv_path_var,
+                                            width=36, state='readonly')
+        self.csv_path_entry.pack(side="left", padx=(0, 6))
+        self._ctk_button(self.csv_input_frame, text="Browse…", command=self._browse_csv,
+                         fg=self.C_BG_THIRD, hover=self.C_BORDER, width=90).pack(side="left")
 
-        self.import_btn = ttk.Button(import_frame, text="📥  Import Sheet Data", command=self._do_import)
-        self.import_btn.pack(pady=(4, 1))
-
-        self.import_hint = ttk.Label(import_frame, text="Sheet must be publicly shared",
-                                      style='CardDim.TLabel')
-        self.import_hint.pack(pady=(0, 0))
-
-        # ═══════════════════════════════════════════════════════════
-        #  TAB 2 — TRADING ENGINE
-        # ═══════════════════════════════════════════════════════════
-        self._build_trading_engine_ui(tab_trade)
-
-        # ═══════════════════════════════════════════════════════════
-        #  TAB 3 — TOOLS & SETTINGS
-        # ═══════════════════════════════════════════════════════════
-
-        # ═══════════════════════════════════════════════════════════
-        #  STATUS LOG (always visible, below tabs)
-        # ═══════════════════════════════════════════════════════════
-
-        log_frame = ttk.LabelFrame(main_frame, text="📝  Status Log", padding=4)
-        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 2))
-
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, bg='#0a0e1a', fg='#22c55e',
-                                                   font=('Consolas', 9), insertbackground='white',
-                                                   relief='flat', borderwidth=0)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-
-        # Status bar
-        self.status_var = tk.StringVar(value="Ready — enter your email to get started")
-        self.status_label = ttk.Label(main_frame, textvariable=self.status_var, style='Status.TLabel')
-        self.status_label.pack(fill=tk.X, pady=(2, 0))
-
-        # State for smart auto-push
-        self.last_deal_ticket = 0
-        self.last_deal_count = 0
-        self.auto_push_thread = None
+        imp_btn_row = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
+                      tk.Frame(imp_card, bg="#161B22")
+        imp_btn_row.pack(fill="x", padx=12, pady=(4, 8))
+        self.import_btn = self._ctk_button(imp_btn_row, text="Import Sheet Data", command=self._do_import,
+                                           fg="#6366F1", hover="#4F46E5", width=180)
+        self.import_btn.pack(side="left")
+        self.import_hint_text = "Sheet must be publicly shared"
+        if CTK_AVAILABLE:
+            self.import_hint = ctk.CTkLabel(imp_btn_row, text=self.import_hint_text,
+                                            font=("Segoe UI", 9, "italic"),
+                                            text_color=self.C_TEXT_DIM)
+        else:
+            self.import_hint = ttk.Label(imp_btn_row, text=self.import_hint_text)
+        self.import_hint.pack(side="left", padx=(12, 0))
 
     def log(self, message, level="INFO"):
         """Add a message to the log."""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        color = "#00ff00" if level == "INFO" else "#ff6b6b" if level == "ERROR" else "#ffcc00"
         self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
         self.log_text.see(tk.END)
-        self.root.update_idletasks()
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass
     
     def lookup_client(self):
         """Lookup client hierarchy from email - NO API KEY REQUIRED."""
@@ -1581,12 +1700,12 @@ class TraderCompanionApp:
                     category = self.client_info.get("category", "Unknown")
                     
                     self.hierarchy_var.set(f"✅ {client} → Trader: {trader} → Admin: {admin} | Category: {category}")
-                    self.hierarchy_label.configure(foreground='#16a34a')
+                    self.hierarchy_label.configure(text_color='#16a34a') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#16a34a')
                     self.log(f"✅ Client found: {client} → {trader} → {admin}")
                 else:
                     error_msg = data.get("message", "Client not found")
                     self.hierarchy_var.set(f"❌ {error_msg}")
-                    self.hierarchy_label.configure(foreground='#dc2626')
+                    self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
                     self.client_info = None
                     self.log(f"❌ Lookup failed: {error_msg}", "ERROR")
             else:
@@ -1597,21 +1716,21 @@ class TraderCompanionApp:
                 except:
                     pass
                 self.hierarchy_var.set(f"❌ {error_msg}")
-                self.hierarchy_label.configure(foreground='#dc2626')
+                self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
                 self.client_info = None
                 self.log(f"❌ Lookup failed: {error_msg}", "ERROR")
                 
         except requests.exceptions.Timeout:
             self.hierarchy_var.set("❌ Connection timeout")
-            self.hierarchy_label.configure(foreground='#dc2626')
+            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
             self.log("❌ Connection timeout", "ERROR")
         except requests.exceptions.ConnectionError:
             self.hierarchy_var.set("❌ Cannot connect to server")
-            self.hierarchy_label.configure(foreground='#dc2626')
+            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
             self.log("❌ Cannot connect to server", "ERROR")
         except Exception as e:
             self.hierarchy_var.set(f"❌ Error: {str(e)}")
-            self.hierarchy_label.configure(foreground='#dc2626')
+            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
             self.log(f"❌ Error: {e}", "ERROR")
         
     def toggle_mt5_connection(self):
@@ -2456,14 +2575,14 @@ class TraderCompanionApp:
         """Show/hide the correct input row based on selected import source."""
         if self.import_source.get() == 'sheet':
             self.csv_input_frame.pack_forget()
-            self.sheet_input_frame.pack(fill=tk.X, pady=2)
-            self.import_btn.config(text="📥 Import Sheet Data")
-            self.import_hint.config(text="Sheet must be public")
+            self.sheet_input_frame.pack(fill="x", pady=2)
+            self.import_btn.configure(text="Import Sheet Data")
+            self.import_hint.configure(text="Sheet must be publicly shared")
         else:
             self.sheet_input_frame.pack_forget()
-            self.csv_input_frame.pack(fill=tk.X, pady=2)
-            self.import_btn.config(text="📥 Import CSV File")
-            self.import_hint.config(text="Use a CSV exported from the dashboard")
+            self.csv_input_frame.pack(fill="x", pady=2)
+            self.import_btn.configure(text="Import CSV File")
+            self.import_hint.configure(text="Use a CSV exported from the dashboard")
 
     def _browse_csv(self):
         """Open file dialog to pick a CSV file."""
@@ -2693,11 +2812,9 @@ class TraderCompanionApp:
         
     def toggle_auto_push(self):
         """Toggle automatic data pushing."""
-        style = ttk.Style()
         if self.auto_push_enabled:
             self.auto_push_enabled = False
-            self.auto_btn.configure(text="🔄 Start Auto-Push")
-            style.configure("AutoPush.TButton", background="#3b82f6") # Reset
+            self.auto_btn.configure(text="Auto-Push")
             self.log("Auto-push stopped")
         else:
             if not self.client_info:
@@ -2709,8 +2826,7 @@ class TraderCompanionApp:
             self.last_deal_ticket = 0
             
             self.auto_push_enabled = True
-            self.auto_btn.config(text="⏹ Stop Auto-Push (Smart)")
-            style.configure("AutoPush.TButton", background="lightblue") 
+            self.auto_btn.configure(text="Stop Auto-Push")
 
             self.log("Smart Auto-push started (Checking for new trades...)")
             self.auto_push_thread = threading.Thread(target=self.auto_push_loop, daemon=True)
@@ -2774,7 +2890,7 @@ class TraderCompanionApp:
     # ============ Trading Engine ============
 
     def _build_trading_engine_ui(self, parent):
-        """Build the Trading Engine tab with active trades list."""
+        """Build the Trading Engine tab with CTk styled cards."""
         self.trading_api = None
         self.tradovate_account = None
         self.topstepx_account = None
@@ -2782,159 +2898,243 @@ class TraderCompanionApp:
         self._auto_trading_stop = threading.Event()
         self._auto_trading_thread = None
         self._direction_locks = {}
-        self._active_trade_rows = []  # List of dicts tracking each trade row
+        self._active_trade_rows = []
 
-        # ── MT5 Connection card ──
-        mt5_frame = ttk.LabelFrame(parent, text="🔗  MT5 Connection", padding=8)
-        mt5_frame.pack(fill=tk.X, padx=6, pady=(6, 3))
+        # ── MT5 Connection Card ──
+        mt5_card = self._section_card(parent, "MT5 CONNECTION", "🔗")
+        mt5_card.pack(fill="x", padx=6, pady=(6, 4))
 
-        mt5_top = ttk.Frame(mt5_frame, style='CardBG.TFrame')
-        mt5_top.pack(fill=tk.X, pady=1)
-        ttk.Label(mt5_top, text="Login:", width=10, style='CardBG.TLabel').pack(side=tk.LEFT)
-        self.mt5_login = ttk.Entry(mt5_top, width=16)
-        self.mt5_login.pack(side=tk.LEFT, padx=3)
-        ttk.Label(mt5_top, text="Pass:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(6, 0))
-        self.mt5_password = ttk.Entry(mt5_top, width=16, show="*")
-        self.mt5_password.pack(side=tk.LEFT, padx=3)
-        ttk.Label(mt5_top, text="Server:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(6, 0))
-        self.mt5_server = ttk.Entry(mt5_top, width=20)
-        self.mt5_server.pack(side=tk.LEFT, padx=3)
+        mt5_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
+                  tk.Frame(mt5_card, bg="#161B22")
+        mt5_row.pack(fill="x", padx=12, pady=(4, 4))
 
-        mt5_btn_row = ttk.Frame(mt5_frame, style='CardBG.TFrame')
-        mt5_btn_row.pack(fill=tk.X, pady=(3, 0))
-        self.mt5_btn = ttk.Button(mt5_btn_row, text="Connect MT5", command=self.toggle_mt5_connection)
-        self.mt5_btn.pack(side=tk.LEFT)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(mt5_row, text="Login:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+        self.mt5_login = self._ctk_entry(mt5_row, width=120)
+        self.mt5_login.pack(side="left", padx=(0, 8))
+
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(mt5_row, text="Pass:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+        self.mt5_password = self._ctk_entry(mt5_row, width=120, show="*")
+        self.mt5_password.pack(side="left", padx=(0, 8))
+
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(mt5_row, text="Server:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+        self.mt5_server = self._ctk_entry(mt5_row, width=160)
+        self.mt5_server.pack(side="left", padx=(0, 8))
+
+        mt5_btn_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
+                      tk.Frame(mt5_card, bg="#161B22")
+        mt5_btn_row.pack(fill="x", padx=12, pady=(0, 8))
+        self.mt5_btn = self._ctk_button(mt5_btn_row, text="Connect MT5",
+                                        command=self.toggle_mt5_connection,
+                                        fg="#24292F", hover="#000000", width=140)
+        self.mt5_btn.pack(side="left")
 
         if not TRADING_ENGINE_AVAILABLE:
-            ttk.Label(mt5_frame,
-                text="Trading engine modules not loaded — broker trading unavailable. MT5 data push still works.",
-                foreground='#f59e0b', font=('Segoe UI', 9, 'italic'), background='#111827',
-                wraplength=500).pack(pady=(6, 0))
+            if CTK_AVAILABLE:
+                ctk.CTkLabel(mt5_card, text="Trading engine modules not loaded — broker trading unavailable.",
+                             font=("Segoe UI", 9, "italic"), text_color=self.C_GOLD,
+                             wraplength=500).pack(padx=12, pady=(0, 8))
             return
 
-        # ── Broker Connection card (compact) ──
-        broker_frame = ttk.LabelFrame(parent, text="🏦  Broker Connection", padding=8)
-        broker_frame.pack(fill=tk.X, padx=6, pady=3)
+        # ── Broker Connection Card ──
+        broker_card = self._section_card(parent, "BROKER CONNECTION", "🏦")
+        broker_card.pack(fill="x", padx=6, pady=4)
 
-        bk_row = ttk.Frame(broker_frame, style='CardBG.TFrame')
-        bk_row.pack(fill=tk.X, pady=1)
-        ttk.Label(bk_row, text="Platform:", style='CardBG.TLabel').pack(side=tk.LEFT)
+        bk_row = ctk.CTkFrame(broker_card, fg_color="transparent") if CTK_AVAILABLE else \
+                 tk.Frame(broker_card, bg="#161B22")
+        bk_row.pack(fill="x", padx=12, pady=(4, 4))
+
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(bk_row, text="Platform:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
         self.broker_var = tk.StringVar(value="Tradovate")
         platforms = ["Tradovate"]
         if TOPSTEPX_AVAILABLE:
             platforms.append("TopStepX")
-        ttk.Combobox(bk_row, textvariable=self.broker_var, values=platforms,
-                     state='readonly', width=14).pack(side=tk.LEFT, padx=4)
-        ttk.Label(bk_row, text="User:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(4, 0))
-        self.broker_user = ttk.Entry(bk_row, width=14)
-        self.broker_user.pack(side=tk.LEFT, padx=3)
-        ttk.Label(bk_row, text="Pass:", style='CardBG.TLabel').pack(side=tk.LEFT)
-        self.broker_pass = ttk.Entry(bk_row, width=14, show="*")
-        self.broker_pass.pack(side=tk.LEFT, padx=3)
+        if CTK_AVAILABLE:
+            ctk.CTkComboBox(bk_row, variable=self.broker_var, values=platforms,
+                            state="readonly", width=130, height=32,
+                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
+                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
+                            dropdown_fg_color=self.C_BG_SEC).pack(side="left", padx=(0, 8))
+        else:
+            ttk.Combobox(bk_row, textvariable=self.broker_var, values=platforms,
+                         state='readonly', width=14).pack(side="left", padx=(0, 8))
 
-        bk_row2 = ttk.Frame(broker_frame, style='CardBG.TFrame')
-        bk_row2.pack(fill=tk.X, pady=(2, 0))
-        ttk.Label(bk_row2, text="Mode:", style='CardBG.TLabel').pack(side=tk.LEFT)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(bk_row, text="User:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+        self.broker_user = self._ctk_entry(bk_row, width=120)
+        self.broker_user.pack(side="left", padx=(0, 8))
+
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(bk_row, text="Pass:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+        self.broker_pass = self._ctk_entry(bk_row, width=120, show="*")
+        self.broker_pass.pack(side="left", padx=(0, 4))
+
+        bk_row2 = ctk.CTkFrame(broker_card, fg_color="transparent") if CTK_AVAILABLE else \
+                  tk.Frame(broker_card, bg="#161B22")
+        bk_row2.pack(fill="x", padx=12, pady=(0, 8))
+
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(bk_row2, text="Mode:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
         self.trading_mode_var = tk.StringVar(value="Simulation")
-        ttk.Combobox(bk_row2, textvariable=self.trading_mode_var,
-                     values=["Simulation", "Live"], state='readonly', width=14).pack(side=tk.LEFT, padx=4)
-        self.broker_connect_btn = ttk.Button(bk_row2, text="Connect Broker", command=self._connect_broker)
-        self.broker_connect_btn.pack(side=tk.LEFT, padx=(10, 0))
-        self.broker_status_var = tk.StringVar(value="Not Connected")
-        ttk.Label(bk_row2, textvariable=self.broker_status_var,
-                  foreground='#94a3b8', font=('Segoe UI', 9), background='#111827').pack(side=tk.LEFT, padx=6)
+        if CTK_AVAILABLE:
+            ctk.CTkComboBox(bk_row2, variable=self.trading_mode_var,
+                            values=["Simulation", "Live"], state="readonly",
+                            width=130, height=32, fg_color=self.C_BG_THIRD,
+                            border_color=self.C_BORDER, button_color=self.C_ACCENT,
+                            text_color=self.C_TEXT,
+                            dropdown_fg_color=self.C_BG_SEC).pack(side="left", padx=(0, 10))
+        else:
+            ttk.Combobox(bk_row2, textvariable=self.trading_mode_var,
+                         values=["Simulation", "Live"], state='readonly', width=14).pack(side="left", padx=(0, 10))
 
-        # ── Hedge Mode / Direction (compact inline) ──
-        opts_frame = ttk.Frame(parent, style='TFrame')
-        opts_frame.pack(fill=tk.X, padx=6, pady=(4, 2))
+        self.broker_connect_btn = self._ctk_button(bk_row2, text="Connect Broker",
+                                                    command=self._connect_broker,
+                                                    fg="#24292F", hover="#000000", width=140)
+        self.broker_connect_btn.pack(side="left", padx=(0, 10))
+
+        self.broker_status_var = tk.StringVar(value="Not Connected")
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(bk_row2, textvariable=self.broker_status_var,
+                         font=("Segoe UI", 10), text_color=self.C_TEXT_DIM).pack(side="left")
+        else:
+            ttk.Label(bk_row2, textvariable=self.broker_status_var).pack(side="left")
+
+        # ── Hedge Mode / Direction (inline) ──
+        opts_row = ctk.CTkFrame(parent, fg_color="transparent") if CTK_AVAILABLE else \
+                   tk.Frame(parent)
+        opts_row.pack(fill="x", padx=12, pady=(4, 2))
+
         self.hedge_mode_var = tk.StringVar(value="Hedging")
-        ttk.Radiobutton(opts_frame, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
-                        value="Hedging").pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Radiobutton(opts_frame, text="Broker Only", variable=self.hedge_mode_var,
-                        value="BrokerOnly").pack(side=tk.LEFT, padx=(0, 16))
+        if CTK_AVAILABLE:
+            ctk.CTkRadioButton(opts_row, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
+                               value="Hedging", font=("Segoe UI", 11), text_color=self.C_TEXT,
+                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 12))
+            ctk.CTkRadioButton(opts_row, text="Broker Only", variable=self.hedge_mode_var,
+                               value="BrokerOnly", font=("Segoe UI", 11), text_color=self.C_TEXT,
+                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 20))
+        else:
+            ttk.Radiobutton(opts_row, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
+                            value="Hedging").pack(side="left", padx=(0, 8))
+            ttk.Radiobutton(opts_row, text="Broker Only", variable=self.hedge_mode_var,
+                            value="BrokerOnly").pack(side="left", padx=(0, 16))
+
         self.direction_var = tk.StringVar(value="All Trades")
-        ttk.Label(opts_frame, text="Direction:").pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Combobox(opts_frame, textvariable=self.direction_var,
-                     values=["All Trades", "Buy Only", "Sell Only"],
-                     state='readonly', width=12).pack(side=tk.LEFT)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(opts_row, text="Direction:", font=("Segoe UI", 11),
+                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+            ctk.CTkComboBox(opts_row, variable=self.direction_var,
+                            values=["All Trades", "Buy Only", "Sell Only"],
+                            state="readonly", width=130, height=32,
+                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
+                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
+                            dropdown_fg_color=self.C_BG_SEC).pack(side="left")
+        else:
+            ttk.Label(opts_row, text="Direction:").pack(side="left", padx=(0, 4))
+            ttk.Combobox(opts_row, textvariable=self.direction_var,
+                         values=["All Trades", "Buy Only", "Sell Only"],
+                         state='readonly', width=12).pack(side="left")
 
         # ── Auto-Trade Scheduler Card ──
-        auto_frame = ttk.LabelFrame(parent, text="⏰  Auto-Trade Scheduler", padding=8)
-        auto_frame.pack(fill=tk.X, padx=6, pady=(4, 3))
+        auto_card = self._section_card(parent, "AUTO-TRADE SCHEDULER", "⏰")
+        auto_card.pack(fill="x", padx=6, pady=4)
 
-        auto_row1 = ttk.Frame(auto_frame, style='CardBG.TFrame')
-        auto_row1.pack(fill=tk.X, pady=(0, 4))
+        auto_inner = ctk.CTkFrame(auto_card, fg_color="transparent") if CTK_AVAILABLE else \
+                     tk.Frame(auto_card, bg="#161B22")
+        auto_inner.pack(fill="x", padx=12, pady=(4, 4))
 
-        self.auto_trade_btn = tk.Button(
-            auto_row1, text="▶  Start Auto-Trade", bg='#3b82f6', fg='white',
-            activebackground='#2563eb', activeforeground='white',
-            font=('Segoe UI', 9, 'bold'), relief='flat', padx=12, pady=3,
-            command=self._toggle_auto_trade)
-        self.auto_trade_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.auto_trade_btn = self._ctk_button(auto_inner, text="▶  Start Auto-Trade",
+                                               command=self._toggle_auto_trade,
+                                               fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=180)
+        self.auto_trade_btn.pack(side="left", padx=(0, 12))
 
         self.auto_trade_status_var = tk.StringVar(value="Auto-trade off")
-        ttk.Label(auto_row1, textvariable=self.auto_trade_status_var,
-                  foreground='#94a3b8', font=('Segoe UI', 9),
-                  background='#111827').pack(side=tk.LEFT, padx=4)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(auto_inner, textvariable=self.auto_trade_status_var,
+                         font=("Segoe UI", 10), text_color=self.C_TEXT_DIM).pack(side="left")
+        else:
+            ttk.Label(auto_inner, textvariable=self.auto_trade_status_var).pack(side="left")
 
-        auto_row2 = ttk.Frame(auto_frame, style='CardBG.TFrame')
-        auto_row2.pack(fill=tk.X)
+        auto_row2 = ctk.CTkFrame(auto_card, fg_color="transparent") if CTK_AVAILABLE else \
+                    tk.Frame(auto_card, bg="#161B22")
+        auto_row2.pack(fill="x", padx=12, pady=(0, 4))
         self.auto_trade_countdown_var = tk.StringVar(value="")
-        ttk.Label(auto_row2, textvariable=self.auto_trade_countdown_var,
-                  foreground='#fbbf24', font=('Consolas', 9),
-                  background='#111827').pack(side=tk.LEFT)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(auto_row2, textvariable=self.auto_trade_countdown_var,
+                         font=("Consolas", 10), text_color=self.C_GOLD).pack(side="left")
+        else:
+            ttk.Label(auto_row2, textvariable=self.auto_trade_countdown_var).pack(side="left")
 
-        # Per-firm direction display (populated when auto-trade starts)
+        # Per-firm direction display
         self.auto_trade_firms_var = tk.StringVar(value="")
-        ttk.Label(auto_frame, textvariable=self.auto_trade_firms_var,
-                  foreground='#e2e8f0', font=('Consolas', 9),
-                  background='#111827', justify='left').pack(fill=tk.X, pady=(2, 0))
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(auto_card, textvariable=self.auto_trade_firms_var,
+                         font=("Consolas", 10), text_color=self.C_TEXT,
+                         justify="left").pack(fill="x", padx=12, pady=(0, 8))
+        else:
+            ttk.Label(auto_card, textvariable=self.auto_trade_firms_var).pack(fill="x", padx=12, pady=(0, 8))
 
-        # ── Active Trades list card ──
-        trades_frame = ttk.LabelFrame(parent, text="📋  Active Trades", padding=8)
-        trades_frame.pack(fill=tk.X, padx=6, pady=(4, 3))
+        # ── Active Trades Card ──
+        trades_card = self._section_card(parent, "ACTIVE TRADES", "📋")
+        trades_card.pack(fill="x", padx=6, pady=4)
 
-        # Top bar with Load button
-        trades_top = ttk.Frame(trades_frame, style='CardBG.TFrame')
-        trades_top.pack(fill=tk.X, pady=(0, 4))
-        self.load_trades_btn = ttk.Button(trades_top, text="🔄  Load Trades from Dashboard",
-                                          command=self._load_active_trades)
-        self.load_trades_btn.pack(side=tk.LEFT)
+        trades_top = ctk.CTkFrame(trades_card, fg_color="transparent") if CTK_AVAILABLE else \
+                     tk.Frame(trades_card, bg="#161B22")
+        trades_top.pack(fill="x", padx=12, pady=(4, 6))
+        self.load_trades_btn = self._ctk_button(trades_top, text="Load Trades from Dashboard",
+                                                command=self._load_active_trades,
+                                                fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=240)
+        self.load_trades_btn.pack(side="left")
         self.trades_count_var = tk.StringVar(value="No trades loaded")
-        ttk.Label(trades_top, textvariable=self.trades_count_var,
-                  foreground='#94a3b8', font=('Segoe UI', 9), background='#111827').pack(side=tk.LEFT, padx=10)
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(trades_top, textvariable=self.trades_count_var,
+                         font=("Segoe UI", 10), text_color=self.C_TEXT_DIM).pack(side="left", padx=12)
+        else:
+            ttk.Label(trades_top, textvariable=self.trades_count_var).pack(side="left", padx=12)
 
         # Column headers
-        hdr = ttk.Frame(trades_frame, style='CardBG.TFrame')
-        hdr.pack(fill=tk.X, pady=(0, 2))
-        ttk.Label(hdr, text="Prop Firm", width=14, style='SectionHead.TLabel',
-                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
-        ttk.Label(hdr, text="Account", width=10, style='SectionHead.TLabel',
-                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
-        ttk.Label(hdr, text="Size", width=8, style='SectionHead.TLabel',
-                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
-        ttk.Label(hdr, text="Current Phase", width=14, style='SectionHead.TLabel',
-                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
-        ttk.Label(hdr, text="Next Phase", width=14, style='SectionHead.TLabel',
-                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
-        ttk.Label(hdr, text="Action", width=16, style='SectionHead.TLabel',
-                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+        if CTK_AVAILABLE:
+            hdr = ctk.CTkFrame(trades_card, fg_color=self.C_BG_THIRD, corner_radius=6, height=30)
+            hdr.pack(fill="x", padx=12, pady=(0, 4))
+            hdr.pack_propagate(False)
+            cols = [("Prop Firm", 14), ("Account", 12), ("Size", 8),
+                    ("Phase", 12), ("Next", 12), ("Action", 14)]
+            for label, w in cols:
+                ctk.CTkLabel(hdr, text=label, width=w * 7, font=("Segoe UI", 9, "bold"),
+                             text_color=self.C_TEXT_DIM).pack(side="left", padx=4)
+        else:
+            hdr = tk.Frame(trades_card, bg="#1C2333")
+            hdr.pack(fill="x", padx=12, pady=(0, 2))
+            for label, w in [("Prop Firm", 14), ("Account", 10), ("Size", 8),
+                             ("Phase", 14), ("Next", 14), ("Action", 16)]:
+                tk.Label(hdr, text=label, width=w, anchor='w', bg="#1C2333", fg=self.C_TEXT_DIM,
+                         font=('Segoe UI', 9, 'bold')).pack(side="left", padx=2)
 
         # Scrollable trade rows container
-        trades_canvas = tk.Canvas(trades_frame, bg='#111827', highlightthickness=0, height=300)
-        trades_scrollbar = ttk.Scrollbar(trades_frame, orient="vertical", command=trades_canvas.yview)
-        self._trades_inner = ttk.Frame(trades_canvas, style='CardBG.TFrame')
-        self._trades_inner.bind("<Configure>",
-            lambda e: trades_canvas.configure(scrollregion=trades_canvas.bbox("all")))
-        trades_canvas.create_window((0, 0), window=self._trades_inner, anchor="nw")
-        trades_canvas.configure(yscrollcommand=trades_scrollbar.set)
-        trades_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        trades_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # Mouse wheel for trade list
-        def _on_trades_wheel(event):
-            trades_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        trades_canvas.bind_all("<MouseWheel>", _on_trades_wheel)
+        if CTK_AVAILABLE:
+            self._trades_scroll = ctk.CTkScrollableFrame(trades_card, fg_color=self.C_BG_SEC,
+                                                          height=300)
+            self._trades_scroll.pack(fill="x", padx=12, pady=(0, 8))
+            self._trades_inner = self._trades_scroll
+        else:
+            trades_canvas = tk.Canvas(trades_card, bg='#161B22', highlightthickness=0, height=300)
+            trades_sb = ttk.Scrollbar(trades_card, orient="vertical", command=trades_canvas.yview)
+            self._trades_inner = tk.Frame(trades_canvas, bg="#161B22")
+            self._trades_inner.bind("<Configure>",
+                lambda e: trades_canvas.configure(scrollregion=trades_canvas.bbox("all")))
+            trades_canvas.create_window((0, 0), window=self._trades_inner, anchor="nw")
+            trades_canvas.configure(yscrollcommand=trades_sb.set)
+            trades_canvas.pack(side="left", fill="both", expand=True)
+            trades_sb.pack(side="right", fill="y")
 
         # ── Hidden vars for backward compat with save/load config ──
         self.prop_firm_var = tk.StringVar(value="MFFU_Flex")
@@ -3038,7 +3238,7 @@ class TraderCompanionApp:
             return
 
         self.log("Loading active trades from dashboard...")
-        self.load_trades_btn.config(state='disabled')
+        self.load_trades_btn.configure(state='disabled')
         self.trades_count_var.set("Loading...")
 
         def _do_load():
@@ -3080,21 +3280,24 @@ class TraderCompanionApp:
                 self.root.after(0, lambda: self.log(f"Load trades failed: {e}", "ERROR"))
                 self.root.after(0, lambda: self.trades_count_var.set("Load failed"))
             finally:
-                self.root.after(0, lambda: self.load_trades_btn.config(state='normal'))
+                self.root.after(0, lambda: self.load_trades_btn.configure(state='normal'))
 
         threading.Thread(target=_do_load, daemon=True).start()
 
     def _populate_trade_rows(self, evaluations):
-        """Clear and rebuild the active trade rows."""
-        # Clear existing rows
+        """Clear and rebuild the active trade rows with CTk styled cards."""
         for child in self._trades_inner.winfo_children():
             child.destroy()
         self._active_trade_rows.clear()
 
         if not evaluations:
-            ttk.Label(self._trades_inner, text="No active trades found",
-                      foreground='#94a3b8', font=('Segoe UI', 10, 'italic'),
-                      background='#111827').pack(pady=20)
+            if CTK_AVAILABLE:
+                ctk.CTkLabel(self._trades_inner, text="No active trades found",
+                             font=("Segoe UI", 11, "italic"),
+                             text_color=self.C_TEXT_DIM).pack(pady=20)
+            else:
+                tk.Label(self._trades_inner, text="No active trades found",
+                         fg='#94a3b8', bg='#161B22', font=('Segoe UI', 10, 'italic')).pack(pady=20)
             self.trades_count_var.set("0 active trades")
             return
 
@@ -3106,48 +3309,100 @@ class TraderCompanionApp:
             current_display, phase_key = self._detect_eval_phase(ev)
             next_display = self._get_next_phase(firm_code, current_display)
 
-            # Alternating row color
-            row_bg = '#0f1729' if idx % 2 == 0 else '#111827'
+            # Prop firm color strip
+            strip_color = self.PROP_FIRM_COLORS.get(prop_firm_name, "#95A5A6")
+            # Phase badge colors
+            badge_bg, badge_fg = self.PHASE_BADGE.get(current_display, ("#374151", "#E5E7EB"))
 
-            row_frame = tk.Frame(self._trades_inner, bg=row_bg)
-            row_frame.pack(fill=tk.X, pady=1)
+            if CTK_AVAILABLE:
+                row_bg = self.C_BG_THIRD if idx % 2 == 0 else self.C_BG_SEC
+                row_frame = ctk.CTkFrame(self._trades_inner, fg_color=row_bg,
+                                         corner_radius=6, height=40)
+                row_frame.pack(fill="x", pady=2, padx=2)
+                row_frame.pack_propagate(False)
 
-            tk.Label(row_frame, text=prop_firm_name[:16], width=14, anchor='w',
-                     bg=row_bg, fg='#e2e8f0', font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=2)
-            tk.Label(row_frame, text=acct_num[:12], width=10, anchor='w',
-                     bg=row_bg, fg='#cbd5e1', font=('Consolas', 9)).pack(side=tk.LEFT, padx=2)
-            tk.Label(row_frame, text=acct_size[:10], width=8, anchor='w',
-                     bg=row_bg, fg='#94a3b8', font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=2)
-            tk.Label(row_frame, text=current_display, width=14, anchor='w',
-                     bg=row_bg, fg='#fbbf24', font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
-            tk.Label(row_frame, text=next_display, width=14, anchor='w',
-                     bg=row_bg, fg='#38bdf8', font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=2)
+                # Color strip
+                ctk.CTkFrame(row_frame, width=4, fg_color=strip_color,
+                             corner_radius=0).pack(side="left", fill="y")
 
-            # BUY / SELL buttons
-            btn_frame = tk.Frame(row_frame, bg=row_bg)
-            btn_frame.pack(side=tk.LEFT, padx=4)
+                ctk.CTkLabel(row_frame, text=prop_firm_name[:18], width=100,
+                             font=("Segoe UI", 10), text_color=self.C_TEXT,
+                             anchor="w").pack(side="left", padx=(8, 4))
+                ctk.CTkLabel(row_frame, text=acct_num[-8:] if len(acct_num) > 8 else acct_num,
+                             width=80, font=("Consolas", 10),
+                             text_color=self.C_TEXT_DIM, anchor="w").pack(side="left", padx=4)
+                ctk.CTkLabel(row_frame, text=acct_size[:10], width=60,
+                             font=("Segoe UI", 10), text_color=self.C_TEXT_DIM,
+                             anchor="w").pack(side="left", padx=4)
 
-            row_data = {
-                "frame": row_frame,
-                "eval": ev,
-                "firm_code": firm_code,
-                "phase_key": phase_key,
-                "acct_size": acct_size,
-                "acct_num": acct_num,
-                "current_phase": current_display,
-            }
+                # Phase badge
+                phase_pill = ctk.CTkFrame(row_frame, fg_color=badge_bg, corner_radius=6)
+                phase_pill.pack(side="left", padx=4)
+                ctk.CTkLabel(phase_pill, text=current_display,
+                             font=("Segoe UI", 9, "bold"), text_color=badge_fg).pack(padx=8, pady=2)
 
-            buy_btn = tk.Button(btn_frame, text="▲ BUY", bg='#16a34a', fg='white',
-                                activebackground='#15803d', activeforeground='white',
-                                font=('Segoe UI', 8, 'bold'), relief='flat', padx=6, pady=1,
-                                command=lambda rd=row_data: self._execute_row_trade("buy", rd))
-            buy_btn.pack(side=tk.LEFT, padx=(0, 4))
+                ctk.CTkLabel(row_frame, text=next_display, width=80,
+                             font=("Segoe UI", 10), text_color="#38bdf8",
+                             anchor="w").pack(side="left", padx=4)
 
-            sell_btn = tk.Button(btn_frame, text="▼ SELL", bg='#dc2626', fg='white',
-                                 activebackground='#b91c1c', activeforeground='white',
-                                 font=('Segoe UI', 8, 'bold'), relief='flat', padx=6, pady=1,
-                                 command=lambda rd=row_data: self._execute_row_trade("sell", rd))
-            sell_btn.pack(side=tk.LEFT)
+                # BUY / SELL buttons
+                btn_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+                btn_frame.pack(side="right", padx=8)
+
+                row_data = {
+                    "frame": row_frame, "eval": ev, "firm_code": firm_code,
+                    "phase_key": phase_key, "acct_size": acct_size,
+                    "acct_num": acct_num, "current_phase": current_display,
+                }
+
+                buy_btn = ctk.CTkButton(btn_frame, text="▲ BUY", width=60, height=28,
+                                        fg_color="#16a34a", hover_color="#15803d",
+                                        font=("Segoe UI", 9, "bold"), corner_radius=4,
+                                        command=lambda rd=row_data: self._execute_row_trade("buy", rd))
+                buy_btn.pack(side="left", padx=(0, 4))
+
+                sell_btn = ctk.CTkButton(btn_frame, text="▼ SELL", width=60, height=28,
+                                         fg_color="#dc2626", hover_color="#b91c1c",
+                                         font=("Segoe UI", 9, "bold"), corner_radius=4,
+                                         command=lambda rd=row_data: self._execute_row_trade("sell", rd))
+                sell_btn.pack(side="left")
+            else:
+                # Fallback plain tk
+                row_bg = '#0f1729' if idx % 2 == 0 else '#111827'
+                row_frame = tk.Frame(self._trades_inner, bg=row_bg)
+                row_frame.pack(fill="x", pady=1)
+
+                tk.Label(row_frame, text=prop_firm_name[:16], width=14, anchor='w',
+                         bg=row_bg, fg='#e2e8f0', font=('Segoe UI', 9)).pack(side="left", padx=2)
+                tk.Label(row_frame, text=acct_num[:12], width=10, anchor='w',
+                         bg=row_bg, fg='#cbd5e1', font=('Consolas', 9)).pack(side="left", padx=2)
+                tk.Label(row_frame, text=acct_size[:10], width=8, anchor='w',
+                         bg=row_bg, fg='#94a3b8', font=('Segoe UI', 9)).pack(side="left", padx=2)
+                tk.Label(row_frame, text=current_display, width=14, anchor='w',
+                         bg=row_bg, fg='#fbbf24', font=('Segoe UI', 9, 'bold')).pack(side="left", padx=2)
+                tk.Label(row_frame, text=next_display, width=14, anchor='w',
+                         bg=row_bg, fg='#38bdf8', font=('Segoe UI', 9)).pack(side="left", padx=2)
+
+                btn_frame = tk.Frame(row_frame, bg=row_bg)
+                btn_frame.pack(side="left", padx=4)
+
+                row_data = {
+                    "frame": row_frame, "eval": ev, "firm_code": firm_code,
+                    "phase_key": phase_key, "acct_size": acct_size,
+                    "acct_num": acct_num, "current_phase": current_display,
+                }
+
+                buy_btn = tk.Button(btn_frame, text="▲ BUY", bg='#16a34a', fg='white',
+                                    activebackground='#15803d', activeforeground='white',
+                                    font=('Segoe UI', 8, 'bold'), relief='flat', padx=6, pady=1,
+                                    command=lambda rd=row_data: self._execute_row_trade("buy", rd))
+                buy_btn.pack(side="left", padx=(0, 4))
+
+                sell_btn = tk.Button(btn_frame, text="▼ SELL", bg='#dc2626', fg='white',
+                                     activebackground='#b91c1c', activeforeground='white',
+                                     font=('Segoe UI', 8, 'bold'), relief='flat', padx=6, pady=1,
+                                     command=lambda rd=row_data: self._execute_row_trade("sell", rd))
+                sell_btn.pack(side="left")
 
             row_data["buy_btn"] = buy_btn
             row_data["sell_btn"] = sell_btn
@@ -3217,8 +3472,8 @@ class TraderCompanionApp:
             return
 
         # Disable buttons immediately
-        row_data["buy_btn"].config(state='disabled', text="...")
-        row_data["sell_btn"].config(state='disabled', text="...")
+        row_data["buy_btn"].configure(state='disabled', text="...")
+        row_data["sell_btn"].configure(state='disabled', text="...")
 
         self.log(f"Executing {side.upper()} for {acct_num} ({firm_code} {row_data['current_phase']})...")
 
@@ -3266,8 +3521,8 @@ class TraderCompanionApp:
                 self.log(f"❌ Trade failed for {acct_num}: {e}", "ERROR")
                 self.root.after(0, lambda: messagebox.showerror("Trade Error", str(e)))
                 # Re-enable buttons on failure
-                self.root.after(0, lambda: row_data["buy_btn"].config(state='normal', text="▲ BUY"))
-                self.root.after(0, lambda: row_data["sell_btn"].config(state='normal', text="▼ SELL"))
+                self.root.after(0, lambda: row_data["buy_btn"].configure(state='normal', text="▲ BUY"))
+                self.root.after(0, lambda: row_data["sell_btn"].configure(state='normal', text="▼ SELL"))
 
         threading.Thread(target=_do_trade, daemon=True).start()
 
@@ -3338,8 +3593,9 @@ class TraderCompanionApp:
         self.auto_trade_firms_var.set("\n".join(dir_lines))
 
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
-        self.auto_trade_btn.config(text="⏹  Stop Auto-Trade", bg='#dc2626',
-                                   activebackground='#b91c1c')
+        self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
+        if CTK_AVAILABLE:
+            self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
         self.auto_trade_status_var.set(f"Scheduled at {time_str} — random dirs per firm")
         self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
         for firm, s in self._auto_trade_firm_sides.items():
@@ -3358,8 +3614,9 @@ class TraderCompanionApp:
         self.auto_trade_enabled = False
         self._auto_trade_stop.set()
         self._auto_trade_scheduled_dt = None
-        self.auto_trade_btn.config(text="▶  Start Auto-Trade", bg='#3b82f6',
-                                   activebackground='#2563eb')
+        self.auto_trade_btn.configure(text="▶  Start Auto-Trade")
+        if CTK_AVAILABLE:
+            self.auto_trade_btn.configure(fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
         self.auto_trade_status_var.set("Auto-trade off")
         self.auto_trade_countdown_var.set("")
         self.auto_trade_firms_var.set("")
@@ -3531,13 +3788,13 @@ class TraderCompanionApp:
                     self.tradovate_account = TradovateAccount(user, pwd, trading_mode=mode)
                     self.tradovate_account.login()
                     self.root.after(0, lambda: self.broker_status_var.set("✅ Tradovate Connected"))
-                    self.root.after(0, lambda: self.broker_connect_btn.config(text="Disconnect Broker"))
+                    self.root.after(0, lambda: self.broker_connect_btn.configure(text="Disconnect Broker"))
                     self.log(f"Tradovate connected ({mode})")
                 elif platform == "TopStepX" and TOPSTEPX_AVAILABLE:
                     self.topstepx_account = TopStepXAccount(user, pwd)
                     self.topstepx_account.login()
                     self.root.after(0, lambda: self.broker_status_var.set("✅ TopStepX Connected"))
-                    self.root.after(0, lambda: self.broker_connect_btn.config(text="Disconnect Broker"))
+                    self.root.after(0, lambda: self.broker_connect_btn.configure(text="Disconnect Broker"))
                     self.log(f"TopStepX connected")
                 else:
                     self.root.after(0, lambda: self.broker_status_var.set("❌ Platform unavailable"))
