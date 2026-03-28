@@ -1278,6 +1278,12 @@ class TraderCompanionApp:
         self.auto_push_enabled = False
         self.auto_push_thread = None
         self.client_info = None  # Stores looked-up hierarchy info
+
+        # Auto-trade scheduler state
+        self.auto_trade_enabled = False
+        self.auto_trade_thread = None
+        self._auto_trade_stop = threading.Event()
+        self._auto_trade_scheduled_dt = None  # the randomized datetime
         
         self.setup_ui()
         self.load_config()
@@ -2852,6 +2858,37 @@ class TraderCompanionApp:
                      values=["All Trades", "Buy Only", "Sell Only"],
                      state='readonly', width=12).pack(side=tk.LEFT)
 
+        # ── Auto-Trade Scheduler Card ──
+        auto_frame = ttk.LabelFrame(parent, text="⏰  Auto-Trade Scheduler", padding=8)
+        auto_frame.pack(fill=tk.X, padx=6, pady=(4, 3))
+
+        auto_row1 = ttk.Frame(auto_frame, style='CardBG.TFrame')
+        auto_row1.pack(fill=tk.X, pady=(0, 4))
+
+        ttk.Label(auto_row1, text="Side:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(0, 4))
+        self.auto_trade_side_var = tk.StringVar(value="Buy")
+        ttk.Combobox(auto_row1, textvariable=self.auto_trade_side_var,
+                     values=["Buy", "Sell"], state='readonly', width=8).pack(side=tk.LEFT, padx=(0, 10))
+
+        self.auto_trade_btn = tk.Button(
+            auto_row1, text="▶  Start Auto-Trade", bg='#3b82f6', fg='white',
+            activebackground='#2563eb', activeforeground='white',
+            font=('Segoe UI', 9, 'bold'), relief='flat', padx=12, pady=3,
+            command=self._toggle_auto_trade)
+        self.auto_trade_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.auto_trade_status_var = tk.StringVar(value="Auto-trade off")
+        ttk.Label(auto_row1, textvariable=self.auto_trade_status_var,
+                  foreground='#94a3b8', font=('Segoe UI', 9),
+                  background='#111827').pack(side=tk.LEFT, padx=4)
+
+        auto_row2 = ttk.Frame(auto_frame, style='CardBG.TFrame')
+        auto_row2.pack(fill=tk.X)
+        self.auto_trade_countdown_var = tk.StringVar(value="")
+        ttk.Label(auto_row2, textvariable=self.auto_trade_countdown_var,
+                  foreground='#fbbf24', font=('Consolas', 9),
+                  background='#111827').pack(side=tk.LEFT)
+
         # ── Active Trades list card ──
         trades_frame = ttk.LabelFrame(parent, text="📋  Active Trades", padding=8)
         trades_frame.pack(fill=tk.X, padx=6, pady=(4, 3))
@@ -3233,6 +3270,218 @@ class TraderCompanionApp:
 
         threading.Thread(target=_do_trade, daemon=True).start()
 
+    # ── Auto-Trade Scheduler Logic ──
+
+    def _toggle_auto_trade(self):
+        """Toggle the auto-trade scheduler on/off."""
+        if self.auto_trade_enabled:
+            self._stop_auto_trade()
+        else:
+            self._start_auto_trade()
+
+    def _start_auto_trade(self):
+        """Activate auto-trade: compute randomized start time, begin countdown."""
+        from datetime import datetime, timedelta, timezone
+
+        # Validation: need trades loaded
+        if not self._active_trade_rows:
+            self.log("⚠ Load trades first before enabling auto-trade", "WARN")
+            return
+
+        # Validation: need broker connected
+        platform = self.broker_var.get()
+        broker_account = self.tradovate_account if platform == "Tradovate" else self.topstepx_account
+        if not broker_account:
+            self.log(f"⚠ Connect to {platform} first before enabling auto-trade", "WARN")
+            return
+
+        # Validation: hedging mode needs MT5
+        if self.hedge_mode_var.get() == "Hedging":
+            mt5_api = self._get_mt5_trading_api()
+            if not mt5_api:
+                self.log("⚠ Connect MT5 first for hedging mode auto-trade", "WARN")
+                return
+
+        EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
+        now_eat = datetime.now(EAT)
+
+        # Base time: 2:05 AM EAT today (or tomorrow if already past ~5:05 AM)
+        base = now_eat.replace(hour=2, minute=5, second=0, microsecond=0)
+
+        # Random offset: 0 to 180 minutes (3 hours)
+        offset_minutes = random.randint(0, 180)
+        scheduled_eat = base + timedelta(minutes=offset_minutes)
+
+        # If the scheduled time already passed today, schedule for tomorrow
+        if scheduled_eat <= now_eat:
+            scheduled_eat += timedelta(days=1)
+
+        self._auto_trade_scheduled_dt = scheduled_eat
+        self.auto_trade_enabled = True
+        self._auto_trade_stop.clear()
+
+        side = self.auto_trade_side_var.get()
+        time_str = scheduled_eat.strftime("%I:%M %p EAT")
+        self.auto_trade_btn.config(text="⏹  Stop Auto-Trade", bg='#dc2626',
+                                   activebackground='#b91c1c')
+        self.auto_trade_status_var.set(f"Scheduled: {side.upper()} all at {time_str}")
+        self.log(f"⏰ Auto-trade scheduled: {side.upper()} all trades at {time_str} "
+                 f"(+{offset_minutes}min random offset)")
+
+        # Start background countdown / executor thread
+        self.auto_trade_thread = threading.Thread(
+            target=self._auto_trade_loop, daemon=True)
+        self.auto_trade_thread.start()
+
+        # Start UI countdown ticker
+        self._tick_auto_trade_countdown()
+
+    def _stop_auto_trade(self):
+        """Cancel auto-trade scheduler."""
+        self.auto_trade_enabled = False
+        self._auto_trade_stop.set()
+        self._auto_trade_scheduled_dt = None
+        self.auto_trade_btn.config(text="▶  Start Auto-Trade", bg='#3b82f6',
+                                   activebackground='#2563eb')
+        self.auto_trade_status_var.set("Auto-trade off")
+        self.auto_trade_countdown_var.set("")
+        self.log("⏹ Auto-trade cancelled")
+
+    def _tick_auto_trade_countdown(self):
+        """Update the countdown label every second."""
+        if not self.auto_trade_enabled or not self._auto_trade_scheduled_dt:
+            return
+        from datetime import datetime, timedelta, timezone
+        EAT = timezone(timedelta(hours=3))
+        now = datetime.now(EAT)
+        remaining = self._auto_trade_scheduled_dt - now
+        if remaining.total_seconds() <= 0:
+            self.auto_trade_countdown_var.set("Executing now...")
+            return
+        hours, rem = divmod(int(remaining.total_seconds()), 3600)
+        minutes, seconds = divmod(rem, 60)
+        self.auto_trade_countdown_var.set(f"Starts in {hours}h {minutes}m {seconds}s")
+        self.root.after(1000, self._tick_auto_trade_countdown)
+
+    def _auto_trade_loop(self):
+        """Background thread: wait until scheduled time, then execute all trades."""
+        from datetime import datetime, timedelta, timezone
+        EAT = timezone(timedelta(hours=3))
+
+        while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
+            now = datetime.now(EAT)
+            if now >= self._auto_trade_scheduled_dt:
+                # Time to execute
+                self.root.after(0, lambda: self.auto_trade_countdown_var.set("Executing now..."))
+                self.root.after(0, self._auto_execute_all_trades)
+                return
+            # Sleep 1 second between checks
+            self._auto_trade_stop.wait(timeout=1)
+
+    def _auto_execute_all_trades(self):
+        """Execute trades for ALL loaded rows without confirmation dialogs."""
+        side = self.auto_trade_side_var.get().lower()  # "buy" or "sell"
+        rows = list(self._active_trade_rows)  # snapshot
+
+        if not rows:
+            self.log("⚠ No trades to execute — list is empty")
+            self._stop_auto_trade()
+            return
+
+        self.log(f"🚀 Auto-executing {side.upper()} on {len(rows)} accounts...")
+
+        hedging = self.hedge_mode_var.get() == "Hedging"
+        platform = self.broker_var.get()
+        broker_account = self.tradovate_account if platform == "Tradovate" else self.topstepx_account
+        mt5_api = self._get_mt5_trading_api() if hedging else None
+
+        def _do_auto_trades():
+            success_count = 0
+            fail_count = 0
+            for row_data in rows:
+                if self._auto_trade_stop.is_set():
+                    self.root.after(0, lambda: self.log("⏹ Auto-trade stopped mid-execution"))
+                    break
+
+                firm_code = row_data["firm_code"]
+                phase_key = row_data["phase_key"]
+                acct_size = row_data["acct_size"]
+                acct_num = row_data["acct_num"]
+
+                config = None
+                if self.prop_firm_mgr:
+                    config = self.prop_firm_mgr.get_strategy_config(
+                        firm_code, phase_key, acct_size)
+                if not config:
+                    self.root.after(0, lambda an=acct_num: self.log(
+                        f"❌ No blueprint for {an} — skipped", "ERROR"))
+                    fail_count += 1
+                    continue
+
+                trado_sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+                trado_qty = int(config.get("tradovate_qty", 2) or config.get("topstepx_qty", 2))
+                trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
+                trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
+                mt5_sym = config.get("mt5_symbol", "NAS100")
+                mt5_vol = float(config.get("mt5_volume", 2.8))
+                mt5_tp = int(config.get("mt5_tp_points", 46))
+                mt5_sl = int(config.get("mt5_sl_points", 42))
+
+                try:
+                    # 1. Broker order
+                    if platform == "Tradovate":
+                        if side == "buy":
+                            broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl)
+                        else:
+                            broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl)
+                    elif platform == "TopStepX":
+                        if side == "buy":
+                            broker_account.place_buy_order(trado_sym, trado_qty)
+                        else:
+                            broker_account.place_sell_order(trado_sym, trado_qty)
+
+                    self.root.after(0, lambda an=acct_num, fc=firm_code:
+                        self.log(f"✅ {platform} {side.upper()} {trado_qty} {trado_sym} — {an} ({fc})"))
+
+                    # 2. MT5 hedge (opposite direction)
+                    if hedging and mt5_api:
+                        hedge_side = "sell" if side == "buy" else "buy"
+                        comment = f"{acct_num}_{phase_key}"
+                        if hedge_side == "buy":
+                            mt5_api.buy_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
+                        else:
+                            mt5_api.sell_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
+                        self.root.after(0, lambda an=acct_num:
+                            self.log(f"✅ MT5 hedge placed for {an}"))
+
+                    success_count += 1
+
+                    # Remove row from UI
+                    def _remove(rd=row_data):
+                        rd["frame"].destroy()
+                        if rd in self._active_trade_rows:
+                            self._active_trade_rows.remove(rd)
+                        remaining = len(self._active_trade_rows)
+                        self.trades_count_var.set(
+                            f"{remaining} active trade{'s' if remaining != 1 else ''}"
+                            if remaining > 0 else "All trades complete ✓")
+                    self.root.after(0, _remove)
+
+                    # Small delay between accounts to avoid overwhelming the broker
+                    time.sleep(2)
+
+                except Exception as e:
+                    fail_count += 1
+                    self.root.after(0, lambda an=acct_num, err=str(e):
+                        self.log(f"❌ Auto-trade failed for {an}: {err}", "ERROR"))
+
+            # Final summary
+            self.root.after(0, lambda s=success_count, f=fail_count:
+                self.log(f"🏁 Auto-trade complete: {s} succeeded, {f} failed"))
+            self.root.after(0, self._stop_auto_trade)
+
+        threading.Thread(target=_do_auto_trades, daemon=True).start()
+
     def _on_prop_firm_change(self, event=None):
         """Update phase and size options when prop firm changes (compat stub)."""
         pass
@@ -3327,6 +3576,8 @@ class TraderCompanionApp:
             config["hedge_mode"] = self.hedge_mode_var.get()
             config["direction"] = self.direction_var.get()
             config["strategy"] = self.strategy_var.get()
+        if hasattr(self, 'auto_trade_side_var'):
+            config["auto_trade_side"] = self.auto_trade_side_var.get()
         
         config_path = os.path.join(os.path.dirname(__file__), "trader_config.json")
         with open(config_path, 'w') as f:
@@ -3387,6 +3638,8 @@ class TraderCompanionApp:
                         self.direction_var.set(config['direction'])
                     if config.get('strategy'):
                         self.strategy_var.set(config['strategy'])
+                if hasattr(self, 'auto_trade_side_var') and config.get('auto_trade_side'):
+                    self.auto_trade_side_var.set(config['auto_trade_side'])
                 
                 self.log("Configuration loaded")
             except Exception as e:
