@@ -2865,11 +2865,6 @@ class TraderCompanionApp:
         auto_row1 = ttk.Frame(auto_frame, style='CardBG.TFrame')
         auto_row1.pack(fill=tk.X, pady=(0, 4))
 
-        ttk.Label(auto_row1, text="Side:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(0, 4))
-        self.auto_trade_side_var = tk.StringVar(value="Buy")
-        ttk.Combobox(auto_row1, textvariable=self.auto_trade_side_var,
-                     values=["Buy", "Sell"], state='readonly', width=8).pack(side=tk.LEFT, padx=(0, 10))
-
         self.auto_trade_btn = tk.Button(
             auto_row1, text="▶  Start Auto-Trade", bg='#3b82f6', fg='white',
             activebackground='#2563eb', activeforeground='white',
@@ -2888,6 +2883,12 @@ class TraderCompanionApp:
         ttk.Label(auto_row2, textvariable=self.auto_trade_countdown_var,
                   foreground='#fbbf24', font=('Consolas', 9),
                   background='#111827').pack(side=tk.LEFT)
+
+        # Per-firm direction display (populated when auto-trade starts)
+        self.auto_trade_firms_var = tk.StringVar(value="")
+        ttk.Label(auto_frame, textvariable=self.auto_trade_firms_var,
+                  foreground='#e2e8f0', font=('Consolas', 9),
+                  background='#111827', justify='left').pack(fill=tk.X, pady=(2, 0))
 
         # ── Active Trades list card ──
         trades_frame = ttk.LabelFrame(parent, text="📋  Active Trades", padding=8)
@@ -3320,13 +3321,29 @@ class TraderCompanionApp:
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
 
-        side = self.auto_trade_side_var.get()
+        # Randomize direction per prop firm
+        firms_in_rows = set()
+        for rd in self._active_trade_rows:
+            firm_name = rd["eval"].get("Prop Firm", rd["firm_code"])
+            firms_in_rows.add(firm_name)
+        self._auto_trade_firm_sides = {}
+        for firm in sorted(firms_in_rows):
+            self._auto_trade_firm_sides[firm] = random.choice(["buy", "sell"])
+
+        # Build display string
+        dir_lines = []
+        for firm, s in self._auto_trade_firm_sides.items():
+            arrow = "▲" if s == "buy" else "▼"
+            dir_lines.append(f"  {arrow} {s.upper():4s}  {firm}")
+        self.auto_trade_firms_var.set("\n".join(dir_lines))
+
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
         self.auto_trade_btn.config(text="⏹  Stop Auto-Trade", bg='#dc2626',
                                    activebackground='#b91c1c')
-        self.auto_trade_status_var.set(f"Scheduled: {side.upper()} all at {time_str}")
-        self.log(f"⏰ Auto-trade scheduled: {side.upper()} all trades at {time_str} "
-                 f"(+{offset_minutes}min random offset)")
+        self.auto_trade_status_var.set(f"Scheduled at {time_str} — random dirs per firm")
+        self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
+        for firm, s in self._auto_trade_firm_sides.items():
+            self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
 
         # Start background countdown / executor thread
         self.auto_trade_thread = threading.Thread(
@@ -3345,6 +3362,8 @@ class TraderCompanionApp:
                                    activebackground='#2563eb')
         self.auto_trade_status_var.set("Auto-trade off")
         self.auto_trade_countdown_var.set("")
+        self.auto_trade_firms_var.set("")
+        self._auto_trade_firm_sides = {}
         self.log("⏹ Auto-trade cancelled")
 
     def _tick_auto_trade_countdown(self):
@@ -3380,7 +3399,7 @@ class TraderCompanionApp:
 
     def _auto_execute_all_trades(self):
         """Execute trades for ALL loaded rows without confirmation dialogs."""
-        side = self.auto_trade_side_var.get().lower()  # "buy" or "sell"
+        firm_sides = getattr(self, '_auto_trade_firm_sides', {})
         rows = list(self._active_trade_rows)  # snapshot
 
         if not rows:
@@ -3388,7 +3407,7 @@ class TraderCompanionApp:
             self._stop_auto_trade()
             return
 
-        self.log(f"🚀 Auto-executing {side.upper()} on {len(rows)} accounts...")
+        self.log(f"🚀 Auto-executing {len(rows)} accounts (random direction per firm)...")
 
         hedging = self.hedge_mode_var.get() == "Hedging"
         platform = self.broker_var.get()
@@ -3407,6 +3426,8 @@ class TraderCompanionApp:
                 phase_key = row_data["phase_key"]
                 acct_size = row_data["acct_size"]
                 acct_num = row_data["acct_num"]
+                firm_name = row_data["eval"].get("Prop Firm", firm_code)
+                side = firm_sides.get(firm_name, random.choice(["buy", "sell"]))
 
                 config = None
                 if self.prop_firm_mgr:
@@ -3440,8 +3461,8 @@ class TraderCompanionApp:
                         else:
                             broker_account.place_sell_order(trado_sym, trado_qty)
 
-                    self.root.after(0, lambda an=acct_num, fc=firm_code:
-                        self.log(f"✅ {platform} {side.upper()} {trado_qty} {trado_sym} — {an} ({fc})"))
+                    self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side:
+                        self.log(f"✅ {platform} {sd.upper()} {trado_qty} {trado_sym} — {an} ({fc})"))
 
                     # 2. MT5 hedge (opposite direction)
                     if hedging and mt5_api:
@@ -3576,8 +3597,6 @@ class TraderCompanionApp:
             config["hedge_mode"] = self.hedge_mode_var.get()
             config["direction"] = self.direction_var.get()
             config["strategy"] = self.strategy_var.get()
-        if hasattr(self, 'auto_trade_side_var'):
-            config["auto_trade_side"] = self.auto_trade_side_var.get()
         
         config_path = os.path.join(os.path.dirname(__file__), "trader_config.json")
         with open(config_path, 'w') as f:
@@ -3638,8 +3657,6 @@ class TraderCompanionApp:
                         self.direction_var.set(config['direction'])
                     if config.get('strategy'):
                         self.strategy_var.set(config['strategy'])
-                if hasattr(self, 'auto_trade_side_var') and config.get('auto_trade_side'):
-                    self.auto_trade_side_var.set(config['auto_trade_side'])
                 
                 self.log("Configuration loaded")
             except Exception as e:
