@@ -1135,6 +1135,7 @@ def api_client_data():
         return jsonify({
             "status": "success",
             "evaluations": client_data.get("evaluations", []),
+            "prop_accounts": client_data.get("prop_accounts", []),
             "identity": {
                 "client": client_info['client'],
                 "trader": client_info['trader'],

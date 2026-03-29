@@ -18,9 +18,9 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.0"
+APP_VERSION = "2.0.1"
 """
-Tradeopss AI
+MT5 Trader Companion App
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
 """
 import sys
@@ -104,30 +104,24 @@ except ImportError:
 try:
     from trader_companion.tradovate import TradovateAccount
     TRADOVATE_AVAILABLE = True
-except Exception as _trado_err:
+except ImportError:
     try:
         from tradovate import TradovateAccount
         TRADOVATE_AVAILABLE = True
-        _trado_err = None
-    except Exception as _trado_err2:
+    except ImportError:
         TRADOVATE_AVAILABLE = False
         TradovateAccount = None
-        _trado_err = _trado_err2
-_TRADOVATE_IMPORT_ERROR = str(_trado_err) if not TRADOVATE_AVAILABLE and '_trado_err' in dir() and _trado_err else None
 
 try:
     from trader_companion.topstepx import TopStepXAccount
     TOPSTEPX_AVAILABLE = True
-except Exception as _tsx_err:
+except ImportError:
     try:
         from topstepx import TopStepXAccount
         TOPSTEPX_AVAILABLE = True
-        _tsx_err = None
-    except Exception as _tsx_err2:
+    except ImportError:
         TOPSTEPX_AVAILABLE = False
         TopStepXAccount = None
-        _tsx_err = _tsx_err2
-_TOPSTEPX_IMPORT_ERROR = str(_tsx_err) if not TOPSTEPX_AVAILABLE and '_tsx_err' in dir() and _tsx_err else None
 
 try:
     from trader_companion.trade_limit_manager import TradeLimitManager
@@ -760,7 +754,7 @@ class MT5DataPusher:
         if COMMENT_PARSER_AVAILABLE:
             return self._process_deals_with_new_parser(deals, evaluations)
         
-        match_log.append("⚠️ Using legacy parser - install mt5_comment_parser for full support")
+        match_log.append("âš ï¸ Using legacy parser - install mt5_comment_parser for full support")
         return self._process_deals_legacy(deals, evaluations)
     
     def _process_deals_with_new_parser(self, deals, evaluations):
@@ -775,11 +769,11 @@ class MT5DataPusher:
         aggregator.process_deals(deals)
         
         aggregated = aggregator.to_dashboard_format()
-        match_log.append(f"📊 Aggregated {len(aggregated)} trade groups from {len(deals)} deals")
+        match_log.append(f"ðŸ“Š Aggregated {len(aggregated)} trade groups from {len(deals)} deals")
         match_log.append(f"   Unmatched deals: {len(aggregator.unmatched_deals)}")
         
         if not aggregated:
-            match_log.append("⚠️ No valid trade groups found in deals")
+            match_log.append("âš ï¸ No valid trade groups found in deals")
             return evaluations, match_log
         
         # Step 2: Build account lookup from evaluations
@@ -817,7 +811,7 @@ class MT5DataPusher:
                             eval_lookup[suffix] = []
                         eval_lookup[suffix].append((idx, 'funded'))
         
-        match_log.append(f"📋 Built account lookup with {len(eval_lookup)} entries")
+        match_log.append(f"ðŸ“‹ Built account lookup with {len(eval_lookup)} entries")
         
         # Sample accounts for debug
         sample_accounts = list(eval_lookup.keys())[:5]
@@ -834,7 +828,7 @@ class MT5DataPusher:
         #         sum net_profit/deal_count, earliest open_time, latest close_time.
         # Step 2: Count ALL distinct FA trading dates per account from the full MT5 history window
         #         (acts as our "3-month history scan").  That count IS the hedge day number
-        #         for the latest trade — no sheet-slot scanning needed.
+        #         for the latest trade â€” no sheet-slot scanning needed.
         # Step 3: Only push the LATEST date per account; earlier dates are already in the sheet.
         _fa_by_key = {}   # (account_number, date_str) -> merged dict
         _non_fa = []
@@ -875,8 +869,8 @@ class MT5DataPusher:
             tagged['_fa_slot'] = total_days                 # pre-computed slot number
             _fa_to_push.append(tagged)
             match_log.append(
-                f"   📅 {acct}: {total_days} FA day(s) in MT5 history "
-                f"→ will push as Hedge Day {total_days} ({latest_date_str})"
+                f"   ðŸ“… {acct}: {total_days} FA day(s) in MT5 history "
+                f"â†’ will push as Hedge Day {total_days} ({latest_date_str})"
             )
 
         # Rebuild aggregated: non-FA entries + one FA entry per account (latest day only)
@@ -924,7 +918,7 @@ class MT5DataPusher:
             eval_matches = self._find_evaluation_match(account_number, phase_code, eval_lookup)
             
             if not eval_matches:
-                match_log.append(f"⚠️ No match: {account_number}_{phase_code}{trade_number or ''} = ${net_profit:.2f}")
+                match_log.append(f"âš ï¸ No match: {account_number}_{phase_code}{trade_number or ''} = ${net_profit:.2f}")
                 continue
             
             # Special handling for Farming phase to ensure sequential day filling
@@ -943,7 +937,7 @@ class MT5DataPusher:
                 if close_sig:
                     pushed_times = _get_pushed_close_times(account_number, phase_code)
                     if close_sig in pushed_times:
-                        match_log.append(f"⏭️ SKIP (already pushed) {account_number}_FA close={close_sig}")
+                        match_log.append(f"â­ï¸ SKIP (already pushed) {account_number}_FA close={close_sig}")
                         skip_farming = True
 
                 if not skip_farming:
@@ -974,7 +968,7 @@ class MT5DataPusher:
             )
             
             if not field_name:
-                match_log.append(f"⚠️ Unknown field for {phase_code}{trade_number or ''}")
+                match_log.append(f"âš ï¸ Unknown field for {phase_code}{trade_number or ''}")
                 continue
             
             # Update ALL matching evaluations
@@ -1007,12 +1001,12 @@ class MT5DataPusher:
                 updates_made += 1
                 
                 eval_account = evaluations[eval_idx].get('Account #' if account_type == 'challenge' else 'Account #.1', 'N/A')
-                match_log.append(f"✅ {account_number}_{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f} ({deal_count} deals)")
+                match_log.append(f"âœ… {account_number}_{phase_code}{trade_number or ''} â†’ [{field_name}] = ${net_profit:.2f} ({deal_count} deals)")
                 match_log.append(f"   Matched to eval row: {eval_account} (Row {eval_idx})")
                 if open_time or close_time:
-                    match_log.append(f"   🕐 Open: {_fmt_time(open_time)} | Close: {_fmt_time(close_time)}")
+                    match_log.append(f"   ðŸ• Open: {_fmt_time(open_time)} | Close: {_fmt_time(close_time)}")
         
-        match_log.append(f"\n📈 Total updates made: {updates_made}")
+        match_log.append(f"\nðŸ“ˆ Total updates made: {updates_made}")
         return evaluations, match_log
     
     def _find_evaluation_match(self, account_number, phase_code, eval_lookup):
@@ -1050,12 +1044,12 @@ class MT5DataPusher:
         - FA: Hedge Day N (based on date ordering)
         """
         if phase_code == 'CH':
-            # Challenge: CH1 → Hedge Result 1, CH2 → Hedge Result 2, etc.
+            # Challenge: CH1 â†’ Hedge Result 1, CH2 â†’ Hedge Result 2, etc.
             if trade_number and 1 <= trade_number <= 5:
                 return f"Hedge Result {trade_number}"
         
         elif phase_code == 'FD':
-            # Funded: FD0 → Hedge Result 1.1, FD1 → Hedge Result 2.1, etc.
+            # Funded: FD0 â†’ Hedge Result 1.1, FD1 â†’ Hedge Result 2.1, etc.
             if trade_number is not None:
                 if trade_number == 0:
                     return "Hedge Result 1.1"
@@ -1211,7 +1205,7 @@ class MT5DataPusher:
                 eval_idx = eval_lookup_fu.get(account_suffix)
             
             if eval_idx is None:
-                match_log.append(f"⚠️ No match for {account_suffix}_{stage}{stage_num}: ${total_profit:.2f} ({len(group_deals)} deals)")
+                match_log.append(f"âš ï¸ No match for {account_suffix}_{stage}{stage_num}: ${total_profit:.2f} ({len(group_deals)} deals)")
                 continue
             
             # Determine field name to update
@@ -1225,636 +1219,194 @@ class MT5DataPusher:
                 # Farming uses: Hedge Day {n}
                 field_name = f"Hedge Day {stage_num}"
             else:
-                match_log.append(f"⚠️ Unknown stage {stage} for {account_suffix}")
+                match_log.append(f"âš ï¸ Unknown stage {stage} for {account_suffix}")
                 continue
             
             # Update the evaluation
             evaluations[eval_idx][field_name] = f"${total_profit:.2f}"
-            match_log.append(f"✓ {account_suffix}_{stage}{stage_num} -> [{field_name}] = ${total_profit:.2f} ({len(group_deals)} deals)")
+            match_log.append(f"âœ“ {account_suffix}_{stage}{stage_num} -> [{field_name}] = ${total_profit:.2f} ({len(group_deals)} deals)")
         
         return evaluations, match_log
 
 
 class TraderCompanionApp:
-    """GUI Application for Tradeopss AI."""
-
-    # ── Design System (FuturesEngine-inspired Dark Theme) ──
-    C_BG        = "#0D1117"   # GitHub dark background
-    C_BG_SEC    = "#161B22"   # Card / secondary surface
-    C_BG_THIRD  = "#1C2333"   # Tertiary / input fields
-    C_BORDER    = "#30363D"   # Subtle borders
-    C_ACCENT    = "#0969DA"   # Blue accent
-    C_ACCENT_HV = "#218BFF"   # Blue hover
-    C_GOLD      = "#F59E0B"   # Amber gold (brand)
-    C_SUCCESS   = "#1A7F37"   # Green
-    C_ERROR     = "#CF222E"   # Red
-    C_TEXT      = "#E6EDF3"   # Primary text
-    C_TEXT_DIM  = "#8B949E"   # Muted text
-    C_TEXT_DARK = "#24292F"   # Dark text (for light pill backgrounds)
-
-    PROP_FIRM_COLORS = {
-        "My Funded Futures": "#3B8ED0",
-        "MFFU":             "#3B8ED0",
-        "TopStep":          "#DA3633",
-        "Apex":             "#E67E22",
-        "Funded Next":      "#E91E63",
-        "FundingTicks":     "#F1C40F",
-        "TradeDay":         "#9B59B6",
-        "Tradeify":         "#1ABC9C",
-        "Alpha Futures":    "#2980B9",
-    }
-
-    PHASE_BADGE = {
-        "Challenge": ("#FEF3C7", "#92400E"),   # warm-yellow bg, brown text
-        "Funded":    ("#D1FAE5", "#065F46"),   # green bg, dark-green text
-        "Farming":   ("#DBEAFE", "#1E40AF"),   # blue bg, dark-blue text
-    }
-
+    """GUI Application for the Trader Companion."""
+    
     def __init__(self):
-        # ── CTk root window ──
-        if CTK_AVAILABLE:
-            ctk.set_appearance_mode("Dark")
-            ctk.set_default_color_theme("blue")
-            self.root = ctk.CTk()
-        else:
-            self.root = tk.Tk()
-        self.root.title(f"Tradeopss AI v{APP_VERSION}")
-        self.root.geometry("680x612")
-        self.root.minsize(595, 527)
-        if CTK_AVAILABLE:
-            self.root.configure(fg_color=self.C_BG)
-        else:
-            self.root.configure(bg=self.C_BG)
+        self.root = tk.Tk()
+        self.root.title(f"Trader Companion v{APP_VERSION}")
+        self.root.geometry("770x850")
+        self.root.minsize(720, 650)
+        self.root.configure(bg='#0a0e1a')
         self.root.resizable(True, True)
-
+        
         # Set Window Icon
         try:
             if hasattr(sys, '_MEIPASS'):
-                _base = sys._MEIPASS
+                icon_path = os.path.join(sys._MEIPASS, 'logo.png')
             else:
-                _base = os.path.dirname(os.path.abspath(__file__))
-            ico_path = os.path.join(_base, 'logo.ico')
-            if os.path.exists(ico_path):
-                self.root.iconbitmap(ico_path)
-                self.root.after(200, lambda: self.root.iconbitmap(ico_path))
-            else:
-                png_path = os.path.join(_base, 'logo.png')
-                if os.path.exists(png_path):
-                    from PIL import Image as PILImage, ImageTk
-                    _pil_icon = PILImage.open(png_path)
-                    bbox = _pil_icon.getbbox()
-                    if bbox:
-                        _pil_icon = _pil_icon.crop(bbox)
-                    w, h = _pil_icon.size
-                    s = max(w, h)
-                    _sq = PILImage.new('RGBA', (s, s), (0, 0, 0, 0))
-                    _sq.paste(_pil_icon, ((s - w) // 2, (s - h) // 2))
-                    _sq = _sq.resize((64, 64), PILImage.LANCZOS)
-                    self._app_icon = ImageTk.PhotoImage(_sq)
-                    self.root.iconphoto(True, self._app_icon)
-                    self.root.after(200, lambda: self.root.iconphoto(True, self._app_icon))
-        except Exception:
-            pass
+                icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logo.png')
+            
+            if os.path.exists(icon_path):
+                icon = tk.PhotoImage(file=icon_path)
+                self.root.iconphoto(True, icon)
+        except Exception as e:
+            print(f"Error loading icon: {e}")
+        
+        # Create canvas for scrolling
+        self.main_canvas = tk.Canvas(self.root, bg='#0a0e1a', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.main_canvas)
+        
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+        )
+        
+        self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw",
+                                        tags="inner_frame")
+        self.main_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.main_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
+        # Keep inner frame width = canvas width so content stretches fully
+        def _resize_inner(event):
+            self.main_canvas.itemconfig("inner_frame", width=event.width)
+        self.main_canvas.bind("<Configure>", _resize_inner)
+        
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
         self.pusher = MT5DataPusher()
         self.auto_push_enabled = False
         self.auto_push_thread = None
-        self.client_info = None
+        self.client_info = None  # Stores looked-up hierarchy info
 
         # Auto-trade scheduler state
         self.auto_trade_enabled = False
         self.auto_trade_thread = None
         self._auto_trade_stop = threading.Event()
-        self._auto_trade_scheduled_dt = None
-
-        # Trading engine state
-        self.trading_api = None
-        self.tradovate_account = None
-        self.topstepx_account = None
-        self._broker_connections = {}  # {firm_name: {user_entry, pass_entry, status_var, connect_btn, account, row_frame}}
-        self.prop_firm_mgr = PropFirmManager() if PROP_FIRM_AVAILABLE else None
-        self._auto_trading_stop = threading.Event()
-        self._auto_trading_thread = None
-        self._direction_locks = {}
-        self._active_trade_rows = []
-
-        self._show_login_screen()
+        self._auto_trade_scheduled_dt = None  # the randomized datetime
         
-    # ── Login Screen ──
-    def _show_login_screen(self):
-        """Show a full-screen login/email verification screen — always required."""
-        # Try loading saved email to pre-fill
-        saved_email = ""
-        config_path = os.path.join(os.path.dirname(__file__), "trader_config.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, 'r') as f:
-                    cfg = json.load(f)
-                saved_email = cfg.get('client_email', '').strip()
-            except Exception:
-                pass
-
-        self._login_frame = ctk.CTkFrame(self.root, fg_color=self.C_BG) if CTK_AVAILABLE else \
-                            tk.Frame(self.root, bg=self.C_BG)
-        self._login_frame.pack(fill="both", expand=True)
-
-        # Center box
-        center = ctk.CTkFrame(self._login_frame, fg_color=self.C_BG_SEC, corner_radius=12,
-                               border_width=1, border_color=self.C_BORDER) if CTK_AVAILABLE else \
-                 tk.Frame(self._login_frame, bg="#161B22")
-        center.place(relx=0.5, rely=0.45, anchor="center")
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(center, text="Client Verification",
-                         font=("Segoe UI", 13),
-                         text_color=self.C_TEXT).pack(pady=(30, 16))
-
-            self._login_email = ctk.CTkEntry(center, placeholder_text="Enter Registered Email",
-                                              width=300, height=40,
-                                              font=("Segoe UI", 12),
-                                              fg_color=self.C_BG_THIRD,
-                                              border_color=self.C_BORDER,
-                                              text_color=self.C_TEXT)
-            self._login_email.pack(pady=(0, 16), padx=30)
-            self._login_email.bind("<Return>", lambda e: self._verify_login())
-
-            # Pre-fill saved email
-            if saved_email:
-                self._login_email.insert(0, saved_email)
-
-            self._login_btn = ctk.CTkButton(center, text="VERIFY ACCESS",
-                                             width=300, height=40,
-                                             command=self._verify_login,
-                                             fg_color=self.C_ACCENT,
-                                             hover_color=self.C_ACCENT_HV,
-                                             font=("Segoe UI", 12, "bold"))
-            self._login_btn.pack(pady=(0, 12), padx=30)
-
-            self._login_status = ctk.CTkLabel(center, text="",
-                                               font=("Segoe UI", 11),
-                                               text_color=self.C_ERROR)
-            self._login_status.pack(pady=(0, 24))
-
-    def _verify_login(self):
-        """Verify the email against the dashboard API."""
-        email = self._login_email.get().strip()
-        if not email:
-            self._login_status.configure(text="Please enter an email address.")
-            return
-
-        self._login_btn.configure(state="disabled", text="VERIFYING...")
-        self._login_status.configure(text="", text_color=self.C_TEXT_DIM)
-        self.root.update_idletasks()
-
-        def _check():
-            try:
-                response = requests.post(
-                    "https://www.tradeopss.com/api/client/auth",
-                    json={"email": email},
-                    headers={"Content-Type": "application/json"},
-                    timeout=30
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("status") == "success":
-                        self.root.after(0, lambda: self._finish_login(email))
-                        return
-                    else:
-                        msg = data.get("message", "Email not found")
-                        self.root.after(0, lambda: self._login_fail(f"Access Denied: {msg}"))
-                        return
-                else:
-                    self.root.after(0, lambda: self._login_fail(f"Server error ({response.status_code})"))
-                    return
-            except requests.exceptions.ConnectionError:
-                self.root.after(0, lambda: self._login_fail("Cannot connect to server"))
-            except Exception as e:
-                self.root.after(0, lambda: self._login_fail(str(e)))
-
-        threading.Thread(target=_check, daemon=True).start()
-
-    def _login_fail(self, msg):
-        """Show login failure message."""
-        self._login_status.configure(text=msg, text_color=self.C_ERROR)
-        self._login_btn.configure(state="normal", text="VERIFY ACCESS")
-
-    def _finish_login(self, email):
-        """Tear down login screen, build main UI, and auto-lookup."""
-        if hasattr(self, '_login_frame'):
-            self._login_frame.destroy()
-
         self.setup_ui()
         self.load_config()
-
-        # Set the email and trigger lookup
-        self.client_email_entry.delete(0, tk.END)
-        self.client_email_entry.insert(0, email)
-        self.root.after(200, self.lookup_client)
         
-    # ── Helper: create a section card ──
-    def _section_card(self, parent, title="", icon="", **kw):
-        """Create a styled card frame with optional title strip."""
-        card = ctk.CTkFrame(parent, fg_color=self.C_BG_SEC, corner_radius=8,
-                            border_width=1, border_color=self.C_BORDER) if CTK_AVAILABLE else \
-               tk.Frame(parent, bg='#161B22')
-        if title and CTK_AVAILABLE:
-            hdr = ctk.CTkFrame(card, fg_color="transparent", height=26)
-            hdr.pack(fill="x", padx=10, pady=(6, 0))
-            hdr.pack_propagate(False)
-            if icon:
-                ctk.CTkLabel(hdr, text=icon, font=("Segoe UI", 12)).pack(side="left", padx=(0, 6))
-            ctk.CTkLabel(hdr, text=title, font=("Segoe UI", 10, "bold"),
-                         text_color=self.C_GOLD).pack(side="left")
-        return card
-
-    # ── Helper: styled CTk entry ──
-    def _ctk_entry(self, parent, width=200, show=None, placeholder=None):
-        if CTK_AVAILABLE:
-            kw = dict(width=width, height=32, fg_color=self.C_BG_THIRD,
-                      border_color=self.C_BORDER, text_color=self.C_TEXT,
-                      font=("Segoe UI", 11))
-            if show:
-                kw["show"] = show
-            if placeholder:
-                kw["placeholder_text"] = placeholder
-            return ctk.CTkEntry(parent, **kw)
-        else:
-            e = ttk.Entry(parent, width=width // 8)
-            if show:
-                e.configure(show=show)
-            return e
-
-    # ── Helper: styled CTk button ──
-    def _ctk_button(self, parent, text="", command=None, fg=None, hover=None, width=140, **kw):
-        fg = fg or self.C_ACCENT
-        hover = hover or self.C_ACCENT_HV
-        if CTK_AVAILABLE:
-            return ctk.CTkButton(parent, text=text, command=command,
-                                 fg_color=fg, hover_color=hover,
-                                 font=("Segoe UI", 11, "bold"),
-                                 corner_radius=6, height=34, width=width, **kw)
-        else:
-            return ttk.Button(parent, text=text, command=command)
-
-    # ── Helper: status pill ──
-    def _status_pill(self, parent, text, bg_color, text_color):
-        if CTK_AVAILABLE:
-            pill = ctk.CTkFrame(parent, fg_color=bg_color, corner_radius=8, height=22)
-            ctk.CTkLabel(pill, text=text, font=("Segoe UI", 9, "bold"),
-                         text_color=text_color).pack(padx=8, pady=2)
-            return pill
-        else:
-            lbl = tk.Label(parent, text=text, bg=bg_color, fg=text_color,
-                           font=("Segoe UI", 9, "bold"), padx=6, pady=1)
-            return lbl
-
     def setup_ui(self):
-        """Setup the modern CTk user interface — two-column single-screen layout."""
-        if not CTK_AVAILABLE:
-            # ── Fallback: simple ttk layout ──
-            self.main_canvas = tk.Canvas(self.root, bg=self.C_BG, highlightthickness=0)
-            sb = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
-            self.scrollable_frame = ttk.Frame(self.main_canvas)
-            self.scrollable_frame.bind("<Configure>",
-                lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")))
-            self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-            self.main_canvas.configure(yscrollcommand=sb.set)
-            self.main_canvas.pack(side="left", fill="both", expand=True)
-            sb.pack(side="right", fill="y")
-            main = self.scrollable_frame
-            style = ttk.Style(); style.theme_use('clam')
-            self.notebook = ttk.Notebook(main)
-            self.notebook.pack(fill="both", expand=True, padx=8, pady=4)
-            tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Dashboard")
-            tab_trade = ttk.Frame(self.notebook); self.notebook.add(tab_trade, text="Trading Engine")
-            self._build_dashboard_tab(tab_dash)
-            self._build_trading_engine_ui(tab_trade)
-            log_frame = ttk.LabelFrame(main, text="Status Log", padding=4)
-            log_frame.pack(fill="both", expand=True, padx=8, pady=4)
-            self.log_text = scrolledtext.ScrolledText(log_frame, height=6, bg='#0a0e1a',
-                                                       fg='#22c55e', font=('Consolas', 9),
-                                                       insertbackground='white', relief='flat')
-            self.log_text.pack(fill="both", expand=True)
-            self.status_var = tk.StringVar(value="Ready")
-            self.status_label = ttk.Label(main, textvariable=self.status_var)
-            self.status_label.pack(fill="x", padx=8, pady=(0, 4))
-            self.last_deal_ticket = 0
-            self.last_deal_count = 0
-            self.auto_push_thread = None
-            # Activity feed list (fallback)
-            self._activity_items = []
-            return
+        """Setup the user interface with tabbed modern layout."""
+        style = ttk.Style()
+        style.theme_use('clam')
 
-        # ══════════════════════════════════════════════════════════
-        #  MODERN CTK LAYOUT — Two columns, single screen
-        # ══════════════════════════════════════════════════════════
+        # â”€â”€ Modern Dark Palette â”€â”€
+        BG       = '#0a0e1a'   # deep navy
+        CARD     = '#111827'   # card surface
+        BORDER   = '#1e293b'   # subtle border
+        FG       = '#e2e8f0'   # primary text
+        FG_DIM   = '#94a3b8'   # muted text
+        ACCENT   = '#f59e0b'   # amber gold
+        ACCENT2  = '#3b82f6'   # blue
+        GREEN    = '#22c55e'
+        RED      = '#ef4444'
 
-        # ── Outer container (no scroll — single screen) ──
-        outer = ctk.CTkFrame(self.root, fg_color=self.C_BG)
-        outer.pack(fill="both", expand=True)
+        # â”€â”€ Global Styles â”€â”€
+        style.configure('TFrame', background=BG)
+        style.configure('TLabel', background=BG, foreground=FG, font=('Segoe UI', 10))
+        style.configure('TLabelframe', background=CARD, foreground=ACCENT, borderwidth=2, relief='groove')
+        style.configure('TLabelframe.Label', background=CARD, foreground=ACCENT, font=('Segoe UI', 11, 'bold'))
+        style.configure('TButton', font=('Segoe UI', 10, 'bold'), padding=6)
+        style.configure('Header.TLabel', font=('Segoe UI', 18, 'bold'), foreground=ACCENT)
+        style.configure('Status.TLabel', font=('Segoe UI', 10), foreground=GREEN)
+        style.configure('Error.TLabel', font=('Segoe UI', 10), foreground=RED)
+        style.configure('Dim.TLabel', background=BG, foreground=FG_DIM, font=('Segoe UI', 9, 'italic'))
+        style.configure('CardBG.TFrame', background=CARD)
+        style.configure('CardBG.TLabel', background=CARD, foreground=FG, font=('Segoe UI', 10))
+        style.configure('CardDim.TLabel', background=CARD, foreground=FG_DIM, font=('Segoe UI', 9, 'italic'))
+        style.configure('SectionHead.TLabel', background=CARD, foreground=ACCENT, font=('Segoe UI', 11, 'bold'))
 
-        # ── TOP BAR — slim, compact ──
-        top_bar = ctk.CTkFrame(outer, fg_color="#1A2332", height=38, corner_radius=0)
-        top_bar.pack(fill="x")
-        top_bar.pack_propagate(False)
-        # Gold accent line
-        ctk.CTkFrame(top_bar, height=3, fg_color=self.C_GOLD, corner_radius=0).pack(fill="x", side="top")
-        bar_inner = ctk.CTkFrame(top_bar, fg_color="transparent")
-        bar_inner.pack(fill="both", expand=True, padx=16)
-        # Right side: MT5 status
-        self._conn_dot = ctk.CTkFrame(bar_inner, width=8, height=8,
-                                      fg_color="#EF4444", corner_radius=4)
-        self._conn_dot.pack(side="right", padx=(0, 6), pady=6)
-        ctk.CTkLabel(bar_inner, text="MT5", font=("Segoe UI", 9),
-                     text_color=self.C_TEXT_DIM).pack(side="right", padx=(0, 4), pady=6)
-        # Panel toggle button
-        self._panel_btn = ctk.CTkButton(
-            bar_inner, text="☰  Controls", width=110, height=28,
-            fg_color=self.C_BG_THIRD, hover_color=self.C_BORDER,
-            border_width=1, border_color=self.C_BORDER,
-            text_color=self.C_TEXT, font=("Segoe UI", 10, "bold"),
-            corner_radius=6, command=self._toggle_controls_panel)
-        self._panel_btn.pack(side="right", padx=(0, 12), pady=6)
+        # Notebook tab styling
+        style.configure('TNotebook', background=BG, borderwidth=0)
+        style.configure('TNotebook.Tab', background=BORDER, foreground=FG_DIM,
+                        font=('Segoe UI', 10, 'bold'), padding=[18, 8])
+        style.map('TNotebook.Tab',
+                  background=[('selected', CARD), ('!selected', BORDER)],
+                  foreground=[('selected', ACCENT), ('!selected', FG_DIM)])
 
-        # ── BODY — single area, swaps between Live Display and Controls ──
-        body = ctk.CTkFrame(outer, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=10, pady=(6, 4))
-        self._body = body
+        # Entry styling
+        style.configure('TEntry', fieldbackground='#1e293b', foreground=FG, insertcolor=FG)
+        style.configure('TCombobox', fieldbackground='#1e293b', foreground=FG)
+        style.map('TCombobox', fieldbackground=[('readonly', '#1e293b')],
+                  foreground=[('readonly', FG)])
 
-        # ── VIEW 1: Live Display (default, visible) ──
-        self._live_view = ctk.CTkFrame(body, fg_color="transparent")
-        self._live_view.pack(fill="both", expand=True)
-        self._live_view.grid_rowconfigure(0, weight=0)   # toolbar
-        self._live_view.grid_rowconfigure(1, weight=3)   # active trades (main)
-        self._live_view.grid_rowconfigure(2, weight=1)   # live activity + log
-        self._live_view.grid_columnconfigure(0, weight=1)
+        # Buy / Sell button styles
+        style.configure("Buy.TButton", foreground="white", background=GREEN, font=('Segoe UI', 12, 'bold'), padding=10)
+        style.configure("Sell.TButton", foreground="white", background=RED, font=('Segoe UI', 12, 'bold'), padding=10)
+        style.map("Buy.TButton", background=[("active", "#16a34a")])
+        style.map("Sell.TButton", background=[("active", "#dc2626")])
 
-        # ── Row 0: Compact toolbar (Push + Auto-Trade in one strip) ──
-        toolbar = ctk.CTkFrame(self._live_view, fg_color=self.C_BG_SEC, corner_radius=8,
-                               border_width=1, border_color=self.C_BORDER, height=38)
-        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
-        toolbar.pack_propagate(False)
+        style.configure("AutoPush.TButton", foreground="black", background=ACCENT2)
+        style.map("AutoPush.TButton", background=[("active", "#2563eb")])
 
-        self.push_btn_live = self._ctk_button(toolbar, text="Push Data", command=self.push_data,
-                                              fg=self.C_SUCCESS, hover="#16a34a", width=90)
-        self.push_btn_live.pack(side="left", padx=(8, 4), pady=5)
-        self.auto_btn_live = self._ctk_button(toolbar, text="Auto-Push", command=self.toggle_auto_push,
-                                              fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=90)
-        self.auto_btn_live.pack(side="left", padx=(0, 8), pady=5)
+        # â”€â”€ Main container â”€â”€
+        main_frame = ttk.Frame(self.scrollable_frame, padding=12)
+        main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Separator
-        ctk.CTkFrame(toolbar, width=1, fg_color=self.C_BORDER).pack(side="left", fill="y", pady=6)
+        # â”€â”€ Header â”€â”€
+        header_canvas = tk.Canvas(main_frame, height=70, bg=BG, highlightthickness=0)
+        header_canvas.pack(fill=tk.X, pady=(0, 10))
 
-        self.auto_trade_btn = self._ctk_button(toolbar, text="▶ Auto-Trade",
-                                               command=self._toggle_auto_trade,
-                                               fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=110)
-        self.auto_trade_btn.pack(side="left", padx=(8, 4), pady=5)
+        def _draw_header(canvas, width=None):
+            w = width or canvas.winfo_width() or 700
+            canvas.delete('all')
+            # Gradient
+            steps = 40
+            for i in range(steps):
+                ratio = i / steps
+                r = int(30 * (1 - ratio) + 10 * ratio)
+                g = int(58 * (1 - ratio) + 14 * ratio)
+                b = int(138 * (1 - ratio) + 26 * ratio)
+                color = f'#{r:02x}{g:02x}{b:02x}'
+                y0 = i * (70 / steps)
+                y1 = y0 + (70 / steps) + 1
+                canvas.create_rectangle(0, y0, w, y1, fill=color, outline=color)
+            cx = w // 2
+            title_size = max(14, min(22, w // 30))
+            canvas.create_text(cx, 28, text="Trader Companion 2.0",
+                               font=('Segoe UI', title_size, 'bold'), fill='#f59e0b')
+            canvas.create_text(cx, 55, text="Data Manager  â€¢  Trading Engine",
+                               font=('Segoe UI', 10), fill='#94a3b8')
 
-        self.auto_trade_immediate_var = tk.BooleanVar(value=False)
-        if CTK_AVAILABLE:
-            ctk.CTkCheckBox(toolbar, text="Now", variable=self.auto_trade_immediate_var,
-                            font=("Segoe UI", 9), text_color=self.C_TEXT_DIM,
-                            fg_color=self.C_ACCENT, border_color=self.C_BORDER,
-                            hover_color=self.C_ACCENT_HV, width=40,
-                            checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
+        _draw_header(header_canvas, 700)
+        header_canvas.bind('<Configure>', lambda e: _draw_header(header_canvas, e.width))
 
-        self.auto_trade_status_var = tk.StringVar(value="Off")
-        ctk.CTkLabel(toolbar, textvariable=self.auto_trade_status_var,
-                     font=("Segoe UI", 9), text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6))
+        # â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”  NOTEBOOK (TABS)  â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.pack(fill=tk.X, pady=(0, 6))
 
-        self.auto_trade_countdown_var = tk.StringVar(value="")
-        ctk.CTkLabel(toolbar, textvariable=self.auto_trade_countdown_var,
-                     font=("Consolas", 9), text_color=self.C_GOLD).pack(side="left")
+        # â”€â”€ Tab 1: Dashboard â”€â”€
+        tab_dash = ttk.Frame(self.notebook, style='TFrame')
+        self.notebook.add(tab_dash, text='  ðŸ“Š  Dashboard  ')
 
-        self.auto_trade_firms_var = tk.StringVar(value="")
+        # â”€â”€ Tab 2: Trading Engine â”€â”€
+        tab_trade = ttk.Frame(self.notebook, style='TFrame')
+        self.notebook.add(tab_trade, text='  âš¡  Trading Engine  ')
 
-        self._ctk_button(toolbar, text="Save Config", command=self.save_config,
-                         fg=self.C_BG_THIRD, hover=self.C_BORDER, width=90).pack(side="right", padx=(0, 8), pady=5)
+        # â”€â”€ Tab 3: Tools & Settings â”€â”€
+        tab_tools = ttk.Frame(self.notebook, style='TFrame')
+        self.notebook.add(tab_tools, text='  ðŸ›   Tools & Settings  ')
 
-        # ── Row 1: Active Trades (main area — futuristic terminal) ──
-        trades_card = ctk.CTkFrame(self._live_view, fg_color="#000000", corner_radius=10,
-                                   border_width=1, border_color="#0F4C75")
-        trades_card.grid(row=1, column=0, sticky="nsew", pady=(0, 4))
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        #  TAB 1 â€” DASHBOARD
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-        # Terminal-style top bezel
-        trades_bezel = ctk.CTkFrame(trades_card, fg_color="#030D1B", height=36, corner_radius=0)
-        trades_bezel.pack(fill="x", padx=3, pady=(3, 0))
-        trades_bezel.pack_propagate(False)
+        # -- Connection Target card --
+        conn_frame = ttk.LabelFrame(tab_dash, text="ðŸŒ  Connection Target", padding=8)
+        conn_frame.pack(fill=tk.X, padx=6, pady=(6, 3))
 
-        # Traffic-light dots
-        dot_bar = ctk.CTkFrame(trades_bezel, fg_color="transparent")
-        dot_bar.pack(side="left", padx=10)
-        for c in ["#EF4444", "#F59E0B", "#22C55E"]:
-            ctk.CTkFrame(dot_bar, width=8, height=8, fg_color=c,
-                         corner_radius=4).pack(side="left", padx=2, pady=8)
-
-        ctk.CTkLabel(trades_bezel, text="⟐  ACTIVE TRADES",
-                     font=("Consolas", 11, "bold"),
-                     text_color="#00D4FF").pack(side="left", padx=(10, 0))
-
-        self.trades_count_var = tk.StringVar(value="Loading...")
-        ctk.CTkLabel(trades_bezel, textvariable=self.trades_count_var,
-                     font=("Consolas", 9), text_color="#3B6978").pack(side="left", padx=14)
-
-        self.load_trades_btn = ctk.CTkButton(trades_bezel, text="⟳  SCAN", width=70, height=24,
-                                             command=self._load_active_trades,
-                                             fg_color="#0A2647", hover_color="#144272",
-                                             border_width=1, border_color="#205295",
-                                             font=("Consolas", 9, "bold"),
-                                             text_color="#00D4FF", corner_radius=4)
-        self.load_trades_btn.pack(side="right", padx=10)
-
-        # Column headers — grid-aligned with row content
-        hdr = ctk.CTkFrame(trades_card, fg_color="#060E1A", corner_radius=0, height=26)
-        hdr.pack(fill="x", padx=3, pady=(1, 0))
-        hdr.pack_propagate(False)
-        # 3px accent spacer to match row left bar
-        ctk.CTkFrame(hdr, width=3, fg_color="transparent").pack(side="left")
-        for label, w in [("PROP FIRM", 110), ("ACCOUNT", 88), ("SIZE", 68),
-                         ("PHASE", 88), ("NEXT", 100)]:
-            ctk.CTkLabel(hdr, text=label, width=w,
-                         font=("Consolas", 8, "bold"),
-                         text_color="#3B6978", anchor="w").pack(side="left", padx=(8, 0))
-        ctk.CTkLabel(hdr, text="ACTION",
-                     font=("Consolas", 8, "bold"),
-                     text_color="#3B6978").pack(side="right", padx=(0, 24))
-
-        # Scrollable trade rows (fills remaining space)
-        self._trades_scroll = ctk.CTkScrollableFrame(trades_card, fg_color="#020A14")
-        self._trades_scroll.pack(fill="both", expand=True, padx=3, pady=(0, 3))
-        self._trades_inner = self._trades_scroll
-
-        # ── Row 2: Live Activity (compact bottom) ──
-        display_frame = ctk.CTkFrame(self._live_view, fg_color="#000000", corner_radius=10,
-                                     border_width=1, border_color="#1E293B")
-        display_frame.grid(row=2, column=0, sticky="nsew")
-
-        # Screen header — monitor bezel
-        screen_top = ctk.CTkFrame(display_frame, fg_color="#0F172A", height=32, corner_radius=0)
-        screen_top.pack(fill="x", padx=3, pady=(3, 0))
-        screen_top.pack_propagate(False)
-        dot_row = ctk.CTkFrame(screen_top, fg_color="transparent")
-        dot_row.pack(side="left", padx=10)
-        for c in ["#EF4444", "#F59E0B", "#22C55E"]:
-            ctk.CTkFrame(dot_row, width=8, height=8, fg_color=c,
-                         corner_radius=4).pack(side="left", padx=2, pady=8)
-        ctk.CTkLabel(screen_top, text="LIVE  ACTIVITY", font=("Consolas", 10, "bold"),
-                     text_color="#64748B").pack(side="left", padx=(10, 0))
-        self._live_clock_var = tk.StringVar(value="")
-        ctk.CTkLabel(screen_top, textvariable=self._live_clock_var,
-                     font=("Consolas", 9), text_color="#475569").pack(side="right", padx=10)
-        self._tick_live_clock()
-
-        # Activity feed
-        self._activity_scroll = ctk.CTkScrollableFrame(display_frame, fg_color="#020617",
-                                                        corner_radius=0)
-        self._activity_scroll.pack(fill="both", expand=True, padx=3)
-        self._activity_items = []
-
-        # Stats strip
-        stats_strip = ctk.CTkFrame(display_frame, fg_color="#0F172A", height=28, corner_radius=0)
-        stats_strip.pack(fill="x", padx=3, pady=(0, 3))
-        stats_strip.pack_propagate(False)
-        self._stat_trades_var = tk.StringVar(value="Trades: 0")
-        self._stat_queue_var = tk.StringVar(value="Queue: 0")
-        self._stat_push_var = tk.StringVar(value="Push: idle")
-        for var in [self._stat_trades_var, self._stat_queue_var, self._stat_push_var]:
-            ctk.CTkLabel(stats_strip, textvariable=var, font=("Consolas", 9),
-                         text_color="#475569").pack(side="left", padx=(12, 16), pady=4)
-
-        # Hidden log widget (still needed by self.log() method)
-        self.log_text = tk.Text(self._live_view, height=0)
-
-        # ── VIEW 2: Controls (hidden, full-screen takeover) ──
-        self._controls_visible = False
-        self._controls_view = ctk.CTkFrame(body, fg_color="transparent")
-        # Don't pack yet — toggled on click
-
-        self.notebook = ctk.CTkTabview(self._controls_view, fg_color=self.C_BG,
-                                       segmented_button_fg_color=self.C_BG_SEC,
-                                       segmented_button_selected_color=self.C_ACCENT,
-                                       segmented_button_unselected_color=self.C_BG_THIRD,
-                                       text_color=self.C_TEXT, corner_radius=8)
-        self.notebook.pack(fill="both", expand=True)
-        tab_dash  = self.notebook.add("  Dashboard  ")
-        tab_trade = self.notebook.add("  Trading Engine  ")
-
-        self._build_dashboard_tab(tab_dash)
-        self._build_trading_engine_ui(tab_trade)
-
-        # ── Bottom status bar ──
-        status_bar = ctk.CTkFrame(outer, fg_color=self.C_BG_SEC, height=24, corner_radius=0)
-        status_bar.pack(fill="x", side="bottom")
-        status_bar.pack_propagate(False)
-        self.status_var = tk.StringVar(value="Ready — enter your email to get started")
-        self.status_label = ctk.CTkLabel(status_bar, textvariable=self.status_var,
-                                         font=("Segoe UI", 9), text_color=self.C_TEXT_DIM)
-        self.status_label.pack(side="left", padx=12, pady=2)
-
-        # State for smart auto-push
-        self.last_deal_ticket = 0
-        self.last_deal_count = 0
-        self.auto_push_thread = None
-
-    def _tick_live_clock(self):
-        """Update the live display clock every second."""
-        try:
-            self._live_clock_var.set(datetime.now().strftime("%H:%M:%S"))
-            self.root.after(1000, self._tick_live_clock)
-        except Exception:
-            pass
-
-    def _add_activity(self, text, kind="info"):
-        """Add an entry to the Live Activity display panel.
-        kind: 'info', 'trade', 'push', 'error', 'queue', 'success'
-        """
-        COLORS = {
-            "info":    "#64748B",
-            "trade":   "#F59E0B",
-            "push":    "#3B82F6",
-            "error":   "#EF4444",
-            "queue":   "#A78BFA",
-            "success": "#22C55E",
-        }
-        ICONS = {
-            "info":    "ℹ",
-            "trade":   "⚡",
-            "push":    "📤",
-            "error":   "✖",
-            "queue":   "⏳",
-            "success": "✔",
-        }
-        if not CTK_AVAILABLE:
-            return
-
-        color = COLORS.get(kind, COLORS["info"])
-        icon = ICONS.get(kind, "•")
-        ts = datetime.now().strftime("%H:%M:%S")
-
-        row = ctk.CTkFrame(self._activity_scroll, fg_color="transparent", height=22)
-        row.pack(fill="x", padx=4, pady=1)
-        row.pack_propagate(False)
-        ctk.CTkLabel(row, text=f"{icon}", font=("Segoe UI", 10),
-                     text_color=color, width=16).pack(side="left", padx=(4, 4))
-        ctk.CTkLabel(row, text=ts, font=("Consolas", 9),
-                     text_color="#334155").pack(side="left", padx=(0, 6))
-        ctk.CTkLabel(row, text=text, font=("Segoe UI", 9),
-                     text_color=color, anchor="w").pack(side="left", fill="x", expand=True)
-
-        self._activity_items.append({"frame": row, "kind": kind})
-
-        # Keep max 80 items
-        while len(self._activity_items) > 80:
-            old = self._activity_items.pop(0)
-            try:
-                old["frame"].destroy()
-            except Exception:
-                pass
-
-        # Auto-scroll to bottom
-        try:
-            self._activity_scroll._parent_canvas.yview_moveto(1.0)
-        except Exception:
-            pass
-
-    def _toggle_controls_panel(self):
-        """Swap between Live Display and Controls views (full-screen takeover)."""
-        if self._controls_visible:
-            # Hide controls, show live display
-            self._controls_view.pack_forget()
-            self._live_view.pack(fill="both", expand=True)
-            self._controls_visible = False
-            self._panel_btn.configure(text="☰  Controls")
-        else:
-            # Hide live display, show controls
-            self._live_view.pack_forget()
-            self._controls_view.pack(fill="both", expand=True)
-            self._controls_visible = True
-            self._panel_btn.configure(text="◀  Back to Live")
-
-
-
-    # ── Build Dashboard Tab ──
-    def _build_dashboard_tab(self, parent):
-        """Build the Dashboard tab — compact layout."""
-        # Make tab scrollable
-        if CTK_AVAILABLE:
-            scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
-            scroll.pack(fill="both", expand=True)
-            parent = scroll
-
-        # ── Connection Target ──
-        settings = parent
-        conn_card = self._section_card(settings, "CONNECTION TARGET", "🌐")
-        conn_card.pack(fill="x", padx=4, pady=(4, 2))
-
-        conn_inner = ctk.CTkFrame(conn_card, fg_color="transparent") if CTK_AVAILABLE else \
-                     tk.Frame(conn_card, bg="#161B22")
-        conn_inner.pack(fill="x", padx=10, pady=(2, 6))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(conn_inner, text="Target:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 8))
+        conn_row = ttk.Frame(conn_frame, style='CardBG.TFrame')
+        conn_row.pack(fill=tk.X)
+        ttk.Label(conn_row, text="Target:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(0, 8))
 
         self.target_var = tk.StringVar()
         self.url_keys = ["TradeOpps (Production)", "Localhost (Development)"]
@@ -1862,32 +1414,17 @@ class TraderCompanionApp:
             "TradeOpps (Production)": "https://www.tradeopss.com",
             "Localhost (Development)": "http://127.0.0.1:5001"
         }
+        self.url_selector = ttk.Combobox(conn_row, textvariable=self.target_var,
+                                         state="readonly", width=32)
+        self.url_selector['values'] = self.url_keys
+        self.url_selector.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.url_selector.current(0)
 
-        if CTK_AVAILABLE:
-            self.url_selector = ctk.CTkComboBox(conn_inner, variable=self.target_var,
-                                                values=self.url_keys, state="readonly",
-                                                width=280, height=32,
-                                                fg_color=self.C_BG_THIRD,
-                                                border_color=self.C_BORDER,
-                                                button_color=self.C_ACCENT,
-                                                dropdown_fg_color=self.C_BG_SEC,
-                                                dropdown_hover_color=self.C_BG_THIRD,
-                                                text_color=self.C_TEXT,
-                                                font=("Segoe UI", 11))
-            self.url_selector.pack(side="left", padx=(0, 8))
-            self.url_selector.set(self.url_keys[0])
-        else:
-            self.url_selector = ttk.Combobox(conn_inner, textvariable=self.target_var,
-                                             state="readonly", width=32)
-            self.url_selector['values'] = self.url_keys
-            self.url_selector.pack(side="left", fill="x", expand=True)
-            self.url_selector.current(0)
-
-        # Hidden entry for backward-compat URL storage
-        self.url_entry = ttk.Entry(settings)
+        # Hidden entry for backward compat
+        self.url_entry = ttk.Entry(tab_dash)
         self.url_entry.insert(0, self.url_values["TradeOpps (Production)"])
 
-        def on_target_change(event=None):
+        def on_target_change(event):
             selection = self.target_var.get()
             if "Localhost" in selection:
                 password = simpledialog.askstring("Developer Access",
@@ -1895,150 +1432,128 @@ class TraderCompanionApp:
                 if password == "tradeopss@123":
                     self.url_entry.delete(0, tk.END)
                     self.url_entry.insert(0, self.url_values[selection])
-                    self.log("Switched to Localhost")
+                    self.log(f"Switched to Localhost")
                     self.status_var.set("Target: Localhost (Dev)")
                 else:
                     messagebox.showerror("Access Denied", "Incorrect password.")
-                    if CTK_AVAILABLE:
-                        self.url_selector.set(self.url_keys[0])
-                    else:
-                        self.url_selector.current(0)
+                    self.url_selector.current(0)
                     self.url_entry.delete(0, tk.END)
                     self.url_entry.insert(0, self.url_values["TradeOpps (Production)"])
             else:
                 self.url_entry.delete(0, tk.END)
                 self.url_entry.insert(0, self.url_values[selection])
-                self.log("Switched to Production")
+                self.log(f"Switched to Production")
                 self.status_var.set("Target: Production")
 
-        if CTK_AVAILABLE:
-            self.url_selector.configure(command=lambda _: on_target_change())
-        else:
-            self.url_selector.bind("<<ComboboxSelected>>", on_target_change)
+        self.url_selector.bind("<<ComboboxSelected>>", on_target_change)
 
-        # ── Client Identification (hidden entry for compat) ──
-        self.client_email_entry = ctk.CTkEntry(settings, width=0, height=0) if CTK_AVAILABLE else tk.Entry(settings)
-        # Don't pack — hidden, used only as data holder
+        # -- Client Identification card --
+        id_frame = ttk.LabelFrame(tab_dash, text="ðŸ‘¤  Client Identification", padding=8)
+        id_frame.pack(fill=tk.X, padx=6, pady=3)
 
-        self.hierarchy_var = tk.StringVar(value="")
-        self.hierarchy_label = ctk.CTkLabel(settings, textvariable=self.hierarchy_var,
-                                            font=("Segoe UI", 10, "italic"),
-                                            text_color=self.C_TEXT_DIM) if CTK_AVAILABLE else \
-                              ttk.Label(settings, textvariable=self.hierarchy_var)
-        # Don't pack — hidden
+        email_frame = ttk.Frame(id_frame, style='CardBG.TFrame')
+        email_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(email_frame, text="Client Email:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
+        self.client_email_entry = ttk.Entry(email_frame, width=36)
+        self.client_email_entry.pack(side=tk.LEFT, padx=5)
+        self.lookup_btn = ttk.Button(email_frame, text="ðŸ” Lookup", command=self.lookup_client)
+        self.lookup_btn.pack(side=tk.LEFT, padx=5)
 
-        # ── Data Push ──
-        push_card = self._section_card(settings, "DATA PUSH", "📤")
-        push_card.pack(fill="x", padx=4, pady=2)
+        self.hierarchy_var = tk.StringVar(value="Enter email and click Lookup")
+        self.hierarchy_label = ttk.Label(id_frame, textvariable=self.hierarchy_var,
+                                         style='CardDim.TLabel')
+        self.hierarchy_label.pack(fill=tk.X, pady=(4, 0))
 
-        push_inner = ctk.CTkFrame(push_card, fg_color="transparent") if CTK_AVAILABLE else \
-                     tk.Frame(push_card, bg="#161B22")
-        push_inner.pack(fill="x", padx=10, pady=(2, 6))
+        # -- Push Actions card --
+        push_frame = ttk.LabelFrame(tab_dash, text="ðŸ“¤  Data Push", padding=8)
+        push_frame.pack(fill=tk.X, padx=6, pady=3)
 
-        self.push_btn = self._ctk_button(push_inner, text="Push Data", command=self.push_data,
-                                         fg=self.C_SUCCESS, hover="#16a34a", width=120)
-        self.push_btn.pack(side="left", padx=(0, 6))
+        btn_row = ttk.Frame(push_frame, style='CardBG.TFrame')
+        btn_row.pack(fill=tk.X)
 
-        self.auto_btn = self._ctk_button(push_inner, text="Auto-Push", command=self.toggle_auto_push,
-                                         fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=120)
-        self.auto_btn.pack(side="left", padx=(0, 6))
+        self.push_btn = ttk.Button(btn_row, text="ðŸ“¤  Push Data", command=self.push_data)
+        self.push_btn.pack(side=tk.LEFT, padx=(0, 8))
 
-        self._ctk_button(push_inner, text="Save Config", command=self.save_config,
-                         fg=self.C_BG_THIRD, hover=self.C_BORDER, width=110).pack(side="right")
+        self.auto_btn = ttk.Button(btn_row, text="ðŸ”„  Auto-Push",
+                                   command=self.toggle_auto_push, style="AutoPush.TButton")
+        self.auto_btn.pack(side=tk.LEFT, padx=(0, 8))
 
-        # ── Import Data ──
-        imp_card = self._section_card(settings, "IMPORT DATA", "📋")
-        imp_card.pack(fill="x", padx=4, pady=2)
+        ttk.Button(btn_row, text="ï¿½  Push Hedging Review", command=self.push_hedging_review).pack(side=tk.LEFT, padx=(0, 8))
 
-        imp_inner = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                    tk.Frame(imp_card, bg="#161B22")
-        imp_inner.pack(fill="x", padx=12, pady=(4, 4))
+        ttk.Button(btn_row, text="ï¿½ðŸ’¾  Save Config", command=self.save_config).pack(side=tk.RIGHT)
 
+        # -- Import Data card --
+        import_frame = ttk.LabelFrame(tab_dash, text="ðŸ“‹  Import Data", padding=8)
+        import_frame.pack(fill=tk.X, padx=6, pady=3)
+
+        source_row = ttk.Frame(import_frame, style='CardBG.TFrame')
+        source_row.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(source_row, text="Source:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
         self.import_source = tk.StringVar(value="sheet")
-        if CTK_AVAILABLE:
-            ctk.CTkRadioButton(imp_inner, text="Google Sheets", variable=self.import_source,
-                               value="sheet", command=self._toggle_import_source,
-                               font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 14))
-            ctk.CTkRadioButton(imp_inner, text="CSV File", variable=self.import_source,
-                               value="csv", command=self._toggle_import_source,
-                               font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left")
-        else:
-            ttk.Radiobutton(imp_inner, text="Google Sheets", variable=self.import_source,
-                            value="sheet", command=self._toggle_import_source).pack(side="left", padx=(0, 12))
-            ttk.Radiobutton(imp_inner, text="CSV File", variable=self.import_source,
-                            value="csv", command=self._toggle_import_source).pack(side="left")
+        ttk.Radiobutton(source_row, text="Google Sheets", variable=self.import_source,
+                        value="sheet", command=self._toggle_import_source).pack(side=tk.LEFT, padx=(0, 12))
+        ttk.Radiobutton(source_row, text="CSV File", variable=self.import_source,
+                        value="csv", command=self._toggle_import_source).pack(side=tk.LEFT)
 
-        # Sheet URL row
-        self.sheet_input_frame = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                                 tk.Frame(imp_card, bg="#161B22")
-        self.sheet_input_frame.pack(fill="x", padx=12, pady=4)
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(self.sheet_input_frame, text="URL:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6))
-        self.sheet_url_entry = self._ctk_entry(self.sheet_input_frame, width=380, placeholder="Google Sheet URL...")
-        self.sheet_url_entry.pack(side="left", fill="x", expand=True)
+        self.sheet_input_frame = ttk.Frame(import_frame, style='CardBG.TFrame')
+        self.sheet_input_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(self.sheet_input_frame, text="Sheet URL:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
+        self.sheet_url_entry = ttk.Entry(self.sheet_input_frame, width=46)
+        self.sheet_url_entry.pack(side=tk.LEFT, padx=5)
 
-        # CSV row (hidden by default)
-        self.csv_input_frame = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                               tk.Frame(imp_card, bg="#161B22")
+        self.csv_input_frame = ttk.Frame(import_frame, style='CardBG.TFrame')
+        ttk.Label(self.csv_input_frame, text="CSV File:", width=14, style='CardBG.TLabel').pack(side=tk.LEFT)
         self.csv_path_var = tk.StringVar()
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(self.csv_input_frame, text="File:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6))
-            self.csv_path_entry = ctk.CTkEntry(self.csv_input_frame, textvariable=self.csv_path_var,
-                                               width=280, height=32, state="disabled",
-                                               fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                                               text_color=self.C_TEXT)
-        else:
-            self.csv_path_entry = ttk.Entry(self.csv_input_frame, textvariable=self.csv_path_var,
-                                            width=36, state='readonly')
-        self.csv_path_entry.pack(side="left", padx=(0, 6))
-        self._ctk_button(self.csv_input_frame, text="Browse…", command=self._browse_csv,
-                         fg=self.C_BG_THIRD, hover=self.C_BORDER, width=90).pack(side="left")
+        self.csv_path_entry = ttk.Entry(self.csv_input_frame, textvariable=self.csv_path_var,
+                                        width=36, state='readonly')
+        self.csv_path_entry.pack(side=tk.LEFT, padx=5)
+        ttk.Button(self.csv_input_frame, text="Browseâ€¦", command=self._browse_csv).pack(side=tk.LEFT, padx=2)
 
-        imp_btn_row = ctk.CTkFrame(imp_card, fg_color="transparent") if CTK_AVAILABLE else \
-                      tk.Frame(imp_card, bg="#161B22")
-        imp_btn_row.pack(fill="x", padx=12, pady=(4, 8))
-        self.import_btn = self._ctk_button(imp_btn_row, text="Import Sheet Data", command=self._do_import,
-                                           fg="#6366F1", hover="#4F46E5", width=180)
-        self.import_btn.pack(side="left")
-        self.import_hint_text = "Sheet must be publicly shared"
-        if CTK_AVAILABLE:
-            self.import_hint = ctk.CTkLabel(imp_btn_row, text=self.import_hint_text,
-                                            font=("Segoe UI", 9, "italic"),
-                                            text_color=self.C_TEXT_DIM)
-        else:
-            self.import_hint = ttk.Label(imp_btn_row, text=self.import_hint_text)
-        self.import_hint.pack(side="left", padx=(12, 0))
+        self.import_btn = ttk.Button(import_frame, text="ðŸ“¥  Import Sheet Data", command=self._do_import)
+        self.import_btn.pack(pady=(4, 1))
+
+        self.import_hint = ttk.Label(import_frame, text="Sheet must be publicly shared",
+                                      style='CardDim.TLabel')
+        self.import_hint.pack(pady=(0, 0))
+
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        #  TAB 2 â€” TRADING ENGINE
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        self._build_trading_engine_ui(tab_trade)
+
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        #  TAB 3 â€” TOOLS & SETTINGS
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        #  STATUS LOG (always visible, below tabs)
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+        log_frame = ttk.LabelFrame(main_frame, text="ðŸ“  Status Log", padding=4)
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 2))
+
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, bg='#0a0e1a', fg='#22c55e',
+                                                   font=('Consolas', 9), insertbackground='white',
+                                                   relief='flat', borderwidth=0)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
+        # Status bar
+        self.status_var = tk.StringVar(value="Ready â€” enter your email to get started")
+        self.status_label = ttk.Label(main_frame, textvariable=self.status_var, style='Status.TLabel')
+        self.status_label.pack(fill=tk.X, pady=(2, 0))
+
+        # State for smart auto-push
+        self.last_deal_ticket = 0
+        self.last_deal_count = 0
+        self.auto_push_thread = None
 
     def log(self, message, level="INFO"):
-        """Add a message to the log and the live activity display."""
+        """Add a message to the log."""
         timestamp = datetime.now().strftime("%H:%M:%S")
+        color = "#00ff00" if level == "INFO" else "#ff6b6b" if level == "ERROR" else "#ffcc00"
         self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
         self.log_text.see(tk.END)
-        # Feed into live display
-        kind = "info"
-        msg_lower = message.lower()
-        if level == "ERROR" or "❌" in message or "failed" in msg_lower:
-            kind = "error"
-        elif "✅" in message or "success" in msg_lower:
-            kind = "success"
-        elif "trade" in msg_lower or "buy" in msg_lower or "sell" in msg_lower or "⚡" in message:
-            kind = "trade"
-        elif "push" in msg_lower or "📤" in message or "synced" in msg_lower:
-            kind = "push"
-        elif "queue" in msg_lower or "scheduled" in msg_lower or "⏳" in message:
-            kind = "queue"
-        try:
-            self._add_activity(message, kind)
-        except Exception:
-            pass
-        try:
-            self.root.update_idletasks()
-        except Exception:
-            pass
+        self.root.update_idletasks()
     
     def lookup_client(self):
         """Lookup client hierarchy from email - NO API KEY REQUIRED."""
@@ -2071,20 +1586,15 @@ class TraderCompanionApp:
                     admin = self.client_info.get("admin", "Unknown")
                     category = self.client_info.get("category", "Unknown")
                     
-                    self.hierarchy_var.set(f"✅ {client} → Trader: {trader} → Admin: {admin} | Category: {category}")
-                    self.hierarchy_label.configure(text_color='#16a34a') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#16a34a')
-                    self.log(f"✅ Client found: {client} → {trader} → {admin}")
-                    # Auto-load active trades after successful lookup
-                    try:
-                        self._load_active_trades()
-                    except Exception:
-                        pass
+                    self.hierarchy_var.set(f"âœ… {client} â†’ Trader: {trader} â†’ Admin: {admin} | Category: {category}")
+                    self.hierarchy_label.configure(foreground='#16a34a')
+                    self.log(f"âœ… Client found: {client} â†’ {trader} â†’ {admin}")
                 else:
                     error_msg = data.get("message", "Client not found")
-                    self.hierarchy_var.set(f"❌ {error_msg}")
-                    self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
+                    self.hierarchy_var.set(f"âŒ {error_msg}")
+                    self.hierarchy_label.configure(foreground='#dc2626')
                     self.client_info = None
-                    self.log(f"❌ Lookup failed: {error_msg}", "ERROR")
+                    self.log(f"âŒ Lookup failed: {error_msg}", "ERROR")
             else:
                 error_msg = f"API Error: {response.status_code}"
                 try:
@@ -2092,23 +1602,23 @@ class TraderCompanionApp:
                     error_msg = error_data.get("message", error_msg)
                 except:
                     pass
-                self.hierarchy_var.set(f"❌ {error_msg}")
-                self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
+                self.hierarchy_var.set(f"âŒ {error_msg}")
+                self.hierarchy_label.configure(foreground='#dc2626')
                 self.client_info = None
-                self.log(f"❌ Lookup failed: {error_msg}", "ERROR")
+                self.log(f"âŒ Lookup failed: {error_msg}", "ERROR")
                 
         except requests.exceptions.Timeout:
-            self.hierarchy_var.set("❌ Connection timeout")
-            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-            self.log("❌ Connection timeout", "ERROR")
+            self.hierarchy_var.set("âŒ Connection timeout")
+            self.hierarchy_label.configure(foreground='#dc2626')
+            self.log("âŒ Connection timeout", "ERROR")
         except requests.exceptions.ConnectionError:
-            self.hierarchy_var.set("❌ Cannot connect to server")
-            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-            self.log("❌ Cannot connect to server", "ERROR")
+            self.hierarchy_var.set("âŒ Cannot connect to server")
+            self.hierarchy_label.configure(foreground='#dc2626')
+            self.log("âŒ Cannot connect to server", "ERROR")
         except Exception as e:
-            self.hierarchy_var.set(f"❌ Error: {str(e)}")
-            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-            self.log(f"❌ Error: {e}", "ERROR")
+            self.hierarchy_var.set(f"âŒ Error: {str(e)}")
+            self.hierarchy_label.configure(foreground='#dc2626')
+            self.log(f"âŒ Error: {e}", "ERROR")
         
     def toggle_mt5_connection(self):
         """Connect or disconnect from MT5."""
@@ -2142,25 +1652,29 @@ class TraderCompanionApp:
             messagebox.showerror("Error", "Client lookup failed - no client name found")
             return
         
-        self.log(f"📤 Pushing {client_name}...")
+        self.log(f"Pushing data for {client_name}...")
         self.status_var.set("Pushing data...")
         
         # Get MT5 data - Limit to 30 days for better coverage (especially Farming)
-        account = self.pusher.get_account_info()
-        if not account:
-            self.log("⚠️ MT5 account info returned empty — pushing with no account data", "ERROR")
-            account = {}
+        account = self.pusher.get_account_info() or {}
+
+        # Log rebalance data for verification
+        if account:
+            b = account.get('balance', 0)
+            d = account.get('total_deposits', 0)
+            w = account.get('total_withdrawals', 0)
+            self.log(f"ðŸ“Š Rebalance Data Check:")
+            self.log(f"   - Balance: ${b}")
+            self.log(f"   - Total Deposits: ${d}")
+            self.log(f"   - Total Withdrawals: ${w}")
+
         positions = self.pusher.get_positions()
-        if positions is None:
-            self.log("⚠️ MT5 positions returned None — sending empty list")
-            positions = []
         # Fetch recent deals (30 days) for regular trading stats
         raw_deals = self.pusher.get_deals(days=30)
         if raw_deals is None:
-            self.log("⚠️ MT5 deals(30d) returned None — MT5 may be disconnected")
             raw_deals = []
         
-        # Fetch full history (365 days) for farming deals only — needed for correct hedge day count
+        # Fetch full history (365 days) for farming deals only â€” needed for correct hedge day count
         all_deals_full = self.pusher.get_deals(days=365) or []
         fa_deal_ids = {d.get('ticket') or d.get('order') for d in raw_deals if '_FA' in str(d.get('comment', '')).upper()}
         for d in all_deals_full:
@@ -2205,13 +1719,6 @@ class TraderCompanionApp:
         aggregated_result = self.pusher.get_deals_grouped_by_phase(days=365)
         aggregated_by_comment = aggregated_result.get('aggregated', [])
         comment_summary = aggregated_result.get('summary', {})
-
-        # Pre-push diagnostic: log what we're about to send
-        pos_count = len(positions) if positions else 0
-        deal_count = len(deals) if deals else 0
-        agg_count = len(aggregated_by_comment) if aggregated_by_comment else 0
-        bal = account.get('balance', 0)
-        self.log(f"📦 Payload: Bal=${bal:,.0f} | {deal_count} deals | {pos_count} pos | {agg_count} hedge groups")
         
         payload = {
             "email": email,
@@ -2235,45 +1742,14 @@ class TraderCompanionApp:
             )
             
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                except ValueError:
-                    self.log("❌ Server returned invalid JSON (not JSON response)", "ERROR")
-                    self.status_var.set("Push failed - bad response")
-                    return
+                data = response.json()
                 if data.get("status") == "success":
-                    # Compact push summary
-                    bal = account.get('balance', 0)
-                    dep = account.get('total_deposits', 0)
-                    pos_count = len(positions) if positions else 0
-                    deal_count = len(deals) if deals else 0
-                    agg_count = len(aggregated_by_comment) if aggregated_by_comment else 0
-                    self.log(f"✅ Push OK → Bal: ${bal:,.0f} | Dep: ${dep:,.0f} | {deal_count} deals | {pos_count} pos | {agg_count} hedge groups")
-
-                    # Surface server cell-level hedge updates
-                    hedge_log = data.get("hedge_match_log", [])
-                    hedge_updates = data.get("hedge_updates", 0)
-                    if hedge_log:
-                        for entry in hedge_log:
-                            if entry.startswith("✅"):
-                                self.log(f"  {entry}", "INFO")
-                            elif entry.startswith("⚠") or entry.startswith("🌾"):
-                                self.log(f"  {entry}", "INFO")
-                        if hedge_updates:
-                            self.log(f"📊 {hedge_updates} hedge cell(s) updated on dashboard")
-
+                    self.log(f"âœ… {data.get('message', 'Data pushed successfully')}")
+                    if aggregated_by_comment:
+                        self.log(f"   âœ“ Synced {len(aggregated_by_comment)} hedge result groups from history")
                     self.status_var.set("Ready - Data pushed!")
-                    try:
-                        self._stat_push_var.set(f"Push: ✔ {hedge_updates}")
-                    except Exception:
-                        pass
-                    # Auto-trigger hedging review after successful data push
-                    try:
-                        self.push_hedging_review()
-                    except Exception as hr_err:
-                        self.log(f"⚠️ Hedging review failed: {hr_err}", "ERROR")
                 else:
-                    self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
+                    self.log(f"âŒ {data.get('message', 'Push failed')}", "ERROR")
                     self.status_var.set("Push failed")
             else:
                 error_msg = f"HTTP {response.status_code}"
@@ -2281,17 +1757,11 @@ class TraderCompanionApp:
                     error_msg = response.json().get("message", error_msg)
                 except:
                     pass
-                self.log(f"❌ Push failed: {error_msg}", "ERROR")
+                self.log(f"âŒ Push failed: {error_msg}", "ERROR")
                 self.status_var.set("Push failed")
                 
-        except requests.exceptions.Timeout:
-            self.log("❌ Push timeout — server did not respond within 120s", "ERROR")
-            self.status_var.set("Push failed - timeout")
-        except requests.exceptions.ConnectionError:
-            self.log("❌ Push failed — cannot connect to server", "ERROR")
-            self.status_var.set("Push failed - no connection")
         except Exception as e:
-            self.log(f"❌ Push error: {e}", "ERROR")
+            self.log(f"âŒ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
     
     def push_hedging_review(self):
@@ -2308,19 +1778,22 @@ class TraderCompanionApp:
             return
 
         client_name = self.client_info.get('client', '')
+        self.log(f"ðŸ“Š Pushing Hedging Review for {client_name}...")
         self.status_var.set("Pushing hedging review...")
 
-        account = self.pusher.get_account_info()
+        account = self.pusher.get_account_info() or {}
         if not account:
-            self.log("⚠️ Hedging review skipped — MT5 account info is empty", "ERROR")
-            self.status_var.set("Hedging review skipped")
+            self.log("âš ï¸ No account info available from MT5", "ERROR")
+            self.status_var.set("Push failed - no MT5 data")
             return
 
         deposits = float(account.get('total_deposits', 0) or 0)
         withdrawals = float(account.get('total_withdrawals', 0) or 0)
         balance = float(account.get('balance', 0) or 0)
 
-        self.log(f"📊 HR payload: Dep=${deposits:,.0f} | Wth=${withdrawals:,.0f} | Bal=${balance:,.0f}")
+        self.log(f"   Deposits: ${deposits:,.2f}")
+        self.log(f"   Withdrawals: ${withdrawals:,.2f}")
+        self.log(f"   Balance: ${balance:,.2f}")
 
         payload = {
             "email": email,
@@ -2338,20 +1811,15 @@ class TraderCompanionApp:
             )
 
             if response.status_code == 200:
-                try:
-                    data = response.json()
-                except ValueError:
-                    self.log("❌ Hedging review: server returned invalid JSON", "ERROR")
-                    self.status_var.set("HR failed - bad response")
-                    return
+                data = response.json()
                 if data.get("status") == "success":
-                    hr = data.get("hedging_review") or {}
-                    actual = hr.get('actual_hedging_results', 0)
-                    disc = hr.get('discrepancy', 0)
-                    self.log(f"📊 Hedging Review → Actual: ${actual:,.2f} | Disc: ${disc:,.2f} | Bal: ${balance:,.0f}")
+                    hr = data.get("hedging_review", {})
+                    self.log(f"âœ… Hedging Review updated for {client_name}")
+                    self.log(f"   Actual Hedging Results: ${hr.get('actual_hedging_results', 0):,.2f}")
+                    self.log(f"   Discrepancy: ${hr.get('discrepancy', 0):,.2f}")
                     self.status_var.set("Ready - Hedging review pushed!")
                 else:
-                    self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
+                    self.log(f"âŒ {data.get('message', 'Push failed')}", "ERROR")
                     self.status_var.set("Push failed")
             else:
                 error_msg = f"HTTP {response.status_code}"
@@ -2359,17 +1827,11 @@ class TraderCompanionApp:
                     error_msg = response.json().get("message", error_msg)
                 except:
                     pass
-                self.log(f"❌ Push failed: {error_msg}", "ERROR")
+                self.log(f"âŒ Push failed: {error_msg}", "ERROR")
                 self.status_var.set("Push failed")
 
-        except requests.exceptions.Timeout:
-            self.log("❌ Hedging review timeout", "ERROR")
-            self.status_var.set("HR timeout")
-        except requests.exceptions.ConnectionError:
-            self.log("❌ Hedging review — cannot connect", "ERROR")
-            self.status_var.set("HR connection failed")
         except Exception as e:
-            self.log(f"❌ Hedging review error: {e}", "ERROR")
+            self.log(f"âŒ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
 
     def push_mt5_only(self):
@@ -2387,7 +1849,7 @@ class TraderCompanionApp:
         
         client_name = self.client_info.get('client', '')
         
-        self.log(f"📤 MT5 rebalance push for {client_name}...")
+        self.log(f"Pushing MT5 data only for {client_name}...")
         self.status_var.set("Pushing MT5 data...")
         
         # Get MT5 data
@@ -2395,7 +1857,7 @@ class TraderCompanionApp:
         deals = self.pusher.get_deals(days=365)  # Get 1 year of deals for hedging calculations
         
         if not account:
-            self.log("⚠️ No account info available", "ERROR")
+            self.log("âš ï¸ No account info available", "ERROR")
             messagebox.showerror("Error", "Could not retrieve account information from MT5.")
             return
         
@@ -2417,7 +1879,16 @@ class TraderCompanionApp:
                 if deal.get('entry') == 'OUT':  # Count closed trades
                     trade_count += 1
         
-        self.log(f"📊 Bal: ${balance:,.0f} | Dep: ${deposits:,.0f} | Wth: ${withdrawals:,.0f} | Hedge: ${actual_hedging:,.2f} ({trade_count} trades)")
+        self.log("="*60)
+        self.log("ðŸ“Š REBALANCE DATA DEBUG TRACE")
+        self.log("="*60)
+        self.log(f"âœ“ Account Balance: ${balance:.2f}")
+        self.log(f"âœ“ Total Deposits: ${deposits:.2f}")
+        self.log(f"âœ“ Total Withdrawals: ${withdrawals:.2f}")
+        self.log(f"âœ“ Current Equity: ${account.get('equity', 0):.2f}")
+        self.log(f"âœ“ Profit: ${account.get('profit', 0):.2f}")
+        self.log(f"âœ“ Actual Hedging Results: ${actual_hedging:.2f} ({trade_count} closed trades)")
+        self.log(f"âœ“ Deals fetched: {len(deals) if deals else 0}")
         
         payload = {
             "email": email,
@@ -2429,6 +1900,12 @@ class TraderCompanionApp:
             "dropdown_options": {}
         }
         
+        self.log(f"\nðŸ“¤ Sending payload with:")
+        self.log(f"   - Balance: ${balance:.2f}")
+        self.log(f"   - Deposits: ${deposits:.2f}")
+        self.log(f"   - Withdrawals: ${withdrawals:.2f}")
+        self.log(f"   - Email: {email}")
+        
         try:
             response = requests.post(
                 f"{dashboard_url}/api/client/push",
@@ -2437,26 +1914,41 @@ class TraderCompanionApp:
                 timeout=120
             )
             
+            self.log(f"\nðŸ“¡ Server response: HTTP {response.status_code}")
+            
             if response.status_code == 200:
                 data = response.json()
+                self.log(f"âœ“ Response data: {data.get('status', 'unknown')}")
                 
                 if data.get("status") == "success":
-                    self.log(f"✅ Rebalance pushed — Bal: ${balance:,.0f} | Dep: ${deposits:,.0f}")
-                    self.status_var.set("Rebalance data pushed!")
+                    self.log(f"\nâœ… REBALANCE DATA PUSHED SUCCESSFULLY!")
+                    self.log(f"   Balance: ${balance:.2f}")
+                    self.log(f"   Deposits: ${deposits:.2f}")
+                    self.log(f"   Withdrawals: ${withdrawals:.2f}")
+                    self.log(f"   Message: {data.get('message', 'OK')}")
+                    self.log("="*60)
+                    self.status_var.set("Rebalance data pushed successfully!")
+                    
+                    # Suggest checking dashboard
+                    self.log("\nðŸ’¡ TIP: Refresh your dashboard to see updated Live Hedging Review")
                 else:
-                    self.log(f"❌ Push failed: {data.get('message', 'Unknown error')}", "ERROR")
+                    self.log(f"âŒ Push failed: {data.get('message', 'Unknown error')}", "ERROR")
+                    self.log("="*60, "ERROR")
                     self.status_var.set("Push failed")
             else:
                 error_msg = f"HTTP {response.status_code}"
                 try:
-                    error_msg = response.json().get("message", error_msg)
+                    error_data = response.json()
+                    error_msg = error_data.get("message", error_msg)
+                    self.log(f"âŒ Server error response: {error_data}", "ERROR")
                 except:
-                    pass
-                self.log(f"❌ Rebalance push failed: {error_msg}", "ERROR")
+                    self.log(f"âŒ Server response text: {response.text[:200]}", "ERROR")
+                self.log(f"âŒ Push failed: {error_msg}", "ERROR")
+                self.log("="*60, "ERROR")
                 self.status_var.set("Push failed")
                 
         except Exception as e:
-            self.log(f"❌ Push error: {e}", "ERROR")
+            self.log(f"âŒ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
     
     def show_deal_comments(self):
@@ -2466,7 +1958,7 @@ class TraderCompanionApp:
             return
         
         self.log("="*60)
-        self.log("🔍 MT5 DEAL COMMENTS DEBUG")
+        self.log("ðŸ” MT5 DEAL COMMENTS DEBUG")
         self.log("="*60)
         
         deals = self.pusher.get_deals(days=365)
@@ -2494,20 +1986,20 @@ class TraderCompanionApp:
         for comment, info in sorted(comment_counts.items()):
             parsed = self.pusher.parse_deal_comment(comment)
             
-            self.log(f"\n📋 Comment: '{comment}'")
+            self.log(f"\nðŸ“‹ Comment: '{comment}'")
             self.log(f"   Deals: {info['count']}, Total P/L: ${info['total_profit']:.2f}")
             
             if parsed:
-                self.log(f"   ✓ Parsed -> Account: {parsed['account_suffix']}")
+                self.log(f"   âœ“ Parsed -> Account: {parsed['account_suffix']}")
                 if parsed.get('stage'):
-                    self.log(f"   ✓ Stage: {parsed['stage']}{parsed['stage_num']}")
+                    self.log(f"   âœ“ Stage: {parsed['stage']}{parsed['stage_num']}")
                 else:
-                    self.log(f"   ⚠️ No stage pattern found (CH/FU/FA)")
+                    self.log(f"   âš ï¸ No stage pattern found (CH/FU/FA)")
             else:
-                self.log(f"   ❌ Could not parse comment")
+                self.log(f"   âŒ Could not parse comment")
         
         self.log("\n" + "="*60)
-        self.log("💡 Comment format expected:")
+        self.log("ðŸ’¡ Comment format expected:")
         self.log("   Challenge: ..._CH{n} or ...CH{n}")
         self.log("   Funded:    ..._FU{n} or ...FU{n}")
         self.log("   Farming:   ..._FA{n}_DD/MM or ...FA{n}")
@@ -2538,12 +2030,12 @@ class TraderCompanionApp:
         client_name = self.client_info.get('client', '')
         
         self.log("="*60)
-        self.log("🔗 SYNC HEDGE RESULTS FROM MT5 COMMENTS")
+        self.log("ðŸ”— SYNC HEDGE RESULTS FROM MT5 COMMENTS")
         self.log("="*60)
         self.status_var.set("Syncing hedge results...")
         
         # Step 1: Get current evaluations from dashboard
-        self.log("\n📥 Step 1: Fetching current evaluations from dashboard...")
+        self.log("\nðŸ“¥ Step 1: Fetching current evaluations from dashboard...")
         try:
             response = requests.get(
                 f"{dashboard_url}/api/data?client_id={client_name}",
@@ -2552,7 +2044,7 @@ class TraderCompanionApp:
             )
             
             if response.status_code != 200:
-                self.log(f"❌ Failed to fetch data: HTTP {response.status_code}", "ERROR")
+                self.log(f"âŒ Failed to fetch data: HTTP {response.status_code}", "ERROR")
                 messagebox.showerror("Error", "Could not fetch current data from dashboard. Try logging in via browser first.")
                 return
             
@@ -2560,50 +2052,50 @@ class TraderCompanionApp:
             evaluations = data.get('evaluations', [])
             
             if not evaluations:
-                self.log("⚠️ No evaluations found in dashboard", "WARNING")
+                self.log("âš ï¸ No evaluations found in dashboard", "WARNING")
                 messagebox.showwarning("Warning", "No evaluations found. Please import from Google Sheets first.")
                 return
             
-            self.log(f"   ✓ Found {len(evaluations)} evaluation records")
+            self.log(f"   âœ“ Found {len(evaluations)} evaluation records")
             
         except Exception as e:
-            self.log(f"❌ Error fetching data: {e}", "ERROR")
+            self.log(f"âŒ Error fetching data: {e}", "ERROR")
             messagebox.showerror("Error", f"Failed to fetch data: {e}")
             return
         
         # Step 2: Get deals from MT5
-        self.log("\n📊 Step 2: Fetching deals from MT5...")
+        self.log("\nðŸ“Š Step 2: Fetching deals from MT5...")
         deals = self.pusher.get_deals(days=365)  # Get 1 year of deals
         
         if not deals:
-            self.log("⚠️ No deals found in MT5", "WARNING")
+            self.log("âš ï¸ No deals found in MT5", "WARNING")
             messagebox.showwarning("Warning", "No deals found in MT5 history.")
             return
         
-        self.log(f"   ✓ Found {len(deals)} deals")
+        self.log(f"   âœ“ Found {len(deals)} deals")
         
         # Show sample comments for debugging
         comments_with_data = [d.get('comment', '') for d in deals if d.get('comment')]
         unique_comments = list(set(comments_with_data))[:10]
-        self.log(f"\n📝 Sample deal comments found:")
+        self.log(f"\nðŸ“ Sample deal comments found:")
         for c in unique_comments:
             parsed = self.pusher.parse_deal_comment(c)
             if parsed and parsed.get('stage'):
-                self.log(f"   ✓ '{c}' -> {parsed['stage']}{parsed['stage_num']}, account: {parsed['account_suffix']}")
+                self.log(f"   âœ“ '{c}' -> {parsed['stage']}{parsed['stage_num']}, account: {parsed['account_suffix']}")
             elif parsed and parsed.get('account_suffix'):
-                self.log(f"   · '{c}' -> account: {parsed['account_suffix']} (no stage found)")
+                self.log(f"   Â· '{c}' -> account: {parsed['account_suffix']} (no stage found)")
             else:
-                self.log(f"   · '{c}' (not matching pattern)")
+                self.log(f"   Â· '{c}' (not matching pattern)")
         
         # Step 3: Process deals and update evaluations
-        self.log("\n🔄 Step 3: Processing deals and matching to evaluations...")
+        self.log("\nðŸ”„ Step 3: Processing deals and matching to evaluations...")
         updated_evals, match_log = self.pusher.process_deals_for_evaluations(deals, evaluations)
         
         for log_line in match_log:
             self.log(f"   {log_line}")
         
         # Step 4: Push updated evaluations back to dashboard
-        self.log("\n📤 Step 4: Pushing updated evaluations to dashboard...")
+        self.log("\nðŸ“¤ Step 4: Pushing updated evaluations to dashboard...")
         
         payload = {
             "email": email,
@@ -2623,20 +2115,20 @@ class TraderCompanionApp:
             if response.status_code == 200:
                 data = response.json()
                 if data.get("status") == "success":
-                    self.log(f"\n✅ HEDGE RESULTS SYNCED SUCCESSFULLY!")
+                    self.log(f"\nâœ… HEDGE RESULTS SYNCED SUCCESSFULLY!")
                     self.log(f"   Updated {len(updated_evals)} evaluation records")
                     self.log("="*60)
                     self.status_var.set("Hedge results synced!")
                     messagebox.showinfo("Success", "Hedge results synced from MT5 comments!")
                 else:
-                    self.log(f"❌ Sync failed: {data.get('message', 'Unknown error')}", "ERROR")
+                    self.log(f"âŒ Sync failed: {data.get('message', 'Unknown error')}", "ERROR")
                     self.status_var.set("Sync failed")
             else:
-                self.log(f"❌ HTTP {response.status_code}", "ERROR")
+                self.log(f"âŒ HTTP {response.status_code}", "ERROR")
                 self.status_var.set("Sync failed")
                 
         except Exception as e:
-            self.log(f"❌ Sync error: {e}", "ERROR")
+            self.log(f"âŒ Sync error: {e}", "ERROR")
             self.status_var.set("Sync failed")
     
     def analyze_comments_v2(self):
@@ -2652,11 +2144,11 @@ class TraderCompanionApp:
             return
         
         self.log("="*70)
-        self.log("🔬 MT5 COMMENT ANALYSIS (TradeAccountConnector Format)")
+        self.log("ðŸ”¬ MT5 COMMENT ANALYSIS (TradeAccountConnector Format)")
         self.log("="*70)
         
         if not COMMENT_PARSER_AVAILABLE:
-            self.log("⚠️ Comment Parser module not available!", "ERROR")
+            self.log("âš ï¸ Comment Parser module not available!", "ERROR")
             self.log("   Please ensure mt5_comment_parser.py is in the trader_companion folder")
             return
         
@@ -2710,13 +2202,13 @@ class TraderCompanionApp:
                 invalid_comments.append((comment, data))
         
         # Show valid comments first
-        self.log(f"\n✅ VALID COMMENTS ({len(valid_comments)}):\n")
+        self.log(f"\nâœ… VALID COMMENTS ({len(valid_comments)}):\n")
         
         for comment, data in sorted(valid_comments, key=lambda x: x[0]):
             parsed = data['parsed']
             net_profit = data['total_profit'] + data['total_commission'] + data['total_swap']
             
-            self.log(f"📋 '{comment}'")
+            self.log(f"ðŸ“‹ '{comment}'")
             self.log(f"   Account: {parsed.account_number}")
             self.log(f"   Phase: {parsed.phase.name} ({parsed.phase_code})")
             if parsed.trade_number:
@@ -2728,16 +2220,16 @@ class TraderCompanionApp:
         
         # Show invalid comments
         if invalid_comments:
-            self.log(f"\n⚠️ UNRECOGNIZED COMMENTS ({len(invalid_comments)}):\n")
+            self.log(f"\nâš ï¸ UNRECOGNIZED COMMENTS ({len(invalid_comments)}):\n")
             
             for comment, data in sorted(invalid_comments, key=lambda x: x[0]):
                 net_profit = data['total_profit'] + data['total_commission'] + data['total_swap']
-                self.log(f"❓ '{comment or '(empty)'}'")
+                self.log(f"â“ '{comment or '(empty)'}'")
                 self.log(f"   Deals: {data['count']}, Net P/L: ${net_profit:.2f}")
                 self.log("")
         
         self.log("-"*70)
-        self.log("\n📖 EXPECTED COMMENT FORMATS:")
+        self.log("\nðŸ“– EXPECTED COMMENT FORMATS:")
         self.log("   Challenge:    {Account}_CH{1-4}     (e.g., MFFUEVSTP326057008_CH1)")
         self.log("   Funded:       {Account}_FD{0-4}     (e.g., MFFUEVSTP326057008_FD2)")
         self.log("   Double Dip:   {Account}_DD{1-4}     (e.g., MFFUEVSTP326057008_DD1)")
@@ -2755,7 +2247,7 @@ class TraderCompanionApp:
             return
         
         self.log("="*70)
-        self.log("📊 AGGREGATED DEAL DATA BY ACCOUNT/PHASE")
+        self.log("ðŸ“Š AGGREGATED DEAL DATA BY ACCOUNT/PHASE")
         self.log("="*70)
         
         result = self.pusher.get_deals_grouped_by_phase(days=365)
@@ -2768,7 +2260,7 @@ class TraderCompanionApp:
         self.log(f"Unmatched deals: {len(unmatched)}\n")
         
         if not aggregated:
-            self.log("⚠️ No aggregated data available")
+            self.log("âš ï¸ No aggregated data available")
             self.log("   Make sure your deals have comments in the correct format")
             return
         
@@ -2784,7 +2276,7 @@ class TraderCompanionApp:
         
         for account, trades in sorted(by_account.items()):
             account_total = sum(t.get('net_profit', 0) for t in trades)
-            self.log(f"\n🏦 ACCOUNT: {account}")
+            self.log(f"\nðŸ¦ ACCOUNT: {account}")
             self.log(f"   Total Net P/L: ${account_total:.2f}")
             self.log("")
             
@@ -2804,7 +2296,7 @@ class TraderCompanionApp:
         
         # Show summary
         self.log("\n" + "-"*70)
-        self.log("\n📈 SUMMARY BY PHASE:")
+        self.log("\nðŸ“ˆ SUMMARY BY PHASE:")
         by_phase = summary.get('by_phase', {})
         for phase, data in sorted(by_phase.items()):
             self.log(f"   {phase}: {data.get('count', 0)} groups, Total: ${data.get('total_net_profit', 0):.2f}")
@@ -2843,19 +2335,19 @@ class TraderCompanionApp:
         client_name = self.client_info.get('client', '')
         
         self.log("="*70)
-        self.log("📋 PUSH HEDGE RESULTS BY COMMENT")
+        self.log("ðŸ“‹ PUSH HEDGE RESULTS BY COMMENT")
         self.log("="*70)
         self.log("Comment Format: {Account}_{Phase}{Number}")
-        self.log("  CH1-5 → Hedge Result 1-5 (Challenge)")
-        self.log("  FD0-4 → Hedge Result 1.1-5.1 (Funded)")
-        self.log("  DD1-4 → Additional Funded Hedge Results")
-        self.log("  FA/FA_DDMMYY → Hedge Day 1-50 (Farming)")
+        self.log("  CH1-5 â†’ Hedge Result 1-5 (Challenge)")
+        self.log("  FD0-4 â†’ Hedge Result 1.1-5.1 (Funded)")
+        self.log("  DD1-4 â†’ Additional Funded Hedge Results")
+        self.log("  FA/FA_DDMMYY â†’ Hedge Day 1-50 (Farming)")
         self.log("Account Matching: First 4 + Last 4 characters")
         self.log("="*70)
         self.status_var.set("Processing MT5 deals...")
         
         # Step 1: Get and aggregate deals from MT5
-        self.log("\n📊 Step 1: Aggregating deals from MT5 by comment...")
+        self.log("\nðŸ“Š Step 1: Aggregating deals from MT5 by comment...")
         
         result = self.pusher.get_deals_grouped_by_phase(days=365)
         
@@ -2864,12 +2356,12 @@ class TraderCompanionApp:
         summary = result.get('summary', {})
         
         if not aggregated:
-            self.log("⚠️ No deals with valid comments found", "WARNING")
+            self.log("âš ï¸ No deals with valid comments found", "WARNING")
             messagebox.showwarning("Warning", "No deals found with valid comment format.\nExpected: {Account}_CH{1-5}, {Account}_FD{0-4}, etc.")
             return
         
-        self.log(f"   ✓ Found {len(aggregated)} trade groups")
-        self.log(f"   ⚠️ {len(unmatched)} deals without valid comments")
+        self.log(f"   âœ“ Found {len(aggregated)} trade groups")
+        self.log(f"   âš ï¸ {len(unmatched)} deals without valid comments")
         
         # Show sample groups
         for agg in aggregated[:5]:
@@ -2878,13 +2370,13 @@ class TraderCompanionApp:
             trade_num = agg.get('trade_number', '')
             profit = agg.get('net_profit', 0)
             sig = f"{account[:4]}...{account[-4:]}" if len(account) >= 8 else account
-            self.log(f"   • {sig}_{phase}{trade_num or ''}: ${profit:.2f}")
+            self.log(f"   â€¢ {sig}_{phase}{trade_num or ''}: ${profit:.2f}")
         
         if len(aggregated) > 5:
             self.log(f"   ... and {len(aggregated) - 5} more groups")
         
         # Step 2: Get account info
-        self.log("\n📊 Step 2: Getting MT5 account info...")
+        self.log("\nðŸ“Š Step 2: Getting MT5 account info...")
         account = self.pusher.get_account_info() or {}
         deals = self.pusher.get_deals(days=365)
         
@@ -2894,7 +2386,7 @@ class TraderCompanionApp:
             self.log(f"   Withdrawals: ${account.get('total_withdrawals', 0):.2f}")
         
         # Step 3: Send to dashboard (dashboard will do the matching)
-        self.log("\n📤 Step 3: Sending to dashboard for matching...")
+        self.log("\nðŸ“¤ Step 3: Sending to dashboard for matching...")
         self.status_var.set("Pushing to dashboard...")
         
         # Prepare aggregated data for dashboard
@@ -2939,17 +2431,17 @@ class TraderCompanionApp:
                     hedge_log = data.get("hedge_match_log", [])
                     hedge_updates = data.get("hedge_updates", 0)
                     
-                    self.log(f"\n✅ DASHBOARD MATCHING RESULTS:")
+                    self.log(f"\nâœ… DASHBOARD MATCHING RESULTS:")
                     for log_line in hedge_log:
                         self.log(f"   {log_line}")
                     
-                    self.log(f"\n✅ HEDGE RESULTS PUSHED SUCCESSFULLY!")
+                    self.log(f"\nâœ… HEDGE RESULTS PUSHED SUCCESSFULLY!")
                     self.log(f"   {hedge_updates} hedge results updated")
                     self.log("="*70)
                     self.status_var.set(f"Pushed! {hedge_updates} updates")
                     messagebox.showinfo("Success", f"Pushed {len(trade_data)} trade groups.\n{hedge_updates} hedge results updated on dashboard!")
                 else:
-                    self.log(f"❌ Push failed: {data.get('message', 'Unknown error')}", "ERROR")
+                    self.log(f"âŒ Push failed: {data.get('message', 'Unknown error')}", "ERROR")
                     self.status_var.set("Push failed")
             else:
                 error_msg = f"HTTP {response.status_code}"
@@ -2957,27 +2449,27 @@ class TraderCompanionApp:
                     error_msg = response.json().get("message", error_msg)
                 except:
                     pass
-                self.log(f"❌ Push failed: {error_msg}", "ERROR")
+                self.log(f"âŒ Push failed: {error_msg}", "ERROR")
                 self.status_var.set("Push failed")
                 
         except Exception as e:
-            self.log(f"❌ Push error: {e}", "ERROR")
+            self.log(f"âŒ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
 
-    # ── Import source toggle helpers ──
+    # â”€â”€ Import source toggle helpers â”€â”€
 
     def _toggle_import_source(self):
         """Show/hide the correct input row based on selected import source."""
         if self.import_source.get() == 'sheet':
             self.csv_input_frame.pack_forget()
-            self.sheet_input_frame.pack(fill="x", pady=2)
-            self.import_btn.configure(text="Import Sheet Data")
-            self.import_hint.configure(text="Sheet must be publicly shared")
+            self.sheet_input_frame.pack(fill=tk.X, pady=2)
+            self.import_btn.config(text="ðŸ“¥ Import Sheet Data")
+            self.import_hint.config(text="Sheet must be public")
         else:
             self.sheet_input_frame.pack_forget()
-            self.csv_input_frame.pack(fill="x", pady=2)
-            self.import_btn.configure(text="Import CSV File")
-            self.import_hint.configure(text="Use a CSV exported from the dashboard")
+            self.csv_input_frame.pack(fill=tk.X, pady=2)
+            self.import_btn.config(text="ðŸ“¥ Import CSV File")
+            self.import_hint.config(text="Use a CSV exported from the dashboard")
 
     def _browse_csv(self):
         """Open file dialog to pick a CSV file."""
@@ -3030,7 +2522,7 @@ class TraderCompanionApp:
                 "New rows will be appended.\n\nContinue?"):
             return
 
-        self.log(f"📂 Importing CSV for {client_name}...")
+        self.log(f"ðŸ“‚ Importing CSV for {client_name}...")
         self.status_var.set("Importing CSV...")
         self.root.update_idletasks()
 
@@ -3049,7 +2541,7 @@ class TraderCompanionApp:
                     error_msg = response.json().get("message", error_msg)
                 except:
                     pass
-                self.log(f"❌ CSV import failed: {error_msg}", "ERROR")
+                self.log(f"âŒ CSV import failed: {error_msg}", "ERROR")
                 self.status_var.set("Import failed")
                 messagebox.showerror("Error", error_msg)
                 return
@@ -3057,7 +2549,7 @@ class TraderCompanionApp:
             data = response.json()
             if data.get("status") != "success":
                 error_msg = data.get("message", "Import failed")
-                self.log(f"❌ {error_msg}", "ERROR")
+                self.log(f"âŒ {error_msg}", "ERROR")
                 self.status_var.set("Import failed")
                 messagebox.showerror("Error", error_msg)
                 return
@@ -3065,26 +2557,26 @@ class TraderCompanionApp:
             updated = data.get('updated', 0)
             added = data.get('added', 0)
             total = data.get('total_rows', 0)
-            self.log(f"   ✅ CSV import complete!")
+            self.log(f"   âœ… CSV import complete!")
             self.log(f"   {updated} rows updated, {added} rows added ({total} total evaluations)")
             self.status_var.set(f"Imported {updated + added} rows from CSV")
             messagebox.showinfo("Success",
                 f"CSV import complete!\n\n"
-                f"• {updated} rows updated\n"
-                f"• {added} rows added\n"
-                f"• {total} total evaluations")
+                f"â€¢ {updated} rows updated\n"
+                f"â€¢ {added} rows added\n"
+                f"â€¢ {total} total evaluations")
             self.lookup_client()
 
         except requests.exceptions.Timeout:
-            self.log("❌ Connection timeout during CSV import", "ERROR")
+            self.log("âŒ Connection timeout during CSV import", "ERROR")
             self.status_var.set("Timeout")
             messagebox.showerror("Timeout", "Connection timed out. Please try again.")
         except requests.exceptions.ConnectionError:
-            self.log("❌ Could not connect to dashboard server", "ERROR")
+            self.log("âŒ Could not connect to dashboard server", "ERROR")
             self.status_var.set("Connection failed")
             messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
         except Exception as e:
-            self.log(f"❌ CSV import error: {e}", "ERROR")
+            self.log(f"âŒ CSV import error: {e}", "ERROR")
             self.status_var.set("Import failed")
             messagebox.showerror("Error", str(e))
 
@@ -3124,7 +2616,7 @@ class TraderCompanionApp:
                     error_msg = response.json().get("message", error_msg)
                 except:
                     pass
-                self.log(f"❌ Migration failed: {error_msg}", "ERROR")
+                self.log(f"âŒ Migration failed: {error_msg}", "ERROR")
                 self.status_var.set("Migration failed")
                 messagebox.showerror("Error", error_msg)
                 return
@@ -3132,28 +2624,28 @@ class TraderCompanionApp:
             data = response.json()
             if data.get("status") != "success":
                 error_msg = data.get("message", "Migration failed")
-                self.log(f"❌ {error_msg}", "ERROR")
+                self.log(f"âŒ {error_msg}", "ERROR")
                 self.status_var.set("Migration failed")
                 messagebox.showerror("Error", error_msg)
                 return
             
             records = data.get("records_imported", 0)
-            self.log(f"   ✅ Successfully imported {records} records")
+            self.log(f"   âœ… Successfully imported {records} records")
             self.log(f"   Dashboard data fully replaced.")
             self.status_var.set(f"Imported {records} records")
             messagebox.showinfo("Success", f"Successfully imported {records} records.\nDashboard data has been updated.")
             self.lookup_client()
                 
         except requests.exceptions.Timeout:
-            self.log("❌ Connection timeout - server is still processing the sheet", "ERROR")
+            self.log("âŒ Connection timeout - server is still processing the sheet", "ERROR")
             self.status_var.set("Timeout")
             messagebox.showerror("Timeout", "Connection timed out. The sheet may be too large or the server is busy. Please try again.")
         except requests.exceptions.ConnectionError:
-            self.log("❌ Could not connect to dashboard server", "ERROR")
+            self.log("âŒ Could not connect to dashboard server", "ERROR")
             self.status_var.set("Connection failed")
             messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
         except Exception as e:
-            self.log(f"❌ Migration error: {e}", "ERROR")
+            self.log(f"âŒ Migration error: {e}", "ERROR")
             self.status_var.set("Migration failed")
             messagebox.showerror("Error", str(e))
     
@@ -3207,13 +2699,11 @@ class TraderCompanionApp:
         
     def toggle_auto_push(self):
         """Toggle automatic data pushing."""
+        style = ttk.Style()
         if self.auto_push_enabled:
             self.auto_push_enabled = False
-            self.auto_btn.configure(text="Auto-Push")
-            try:
-                self.auto_btn_live.configure(text="Auto-Push")
-            except Exception:
-                pass
+            self.auto_btn.configure(text="ðŸ”„ Start Auto-Push")
+            style.configure("AutoPush.TButton", background="#3b82f6") # Reset
             self.log("Auto-push stopped")
         else:
             if not self.client_info:
@@ -3225,11 +2715,8 @@ class TraderCompanionApp:
             self.last_deal_ticket = 0
             
             self.auto_push_enabled = True
-            self.auto_btn.configure(text="Stop Auto-Push")
-            try:
-                self.auto_btn_live.configure(text="Stop Auto-Push")
-            except Exception:
-                pass
+            self.auto_btn.config(text="â¹ Stop Auto-Push (Smart)")
+            style.configure("AutoPush.TButton", background="lightblue") 
 
             self.log("Smart Auto-push started (Checking for new trades...)")
             self.auto_push_thread = threading.Thread(target=self.auto_push_loop, daemon=True)
@@ -3240,218 +2727,222 @@ class TraderCompanionApp:
         if not self.auto_push_enabled: return
         
         try:
-            if not self.pusher.connected:
-                self.log("⚠️ Auto-push: MT5 not connected — skipping check", "ERROR")
-                return
-
+            # Silent check to avoid spamming log
+            # Use pusher to get deals (consistent with push_data)
             deals = self.pusher.get_deals(days=30)
             
             if not deals:
-                self.log("⚠️ Auto-push: MT5 returned 0 deals — connection issue?")
                 return
 
             current_count = len(deals)
             last_deal = deals[-1]
             current_ticket = last_deal.get('ticket')
             
-            if current_ticket is None:
-                self.log("⚠️ Auto-push: last deal has no ticket ID")
-
-            # First check — initialize state and push once
+            # Logic: If count changed OR last ticket changed
+            # Also push immediately if this is the first check (last_deal_count == 0)
             if self.last_deal_count == 0:
                  self.last_deal_count = current_count
                  self.last_deal_ticket = current_ticket
-                 self.log(f"🔍 Auto-push scan: {current_count} deals, last ticket: {current_ticket}")
+                 self.log(f"Auto-push active. Initial scan: {current_count} deals.")
+                 # Don't push immediately on toggle unless needed? 
+                 # Usually users toggle it ON to verify it works, so let's push once.
                  self.push_data()
                  return
 
             if current_count > self.last_deal_count or current_ticket != self.last_deal_ticket:
-                self.log(f"⚡ New trade! Deals: {self.last_deal_count}→{current_count} | Ticket: {current_ticket}")
+                self.log(f"âš¡ New trade detected! (Ticket: {current_ticket}) Pushing update...")
                 
+                # Update state
                 self.last_deal_count = current_count
                 self.last_deal_ticket = current_ticket
                 
+                # Perform the push
                 self.push_data()
+            else:
+                # No change
+                pass
                 
         except Exception as e:
-            self.log(f"❌ Auto-push check error: {e}", "ERROR")
+            print(f"Auto-push check error: {e}")
 
     def auto_push_loop(self):
         """Background loop for smart auto-pushing."""
-        cycle = 0
         while self.auto_push_enabled:
-            try:
-                self.root.after(0, self.check_and_push_update)
-            except Exception as e:
-                # Thread-safe: can't call self.log from background thread directly
-                try:
-                    self.root.after(0, lambda err=str(e): self.log(f"❌ Auto-push loop error: {err}", "ERROR"))
-                except Exception:
-                    pass
+            # Schedule check on main thread
+            self.root.after(0, self.check_and_push_update)
             
             # Check frequently (every 10s)
             for _ in range(10):
                 if not self.auto_push_enabled:
                     break
                 time.sleep(1)
-            
-            cycle += 1
-            # Heartbeat every ~60s (6 cycles of 10s)
-            if cycle % 6 == 0 and self.auto_push_enabled:
-                try:
-                    self.root.after(0, lambda c=cycle: self.log(f"🔍 Auto-push heartbeat (cycle {c})  — watching for new trades"))
-                except Exception:
-                    pass
 
     # ============ Trading Engine ============
 
     def _build_trading_engine_ui(self, parent):
-        """Build the Trading Engine tab with CTk styled cards."""
+        """Build the Trading Engine tab with active trades list."""
+        self.trading_api = None
+        self.tradovate_account = None
+        self.topstepx_account = None
+        self.prop_firm_mgr = PropFirmManager() if PROP_FIRM_AVAILABLE else None
+        self._auto_trading_stop = threading.Event()
+        self._auto_trading_thread = None
+        self._direction_locks = {}
+        self._active_trade_rows = []  # List of dicts tracking each trade row
 
-        # Make tab scrollable
-        if CTK_AVAILABLE:
-            scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
-            scroll.pack(fill="both", expand=True)
-            parent = scroll
+        # â”€â”€ MT5 Connection card â”€â”€
+        mt5_frame = ttk.LabelFrame(parent, text="ðŸ”—  MT5 Connection", padding=8)
+        mt5_frame.pack(fill=tk.X, padx=6, pady=(6, 3))
 
-        # ── MT5 Connection Card ──
-        mt5_card = self._section_card(parent, "MT5 CONNECTION", "🔗")
-        mt5_card.pack(fill="x", padx=4, pady=(4, 2))
+        mt5_top = ttk.Frame(mt5_frame, style='CardBG.TFrame')
+        mt5_top.pack(fill=tk.X, pady=1)
+        ttk.Label(mt5_top, text="Login:", width=10, style='CardBG.TLabel').pack(side=tk.LEFT)
+        self.mt5_login = ttk.Entry(mt5_top, width=16)
+        self.mt5_login.pack(side=tk.LEFT, padx=3)
+        ttk.Label(mt5_top, text="Pass:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(6, 0))
+        self.mt5_password = ttk.Entry(mt5_top, width=16, show="*")
+        self.mt5_password.pack(side=tk.LEFT, padx=3)
+        ttk.Label(mt5_top, text="Server:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(6, 0))
+        self.mt5_server = ttk.Entry(mt5_top, width=20)
+        self.mt5_server.pack(side=tk.LEFT, padx=3)
 
-        mt5_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
-                  tk.Frame(mt5_card, bg="#161B22")
-        mt5_row.pack(fill="x", padx=10, pady=(2, 2))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(mt5_row, text="Login:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
-        self.mt5_login = self._ctk_entry(mt5_row, width=120)
-        self.mt5_login.pack(side="left", padx=(0, 8))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(mt5_row, text="Pass:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
-        self.mt5_password = self._ctk_entry(mt5_row, width=120, show="*")
-        self.mt5_password.pack(side="left", padx=(0, 8))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(mt5_row, text="Server:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
-        self.mt5_server = self._ctk_entry(mt5_row, width=160)
-        self.mt5_server.pack(side="left", padx=(0, 8))
-
-        mt5_btn_row = ctk.CTkFrame(mt5_card, fg_color="transparent") if CTK_AVAILABLE else \
-                      tk.Frame(mt5_card, bg="#161B22")
-        mt5_btn_row.pack(fill="x", padx=10, pady=(0, 4))
-        self.mt5_btn = self._ctk_button(mt5_btn_row, text="Connect MT5",
-                                        command=self.toggle_mt5_connection,
-                                        fg="#24292F", hover="#000000", width=140)
-        self.mt5_btn.pack(side="left")
+        mt5_btn_row = ttk.Frame(mt5_frame, style='CardBG.TFrame')
+        mt5_btn_row.pack(fill=tk.X, pady=(3, 0))
+        self.mt5_btn = ttk.Button(mt5_btn_row, text="Connect MT5", command=self.toggle_mt5_connection)
+        self.mt5_btn.pack(side=tk.LEFT)
 
         if not TRADING_ENGINE_AVAILABLE:
-            if CTK_AVAILABLE:
-                ctk.CTkLabel(mt5_card, text="Trading engine modules not loaded — broker trading unavailable.",
-                             font=("Segoe UI", 9, "italic"), text_color=self.C_GOLD,
-                             wraplength=500).pack(padx=12, pady=(0, 8))
+            ttk.Label(mt5_frame,
+                text="Trading engine modules not loaded â€” broker trading unavailable. MT5 data push still works.",
+                foreground='#f59e0b', font=('Segoe UI', 9, 'italic'), background='#111827',
+                wraplength=500).pack(pady=(6, 0))
             return
 
-        # ── Broker Connections Card ──
-        broker_card = self._section_card(parent, "BROKER CONNECTIONS", "🏦")
-        broker_card.pack(fill="x", padx=4, pady=2)
+        # â”€â”€ Broker Connection card (compact) â”€â”€
+        broker_frame = ttk.LabelFrame(parent, text="ðŸ¦  Broker Connection", padding=8)
+        broker_frame.pack(fill=tk.X, padx=6, pady=3)
 
-        # Global settings row: Platform + Mode + Connect All
-        bk_global = ctk.CTkFrame(broker_card, fg_color="transparent") if CTK_AVAILABLE else \
-                    tk.Frame(broker_card, bg="#161B22")
-        bk_global.pack(fill="x", padx=10, pady=(2, 2))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(bk_global, text="Platform:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+        bk_row = ttk.Frame(broker_frame, style='CardBG.TFrame')
+        bk_row.pack(fill=tk.X, pady=1)
+        ttk.Label(bk_row, text="Platform:", style='CardBG.TLabel').pack(side=tk.LEFT)
         self.broker_var = tk.StringVar(value="Tradovate")
-        platforms = ["Tradovate", "TopStepX"]
-        if CTK_AVAILABLE:
-            ctk.CTkComboBox(bk_global, variable=self.broker_var, values=platforms,
-                            state="readonly", width=120, height=30,
-                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
-                            dropdown_fg_color=self.C_BG_SEC).pack(side="left", padx=(0, 12))
-        else:
-            ttk.Combobox(bk_global, textvariable=self.broker_var, values=platforms,
-                         state='readonly', width=14).pack(side="left", padx=(0, 8))
+        platforms = ["Tradovate"]
+        if TOPSTEPX_AVAILABLE:
+            platforms.append("TopStepX")
+        ttk.Combobox(bk_row, textvariable=self.broker_var, values=platforms,
+                     state='readonly', width=14).pack(side=tk.LEFT, padx=4)
+        ttk.Label(bk_row, text="User:", style='CardBG.TLabel').pack(side=tk.LEFT, padx=(4, 0))
+        self.broker_user = ttk.Entry(bk_row, width=14)
+        self.broker_user.pack(side=tk.LEFT, padx=3)
+        ttk.Label(bk_row, text="Pass:", style='CardBG.TLabel').pack(side=tk.LEFT)
+        self.broker_pass = ttk.Entry(bk_row, width=14, show="*")
+        self.broker_pass.pack(side=tk.LEFT, padx=3)
 
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(bk_global, text="Mode:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
+        bk_row2 = ttk.Frame(broker_frame, style='CardBG.TFrame')
+        bk_row2.pack(fill=tk.X, pady=(2, 0))
+        ttk.Label(bk_row2, text="Mode:", style='CardBG.TLabel').pack(side=tk.LEFT)
         self.trading_mode_var = tk.StringVar(value="Simulation")
-        if CTK_AVAILABLE:
-            ctk.CTkComboBox(bk_global, variable=self.trading_mode_var,
-                            values=["Simulation", "Live"], state="readonly",
-                            width=120, height=30, fg_color=self.C_BG_THIRD,
-                            border_color=self.C_BORDER, button_color=self.C_ACCENT,
-                            text_color=self.C_TEXT,
-                            dropdown_fg_color=self.C_BG_SEC).pack(side="left", padx=(0, 12))
-        else:
-            ttk.Combobox(bk_global, textvariable=self.trading_mode_var,
-                         values=["Simulation", "Live"], state='readonly', width=14).pack(side="left", padx=(0, 10))
+        ttk.Combobox(bk_row2, textvariable=self.trading_mode_var,
+                     values=["Simulation", "Live"], state='readonly', width=14).pack(side=tk.LEFT, padx=4)
+        self.broker_connect_btn = ttk.Button(bk_row2, text="Connect Broker", command=self._connect_broker)
+        self.broker_connect_btn.pack(side=tk.LEFT, padx=(10, 0))
+        self.broker_status_var = tk.StringVar(value="Not Connected")
+        ttk.Label(bk_row2, textvariable=self.broker_status_var,
+                  foreground='#94a3b8', font=('Segoe UI', 9), background='#111827').pack(side=tk.LEFT, padx=6)
 
-        self.broker_connect_all_btn = self._ctk_button(bk_global, text="Connect All",
-                                                        command=self._connect_all_brokers,
-                                                        fg="#24292F", hover="#000000", width=100)
-        self.broker_connect_all_btn.pack(side="left", padx=(0, 6))
-
-        self.broker_status_var = tk.StringVar(value="")
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(bk_global, textvariable=self.broker_status_var,
-                         font=("Segoe UI", 9), text_color=self.C_TEXT_DIM).pack(side="left")
-        else:
-            ttk.Label(bk_global, textvariable=self.broker_status_var).pack(side="left")
-
-        # Dynamic broker rows container (populated when trades load)
-        self._broker_rows_frame = ctk.CTkFrame(broker_card, fg_color="transparent") if CTK_AVAILABLE else \
-                                  tk.Frame(broker_card, bg="#161B22")
-        self._broker_rows_frame.pack(fill="x", padx=6, pady=(0, 4))
-
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(self._broker_rows_frame,
-                         text="Load trades to populate prop firm connections",
-                         font=("Segoe UI", 9, "italic"), text_color="#4A5568").pack(pady=4)
-
-        # ── Hedge Mode / Direction (inline) ──
-        opts_row = ctk.CTkFrame(parent, fg_color="transparent") if CTK_AVAILABLE else \
-                   tk.Frame(parent)
-        opts_row.pack(fill="x", padx=10, pady=(2, 2))
-
+        # â”€â”€ Hedge Mode / Direction (compact inline) â”€â”€
+        opts_frame = ttk.Frame(parent, style='TFrame')
+        opts_frame.pack(fill=tk.X, padx=6, pady=(4, 2))
         self.hedge_mode_var = tk.StringVar(value="Hedging")
-        if CTK_AVAILABLE:
-            ctk.CTkRadioButton(opts_row, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
-                               value="Hedging", font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 12))
-            ctk.CTkRadioButton(opts_row, text="Broker Only", variable=self.hedge_mode_var,
-                               value="BrokerOnly", font=("Segoe UI", 11), text_color=self.C_TEXT,
-                               fg_color=self.C_ACCENT, border_color=self.C_BORDER).pack(side="left", padx=(0, 20))
-        else:
-            ttk.Radiobutton(opts_row, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
-                            value="Hedging").pack(side="left", padx=(0, 8))
-            ttk.Radiobutton(opts_row, text="Broker Only", variable=self.hedge_mode_var,
-                            value="BrokerOnly").pack(side="left", padx=(0, 16))
-
+        ttk.Radiobutton(opts_frame, text="Hedging (Broker+MT5)", variable=self.hedge_mode_var,
+                        value="Hedging").pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Radiobutton(opts_frame, text="Broker Only", variable=self.hedge_mode_var,
+                        value="BrokerOnly").pack(side=tk.LEFT, padx=(0, 16))
         self.direction_var = tk.StringVar(value="All Trades")
-        if CTK_AVAILABLE:
-            ctk.CTkLabel(opts_row, text="Direction:", font=("Segoe UI", 11),
-                         text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 4))
-            ctk.CTkComboBox(opts_row, variable=self.direction_var,
-                            values=["All Trades", "Buy Only", "Sell Only"],
-                            state="readonly", width=130, height=32,
-                            fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                            button_color=self.C_ACCENT, text_color=self.C_TEXT,
-                            dropdown_fg_color=self.C_BG_SEC).pack(side="left")
-        else:
-            ttk.Label(opts_row, text="Direction:").pack(side="left", padx=(0, 4))
-            ttk.Combobox(opts_row, textvariable=self.direction_var,
-                         values=["All Trades", "Buy Only", "Sell Only"],
-                         state='readonly', width=12).pack(side="left")
+        ttk.Label(opts_frame, text="Direction:").pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Combobox(opts_frame, textvariable=self.direction_var,
+                     values=["All Trades", "Buy Only", "Sell Only"],
+                     state='readonly', width=12).pack(side=tk.LEFT)
 
-        # ── Hidden vars for backward compat with save/load config ──
+        # â”€â”€ Auto-Trade Scheduler Card â”€â”€
+        auto_frame = ttk.LabelFrame(parent, text="â°  Auto-Trade Scheduler", padding=8)
+        auto_frame.pack(fill=tk.X, padx=6, pady=(4, 3))
+
+        auto_row1 = ttk.Frame(auto_frame, style='CardBG.TFrame')
+        auto_row1.pack(fill=tk.X, pady=(0, 4))
+
+        self.auto_trade_btn = tk.Button(
+            auto_row1, text="â–¶  Start Auto-Trade", bg='#3b82f6', fg='white',
+            activebackground='#2563eb', activeforeground='white',
+            font=('Segoe UI', 9, 'bold'), relief='flat', padx=12, pady=3,
+            command=self._toggle_auto_trade)
+        self.auto_trade_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.auto_trade_status_var = tk.StringVar(value="Auto-trade off")
+        ttk.Label(auto_row1, textvariable=self.auto_trade_status_var,
+                  foreground='#94a3b8', font=('Segoe UI', 9),
+                  background='#111827').pack(side=tk.LEFT, padx=4)
+
+        auto_row2 = ttk.Frame(auto_frame, style='CardBG.TFrame')
+        auto_row2.pack(fill=tk.X)
+        self.auto_trade_countdown_var = tk.StringVar(value="")
+        ttk.Label(auto_row2, textvariable=self.auto_trade_countdown_var,
+                  foreground='#fbbf24', font=('Consolas', 9),
+                  background='#111827').pack(side=tk.LEFT)
+
+        # Per-firm direction display (populated when auto-trade starts)
+        self.auto_trade_firms_var = tk.StringVar(value="")
+        ttk.Label(auto_frame, textvariable=self.auto_trade_firms_var,
+                  foreground='#e2e8f0', font=('Consolas', 9),
+                  background='#111827', justify='left').pack(fill=tk.X, pady=(2, 0))
+
+        # â”€â”€ Active Trades list card â”€â”€
+        trades_frame = ttk.LabelFrame(parent, text="ðŸ“‹  Active Trades", padding=8)
+        trades_frame.pack(fill=tk.X, padx=6, pady=(4, 3))
+
+        # Top bar with Load button
+        trades_top = ttk.Frame(trades_frame, style='CardBG.TFrame')
+        trades_top.pack(fill=tk.X, pady=(0, 4))
+        self.load_trades_btn = ttk.Button(trades_top, text="ðŸ”„  Load Trades from Dashboard",
+                                          command=self._load_active_trades)
+        self.load_trades_btn.pack(side=tk.LEFT)
+        self.trades_count_var = tk.StringVar(value="No trades loaded")
+        ttk.Label(trades_top, textvariable=self.trades_count_var,
+                  foreground='#94a3b8', font=('Segoe UI', 9), background='#111827').pack(side=tk.LEFT, padx=10)
+
+        # Column headers
+        hdr = ttk.Frame(trades_frame, style='CardBG.TFrame')
+        hdr.pack(fill=tk.X, pady=(0, 2))
+        ttk.Label(hdr, text="Prop Firm", width=14, style='SectionHead.TLabel',
+                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+        ttk.Label(hdr, text="Account", width=10, style='SectionHead.TLabel',
+                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+        ttk.Label(hdr, text="Size", width=8, style='SectionHead.TLabel',
+                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+        ttk.Label(hdr, text="Current Phase", width=14, style='SectionHead.TLabel',
+                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+        ttk.Label(hdr, text="Next Phase", width=14, style='SectionHead.TLabel',
+                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+        ttk.Label(hdr, text="Action", width=16, style='SectionHead.TLabel',
+                  font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+
+        # Scrollable trade rows container
+        trades_canvas = tk.Canvas(trades_frame, bg='#111827', highlightthickness=0, height=300)
+        trades_scrollbar = ttk.Scrollbar(trades_frame, orient="vertical", command=trades_canvas.yview)
+        self._trades_inner = ttk.Frame(trades_canvas, style='CardBG.TFrame')
+        self._trades_inner.bind("<Configure>",
+            lambda e: trades_canvas.configure(scrollregion=trades_canvas.bbox("all")))
+        trades_canvas.create_window((0, 0), window=self._trades_inner, anchor="nw")
+        trades_canvas.configure(yscrollcommand=trades_scrollbar.set)
+        trades_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        trades_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Mouse wheel for trade list
+        def _on_trades_wheel(event):
+            trades_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        trades_canvas.bind_all("<MouseWheel>", _on_trades_wheel)
+
+        # â”€â”€ Hidden vars for backward compat with save/load config â”€â”€
         self.prop_firm_var = tk.StringVar(value="MFFU_Flex")
         self.phase_var = tk.StringVar(value="challenge_trade1")
         self.acct_size_var = tk.StringVar(value="$50,000")
@@ -3462,7 +2953,7 @@ class TraderCompanionApp:
         self.phase_combo = ttk.Combobox(parent)
         self.acct_size_combo = ttk.Combobox(parent)
 
-    # ── Phase detection helpers ──
+    # â”€â”€ Phase detection helpers â”€â”€
 
     _FIRM_MAP = {
         "My Funded Futures": "MFFU_Flex",
@@ -3497,10 +2988,10 @@ class TraderCompanionApp:
     def _get_next_phase(self, firm_code, current_display):
         """Get the next phase display name from trading_phases progression."""
         if not self.prop_firm_mgr:
-            return "—"
+            return "â€”"
         phases = self.prop_firm_mgr.get_prop_firm_trading_phases(firm_code)
         if not phases:
-            return "—"
+            return "â€”"
 
         # Match current_display to a phase in the list
         current_idx = -1
@@ -3510,7 +3001,7 @@ class TraderCompanionApp:
                 break
 
         if current_idx < 0:
-            # Not found — guess by keyword
+            # Not found â€” guess by keyword
             for i, ph in enumerate(phases):
                 if "challenge" in ph.lower() and "challenge" in current_display.lower():
                     current_idx = i
@@ -3523,7 +3014,7 @@ class TraderCompanionApp:
                     break
 
         if current_idx < 0 or current_idx >= len(phases) - 1:
-            return "Complete ✓"
+            return "Complete âœ“"
 
         return phases[current_idx + 1]
 
@@ -3553,7 +3044,7 @@ class TraderCompanionApp:
             return
 
         self.log("Loading active trades from dashboard...")
-        self.load_trades_btn.configure(state='disabled')
+        self.load_trades_btn.config(state='disabled')
         self.trades_count_var.set("Loading...")
 
         def _do_load():
@@ -3591,207 +3082,85 @@ class TraderCompanionApp:
 
                 self.root.after(0, lambda ae=active_evals: self._populate_trade_rows(ae))
 
-                # Populate broker connection rows per prop firm
-                prop_accounts = data.get("prop_accounts", [])
-                self.root.after(0, lambda ae=active_evals, pa=prop_accounts: self._populate_broker_rows(ae, pa))
-
             except Exception as e:
                 self.root.after(0, lambda: self.log(f"Load trades failed: {e}", "ERROR"))
                 self.root.after(0, lambda: self.trades_count_var.set("Load failed"))
             finally:
-                self.root.after(0, lambda: self.load_trades_btn.configure(state='normal'))
+                self.root.after(0, lambda: self.load_trades_btn.config(state='normal'))
 
         threading.Thread(target=_do_load, daemon=True).start()
 
-    # Futuristic phase badge palette (border_color, bg, fg)
-    _PHASE_GLOW = {
-        "Challenge": ("#F59E0B", "#1A1000", "#FBBF24"),
-        "Funded":    ("#22C55E", "#001A0A", "#4ADE80"),
-        "Farming":   ("#3B82F6", "#001030", "#60A5FA"),
-    }
-
     def _populate_trade_rows(self, evaluations):
-        """Clear and rebuild the active trade rows — futuristic terminal style."""
+        """Clear and rebuild the active trade rows."""
+        # Clear existing rows
         for child in self._trades_inner.winfo_children():
             child.destroy()
         self._active_trade_rows.clear()
 
         if not evaluations:
-            if CTK_AVAILABLE:
-                empty = ctk.CTkFrame(self._trades_inner, fg_color="transparent")
-                empty.pack(fill="both", expand=True, pady=40)
-                ctk.CTkLabel(empty, text="⟐", font=("Consolas", 28),
-                             text_color="#0F4C75").pack()
-                ctk.CTkLabel(empty, text="NO ACTIVE TRADES DETECTED",
-                             font=("Consolas", 11, "bold"),
-                             text_color="#1B4965").pack(pady=(4, 2))
-                ctk.CTkLabel(empty, text="Connect and verify access to populate",
-                             font=("Consolas", 9),
-                             text_color="#0F3460").pack()
-            else:
-                tk.Label(self._trades_inner, text="No active trades found",
-                         fg='#94a3b8', bg='#020A14', font=('Segoe UI', 10, 'italic')).pack(pady=20)
-            self.trades_count_var.set("[ 0 ]")
+            ttk.Label(self._trades_inner, text="No active trades found",
+                      foreground='#94a3b8', font=('Segoe UI', 10, 'italic'),
+                      background='#111827').pack(pady=20)
+            self.trades_count_var.set("0 active trades")
             return
-
-        # Daily bias per prop firm (persisted, resets each day)
-        firms_seen = set()
-        for ev in evaluations:
-            firms_seen.add(ev.get("Prop Firm", "Unknown"))
-        firm_bias = self._get_daily_bias(firms_seen)
-        # Store for auto-trade compatibility
-        self._auto_trade_firm_sides = firm_bias
-
-        # Log bias
-        bias_parts = []
-        for f, s in sorted(firm_bias.items()):
-            arrow = "▲" if s == "buy" else "▼"
-            bias_parts.append(f"{arrow} {f}: {s.upper()}")
-        self.log(f"Direction bias: {', '.join(bias_parts)}")
 
         for idx, ev in enumerate(evaluations):
             prop_firm_name = ev.get("Prop Firm", "Unknown")
             firm_code = self._FIRM_MAP.get(prop_firm_name, "MFFU_Flex")
-            acct_num = (ev.get("Account #.1", "") or ev.get("Account #", "") or "—").strip()
-            acct_size = ev.get("Account Size", "—") or "—"
+            acct_num = (ev.get("Account #.1", "") or ev.get("Account #", "") or "â€”").strip()
+            acct_size = ev.get("Account Size", "â€”") or "â€”"
             current_display, phase_key = self._detect_eval_phase(ev)
             next_display = self._get_next_phase(firm_code, current_display)
 
-            strip_color = self.PROP_FIRM_COLORS.get(prop_firm_name, "#95A5A6")
-            glow_border, glow_bg, glow_fg = self._PHASE_GLOW.get(
-                current_display, ("#475569", "#0A0F1A", "#94A3B8"))
+            # Alternating row color
+            row_bg = '#0f1729' if idx % 2 == 0 else '#111827'
 
-            bias = firm_bias.get(prop_firm_name, "buy")
+            row_frame = tk.Frame(self._trades_inner, bg=row_bg)
+            row_frame.pack(fill=tk.X, pady=1)
 
-            if CTK_AVAILABLE:
-                row_bg = "#050D18" if idx % 2 == 0 else "#071020"
-                row_frame = ctk.CTkFrame(self._trades_inner, fg_color=row_bg,
-                                         corner_radius=4, height=44,
-                                         border_width=1, border_color="#0A1628")
-                row_frame.pack(fill="x", pady=1, padx=1)
-                row_frame.pack_propagate(False)
+            tk.Label(row_frame, text=prop_firm_name[:16], width=14, anchor='w',
+                     bg=row_bg, fg='#e2e8f0', font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=2)
+            tk.Label(row_frame, text=acct_num[:12], width=10, anchor='w',
+                     bg=row_bg, fg='#cbd5e1', font=('Consolas', 9)).pack(side=tk.LEFT, padx=2)
+            tk.Label(row_frame, text=acct_size[:10], width=8, anchor='w',
+                     bg=row_bg, fg='#94a3b8', font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=2)
+            tk.Label(row_frame, text=current_display, width=14, anchor='w',
+                     bg=row_bg, fg='#fbbf24', font=('Segoe UI', 9, 'bold')).pack(side=tk.LEFT, padx=2)
+            tk.Label(row_frame, text=next_display, width=14, anchor='w',
+                     bg=row_bg, fg='#38bdf8', font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=2)
 
-                # Left accent bar
-                ctk.CTkFrame(row_frame, width=3, fg_color=strip_color,
-                             corner_radius=0).pack(side="left", fill="y")
+            # BUY / SELL buttons
+            btn_frame = tk.Frame(row_frame, bg=row_bg)
+            btn_frame.pack(side=tk.LEFT, padx=4)
 
-                # Prop firm name — aligned with header col
-                ctk.CTkLabel(row_frame, text=prop_firm_name[:18], width=110,
-                             font=("Consolas", 10, "bold"), text_color=strip_color,
-                             anchor="w").pack(side="left", padx=(8, 0))
+            row_data = {
+                "frame": row_frame,
+                "eval": ev,
+                "firm_code": firm_code,
+                "phase_key": phase_key,
+                "acct_size": acct_size,
+                "acct_num": acct_num,
+                "current_phase": current_display,
+            }
 
-                # Account number
-                acct_display = acct_num[-8:] if len(acct_num) > 8 else acct_num
-                ctk.CTkLabel(row_frame, text=acct_display,
-                             width=88, font=("Consolas", 10),
-                             text_color="#6B8DAD", anchor="w").pack(side="left", padx=(8, 0))
+            buy_btn = tk.Button(btn_frame, text="â–² BUY", bg='#16a34a', fg='white',
+                                activebackground='#15803d', activeforeground='white',
+                                font=('Segoe UI', 8, 'bold'), relief='flat', padx=6, pady=1,
+                                command=lambda rd=row_data: self._execute_row_trade("buy", rd))
+            buy_btn.pack(side=tk.LEFT, padx=(0, 4))
 
-                # Size
-                ctk.CTkLabel(row_frame, text=acct_size[:10], width=68,
-                             font=("Consolas", 10), text_color="#4A7C8F",
-                             anchor="w").pack(side="left", padx=(8, 0))
-
-                # Phase badge — neon pill with border glow
-                phase_holder = ctk.CTkFrame(row_frame, fg_color="transparent", width=88)
-                phase_holder.pack(side="left", padx=(8, 0))
-                phase_holder.pack_propagate(False)
-                phase_pill = ctk.CTkFrame(phase_holder, fg_color=glow_bg,
-                                          corner_radius=8, border_width=1,
-                                          border_color=glow_border)
-                phase_pill.pack(side="left", pady=6)
-                ctk.CTkLabel(phase_pill, text=current_display.upper(),
-                             font=("Consolas", 8, "bold"),
-                             text_color=glow_fg).pack(padx=8, pady=1)
-
-                # Next phase with arrow
-                ctk.CTkLabel(row_frame, text=f"→ {next_display}", width=100,
-                             font=("Consolas", 9), text_color="#00D4FF",
-                             anchor="w").pack(side="left", padx=(8, 0))
-
-                # BUY / SELL action buttons — bias-aware
-                btn_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-                btn_frame.pack(side="right", padx=8)
-
-                row_data = {
-                    "frame": row_frame, "eval": ev, "firm_code": firm_code,
-                    "phase_key": phase_key, "acct_size": acct_size,
-                    "acct_num": acct_num, "current_phase": current_display,
-                }
-
-                # Active button gets neon glow, opposite gets muted/grayed
-                if bias == "buy":
-                    buy_fg, buy_brd, buy_txt = "#052E16", "#16A34A", "#4ADE80"
-                    sell_fg, sell_brd, sell_txt = "#0A0F1A", "#1A1A2E", "#2A3040"
-                else:
-                    buy_fg, buy_brd, buy_txt = "#0A0F1A", "#1A1A2E", "#2A3040"
-                    sell_fg, sell_brd, sell_txt = "#2D0A0A", "#DC2626", "#F87171"
-
-                buy_btn = ctk.CTkButton(btn_frame, text="▲ BUY", width=58, height=26,
-                                        fg_color=buy_fg, hover_color="#14532D" if bias == "buy" else "#0A0F1A",
-                                        border_width=1, border_color=buy_brd,
-                                        font=("Consolas", 9, "bold"),
-                                        text_color=buy_txt, corner_radius=4,
-                                        command=lambda rd=row_data: self._execute_row_trade("buy", rd))
-                buy_btn.pack(side="left", padx=(0, 3))
-
-                sell_btn = ctk.CTkButton(btn_frame, text="▼ SELL", width=58, height=26,
-                                         fg_color=sell_fg, hover_color="#450A0A" if bias == "sell" else "#0A0F1A",
-                                         border_width=1, border_color=sell_brd,
-                                         font=("Consolas", 9, "bold"),
-                                         text_color=sell_txt, corner_radius=4,
-                                         command=lambda rd=row_data: self._execute_row_trade("sell", rd))
-                sell_btn.pack(side="left")
-            else:
-                # Fallback plain tk
-                row_bg = '#050D18' if idx % 2 == 0 else '#071020'
-                row_frame = tk.Frame(self._trades_inner, bg=row_bg)
-                row_frame.pack(fill="x", pady=1)
-
-                tk.Label(row_frame, text=prop_firm_name[:16], width=14, anchor='w',
-                         bg=row_bg, fg='#e2e8f0', font=('Consolas', 9)).pack(side="left", padx=2)
-                tk.Label(row_frame, text=acct_num[:12], width=10, anchor='w',
-                         bg=row_bg, fg='#6B8DAD', font=('Consolas', 9)).pack(side="left", padx=2)
-                tk.Label(row_frame, text=acct_size[:10], width=8, anchor='w',
-                         bg=row_bg, fg='#4A7C8F', font=('Consolas', 9)).pack(side="left", padx=2)
-                tk.Label(row_frame, text=current_display, width=14, anchor='w',
-                         bg=row_bg, fg='#fbbf24', font=('Consolas', 9, 'bold')).pack(side="left", padx=2)
-                tk.Label(row_frame, text=f"→ {next_display}", width=14, anchor='w',
-                         bg=row_bg, fg='#00D4FF', font=('Consolas', 9)).pack(side="left", padx=2)
-
-                btn_frame = tk.Frame(row_frame, bg=row_bg)
-                btn_frame.pack(side="left", padx=4)
-
-                row_data = {
-                    "frame": row_frame, "eval": ev, "firm_code": firm_code,
-                    "phase_key": phase_key, "acct_size": acct_size,
-                    "acct_num": acct_num, "current_phase": current_display,
-                }
-
-                buy_btn = tk.Button(btn_frame, text="▲ BUY",
-                                    bg='#052E16' if bias == 'buy' else '#0A0F1A',
-                                    fg='#4ADE80' if bias == 'buy' else '#2A3040',
-                                    font=('Consolas', 8, 'bold'), relief='flat', padx=6, pady=1,
-                                    command=lambda rd=row_data: self._execute_row_trade("buy", rd))
-                buy_btn.pack(side="left", padx=(0, 4))
-
-                sell_btn = tk.Button(btn_frame, text="▼ SELL",
-                                     bg='#2D0A0A' if bias == 'sell' else '#0A0F1A',
-                                     fg='#F87171' if bias == 'sell' else '#2A3040',
-                                     font=('Consolas', 8, 'bold'), relief='flat', padx=6, pady=1,
-                                     command=lambda rd=row_data: self._execute_row_trade("sell", rd))
-                sell_btn.pack(side="left")
+            sell_btn = tk.Button(btn_frame, text="â–¼ SELL", bg='#dc2626', fg='white',
+                                 activebackground='#b91c1c', activeforeground='white',
+                                 font=('Segoe UI', 8, 'bold'), relief='flat', padx=6, pady=1,
+                                 command=lambda rd=row_data: self._execute_row_trade("sell", rd))
+            sell_btn.pack(side=tk.LEFT)
 
             row_data["buy_btn"] = buy_btn
             row_data["sell_btn"] = sell_btn
             self._active_trade_rows.append(row_data)
 
         count = len(self._active_trade_rows)
-        self.trades_count_var.set(f"[ {count} ]")
-        # Update stats strip
-        try:
-            self._stat_queue_var.set(f"Queue: {count}")
-        except Exception:
-            pass
+        self.trades_count_var.set(f"{count} active trade{'s' if count != 1 else ''}")
         self.log(f"Loaded {count} active trades from dashboard")
 
     def _execute_row_trade(self, side, row_data):
@@ -3820,11 +3189,10 @@ class TraderCompanionApp:
 
         hedging = self.hedge_mode_var.get() == "Hedging"
         platform = self.broker_var.get()
-        prop_firm_name = row_data["eval"].get("Prop Firm", firm_code) if row_data.get("eval") else firm_code
-        broker_account = self._get_broker_for_firm(prop_firm_name)
+        broker_account = self.tradovate_account if platform == "Tradovate" else self.topstepx_account
 
         if not broker_account:
-            messagebox.showerror("Error", f"Connect broker for {prop_firm_name} first")
+            messagebox.showerror("Error", f"Connect to {platform} first")
             return
 
         mt5_api = None
@@ -3855,12 +3223,10 @@ class TraderCompanionApp:
             return
 
         # Disable buttons immediately
-        row_data["buy_btn"].configure(state='disabled', text="...")
-        row_data["sell_btn"].configure(state='disabled', text="...")
+        row_data["buy_btn"].config(state='disabled', text="...")
+        row_data["sell_btn"].config(state='disabled', text="...")
 
-        prop_name = ev.get("Prop Firm", firm_code) if (ev := row_data.get("eval")) else firm_code
-        hedge_tag = f" ↔ MT5 {'SELL' if side == 'buy' else 'BUY'} {mt5_vol} {mt5_sym}" if hedging else ""
-        self.log(f"⚡ {side.upper()} {trado_qty} {trado_sym} → {prop_name} {acct_num} [{row_data['current_phase']}]{hedge_tag}")
+        self.log(f"Executing {side.upper()} for {acct_num} ({firm_code} {row_data['current_phase']})...")
 
         def _do_trade():
             try:
@@ -3876,7 +3242,7 @@ class TraderCompanionApp:
                     else:
                         broker_account.place_sell_order(trado_sym, trado_qty)
 
-                self.log(f"✅ {platform} filled {side.upper()} {trado_qty} {trado_sym} | TP:{trado_tp}t SL:{trado_sl}t | {acct_num}")
+                self.log(f"âœ… {platform} {side.upper()} {trado_qty} {trado_sym} â€” Acct {acct_num}")
 
                 # 2. MT5 hedge (opposite direction)
                 if hedging and mt5_api:
@@ -3886,7 +3252,9 @@ class TraderCompanionApp:
                         mt5_api.buy_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
                     else:
                         mt5_api.sell_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
-                    self.log(f"✅ MT5 hedge {hedge_side.upper()} {mt5_vol} {mt5_sym} TP:{mt5_tp} SL:{mt5_sl} comment:{comment}")
+                    self.log(f"âœ… MT5 Hedge {hedge_side.upper()} {mt5_vol} {mt5_sym}")
+
+                self.log(f"âœ… Trade complete for {acct_num}")
 
                 # Remove row from list
                 def _remove():
@@ -3896,28 +3264,20 @@ class TraderCompanionApp:
                     remaining = len(self._active_trade_rows)
                     self.trades_count_var.set(
                         f"{remaining} active trade{'s' if remaining != 1 else ''}"
-                        if remaining > 0 else "All trades complete ✓")
-                    try:
-                        self._stat_queue_var.set(f"Queue: {remaining}")
-                        # Increment trade count
-                        cur = self._stat_trades_var.get()
-                        n = int(cur.split(":")[1].strip()) + 1 if ":" in cur else 1
-                        self._stat_trades_var.set(f"Trades: {n}")
-                    except Exception:
-                        pass
+                        if remaining > 0 else "All trades complete âœ“")
 
                 self.root.after(0, _remove)
 
             except Exception as e:
-                self.log(f"❌ Trade failed for {acct_num}: {e}", "ERROR")
+                self.log(f"âŒ Trade failed for {acct_num}: {e}", "ERROR")
                 self.root.after(0, lambda: messagebox.showerror("Trade Error", str(e)))
                 # Re-enable buttons on failure
-                self.root.after(0, lambda: row_data["buy_btn"].configure(state='normal', text="▲ BUY"))
-                self.root.after(0, lambda: row_data["sell_btn"].configure(state='normal', text="▼ SELL"))
+                self.root.after(0, lambda: row_data["buy_btn"].config(state='normal', text="â–² BUY"))
+                self.root.after(0, lambda: row_data["sell_btn"].config(state='normal', text="â–¼ SELL"))
 
         threading.Thread(target=_do_trade, daemon=True).start()
 
-    # ── Auto-Trade Scheduler Logic ──
+    # â”€â”€ Auto-Trade Scheduler Logic â”€â”€
 
     def _toggle_auto_trade(self):
         """Toggle the auto-trade scheduler on/off."""
@@ -3932,73 +3292,64 @@ class TraderCompanionApp:
 
         # Validation: need trades loaded
         if not self._active_trade_rows:
-            self.log("⚠ Load trades first before enabling auto-trade", "WARN")
+            self.log("âš  Load trades first before enabling auto-trade", "WARN")
             return
 
-        # Validation: need at least one broker connected
-        connected_firms = [f for f, c in self._broker_connections.items() if c.get("account")]
-        if not connected_firms:
-            self.log("⚠ Connect at least one broker before enabling auto-trade", "WARN")
+        # Validation: need broker connected
+        platform = self.broker_var.get()
+        broker_account = self.tradovate_account if platform == "Tradovate" else self.topstepx_account
+        if not broker_account:
+            self.log(f"âš  Connect to {platform} first before enabling auto-trade", "WARN")
             return
 
         # Validation: hedging mode needs MT5
         if self.hedge_mode_var.get() == "Hedging":
             mt5_api = self._get_mt5_trading_api()
             if not mt5_api:
-                self.log("⚠ Connect MT5 first for hedging mode auto-trade", "WARN")
+                self.log("âš  Connect MT5 first for hedging mode auto-trade", "WARN")
                 return
 
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
 
-        immediate = self.auto_trade_immediate_var.get()
+        # Base time: 2:05 AM EAT today (or tomorrow if already past ~5:05 AM)
+        base = now_eat.replace(hour=2, minute=5, second=0, microsecond=0)
 
-        if immediate:
-            # Execute immediately (5-second grace period)
-            scheduled_eat = now_eat + timedelta(seconds=5)
-            offset_minutes = 0
-        else:
-            # Base time: 2:05 AM EAT today (or tomorrow if already past ~5:05 AM)
-            base = now_eat.replace(hour=2, minute=5, second=0, microsecond=0)
+        # Random offset: 0 to 180 minutes (3 hours)
+        offset_minutes = random.randint(0, 180)
+        scheduled_eat = base + timedelta(minutes=offset_minutes)
 
-            # Random offset: 0 to 180 minutes (3 hours)
-            offset_minutes = random.randint(0, 180)
-            scheduled_eat = base + timedelta(minutes=offset_minutes)
-
-            # If the scheduled time already passed today, schedule for tomorrow
-            if scheduled_eat <= now_eat:
-                scheduled_eat += timedelta(days=1)
+        # If the scheduled time already passed today, schedule for tomorrow
+        if scheduled_eat <= now_eat:
+            scheduled_eat += timedelta(days=1)
 
         self._auto_trade_scheduled_dt = scheduled_eat
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
 
-        # Daily bias per prop firm (persisted, resets each day)
+        # Randomize direction per prop firm
         firms_in_rows = set()
         for rd in self._active_trade_rows:
             firm_name = rd["eval"].get("Prop Firm", rd["firm_code"])
             firms_in_rows.add(firm_name)
-        self._auto_trade_firm_sides = self._get_daily_bias(firms_in_rows)
+        self._auto_trade_firm_sides = {}
+        for firm in sorted(firms_in_rows):
+            self._auto_trade_firm_sides[firm] = random.choice(["buy", "sell"])
 
         # Build display string
         dir_lines = []
         for firm, s in self._auto_trade_firm_sides.items():
-            arrow = "▲" if s == "buy" else "▼"
+            arrow = "â–²" if s == "buy" else "â–¼"
             dir_lines.append(f"  {arrow} {s.upper():4s}  {firm}")
         self.auto_trade_firms_var.set("\n".join(dir_lines))
 
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
-        self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
-        if CTK_AVAILABLE:
-            self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
-        if immediate:
-            self.auto_trade_status_var.set("Executing in 5s — random dirs per firm")
-            self.log(f"⚡ Auto-trade starting immediately — random dirs per firm")
-        else:
-            self.auto_trade_status_var.set(f"Scheduled at {time_str} — random dirs per firm")
-            self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
+        self.auto_trade_btn.config(text="â¹  Stop Auto-Trade", bg='#dc2626',
+                                   activebackground='#b91c1c')
+        self.auto_trade_status_var.set(f"Scheduled at {time_str} â€” random dirs per firm")
+        self.log(f"â° Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
         for firm, s in self._auto_trade_firm_sides.items():
-            self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
+            self.log(f"   {'â–²' if s == 'buy' else 'â–¼'} {firm} â†’ {s.upper()}")
 
         # Start background countdown / executor thread
         self.auto_trade_thread = threading.Thread(
@@ -4013,14 +3364,13 @@ class TraderCompanionApp:
         self.auto_trade_enabled = False
         self._auto_trade_stop.set()
         self._auto_trade_scheduled_dt = None
-        self.auto_trade_btn.configure(text="▶  Start Auto-Trade")
-        if CTK_AVAILABLE:
-            self.auto_trade_btn.configure(fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
+        self.auto_trade_btn.config(text="â–¶  Start Auto-Trade", bg='#3b82f6',
+                                   activebackground='#2563eb')
         self.auto_trade_status_var.set("Auto-trade off")
         self.auto_trade_countdown_var.set("")
         self.auto_trade_firms_var.set("")
         self._auto_trade_firm_sides = {}
-        self.log("⏹ Auto-trade cancelled")
+        self.log("â¹ Auto-trade cancelled")
 
     def _tick_auto_trade_countdown(self):
         """Update the countdown label every second."""
@@ -4059,14 +3409,15 @@ class TraderCompanionApp:
         rows = list(self._active_trade_rows)  # snapshot
 
         if not rows:
-            self.log("⚠ No trades to execute — list is empty")
+            self.log("âš  No trades to execute â€” list is empty")
             self._stop_auto_trade()
             return
 
-        self.log(f"🚀 Auto-executing {len(rows)} accounts (random direction per firm)...")
+        self.log(f"ðŸš€ Auto-executing {len(rows)} accounts (random direction per firm)...")
 
         hedging = self.hedge_mode_var.get() == "Hedging"
         platform = self.broker_var.get()
+        broker_account = self.tradovate_account if platform == "Tradovate" else self.topstepx_account
         mt5_api = self._get_mt5_trading_api() if hedging else None
 
         def _do_auto_trades():
@@ -4074,7 +3425,7 @@ class TraderCompanionApp:
             fail_count = 0
             for row_data in rows:
                 if self._auto_trade_stop.is_set():
-                    self.root.after(0, lambda: self.log("⏹ Auto-trade stopped mid-execution"))
+                    self.root.after(0, lambda: self.log("â¹ Auto-trade stopped mid-execution"))
                     break
 
                 firm_code = row_data["firm_code"]
@@ -4084,21 +3435,13 @@ class TraderCompanionApp:
                 firm_name = row_data["eval"].get("Prop Firm", firm_code)
                 side = firm_sides.get(firm_name, random.choice(["buy", "sell"]))
 
-                # Get per-firm broker connection
-                broker_account = self._get_broker_for_firm(firm_name)
-                if not broker_account:
-                    self.root.after(0, lambda fn=firm_name, an=acct_num: self.log(
-                        f"❌ No broker connected for {fn} — {an} skipped", "ERROR"))
-                    fail_count += 1
-                    continue
-
                 config = None
                 if self.prop_firm_mgr:
                     config = self.prop_firm_mgr.get_strategy_config(
                         firm_code, phase_key, acct_size)
                 if not config:
-                    self.root.after(0, lambda an=acct_num, fc=firm_code, pk=phase_key, sz=acct_size: self.log(
-                        f"❌ No blueprint: {an} ({fc}/{pk}/{sz}) — skipped", "ERROR"))
+                    self.root.after(0, lambda an=acct_num: self.log(
+                        f"âŒ No blueprint for {an} â€” skipped", "ERROR"))
                     fail_count += 1
                     continue
 
@@ -4124,8 +3467,8 @@ class TraderCompanionApp:
                         else:
                             broker_account.place_sell_order(trado_sym, trado_qty)
 
-                    self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side, sym=trado_sym, qty=trado_qty:
-                        self.log(f"✅ {platform} {sd.upper()} {qty} {sym} → {an} ({fc})"))
+                    self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side:
+                        self.log(f"âœ… {platform} {sd.upper()} {trado_qty} {trado_sym} â€” {an} ({fc})"))
 
                     # 2. MT5 hedge (opposite direction)
                     if hedging and mt5_api:
@@ -4135,8 +3478,8 @@ class TraderCompanionApp:
                             mt5_api.buy_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
                         else:
                             mt5_api.sell_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
-                        self.root.after(0, lambda an=acct_num, hs=hedge_side, vol=mt5_vol, sym=mt5_sym, cmt=comment:
-                            self.log(f"✅ MT5 hedge {hs.upper()} {vol} {sym} comment:{cmt} → {an}"))
+                        self.root.after(0, lambda an=acct_num:
+                            self.log(f"âœ… MT5 hedge placed for {an}"))
 
                     success_count += 1
 
@@ -4148,7 +3491,7 @@ class TraderCompanionApp:
                         remaining = len(self._active_trade_rows)
                         self.trades_count_var.set(
                             f"{remaining} active trade{'s' if remaining != 1 else ''}"
-                            if remaining > 0 else "All trades complete ✓")
+                            if remaining > 0 else "All trades complete âœ“")
                     self.root.after(0, _remove)
 
                     # Small delay between accounts to avoid overwhelming the broker
@@ -4157,11 +3500,11 @@ class TraderCompanionApp:
                 except Exception as e:
                     fail_count += 1
                     self.root.after(0, lambda an=acct_num, err=str(e):
-                        self.log(f"❌ Auto-trade failed for {an}: {err}", "ERROR"))
+                        self.log(f"âŒ Auto-trade failed for {an}: {err}", "ERROR"))
 
             # Final summary
             self.root.after(0, lambda s=success_count, f=fail_count:
-                self.log(f"🏁 Auto-trade complete: {s} succeeded, {f} failed"))
+                self.log(f"ðŸ Auto-trade complete: {s} succeeded, {f} failed"))
             self.root.after(0, self._stop_auto_trade)
 
         threading.Thread(target=_do_auto_trades, daemon=True).start()
@@ -4174,273 +3517,42 @@ class TraderCompanionApp:
         """Update account size (compat stub)."""
         pass
 
-    def _populate_broker_rows(self, evaluations, prop_accounts):
-        """Build one connection row per unique prop firm from active evaluations."""
-        for child in self._broker_rows_frame.winfo_children():
-            child.destroy()
-        # Preserve any already-connected accounts
-        old_connections = dict(self._broker_connections)
-        self._broker_connections.clear()
-
-        # Get unique prop firms in order
-        firms = []
-        seen = set()
-        for ev in evaluations:
-            firm = ev.get("Prop Firm", "Unknown")
-            if firm not in seen:
-                seen.add(firm)
-                firms.append(firm)
-
-        if not firms:
-            if CTK_AVAILABLE:
-                ctk.CTkLabel(self._broker_rows_frame,
-                             text="No active prop firms — load trades first",
-                             font=("Segoe UI", 9, "italic"), text_color="#4A5568").pack(pady=4)
-            return
-
-        # Header row
-        if CTK_AVAILABLE:
-            hdr = ctk.CTkFrame(self._broker_rows_frame, fg_color="transparent")
-            hdr.pack(fill="x", padx=4, pady=(2, 0))
-            ctk.CTkLabel(hdr, text="PROP FIRM", width=110, font=("Consolas", 8, "bold"),
-                         text_color="#4A5568", anchor="w").pack(side="left", padx=(12, 0))
-            ctk.CTkLabel(hdr, text="USERNAME", width=140, font=("Consolas", 8, "bold"),
-                         text_color="#4A5568", anchor="w").pack(side="left", padx=(8, 0))
-            ctk.CTkLabel(hdr, text="PASSWORD", width=110, font=("Consolas", 8, "bold"),
-                         text_color="#4A5568", anchor="w").pack(side="left", padx=(8, 0))
-
-        # Build lookup from prop_accounts by prop_firm name
-        pa_lookup = {}
-        pa_unmatched = []  # accounts with creds but no firm match yet
-        for pa in (prop_accounts or []):
-            pf = (pa.get("prop_firm") or "").strip()
-            has_creds = bool((pa.get("tradovate_username") or "").strip() and
-                             (pa.get("tradovate_password") or "").strip())
-            if pf and pf not in pa_lookup:
-                pa_lookup[pf] = pa
-            elif has_creds and not pf:
-                pa_unmatched.append(pa)
-
-        # Log what we received for debugging
-        if prop_accounts:
-            self.log(f"Dashboard prop_accounts: {len(prop_accounts)} entries, "
-                     f"matched firms: {list(pa_lookup.keys())}")
-
-        auto_count = 0
-        for firm in firms:
-            strip_color = self.PROP_FIRM_COLORS.get(firm, "#95A5A6")
-            # Try exact match first, then case-insensitive, then unmatched pool
-            pa = pa_lookup.get(firm, {})
-            if not pa:
-                for pf_key, pf_val in pa_lookup.items():
-                    if pf_key.lower() == firm.lower():
-                        pa = pf_val
-                        break
-            if not pa and pa_unmatched:
-                pa = pa_unmatched.pop(0)
-            pre_user = (pa.get("tradovate_username") or "").strip()
-            pre_pass = (pa.get("tradovate_password") or "").strip()
-
-            # Carry over existing connected account if available
-            old_conn = old_connections.get(firm, {})
-            existing_account = old_conn.get("account")
-
-            if CTK_AVAILABLE:
-                row = ctk.CTkFrame(self._broker_rows_frame, fg_color="#0A1220",
-                                   corner_radius=4, height=36,
-                                   border_width=1, border_color="#0F1A2A")
-                row.pack(fill="x", padx=4, pady=1)
-                row.pack_propagate(False)
-
-                # Accent bar
-                ctk.CTkFrame(row, width=3, fg_color=strip_color,
-                             corner_radius=0).pack(side="left", fill="y")
-
-                # Firm name
-                ctk.CTkLabel(row, text=firm[:16], width=110,
-                             font=("Consolas", 10, "bold"), text_color=strip_color,
-                             anchor="w").pack(side="left", padx=(8, 0))
-
-                # User entry
-                user_entry = ctk.CTkEntry(row, width=140, height=26,
-                                          fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                                          text_color=self.C_TEXT, font=("Consolas", 10))
-                user_entry.pack(side="left", padx=(8, 0))
-                if pre_user:
-                    user_entry.insert(0, pre_user)
-
-                # Pass entry
-                pass_entry = ctk.CTkEntry(row, width=110, height=26, show="*",
-                                          fg_color=self.C_BG_THIRD, border_color=self.C_BORDER,
-                                          text_color=self.C_TEXT, font=("Consolas", 10))
-                pass_entry.pack(side="left", padx=(8, 0))
-                if pre_pass:
-                    pass_entry.insert(0, pre_pass)
-
-                # Status indicator
-                status_var = tk.StringVar(value="✅" if existing_account else "⬚")
-                status_lbl = ctk.CTkLabel(row, textvariable=status_var,
-                                          font=("Segoe UI", 11), width=24,
-                                          text_color="#22C55E" if existing_account else "#4A5568")
-                status_lbl.pack(side="right", padx=(0, 8))
-
-                # Connect button
-                btn_text = "Connected" if existing_account else "Connect"
-                conn_btn = ctk.CTkButton(row, text=btn_text, width=72, height=24,
-                                         fg_color="#14532D" if existing_account else "#1A2332",
-                                         hover_color="#24292F",
-                                         border_width=1, border_color=self.C_BORDER,
-                                         font=("Consolas", 9), text_color=self.C_TEXT,
-                                         corner_radius=4,
-                                         command=lambda f=firm: self._connect_broker_firm(f))
-                conn_btn.pack(side="right", padx=(8, 4))
-            else:
-                row = tk.Frame(self._broker_rows_frame, bg="#0A1220")
-                row.pack(fill="x", padx=4, pady=1)
-                tk.Label(row, text=firm[:16], width=14, anchor='w',
-                         bg="#0A1220", fg=strip_color, font=('Consolas', 9)).pack(side="left", padx=2)
-                user_entry = ttk.Entry(row, width=16)
-                user_entry.pack(side="left", padx=2)
-                if pre_user:
-                    user_entry.insert(0, pre_user)
-                pass_entry = ttk.Entry(row, width=12, show="*")
-                pass_entry.pack(side="left", padx=2)
-                if pre_pass:
-                    pass_entry.insert(0, pre_pass)
-                conn_btn = ttk.Button(row, text="Connect",
-                                      command=lambda f=firm: self._connect_broker_firm(f))
-                conn_btn.pack(side="left", padx=2)
-                status_var = tk.StringVar(value="✅" if existing_account else "⬚")
-                status_lbl = ttk.Label(row, textvariable=status_var)
-                status_lbl.pack(side="left", padx=2)
-
-            if pre_user and pre_pass:
-                auto_count += 1
-
-            self._broker_connections[firm] = {
-                "user_entry": user_entry,
-                "pass_entry": pass_entry,
-                "connect_btn": conn_btn,
-                "status_var": status_var,
-                "status_lbl": status_lbl,
-                "row_frame": row,
-                "account": existing_account,
-            }
-
-        if auto_count:
-            self.log(f"Broker credentials auto-populated for {auto_count} prop firm(s) from dashboard")
-
-    def _connect_broker_firm(self, firm_name):
-        """Connect a single prop firm's broker account."""
-        conn = self._broker_connections.get(firm_name)
-        if not conn:
-            return
-
+    def _connect_broker(self):
+        """Connect to the selected broker platform."""
         platform = self.broker_var.get()
-        user = conn["user_entry"].get().strip()
-        pwd = conn["pass_entry"].get().strip()
+        user = self.broker_user.get().strip()
+        pwd = self.broker_pass.get().strip()
         mode = self.trading_mode_var.get()
 
         if not user or not pwd:
-            messagebox.showerror("Error", f"Enter username and password for {firm_name}")
+            messagebox.showerror("Error", "Enter broker username and password")
             return
 
-        self.log(f"Connecting {firm_name} to {platform}...")
-        conn["status_var"].set("⏳")
-        conn["connect_btn"].configure(text="...")
+        self.log(f"Connecting to {platform}...")
+        self.broker_status_var.set("Connecting...")
 
         def _do_connect():
             try:
-                if platform == "Tradovate":
-                    if not TRADOVATE_AVAILABLE:
-                        err = _TRADOVATE_IMPORT_ERROR or 'unknown reason'
-                        self.root.after(0, lambda: conn["status_var"].set("❌"))
-                        self.log(f"Tradovate import failed: {err}", "ERROR")
-                        self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
-                        return
-                    account = TradovateAccount(user, pwd, trading_mode=mode)
-                    account.login()
-                elif platform == "TopStepX":
-                    if not TOPSTEPX_AVAILABLE:
-                        err = _TOPSTEPX_IMPORT_ERROR or 'unknown reason'
-                        self.root.after(0, lambda: conn["status_var"].set("❌"))
-                        self.log(f"TopStepX import failed: {err}", "ERROR")
-                        self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
-                        return
-                    account = TopStepXAccount(user, pwd)
-                    account.login()
+                if platform == "Tradovate" and TRADOVATE_AVAILABLE:
+                    self.tradovate_account = TradovateAccount(user, pwd, trading_mode=mode)
+                    self.tradovate_account.login()
+                    self.root.after(0, lambda: self.broker_status_var.set("âœ… Tradovate Connected"))
+                    self.root.after(0, lambda: self.broker_connect_btn.config(text="Disconnect Broker"))
+                    self.log(f"Tradovate connected ({mode})")
+                elif platform == "TopStepX" and TOPSTEPX_AVAILABLE:
+                    self.topstepx_account = TopStepXAccount(user, pwd)
+                    self.topstepx_account.login()
+                    self.root.after(0, lambda: self.broker_status_var.set("âœ… TopStepX Connected"))
+                    self.root.after(0, lambda: self.broker_connect_btn.config(text="Disconnect Broker"))
+                    self.log(f"TopStepX connected")
                 else:
-                    self.root.after(0, lambda: conn["status_var"].set("❌"))
-                    self.log(f"Unknown platform: {platform}", "ERROR")
-                    self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
-                    return
-
-                conn["account"] = account
-                # Also keep legacy references for backward compatibility
-                if platform == "Tradovate":
-                    self.tradovate_account = account
-                else:
-                    self.topstepx_account = account
-
-                def _update_ui():
-                    conn["status_var"].set("✅")
-                    conn["connect_btn"].configure(text="Connected", fg_color="#14532D")
-                    if hasattr(conn.get("status_lbl"), "configure"):
-                        conn["status_lbl"].configure(text_color="#22C55E")
-                    # Update global status
-                    connected = sum(1 for c in self._broker_connections.values() if c.get("account"))
-                    total = len(self._broker_connections)
-                    self.broker_status_var.set(f"{connected}/{total} connected")
-                self.root.after(0, _update_ui)
-                self.log(f"✅ {firm_name} connected to {platform} ({mode})")
-
+                    self.root.after(0, lambda: self.broker_status_var.set("âŒ Platform unavailable"))
+                    self.log(f"{platform} module not available", "ERROR")
             except Exception as e:
-                def _fail():
-                    conn["status_var"].set("❌")
-                    conn["connect_btn"].configure(text="Retry", fg_color="#450A0A")
-                self.root.after(0, _fail)
-                self.log(f"❌ {firm_name} connection failed: {e}", "ERROR")
+                self.root.after(0, lambda: self.broker_status_var.set(f"âŒ Failed"))
+                self.log(f"Broker connection failed: {e}", "ERROR")
 
         threading.Thread(target=_do_connect, daemon=True).start()
-
-    def _connect_all_brokers(self):
-        """Connect all prop firms that have credentials filled in."""
-        if not self._broker_connections:
-            self.log("⚠ Load trades first to see prop firm connections", "WARN")
-            return
-
-        to_connect = []
-        for firm, conn in self._broker_connections.items():
-            user = conn["user_entry"].get().strip()
-            pwd = conn["pass_entry"].get().strip()
-            if user and pwd and not conn.get("account"):
-                to_connect.append(firm)
-
-        if not to_connect:
-            self.log("All populated firms are already connected")
-            return
-
-        self.log(f"Connecting {len(to_connect)} broker(s)...")
-
-        def _do_connect_all():
-            for firm in to_connect:
-                self.root.after(0, lambda f=firm: self._connect_broker_firm(f))
-                time.sleep(3)  # stagger connections
-
-        threading.Thread(target=_do_connect_all, daemon=True).start()
-
-    def _get_broker_for_firm(self, firm_name):
-        """Get the connected broker account for a specific prop firm."""
-        conn = self._broker_connections.get(firm_name)
-        if conn and conn.get("account"):
-            return conn["account"]
-        # Fallback to legacy single-account vars
-        platform = self.broker_var.get()
-        if platform == "Tradovate" and self.tradovate_account:
-            return self.tradovate_account
-        if platform == "TopStepX" and self.topstepx_account:
-            return self.topstepx_account
-        return None
 
     def _get_trade_config(self):
         """Get current trade configuration from blueprint."""
@@ -4469,47 +3581,6 @@ class TraderCompanionApp:
                 self.log(f"MT5 trading API connection failed: {e}", "ERROR")
         return None
 
-    # ============ Daily Bias Persistence ============
-
-    def _get_daily_bias(self, firms):
-        """Get or create today's direction bias per prop firm.
-        Persisted to trader_bias.json so it survives app restarts.
-        Resets automatically on a new calendar day (EAT)."""
-        from datetime import datetime, timedelta, timezone
-        EAT = timezone(timedelta(hours=3))
-        today_str = datetime.now(EAT).strftime("%Y-%m-%d")
-
-        bias_path = os.path.join(os.path.dirname(__file__), "trader_bias.json")
-        saved = {}
-        if os.path.exists(bias_path):
-            try:
-                with open(bias_path, 'r') as f:
-                    saved = json.load(f)
-            except Exception:
-                saved = {}
-
-        # Reset if date changed
-        if saved.get("date") != today_str:
-            saved = {"date": today_str, "firms": {}}
-
-        firm_bias = saved.get("firms", {})
-        changed = False
-        for firm in firms:
-            if firm not in firm_bias:
-                firm_bias[firm] = random.choice(["buy", "sell"])
-                changed = True
-
-        if changed or saved.get("date") != today_str:
-            saved["date"] = today_str
-            saved["firms"] = firm_bias
-            try:
-                with open(bias_path, 'w') as f:
-                    json.dump(saved, f, indent=2)
-            except Exception:
-                pass
-
-        return {f: firm_bias[f] for f in firms}
-
     # ============ Version History & Rollback ============
 
     def save_config(self):
@@ -4524,6 +3595,7 @@ class TraderCompanionApp:
         # Trading engine settings
         if hasattr(self, 'broker_var'):
             config["broker_platform"] = self.broker_var.get()
+            config["broker_user"] = self.broker_user.get()
             config["trading_mode"] = self.trading_mode_var.get()
             config["prop_firm"] = self.prop_firm_var.get()
             config["phase"] = self.phase_var.get()
@@ -4573,6 +3645,9 @@ class TraderCompanionApp:
                 if hasattr(self, 'broker_var'):
                     if config.get('broker_platform'):
                         self.broker_var.set(config['broker_platform'])
+                    if config.get('broker_user'):
+                        self.broker_user.delete(0, tk.END)
+                        self.broker_user.insert(0, config['broker_user'])
                     if config.get('trading_mode'):
                         self.trading_mode_var.set(config['trading_mode'])
                     if config.get('prop_firm'):
@@ -4605,7 +3680,7 @@ def main():
         app.run()
     else:
         print("=" * 50)
-        print("Tradeopss AI - Console Mode")
+        print("MT5 Trader Companion - Console Mode")
         print("=" * 50)
         print("\nGUI not available. Install tkinter to use the graphical interface.")
         print("\nUsage:")
