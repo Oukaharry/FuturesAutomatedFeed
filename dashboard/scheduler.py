@@ -209,6 +209,7 @@ def _build_daily_summary_text():
         # Gamified Trader Health Leaderboard — ranked best to worst
         ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
         lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
+        lines.append("_Ranked by average client health score (highest first). Health score is based on: data freshness, hedging accuracy, payout tracking, notes quality, and checklist completion._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
@@ -327,30 +328,39 @@ def _build_daily_summary_text():
         total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
         lines.append("📬 *DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)*")
-        pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0
-        lines.append(f"✅ {total_sent_summary}/{tracked_total} sent ({pct}%)")
-        lines.append("")
-        if tracker_complete:
-            lines.append("🏆 *Complete (ranked by earliest avg time):*")
-            for rank, (t, sent, total, _avg_m, avg_t) in enumerate(tracker_complete, 1):
-                if rank == 1:
-                    medal = '🥇'
-                elif rank == 2:
-                    medal = '🥈'
-                elif rank == 3:
-                    medal = '🥉'
-                else:
-                    medal = f'#{rank}'
-                lines.append(f"{medal} *{t}* — {sent}/{total} ✅ · avg {avg_t}")
+        # Skip submission tracking on weekends (no trading Sat/Sun)
+        from datetime import timezone as _tz2, timedelta as _td2
+        _eat_now = datetime.now(_tz2(_td2(hours=3)))
+        _is_weekend = _eat_now.weekday() in (5, 6)  # Saturday=5, Sunday=6
+        if _is_weekend:
+            lines.append("🛑 _Weekend — no trading today. Submission tracking resumes on Monday._")
             lines.append("")
-        if tracker_incomplete:
-            lines.append("❌ *Incomplete — missing clients:*")
-            for t, sent, total, missing in tracker_incomplete:
-                lines.append(f"⚠️ *{t}* — {sent}/{total} sent")
-                lines.append(f"   ⛔ {', '.join(missing)}")
+        else:
+            pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0
+            lines.append(f"✅ {total_sent_summary}/{tracked_total} sent ({pct}%)")
             lines.append("")
-        lines.append("👁️ _We track everything — every submission, every miss, every second._")
-        lines.append("")
+            if tracker_complete:
+                lines.append("🏆 *Complete — ranked by earliest avg submission time:*")
+                lines.append("_All your clients' summaries must be submitted to qualify. The earlier you submit, the higher you rank. 🥇 goes to the fastest!_")
+                for rank, (t, sent, total, _avg_m, avg_t) in enumerate(tracker_complete, 1):
+                    if rank == 1:
+                        medal = '🥇'
+                    elif rank == 2:
+                        medal = '🥈'
+                    elif rank == 3:
+                        medal = '🥉'
+                    else:
+                        medal = f'#{rank}'
+                    lines.append(f"{medal} *{t}* — {sent}/{total} ✅ · avg {avg_t}")
+                lines.append("")
+            if tracker_incomplete:
+                lines.append("❌ *Incomplete — missing clients:*")
+                for t, sent, total, missing in tracker_incomplete:
+                    lines.append(f"⚠️ *{t}* — {sent}/{total} sent")
+                    lines.append(f"   ⛔ {', '.join(missing)}")
+                lines.append("")
+            lines.append("👁️ _We track everything — every submission, every miss, every second._")
+            lines.append("")
     except Exception as e:
         import traceback
         traceback.print_exc()
