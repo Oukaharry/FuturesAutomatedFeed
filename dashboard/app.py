@@ -2063,6 +2063,7 @@ def financial_overview():
                            overview=overview_data,
                            global_stats=global_stats,
                            selected_profile=profile_filter,
+                           is_bef_admin=(session_user.get('user_type') == 'bef_admin'),
                            growth_dates=growth_dates,
                            growth_values=growth_values,
                            payouts_dates=payouts_dates,
@@ -2121,6 +2122,7 @@ def payout_history():
                            end_date=end_date_str,
                            selected_prop_firm=prop_firm_filter,
                            selected_profile=profile_filter,
+                           is_bef_admin=(session_user.get('user_type') == 'bef_admin'),
                            prop_firms=sorted_prop_firms)
 
 @app.route('/client_performance')
@@ -2129,7 +2131,7 @@ def client_performance():
     session_user = request.session_user
     if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
          return redirect('/')
-    return render_template('client_performance.html')
+    return render_template('client_performance.html', is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
 
 @app.route('/trader_performance')
 @require_session
@@ -2143,7 +2145,7 @@ def trader_performance():
     if session_user.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
     traders_data = calculate_trader_stats(profile_filter=profile_filter)
-    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter)
+    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter, is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
 
 
 @app.route('/trader/<trader_name>')
