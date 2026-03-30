@@ -2016,12 +2016,12 @@ def super_admin():
 def bef_admin():
     if request.session_user.get('user_type') != 'bef_admin':
         return redirect('/')
-    return render_template('super_admin.html', user_role='bef_admin')
+    return render_template('super_admin.html', user_role='bef_admin', is_bef_admin=True)
 
 @app.route('/quality_dashboard')
 @require_session
 def quality_dashboard():
-    if request.session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+    if request.session_user.get('user_type') not in ('super_admin',):
         return redirect('/')
     return render_template('quality_dashboard.html')
 
