@@ -1401,7 +1401,9 @@
         function updateSelects() {
             const selA = document.getElementById('admin-select-trader');
             const selC = document.getElementById('admin-select-client');
-            if (!selA || !selC) return; // Elements hidden for BEF admin
+
+            // These elements are only rendered for super_admin, not bef_admin
+            if (!selA || !selC) return;
             
             // preserve values
             const valA = selA.value;
@@ -1421,14 +1423,13 @@
         }
 
         function updateTraderSelect() {
-            const adminEl = document.getElementById('admin-select-client');
+            const adminName = document.getElementById('admin-select-client');
             const traderSel = document.getElementById('trader-select-client');
-            if (!adminEl || !traderSel) return;
-            const adminName = adminEl.value;
-            traderSel.innerHTML = '<option value="">Select Trader...</option>';
+            if (!adminName || !traderSel) return;
+            const adminVal = adminName.value;
             
-            if(adminName && hierarchyData.admins[adminName] && hierarchyData.admins[adminName].traders) {
-                Object.keys(hierarchyData.admins[adminName].traders).forEach(t => {
+            if(adminVal && hierarchyData.admins[adminVal] && hierarchyData.admins[adminVal].traders) {
+                Object.keys(hierarchyData.admins[adminVal].traders).forEach(t => {
                     traderSel.add(new Option(t, t));
                 });
             }
