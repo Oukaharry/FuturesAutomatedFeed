@@ -31,7 +31,7 @@ from config.hierarchy import (
 from dashboard.database import (
     init_database, 
     validate_api_key, generate_api_key, list_api_keys, revoke_api_key,
-    verify_admin_password, set_admin_password,
+    verify_admin_password, set_admin_password, admin_password_exists,
     save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field, delete_client_data,
     log_action, get_audit_log,
     create_session, validate_session, delete_session,
@@ -1838,13 +1838,16 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
 # Initialize admin password if not exists
 def init_admin_password():
-    """Initialize default admin password if not set."""
-    admin_password = os.getenv('ADMIN_PASSWORD', 'BallerAdmin@123')
-    set_admin_password('super_admin', admin_password)
+    """Initialize default admin password only if not already set."""
+    if not admin_password_exists('super_admin'):
+        admin_password = os.getenv('ADMIN_PASSWORD', 'BallerAdmin@123')
+        set_admin_password('super_admin', admin_password)
+        print("super_admin password initialized")
     # BEF Admin - separate credentials, restricted to BEF clients only
-    bef_password = os.getenv('BEF_ADMIN_PASSWORD', 'BEFAdmin@123')
-    set_admin_password('bef_admin', bef_password)
-    print("Admin passwords initialized (super_admin + bef_admin)")
+    if not admin_password_exists('bef_admin'):
+        bef_password = os.getenv('BEF_ADMIN_PASSWORD', 'BEFAdmin@123')
+        set_admin_password('bef_admin', bef_password)
+        print("bef_admin password initialized")
 
 # Run initialization
 init_database()

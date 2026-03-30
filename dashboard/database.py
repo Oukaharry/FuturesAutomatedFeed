@@ -426,6 +426,16 @@ def set_admin_password(username: str, password: str) -> bool:
             print(f"Error setting admin password: {e}")
             return False
 
+def admin_password_exists(username: str) -> bool:
+    """Return True if a password row already exists for the given admin username."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT 1 FROM admin_passwords WHERE username = ?',
+            (username,)
+        )
+        return cursor.fetchone() is not None
+
 def verify_admin_password(username: str, password: str) -> bool:
     """Verify admin password."""
     with get_connection() as conn:
