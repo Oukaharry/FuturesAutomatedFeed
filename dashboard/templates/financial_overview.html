@@ -384,12 +384,14 @@
                 
                 <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                     <!-- Profile Toggle -->
+                    {% if not is_bef_admin %}
                     <div class="profile-toggle">
                         <span style="color:#7898be; font-family:'Plus Jakarta Sans',sans-serif; font-size:0.68rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding: 5px 8px; align-self:center;">PROFILE</span>
                         <a href="?profile=ALL" class="toggle-btn {% if selected_profile|upper == 'ALL' %}active{% endif %}">ALL</a>
                         <a href="?profile=BEF" class="toggle-btn {% if selected_profile|upper == 'BEF' %}active{% endif %}">BEF</a>
                         <a href="?profile=PRIVATE" class="toggle-btn {% if selected_profile|upper == 'PRIVATE' %}active{% endif %}">PRIVATE</a>
                     </div>
+                    {% endif %}
     
                     <!-- Firm Filter -->
                     <div style="display: flex; align-items: center; gap: 8px; background: #0a0f1e; padding: 5px 14px; border-radius: 8px; border: 1px solid #1a2848;">
