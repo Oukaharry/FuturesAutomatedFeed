@@ -3980,6 +3980,15 @@ class TraderCompanionApp:
                 self.log("⚠ Connect MT5 first for hedging mode auto-trade", "WARN")
                 return
 
+        # Validation: signal mode needs MT5 for price data
+        if self.auto_trade_signal_var.get():
+            if not SIGNALS_AVAILABLE:
+                self.log("⚠ Signal indicators not available — install required packages", "WARN")
+                return
+            if not self._ensure_mt5_for_signals():
+                self.log("⚠ Connect MT5 first for Actual Signal mode (indicators need price data)", "WARN")
+                return
+
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
 
@@ -4673,6 +4682,36 @@ class TraderCompanionApp:
                 self.log(f"MT5 trading API connection failed: {e}", "ERROR")
         return None
 
+    def _ensure_mt5_for_signals(self):
+        """Ensure MT5 is initialized so indicators can fetch price data.
+        
+        Works for both hedging and non-hedging clients:
+        - If pusher already connected MT5, it's already initialized → returns True
+        - Otherwise, tries to initialize from saved credentials
+        
+        Returns:
+            bool: True if MT5 is ready for price data queries.
+        """
+        if not MT5_AVAILABLE:
+            return False
+        # Already connected via pusher?
+        if self.pusher.connected:
+            return True
+        # Already connected via trading API?
+        if mt5.terminal_info():
+            return True
+        # Try to connect using saved credentials
+        login = self.mt5_login.get().strip()
+        pwd = self.mt5_password.get().strip()
+        server = self.mt5_server.get().strip()
+        if login and pwd and server:
+            success, msg = self.pusher.connect_mt5(login, pwd, server)
+            if success:
+                self.log("🔗 MT5 connected for signal data")
+                return True
+            self.log(f"⚠ MT5 auto-connect failed: {msg}", "WARN")
+        return False
+
     # ============ Daily Bias Persistence ============
 
     def _get_daily_bias(self, firms):
@@ -4767,6 +4806,13 @@ class TraderCompanionApp:
         import MetaTrader5 as mt5_mod
         if timeframe is None:
             timeframe = mt5_mod.TIMEFRAME_M5
+
+        # Ensure MT5 is connected (non-hedging clients may not have it open)
+        if not mt5_mod.terminal_info():
+            self._ensure_mt5_for_signals()
+            if not mt5_mod.terminal_info():
+                self.root.after(0, lambda: self.log("⚠ MT5 not connected — using random direction", "WARN"))
+                return random.choice(["buy", "sell"])
 
         indicators = self._get_indicator_map()
         if not indicators:
