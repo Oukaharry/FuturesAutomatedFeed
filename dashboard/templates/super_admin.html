@@ -1132,12 +1132,12 @@
              document.getElementById('editUserTrader').value = parent2 || '';
              document.getElementById('editUserOriginalName').value = cleanName; // Store original for rename detection
              
-             // Show category and status dropdowns only for clients
+             // Show category and status dropdowns only for clients (category hidden for bef_admin)
              const catGroup = document.getElementById('editClientCategoryGroup');
              const statusGroup = document.getElementById('editClientStatusGroup');
              const slackGroup = document.getElementById('editAdminSlackGroup');
              if (type === 'client') {
-                 catGroup.style.display = 'block';
+                 catGroup.style.display = USER_ROLE === 'bef_admin' ? 'none' : 'block';
                  statusGroup.style.display = 'block';
                  slackGroup.style.display = 'none';
                  document.getElementById('editUserCategory').value = cleanCategory;
