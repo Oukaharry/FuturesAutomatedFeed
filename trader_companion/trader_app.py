@@ -141,10 +141,22 @@ except ImportError:
 
 try:
     from trader_companion.signals.rsi import get_rsi_signal
+    from trader_companion.signals.macd import get_macd_signal
+    from trader_companion.signals.stochastic import get_stochastic_signal
+    from trader_companion.signals.cci import get_cci_signal
+    from trader_companion.signals.supertrend import get_supertrend_signal
+    from trader_companion.signals.momentum import get_momentum_signal
+    from trader_companion.signals.bb import get_bb_signal
     SIGNALS_AVAILABLE = True
 except ImportError:
     try:
         from signals.rsi import get_rsi_signal
+        from signals.macd import get_macd_signal
+        from signals.stochastic import get_stochastic_signal
+        from signals.cci import get_cci_signal
+        from signals.supertrend import get_supertrend_signal
+        from signals.momentum import get_momentum_signal
+        from signals.bb import get_bb_signal
         SIGNALS_AVAILABLE = True
     except ImportError:
         SIGNALS_AVAILABLE = False
@@ -1612,11 +1624,17 @@ class TraderCompanionApp:
         self.auto_trade_btn.pack(side="left", padx=(8, 4), pady=5)
 
         self.auto_trade_immediate_var = tk.BooleanVar(value=False)
+        self.auto_trade_signal_var = tk.BooleanVar(value=False)
         if CTK_AVAILABLE:
             ctk.CTkCheckBox(toolbar, text="Now", variable=self.auto_trade_immediate_var,
                             font=("Segoe UI", 9), text_color=self.C_TEXT_DIM,
                             fg_color=self.C_ACCENT, border_color=self.C_BORDER,
                             hover_color=self.C_ACCENT_HV, width=40,
+                            checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
+            ctk.CTkCheckBox(toolbar, text="Actual Signal", variable=self.auto_trade_signal_var,
+                            font=("Segoe UI", 9), text_color=self.C_TEXT_DIM,
+                            fg_color="#f59e0b", border_color=self.C_BORDER,
+                            hover_color="#d97706", width=90,
                             checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
 
         self.auto_trade_status_var = tk.StringVar(value="Off")
@@ -3987,32 +4005,44 @@ class TraderCompanionApp:
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
 
-        # Daily bias per prop firm (persisted, resets each day)
-        firms_in_rows = set()
-        for rd in self._active_trade_rows:
-            firm_name = rd["eval"].get("Prop Firm", rd["firm_code"])
-            firms_in_rows.add(firm_name)
-        self._auto_trade_firm_sides = self._get_daily_bias(firms_in_rows)
+        use_signal = self.auto_trade_signal_var.get() and SIGNALS_AVAILABLE
+        self._auto_trade_use_signal = use_signal
 
-        # Build display string
-        dir_lines = []
-        for firm, s in self._auto_trade_firm_sides.items():
-            arrow = "▲" if s == "buy" else "▼"
-            dir_lines.append(f"  {arrow} {s.upper():4s}  {firm}")
-        self.auto_trade_firms_var.set("\n".join(dir_lines))
+        if use_signal:
+            # Direction will be determined by indicator signals at execution time
+            self._auto_trade_firm_sides = {}  # filled at execution
+            self.auto_trade_firms_var.set("  📊  Directions from indicator signals")
+        else:
+            # Daily bias per prop firm (persisted, resets each day)
+            firms_in_rows = set()
+            for rd in self._active_trade_rows:
+                firm_name = rd["eval"].get("Prop Firm", rd["firm_code"])
+                firms_in_rows.add(firm_name)
+            self._auto_trade_firm_sides = self._get_daily_bias(firms_in_rows)
 
+            # Build display string
+            dir_lines = []
+            for firm, s in self._auto_trade_firm_sides.items():
+                arrow = "▲" if s == "buy" else "▼"
+                dir_lines.append(f"  {arrow} {s.upper():4s}  {firm}")
+            self.auto_trade_firms_var.set("\n".join(dir_lines))
+
+        mode_label = "indicator signals" if use_signal else "random dirs per firm"
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
         if CTK_AVAILABLE:
             self.auto_trade_btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
         if immediate:
-            self.auto_trade_status_var.set("Executing in 5s — random dirs per firm")
-            self.log(f"⚡ Auto-trade starting immediately — random dirs per firm")
+            self.auto_trade_status_var.set(f"Executing in 5s — {mode_label}")
+            self.log(f"⚡ Auto-trade starting immediately — {mode_label}")
         else:
-            self.auto_trade_status_var.set(f"Scheduled at {time_str} — random dirs per firm")
+            self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
             self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
-        for firm, s in self._auto_trade_firm_sides.items():
-            self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
+        if not use_signal:
+            for firm, s in self._auto_trade_firm_sides.items():
+                self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
+        else:
+            self.log("   📊 Directions will be generated from indicators at execution time")
 
         # Start background countdown / executor thread
         self.auto_trade_thread = threading.Thread(
@@ -4075,6 +4105,7 @@ class TraderCompanionApp:
         while trades for the same firm run sequentially within that thread.
         """
         firm_sides = getattr(self, '_auto_trade_firm_sides', {})
+        use_signal = getattr(self, '_auto_trade_use_signal', False)
         rows = list(self._active_trade_rows)  # snapshot
 
         if not rows:
@@ -4202,6 +4233,20 @@ class TraderCompanionApp:
                 phase_key = row_data["phase_key"]
                 acct_size = row_data["acct_size"]
                 acct_num = row_data["acct_num"]
+
+                # Determine direction: signal-based or random bias
+                if use_signal:
+                    # Lazy-compute signal once per firm
+                    if firm_name not in firm_sides:
+                        config_tmp = None
+                        if self.prop_firm_mgr:
+                            config_tmp = self.prop_firm_mgr.get_strategy_config(
+                                firm_code, phase_key, acct_size)
+                        mt5_sym = (config_tmp or {}).get("mt5_symbol", "NAS100")
+                        sig = self._get_signal_direction(mt5_sym)
+                        firm_sides[firm_name] = sig
+                        self.root.after(0, lambda fn=firm_name, s=sig, sym=mt5_sym:
+                            self.log(f"   📊 {fn} ({sym}) → signal: {s.upper()}"))
                 side = firm_sides.get(firm_name, random.choice(["buy", "sell"]))
 
                 config = None
@@ -4668,6 +4713,106 @@ class TraderCompanionApp:
                 pass
 
         return {f: firm_bias[f] for f in firms}
+
+    # ============ Indicator-Based Signal ============
+
+    # Signal functions mapped by name → (callable, buy_values, sell_values)
+    # buy_values/sell_values are the return strings that map to buy/sell
+    _SIGNAL_INDICATORS = None  # populated lazily
+
+    @classmethod
+    def _get_indicator_map(cls):
+        """Build indicator map lazily (needs imports to be resolved)."""
+        if cls._SIGNAL_INDICATORS is not None:
+            return cls._SIGNAL_INDICATORS
+        indicators = {}
+        try:
+            indicators["RSI"] = (get_rsi_signal, {"buy"}, {"sell"})
+        except Exception:
+            pass
+        try:
+            indicators["MACD"] = (get_macd_signal, {"buy"}, {"sell"})
+        except Exception:
+            pass
+        try:
+            indicators["Stochastic"] = (get_stochastic_signal, {"buy"}, {"sell"})
+        except Exception:
+            pass
+        try:
+            indicators["CCI"] = (get_cci_signal, {"buy"}, {"sell"})
+        except Exception:
+            pass
+        try:
+            indicators["Supertrend"] = (get_supertrend_signal, {"bullish"}, {"bearish"})
+        except Exception:
+            pass
+        try:
+            indicators["Momentum"] = (get_momentum_signal, {"bullish"}, {"bearish"})
+        except Exception:
+            pass
+        try:
+            indicators["BollingerBands"] = (get_bb_signal, {"lower"}, {"upper"})
+        except Exception:
+            pass
+        cls._SIGNAL_INDICATORS = indicators
+        return indicators
+
+    def _get_signal_direction(self, mt5_symbol, timeframe=None, num_indicators=3):
+        """Generate a trade direction by polling a random subset of indicators.
+        
+        Picks `num_indicators` random indicators, queries each on the given
+        MT5 symbol, and uses majority vote to decide buy vs sell.
+        Falls back to random if no indicators produce a signal.
+        """
+        import MetaTrader5 as mt5_mod
+        if timeframe is None:
+            timeframe = mt5_mod.TIMEFRAME_M5
+
+        indicators = self._get_indicator_map()
+        if not indicators:
+            self.root.after(0, lambda: self.log("⚠ No signal indicators available — using random", "WARN"))
+            return random.choice(["buy", "sell"])
+
+        # Pick a random subset
+        available = list(indicators.keys())
+        pick_count = min(num_indicators, len(available))
+        chosen = random.sample(available, pick_count)
+
+        buy_votes = 0
+        sell_votes = 0
+        details = []
+
+        for name in chosen:
+            func, buy_vals, sell_vals = indicators[name]
+            try:
+                result = func(mt5_symbol, timeframe)
+                if result is None:
+                    details.append(f"{name}=neutral")
+                    continue
+                sig = result.lower() if isinstance(result, str) else str(result).lower()
+                if sig in buy_vals:
+                    buy_votes += 1
+                    details.append(f"{name}=BUY")
+                elif sig in sell_vals:
+                    sell_votes += 1
+                    details.append(f"{name}=SELL")
+                else:
+                    details.append(f"{name}={sig}")
+            except Exception as e:
+                details.append(f"{name}=err")
+
+        detail_str = ", ".join(details)
+        if buy_votes > sell_votes:
+            direction = "buy"
+        elif sell_votes > buy_votes:
+            direction = "sell"
+        else:
+            direction = random.choice(["buy", "sell"])
+            detail_str += " (tie→random)"
+
+        self.root.after(0, lambda d=detail_str, dir=direction:
+            self.log(f"   📊 Signal vote: {d} → {dir.upper()}"))
+        return direction
 
     # ============ Version History & Rollback ============
 
