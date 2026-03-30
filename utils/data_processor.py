@@ -42,7 +42,7 @@ _FIRM_MAP = {
     "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",
     "fundednext": "FundedNext", "fundednext": "FundedNext",
     "tradeday": "TradeDay",
-    "tradeify": "Tradeify",
+    "tradeify": "Tradeify", "tradify": "Tradeify", "tradeifi": "Tradeify",
     "alphafutures": "Alpha Futures",
     "ftmo": "FTMO",
     "blueguardian": "Blue Guardian",
@@ -63,6 +63,9 @@ def normalize_prop_firm(name):
     if not name:
         return "Unknown"
     original = str(name).strip()
+    # Filter out nonsensical short entries (single chars, empty after strip)
+    if len(original) <= 1:
+        return "Unknown"
     key = original.lower().replace(" ", "").replace("_", "")
     if key in _FIRM_MAP:
         return _FIRM_MAP[key]
