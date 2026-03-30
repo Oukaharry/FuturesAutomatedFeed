@@ -1,9 +1,10 @@
 {
-  "date": "2026-03-29",
+  "date": "2026-03-30",
   "firms": {
-    "TradeDay": "buy",
+    "Alpha Futures": "sell",
     "FundedNext": "buy",
-    "Tradeify": "sell",
-    "Apex": "sell"
+    "Apex": "buy",
+    "Tradeify": "buy",
+    "Lucid": "buy"
   }
 }

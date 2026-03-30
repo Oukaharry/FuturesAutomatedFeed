@@ -1841,7 +1841,10 @@ def init_admin_password():
     """Initialize default admin password if not set."""
     admin_password = os.getenv('ADMIN_PASSWORD', 'BallerAdmin@123')
     set_admin_password('super_admin', admin_password)
-    print("Admin password initialized")
+    # BEF Admin - separate credentials, restricted to BEF clients only
+    bef_password = os.getenv('BEF_ADMIN_PASSWORD', 'BEFAdmin@123')
+    set_admin_password('bef_admin', bef_password)
+    print("Admin passwords initialized (super_admin + bef_admin)")
 
 # Run initialization
 init_database()
@@ -1988,6 +1991,8 @@ def index():
             user_id = session_info.get('user_identifier')
             if user_type == 'super_admin':
                 return redirect('/super_admin')
+            elif user_type == 'bef_admin':
+                return redirect('/bef_admin')
             elif user_type == 'admin':
                 return redirect(f'/admin/{user_id}')
             elif user_type == 'trader':
@@ -2003,10 +2008,17 @@ def super_admin():
         return redirect('/')
     return render_template('super_admin.html')
 
+@app.route('/bef_admin')
+@require_session
+def bef_admin():
+    if request.session_user.get('user_type') != 'bef_admin':
+        return redirect('/')
+    return render_template('super_admin.html', user_role='bef_admin')
+
 @app.route('/quality_dashboard')
 @require_session
 def quality_dashboard():
-    if request.session_user.get('user_type') != 'super_admin':
+    if request.session_user.get('user_type') not in ('super_admin', 'bef_admin'):
         return redirect('/')
     return render_template('quality_dashboard.html')
 
@@ -2014,8 +2026,8 @@ def quality_dashboard():
 @require_session
 def admin_dashboard(admin_name):
     session_user = request.session_user
-    # Allow super_admin to access any admin dashboard
-    if session_user.get('user_type') == 'super_admin':
+    # Allow super_admin and bef_admin to access any admin dashboard
+    if session_user.get('user_type') in ('super_admin', 'bef_admin'):
         return render_template('admin_dashboard.html', admin_name=admin_name)
     # Check if user is the correct admin
     if session_user.get('user_type') != 'admin' or session_user.get('user_identifier') != admin_name:
@@ -2026,11 +2038,13 @@ def admin_dashboard(admin_name):
 @require_session
 def financial_overview():
     session_user = request.session_user
-    # Only allow super_admin
-    if session_user.get('user_type') != 'super_admin':
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
          return redirect('/')
     
     profile_filter = request.args.get('profile', 'ALL')
+    # BEF admin always sees only BEF profile
+    if session_user.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
     
     # NEW: Use optimized single-pass aggregator
     all_data = calculate_all_financials(profile_filter=profile_filter)
@@ -2068,7 +2082,7 @@ def financial_overview():
 @require_session
 def payout_history():
     session_user = request.session_user
-    if session_user.get('user_type') != 'super_admin':
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
          return redirect('/')
 
     # Filter dates
@@ -2092,6 +2106,9 @@ def payout_history():
     prop_firm_filter = request.args.get('prop_firm')
     profile_filter = request.args.get('profile', 'ALL')
     
+    # BEF admin always sees only BEF profile
+    if session_user.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
     # We need overview data just to get the list of prop firms for the dropdown
     overview_data = calculate_propfirm_overview()
     sorted_prop_firms = sorted(overview_data.keys())
@@ -2110,7 +2127,7 @@ def payout_history():
 @require_session
 def client_performance():
     session_user = request.session_user
-    if session_user.get('user_type') != 'super_admin':
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
          return redirect('/')
     return render_template('client_performance.html')
 
@@ -2118,10 +2135,13 @@ def client_performance():
 @require_session
 def trader_performance():
     session_user = request.session_user
-    if session_user.get('user_type') != 'super_admin':
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
          return redirect('/')
          
     profile_filter = request.args.get('profile', 'ALL')
+    # BEF admin always sees only BEF profile
+    if session_user.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
     traders_data = calculate_trader_stats(profile_filter=profile_filter)
     return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter)
 
@@ -2130,8 +2150,8 @@ def trader_performance():
 @require_session
 def trader_dashboard(trader_name):
     session_user = request.session_user
-    # Allow super_admin to access any trader dashboard
-    if session_user.get('user_type') == 'super_admin':
+    # Allow super_admin and bef_admin to access any trader dashboard
+    if session_user.get('user_type') in ('super_admin', 'bef_admin'):
         return render_template('trader_dashboard.html', trader_name=trader_name)
     # Allow admin to access traders under them
     if session_user.get('user_type') == 'admin':
@@ -2163,8 +2183,8 @@ def client_dashboard(client_id):
     _admin_data = SYSTEM_HIERARCHY.get('admins', {}).get(client_admin_name, {})
     client_admin_slack_id = _admin_data.get('slack_user_id', '')
 
-    # Allow super_admin, admin, and trader to access any client dashboard
-    if user_type in ['super_admin', 'admin', 'trader']:
+    # Allow super_admin, bef_admin, admin, and trader to access any client dashboard
+    if user_type in ['super_admin', 'bef_admin', 'admin', 'trader']:
         return render_template('index.html', client_id=client_id, user_type=user_type, 
                                can_edit_hedging=True, client_email=client_email, is_active=is_active,
                                client_trader_name=client_trader_name, client_admin_name=client_admin_name,
@@ -2199,6 +2219,28 @@ def get_filtered_hierarchy(user_type, user_identifier):
     
     if user_type == 'super_admin':
         return full_hierarchy
+    
+    if user_type == 'bef_admin':
+        # BEF admin sees full hierarchy but filtered to only BEF-category clients
+        filtered_admins = {}
+        for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
+            filtered_traders = {}
+            for trader_name, trader_data in admin_data.get('traders', {}).items():
+                bef_clients = [
+                    c for c in trader_data.get('clients', [])
+                    if (c.get('category') or '').upper() == 'BEF'
+                ]
+                if bef_clients:
+                    filtered_traders[trader_name] = {
+                        'email': trader_data.get('email', ''),
+                        'clients': bef_clients
+                    }
+            if filtered_traders:
+                filtered_admins[admin_name] = {
+                    'email': admin_data.get('email', ''),
+                    'traders': filtered_traders
+                }
+        return {'admins': filtered_admins}
     
     if user_type == 'admin':
         # Admin sees only their own data (case-insensitive match)
@@ -2327,10 +2369,14 @@ def get_super_admin_totals():
     # The snippet below replaces the body.
     
     session_info = validate_session(session_token)
-    if not session_info or session_info.get('user_type') != 'super_admin':
-        return jsonify({"status": "error", "message": "Super admin access required"}), 403
+    if not session_info or session_info.get('user_type') not in ('super_admin', 'bef_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
     
     profile_filter = request.args.get('profile', 'ALL').upper()
+    
+    # BEF admin always sees only BEF profile data
+    if session_info.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
 
     # Use the centralized financial calculation
     data = calculate_all_financials(profile_filter)
@@ -2797,9 +2843,20 @@ def api_client_data():
         if not client_data:
             return jsonify({"status": "error", "message": "No data found for client"}), 404
 
+        # Mark each evaluation with is_active using the same logic as data_processor
+        evaluations = client_data.get("evaluations", [])
+        for ev in evaluations:
+            status_p1 = (ev.get("Status P1") or "").strip()
+            status_funded = (ev.get("Status") or "").strip()
+            is_p1_fail = status_p1 == "Fail"
+            is_funded_fail = status_funded == "Fail"
+            is_funded_completed = status_funded == "Completed"
+            is_funded_ended = is_funded_fail or is_funded_completed
+            ev["_is_active"] = not is_p1_fail and not is_funded_ended
+
         return jsonify({
             "status": "success",
-            "evaluations": client_data.get("evaluations", []),
+            "evaluations": evaluations,
             "prop_accounts": client_data.get("prop_accounts", []),
             "identity": {
                 "client": client_info['client'],
@@ -3503,6 +3560,30 @@ def unified_login():
         log_action('LOGIN_FAILED', 'super_admin', 'super_admin', client_ip, 'Invalid password', False)
         return jsonify({"status": "error", "message": "Invalid password"}), 403
     
+    # Handle BEF Admin login - REQUIRES PASSWORD (same flow as super_admin)
+    if user_type == 'bef_admin':
+        if not password:
+            return jsonify({"status": "error", "message": "Password is required for BEF Admin"}), 400
+        
+        if verify_admin_password('bef_admin', password):
+            session_token = create_session('bef_admin', 'bef_admin', client_ip)
+            record_login_attempt('bef_admin', 'bef_admin', client_ip, True)
+            log_action('LOGIN_SUCCESS', 'bef_admin', 'bef_admin', client_ip)
+            
+            max_age = 30 * 24 * 60 * 60 if remember else 86400
+            response = jsonify({
+                "status": "success",
+                "user_type": "bef_admin",
+                "redirect": "/bef_admin",
+                "must_change_password": False
+            })
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            return response
+        
+        record_login_attempt('bef_admin', 'bef_admin', client_ip, False)
+        log_action('LOGIN_FAILED', 'bef_admin', 'bef_admin', client_ip, 'Invalid password', False)
+        return jsonify({"status": "error", "message": "Invalid password"}), 403
+    
     # Handle Admin/Trader/Client login - PASSWORD REQUIRED
     if not password:
         return jsonify({"status": "error", "message": "Password is required"}), 400
@@ -3830,6 +3911,12 @@ def api_change_password():
         if set_admin_password('super_admin', new_password):
             log_action('CHANGE_PASSWORD', 'super_admin', 'super_admin', get_remote_address())
             return jsonify({"status": "success", "message": "Password changed successfully"})
+    elif user_type == 'bef_admin':
+        if not verify_admin_password('bef_admin', current_password):
+            return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
+        if set_admin_password('bef_admin', new_password):
+            log_action('CHANGE_PASSWORD', 'bef_admin', 'bef_admin', get_remote_address())
+            return jsonify({"status": "success", "message": "Password changed successfully"})
     else:
         user_info = verify_user_password(username, user_type, current_password)
         if not user_info:
@@ -3877,7 +3964,7 @@ def api_kyc_unlink():
     return jsonify({"status": "error", "message": "Link not found"}), 404
 
 @app.route('/api/kyc/links', methods=['GET'])
-@require_role('super_admin')
+@require_role('super_admin', 'bef_admin')
 def api_kyc_list_all():
     """List all KYC links (super admin view)."""
     return jsonify({"status": "success", "links": get_all_kyc_links()})
@@ -4635,7 +4722,7 @@ def api_move_trader():
 @app.route('/super_admin/clients')
 @require_session
 def client_management():
-    if request.session_user.get('user_type') != 'super_admin':
+    if request.session_user.get('user_type') not in ('super_admin', 'bef_admin'):
         return redirect('/')
     return render_template('client_management.html')
 
@@ -4645,6 +4732,15 @@ def can_access_client(user_type, user_identifier, target_client):
     """Check if user has permission to access a client's data."""
     if user_type == 'super_admin':
         return True
+    
+    if user_type == 'bef_admin':
+        # BEF admin can only access clients with category == 'BEF'
+        for admin_data in hierarchy.get('admins', {}).values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    if (client.get('name') == target_client or client.get('email') == target_client):
+                        return (client.get('category') or '').upper() == 'BEF'
+        return False
     
     if user_type == 'client':
         # Client can always access own data
@@ -4681,6 +4777,15 @@ def get_accessible_clients(user_type, user_identifier):
             for trader_data in admin_data.get('traders', {}).values():
                 for client in trader_data.get('clients', []):
                     clients.append(client.get('name'))
+        return clients
+    
+    if user_type == 'bef_admin':
+        # BEF admin can access only BEF-category clients
+        for admin_data in hierarchy.get('admins', {}).values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    if (client.get('category') or '').upper() == 'BEF':
+                        clients.append(client.get('name'))
         return clients
     
     if user_type == 'admin':
@@ -5568,7 +5673,7 @@ def api_quality_client(client_id):
 
 
 @app.route('/api/quality/results')
-@require_role('super_admin')
+@require_role('super_admin', 'bef_admin')
 def api_quality_results():
     """Get quality scan results. Supports ?date=, ?start=&end= for ranges. Super admin only."""
     try:
@@ -5672,7 +5777,7 @@ def api_admin_issues():
 
 
 @app.route('/api/quality/scan_dates')
-@require_role('super_admin')
+@require_role('super_admin', 'bef_admin')
 def api_quality_scan_dates():
     """Get list of all dates that have scan results."""
     try:
@@ -5687,7 +5792,7 @@ def api_quality_scan_dates():
 
 
 @app.route('/api/quality/summary_status')
-@require_role('super_admin')
+@require_role('super_admin', 'bef_admin')
 def api_summary_status():
     """Get daily summary submission status for all clients, grouped by trader."""
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
@@ -5915,7 +6020,7 @@ def api_checklist_status():
     date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
     client_id = request.args.get('client_id', '')
 
-    if user_type == 'super_admin':
+    if user_type in ('super_admin', 'bef_admin'):
         checklists = get_daily_checklists(date)
     else:
         checklists = get_daily_checklists(date, user_identifier)
@@ -5927,7 +6032,7 @@ def api_checklist_status():
     return jsonify({'status': 'success', 'date': date, 'checklists': checklists})
 
 @app.route('/api/quality/scorecard')
-@require_role('super_admin')
+@require_role('super_admin', 'bef_admin')
 def api_weekly_scorecard():
     """Generate weekly scorecard aggregating quality scan data per trader."""
     from dashboard.database import get_weekly_scan_results, get_daily_checklists
@@ -6026,7 +6131,7 @@ def api_weekly_scorecard():
     })
 
 @app.route('/api/quality/daily_summary')
-@require_role('super_admin')
+@require_role('super_admin', 'bef_admin')
 def api_daily_summary():
     """Generate a text summary of today's dashboard state for Discord/team sharing."""
     from dashboard.database import get_quality_scan_results, get_daily_checklists

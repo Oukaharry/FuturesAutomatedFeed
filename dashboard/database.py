@@ -636,6 +636,10 @@ def find_user_by_identifier(identifier: str) -> dict:
     if identifier.lower() in ['super_admin', 'superadmin', 'admin']:
         return {'user_type': 'super_admin', 'username': 'super_admin'}
     
+    # Check if it's bef_admin
+    if identifier.lower() in ['bef_admin', 'befadmin', 'bef']:
+        return {'user_type': 'bef_admin', 'username': 'bef_admin'}
+    
     with get_connection() as conn:
         cursor = conn.cursor()
         # Search by username or email across all user types
@@ -657,8 +661,8 @@ def verify_user_by_identifier(identifier: str, password: str) -> dict:
     if not user:
         return None
     
-    # Super admin has special handling
-    if user.get('user_type') == 'super_admin':
+    # Super admin and BEF admin have special handling
+    if user.get('user_type') in ('super_admin', 'bef_admin'):
         return user  # Password check happens separately
     
     # Verify password for regular users

@@ -480,6 +480,9 @@ class TradovateAccount:
                             
                         raise Exception("Login may have failed - could not reach trading mode selection")
 
+                # Dismiss any interstitial pages that may appear before mode selection
+                self._dismiss_interstitial_pages(timeout=3)
+
                 # SPEED OPTIMIZATION: Try trading access with prioritized methods based on mode
                 connected = False
                 
@@ -791,6 +794,10 @@ class TradovateAccount:
             logging.info("Clicking LIVE TRADING button...")
             self.driver.execute_script("arguments[0].click();", live_button)
             
+            # Dismiss any interstitial pages (e.g. 'Welcome to Tradovate Prop')
+            time.sleep(1)
+            self._dismiss_interstitial_pages(timeout=5)
+
             # Wait for interface to load
             logging.info("Waiting for LIVE TRADING interface to load...")
             WebDriverWait(self.driver, 60).until(
@@ -905,6 +912,10 @@ class TradovateAccount:
                 logging.warning("All direct click methods failed, trying fallbacks")
                 self._try_all_simulation_fallbacks_fast()
                 return
+
+            # Dismiss any interstitial pages (e.g. 'Welcome to Tradovate Prop')
+            time.sleep(1)
+            self._dismiss_interstitial_pages(timeout=5)
 
             # Wait for simulation interface to load - REDUCED TIMEOUT
             # Give 1 minute for the page to load after clicking (reduced from 5 minutes)
@@ -1132,6 +1143,82 @@ class TradovateAccount:
             )
         except Exception:
             pass
+
+    def _dismiss_interstitial_pages(self, timeout=5):
+        """Dismiss intermittent interstitial pages that appear before the trading interface.
+        
+        Handles:
+        - 'Welcome to Tradovate Prop' full-screen modal with Continue button
+        - Cookie consent banners with Accept Cookies button
+        - Any other MUI dialog with a Continue/OK/Accept button
+        """
+        deadline = time.time() + timeout
+        dismissed_any = False
+
+        while time.time() < deadline:
+            found = False
+
+            # 1) Cookie consent banner
+            try:
+                cookie_btns = self.driver.find_elements(By.XPATH,
+                    "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept cookies')]"
+                )
+                for btn in cookie_btns:
+                    if btn.is_displayed() and btn.is_enabled():
+                        self.driver.execute_script("arguments[0].click();", btn)
+                        logging.info("Dismissed cookie consent banner")
+                        found = True
+                        dismissed_any = True
+                        break
+            except Exception:
+                pass
+
+            # 2) Full-screen 'Welcome to Tradovate Prop' modal — Continue button
+            try:
+                continue_btns = self.driver.find_elements(By.XPATH,
+                    "//div[contains(@class,'MuiDialog-paperFullScreen')]"
+                    "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continue')]"
+                )
+                for btn in continue_btns:
+                    if btn.is_displayed() and btn.is_enabled():
+                        self.driver.execute_script("arguments[0].click();", btn)
+                        logging.info("Dismissed 'Welcome to Tradovate Prop' interstitial (Continue)")
+                        found = True
+                        dismissed_any = True
+                        time.sleep(1)
+                        break
+            except Exception:
+                pass
+
+            # 3) Generic MUI dialog with Continue / OK / Accept / Got it / Close
+            if not found:
+                try:
+                    generic_btns = self.driver.find_elements(By.XPATH,
+                        "//div[contains(@class,'MuiDialog-root') or contains(@class,'MuiModal-root')]"
+                        "//button[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continue')"
+                        " or contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'ok')"
+                        " or contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'accept')"
+                        " or contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'got it')"
+                        " or contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'close')]"
+                    )
+                    for btn in generic_btns:
+                        if btn.is_displayed() and btn.is_enabled():
+                            self.driver.execute_script("arguments[0].click();", btn)
+                            logging.info(f"Dismissed generic MUI dialog (button text: {btn.text.strip()})")
+                            found = True
+                            dismissed_any = True
+                            time.sleep(0.5)
+                            break
+                except Exception:
+                    pass
+
+            if not found:
+                break  # No interstitial detected, stop polling
+            time.sleep(0.5)
+
+        if dismissed_any:
+            logging.info("Interstitial page(s) dismissed successfully")
+        return dismissed_any
 
     def close(self):
         """Close the browser and cleanup"""
@@ -1385,11 +1472,387 @@ class TradovateAccount:
                 print(f"[⚡ THREAD-EXEC] Execution failed: {e}")
                 raise
 
-    def buy_market(self, symbol=None, qty=1, tp=None, sl=None, on_click=None, skip_positions_refresh=False, prop_firm=None, phase=None, account_size=None):
-        self._place_order_side(symbol, qty, "buy", tp, sl, on_click=on_click, skip_positions_refresh=skip_positions_refresh, prop_firm=prop_firm, phase=phase, account_size=account_size)
+    def get_active_account(self):
+        """Get the full (unmasked) account number currently active in the Tradovate UI.
+        
+        DOM structure:
+          div.account-selector-wrapper
+            div.account-selector.dropdown
+              div[data-toggle="dropdown"]
+                div.account > div.name > div  ← contains account number
+              ul.dropdown-menu
+                li.selected > a.account > div.name > div.main  ← selected account
+        
+        Returns:
+            str: The account number string (e.g. "FTDFYSLX50349776193"), or None.
+        """
+        if not self.driver:
+            return None
+        try:
+            # Primary: Read from the header account-selector name element
+            name_els = self.driver.find_elements(
+                By.CSS_SELECTOR, "div.account-selector div.name div")
+            for el in name_els:
+                try:
+                    text = el.text.strip()
+                    if text and any(c.isdigit() for c in text) and len(text) >= 6:
+                        return text
+                except Exception:
+                    continue
 
-    def sell_market(self, symbol=None, qty=1, tp=None, sl=None, on_click=None, skip_positions_refresh=False, prop_firm=None, phase=None, account_size=None):
-        self._place_order_side(symbol, qty, "sell", tp, sl, on_click=on_click, skip_positions_refresh=skip_positions_refresh, prop_firm=prop_firm, phase=phase, account_size=account_size)
+            # Fallback: Read from the selected dropdown item
+            selected_els = self.driver.find_elements(
+                By.CSS_SELECTOR, "ul.dropdown-menu li.selected div.main")
+            for el in selected_els:
+                try:
+                    text = el.text.strip()
+                    if text and any(c.isdigit() for c in text):
+                        return text
+                except Exception:
+                    continue
+
+            # Last resort: Any element with class containing 'account' that has digits
+            account_elements = self.driver.find_elements(
+                By.CSS_SELECTOR, "[class*='account']")
+            for el in account_elements:
+                text = el.text.strip()
+                if text and any(c.isdigit() for c in text):
+                    for line in text.splitlines():
+                        line = line.strip()
+                        if line and any(c.isdigit() for c in line) and len(line) >= 6:
+                            return line
+
+        except Exception as e:
+            logging.warning(f"get_active_account failed: {e}")
+        return None
+
+    def get_all_accounts(self):
+        """Open the account dropdown and return a list of all account names.
+
+        Returns:
+            list[str]: Account name strings from the dropdown, or empty list on failure.
+        """
+        if not self.driver:
+            return []
+
+        try:
+            # Open the dropdown
+            triggers = self.driver.find_elements(
+                By.CSS_SELECTOR, "div.account-selector [data-toggle='dropdown']")
+            opened = False
+            for trigger in triggers:
+                try:
+                    if trigger.is_displayed():
+                        self.driver.execute_script("arguments[0].click();", trigger)
+                        time.sleep(1.0)
+                        opened = True
+                        break
+                except Exception:
+                    continue
+
+            if not opened:
+                # Fallback: click account-selector itself
+                selectors = self.driver.find_elements(By.CSS_SELECTOR, "div.account-selector")
+                for sel in selectors:
+                    try:
+                        if sel.is_displayed():
+                            self.driver.execute_script("arguments[0].click();", sel)
+                            time.sleep(1.0)
+                            opened = True
+                            break
+                    except Exception:
+                        continue
+
+            if not opened:
+                print("[GET_ALL_ACCOUNTS] Could not open dropdown")
+                return []
+
+            # Read all account entries
+            account_links = self.driver.find_elements(
+                By.CSS_SELECTOR, "div.account-selector ul.dropdown-menu li a.account:not(.logout)")
+
+            names = []
+            for link in account_links:
+                try:
+                    main_divs = link.find_elements(By.CSS_SELECTOR, "div.name div.main")
+                    if main_divs:
+                        name = main_divs[0].text.strip()
+                    else:
+                        name = link.text.strip().split('\n')[0].strip()
+                    if name:
+                        names.append(name)
+                except Exception:
+                    continue
+
+            # Close dropdown safely with Escape key (never click body — could hit Logout)
+            try:
+                from selenium.webdriver.common.keys import Keys
+                self.driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+                time.sleep(0.3)
+            except Exception:
+                # Fallback: re-click the trigger to toggle dropdown closed
+                try:
+                    for trigger in triggers:
+                        if trigger.is_displayed():
+                            self.driver.execute_script("arguments[0].click();", trigger)
+                            time.sleep(0.3)
+                            break
+                except Exception:
+                    pass
+
+            print(f"[GET_ALL_ACCOUNTS] Found {len(names)} accounts: {names}")
+            return names
+
+        except Exception as e:
+            logging.warning(f"get_all_accounts failed: {e}")
+            return []
+
+    def switch_account(self, target_account):
+        """Switch to a specific sub-account via Tradovate's account dropdown.
+        
+        DOM structure (from live Tradovate page):
+          div.account-selector-wrapper
+            div.account-selector.dropdown
+              div[data-toggle="dropdown"]        ← CLICK to open dropdown
+              ul.dropdown-menu                    ← dropdown list
+                li > a.account                    ← each account entry (skip a.logout)
+                  div.name > div.main             ← account number text
+        
+        Args:
+            target_account: Account number string (or unique substring) to select.
+            
+        Returns:
+            bool: True if account was switched (or already active), False on failure.
+        """
+        if not self.driver or not target_account:
+            return False
+
+        import re as _re
+        target_account = str(target_account).strip()
+        target_lower = target_account.lower()
+        digit_match = _re.search(r'(\d{5,})$', target_account)
+        digit_suffix = digit_match.group(1) if digit_match else None
+        print(f"[ACCOUNT SWITCH] Target: {target_account}  (suffix: {digit_suffix})")
+
+        try:
+            # ── Check if already on the correct account ──
+            current = self.get_active_account()
+            if current:
+                cur_lower = current.lower()
+                if target_lower in cur_lower or cur_lower in target_lower:
+                    print(f"[ACCOUNT SWITCH] Already on correct account: {current}")
+                    return True
+                if digit_suffix and current.endswith(digit_suffix):
+                    print(f"[ACCOUNT SWITCH] Already correct (suffix match): {current}")
+                    return True
+
+            print(f"[ACCOUNT SWITCH] Current: {current}  →  Need: {target_account}")
+
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                if attempt > 1:
+                    print(f"[ACCOUNT SWITCH] ── Retry {attempt}/{max_attempts} ──")
+                    time.sleep(1)
+
+                # ── STEP 1: Click div[data-toggle="dropdown"] inside div.account-selector to open ──
+                dropdown_opened = False
+                triggers = self.driver.find_elements(
+                    By.CSS_SELECTOR, "div.account-selector [data-toggle='dropdown']")
+                for trigger in triggers:
+                    try:
+                        if trigger.is_displayed():
+                            print(f"[ACCOUNT SWITCH] STEP 1: Clicking div[data-toggle=dropdown]")
+                            self.driver.execute_script("arguments[0].click();", trigger)
+                            time.sleep(1.5)
+                            dropdown_opened = True
+                            break
+                    except Exception:
+                        continue
+
+                # Fallback: click the account-selector div itself
+                if not dropdown_opened:
+                    selectors = self.driver.find_elements(
+                        By.CSS_SELECTOR, "div.account-selector")
+                    for sel in selectors:
+                        try:
+                            if sel.is_displayed():
+                                print(f"[ACCOUNT SWITCH] STEP 1 fallback: Clicking div.account-selector")
+                                self.driver.execute_script("arguments[0].click();", sel)
+                                time.sleep(1.5)
+                                dropdown_opened = True
+                                break
+                        except Exception:
+                            continue
+
+                if not dropdown_opened:
+                    print(f"[ACCOUNT SWITCH] Could not open dropdown (attempt {attempt})")
+                    continue
+
+                # ── STEP 2: Read all accounts from ul.dropdown-menu ──
+                # Each account: li > a.account (not .logout) > div.name > div.main
+                account_links = self.driver.find_elements(
+                    By.CSS_SELECTOR, "div.account-selector ul.dropdown-menu li a.account:not(.logout)")
+
+                print(f"[ACCOUNT SWITCH] STEP 2: Found {len(account_links)} account entries in dropdown")
+
+                matched_link = None
+                for link in account_links:
+                    try:
+                        # Get the account name from div.main inside this <a>
+                        main_divs = link.find_elements(By.CSS_SELECTOR, "div.name div.main")
+                        if main_divs:
+                            acct_name = main_divs[0].text.strip()
+                        else:
+                            acct_name = link.text.strip().split('\n')[0].strip()
+
+                        is_selected = False
+                        try:
+                            parent_li = link.find_element(By.XPATH, "..")
+                            is_selected = "selected" in (parent_li.get_attribute("class") or "")
+                        except Exception:
+                            pass
+
+                        marker = " ← CURRENT" if is_selected else ""
+                        print(f"  - {acct_name}{marker}")
+
+                        # Match: exact substring or suffix
+                        if target_lower in acct_name.lower() or acct_name.lower() in target_lower:
+                            if not is_selected:
+                                matched_link = link
+                                print(f"[ACCOUNT SWITCH] MATCH (exact): {acct_name}")
+                                break
+                        elif digit_suffix and acct_name.endswith(digit_suffix):
+                            if not is_selected:
+                                matched_link = link
+                                print(f"[ACCOUNT SWITCH] MATCH (suffix {digit_suffix}): {acct_name}")
+                                break
+                    except Exception as item_err:
+                        logging.debug(f"[ACCOUNT SWITCH] Error reading dropdown item: {item_err}")
+                        continue
+
+                if not matched_link:
+                    print(f"[ACCOUNT SWITCH] '{target_account}' not found in dropdown (attempt {attempt})")
+                    # Close dropdown before retry
+                    try:
+                        from selenium.webdriver.common.keys import Keys as _Keys
+                        self.driver.find_element(By.TAG_NAME, 'body').send_keys(_Keys.ESCAPE)
+                        time.sleep(0.3)
+                    except Exception:
+                        pass
+                    continue
+
+                # ── STEP 3: Click the matched account link ──
+                print(f"[ACCOUNT SWITCH] STEP 3: Clicking matched account (attempt {attempt})")
+                
+                # Try multiple click methods — JS click often doesn't work on <a> elements
+                click_succeeded = False
+                
+                # Method 1: Selenium native .click() (most reliable for <a> links)
+                try:
+                    matched_link.click()
+                    click_succeeded = True
+                    print(f"[ACCOUNT SWITCH] Used native .click()")
+                except Exception as e1:
+                    print(f"[ACCOUNT SWITCH] Native click failed: {e1}")
+                
+                # Method 2: ActionChains click
+                if not click_succeeded:
+                    try:
+                        ActionChains(self.driver).move_to_element(matched_link).click().perform()
+                        click_succeeded = True
+                        print(f"[ACCOUNT SWITCH] Used ActionChains click")
+                    except Exception as e2:
+                        print(f"[ACCOUNT SWITCH] ActionChains click failed: {e2}")
+
+                # Method 3: JS click on the <a> element
+                if not click_succeeded:
+                    try:
+                        self.driver.execute_script("arguments[0].click();", matched_link)
+                        click_succeeded = True
+                        print(f"[ACCOUNT SWITCH] Used JS click")
+                    except Exception as e3:
+                        print(f"[ACCOUNT SWITCH] JS click failed: {e3}")
+
+                # Method 4: JS click on div.main inside the link
+                if not click_succeeded:
+                    try:
+                        inner = matched_link.find_elements(By.CSS_SELECTOR, "div.name div.main")
+                        if inner:
+                            self.driver.execute_script("arguments[0].click();", inner[0])
+                            click_succeeded = True
+                            print(f"[ACCOUNT SWITCH] Used JS click on inner div.main")
+                    except Exception as e4:
+                        print(f"[ACCOUNT SWITCH] Inner click failed: {e4}")
+
+                if not click_succeeded:
+                    print(f"[ACCOUNT SWITCH] ALL click methods failed (attempt {attempt})")
+                    continue
+
+                time.sleep(2)  # wait for account switch
+
+                # ── STEP 4: VERIFY the account actually changed ──
+                new_account = self.get_active_account()
+                if new_account:
+                    new_lower = new_account.lower()
+                    if target_lower in new_lower or new_lower in target_lower:
+                        print(f"[ACCOUNT SWITCH] ✅ VERIFIED — now on: {new_account}")
+                        self._stats_last_fetch_time = 0
+                        return True
+                    elif digit_suffix and new_account.endswith(digit_suffix):
+                        print(f"[ACCOUNT SWITCH] ✅ VERIFIED (suffix) — now on: {new_account}")
+                        self._stats_last_fetch_time = 0
+                        return True
+                    else:
+                        print(f"[ACCOUNT SWITCH] ❌ Account did NOT change (attempt {attempt}). Still on: {new_account}")
+                        self._stats_last_fetch_time = 0
+                        # Will retry on next iteration
+                else:
+                    print(f"[ACCOUNT SWITCH] ⚠ Could not read account after click (attempt {attempt})")
+                    self._stats_last_fetch_time = 0
+                    # Will retry on next iteration
+
+            # All attempts exhausted
+            print(f"[ACCOUNT SWITCH] ❌ FAILED after {max_attempts} attempts for '{target_account}'")
+            return False
+
+        except Exception as e:
+            logging.error(f"[ACCOUNT SWITCH] Exception: {e}")
+            try:
+                self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ESCAPE)
+            except Exception:
+                pass
+            return False
+
+    def verify_active_account(self, expected_account):
+        """Verify that the currently active account matches the expected one.
+        
+        Args:
+            expected_account: Expected account number (or substring).
+            
+        Returns:
+            bool: True if the active account matches, False otherwise.
+        """
+        if not expected_account:
+            return True  # No expectation set, skip check
+        
+        current = self.get_active_account()
+        if not current:
+            logging.warning(f"[ACCOUNT] Cannot verify — unable to read active account")
+            return False
+        
+        expected_lower = str(expected_account).strip().lower()
+        if expected_lower in current.lower():
+            logging.info(f"[ACCOUNT] Verified: active={current}, expected={expected_account}")
+            return True
+        
+        logging.warning(f"[ACCOUNT] MISMATCH: active={current}, expected={expected_account}")
+        return False
+
+    def buy_market(self, symbol=None, qty=1, tp=None, sl=None, on_click=None, skip_positions_refresh=False, prop_firm=None, phase=None, account_size=None, expected_account=None):
+        self._place_order_side(symbol, qty, "buy", tp, sl, on_click=on_click, skip_positions_refresh=skip_positions_refresh, prop_firm=prop_firm, phase=phase, account_size=account_size, expected_account=expected_account)
+
+    def sell_market(self, symbol=None, qty=1, tp=None, sl=None, on_click=None, skip_positions_refresh=False, prop_firm=None, phase=None, account_size=None, expected_account=None):
+        self._place_order_side(symbol, qty, "sell", tp, sl, on_click=on_click, skip_positions_refresh=skip_positions_refresh, prop_firm=prop_firm, phase=phase, account_size=account_size, expected_account=expected_account)
 
     def _set_quantity(self, qty):
         print(f"[ZAP] Setting quantity: {qty}")
@@ -1518,12 +1981,42 @@ class TradovateAccount:
         except Exception:
             return None
 
-    def _place_order_side(self, symbol, qty, side, tp=None, sl=None, on_click=None, skip_positions_refresh=False, prop_firm=None, phase=None, account_size=None):
+    def _place_order_side(self, symbol, qty, side, tp=None, sl=None, on_click=None, skip_positions_refresh=False, prop_firm=None, phase=None, account_size=None, expected_account=None):
         """
         Place a market order with enhanced crash detection and recovery
         """
         # Acquire lock to prevent stats fetching during order placement
         with self.lock:
+            # --- ACCOUNT NUMBER VERIFICATION ---
+            if expected_account:
+                expected_account = str(expected_account).strip()
+                current_account = self.get_active_account()
+                if current_account:
+                    if expected_account.lower() not in current_account.lower() and current_account.lower() not in expected_account.lower():
+                        # Also check numeric suffix match
+                        import re as _re
+                        expected_digits = _re.search(r'(\d{5,})$', expected_account)
+                        suffix_match = expected_digits and current_account.endswith(expected_digits.group(1))
+                        if not suffix_match:
+                            print(f"[ACCOUNT] Active '{current_account}' ≠ expected '{expected_account}'. Switching...")
+                            switched = self.switch_account(expected_account)
+                            if switched:
+                                # Confirm the switch actually worked
+                                confirmed = self.get_active_account()
+                                print(f"[ACCOUNT] ✅ Switched — confirmed active: {confirmed}")
+                            else:
+                                error_msg = f"[BLOCK] Account switch to '{expected_account}' failed — still on '{current_account}'. Trade BLOCKED."
+                                print(error_msg)
+                                raise Exception(error_msg)
+                        else:
+                            print(f"[ACCOUNT] ✅ Suffix match: active '{current_account}' matches expected '{expected_account}'")
+                    else:
+                        print(f"[ACCOUNT] ✅ Verified: '{current_account}' matches '{expected_account}'")
+                else:
+                    print(f"[ACCOUNT] ⚠ Could not read active account. Attempting switch to '{expected_account}'...")
+                    switched = self.switch_account(expected_account)
+                    if not switched:
+                        print(f"[ACCOUNT] ⚠ Switch attempt failed. Proceeding anyway.")
             # --- ACCOUNT SIZE PROTECTION ---
             # Try to populate account_size from env if missing, for safety
             check_size = account_size or os.getenv("ACCOUNT_SIZE", "50k")
@@ -1904,15 +2397,123 @@ class TradovateAccount:
                 print(f"Failed to click Send button: {e}")
                 raise
             
-            # Handle confirmation dialog if it appears
+            # Brief wait for any confirmation dialog to render (appears intermittently)
+            time.sleep(0.5)
+
+            # Detect confirmation dialog by container classes OR "DO NOT SHOW" marker text
+            confirm_containers = self.driver.find_elements(By.XPATH,
+                "//div[contains(@class,'popover') or contains(@class,'modal') or contains(@class,'confirm')"
+                " or contains(@class,'dialog') or contains(@class,'overlay')]"
+            )
+            do_not_show_markers = self.driver.find_elements(By.XPATH,
+                "//*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'do not show')]"
+            )
+            dialog_detected = bool(confirm_containers or do_not_show_markers)
+
+            if dialog_detected:
+                print("Confirmation dialog detected")
+
+                # Check "Do not show again" checkbox if present
+                try:
+                    do_not_show = self.driver.find_element(By.XPATH,
+                        "//input[@type='checkbox' and (following-sibling::*[contains(translate(text(),"
+                        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'do not show')]"
+                        " or ancestor::label[contains(translate(text(),"
+                        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'do not show')])]"
+                    )
+                    if not do_not_show.is_selected():
+                        self.driver.execute_script("arguments[0].click();", do_not_show)
+                        print("'Do not show again' checkbox checked")
+                except Exception:
+                    # Try broader search for the checkbox near "do not show" text
+                    try:
+                        do_not_show = self.driver.find_element(By.XPATH,
+                            "//*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                            "'do not show')]/preceding-sibling::input[@type='checkbox']"
+                            " | //*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                            "'do not show')]/following-sibling::input[@type='checkbox']"
+                            " | //*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                            "'do not show')]/ancestor::label//input[@type='checkbox']"
+                            " | //*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                            "'do not show')]/parent::*//input[@type='checkbox']"
+                        )
+                        if not do_not_show.is_selected():
+                            self.driver.execute_script("arguments[0].click();", do_not_show)
+                            print("'Do not show again' checkbox checked (alt)")
+                    except Exception:
+                        print("No 'Do not show again' checkbox found")
+
+                # Click the confirmation Buy/Sell button (matches current trade side)
+                confirmed = False
+
+                # Try side-specific button inside known container first
+                try:
+                    side_confirm = self.driver.find_element(By.XPATH,
+                        f"//div[contains(@class,'popover') or contains(@class,'modal') or contains(@class,'confirm')"
+                        f" or contains(@class,'dialog') or contains(@class,'overlay')]"
+                        f"//div[contains(@class,'btn') and contains(translate(text(),"
+                        f"'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'{side.lower()}')]"
+                        f" | //div[contains(@class,'popover') or contains(@class,'modal') or contains(@class,'confirm')"
+                        f" or contains(@class,'dialog') or contains(@class,'overlay')]"
+                        f"//button[contains(translate(text(),"
+                        f"'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'{side.lower()}')]"
+                    )
+                    self.driver.execute_script("arguments[0].click();", side_confirm)
+                    print(f"Confirmation {side.upper()} button clicked (in container)")
+                    confirmed = True
+                except Exception:
+                    pass
+
+                # Fallback: side-specific button near "Cancel" (the order ticket has no Cancel)
+                if not confirmed:
+                    try:
+                        side_confirm = self.driver.find_element(By.XPATH,
+                            f"//button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'{side.lower()}')"
+                            f" and following-sibling::button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'cancel')]]"
+                            f" | //button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'{side.lower()}')"
+                            f" and preceding-sibling::button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'cancel')]]"
+                            f" | //div[contains(@class,'btn') and contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'{side.lower()}')"
+                            f" and (following-sibling::*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'cancel')]"
+                            f" or preceding-sibling::*[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'cancel')])]"
+                        )
+                        self.driver.execute_script("arguments[0].click();", side_confirm)
+                        print(f"Confirmation {side.upper()} button clicked (near Cancel)")
+                        confirmed = True
+                    except Exception:
+                        pass
+
+                # Fallback: OK / Confirm / Continue / Yes buttons
+                if not confirmed:
+                    try:
+                        fallback_btn = self.driver.find_element(By.XPATH,
+                            "//button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'ok')"
+                            " or contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'confirm')"
+                            " or contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continue')"
+                            " or contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'yes')]"
+                            " | //div[contains(@class,'btn-success') or contains(@class,'btn-primary')]"
+                        )
+                        self.driver.execute_script("arguments[0].click();", fallback_btn)
+                        print("Confirmation dialog handled (fallback)")
+                        confirmed = True
+                    except Exception:
+                        pass
+
+                if not confirmed:
+                    print("Confirmation dialog found but no button matched")
+
+            # Dismiss any post-order notification/toast that may block the UI
             try:
-                confirm_btn = WebDriverWait(self.driver, 2).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'ok') or contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'confirm') or contains(translate(text(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continue')]"))
+                dismiss_btn = WebDriverWait(self.driver, 1).until(
+                    EC.element_to_be_clickable((By.XPATH,
+                        "//button[contains(@class,'close') or @aria-label='Close' or @aria-label='Dismiss']"
+                        " | //div[contains(@class,'toast')]//button"
+                        " | //div[contains(@class,'notification')]//button[contains(@class,'close')]"
+                    ))
                 )
-                self.driver.execute_script("arguments[0].click();", confirm_btn)
-                print("Confirmation dialog handled")
-            except:
-                print("No confirmation dialog (normal)")
+                self.driver.execute_script("arguments[0].click();", dismiss_btn)
+                print("Post-order notification dismissed")
+            except Exception:
+                pass
                 
             print(f"Order placed: {side.upper()}")
             

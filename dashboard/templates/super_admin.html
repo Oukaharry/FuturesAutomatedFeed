@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin - TradeOpss</title>
+    <title>{% if user_role|default('super_admin') == 'bef_admin' %}BEF Admin{% else %}Super Admin{% endif %} - TradeOpss</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -557,7 +557,7 @@
             </div>
             
             <div class="nav-links">
-                <a href="/super_admin" class="tab-btn active"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="{% if user_role|default('super_admin') == 'bef_admin' %}/bef_admin{% else %}/super_admin{% endif %}" class="tab-btn active"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
                 <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
@@ -614,6 +614,7 @@
                 </div>
                 
                 <!-- Add Admin -->
+                {% if user_role|default('super_admin') == 'super_admin' %}
                 <div class="form-group" style="margin-bottom: 24px;">
                     <label class="form-label" style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px; display:block;">Add New Admin</label>
                     <div style="display:flex;">
@@ -673,6 +674,7 @@
                     <!-- Current KYC Links -->
                     <div id="kyc-links-list" style="margin-top:16px;"></div>
                 </div>
+                {% endif %}
 
                 </div>
             </div>
@@ -682,11 +684,13 @@
                 
                 <!-- Financial Header with Filter -->
                 <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: -12px;">
+                    {% if user_role|default('super_admin') == 'super_admin' %}
                     <div class="profile-toggle">
                         <button onclick="changeProfile('ALL')" id="btn-profile-all" class="toggle-btn active">ALL</button>
                         <button onclick="changeProfile('BEF')" id="btn-profile-bef" class="toggle-btn">BEF</button>
                         <button onclick="changeProfile('PRIVATE')" id="btn-profile-private" class="toggle-btn">PRV</button>
                     </div>
+                    {% endif %}
                 </div>
 
                 <!-- Financial Cards -->
@@ -1261,8 +1265,9 @@
 
 
         // --- Core Logic ---
+        const USER_ROLE = '{{ user_role|default("super_admin") }}';
         let hierarchyData = {};
-        let currentProfile = 'ALL';
+        let currentProfile = USER_ROLE === 'bef_admin' ? 'BEF' : 'ALL';
         
         // Glue code for new buttons
         function setFilter(profile) {

@@ -30,6 +30,8 @@ import requests
 import time
 from datetime import datetime
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict
 import re
 import random
 
@@ -1525,10 +1527,9 @@ class TraderCompanionApp:
             style = ttk.Style(); style.theme_use('clam')
             self.notebook = ttk.Notebook(main)
             self.notebook.pack(fill="both", expand=True, padx=8, pady=4)
-            tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Dashboard")
-            tab_trade = ttk.Frame(self.notebook); self.notebook.add(tab_trade, text="Trading Engine")
+            tab_dash  = ttk.Frame(self.notebook); self.notebook.add(tab_dash, text="Settings")
             self._build_dashboard_tab(tab_dash)
-            self._build_trading_engine_ui(tab_trade)
+            self._build_trading_engine_ui(tab_dash)
             log_frame = ttk.LabelFrame(main, text="Status Log", padding=4)
             log_frame.pack(fill="both", expand=True, padx=8, pady=4)
             self.log_text = scrolledtext.ScrolledText(log_frame, height=6, bg='#0a0e1a',
@@ -1736,11 +1737,9 @@ class TraderCompanionApp:
                                        segmented_button_unselected_color=self.C_BG_THIRD,
                                        text_color=self.C_TEXT, corner_radius=8)
         self.notebook.pack(fill="both", expand=True)
-        tab_dash  = self.notebook.add("  Dashboard  ")
-        tab_trade = self.notebook.add("  Trading Engine  ")
+        tab_settings = self.notebook.add("  Settings  ")
 
-        self._build_dashboard_tab(tab_dash)
-        self._build_trading_engine_ui(tab_trade)
+        self._build_combined_settings_tab(tab_settings)
 
         # ── Bottom status bar ──
         status_bar = ctk.CTkFrame(outer, fg_color=self.C_BG_SEC, height=24, corner_radius=0)
@@ -1835,13 +1834,17 @@ class TraderCompanionApp:
 
 
     # ── Build Dashboard Tab ──
-    def _build_dashboard_tab(self, parent):
-        """Build the Dashboard tab — compact layout."""
-        # Make tab scrollable
+    def _build_combined_settings_tab(self, parent):
+        """Build the combined Settings tab — Dashboard + Trading Engine in one page."""
         if CTK_AVAILABLE:
             scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
             scroll.pack(fill="both", expand=True)
             parent = scroll
+        self._build_dashboard_tab(parent)
+        self._build_trading_engine_ui(parent)
+
+    def _build_dashboard_tab(self, parent):
+        """Build the Dashboard section — compact layout."""
 
         # ── Connection Target ──
         settings = parent
@@ -1926,25 +1929,6 @@ class TraderCompanionApp:
                                             text_color=self.C_TEXT_DIM) if CTK_AVAILABLE else \
                               ttk.Label(settings, textvariable=self.hierarchy_var)
         # Don't pack — hidden
-
-        # ── Data Push ──
-        push_card = self._section_card(settings, "DATA PUSH", "📤")
-        push_card.pack(fill="x", padx=4, pady=2)
-
-        push_inner = ctk.CTkFrame(push_card, fg_color="transparent") if CTK_AVAILABLE else \
-                     tk.Frame(push_card, bg="#161B22")
-        push_inner.pack(fill="x", padx=10, pady=(2, 6))
-
-        self.push_btn = self._ctk_button(push_inner, text="Push Data", command=self.push_data,
-                                         fg=self.C_SUCCESS, hover="#16a34a", width=120)
-        self.push_btn.pack(side="left", padx=(0, 6))
-
-        self.auto_btn = self._ctk_button(push_inner, text="Auto-Push", command=self.toggle_auto_push,
-                                         fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=120)
-        self.auto_btn.pack(side="left", padx=(0, 6))
-
-        self._ctk_button(push_inner, text="Save Config", command=self.save_config,
-                         fg=self.C_BG_THIRD, hover=self.C_BORDER, width=110).pack(side="right")
 
         # ── Import Data ──
         imp_card = self._section_card(settings, "IMPORT DATA", "📋")
@@ -3209,7 +3193,10 @@ class TraderCompanionApp:
         """Toggle automatic data pushing."""
         if self.auto_push_enabled:
             self.auto_push_enabled = False
-            self.auto_btn.configure(text="Auto-Push")
+            try:
+                self.auto_btn.configure(text="Auto-Push")
+            except Exception:
+                pass
             try:
                 self.auto_btn_live.configure(text="Auto-Push")
             except Exception:
@@ -3225,7 +3212,10 @@ class TraderCompanionApp:
             self.last_deal_ticket = 0
             
             self.auto_push_enabled = True
-            self.auto_btn.configure(text="Stop Auto-Push")
+            try:
+                self.auto_btn.configure(text="Stop Auto-Push")
+            except Exception:
+                pass
             try:
                 self.auto_btn_live.configure(text="Stop Auto-Push")
             except Exception:
@@ -3306,13 +3296,7 @@ class TraderCompanionApp:
     # ============ Trading Engine ============
 
     def _build_trading_engine_ui(self, parent):
-        """Build the Trading Engine tab with CTk styled cards."""
-
-        # Make tab scrollable
-        if CTK_AVAILABLE:
-            scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
-            scroll.pack(fill="both", expand=True)
-            parent = scroll
+        """Build the Trading Engine section with CTk styled cards."""
 
         # ── MT5 Connection Card ──
         mt5_card = self._section_card(parent, "MT5 CONNECTION", "🔗")
@@ -3478,6 +3462,9 @@ class TraderCompanionApp:
 
     _FAILED_STATUSES = {"fail", "failed", "breach", "delete", "deleted", "closed", "sl", "ended", "lost"}
 
+    # Keywords for substring matching (catches "Fail", "Failed", "Breached", etc.)
+    _INACTIVE_KEYWORDS = ("fail", "breach", "delete", "closed", "sl", "ended", "lost")
+
     def _detect_eval_phase(self, ev):
         """Determine current phase display name and blueprint key for an evaluation."""
         challenge_status = (ev.get("Status P1", "") or "").strip().lower()
@@ -3528,18 +3515,29 @@ class TraderCompanionApp:
         return phases[current_idx + 1]
 
     def _is_eval_active(self, ev):
-        """Check if an evaluation is active (not failed/ended/deleted)."""
+        """Check if an evaluation is active (not failed/ended/deleted).
+        
+        Uses substring matching so 'Fail', 'Failed', 'Breached' etc. all caught.
+        """
         p1 = (ev.get("Status P1", "") or "").strip().lower()
         funded = (ev.get("Status", "") or "").strip().lower()
+        has_funded_acct = bool((ev.get("Account #.1", "") or "").strip())
+        has_challenge_acct = bool((ev.get("Account #", "") or "").strip())
 
-        # If challenge failed and no funded account, it's dead
-        if p1 in self._FAILED_STATUSES and not (ev.get("Account #.1", "") or "").strip():
+        p1_inactive = any(kw in p1 for kw in self._INACTIVE_KEYWORDS) if p1 else False
+        funded_inactive = any(kw in funded for kw in (*self._INACTIVE_KEYWORDS, "complete")) if funded else False
+
+        # If challenge failed (regardless of whether funded acct number exists)
+        if p1_inactive and not has_funded_acct:
             return False
-        # If funded failed/completed
-        if funded in self._FAILED_STATUSES or funded == "complete":
+        # If funded status is failed/completed
+        if funded_inactive:
+            return False
+        # If challenge failed AND funded also failed — both phases dead
+        if p1_inactive and has_funded_acct and funded_inactive:
             return False
         # Must have at least one account number
-        if not (ev.get("Account #", "") or "").strip() and not (ev.get("Account #.1", "") or "").strip():
+        if not has_challenge_acct and not has_funded_acct:
             return False
         return True
 
@@ -3576,18 +3574,34 @@ class TraderCompanionApp:
                 data = r.json()
                 evaluations = data.get("evaluations", [])
 
-                # Filter active evals (exclude completed/farming-done)
+                # Filter using dashboard's _is_active flag (source of truth)
+                # Falls back to local _is_eval_active() if flag missing
                 active_evals = []
+                skipped_count = 0
                 for ev in evaluations:
-                    if not self._is_eval_active(ev) or ev.get("_deleted"):
+                    if ev.get("_deleted"):
+                        skipped_count += 1
                         continue
-                    prop_firm_name = ev.get("Prop Firm", "Unknown")
-                    firm_code = self._FIRM_MAP.get(prop_firm_name, "MFFU_Flex")
-                    current_display, phase_key = self._detect_eval_phase(ev)
-                    next_display = self._get_next_phase(firm_code, current_display)
-                    if "complete" in next_display.lower():
-                        continue  # Skip evaluations that have no next phase
+
+                    # Use dashboard-computed flag if available, else local fallback
+                    if "_is_active" in ev:
+                        is_active = ev["_is_active"]
+                    else:
+                        is_active = self._is_eval_active(ev)
+
+                    if not is_active:
+                        skipped_count += 1
+                        continue
+
+                    # Must have at least one account number
+                    if not (ev.get("Account #", "") or "").strip() and not (ev.get("Account #.1", "") or "").strip():
+                        skipped_count += 1
+                        continue
+
                     active_evals.append(ev)
+
+                self.root.after(0, lambda t=len(evaluations), a=len(active_evals), s=skipped_count:
+                    self.log(f"📊 {t} total evaluations → {a} active, {s} filtered out (failed/completed/deleted)"))
 
                 self.root.after(0, lambda ae=active_evals: self._populate_trade_rows(ae))
 
@@ -3867,9 +3881,9 @@ class TraderCompanionApp:
                 # 1. Broker order
                 if platform == "Tradovate":
                     if side == "buy":
-                        broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl)
+                        broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                     else:
-                        broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl)
+                        broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                 elif platform == "TopStepX":
                     if side == "buy":
                         broker_account.place_buy_order(trado_sym, trado_qty)
@@ -4054,7 +4068,12 @@ class TraderCompanionApp:
             self._auto_trade_stop.wait(timeout=1)
 
     def _auto_execute_all_trades(self):
-        """Execute trades for ALL loaded rows without confirmation dialogs."""
+        """Execute trades for ALL loaded rows, parallel across prop firms.
+
+        Each prop firm has its own Chrome instance opened during initialization.
+        Trades for different firms run in parallel threads (one thread per firm),
+        while trades for the same firm run sequentially within that thread.
+        """
         firm_sides = getattr(self, '_auto_trade_firm_sides', {})
         rows = list(self._active_trade_rows)  # snapshot
 
@@ -4063,34 +4082,127 @@ class TraderCompanionApp:
             self._stop_auto_trade()
             return
 
-        self.log(f"🚀 Auto-executing {len(rows)} accounts (random direction per firm)...")
+        self.log(f"🚀 Auto-executing {len(rows)} accounts (parallel per firm)...")
 
         hedging = self.hedge_mode_var.get() == "Hedging"
         platform = self.broker_var.get()
         mt5_api = self._get_mt5_trading_api() if hedging else None
 
-        def _do_auto_trades():
-            success_count = 0
-            fail_count = 0
-            for row_data in rows:
+        # Group rows by firm so each firm's Chrome runs in its own thread
+        rows_by_firm = defaultdict(list)
+        for row_data in rows:
+            firm_name = row_data["eval"].get("Prop Firm", row_data["firm_code"])
+            rows_by_firm[firm_name].append(row_data)
+
+        # ── PRE-VALIDATE: check which accounts actually exist on each Tradovate ──
+        skipped_rows = []
+        not_connected_firms = []
+        if platform == "Tradovate":
+            self.log("🔍 Pre-validating accounts against Tradovate dropdowns...")
+            validated_by_firm = {}
+            for firm_name, firm_rows in list(rows_by_firm.items()):
+                broker_account = self._get_broker_for_firm(firm_name)
+                if not broker_account:
+                    # Firm is NOT connected — skip ALL its accounts immediately
+                    not_connected_firms.append(firm_name)
+                    self.log(f"⛔ {firm_name} is NOT connected — skipping {len(firm_rows)} account(s)")
+                    for rd in firm_rows:
+                        skipped_rows.append(rd)
+                        self.log(f"   ❌ {rd['acct_num']}  ({firm_name} / {rd['current_phase']}) — firm not connected")
+                    rows_by_firm[firm_name] = []  # clear all rows for this firm
+                    continue
+
+                # Read all accounts from this firm's Tradovate dropdown
+                import re as _re
+                try:
+                    trado_accounts = broker_account.get_all_accounts()
+                except Exception as e:
+                    self.log(f"⚠ Could not read accounts for {firm_name}: {e}")
+                    trado_accounts = []
+
+                if not trado_accounts:
+                    self.log(f"⚠ No accounts listed for {firm_name} — skipping pre-filter")
+                    continue
+
+                trado_lower = [a.lower() for a in trado_accounts]
+
+                valid_rows = []
+                for rd in firm_rows:
+                    acct = str(rd["acct_num"]).strip()
+                    acct_lower = acct.lower()
+                    digit_match = _re.search(r'(\d{5,})$', acct)
+                    digit_suffix = digit_match.group(1) if digit_match else None
+
+                    found = False
+                    for ta in trado_accounts:
+                        ta_lower = ta.lower()
+                        if acct_lower in ta_lower or ta_lower in acct_lower:
+                            found = True
+                            break
+                        if digit_suffix and ta.endswith(digit_suffix):
+                            found = True
+                            break
+
+                    if found:
+                        valid_rows.append(rd)
+                    else:
+                        skipped_rows.append(rd)
+
+                rows_by_firm[firm_name] = valid_rows
+                validated_by_firm[firm_name] = len(valid_rows)
+
+            # Log skipped accounts (those not found in Tradovate dropdown)
+            missing_only = [rd for rd in skipped_rows if rd["eval"].get("Prop Firm", rd["firm_code"]) not in not_connected_firms]
+            if missing_only:
+                self.log(f"⛔ {len(missing_only)} account(s) NOT found on Tradovate — skipped:")
+                for rd in missing_only:
+                    fn = rd["eval"].get("Prop Firm", rd["firm_code"])
+                    self.log(f"   ❌ {rd['acct_num']}  ({fn} / {rd['current_phase']})")
+
+            # Mark ALL skipped rows visually (unconnected + not found)
+            for rd in skipped_rows:
+                def _mark_skipped(rd=rd):
+                    try:
+                        rd["buy_btn"].configure(state='disabled', text="N/A")
+                        rd["sell_btn"].configure(state='disabled', text="N/A")
+                    except Exception:
+                        pass
+                self.root.after(0, _mark_skipped)
+
+            # Remove empty firms
+            rows_by_firm = {f: r for f, r in rows_by_firm.items() if r}
+
+            total_valid = sum(len(r) for r in rows_by_firm.values())
+            self.log(f"✅ {total_valid} account(s) validated, {len(skipped_rows)} skipped")
+
+            if not rows_by_firm:
+                self.log("⚠ No valid accounts remain — aborting auto-trade")
+                self._stop_auto_trade()
+                return
+
+        total_success = threading.Lock()
+        counters = {"success": 0, "fail": 0, "skipped": len(skipped_rows)}
+
+        def _execute_firm_trades(firm_name, firm_rows):
+            """Execute all trades for one firm sequentially on its own Chrome."""
+            broker_account = self._get_broker_for_firm(firm_name)
+            if not broker_account:
+                for rd in firm_rows:
+                    self.root.after(0, lambda fn=firm_name, an=rd["acct_num"]: self.log(
+                        f"❌ No broker connected for {fn} — {an} skipped", "ERROR"))
+                    with total_success:
+                        counters["fail"] += 1
+                return
+
+            for row_data in firm_rows:
                 if self._auto_trade_stop.is_set():
-                    self.root.after(0, lambda: self.log("⏹ Auto-trade stopped mid-execution"))
                     break
 
                 firm_code = row_data["firm_code"]
                 phase_key = row_data["phase_key"]
                 acct_size = row_data["acct_size"]
                 acct_num = row_data["acct_num"]
-                firm_name = row_data["eval"].get("Prop Firm", firm_code)
                 side = firm_sides.get(firm_name, random.choice(["buy", "sell"]))
-
-                # Get per-firm broker connection
-                broker_account = self._get_broker_for_firm(firm_name)
-                if not broker_account:
-                    self.root.after(0, lambda fn=firm_name, an=acct_num: self.log(
-                        f"❌ No broker connected for {fn} — {an} skipped", "ERROR"))
-                    fail_count += 1
-                    continue
 
                 config = None
                 if self.prop_firm_mgr:
@@ -4099,7 +4211,8 @@ class TraderCompanionApp:
                 if not config:
                     self.root.after(0, lambda an=acct_num, fc=firm_code, pk=phase_key, sz=acct_size: self.log(
                         f"❌ No blueprint: {an} ({fc}/{pk}/{sz}) — skipped", "ERROR"))
-                    fail_count += 1
+                    with total_success:
+                        counters["fail"] += 1
                     continue
 
                 trado_sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
@@ -4112,12 +4225,12 @@ class TraderCompanionApp:
                 mt5_sl = int(config.get("mt5_sl_points", 42))
 
                 try:
-                    # 1. Broker order
+                    # 1. Broker order — uses this firm's own Chrome instance
                     if platform == "Tradovate":
                         if side == "buy":
-                            broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl)
+                            broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                         else:
-                            broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl)
+                            broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                     elif platform == "TopStepX":
                         if side == "buy":
                             broker_account.place_buy_order(trado_sym, trado_qty)
@@ -4138,7 +4251,8 @@ class TraderCompanionApp:
                         self.root.after(0, lambda an=acct_num, hs=hedge_side, vol=mt5_vol, sym=mt5_sym, cmt=comment:
                             self.log(f"✅ MT5 hedge {hs.upper()} {vol} {sym} comment:{cmt} → {an}"))
 
-                    success_count += 1
+                    with total_success:
+                        counters["success"] += 1
 
                     # Remove row from UI
                     def _remove(rd=row_data):
@@ -4151,20 +4265,38 @@ class TraderCompanionApp:
                             if remaining > 0 else "All trades complete ✓")
                     self.root.after(0, _remove)
 
-                    # Small delay between accounts to avoid overwhelming the broker
+                    # Small delay between trades on the same account
                     time.sleep(2)
 
                 except Exception as e:
-                    fail_count += 1
+                    with total_success:
+                        counters["fail"] += 1
                     self.root.after(0, lambda an=acct_num, err=str(e):
                         self.log(f"❌ Auto-trade failed for {an}: {err}", "ERROR"))
 
+        def _dispatch_parallel():
+            num_firms = len(rows_by_firm)
+            self.root.after(0, lambda n=num_firms: self.log(
+                f"⚡ Dispatching trades across {n} firm(s) in parallel..."))
+            with ThreadPoolExecutor(max_workers=num_firms) as executor:
+                futures = {
+                    executor.submit(_execute_firm_trades, firm, firm_rows): firm
+                    for firm, firm_rows in rows_by_firm.items()
+                }
+                for future in as_completed(futures):
+                    firm = futures[future]
+                    try:
+                        future.result()
+                    except Exception as e:
+                        self.root.after(0, lambda fn=firm, err=str(e):
+                            self.log(f"❌ Firm thread {fn} crashed: {err}", "ERROR"))
+
             # Final summary
-            self.root.after(0, lambda s=success_count, f=fail_count:
-                self.log(f"🏁 Auto-trade complete: {s} succeeded, {f} failed"))
+            self.root.after(0, lambda s=counters["success"], f=counters["fail"], sk=counters["skipped"]:
+                self.log(f"🏁 Auto-trade complete: {s} succeeded, {f} failed, {sk} skipped (not on Tradovate)"))
             self.root.after(0, self._stop_auto_trade)
 
-        threading.Thread(target=_do_auto_trades, daemon=True).start()
+        threading.Thread(target=_dispatch_parallel, daemon=True).start()
 
     def _on_prop_firm_change(self, event=None):
         """Update phase and size options when prop firm changes (compat stub)."""
@@ -4328,7 +4460,9 @@ class TraderCompanionApp:
             }
 
         if auto_count:
-            self.log(f"Broker credentials auto-populated for {auto_count} prop firm(s) from dashboard")
+            self.log(f"Broker credentials found for {auto_count} prop firm(s) — auto-connecting...")
+            # Auto-connect all firms that have credentials from dashboard
+            self.root.after(500, self._auto_connect_populated_brokers)
 
     def _connect_broker_firm(self, firm_name):
         """Connect a single prop firm's broker account."""
@@ -4429,12 +4563,37 @@ class TraderCompanionApp:
 
         threading.Thread(target=_do_connect_all, daemon=True).start()
 
+    def _auto_connect_populated_brokers(self):
+        """Auto-connect all broker rows that have dashboard credentials pre-filled."""
+        to_connect = []
+        for firm, conn in self._broker_connections.items():
+            user = conn["user_entry"].get().strip()
+            pwd = conn["pass_entry"].get().strip()
+            if user and pwd and not conn.get("account"):
+                to_connect.append(firm)
+
+        if not to_connect:
+            return
+
+        self.log(f"🔗 Auto-connecting {len(to_connect)} broker(s) from dashboard credentials...")
+
+        def _do_auto():
+            for firm in to_connect:
+                self.root.after(0, lambda f=firm: self._connect_broker_firm(f))
+                time.sleep(3)  # stagger to avoid overwhelming
+
+        threading.Thread(target=_do_auto, daemon=True).start()
+
     def _get_broker_for_firm(self, firm_name):
         """Get the connected broker account for a specific prop firm."""
         conn = self._broker_connections.get(firm_name)
         if conn and conn.get("account"):
             return conn["account"]
-        # Fallback to legacy single-account vars
+        # If the firm has a row in broker connections but isn't connected, do NOT
+        # fall back — it means the user chose not to connect this firm.
+        if conn is not None:
+            return None
+        # Legacy fallback: only for setups without multi-firm broker panel
         platform = self.broker_var.get()
         if platform == "Tradovate" and self.tradovate_account:
             return self.tradovate_account
