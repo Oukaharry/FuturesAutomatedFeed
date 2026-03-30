@@ -2858,6 +2858,7 @@ def api_client_data():
             "status": "success",
             "evaluations": evaluations,
             "prop_accounts": client_data.get("prop_accounts", []),
+            "mt5_credentials": client_data.get("mt5_credentials", {}),
             "identity": {
                 "client": client_info['client'],
                 "trader": client_info['trader'],
@@ -6935,6 +6936,7 @@ def update_data():
                     "vps_accounts": data.get("vps_accounts", existing_data.get("vps_accounts", [])),
                     "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
                     "payment_address": data.get("payment_address", existing_data.get("payment_address", {})),
+                    "mt5_credentials": data.get("mt5_credentials", existing_data.get("mt5_credentials", {})),
                     "evaluations": evaluations,
                     "statistics": merged_statistics,
                     "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),

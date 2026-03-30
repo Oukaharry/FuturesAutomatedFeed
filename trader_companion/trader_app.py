@@ -3627,6 +3627,26 @@ class TraderCompanionApp:
                 prop_accounts = data.get("prop_accounts", [])
                 self.root.after(0, lambda ae=active_evals, pa=prop_accounts: self._populate_broker_rows(ae, pa))
 
+                # Auto-fill MT5 credentials from dashboard if available
+                mt5_creds = data.get("mt5_credentials") or {}
+                mt5_login = (mt5_creds.get("login") or "").strip()
+                mt5_pass = (mt5_creds.get("password") or "").strip()
+                mt5_server = (mt5_creds.get("server") or "").strip()
+                if mt5_login and mt5_pass and mt5_server:
+                    def _fill_mt5(login=mt5_login, pwd=mt5_pass, srv=mt5_server):
+                        # Only fill if fields are currently empty
+                        if not self.mt5_login.get().strip():
+                            self.mt5_login.delete(0, tk.END)
+                            self.mt5_login.insert(0, login)
+                        if not self.mt5_password.get().strip():
+                            self.mt5_password.delete(0, tk.END)
+                            self.mt5_password.insert(0, pwd)
+                        if not self.mt5_server.get().strip():
+                            self.mt5_server.delete(0, tk.END)
+                            self.mt5_server.insert(0, srv)
+                        self.log("🔗 MT5 credentials auto-filled from dashboard")
+                    self.root.after(0, _fill_mt5)
+
             except Exception as e:
                 self.root.after(0, lambda: self.log(f"Load trades failed: {e}", "ERROR"))
                 self.root.after(0, lambda: self.trades_count_var.set("Load failed"))

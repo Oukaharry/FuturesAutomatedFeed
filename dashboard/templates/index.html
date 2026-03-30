@@ -2219,6 +2219,32 @@
 
         <!-- Prop Firm Accounts Tab -->
         <div id="prop" class="tab-content">
+            <!-- MT5 Connection Credentials -->
+            <div style="background:#0d1117; border:1px solid #1e2a3a; border-radius:8px; padding:12px 16px; margin-bottom:16px;">
+                <h4 style="margin:0 0 8px 0; font-size:13px; color:#f59e0b;">🔗 MT5 Connection</h4>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <label style="font-size:12px; color:#94a3b8;">Login:</label>
+                        <input type="text" id="mt5-cred-login" class="cell-input" style="width:140px;"
+                               placeholder="MT5 Login ID"
+                               onchange="updateMT5Credentials('login', this.value)">
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <label style="font-size:12px; color:#94a3b8;">Password:</label>
+                        <input type="password" id="mt5-cred-password" class="cell-input" style="width:140px;"
+                               placeholder="MT5 Password"
+                               onchange="updateMT5Credentials('password', this.value)">
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <label style="font-size:12px; color:#94a3b8;">Server:</label>
+                        <input type="text" id="mt5-cred-server" class="cell-input" style="width:180px;"
+                               placeholder="MT5 Server"
+                               onchange="updateMT5Credentials('server', this.value)">
+                    </div>
+                    <span style="font-size:11px; color:#4a5568; margin-left:auto;">Auto-filled into Trader Companion</span>
+                </div>
+            </div>
+
             <div class="section-header">
                 <h3>Prop Firm Configuration</h3>
                 <button class="btn-primary" onclick="addPropAccount()">+ Add Prop Account</button>
@@ -3459,6 +3485,7 @@
                     try { renderPositions(data); } catch(e) { console.error('renderPositions error:', e); }
                     try { renderHedgeAccounts(data); } catch(e) { console.error('renderHedgeAccounts error:', e); }
                     try { renderPropAccounts(data); } catch(e) { console.error('renderPropAccounts error:', e); }
+                    try { renderMT5Credentials(data); } catch(e) { console.error('renderMT5Credentials error:', e); }
                     try { renderVPSAccounts(data); } catch(e) { console.error('renderVPSAccounts error:', e); }
                     try { renderPaymentInfo(data); } catch(e) { console.error('renderPaymentInfo error:', e); }
                     try { renderHistory(data); } catch(e) { console.error('renderHistory error:', e); }
@@ -4779,6 +4806,23 @@
             });
             renderPropAccounts(currentData);
             saveData('CREATE', 'Added new prop account');
+        }
+
+        function renderMT5Credentials(data) {
+            const creds = data.mt5_credentials || {};
+            const loginEl = document.getElementById('mt5-cred-login');
+            const passEl = document.getElementById('mt5-cred-password');
+            const serverEl = document.getElementById('mt5-cred-server');
+            if (loginEl) loginEl.value = creds.login || '';
+            if (passEl) passEl.value = creds.password || '';
+            if (serverEl) serverEl.value = creds.server || '';
+        }
+
+        function updateMT5Credentials(field, value) {
+            if (!currentData.mt5_credentials) currentData.mt5_credentials = {};
+            isEditing = true;
+            currentData.mt5_credentials[field] = value;
+            saveData('UPDATE', 'Updated MT5 credentials');
         }
 
         function deletePropAccount(index) {
