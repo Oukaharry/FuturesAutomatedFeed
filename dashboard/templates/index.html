@@ -7146,9 +7146,14 @@
                             if (pn.status === 'ok') {
                                 lines.push(`  ✅ ${pf}: All Good`);
                             } else if (pn.fields && Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0')) {
-                                lines.push(`  ⚠️ ${pf}: ${s.template(pn.fields)}`);
+                                // trade_count: any trades (≥1) is a success, not a warning
+                                if (s.id === 'trade_count') {
+                                    lines.push(`  ✅ ${pf}: ${s.template(pn.fields)}`);
+                                } else {
+                                    lines.push(`  ⚠️ ${pf}: ${s.template(pn.fields)}`);
+                                }
                             } else {
-                                lines.push(`  ❓ ${pf}: Pending`);
+                                lines.push(`  ⏳ ${pf}: Pending`);
                             }
                         });
                     } else {
