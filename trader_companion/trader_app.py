@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -3501,14 +3501,218 @@ class TraderCompanionApp:
         else:
             return "Challenge", "challenge_trade1"
 
-    def _get_current_phase_profit(self, ev, current_phase):
-        """Sum up existing hedge results for the current phase to get total P/L so far.
+    # Day-name abbreviations that traders use as placeholders
+    _DAY_ABBREVS = {
+        "mon": 0, "monday": 0,
+        "tue": 1, "tues": 1, "tuesday": 1,
+        "wed": 2, "weds": 2, "wednesday": 2,
+        "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+        "fri": 4, "friday": 4,
+    }
 
-        Returns the dollar amount already made/lost in this phase.
-        Challenge: sums 'Hedge Result 1' through 'Hedge Result 5'
-        Funded:    sums 'Hedge Result 1.1' through 'Hedge Result 7'
-        Farming:   sums 'Hedge Day 1' through 'Hedge Day 34'
+    def _get_phase_fields(self, current_phase):
+        """Return the ordered list of eval field names for a phase."""
+        if current_phase == "Challenge":
+            return [f"Hedge Result {i}" for i in range(1, 6)]
+        elif current_phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4"):
+            return [f"Hedge Result {i}.1" for i in range(1, 8)]
+        elif current_phase == "Double Dip":
+            return [f"Hedge Result {i}.1" for i in range(1, 8)]
+        elif current_phase == "Farming":
+            return [f"Hedge Day {i}" for i in range(1, 35)]
+        return []
+
+    def _count_completed_trades(self, ev, current_phase):
+        """Count how many trading day cells are filled for the current phase.
+
+        A filled cell = a trade already taken.  Empty/blank = not yet traded.
+        Day-name placeholders (MON, TUE, etc.) are NOT counted as completed.
+        Returns (completed_count, total_fields, next_empty_index).
+        next_empty_index is 0-based: the position of the first empty cell.
         """
+        fields = self._get_phase_fields(current_phase)
+
+        completed = 0
+        next_empty = None
+        for i, f in enumerate(fields):
+            val = ev.get(f, None)
+            val_str = str(val).strip() if val is not None else ""
+            if val_str in ("", "—", "-"):
+                # Empty cell
+                if next_empty is None:
+                    next_empty = i
+            elif val_str.lower() in self._DAY_ABBREVS:
+                # Day placeholder — not yet traded
+                if next_empty is None:
+                    next_empty = i
+            else:
+                # Has a real value (dollar amount, etc.) — completed trade
+                completed += 1
+
+        if next_empty is None:
+            next_empty = len(fields)  # All filled
+
+        return completed, len(fields), next_empty
+
+    def _find_tradeable_day_cell(self, ev, current_phase):
+        """Find the cell that should be traded today based on day placeholders.
+
+        A cell is tradeable today if it contains today's day name OR a
+        previous weekday that hasn't been filled with a result yet (i.e. the
+        trader missed entering a day and it's still pending).
+
+        A cell whose day is AFTER today = already been prepared for the next
+        trading day and should NOT be traded now.
+
+        Returns (stage_index, day_name, is_today) or (None, None, False).
+        stage_index is 0-based position in the field list.
+        """
+        import datetime
+        today_weekday = datetime.date.today().weekday()  # 0=Mon .. 4=Fri
+        fields = self._get_phase_fields(current_phase)
+
+        best_idx = None
+        best_day_name = None
+        best_is_today = False
+
+        for i, f in enumerate(fields):
+            val = ev.get(f, None)
+            if val is None:
+                continue
+            val_str = str(val).strip().lower()
+            day_num = self._DAY_ABBREVS.get(val_str)
+            if day_num is None:
+                continue  # Not a day placeholder (result value or empty)
+
+            if day_num == today_weekday:
+                # Exact match — this cell is for today
+                return i, str(val).strip().upper(), True
+            elif day_num < today_weekday:
+                # Previous day still has a day placeholder (not yet traded)
+                # Pick the latest previous day as the one to trade
+                if best_idx is None or day_num > self._DAY_ABBREVS.get(best_day_name.lower(), -1):
+                    best_idx = i
+                    best_day_name = str(val).strip().upper()
+                    best_is_today = False
+            # day_num > today_weekday → future day, skip (already prepared)
+
+        if best_idx is not None:
+            return best_idx, best_day_name, best_is_today
+        return None, None, False
+
+    def _validate_stage_consistency(self, prediction, ev, current_phase, acct_num):
+        """Validate whether a trade should proceed using day placeholders as
+        the primary gate, with balance and cell count as advisory warnings.
+
+        Day placeholder rule (GATE — controls trade/no-trade):
+          - Cell with today's day (or a missed previous day) → TRADE
+          - No matching day placeholder found → NO TRADE
+          - Only future day placeholders → NO TRADE (already prepared)
+
+        Balance + cell count (ADVISORY — warnings only, never block):
+          - If balance stage or cell count disagree, log warnings
+          - But trade still proceeds if day placeholder confirms
+
+        Returns (should_trade: bool, message: str).
+        """
+        import datetime
+        fields = self._get_phase_fields(current_phase)
+        stages = prediction.get("stages", []) if prediction else []
+
+        # ── Primary gate: day placeholder ──
+        day_idx, day_name, is_today = self._find_tradeable_day_cell(ev, current_phase)
+
+        if day_idx is None:
+            # No day placeholder for today or any missed day → don't trade
+            # Check if there's a future day placeholder
+            future_days = []
+            today_wd = datetime.date.today().weekday()
+            for i, f in enumerate(fields):
+                val = ev.get(f, None)
+                if val is None:
+                    continue
+                val_str = str(val).strip().lower()
+                dn = self._DAY_ABBREVS.get(val_str)
+                if dn is not None and dn > today_wd:
+                    future_days.append((i, str(val).strip().upper()))
+
+            if future_days:
+                next_day = future_days[0]
+                msg = (f"⏭️ {acct_num}: No trade today — "
+                       f"next day placeholder is {next_day[1]} in cell {next_day[0] + 1}. "
+                       f"Already prepared for next trading day.")
+            else:
+                msg = (f"⛔ {acct_num}: No day placeholder found for today — "
+                       f"trader needs to enter a day name (MON/TUE/etc.) "
+                       f"in the next cell to enable trading.")
+            return False, msg
+
+        # Day placeholder found — trade is confirmed
+        day_stage_idx = min(day_idx, len(stages) - 1) if stages else day_idx
+        day_label = "today" if is_today else f"missed {day_name}"
+
+        msgs = []
+        msgs.append(
+            f"✅ {acct_num}: Trade confirmed via {day_name} placeholder "
+            f"({'today' if is_today else 'pending from earlier'}) "
+            f"in cell {day_idx + 1}")
+
+        # ── Advisory: balance check ──
+        if prediction and stages:
+            balance_stage_idx = 0
+            current_key = prediction.get("current_phase_key", "")
+            for i, (_, key, _, _) in enumerate(stages):
+                if key == current_key:
+                    balance_stage_idx = i
+                    break
+
+            if balance_stage_idx != day_stage_idx:
+                msgs.append(
+                    f"   ⚠️ Balance advisory: balance suggests stage "
+                    f"{balance_stage_idx + 1} ({prediction['current_stage']}), "
+                    f"but day placeholder is in cell {day_idx + 1} (stage {day_stage_idx + 1})")
+
+        # ── Advisory: cell count check ──
+        completed, total, _ = self._count_completed_trades(ev, current_phase)
+        if stages:
+            expected_completed = day_idx  # Cells before the day placeholder should be filled
+            if completed != expected_completed:
+                msgs.append(
+                    f"   ⚠️ Cell count advisory: {completed} cells filled, "
+                    f"expected {expected_completed} before cell {day_idx + 1}")
+
+        return True, "\n".join(msgs)
+
+    def _get_current_phase_profit(self, ev, current_phase, broker_account=None, acct_size=None):
+        """Get the current P/L for the active phase.
+
+        Priority:
+        1. Live broker equity (equity - starting balance) — most accurate
+        2. Eval hedge result fields — fallback when broker not available
+        """
+        # ── 1. Try live broker equity ──
+        if broker_account and acct_size:
+            try:
+                stats = broker_account.get_account_stats()
+                balance_str = stats.get("Balance", "N/A")
+                if balance_str and balance_str != "N/A":
+                    cleaned = balance_str.replace("$", "").replace(",", "").strip()
+                    equity = float(cleaned)
+                    # Parse starting balance from acct_size (e.g. "$50,000" or "50k" → 50000)
+                    start_str = str(acct_size).replace("$", "").replace(",", "").strip().lower()
+                    if start_str.endswith("k"):
+                        starting = float(start_str[:-1]) * 1000
+                    elif start_str.replace(".", "").isdigit():
+                        starting = float(start_str)
+                    else:
+                        starting = 50000.0
+                    live_profit = equity - starting
+                    if abs(live_profit) > 0.01:
+                        return live_profit
+            except Exception:
+                pass
+
+        # ── 2. Fallback: sum eval hedge result fields ──
         total = 0.0
         fields = []
         if current_phase == "Challenge":
@@ -3590,6 +3794,34 @@ class TraderCompanionApp:
         if not has_challenge_acct and not has_funded_acct:
             return False
         return True
+
+    def _refresh_eval_for_account(self, acct_num):
+        """Fetch fresh eval data from dashboard for a specific account.
+
+        Returns the updated eval dict, or None if fetch fails.
+        """
+        try:
+            email = self.client_email_entry.get().strip()
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+            if not email or not dashboard_url:
+                return None
+            r = requests.post(
+                f"{dashboard_url}/api/client/data",
+                json={"email": email},
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            for ev in data.get("evaluations", []):
+                acct1 = (ev.get("Account #.1", "") or ev.get("Account #", "") or "").strip()
+                acct0 = (ev.get("Account #", "") or "").strip()
+                if acct_num in (acct1, acct0):
+                    return ev
+        except Exception:
+            pass
+        return None
 
     def _load_active_trades(self):
         """Fetch evaluations from dashboard and populate the active trades list."""
@@ -3923,13 +4155,42 @@ class TraderCompanionApp:
 
         # ── Balance-aware TP/SL adjustment ──
         ev = row_data.get("eval", {})
-        current_profit = self._get_current_phase_profit(ev, row_data["current_phase"])
-        if current_profit != 0.0 and self.prop_firm_mgr:
+        current_profit = self._get_current_phase_profit(ev, row_data["current_phase"], broker_account=broker_account, acct_size=acct_size)
+        _is_farming_sym = "MNQ" in (config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")).upper()
+        if _is_farming_sym and self.prop_firm_mgr:
+            # Farming: cap MT5 TP based on hard-stop proximity (not balance-based shrink)
+            try:
+                _bal = None
+                if broker_account:
+                    _stats = broker_account.get_account_stats()
+                    _bal_str = _stats.get("Balance", "")
+                    if _bal_str and _bal_str not in ("N/A", "Error", ""):
+                        _bal = float(_bal_str.replace("$", "").replace(",", ""))
+                if _bal is not None:
+                    orig_mt5_tp = int(config.get("mt5_tp_points", 0))
+                    config = self.prop_firm_mgr.adjust_farming_tp_sl(config, _bal, firm_code)
+                    new_mt5_tp = int(config.get("mt5_tp_points", 0))
+                    if new_mt5_tp != orig_mt5_tp:
+                        self.log(f"🌾 Farming TP cap {acct_num}: balance=${_bal:,.2f} → MT5 TP {orig_mt5_tp}→{new_mt5_tp} pts")
+                    else:
+                        self.log(f"🌾 Farming TP OK {acct_num}: MT5 TP {orig_mt5_tp} pts within safe range")
+                else:
+                    self.log(f"⚠ Farming {acct_num}: could not read balance — using blueprint TP/SL")
+            except Exception as _fe:
+                self.log(f"⚠ Farming TP check failed for {acct_num}: {_fe}")
+        elif current_profit != 0.0 and self.prop_firm_mgr:
             orig_tp = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
+            orig_sl = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
+            orig_mt5_tp = int(config.get("mt5_tp_points", 0))
+            orig_mt5_sl = int(config.get("mt5_sl_points", 0))
             config = self.prop_firm_mgr.adjust_tp_sl_for_balance(config, current_profit)
             new_tp = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
-            if new_tp != orig_tp:
-                self.log(f"📊 Balance adjust {acct_num}: P/L=${current_profit:.2f} → TP {orig_tp}→{new_tp} ticks")
+            new_sl = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
+            new_mt5_tp = int(config.get("mt5_tp_points", 0))
+            new_mt5_sl = int(config.get("mt5_sl_points", 0))
+            if new_tp != orig_tp or new_sl != orig_sl:
+                mt5_part = f" | MT5 TP {orig_mt5_tp}→{new_mt5_tp}, SL {orig_mt5_sl}→{new_mt5_sl} pts" if (new_mt5_tp != orig_mt5_tp or new_mt5_sl != orig_mt5_sl) else ""
+                self.log(f"📊 Balance adjust {acct_num}: P/L=${current_profit:.2f} → TP {orig_tp}→{new_tp}, SL {orig_sl}→{new_sl} ticks{mt5_part}")
 
         trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
         trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
@@ -3940,13 +4201,46 @@ class TraderCompanionApp:
 
         hedge_text = f" + MT5 {('SELL' if side == 'buy' else 'BUY')} {mt5_vol} {mt5_sym}" if hedging else ""
         balance_text = f"\nBalance P/L: ${current_profit:+.2f}" if current_profit != 0.0 else ""
+
+        # Predict current stage and next trade from balance
+        stage_text = ""
+        prediction = None
+        if current_profit != 0.0 and self.prop_firm_mgr:
+            prediction = self.prop_firm_mgr.predict_next_trade(
+                firm_code, row_data["current_phase"], current_profit,
+                self.prop_firm_mgr.convert_account_size_to_key(acct_size))
+            if prediction.get("stages"):
+                stage_text = (f"\n\n── Stage Prediction ──"
+                              f"\nCurrent: {prediction['current_stage']}  (target ${prediction['current_target']:,.0f})"
+                              f"\nNext Trade: {prediction['next_stage']}")
+                if prediction.get("next_config"):
+                    nc = prediction["next_config"]
+                    ntp = int(nc.get("tradovate_tp_ticks", 0) or nc.get("topstepx_tp_ticks", 0))
+                    nsl = int(nc.get("tradovate_sl_ticks", 0) or nc.get("topstepx_sl_ticks", 0))
+                    stage_text += f"  (TP:{ntp} SL:{nsl})"
+
+        # Cross-validate: refresh eval data from dashboard for live day placeholders
+        fresh_ev = self._refresh_eval_for_account(acct_num)
+        if fresh_ev:
+            ev = fresh_ev
+            row_data["eval"] = fresh_ev  # Update cached data
+        if prediction and prediction.get("stages"):
+            is_consistent, val_msg = self._validate_stage_consistency(
+                prediction, ev, row_data["current_phase"], acct_num)
+            self.log(val_msg)
+            if not is_consistent:
+                stage_text += "\n\n⚠️ MISMATCH: Balance stage ≠ filled day cells!"
+                messagebox.showwarning("Stage Mismatch",
+                    f"{val_msg}\n\nTrade blocked — balance and day cells do not agree.")
+                return
+
         confirm = messagebox.askyesno("Confirm Trade",
             f"{side.upper()} {trado_qty} {trado_sym} on {platform}\n"
             f"{hedge_text}\n\n"
             f"Account: {acct_num}  |  {firm_code}\n"
             f"Phase: {row_data['current_phase']}  |  Size: {acct_size}{balance_text}\n"
-            f"TP: {trado_tp} ticks  |  SL: {trado_sl} ticks\n\n"
-            f"Proceed?")
+            f"TP: {trado_tp} ticks  |  SL: {trado_sl} ticks"
+            f"{stage_text}\n\nProceed?")
         if not confirm:
             return
 
@@ -4338,15 +4632,80 @@ class TraderCompanionApp:
 
                 # ── Balance-aware TP/SL adjustment ──
                 auto_ev = row_data.get("eval", {})
-                auto_profit = self._get_current_phase_profit(auto_ev, row_data.get("current_phase", ""))
-                if auto_profit != 0.0 and self.prop_firm_mgr:
+                auto_profit = self._get_current_phase_profit(auto_ev, row_data.get("current_phase", ""), broker_account=broker_account, acct_size=acct_size)
+                _is_farming_sym_auto = "MNQ" in (config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")).upper()
+                if _is_farming_sym_auto and self.prop_firm_mgr:
+                    # Farming: cap MT5 TP based on hard-stop proximity
+                    try:
+                        _bal_auto = None
+                        if broker_account:
+                            _stats_auto = broker_account.get_account_stats()
+                            _bal_str_auto = _stats_auto.get("Balance", "")
+                            if _bal_str_auto and _bal_str_auto not in ("N/A", "Error", ""):
+                                _bal_auto = float(_bal_str_auto.replace("$", "").replace(",", ""))
+                        if _bal_auto is not None:
+                            orig_mt5_tp_a = int(config.get("mt5_tp_points", 0))
+                            config = self.prop_firm_mgr.adjust_farming_tp_sl(config, _bal_auto, firm_code)
+                            new_mt5_tp_a = int(config.get("mt5_tp_points", 0))
+                            if new_mt5_tp_a != orig_mt5_tp_a:
+                                _an, _bal_v, _omt, _nmt = acct_num, _bal_auto, orig_mt5_tp_a, new_mt5_tp_a
+                                self.root.after(0, lambda an=_an, bv=_bal_v, omt=_omt, nmt=_nmt:
+                                    self.log(f"🌾 Farming TP cap {an}: balance=${bv:,.2f} → MT5 TP {omt}→{nmt} pts"))
+                            else:
+                                _an = acct_num
+                                self.root.after(0, lambda an=_an, omt=orig_mt5_tp_a:
+                                    self.log(f"🌾 Farming TP OK {an}: MT5 TP {omt} pts within safe range"))
+                        else:
+                            _an = acct_num
+                            self.root.after(0, lambda an=_an:
+                                self.log(f"⚠ Farming {an}: could not read balance — using blueprint TP/SL"))
+                    except Exception as _fe:
+                        _an, _err = acct_num, str(_fe)
+                        self.root.after(0, lambda an=_an, err=_err:
+                            self.log(f"⚠ Farming TP check failed for {an}: {err}"))
+                elif auto_profit != 0.0 and self.prop_firm_mgr:
                     orig_tp_auto = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
+                    orig_sl_auto = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
+                    orig_mt5_tp_a = int(config.get("mt5_tp_points", 0))
+                    orig_mt5_sl_a = int(config.get("mt5_sl_points", 0))
                     config = self.prop_firm_mgr.adjust_tp_sl_for_balance(config, auto_profit)
                     new_tp_auto = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
-                    if new_tp_auto != orig_tp_auto:
-                        _an, _pl, _otp, _ntp = acct_num, auto_profit, orig_tp_auto, new_tp_auto
-                        self.root.after(0, lambda an=_an, pl=_pl, otp=_otp, ntp=_ntp:
-                            self.log(f"📊 Balance adjust {an}: P/L=${pl:.2f} → TP {otp}→{ntp} ticks"))
+                    new_sl_auto = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
+                    new_mt5_tp_a = int(config.get("mt5_tp_points", 0))
+                    new_mt5_sl_a = int(config.get("mt5_sl_points", 0))
+                    if new_tp_auto != orig_tp_auto or new_sl_auto != orig_sl_auto:
+                        mt5_changed = new_mt5_tp_a != orig_mt5_tp_a or new_mt5_sl_a != orig_mt5_sl_a
+                        _an, _pl = acct_num, auto_profit
+                        _otp, _ntp, _osl, _nsl = orig_tp_auto, new_tp_auto, orig_sl_auto, new_sl_auto
+                        _omt, _nmt, _oms, _nms, _mc = orig_mt5_tp_a, new_mt5_tp_a, orig_mt5_sl_a, new_mt5_sl_a, mt5_changed
+                        self.root.after(0, lambda an=_an, pl=_pl, otp=_otp, ntp=_ntp, osl=_osl, nsl=_nsl, omt=_omt, nmt=_nmt, oms=_oms, nms=_nms, mc=_mc:
+                            self.log(f"📊 Balance adjust {an}: P/L=${pl:.2f} → TP {otp}→{ntp}, SL {osl}→{nsl} ticks"
+                                     f"{f' | MT5 TP {omt}→{nmt}, SL {oms}→{nms} pts' if mc else ''}"))
+
+                    # Log stage prediction and cross-validate
+                    pred = self.prop_firm_mgr.predict_next_trade(
+                        firm_code, row_data.get("current_phase", ""), auto_profit,
+                        self.prop_firm_mgr.convert_account_size_to_key(acct_size))
+                    if pred.get("stages"):
+                        _an2, _cs, _ns = acct_num, pred["current_stage"], pred["next_stage"]
+                        self.root.after(0, lambda an=_an2, cs=_cs, ns=_ns:
+                            self.log(f"   🎯 {an}: Stage={cs} → Next={ns}"))
+
+                        # Cross-validate stage vs filled day cells (refresh first)
+                        fresh_auto_ev = self._refresh_eval_for_account(acct_num)
+                        if fresh_auto_ev:
+                            auto_ev = fresh_auto_ev
+                            row_data["eval"] = fresh_auto_ev
+                        is_ok, val_msg = self._validate_stage_consistency(
+                            pred, auto_ev, row_data.get("current_phase", ""), acct_num)
+                        _vm = val_msg
+                        self.root.after(0, lambda m=_vm: self.log(m))
+                        if not is_ok:
+                            self.root.after(0, lambda an=acct_num:
+                                self.log(f"   🚫 {an}: Skipped — stage mismatch", "ERROR"))
+                            with total_success:
+                                counters["fail"] += 1
+                            continue
 
                 trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
                 trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))

@@ -21,7 +21,7 @@ def get_version():
     return '1.0.0'
 
 VERSION = get_version()
-BUILD_NAME = f'Trader_Companion_v{VERSION}'
+BUILD_NAME = f'TradeopssAI_v{VERSION}'
 
 # 1. Clean previous builds
 print("Cleaning build directories...")
@@ -78,7 +78,7 @@ print("Running command:", " ".join(cmd))
 
 try:
     subprocess.run(cmd, check=True)
-    print(f"\n✅ Build SUCCESS! output: dist/{BUILD_NAME}.exe")
+    print(f"\nBuild SUCCESS! output: dist/{BUILD_NAME}.exe")
 except subprocess.CalledProcessError as e:
     print(f"\n❌ Build FAILED: {e}")
     sys.exit(1)

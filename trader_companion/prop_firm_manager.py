@@ -1793,6 +1793,164 @@ class PropFirmManager:
         # Default to micro contract value
         return 0.5
 
+    # ── Ordered trade progressions per phase ──────────────────────────
+    # Maps (phase_display) → ordered list of blueprint keys within that phase.
+    # The balance-based stage detection walks through these in order.
+    _PHASE_TRADE_ORDER = {
+        "MFFU": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded", "funded_1", "funded_2", "funded_3", "funded_4"],
+            "Farming":   ["farming"],
+        },
+        "MFFU_Flex": {
+            "Challenge":  ["challenge_trade1", "challenge_trade2"],
+            "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Double Dip": ["funded_trade_doubledip_1", "funded_trade_doubledip_2",
+                           "funded_trade_doubledip_3", "funded_trade_doubledip_4"],
+            "Farming":    ["farming"],
+        },
+        "Funded Next": {
+            "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "FundingTicks": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "TopStep": {
+            "Challenge":  ["challenge_trade1", "challenge_trade2"],
+            "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Double Dip": ["funded_trade_doubledip_1", "funded_trade_doubledip_2",
+                           "funded_trade_doubledip_3", "funded_trade_doubledip_4"],
+            "Farming":    ["farming"],
+        },
+        "Lucid": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "TradeDay": {
+            "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3",
+                          "challenge_trade4", "challenge_trade5"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3"],
+        },
+        "AlphaFutures": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "AlphaFutures GC": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "Tradeify": {
+            "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "Apex": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "Top One Futures": {
+            "Challenge":  ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
+            "Funded":     ["funded_trade1", "funded_trade1_2", "funded_trade2", "funded_trade2_2",
+                           "funded_trade3", "funded_trade3_2", "funded_trade4", "funded_trade4_2"],
+            "Double Dip": ["funded_trade_doubledip_1", "funded_trade_doubledip_1_2",
+                           "funded_trade_doubledip_2", "funded_trade_doubledip_2_2",
+                           "funded_trade_doubledip_3", "funded_trade_doubledip_3_2",
+                           "funded_trade_doubledip_4", "funded_trade_doubledip_4_2"],
+        },
+    }
+
+    def predict_next_trade(self, firm_code: str, current_phase: str,
+                           current_profit: float, size_key: str = "50k") -> Dict:
+        """Predict current stage and next trade based on balance.
+
+        Walks the ordered trade progression for the firm/phase, computing
+        cumulative profit at each stage boundary.  Returns a dict with:
+          current_stage  - human label like "Challenge Trade 2"
+          next_stage     - human label for next trade, or "Phase Complete"
+          next_config    - the blueprint config dict for the next trade (or None)
+          next_phase_key - the blueprint key for the next trade
+          balance_target - the cumulative $ target at end of current stage
+          stages         - list of (label, phase_key, cumul_target) for all stages
+        """
+        # Normalize phase display to match _PHASE_TRADE_ORDER keys
+        phase_map = {"Challenge": "Challenge", "Funded": "Funded",
+                     "Farming": "Farming", "Double Dip": "Double Dip",
+                     "Payout 1": "Funded", "Payout 2": "Funded",
+                     "Payout 3": "Funded", "Payout 4": "Funded"}
+        phase_key_group = phase_map.get(current_phase, current_phase)
+
+        firm_orders = self._PHASE_TRADE_ORDER.get(firm_code, {})
+        trade_keys = firm_orders.get(phase_key_group, [])
+
+        if not trade_keys:
+            return {"current_stage": current_phase, "next_stage": "—",
+                    "next_config": None, "next_phase_key": None,
+                    "balance_target": 0, "stages": []}
+
+        # Build cumulative profit milestones for each stage
+        stages = []
+        cumulative = 0.0
+        for key in trade_keys:
+            cfg = self.get_strategy_config(firm_code, key, size_key)
+            if not cfg:
+                continue
+            sym = cfg.get("tradovate_symbol", "") or cfg.get("topstepx_symbol", "")
+            qty = int(cfg.get("tradovate_qty", 0) or cfg.get("topstepx_qty", 0))
+            tp = int(cfg.get("tradovate_tp_ticks", 0) or cfg.get("topstepx_tp_ticks", 0))
+            tick_val = self.get_tick_value(sym)
+            stage_profit = qty * tp * tick_val
+            cumulative += stage_profit
+            label = key.replace("_", " ").replace("trade", "Trade ").title()
+            # Clean up label
+            label = label.replace("Challenge Trade ", "Challenge #") \
+                         .replace("Funded Trade ", "Funded #") \
+                         .replace("Funded ", "Funded #") if "trade" in key.lower() else label
+            label = key.replace("_", " ").title()
+            stages.append((label, key, round(cumulative, 2), round(stage_profit, 2)))
+
+        # Find which stage we're currently in based on profit
+        current_idx = 0
+        for i, (_, _, cumul_target, _) in enumerate(stages):
+            if current_profit < cumul_target - 0.01:
+                current_idx = i
+                break
+        else:
+            # Profit exceeds all stages — we're past the last one
+            current_idx = len(stages) - 1
+
+        current_label, current_key, current_target, current_stage_profit = stages[current_idx]
+
+        # Next trade
+        if current_idx + 1 < len(stages):
+            next_label, next_key, next_target, next_profit = stages[current_idx + 1]
+            next_cfg = self.get_strategy_config(firm_code, next_key, size_key)
+        else:
+            next_label = "Phase Complete"
+            next_key = None
+            next_cfg = None
+            next_target = current_target
+
+        return {
+            "current_stage": current_label,
+            "current_phase_key": current_key,
+            "current_target": current_target,
+            "current_stage_profit": current_stage_profit,
+            "next_stage": next_label,
+            "next_config": next_cfg,
+            "next_phase_key": next_key,
+            "next_target": next_target,
+            "balance_target": current_target,
+            "stages": stages,
+        }
+
     def adjust_tp_sl_for_balance(self, config: Dict, current_profit: float) -> Dict:
         """Adjust TP and SL ticks/points based on current account profit.
 
@@ -1849,18 +2007,115 @@ class PropFirmManager:
         config[tp_key] = adjusted_tp
         config[sl_key] = adjusted_sl
 
-        # Apply same ratios to MT5 TP/SL points
+        # Apply SWAPPED ratios to MT5 TP/SL points — hedging means
+        # Tradovate TP ↔ MT5 SL (hedge loses when main wins)
+        # Tradovate SL ↔ MT5 TP (hedge wins when main loses)
         if mt5_tp > 0:
-            config["mt5_tp_points"] = max(5, round(mt5_tp * tp_ratio))
+            config["mt5_tp_points"] = max(5, round(mt5_tp * sl_ratio))
         if mt5_sl > 0:
-            config["mt5_sl_points"] = max(5, round(mt5_sl * sl_ratio))
+            config["mt5_sl_points"] = max(5, round(mt5_sl * tp_ratio))
 
         self.logger.info(
             f"[TP/SL Adjust] profit=${current_profit:.2f}, "
             f"target=${target_profit:.2f}, remaining=${remaining_profit:.2f}, "
             f"TP: {orig_tp}→{adjusted_tp} ticks, SL: {orig_sl}→{adjusted_sl} ticks, "
-            f"MT5 TP: {mt5_tp}→{config.get('mt5_tp_points')}, "
-            f"MT5 SL: {mt5_sl}→{config.get('mt5_sl_points')}")
+            f"MT5 TP(sl_ratio): {mt5_tp}→{config.get('mt5_tp_points')}, "
+            f"MT5 SL(tp_ratio): {mt5_sl}→{config.get('mt5_sl_points')}")
+
+        return config
+
+    # ── Farming Hard-Stop Thresholds ──────────────────────────────
+    # Minimum balance before the prop firm closes the account.
+    # Farming trades use MNQ (micro) contracts; the adjustment logic
+    # caps MT5 TP so the prop account can't breach the hard-stop
+    # while the MT5 hedge stays open.
+
+    _HARD_STOP_THRESHOLDS: Dict[str, float] = {
+        # MFFU / MFFU_Flex: detected dynamically (see adjust_farming_tp_sl)
+        "TopStep":          0.0,     # Funded starts at $0; account blows at $0
+        "Funded Next":      50000.0,
+        "FundingTicks":     50000.0,
+        "TradeDay":         50000.0,
+        "Tradeify":         50000.0,
+        "AlphaFutures":     50000.0,
+        "Apex":             50000.0,
+        "Lucid":            50000.0,
+        "Top One Futures":  50000.0,
+    }
+
+    # NQ tick-to-MT5-point conversion ratio (1 MT5 point = 4 Tradovate ticks)
+    _NQ_TICK_TO_POINT_RATIO = 4
+    # Safety buffer subtracted from safe distance (MT5 points)
+    _FARMING_BUFFER_POINTS = 4
+
+    def adjust_farming_tp_sl(self, config: Dict, current_balance: float,
+                             firm_code: str) -> Dict:
+        """Adjust MT5 TP for farming trades based on hard-stop proximity.
+
+        Farming trades use micro contracts (MNQM6).  If the MT5 TP is so
+        large that the prop account would breach the hard-stop threshold
+        before MT5 closes, we cap MT5 TP to a safe distance.
+
+        Only MT5 TP is adjusted — Tradovate TP/SL and MT5 SL stay unchanged.
+
+        Returns a NEW config dict (original is not mutated).
+        """
+        config = config.copy()
+        symbol = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+
+        # Only applies to micro contracts (farming)
+        if "MNQ" not in symbol.upper():
+            return config
+
+        mt5_tp = float(config.get("mt5_tp_points", 0))
+        if mt5_tp <= 0:
+            return config
+
+        # Determine hard-stop threshold
+        if firm_code in ("MFFU", "MFFU_Flex", "My Funded Futures"):
+            # MFFU zero-start vs traditional detection:
+            # If balance < $50,100 it can't be a traditional $50k account
+            # (would already be breached), so it must be zero-start.
+            if current_balance < 50100.0:
+                hard_stop = 0.0
+            else:
+                hard_stop = 50100.0
+        else:
+            hard_stop = self._HARD_STOP_THRESHOLDS.get(firm_code, 50000.0)
+
+        distance_to_max_loss = current_balance - hard_stop
+        if distance_to_max_loss <= 0:
+            self.logger.warning(
+                f"[Farming TP] Balance ${current_balance:,.2f} already at/below "
+                f"hard stop ${hard_stop:,.2f} for {firm_code}")
+            return config
+
+        tick_val = self.get_tick_value(symbol)
+        trado_qty = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
+        if tick_val <= 0 or trado_qty <= 0:
+            return config
+
+        # Distance in Tradovate ticks, then convert to MT5 points
+        distance_ticks = distance_to_max_loss / (tick_val * trado_qty)
+        distance_mt5_pts = distance_ticks / self._NQ_TICK_TO_POINT_RATIO
+        safe_distance = distance_mt5_pts - self._FARMING_BUFFER_POINTS
+
+        # Only cap if MT5 TP exceeds safe distance AND balance is close
+        max_loss_dollars = mt5_tp * tick_val * trado_qty
+        needs_adjustment = (mt5_tp > safe_distance
+                            and distance_to_max_loss < max_loss_dollars)
+
+        if needs_adjustment and safe_distance > 0:
+            recommended = int(safe_distance)
+            self.logger.info(
+                f"[Farming TP Cap] {firm_code}: balance=${current_balance:,.2f}, "
+                f"hard_stop=${hard_stop:,.2f}, distance=${distance_to_max_loss:,.2f}, "
+                f"safe={safe_distance:.1f}pts → MT5 TP {mt5_tp}→{recommended}")
+            config["mt5_tp_points"] = max(5, recommended)
+        else:
+            self.logger.info(
+                f"[Farming TP OK] {firm_code}: MT5 TP {mt5_tp} pts <= "
+                f"safe distance {safe_distance:.1f} pts — no change needed")
 
         return config
 
