@@ -649,19 +649,19 @@ class MT5DashboardSync:
                         logging.info(f"      Hedge {hedge_num}: {len(hedge_data['trades'])} trades, ${hedge_amount:.2f}")
                         
                         if phase == 'farming':
-                            # Farming uses propDay and hedgeDay
-                            hedge_results[f'hedgeDay{hedge_num}'] = f"${hedge_amount:.2f}"
+                            # Farming uses propDay and hedgeDay — store clean numeric, no $ prefix
+                            hedge_results[f'hedgeDay{hedge_num}'] = f"{hedge_amount:.2f}"
                             logging.info(f"        → Dashboard field: hedgeDay{hedge_num} = ${hedge_amount:.2f}")
                         else:
-                            # Evaluation and Funded use hedgeResult
-                            hedge_results[f'hedgeResult{hedge_num}'] = f"${hedge_amount:.2f}"
+                            # Evaluation and Funded use hedgeResult — store clean numeric, no $ prefix
+                            hedge_results[f'hedgeResult{hedge_num}'] = f"{hedge_amount:.2f}"
                             logging.info(f"        → Dashboard field: hedgeResult{hedge_num} = ${hedge_amount:.2f}")
                     
-                    # Add net total
+                    # Add net total — store clean numeric, no $ prefix
                     if phase == 'farming':
-                        hedge_results['farmingNet'] = f"${phase_data['total_pnl']:.2f}"
+                        hedge_results['farmingNet'] = f"{phase_data['total_pnl']:.2f}"
                     else:
-                        hedge_results['hedgeNet'] = f"${phase_data['total_pnl']:.2f}"
+                        hedge_results['hedgeNet'] = f"{phase_data['total_pnl']:.2f}"
                     
                     account_result['phases'][phase] = {
                         'trades': len(phase_data['trades']),

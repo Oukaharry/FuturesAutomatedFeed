@@ -1378,7 +1378,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
                 field_name = f'Hedge Day {slot}'
 
-                best_eval[field_name] = f'${last_profit:.2f}'
+                best_eval[field_name] = f'{last_profit:.2f}'
                 best_eval[f'_{field_name} Date'] = last_date
                 updates_made += 1
 
@@ -1479,8 +1479,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             else:
                 new_val = current_val + session_profit
             
-            # FORMAT WITH DOLLAR SIGN FOR PUSH
-            best_eval[field_name] = f"${new_val:.2f}"
+            # Store clean numeric value (dashboard JS adds $ at display time)
+            best_eval[field_name] = f"{new_val:.2f}"
 
             updates_made += 1
             if 'Match Log' not in best_eval:

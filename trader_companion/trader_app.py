@@ -1242,8 +1242,8 @@ class MT5DataPusher:
                 match_log.append(f"⚠️ Unknown stage {stage} for {account_suffix}")
                 continue
             
-            # Update the evaluation
-            evaluations[eval_idx][field_name] = f"${total_profit:.2f}"
+            # Update the evaluation — store clean numeric, no $ prefix
+            evaluations[eval_idx][field_name] = f"{total_profit:.2f}"
             match_log.append(f"✓ {account_suffix}_{stage}{stage_num} -> [{field_name}] = ${total_profit:.2f} ({len(group_deals)} deals)")
         
         return evaluations, match_log
