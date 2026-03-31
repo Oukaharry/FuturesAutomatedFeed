@@ -52,6 +52,9 @@ from dashboard.notes_service import (
 )
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
+# Firms hidden from BEF admin (normalised: lowercase, no spaces)
+BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
+
 # Start Midnight Watermark Scheduler
 try:
     from dashboard.scheduler import start_scheduler
@@ -2054,6 +2057,12 @@ def financial_overview():
     
     overview_data = all_data['overview']
     global_stats = all_data.get('global_stats', {})
+
+    # Hide restricted firms from BEF admin
+    if session_user.get('user_type') == 'bef_admin':
+        overview_data = {k: v for k, v in overview_data.items()
+                         if k.lower().replace(' ', '') not in BEF_HIDDEN_FIRMS}
+
     growth_dates, growth_values = all_data['growth']
     payouts_dates, payouts_values = all_data['payouts']
     net_profit_dates, net_profit_values = all_data['net_profit']
@@ -2117,7 +2126,15 @@ def payout_history():
     overview_data = calculate_propfirm_overview()
     sorted_prop_firms = sorted(overview_data.keys())
     
+    # Hide restricted firms from BEF admin
+    if session_user.get('user_type') == 'bef_admin':
+        sorted_prop_firms = [f for f in sorted_prop_firms if f.lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
+    
     payouts_list = get_payouts_history(start_date, end_date, prop_firm_filter, profile_filter=profile_filter)
+    
+    # Filter payout entries for BEF admin
+    if session_user.get('user_type') == 'bef_admin':
+        payouts_list = [p for p in payouts_list if p.get('prop_firm', '').lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
     
     return render_template('payout_history.html', 
                            payouts=payouts_list,
@@ -2388,6 +2405,11 @@ def get_super_admin_totals():
     stats = data['global_stats']
     overview = data['overview']
     
+    # Hide restricted firms from BEF admin
+    if session_info.get('user_type') == 'bef_admin':
+        overview = {k: v for k, v in overview.items()
+                    if k.lower().replace(' ', '') not in BEF_HIDDEN_FIRMS}
+
     # Calculate Deposits separately if not in global_stats
     # In financial_overview.py, deposits are in data['deposits'] tuple (dates, cum_values)
     # The last value of cum_values is the total.

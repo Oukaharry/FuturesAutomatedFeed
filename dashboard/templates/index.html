@@ -754,6 +754,12 @@
         .client-view input[type="date"].cell-input {
             pointer-events: none;
         }
+        /* Readonly field styling for VPS/Payment edit mode */
+        .cell-input[readonly] {
+            opacity: 0.8;
+            cursor: default;
+            background: transparent !important;
+        }
         /* Hide Actions column in Hedge/Prop/VPS tables for clients */
         .client-view #hedge-accounts-table th:last-child,
         .client-view #hedge-accounts-table td:last-child,
@@ -2276,7 +2282,12 @@
         <div id="vps" class="tab-content">
             <div class="section-header">
                 <h3>VPS Management</h3>
-                <button class="btn-primary" onclick="addVPSAccount()">+ Add VPS</button>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <span id="vps-save-status" style="font-size:0.78em; color:#22c55e; opacity:0; transition:opacity 0.4s;"></span>
+                    <button class="btn-primary" id="vps-edit-btn" onclick="toggleVPSEdit()">Edit</button>
+                    <button class="btn-primary" id="vps-save-btn" onclick="saveVPSSection()" style="display:none;">Save</button>
+                    <button class="btn-primary" id="vps-add-btn" onclick="addVPSAccount()" style="display:none;">+ Add VPS</button>
+                </div>
             </div>
             
             <table id="vps-accounts-table">
@@ -2298,7 +2309,12 @@
         <div id="payment" class="tab-content">
             <div class="section-header">
                 <h3>Payment Info</h3>
-                <button class="btn-primary" onclick="addPaymentInfo()">+ Add Card</button>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <span id="payment-save-status" style="font-size:0.78em; color:#22c55e; opacity:0; transition:opacity 0.4s;"></span>
+                    <button class="btn-primary" id="payment-edit-btn" onclick="togglePaymentEdit()">Edit</button>
+                    <button class="btn-primary" id="payment-save-btn" onclick="savePaymentSection()" style="display:none;">Save</button>
+                    <button class="btn-primary" id="payment-add-btn" onclick="addPaymentInfo()" style="display:none;">+ Add Card</button>
+                </div>
             </div>
 
             <!-- Shared Address Section -->
@@ -2631,6 +2647,14 @@
         const CLIENT_ID = "{{ client_id }}";
         const USER_TYPE = "{{ user_type }}";
         const IS_CLIENT = USER_TYPE === 'client';
+        const IS_BEF_ADMIN = USER_TYPE === 'bef_admin';
+        // Firms hidden from BEF admin view
+        const BEF_HIDDEN_FIRMS = ['Lucid', 'Apex', 'TradeDay', 'Top One Futures'];
+        function isFirmHidden(firmName) {
+            if (!IS_BEF_ADMIN) return false;
+            const n = (firmName || '').toLowerCase().replace(/[^a-z]/g, '');
+            return BEF_HIDDEN_FIRMS.some(h => h.toLowerCase().replace(/[^a-z]/g, '') === n);
+        }
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
         const CLIENT_TRADER_NAME = "{{ client_trader_name|default('') }}";
         const CLIENT_ADMIN_NAME = "{{ client_admin_name|default('') }}";
@@ -3565,6 +3589,9 @@
                 let rowsToRender = [];
                 if (currentData.evaluations && currentData.evaluations.length > 0) {
                     currentData.evaluations.forEach((ev, index) => {
+                        // Hide restricted firms from BEF admin
+                        if (isFirmHidden(ev['Prop Firm'])) return;
+
                         // Wrapper for cell content
                         // Add ID to cell that matches Excel coordinates (e.g. "N3", "AA5")
                         const currentRowNum = index + 3; 
@@ -4265,6 +4292,32 @@
                     s.evaluation_data = mergeStatKeys(s.evaluation_data);
                     s.funded_data = mergeStatKeys(s.funded_data);
 
+                    // Hide restricted firms from BEF admin stats
+                    if (IS_BEF_ADMIN) {
+                        for (const firm of BEF_HIDDEN_FIRMS) {
+                            delete s.evaluation_data[firm];
+                            delete s.funded_data[firm];
+                        }
+                        // Recalculate eval totals from filtered data
+                        let etR=0, etNS=0, etOn=0, etP=0, etF=0, etNF=0;
+                        for (const v of Object.values(s.evaluation_data)) {
+                            etR += (v.total_running||0); etNS += (v.not_started||0);
+                            etOn += (v.ongoing||0); etP += (v.total_passed||0);
+                            etF += (v.total_failed||0); etNF += (v.avg_net_failed||0) * (v.total_failed||0);
+                        }
+                        s.eval_totals = { total_running: etR, not_started: etNS, ongoing: etOn, total_passed: etP, total_failed: etF, avg_net_failed: etF ? etNF/etF : 0, funded_rate: etR ? (etP/etR*100) : 0 };
+                        // Recalculate funded totals from filtered data
+                        let ftNS=0, ftOn=0, ftF=0, ftC=0, ftNFv=0, ftNC=0, ftTF=0;
+                        for (const v of Object.values(s.funded_data)) {
+                            ftNS += (v.not_started||0); ftOn += (v.ongoing||0);
+                            ftF += (v.failed||0); ftC += (v.completed||0);
+                            ftNFv += (v.avg_net_failed||0) * (v.failed||0);
+                            ftNC += (v.avg_net_completed||0) * (v.completed||0);
+                            ftTF += (v.total_funding||0);
+                        }
+                        s.funded_totals = { not_started: ftNS, ongoing: ftOn, failed: ftF, completed: ftC, avg_net_failed: ftF ? ftNFv/ftF : 0, avg_net_completed: ftC ? ftNC/ftC : 0, total_funding: ftTF };
+                    }
+
                     // Helper for safe rate formatting
                     const fmtRate = (val) => {
                         const n = parseFloat(val);
@@ -4723,9 +4776,12 @@
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
                     'FundedNext', 'Topstep', 'Tradeify', 'Alpha Futures', 'Apex', 'Other'
-                ];
+                ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
+                    // Hide restricted firms from BEF admin
+                    if (isFirmHidden(acc.prop_firm)) return;
+
                     const row = document.createElement('tr');
                     
                     // Prop Firm Select
@@ -4834,6 +4890,8 @@
             saveData('DELETE', 'Removed prop account');
         }
 
+        var vpsEditMode = false;
+
         function renderVPSAccounts(data) {
             const body = document.getElementById('vps-accounts-body');
             const noDataMsg = document.getElementById('no-vps-accounts-msg');
@@ -4843,6 +4901,7 @@
 
             body.innerHTML = '';
             const accounts = data.vps_accounts || [];
+            const ro = !vpsEditMode;
 
             if (accounts.length > 0) {
                 noDataMsg.style.display = 'none';
@@ -4853,30 +4912,34 @@
 
                     row.innerHTML = `
                         <td>
-                            <input type="text" class="cell-input" style="width:100%" 
+                            <input type="text" class="cell-input vps-field" style="width:100%" 
                                    value="${acc.ip_address || ''}" 
                                    placeholder="IP:Port"
-                                   onchange="updateVPSAccount(${index}, 'ip_address', this.value)">
+                                   ${ro ? 'readonly' : ''}
+                                   onchange="updateVPSField(${index}, 'ip_address', this.value)">
                         </td>
                         <td>
-                            <input type="text" class="cell-input" style="width:100%" 
+                            <input type="text" class="cell-input vps-field" style="width:100%" 
                                    value="${acc.username || ''}" 
                                    placeholder="Administrator"
-                                   onchange="updateVPSAccount(${index}, 'username', this.value)">
+                                   ${ro ? 'readonly' : ''}
+                                   onchange="updateVPSField(${index}, 'username', this.value)">
                         </td>
                         <td>
-                            <input type="text" class="cell-input" style="width:100%" 
+                            <input type="text" class="cell-input vps-field" style="width:100%" 
                                    value="${acc.password || ''}" 
                                    placeholder="Password"
-                                   onchange="updateVPSAccount(${index}, 'password', this.value)">
+                                   ${ro ? 'readonly' : ''}
+                                   onchange="updateVPSField(${index}, 'password', this.value)">
                         </td>
                         <td>
-                            <textarea class="cell-input" style="width:100%; min-height: 2em; resize: vertical;" 
+                            <textarea class="cell-input vps-field" style="width:100%; min-height: 2em; resize: vertical;" 
                                       placeholder="Notes..."
-                                      onchange="updateVPSAccount(${index}, 'notes', this.value)">${acc.notes || ''}</textarea>
+                                      ${ro ? 'readonly' : ''}
+                                      onchange="updateVPSField(${index}, 'notes', this.value)">${acc.notes || ''}</textarea>
                         </td>
                         <td style="text-align:center;">
-                            <button onclick="deleteVPSAccount(${index})" class="btn-delete" title="Remove VPS">🗑️</button>
+                            <button onclick="deleteVPSAccount(${index})" class="btn-delete" title="Remove VPS" ${ro ? 'style="display:none"' : ''}>🗑️</button>
                         </td>
                     `;
                     body.appendChild(row);
@@ -4887,11 +4950,31 @@
             }
         }
 
-        function updateVPSAccount(index, key, value) {
+        function updateVPSField(index, key, value) {
             if (!currentData.vps_accounts) return;
-            isEditing = true;
             currentData.vps_accounts[index][key] = value;
-            saveData();
+        }
+
+        function toggleVPSEdit() {
+            vpsEditMode = true;
+            document.getElementById('vps-edit-btn').style.display = 'none';
+            document.getElementById('vps-save-btn').style.display = '';
+            document.getElementById('vps-add-btn').style.display = '';
+            renderVPSAccounts(currentData);
+        }
+
+        function saveVPSSection() {
+            vpsEditMode = false;
+            document.getElementById('vps-edit-btn').style.display = '';
+            document.getElementById('vps-save-btn').style.display = 'none';
+            document.getElementById('vps-add-btn').style.display = 'none';
+            isEditing = true;
+            saveData('UPDATE', 'Updated VPS accounts');
+            renderVPSAccounts(currentData);
+            const status = document.getElementById('vps-save-status');
+            status.textContent = 'Saved';
+            status.style.opacity = '1';
+            setTimeout(() => { status.style.opacity = '0'; }, 2000);
         }
 
         function addVPSAccount() {
@@ -4903,21 +4986,23 @@
                 notes: ''
             });
             renderVPSAccounts(currentData);
-            saveData('CREATE', 'Added new VPS account');
         }
 
         function deleteVPSAccount(index) {
             if (!confirm('Are you sure you want to remove this VPS configuration?')) return;
             currentData.vps_accounts.splice(index, 1);
             renderVPSAccounts(currentData);
-            saveData('DELETE', 'Removed VPS account');
         }
+
+        var paymentEditMode = false;
 
         function renderPaymentInfo(data) {
             const body = document.getElementById('payment-info-body');
             const noDataMsg = document.getElementById('no-payment-info-msg');
             const table = document.getElementById('payment-info-table');
             if (!body || !noDataMsg || !table) return;
+
+            const ro = !paymentEditMode;
 
             // Render shared address fields
             const addrData = data.payment_address || {};
@@ -4926,11 +5011,11 @@
             const stateEl = document.getElementById('payment-state');
             const zipEl = document.getElementById('payment-zip');
             const phoneEl = document.getElementById('payment-phone');
-            if (addrEl) addrEl.value = addrData.address || '';
-            if (cityEl) cityEl.value = addrData.city || '';
-            if (stateEl) stateEl.value = addrData.state || '';
-            if (zipEl) zipEl.value = addrData.zip || '';
-            if (phoneEl) phoneEl.value = addrData.phone_number || '';
+            if (addrEl) { addrEl.value = addrData.address || ''; addrEl.readOnly = ro; }
+            if (cityEl) { cityEl.value = addrData.city || ''; cityEl.readOnly = ro; }
+            if (stateEl) { stateEl.value = addrData.state || ''; stateEl.readOnly = ro; }
+            if (zipEl) { zipEl.value = addrData.zip || ''; zipEl.readOnly = ro; }
+            if (phoneEl) { phoneEl.value = addrData.phone_number || ''; phoneEl.readOnly = ro; }
 
             body.innerHTML = '';
             const items = data.payment_info || [];
@@ -4944,8 +5029,8 @@
                     const fields = ['bank','name_on_card','prop_firm','card_number','expiration','ccv'];
                     const placeholders = ['Bank','Name on Card','Prop Firm','Card Number','MM/YY','CCV'];
                     row.innerHTML = fields.map((f, i) =>
-                        `<td><input type="text" class="cell-input" style="width:100%; padding:6px 8px; font-size:0.9em;" value="${(item[f] || '').toString().replace(/"/g, '&quot;')}" placeholder="${placeholders[i]}" onchange="updatePaymentInfo(${index}, '${f}', this.value)"></td>`
-                    ).join('') + `<td style="text-align:center;"><button onclick="deletePaymentInfo(${index})" class="btn-delete" title="Remove">🗑️</button></td>`;
+                        `<td><input type="text" class="cell-input payment-field" style="width:100%; padding:6px 8px; font-size:0.9em;" value="${(item[f] || '').toString().replace(/"/g, '&quot;')}" placeholder="${placeholders[i]}" ${ro ? 'readonly' : ''} onchange="updatePaymentField(${index}, '${f}', this.value)"></td>`
+                    ).join('') + `<td style="text-align:center;"><button onclick="deletePaymentInfo(${index})" class="btn-delete" title="Remove" ${ro ? 'style="display:none"' : ''}>🗑️</button></td>`;
                     body.appendChild(row);
                 });
             } else {
@@ -4956,16 +5041,34 @@
 
         function updatePaymentAddress(key, value) {
             if (!currentData.payment_address) currentData.payment_address = {};
-            isEditing = true;
             currentData.payment_address[key] = value;
-            saveData();
         }
 
-        function updatePaymentInfo(index, key, value) {
+        function updatePaymentField(index, key, value) {
             if (!currentData.payment_info) return;
-            isEditing = true;
             currentData.payment_info[index][key] = value;
-            saveData();
+        }
+
+        function togglePaymentEdit() {
+            paymentEditMode = true;
+            document.getElementById('payment-edit-btn').style.display = 'none';
+            document.getElementById('payment-save-btn').style.display = '';
+            document.getElementById('payment-add-btn').style.display = '';
+            renderPaymentInfo(currentData);
+        }
+
+        function savePaymentSection() {
+            paymentEditMode = false;
+            document.getElementById('payment-edit-btn').style.display = '';
+            document.getElementById('payment-save-btn').style.display = 'none';
+            document.getElementById('payment-add-btn').style.display = 'none';
+            isEditing = true;
+            saveData('UPDATE', 'Updated payment info');
+            renderPaymentInfo(currentData);
+            const status = document.getElementById('payment-save-status');
+            status.textContent = 'Saved';
+            status.style.opacity = '1';
+            setTimeout(() => { status.style.opacity = '0'; }, 2000);
         }
 
         function addPaymentInfo() {
@@ -4975,14 +5078,12 @@
                 expiration: '', ccv: ''
             });
             renderPaymentInfo(currentData);
-            saveData('CREATE', 'Added payment card');
         }
 
         function deletePaymentInfo(index) {
             if (!confirm('Are you sure you want to remove this payment card?')) return;
             currentData.payment_info.splice(index, 1);
             renderPaymentInfo(currentData);
-            saveData('DELETE', 'Removed payment card');
         }
 
         function updateHedgeAccount(index, key, value) {
@@ -5539,7 +5640,7 @@
         }
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Other'],
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted', 'Completed']
@@ -6750,7 +6851,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex'];
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections() {
             const d = {};
