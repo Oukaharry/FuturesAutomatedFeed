@@ -25,6 +25,7 @@ class PropFirmManager:
         "MFFU": "MFFU_Flex",
         "MFFU_Flex": "MFFU_Flex",
         "Funded Next": "Funded Next",
+        "FundedNext": "Funded Next",
         "FundingTicks": "FundingTicks",
         "Trade Day": "TradeDay",
         "TopStep": "TopStep",
@@ -1248,6 +1249,8 @@ class PropFirmManager:
         normalized_code = firm_code
         if firm_code == "Alpha Futures":
             normalized_code = "AlphaFutures"
+        elif firm_code == "FundedNext":
+            normalized_code = "Funded Next"
         
         return self.firm_blueprints.get(normalized_code, self.firm_blueprints["MFFU"])
     
@@ -1325,6 +1328,7 @@ class PropFirmManager:
             "MFFU": "MFFU",
             "MFFU_Flex": "MFFU_Flex",
             "Funded Next": "Funded Next",
+            "FundedNext": "Funded Next",
             "FundingTicks": "FundingTicks",
             "TopStep": "TopStep",
             "Tradeify": "Tradeify",
