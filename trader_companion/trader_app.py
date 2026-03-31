@@ -3477,6 +3477,7 @@ class TraderCompanionApp:
         "Tradeify": "Tradeify",
         "Alpha Futures": "AlphaFutures",
         "Apex": "Apex",
+        "Top One Futures": "Top One Futures",
     }
 
     _FAILED_STATUSES = {"fail", "failed", "breach", "delete", "deleted", "closed", "sl", "ended", "lost"}

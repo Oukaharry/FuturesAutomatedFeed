@@ -1,10 +1,6 @@
 {
-  "date": "2026-03-30",
+  "date": "2026-03-31",
   "firms": {
-    "Alpha Futures": "sell",
-    "FundedNext": "buy",
-    "Apex": "buy",
-    "Tradeify": "buy",
-    "Lucid": "buy"
+    "FundedNext": "sell"
   }
 }
