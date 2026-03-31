@@ -1793,6 +1793,77 @@ class PropFirmManager:
         # Default to micro contract value
         return 0.5
 
+    def adjust_tp_sl_for_balance(self, config: Dict, current_profit: float) -> Dict:
+        """Adjust TP and SL ticks/points based on current account profit.
+
+        If the account already has profit, TP is reduced so the trade doesn't
+        overshoot the blueprint target.  If the account has a loss, TP is
+        increased to recover back to the target.  SL is adjusted inversely.
+
+        Returns a NEW config dict with adjusted values (original is not mutated).
+        """
+        config = config.copy()
+        symbol = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+        qty = int(config.get("tradovate_qty", 0) or config.get("topstepx_qty", 0))
+        orig_tp = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
+        orig_sl = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
+        mt5_tp = int(config.get("mt5_tp_points", 0))
+        mt5_sl = int(config.get("mt5_sl_points", 0))
+
+        if qty <= 0 or orig_tp <= 0:
+            return config
+
+        tick_val = self.get_tick_value(symbol)
+        # Blueprint dollar target for the Tradovate trade
+        target_profit = qty * orig_tp * tick_val
+        # Blueprint dollar risk for the Tradovate trade
+        target_loss = qty * orig_sl * tick_val
+
+        if target_profit == 0:
+            return config
+
+        remaining_profit = target_profit - current_profit
+        # Floor: at least 10% of original TP to avoid zero/negative TP
+        min_tp_dollars = target_profit * 0.10
+        remaining_profit = max(remaining_profit, min_tp_dollars)
+
+        # Adjustment ratio
+        tp_ratio = remaining_profit / target_profit
+
+        # Adjusted Tradovate TP ticks (round to nearest int, minimum 5 ticks)
+        adjusted_tp = max(5, round(orig_tp * tp_ratio))
+
+        # SL adjustment: if in profit, we can afford a wider SL (profit cushion).
+        # If in loss, tighten SL to limit further damage.
+        # New SL target in dollars = original SL risk + any existing profit
+        # (existing profit acts as a buffer we can afford to lose)
+        adjusted_sl_dollars = target_loss + current_profit
+        # Floor: at least 30% of original SL to avoid being stopped out instantly
+        adjusted_sl_dollars = max(adjusted_sl_dollars, target_loss * 0.30)
+        sl_ratio = adjusted_sl_dollars / target_loss if target_loss > 0 else 1.0
+        adjusted_sl = max(10, round(orig_sl * sl_ratio))
+
+        # Apply Tradovate adjustments
+        tp_key = "tradovate_tp_ticks" if "tradovate_tp_ticks" in config else "topstepx_tp_ticks"
+        sl_key = "tradovate_sl_ticks" if "tradovate_sl_ticks" in config else "topstepx_sl_ticks"
+        config[tp_key] = adjusted_tp
+        config[sl_key] = adjusted_sl
+
+        # Apply same ratios to MT5 TP/SL points
+        if mt5_tp > 0:
+            config["mt5_tp_points"] = max(5, round(mt5_tp * tp_ratio))
+        if mt5_sl > 0:
+            config["mt5_sl_points"] = max(5, round(mt5_sl * sl_ratio))
+
+        self.logger.info(
+            f"[TP/SL Adjust] profit=${current_profit:.2f}, "
+            f"target=${target_profit:.2f}, remaining=${remaining_profit:.2f}, "
+            f"TP: {orig_tp}→{adjusted_tp} ticks, SL: {orig_sl}→{adjusted_sl} ticks, "
+            f"MT5 TP: {mt5_tp}→{config.get('mt5_tp_points')}, "
+            f"MT5 SL: {mt5_sl}→{config.get('mt5_sl_points')}")
+
+        return config
+
     def get_default_config(self) -> Dict:
         """Get the default strategy config (MFFU challenge_trade1 50k).
         

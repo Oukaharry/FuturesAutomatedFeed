@@ -3501,6 +3501,36 @@ class TraderCompanionApp:
         else:
             return "Challenge", "challenge_trade1"
 
+    def _get_current_phase_profit(self, ev, current_phase):
+        """Sum up existing hedge results for the current phase to get total P/L so far.
+
+        Returns the dollar amount already made/lost in this phase.
+        Challenge: sums 'Hedge Result 1' through 'Hedge Result 5'
+        Funded:    sums 'Hedge Result 1.1' through 'Hedge Result 7'
+        Farming:   sums 'Hedge Day 1' through 'Hedge Day 34'
+        """
+        total = 0.0
+        fields = []
+        if current_phase == "Challenge":
+            fields = [f"Hedge Result {i}" for i in range(1, 6)]
+        elif current_phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4"):
+            fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
+        elif current_phase == "Farming":
+            fields = [f"Hedge Day {i}" for i in range(1, 35)]
+        elif current_phase == "Double Dip":
+            fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
+
+        for f in fields:
+            val = ev.get(f, None)
+            if val is None or val == "" or val == "—":
+                continue
+            try:
+                cleaned = str(val).replace("$", "").replace(",", "").strip()
+                total += float(cleaned)
+            except (ValueError, TypeError):
+                continue
+        return total
+
     def _get_next_phase(self, firm_code, current_display):
         """Get the next phase display name from trading_phases progression."""
         if not self.prop_firm_mgr:
@@ -3890,6 +3920,17 @@ class TraderCompanionApp:
 
         trado_sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
         trado_qty = int(config.get("tradovate_qty", 2) or config.get("topstepx_qty", 2))
+
+        # ── Balance-aware TP/SL adjustment ──
+        ev = row_data.get("eval", {})
+        current_profit = self._get_current_phase_profit(ev, row_data["current_phase"])
+        if current_profit != 0.0 and self.prop_firm_mgr:
+            orig_tp = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
+            config = self.prop_firm_mgr.adjust_tp_sl_for_balance(config, current_profit)
+            new_tp = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
+            if new_tp != orig_tp:
+                self.log(f"📊 Balance adjust {acct_num}: P/L=${current_profit:.2f} → TP {orig_tp}→{new_tp} ticks")
+
         trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
         trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
         mt5_sym = config.get("mt5_symbol", "NAS100")
@@ -3898,11 +3939,12 @@ class TraderCompanionApp:
         mt5_sl = int(config.get("mt5_sl_points", 42))
 
         hedge_text = f" + MT5 {('SELL' if side == 'buy' else 'BUY')} {mt5_vol} {mt5_sym}" if hedging else ""
+        balance_text = f"\nBalance P/L: ${current_profit:+.2f}" if current_profit != 0.0 else ""
         confirm = messagebox.askyesno("Confirm Trade",
             f"{side.upper()} {trado_qty} {trado_sym} on {platform}\n"
             f"{hedge_text}\n\n"
             f"Account: {acct_num}  |  {firm_code}\n"
-            f"Phase: {row_data['current_phase']}  |  Size: {acct_size}\n"
+            f"Phase: {row_data['current_phase']}  |  Size: {acct_size}{balance_text}\n"
             f"TP: {trado_tp} ticks  |  SL: {trado_sl} ticks\n\n"
             f"Proceed?")
         if not confirm:
@@ -4293,6 +4335,19 @@ class TraderCompanionApp:
 
                 trado_sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
                 trado_qty = int(config.get("tradovate_qty", 2) or config.get("topstepx_qty", 2))
+
+                # ── Balance-aware TP/SL adjustment ──
+                auto_ev = row_data.get("eval", {})
+                auto_profit = self._get_current_phase_profit(auto_ev, row_data.get("current_phase", ""))
+                if auto_profit != 0.0 and self.prop_firm_mgr:
+                    orig_tp_auto = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
+                    config = self.prop_firm_mgr.adjust_tp_sl_for_balance(config, auto_profit)
+                    new_tp_auto = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
+                    if new_tp_auto != orig_tp_auto:
+                        _an, _pl, _otp, _ntp = acct_num, auto_profit, orig_tp_auto, new_tp_auto
+                        self.root.after(0, lambda an=_an, pl=_pl, otp=_otp, ntp=_ntp:
+                            self.log(f"📊 Balance adjust {an}: P/L=${pl:.2f} → TP {otp}→{ntp} ticks"))
+
                 trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
                 trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
                 mt5_sym = config.get("mt5_symbol", "NAS100")
