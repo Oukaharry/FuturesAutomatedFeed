@@ -4380,6 +4380,16 @@ def api_update_client():
     
     if category:
         update_client_category(admin, trader, name, category)
+        # Also sync category into the DB identity blob so financial overview reads it
+        try:
+            client_data = get_client_data(name)
+            if client_data:
+                identity = client_data.get('identity', {})
+                identity['profile'] = category
+                identity['category'] = category
+                update_client_field(name, 'identity', identity)
+        except Exception as e:
+            print(f"Error syncing category to DB identity: {e}")
 
     # Save active_status if provided
     active_status = request.json.get('active_status')
