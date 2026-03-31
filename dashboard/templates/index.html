@@ -308,6 +308,9 @@
 
         /* --- Visual Notes --- */
         td { position: relative; }
+        /* Override the evaluations-table reset so the ::after triangle
+           stays anchored to its own cell even when position:static is applied */
+        td.has-note { position: relative !important; }
         
         td.has-note::after {
             content: '';
