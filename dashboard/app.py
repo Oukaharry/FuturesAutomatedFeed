@@ -4166,12 +4166,18 @@ def api_kyc_portfolio():
 
                 acc_stats["fees"] += parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
 
-                for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
-                            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
-                            'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                    acc_stats["hedge"] += parse_currency(ev.get(col))
-                for di in range(1, 51):
-                    acc_stats["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
+                # Only count hedge/farming for rows with a populated status
+                ev_status_p1 = str(ev.get('Status P1') or '').strip()
+                ev_status_funded = str(ev.get('Status') or '').strip()
+                if ev_status_p1:
+                    for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
+                        acc_stats["hedge"] += parse_currency(ev.get(col))
+                if ev_status_funded:
+                    for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
+                                'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                        acc_stats["hedge"] += parse_currency(ev.get(col))
+                    for di in range(1, 51):
+                        acc_stats["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
 
             # Payouts from ALL evals filtered by individual payout date
             for ev in all_evals:
@@ -4224,16 +4230,22 @@ def api_kyc_portfolio():
             pf["evals"] += 1
 
             status = str(ev.get('Status') or '').lower()
+            status_p1_raw = str(ev.get('Status P1') or '').strip()
+            status_funded_raw = str(ev.get('Status') or '').strip()
             fee = parse_currency(ev.get('Fee'))
             act_fee = parse_currency(ev.get('Activation Fee'))
             pf["fees"] += (fee + act_fee)
 
-            for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
-                        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
-                        'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                pf["hedge"] += parse_currency(ev.get(col))
-            for di in range(1, 51):
-                pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
+            # Only count hedge/farming for rows with a populated status
+            if status_p1_raw:
+                for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
+                    pf["hedge"] += parse_currency(ev.get(col))
+            if status_funded_raw:
+                for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
+                            'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                    pf["hedge"] += parse_currency(ev.get(col))
+                for di in range(1, 51):
+                    pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
 
             for j in range(1, 10):
                 pf["payouts"] += parse_currency(ev.get(f'Payout {j}'))

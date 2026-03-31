@@ -196,13 +196,22 @@ def calculate_all_financials(profile_filter=None):
                 
                 p1_hedges = sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS)
                 funded_hedges = sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
-                hedge_results = p1_hedges + funded_hedges
                 
                 farming_results = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
                 
                 # Status Logic
                 status_p1 = str(ev.get('Status P1', '')).strip()
                 status_funded = str(ev.get('Status', '')).strip()
+                
+                # Only count hedge/farming for rows with a populated status
+                # so accounts without hedging activity don't contribute phantom values.
+                hedge_results = 0.0
+                if status_p1:
+                    hedge_results += p1_hedges
+                if status_funded:
+                    hedge_results += funded_hedges
+                if not status_funded:
+                    farming_results = 0.0
                 
                 is_p1_fail = status_p1 == 'Fail'
                 is_funded_fail = status_funded == 'Fail'
@@ -1028,7 +1037,6 @@ def calculate_propfirm_overview(profile_filter=None):
             # Hedge Results (PROFIT/LOSS)
             p1_hedges = sum(parse_currency(eval_data.get(col)) for col in P1_HEDGE_COLS)
             funded_hedges = sum(parse_currency(eval_data.get(col)) for col in FUNDED_HEDGE_COLS)
-            hedge_results = p1_hedges + funded_hedges
             
             # Farming Results (PROFIT)
             farming_results = 0.0
@@ -1041,6 +1049,15 @@ def calculate_propfirm_overview(profile_filter=None):
             status_funded = str(eval_data.get('Status', '')).strip()
             status_p1_lower = status_p1.lower()
             status_funded_lower = status_funded.lower()
+            
+            # Only count hedge/farming for rows with a populated status
+            hedge_results = 0.0
+            if status_p1:
+                hedge_results += p1_hedges
+            if status_funded:
+                hedge_results += funded_hedges
+            if not status_funded:
+                farming_results = 0.0
             
             # Logic from data_processor.py
             is_p1_fail = status_p1 == 'Fail'
@@ -1479,14 +1496,23 @@ def get_client_performance_stats(profile_filter=None):
             for i in range(1, 10):
                 c_stats['payouts'] += parse_currency(ev.get(f'Payout {i}'))
             
-            # Hedge
-            for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5',
-                        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                        'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                c_stats['hedge_profit'] += parse_currency(ev.get(col))
+            # Only count hedge/farming for rows with a populated status
+            status_p1 = str(ev.get('Status P1') or '').strip()
+            status_funded = str(ev.get('Status') or '').strip()
+            
+            # P1 Hedge columns
+            if status_p1:
+                for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
+                    c_stats['hedge_profit'] += parse_currency(ev.get(col))
+            # Funded Hedge columns
+            if status_funded:
+                for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                            'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                    c_stats['hedge_profit'] += parse_currency(ev.get(col))
                 
             # Farming
-            c_stats['farming_profit'] += parse_currency(ev.get('Farming Profit')) # Summary column usually
+            if status_funded:
+                c_stats['farming_profit'] += parse_currency(ev.get('Farming Profit'))
             
         # 2. Deals for Deposits
         # Assuming get_deals returns list of deals

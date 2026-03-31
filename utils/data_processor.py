@@ -789,15 +789,26 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
                 stats["ev_tracking"]["total_net_ended"] += funded_hedge_net
                 stats["ev_tracking"]["count_ended"] += 1
             
-            # === CASHFLOW - IN PROGRESS (TOTALS of ALL records - no status filtering) ===
-            # Sheet formulas SUM entire columns, including deleted rows:
-            # Challenge Fees: =-SUM(Evaluations!D:D) = negative sum of ALL Fee column only
-            # Hedging Results: =SUM(J:N) + SUM(U:AA) = ALL hedge results
-            # Farming Results: =SUM(all Hedge Day columns) = ALL farming
-            # Payouts: =SUM(AC,AE,AG,AI) = ALL payouts
+            # === CASHFLOW - IN PROGRESS (TOTALS of ALL records) ===
+            # Only count hedge/farming columns for rows with a populated status,
+            # so accounts without hedging activity don't contribute phantom values.
+            # Fees and payouts are always counted (they exist independent of hedging).
+            has_p1_status = bool(status_p1.strip())
+            has_funded_status = bool(status_funded.strip())
+            
+            row_hedging = 0.0
+            if has_p1_status:
+                row_hedging += p1_hedges
+            if has_funded_status:
+                row_hedging += funded_hedges
+            
+            row_farming = 0.0
+            if has_funded_status:
+                row_farming = hedge_days
+            
             stats["cashflow_inprogress"]["challenge_fees"] = round(stats["cashflow_inprogress"]["challenge_fees"] + fee + activation_fee, 2)
-            stats["cashflow_inprogress"]["hedging_results"] = round(stats["cashflow_inprogress"]["hedging_results"] + p1_hedges + funded_hedges, 2)
-            stats["cashflow_inprogress"]["farming_results"] = round(stats["cashflow_inprogress"]["farming_results"] + hedge_days, 2)
+            stats["cashflow_inprogress"]["hedging_results"] = round(stats["cashflow_inprogress"]["hedging_results"] + row_hedging, 2)
+            stats["cashflow_inprogress"]["farming_results"] = round(stats["cashflow_inprogress"]["farming_results"] + row_farming, 2)
             stats["cashflow_inprogress"]["payouts"] = round(stats["cashflow_inprogress"]["payouts"] + payouts, 2)
             stats["cashflow_inprogress"]["activation_fee"] = round(stats["cashflow_inprogress"]["activation_fee"] + activation_fee, 2)
             
