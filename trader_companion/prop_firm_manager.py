@@ -1486,11 +1486,19 @@ class PropFirmManager:
     
     def convert_account_size_to_key(self, account_size: str, firm_code: str = None) -> str:
         """Convert account size string to size key (e.g., '$50,000' -> '50k')"""
-        # Since we only support $50,000, always return "50k"
+        if not account_size:
+            return "50k"
+        s = account_size.lower().replace(",", "").replace("$", "").strip()
+        if "150" in s or s == "150k":
+            return "150k"
+        if "100" in s or s == "100k":
+            return "100k"
         return "50k"
     
     def get_strategy_config(self, firm_code: str, phase_key: str, size_key: str = "50k") -> Dict:
         """Get strategy configuration for specific prop firm and phase."""
+        # Normalize size_key: "$50,000" -> "50k", "$100,000" -> "100k", etc.
+        size_key = self.convert_account_size_to_key(size_key, firm_code)
         self.logger.info(f"[DEBUG get_strategy_config] firm_code='{firm_code}', phase_key='{phase_key}', size_key='{size_key}'")
         
         firm_info = self.get_firm_info(firm_code)
