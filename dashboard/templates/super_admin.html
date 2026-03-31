@@ -696,37 +696,37 @@
                 <div class="stat-grid-modern" style="margin-bottom: 0; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
                     
                     <!-- Total Payouts -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('payouts')" style="cursor:pointer; background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #6ee7b7 !important; font-weight: 700;">Total Payouts</div>
                         <div id="grand-total-payouts" class="stat-value-modern" style="color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">$0.00</div>
                     </div>
                     
                     <!-- Total Deposits -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(23, 37, 84, 0.7) 100%); border: 1px solid rgba(30, 58, 138, 0.6); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('deposits')" style="cursor:pointer; background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(23, 37, 84, 0.7) 100%); border: 1px solid rgba(30, 58, 138, 0.6); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #7baef0 !important; font-weight: 700;">Total Deposits</div>
                         <div id="grand-total-deposits" class="stat-value-modern" style="color: #5a90d8 !important; text-shadow: 0 0 20px rgba(30, 58, 138, 0.4);">$0.00</div>
                     </div>
                     
                     <!-- Challenge Fees -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('fees')" style="cursor:pointer; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #fca5a5 !important; font-weight: 700;">Challenge Fees</div>
                         <div id="grand-total-fees" class="stat-value-modern" style="color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">$0.00</div>
                     </div>
                     
                     <!-- Net Profit -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('net_profit')" style="cursor:pointer; background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #d8b4fe !important; font-weight: 700;">Net Profit</div>
                         <div id="grand-total-net" class="stat-value-modern" style="color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">$0.00</div>
                     </div>
 
                     <!-- Hedging Results -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('hedge_profit')" style="cursor:pointer; background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #bae6fd !important; font-weight: 700;">Hedging Results</div>
                         <div id="grand-hedge" class="stat-value-modern" style="color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">$0.00</div>
                     </div>
 
                     <!-- Farming Results -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('farming_profit')" style="cursor:pointer; background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #d9f99d !important; font-weight: 700;">Farming Results</div>
                         <div id="grand-farming" class="stat-value-modern" style="color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">$0.00</div>
                     </div>
@@ -746,7 +746,7 @@
 
 
                     <!-- LWM (14d) -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(244, 63, 94, 0.15) 0%, rgba(159, 18, 57, 0.6) 100%); border: 1px solid rgba(251, 113, 133, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('lwm')" style="cursor:pointer; background: linear-gradient(135deg, rgba(244, 63, 94, 0.15) 0%, rgba(159, 18, 57, 0.6) 100%); border: 1px solid rgba(251, 113, 133, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                          <div class="stat-label-modern" style="color: #fda4af !important; font-weight: 700; display:flex; justify-content:space-between; align-items:center;">
                              Cumulative LWM (14d)
                              <i class="fas fa-info-circle" style="font-size:0.8rem; cursor:help;" title="Sum of positive individual LWMs only (Clients > 0)"></i>
@@ -758,15 +758,15 @@
                      <!-- Mini Stats in one card -->
                     <div class="stat-card-modern" style="grid-column: 1 / -1; background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; justify-content: center; gap: 8px;">
                         <div style="display: flex; gap: 40px; justify-content: start;">
-                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
+                        <div style="display: flex; justify-content: space-between; min-width: 150px; cursor:pointer;" onclick="showBreakdown('active')">
                             <span style="color:var(--text-secondary);">Active</span>
                             <span id="grand-active-accounts" style="font-weight:700; color:#fff !important;">0</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
+                        <div style="display: flex; justify-content: space-between; min-width: 150px; cursor:pointer;" onclick="showBreakdown('passed')">
                             <span style="color:var(--text-secondary);">Passed</span>
                             <span id="grand-completed-accounts" style="font-weight:700; color:#34d399 !important;">0</span>
                         </div>
-                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
+                        <div style="display: flex; justify-content: space-between; min-width: 150px; cursor:pointer;" onclick="showBreakdown('failed')">
                             <span style="color:var(--text-secondary);">Failed</span>
                             <span id="grand-failed-accounts" style="font-weight:700; color:#f87171 !important;">0</span>
                         </div>
@@ -873,6 +873,34 @@
         </div>
     </div>
 
+    <!-- Breakdown Modal -->
+    <div id="breakdownModal" onclick="if(event.target===this)closeBreakdownModal()" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:11000; background:rgba(0,0,0,0.85);">
+        <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
+            <div style="width:92%; max-width:900px; height:85vh; background:#1e293b; border:2px solid rgba(99,102,241,0.5); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 0 30px rgba(99,102,241,0.2);">
+                <!-- Header -->
+                <div style="padding:16px 24px; background:linear-gradient(135deg,#0f172a,#1e293b); border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+                    <h3 id="breakdownTitle" style="margin:0; color:#f8fafc; font-size:1.15rem;"><i class="fas fa-chart-bar" style="margin-right:8px; color:#818cf8;"></i>Breakdown</h3>
+                    <button onclick="closeBreakdownModal()" style="background:#ef4444; border:none; color:white; cursor:pointer; padding:6px 14px; border-radius:6px; font-weight:bold; font-size:0.85rem;">CLOSE</button>
+                </div>
+                <!-- Body -->
+                <div style="flex:1; overflow-y:auto; padding:0;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead style="position:sticky; top:0; z-index:5;">
+                            <tr style="background:#334155;">
+                                <th style="text-align:center; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600; width:45px;">#</th>
+                                <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Client</th>
+                                <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Trader</th>
+                                <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Admin</th>
+                                <th id="breakdownValueHeader" style="text-align:right; padding:10px 14px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="breakdownBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- DEBUGGER ---
         function debugLog(msg, type='info') {
@@ -889,7 +917,8 @@
         document.addEventListener('keydown', function(event) {
             if (event.key === "Escape") {
                 debugLog("ESC key pressed. Attempting to close modal.");
-                if (document.getElementById('editUserModal').style.display !== 'none') closeEditUserModal();
+                if (document.getElementById('breakdownModal').style.display !== 'none') closeBreakdownModal();
+                else if (document.getElementById('editUserModal').style.display !== 'none') closeEditUserModal();
                 else if (window.closeUserListModal) window.closeUserListModal();
             }
         });
@@ -1267,6 +1296,7 @@
         const USER_ROLE = '{{ user_role|default("super_admin") }}';
         let hierarchyData = {};
         let currentProfile = USER_ROLE === 'bef_admin' ? 'BEF' : 'ALL';
+        let clientsBreakdownData = [];
         
         // Glue code for new buttons
         function setFilter(profile) {
@@ -1276,6 +1306,94 @@
         function formatCurrency(value) {
             const num = parseFloat(value) || 0;
             return '$' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        // --- Breakdown Modal ---
+        const METRIC_LABELS = {
+            payouts: 'Total Payouts',
+            deposits: 'Total Deposits',
+            fees: 'Challenge Fees',
+            net_profit: 'Net Profit',
+            hedge_profit: 'Hedging Results',
+            farming_profit: 'Farming Results',
+            hwm: 'HWM (14d)',
+            lwm: 'LWM (14d)',
+            active: 'Active Accounts',
+            passed: 'Passed Accounts',
+            failed: 'Failed Accounts'
+        };
+
+        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','farming_profit','hwm','lwm'];
+
+        function escHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function showBreakdown(metric) {
+            const modal = document.getElementById('breakdownModal');
+            const body = document.getElementById('breakdownBody');
+            const title = document.getElementById('breakdownTitle');
+            const valHeader = document.getElementById('breakdownValueHeader');
+
+            if (!clientsBreakdownData || clientsBreakdownData.length === 0) {
+                alert('Data still loading. Please wait a moment.');
+                return;
+            }
+
+            const label = METRIC_LABELS[metric] || metric;
+            title.innerHTML = '<i class="fas fa-chart-bar" style="margin-right:8px; color:#818cf8;"></i>' + label + ' — Client Breakdown';
+            valHeader.textContent = label;
+
+            const isCurrency = CURRENCY_METRICS.includes(metric);
+
+            // Sort descending by absolute value for currency, or by count for status metrics
+            const sorted = [...clientsBreakdownData]
+                .filter(c => {
+                    const v = parseFloat(c[metric]) || 0;
+                    return v !== 0;
+                })
+                .sort((a, b) => {
+                    const va = parseFloat(a[metric]) || 0;
+                    const vb = parseFloat(b[metric]) || 0;
+                    return vb - va;  // highest first
+                });
+
+            let html = '';
+            if (sorted.length === 0) {
+                html = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#64748b;">No clients with non-zero values for this metric.</td></tr>';
+            } else {
+                sorted.forEach((c, i) => {
+                    const val = parseFloat(c[metric]) || 0;
+                    const valColor = isCurrency ? (val >= 0 ? '#34d399' : '#f87171') : '#e2e8f0';
+                    const displayVal = isCurrency ? formatCurrency(val) : val;
+                    const clientId = c.client_id || '-';
+                    const safeId = encodeURIComponent(clientId);
+                    const safeName = escHtml(clientId);
+                    const safeTrader = escHtml(c.trader || '-');
+                    const safeAdmin = escHtml(c.admin || '-');
+                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.15s;"
+                                 onmouseover="this.style.background='rgba(99,102,241,0.1)'"
+                                 onmouseout="this.style.background='transparent'">
+                        <td style="text-align:center; padding:10px 12px; color:#64748b; font-size:0.85rem;">${i + 1}</td>
+                        <td style="padding:10px 12px;">
+                            <a href="/dashboard/${safeId}" style="color:#818cf8; text-decoration:none; font-weight:600;" 
+                               onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${safeName}</a>
+                        </td>
+                        <td style="padding:10px 12px; color:#94a3b8; font-size:0.9rem;">${safeTrader}</td>
+                        <td style="padding:10px 12px; color:#94a3b8; font-size:0.9rem;">${safeAdmin}</td>
+                        <td style="text-align:right; padding:10px 14px; color:${valColor}; font-weight:700; font-size:0.95rem;">${displayVal}</td>
+                    </tr>`;
+                });
+            }
+
+            body.innerHTML = html;
+            modal.style.display = 'block';
+        }
+
+        function closeBreakdownModal() {
+            document.getElementById('breakdownModal').style.display = 'none';
         }
         
         function changeProfile(profile) {
@@ -1356,6 +1474,10 @@
                         } catch(e) {
                              debugLog("Error updating DOM with totals: " + e.message, 'error');
                         }
+                    }
+                    if(fData.clients) {
+                        clientsBreakdownData = fData.clients;
+                        debugLog("Clients breakdown data loaded: " + clientsBreakdownData.length + " clients");
                     }
                 })
                 .catch(err => {

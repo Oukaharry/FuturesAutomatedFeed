@@ -4211,9 +4211,11 @@ def api_kyc_portfolio():
                 if pval != 0:
                     pdate = str(ev.get(f'Date {i}') or '-').strip()
                     if date_in_period(pdate):
+                        raw_date = parse_date_safe(pdate)
                         all_payouts.append({
                             "client": name, "prop_firm": prop_firm, "account": account_num,
-                            "payout_num": i, "amount": round(pval, 2), "date": format_display_date(pdate)
+                            "payout_num": i, "amount": round(pval, 2), "date": format_display_date(pdate),
+                            "_sort_date": raw_date.isoformat() if raw_date else "0000-00-00"
                         })
 
             if prop_firm not in by_prop_firm:
@@ -4258,7 +4260,9 @@ def api_kyc_portfolio():
         prop_firm_list.append({"name": pf_name, **pf})
     prop_firm_list.sort(key=lambda x: x["payouts"], reverse=True)
 
-    all_payouts.sort(key=lambda x: x["amount"], reverse=True)
+    all_payouts.sort(key=lambda x: x.get("_sort_date", "0000-00-00"), reverse=True)
+    for p in all_payouts:
+        p.pop("_sort_date", None)
 
     return jsonify({
         "status": "success",

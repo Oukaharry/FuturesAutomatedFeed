@@ -2769,7 +2769,11 @@
                     // All payouts table
                     const payoutsBody = document.getElementById('kyc-payouts-body');
                     const payoutsCount = document.getElementById('kyc-payouts-count');
-                    const payouts = data.payouts || [];
+                    const payouts = (data.payouts || []).sort((a, b) => {
+                        const da = a.date ? new Date(a.date) : new Date(0);
+                        const db = b.date ? new Date(b.date) : new Date(0);
+                        return db - da;
+                    });
                     payoutsCount.textContent = `(${payouts.length} payouts — ${fmt(payouts.reduce((s, p) => s + p.amount, 0))})`;
                     if (payouts.length) {
                         payoutsBody.innerHTML = payouts.map(p => {
