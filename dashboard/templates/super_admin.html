@@ -769,24 +769,6 @@
                          <div id="grand-lwm" class="stat-value-modern" style="color: #fb7185 !important; text-shadow: 0 0 20px rgba(251, 113, 133, 0.3);">$0.00</div>
                     </div>
 
-                    <!-- Mini Stats in one card -->
-                     <!-- Mini Stats in one card -->
-                    <div class="stat-card-modern" style="grid-column: 1 / -1; background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; justify-content: center; gap: 8px;">
-                        <div style="display: flex; gap: 40px; justify-content: start;">
-                        <div style="display: flex; justify-content: space-between; min-width: 150px; cursor:pointer;" onclick="showBreakdown('active')">
-                            <span style="color:var(--text-secondary);">Active</span>
-                            <span id="grand-active-accounts" style="font-weight:700; color:#fff !important;">0</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; min-width: 150px; cursor:pointer;" onclick="showBreakdown('passed')">
-                            <span style="color:var(--text-secondary);">Passed</span>
-                            <span id="grand-completed-accounts" style="font-weight:700; color:#34d399 !important;">0</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; min-width: 150px; cursor:pointer;" onclick="showBreakdown('failed')">
-                            <span style="color:var(--text-secondary);">Failed</span>
-                            <span id="grand-failed-accounts" style="font-weight:700; color:#f87171 !important;">0</span>
-                        </div>
-                    </div>
-                </div>
                 </div>
 
                 {% if user_role|default('super_admin') == 'super_admin' %}
@@ -1491,9 +1473,12 @@
                                 document.getElementById('grand-lwm').textContent = formatCurrency(t.total_lwm);
                             }
                             
-                            document.getElementById('grand-active-accounts').textContent = t.active_accounts;
-                            document.getElementById('grand-completed-accounts').textContent = t.completed_accounts;
-                            document.getElementById('grand-failed-accounts').textContent = t.failed_accounts;
+                            const elActive = document.getElementById('grand-active-accounts');
+                            const elCompleted = document.getElementById('grand-completed-accounts');
+                            const elFailed = document.getElementById('grand-failed-accounts');
+                            if (elActive) elActive.textContent = t.active_accounts;
+                            if (elCompleted) elCompleted.textContent = t.completed_accounts;
+                            if (elFailed) elFailed.textContent = t.failed_accounts;
                             debugLog("Totals Updated");
                         } catch(e) {
                              debugLog("Error updating DOM with totals: " + e.message, 'error');
@@ -1538,9 +1523,12 @@
                     c += clients.length;
                 });
             });
-            document.getElementById('total-admins').textContent = a;
-            document.getElementById('total-traders').textContent = t;
-            document.getElementById('total-clients').textContent = c;
+            const elA = document.getElementById('total-admins');
+            const elT = document.getElementById('total-traders');
+            const elC = document.getElementById('total-clients');
+            if (elA) elA.textContent = a;
+            if (elT) elT.textContent = t;
+            if (elC) elC.textContent = c;
         }
 
         // --- Sidebar Client Directory ---
