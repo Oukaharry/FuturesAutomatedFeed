@@ -1515,7 +1515,7 @@ def get_client_performance_stats(profile_filter=None):
             elif 'active' in status or 'phase' in status or 'running' in status or 'ongoing' in status or 'trading' in status or 'challenge' in status:
                 c_stats['active'] += 1
                 
-            # Fees
+            # Fees — collected here as fallback; overridden below by cashflow_inprogress if available
             fee = parse_currency(ev.get('Fee'))
             act_fee = parse_currency(ev.get('Activation Fee'))
             c_stats['fees'] += (fee + act_fee)
@@ -1524,11 +1524,12 @@ def get_client_performance_stats(profile_filter=None):
             for i in range(1, 10):
                 c_stats['payouts'] += parse_currency(ev.get(f'Payout {i}'))
             
-        # Use stored cashflow_inprogress for hedge/farming (matches Net Profit In Progress display)
+        # Use stored cashflow_inprogress for hedge/farming/fees (matches Net Profit In Progress display)
         stored_cf = data.get('statistics', {}).get('cashflow_inprogress', {})
         if stored_cf and (stored_cf.get('hedging_results', 0) != 0 or stored_cf.get('farming_results', 0) != 0):
             c_stats['hedge_profit'] = stored_cf.get('hedging_results', 0.0)
             c_stats['farming_profit'] = stored_cf.get('farming_results', 0.0)
+            c_stats['fees'] = stored_cf.get('challenge_fees', 0.0) + stored_cf.get('activation_fee', 0.0)
         else:
             # Fallback: recalculate from evaluation columns
             for ev in evaluations:
