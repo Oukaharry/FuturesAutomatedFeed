@@ -4160,7 +4160,19 @@ def api_kyc_portfolio():
             s_active = et.get('total_running', 0) or 0
             s_passed = et.get('total_passed', 0) or 0
             s_failed = et.get('total_failed', 0) or 0
-            s_evals = s_active + s_passed + s_failed
+            s_evals = len(all_evals)
+
+            # If stored eval_totals seem incomplete, recount from raw evaluations
+            if s_evals > 0 and (s_active + s_passed + s_failed) == 0:
+                for ev in all_evals:
+                    sp1 = str(ev.get('Status P1') or '').strip().lower()
+                    sf = str(ev.get('Status') or '').strip().lower()
+                    if sp1 == 'fail' or sf in ('fail', 'failed', 'breached', 'blown'):
+                        s_failed += 1
+                    elif sf in ('completed', 'passed', 'funded'):
+                        s_passed += 1
+                    else:
+                        s_active += 1
 
             acc_stats = {
                 "name": name, "eval_count": s_evals,
