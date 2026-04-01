@@ -4015,11 +4015,22 @@ def api_kyc_accounts():
     else:
         accounts = [client_id]
     # Enrich with basic client info
+    is_bef = user_type == 'bef_admin'
     result = []
     for name in accounts:
         cdata = get_client_data(name)
-        eval_count = len(cdata.get('evaluations', [])) if cdata else 0
-        result.append({"name": name, "eval_count": eval_count, "is_current": name == client_id})
+        if not cdata:
+            if not is_bef:
+                result.append({"name": name, "eval_count": 0, "is_current": name == client_id})
+            continue
+        evals = cdata.get('evaluations', [])
+        if is_bef:
+            # Only count evaluations for BEF (non-hidden) prop firms
+            evals = [ev for ev in evals if isinstance(ev, dict)
+                     and str(ev.get('Prop Firm') or '').strip().lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
+            if not evals:
+                continue
+        result.append({"name": name, "eval_count": len(evals), "is_current": name == client_id})
     return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1, "is_primary": is_kyc_primary(client_id)})
 
 @app.route('/api/kyc/portfolio', methods=['GET'])
