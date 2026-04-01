@@ -208,6 +208,8 @@ def calculate_all_financials(profile_filter=None):
             raw_prop_firm = ev.get('Prop Firm')
             if raw_prop_firm and raw_prop_firm != "-" and str(raw_prop_firm).lower() != "prop firm":
                 prop_firm = normalize_prop_firm_name(raw_prop_firm)
+                if not prop_firm:
+                    continue
                 
                 if prop_firm not in overview:
                     overview[prop_firm] = {
@@ -487,12 +489,18 @@ def normalize_prop_firm_name(name):
     """
     Normalizes prop firm names to merge duplicates.
     Example: "My Funded Futures" and "MyFundedFutures" become "My Funded Futures".
+    Returns None for invalid/junk entries.
     """
     if not name:
-        return "Unknown"
+        return None
         
     original = name.strip()
     normalized = original.lower().replace(" ", "").replace("_", "")
+    
+    # Skip junk/invalid entries (typos, single chars, generic labels)
+    JUNK_NAMES = {'other', 'f', 'n/a', 'na', 'none', 'test', '-', ''}
+    if normalized in JUNK_NAMES or len(normalized) <= 1:
+        return None
     
     # Map normalized keys to display names
     MAPPING = {
@@ -606,6 +614,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None, p
             if not prop_firm or prop_firm == "-": continue
             
             prop_firm = normalize_prop_firm_name(prop_firm)
+            if not prop_firm: continue
             
             # Apply prop firm filter if provided
             if prop_firm_filter and prop_firm != prop_firm_filter:
@@ -1035,6 +1044,8 @@ def calculate_propfirm_overview(profile_filter=None):
                 
             # Normalize Name
             prop_firm = normalize_prop_firm_name(raw_prop_firm)
+            if not prop_firm:
+                continue
             
             if prop_firm not in overview:
                 overview[prop_firm] = {
