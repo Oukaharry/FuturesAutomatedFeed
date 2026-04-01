@@ -2463,6 +2463,12 @@ def get_super_admin_totals():
     # Add Client Performance Stats used by client_performance.html
     response_data['clients'] = get_client_performance_stats(profile_filter)
 
+    # Override hedge/farming totals from per-client data so stat cards match breakdown
+    c_total_hedge = sum(c.get('hedge_profit', 0) for c in response_data['clients'])
+    c_total_farming = sum(c.get('farming_profit', 0) for c in response_data['clients'])
+    response_data['totals']['total_hedge'] = round(c_total_hedge, 2)
+    response_data['totals']['total_farming'] = round(c_total_farming, 2)
+
     # 4. Global Watermarks (14 days)
     # Import here to avoid circular
     from dashboard.watermark_service import get_aggregate_watermarks

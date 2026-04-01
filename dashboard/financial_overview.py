@@ -1524,23 +1524,26 @@ def get_client_performance_stats(profile_filter=None):
             for i in range(1, 10):
                 c_stats['payouts'] += parse_currency(ev.get(f'Payout {i}'))
             
-            # Only count hedge/farming for rows with a populated status
-            status_p1 = str(ev.get('Status P1') or '').strip()
-            status_funded = str(ev.get('Status') or '').strip()
-            
-            # P1 Hedge columns
-            if status_p1:
-                for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
-                    c_stats['hedge_profit'] += parse_currency(ev.get(col))
-            # Funded Hedge columns
-            if status_funded:
-                for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                            'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                    c_stats['hedge_profit'] += parse_currency(ev.get(col))
-                
-            # Farming
-            if status_funded:
-                c_stats['farming_profit'] += parse_currency(ev.get('Farming Profit'))
+        # Use stored cashflow_inprogress for hedge/farming (matches Net Profit In Progress display)
+        stored_cf = data.get('statistics', {}).get('cashflow_inprogress', {})
+        if stored_cf and (stored_cf.get('hedging_results', 0) != 0 or stored_cf.get('farming_results', 0) != 0):
+            c_stats['hedge_profit'] = stored_cf.get('hedging_results', 0.0)
+            c_stats['farming_profit'] = stored_cf.get('farming_results', 0.0)
+        else:
+            # Fallback: recalculate from evaluation columns
+            for ev in evaluations:
+                if not isinstance(ev, dict):
+                    continue
+                status_p1 = str(ev.get('Status P1') or '').strip()
+                status_funded = str(ev.get('Status') or '').strip()
+                if status_p1:
+                    for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
+                        c_stats['hedge_profit'] += parse_currency(ev.get(col))
+                if status_funded:
+                    for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
+                                'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                        c_stats['hedge_profit'] += parse_currency(ev.get(col))
+                    c_stats['farming_profit'] += parse_currency(ev.get('Farming Profit'))
             
         # 2. Deals for Deposits
         # Assuming get_deals returns list of deals
