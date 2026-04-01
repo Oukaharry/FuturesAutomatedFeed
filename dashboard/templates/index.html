@@ -4389,7 +4389,7 @@
                             if (sf) { ['Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1','Hedge Result 6','Hedge Result 7'].forEach(c => { cfHedge += pc(ev[c]); }); for (let di=1;di<=50;di++) cfFarm += pc(ev['Hedge Day '+di]); }
                             for (let i=1;i<=9;i++) cfPay += pc(ev['Payout '+i]);
                         });
-                        s.cashflow_inprogress = { payouts: cfPay, challenge_fees: cfFees, hedging_results: cfHedge, farming_results: cfFarm };
+                        s.cashflow_inprogress = { payouts: cfPay, challenge_fees: cfFees, hedging_results: cfHedge, farming_results: cfFarm, net_profit: cfPay + cfHedge + cfFarm - cfFees };
                     }
 
                     // Helper for safe rate formatting
