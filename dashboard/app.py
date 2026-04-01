@@ -2374,6 +2374,18 @@ def get_hierarchy():
     ):
         logging.warning(f"[HIERARCHY] Empty result for user_type={user_type} user_identifier='{user_identifier}' — available trader keys: {[t for a in hierarchy.get('admins', {}).values() for t in a.get('traders', {}).keys()]}")
     
+    # Shuffle client order daily so traders start with different clients each day
+    import random
+    from datetime import date as _date_cls
+    today_seed = _date_cls.today().toordinal()
+    for admin_data in enriched.get('admins', {}).values():
+        for trader_name, trader_data in admin_data.get('traders', {}).items():
+            clients = trader_data.get('clients', [])
+            if len(clients) > 1:
+                # Seed with today's date + trader name for per-trader unique order
+                rng = random.Random(today_seed + hash(trader_name))
+                rng.shuffle(clients)
+    
     return jsonify(enriched)
 
 from dashboard.financial_overview import calculate_all_financials
