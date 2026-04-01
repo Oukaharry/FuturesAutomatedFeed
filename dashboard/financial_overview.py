@@ -1508,6 +1508,8 @@ def get_client_performance_stats(profile_filter=None):
             "failed": 0,
             "hedge_profit": 0.0,
             "farming_profit": 0.0,
+            "ended": 0,
+            "total_duration_days": 0,
             "hwm": 0.0,
             "lwm": 0.0
         }
@@ -1530,14 +1532,27 @@ def get_client_performance_stats(profile_filter=None):
             if not isinstance(ev, dict):
                 continue
             # Status logic expanded
-            status = str(ev.get('Status') or '').lower()
+            status_p1_raw = str(ev.get('Status P1') or '').strip()
+            status_funded_raw = str(ev.get('Status') or '').strip()
+            status = status_funded_raw.lower()
             if 'passed' in status or 'funded' in status:
                 c_stats['passed'] += 1
             elif 'failed' in status or 'breached' in status or 'blown' in status or 'fail' in status:
                 c_stats['failed'] += 1
             elif 'active' in status or 'phase' in status or 'running' in status or 'ongoing' in status or 'trading' in status or 'challenge' in status:
                 c_stats['active'] += 1
-                
+
+            # Ended count & duration for EV calculation
+            is_p1_fail = status_p1_raw == 'Fail'
+            is_funded_fail = status_funded_raw == 'Fail'
+            is_funded_completed = status_funded_raw == 'Completed'
+            if is_p1_fail or is_funded_fail or is_funded_completed:
+                c_stats['ended'] += 1
+                s_d = parse_date(ev.get('Date Started'))
+                e_d = parse_date(ev.get('Date Ended.1') if (is_funded_fail or is_funded_completed) else ev.get('Date Ended'))
+                if s_d and e_d:
+                    c_stats['total_duration_days'] += max(0, (e_d - s_d).days)
+
             # Fees — collected here as fallback; overridden below by cashflow_inprogress if available
             fee = parse_currency(ev.get('Fee'))
             act_fee = parse_currency(ev.get('Activation Fee'))

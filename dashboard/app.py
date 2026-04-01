@@ -2412,75 +2412,41 @@ def get_super_admin_totals():
     if session_info.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
 
-    # Use the centralized financial calculation
-    data = calculate_all_financials(profile_filter)
-    stats = data['global_stats']
-    overview = data['overview']
-    
-    # Hide restricted firms from BEF admin
-    if session_info.get('user_type') == 'bef_admin':
-        overview = {k: v for k, v in overview.items()
-                    if k.lower().replace(' ', '') not in BEF_HIDDEN_FIRMS}
+    # Derive ALL totals from per-client stats (fast — uses precomputed cashflow_inprogress)
+    clients = get_client_performance_stats(profile_filter)
 
-    # Calculate Deposits from per-client stats (authoritative hedging_review.total_deposits)
-    # Will be filled after client performance stats are computed below
-    total_deposits = 0.0
-        
-    # Calculate Totals
-    active_accounts = 0
-    passed_accounts = 0
-    failed_accounts = 0
-    
-    total_hedge = 0.0
-    total_farming = 0.0
-    
-    for firm, f_data in overview.items():
-        active_accounts += f_data.get('active_accounts', 0)
-        passed_accounts += f_data.get('passed_accounts', 0)
-        failed_accounts += f_data.get('failed_accounts', 0)
-        total_hedge += f_data.get('hedge_results', 0.0)
-        total_farming += f_data.get('farming_results', 0.0)
-        
+    t_pay = sum(c.get('payouts', 0) for c in clients)
+    t_dep = sum(c.get('deposits', 0) for c in clients)
+    t_fees = sum(c.get('fees', 0) for c in clients)
+    t_net = sum(c.get('net_profit', 0) for c in clients)
+    t_hedge = sum(c.get('hedge_profit', 0) for c in clients)
+    t_farming = sum(c.get('farming_profit', 0) for c in clients)
+    t_active = sum(c.get('active', 0) for c in clients)
+    t_passed = sum(c.get('passed', 0) for c in clients)
+    t_failed = sum(c.get('failed', 0) for c in clients)
+    t_ended = sum(c.get('ended', 0) for c in clients)
+    t_duration = sum(c.get('total_duration_days', 0) for c in clients)
+
+    ev = t_net / t_ended if t_ended > 0 else 0.0
+    ev_day = t_net / t_duration if t_duration > 0 else 0.0
+
     response_data = {
         "status": "success",
         "totals": {
-            "total_payouts": 0.0, # Not in global_stats explicitly, need to sum?
-            # global_stats keys: net, ended, expected_value, ev_per_day
-            "total_deposits": round(total_deposits, 2),
-            "total_fees": 0.0,
-            "total_net_profit": round(stats.get('net', 0), 2),
-            "active_accounts": active_accounts,
-            "completed_accounts": passed_accounts,
-            "failed_accounts": failed_accounts,
-            "total_hedge": round(total_hedge, 2),
-            "total_farming": round(total_farming, 2),
-            "expected_value": round(stats.get('expected_value', 0), 2),
-            "ev_per_day": round(stats.get('ev_per_day', 0), 2)
-        }
+            "total_payouts": round(t_pay, 2),
+            "total_deposits": round(t_dep, 2),
+            "total_fees": round(t_fees, 2),
+            "total_net_profit": round(t_net, 2),
+            "active_accounts": t_active,
+            "completed_accounts": t_passed,
+            "failed_accounts": t_failed,
+            "total_hedge": round(t_hedge, 2),
+            "total_farming": round(t_farming, 2),
+            "expected_value": round(ev, 2),
+            "ev_per_day": round(ev_day, 2)
+        },
+        "clients": clients
     }
-    
-    # Sum up Payouts and Fees from overview to fill gaps
-    t_pay = 0.0
-    t_fees = 0.0
-    for firm, f_data in overview.items():
-        t_pay += f_data.get('total_payouts', 0)
-        t_fees += f_data.get('total_fees', 0) + f_data.get('total_activation_fees', 0)
-        
-    response_data['totals']['total_payouts'] = round(t_pay, 2)
-    response_data['totals']['total_fees'] = round(t_fees, 2)
-    
-    # Add Client Performance Stats used by client_performance.html
-    response_data['clients'] = get_client_performance_stats(profile_filter)
-
-    # Override hedge/farming totals from per-client data so stat cards match breakdown
-    c_total_hedge = sum(c.get('hedge_profit', 0) for c in response_data['clients'])
-    c_total_farming = sum(c.get('farming_profit', 0) for c in response_data['clients'])
-    response_data['totals']['total_hedge'] = round(c_total_hedge, 2)
-    response_data['totals']['total_farming'] = round(c_total_farming, 2)
-
-    # Sum deposits from per-client stats (uses MT5 account deposits)
-    total_deposits = sum(c.get('deposits', 0) for c in response_data['clients'])
-    response_data['totals']['total_deposits'] = round(total_deposits, 2)
 
     # 4. Global Watermarks (14 days)
     # Import here to avoid circular
