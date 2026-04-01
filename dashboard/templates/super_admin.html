@@ -172,6 +172,10 @@
             color: white;
             width: 100%;
         }
+        .form-dark option {
+            background: #0f172a;
+            color: #e8eeff;
+        }
         
         .stat-grid-modern {
             display: grid;
@@ -336,6 +340,10 @@
             font-family: 'IBM Plex Mono', monospace !important;
             font-size: 0.84rem !important;
             transition: all 0.18s ease;
+        }
+        .form-dark option {
+            background: #0f172a;
+            color: #e8eeff;
         }
         .form-dark:focus {
             border-color: #2a4a8a !important;
@@ -656,22 +664,11 @@
 
                 <div style="height:1px; background:var(--border-color); margin:24px 0;"></div>
 
-                <!-- KYC Account Linking -->
-                <div class="form-group" style="margin-bottom: 24px;">
-                    <label class="form-label" style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px; display:block;">
-                        <i class="fas fa-link" style="color:#a78bfa;"></i> Link KYC Accounts
-                    </label>
-                    <select id="kyc-primary-client" class="form-dark" style="margin-bottom:8px;">
-                        <option value="">— Primary Client —</option>
-                    </select>
-                    <select id="kyc-linked-client" class="form-dark" style="margin-bottom:8px;">
-                        <option value="">— Link to (KYC) —</option>
-                    </select>
-                    <button onclick="linkKycAccounts()" class="btn-gold" style="width:100%; padding:8px; border-radius:8px; background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; font-weight:bold; cursor:pointer;">
-                        <i class="fas fa-link"></i> Link KYC
+                <!-- KYC Account Linking — compact button opens modal -->
+                <div style="margin-bottom:16px;">
+                    <button onclick="openKycModal()" style="width:100%; padding:8px 12px; background:rgba(124,58,237,0.15); border:1px solid rgba(167,139,250,0.35); border-radius:8px; color:#a78bfa; font-size:0.82rem; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.25)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
+                        <i class="fas fa-link"></i> Manage KYC Links
                     </button>
-                    <!-- Current KYC Links -->
-                    <div id="kyc-links-list" style="margin-top:16px;"></div>
                 </div>
                 {% endif %}
 
@@ -2049,22 +2046,33 @@
             overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
         }
 
+        // ── KYC Modal ─────────────────────────────────────────────────────
+        function openKycModal() {
+            const modal = document.getElementById('kyc-modal');
+            modal.style.display = 'flex';
+            populateKycSelects();
+            loadKycLinks();
+        }
+        function closeKycModal() {
+            document.getElementById('kyc-modal').style.display = 'none';
+        }
+        // Close on backdrop click
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('kyc-modal');
+            if (e.target === modal) closeKycModal();
+        });
+
         // ── KYC Account Linking ───────────────────────────────────────────
         function populateKycSelects() {
             const primarySel = document.getElementById('kyc-primary-client');
             const linkedSel = document.getElementById('kyc-linked-client');
-            if (!primarySel || !linkedSel || !hierarchyData || !hierarchyData.admins) return;
-            // Gather all client names from hierarchy data
-            const clientNames = [];
-            Object.values(hierarchyData.admins).forEach(admin => {
-                Object.values(admin.traders || {}).forEach(trader => {
-                    (trader.clients || []).forEach(c => {
-                        const name = (typeof c === 'object') ? c.name : c;
-                        if (name) clientNames.push(name);
-                    });
-                });
-            });
-            clientNames.sort((a, b) => a.localeCompare(b));
+            if (!primarySel || !linkedSel) return;
+            // Reuse sidebarAllClients (already built & sorted from hierarchy)
+            // If not yet populated (e.g. slow load), try to build it first
+            if (sidebarAllClients.length === 0 && hierarchyData && hierarchyData.admins) {
+                populateSidebarClients();
+            }
+            const clientNames = sidebarAllClients.map(c => c.name);
             const makeOpts = (sel, placeholder) => {
                 const val = sel.value;
                 sel.innerHTML = `<option value="">${placeholder}</option>` +
@@ -2149,10 +2157,29 @@
         window.linkKycAccounts = linkKycAccounts;
         window.unlinkKyc = unlinkKyc;
 
-        // Load KYC links on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(() => { populateKycSelects(); loadKycLinks(); }, 1500);
-        });
+        // KYC selects are populated fresh each time modal opens
     </script>
+
+    <!-- KYC Links Modal -->
+    <div id="kyc-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#0f172a; border:1px solid #1e3a5f; border-radius:14px; padding:24px; width:420px; max-width:95vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <span style="font-weight:700; color:#a78bfa; font-size:1rem;"><i class="fas fa-link" style="margin-right:6px;"></i>Link KYC Accounts</span>
+                <button onclick="closeKycModal()" style="background:#ef4444; border:none; color:#fff; font-size:0.7rem; font-weight:700; cursor:pointer; line-height:1; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; padding:0;" title="Close">✕</button>
+            </div>
+            <select id="kyc-primary-client" class="form-dark" style="margin-bottom:8px;">
+                <option value="">— Primary Client —</option>
+            </select>
+            <select id="kyc-linked-client" class="form-dark" style="margin-bottom:10px;">
+                <option value="">— Link to (KYC) —</option>
+            </select>
+            <button onclick="linkKycAccounts()" style="width:100%; padding:9px; border-radius:8px; background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; font-weight:bold; cursor:pointer; margin-bottom:16px;">
+                <i class="fas fa-link"></i> Link KYC
+            </button>
+            <div style="flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#1e3a8a transparent;">
+                <div id="kyc-links-list"></div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
