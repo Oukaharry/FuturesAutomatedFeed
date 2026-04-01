@@ -359,11 +359,14 @@ def calculate_all_financials(profile_filter=None):
             
         if deals:
             for deal in deals:
-                d_time = deal.get('time')
+                d_time = deal.get('time_raw') or deal.get('time')
                 if not d_time: continue
                 
                 try:
-                    dt = datetime.fromtimestamp(int(d_time))
+                    try:
+                        dt = datetime.fromtimestamp(int(d_time))
+                    except (ValueError, TypeError):
+                        dt = datetime.fromisoformat(str(d_time))
                     date_str = dt.strftime("%Y-%m-%d")
                 except:
                     continue
@@ -733,11 +736,14 @@ def get_mt5_deals_data(profile_filter=None):
         
         for deal in deals:
             # MT5 deal structure: {'time': epoch, 'type': int, 'profit': float, 'swap': float, 'commission': float, ...}
-            d_time = deal.get('time')
+            d_time = deal.get('time_raw') or deal.get('time')
             if not d_time: continue
                 
             try:
-                dt = datetime.fromtimestamp(int(d_time))
+                try:
+                    dt = datetime.fromtimestamp(int(d_time))
+                except (ValueError, TypeError):
+                    dt = datetime.fromisoformat(str(d_time))
                 date_str = dt.strftime("%Y-%m-%d")
             except:
                 continue
