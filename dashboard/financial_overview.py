@@ -1539,8 +1539,48 @@ def get_client_performance_stats(profile_filter=None):
         # Use stored cashflow_inprogress for hedge/farming/fees (matches Net Profit In Progress display)
         stored_cf = data.get('statistics', {}).get('cashflow_inprogress', {})
         if stored_cf and (stored_cf.get('hedging_results', 0) != 0 or stored_cf.get('farming_results', 0) != 0):
-            c_stats['hedge_profit'] = stored_cf.get('hedging_results', 0.0)
-            c_stats['farming_profit'] = stored_cf.get('farming_results', 0.0)
+            sheet_hedge = stored_cf.get('hedging_results', 0.0) + stored_cf.get('farming_results', 0.0)
+            # Compute live actual hedging from MT5 (same formula as client dashboard)
+            acct = data.get('account', {})
+            stats_data = data.get('statistics', {})
+            hr = stats_data.get('hedging_review', {})
+            try:
+                mt5_dep = float(acct.get('total_deposits') or 0)
+            except (ValueError, TypeError):
+                mt5_dep = 0.0
+            try:
+                mt5_with = float(acct.get('total_withdrawals') or 0)
+            except (ValueError, TypeError):
+                mt5_with = 0.0
+            try:
+                mt5_bal = float(acct.get('balance') or 0)
+            except (ValueError, TypeError):
+                mt5_bal = 0.0
+            hist_dep_h = 0.0; hist_with_h = 0.0; hist_bal_h = 0.0
+            prior_activity = 0.0
+            try:
+                prior_activity = float(hr.get('current_mt5_prior_activity') or 0)
+            except (ValueError, TypeError):
+                pass
+            for ha in (hr.get('historical_accounts') or []):
+                try: hist_dep_h += float(ha.get('deposits', 0))
+                except (ValueError, TypeError): pass
+                try: hist_with_h += float(ha.get('withdrawals', 0))
+                except (ValueError, TypeError): pass
+                try: hist_bal_h += float(ha.get('final_balance', 0))
+                except (ValueError, TypeError): pass
+                try: prior_activity += float(ha.get('prior_activity_profit', 0))
+                except (ValueError, TypeError): pass
+            combined_dep = mt5_dep + hist_dep_h
+            combined_with = mt5_with + hist_with_h
+            combined_bal = mt5_bal + hist_bal_h
+            # Only apply discrepancy if there's MT5 data
+            if mt5_dep != 0 or mt5_bal != 0:
+                live_actual_hedging = combined_bal - (combined_dep + combined_with) - prior_activity
+                c_stats['hedge_profit'] = live_actual_hedging
+            else:
+                c_stats['hedge_profit'] = sheet_hedge
+            c_stats['farming_profit'] = 0.0  # farming already included in hedge_profit
             c_stats['fees'] = stored_cf.get('challenge_fees', 0.0) + stored_cf.get('activation_fee', 0.0)
         else:
             # Fallback: recalculate from evaluation columns
