@@ -4399,6 +4399,9 @@
                     totalPriorActivity = (s.hedging_review.current_mt5_prior_activity || 0);
                     histAccts.forEach(a => { totalPriorActivity += a.prior_activity_profit || 0; });
                     liveActualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity;
+                    // Preserve payouts visibility across re-renders
+                    const _prevPayoutsEl = document.getElementById('stats-payouts-detail');
+                    const _payoutsWasOpen = _prevPayoutsEl && _prevPayoutsEl.style.display !== 'none';
                     statsContainer.innerHTML = `
                             <div class="stats-grid">
                                 <!-- Profitability - Completed -->
@@ -4558,6 +4561,13 @@
                             </div>
                         
                         `;
+                    // Restore payouts visibility if it was open before re-render
+                    if (_payoutsWasOpen) {
+                        const _newPayoutsEl = document.getElementById('stats-payouts-detail');
+                        const _newBtn = _newPayoutsEl && _newPayoutsEl.previousElementSibling && _newPayoutsEl.previousElementSibling.querySelector('button');
+                        if (_newPayoutsEl) _newPayoutsEl.style.display = '';
+                        if (_newBtn) _newBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Payouts';
+                    }
                 }
 
 
