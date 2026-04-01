@@ -745,12 +745,6 @@
                         <div class="stat-label-modern" style="color: #bae6fd !important; font-weight: 700;">Hedging Results</div>
                         <div id="grand-hedge" class="stat-value-modern" style="color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">$0.00</div>
                     </div>
-
-                    <!-- Farming Results -->
-                    <div class="stat-card-modern" onclick="showBreakdown('farming_profit')" style="cursor:pointer; background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                        <div class="stat-label-modern" style="color: #d9f99d !important; font-weight: 700;">Farming Results</div>
-                        <div id="grand-farming" class="stat-value-modern" style="color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">$0.00</div>
-                    </div>
                     
                     <!-- Expected Value (EV) -->
                     <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
@@ -1347,7 +1341,6 @@
             fees: 'Challenge Fees',
             net_profit: 'Net Profit',
             hedge_profit: 'Hedging Results',
-            farming_profit: 'Farming Results',
             hwm: 'HWM (14d)',
             lwm: 'LWM (14d)',
             active: 'Active Accounts',
@@ -1355,7 +1348,7 @@
             failed: 'Failed Accounts'
         };
 
-        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','farming_profit','hwm','lwm'];
+        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','hwm','lwm'];
 
         function escHtml(str) {
             const d = document.createElement('div');
@@ -1490,7 +1483,6 @@
                             document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
                             document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
                             document.getElementById('grand-hedge').textContent = formatCurrency(t.total_hedge);
-                            document.getElementById('grand-farming').textContent = formatCurrency(t.total_farming);
                             document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
                             document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
                             
