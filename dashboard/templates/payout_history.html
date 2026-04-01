@@ -220,6 +220,16 @@
         }
         select.form-select-dark option { background: #090f1e; color: #e2e8f0; }
 
+        /* Date preset buttons */
+        .date-preset-btn {
+            padding: 6px 12px; border-radius: 6px; border: 1px solid #1a2848;
+            background: rgba(10,15,30,0.8); color: #7898be;
+            font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.7rem;
+            font-weight: 600; cursor: pointer; transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .date-preset-btn:hover { background: rgba(30,58,138,0.2); color: #e0eaff; border-color: rgba(100,150,240,0.3); }
+
         /* ── MOBILE ── */
         @media (max-width: 768px) {
             .modern-nav { height:auto !important; flex-wrap:wrap; padding:10px 12px; gap:6px; justify-content:center; margin-bottom:16px; }
@@ -267,6 +277,7 @@
         </div>
         
         <form method="get" action="{{ url_for('payout_history') }}" class="section-panel" style="display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap;">
+            <input type="hidden" name="profile" value="{{ selected_profile }}">
             <div>
                 <label for="prop_firm" style="display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7898be; margin-bottom: 6px;">Prop Firm</label>
                 <select id="prop_firm" name="prop_firm" class="form-select-dark" style="min-width: 200px;">
@@ -284,12 +295,23 @@
                 <label for="end_date" style="display: block; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7898be; margin-bottom: 6px;">End Date</label>
                 <input type="date" id="end_date" name="end_date" value="{{ end_date if end_date else '' }}" class="form-input-dark">
             </div>
-            <button type="submit" style="padding: 8px 18px; background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%); color: #e0eaff; border: 1px solid rgba(100,150,240,0.2); border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer; transition: all 0.15s ease;">
-                Apply Filters
-            </button>
-            {% if start_date or end_date or selected_prop_firm %}
-                <a href="{{ url_for('payout_history') }}" style="color: #7898be; text-decoration: none; font-size: 0.85rem; align-self: center;">Clear</a>
-            {% endif %}
+            <div style="display:flex; gap:6px; align-items:flex-end;">
+                <button type="submit" style="padding: 8px 18px; background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%); color: #e0eaff; border: 1px solid rgba(100,150,240,0.2); border-radius: 8px; font-family: 'Plus Jakarta Sans', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; cursor: pointer; transition: all 0.15s ease;">
+                    Apply
+                </button>
+                {% if start_date or end_date or selected_prop_firm %}
+                    <a href="{{ url_for('payout_history', profile=selected_profile) }}" style="color: #7898be; text-decoration: none; font-size: 0.82rem; padding: 8px 12px;">Clear</a>
+                {% endif %}
+            </div>
+            <!-- Quick date presets -->
+            <div style="display:flex; gap:4px; align-items:flex-end; margin-left:auto;">
+                <span style="font-size:0.65rem; color:#64748b; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; align-self:center; margin-right:4px;">QUICK:</span>
+                <button type="button" onclick="setDatePreset('thisMonth')" class="date-preset-btn">This Month</button>
+                <button type="button" onclick="setDatePreset('lastMonth')" class="date-preset-btn">Last Month</button>
+                <button type="button" onclick="setDatePreset('last90')" class="date-preset-btn">Last 90d</button>
+                <button type="button" onclick="setDatePreset('ytd')" class="date-preset-btn">YTD</button>
+                <button type="button" onclick="setDatePreset('all')" class="date-preset-btn">All Time</button>
+            </div>
         </form>
 
         {% if payouts %}
@@ -477,6 +499,40 @@
              const url = new URL(window.location);
              url.searchParams.set('profile', filter);
              window.location.href = url.toString();
+        }
+
+        function setDatePreset(preset) {
+            const now = new Date();
+            const startEl = document.getElementById('start_date');
+            const endEl = document.getElementById('end_date');
+            const fmt = d => d.toISOString().split('T')[0];
+
+            switch(preset) {
+                case 'thisMonth':
+                    startEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+                    endEl.value = fmt(now);
+                    break;
+                case 'lastMonth':
+                    startEl.value = fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+                    endEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 0));
+                    break;
+                case 'last90':
+                    const d90 = new Date(now);
+                    d90.setDate(d90.getDate() - 90);
+                    startEl.value = fmt(d90);
+                    endEl.value = fmt(now);
+                    break;
+                case 'ytd':
+                    startEl.value = fmt(new Date(now.getFullYear(), 0, 1));
+                    endEl.value = fmt(now);
+                    break;
+                case 'all':
+                    startEl.value = '';
+                    endEl.value = '';
+                    break;
+            }
+            // Auto-submit
+            startEl.closest('form').submit();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
