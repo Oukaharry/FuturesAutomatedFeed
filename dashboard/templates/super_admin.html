@@ -581,14 +581,13 @@
             </div>
         </div>
 
-        <div class="dashboard-grid" style="grid-template-columns: {% if user_role|default('super_admin') == 'super_admin' %}350px 1fr{% else %}1fr{% endif %}; gap: 24px; display: grid;">
+        <div class="dashboard-grid" style="grid-template-columns: 350px 1fr; gap: 24px; display: grid;">
             
-            {% if user_role|default('super_admin') == 'super_admin' %}
             <!-- Management Panel (Left Sidebar) -->
             <div class="client-card" style="height: fit-content; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0; overflow: hidden;">
                 <div class="admin-header">
                     <h3 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; letter-spacing: -0.01em;">
-                        <i class="fas fa-users-cog"></i> User Management
+                        <i class="fas fa-users-cog"></i> {% if user_role|default('super_admin') == 'bef_admin' %}Team Directory{% else %}User Management{% endif %}
                     </h3>
                 </div>
                 <div style="padding: 20px;">
@@ -676,9 +675,29 @@
                 </div>
                 {% endif %}
 
+                <!-- Client Directory (visible to all roles) -->
+                <div style="height:1px; background:var(--border-color); margin:20px 0;"></div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.75rem; color:#94a3b8; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+                        <i class="fas fa-address-book" style="color:#818cf8;"></i> Client Directory
+                    </label>
+                    <div style="position:relative;">
+                        <i class="fas fa-search" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#475569; font-size:0.8rem;"></i>
+                        <input type="text" id="sidebar-client-search" placeholder="Search clients..." 
+                               oninput="filterSidebarClients()" 
+                               style="width:100%; padding:9px 10px 9px 32px; background:rgba(1,3,10,0.6); border:1px solid #162040; color:#e8eeff; border-radius:8px; font-size:0.82rem; font-family:'IBM Plex Mono',monospace; outline:none; box-sizing:border-box;"
+                               onfocus="this.style.borderColor='#2a4a8a';this.style.boxShadow='0 0 0 3px rgba(30,58,138,0.2)'" 
+                               onblur="this.style.borderColor='#162040';this.style.boxShadow='none'">
+                    </div>
+                </div>
+                <div id="sidebar-client-list" style="max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; scrollbar-width:thin; scrollbar-color:#1e3a8a transparent;">
+                    <div style="text-align:center; padding:20px; color:#475569; font-size:0.82rem;">
+                        <i class="fas fa-circle-notch fa-spin"></i> Loading...
+                    </div>
+                </div>
+
                 </div>
             </div>
-            {% endif %}
 
             <!-- Financial & Hierarchy View (Main Content) -->
             <div style="display: flex; flex-direction: column; gap: 24px;">
@@ -1082,23 +1101,32 @@
                          // Common button styles
                          const delStyle = "color:#ef4444; border:1px solid #7f1d1d; background:rgba(127,29,29,0.2); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-right:5px;";
                          const editStyle = "color:#fbbf24; border:1px solid #78350f; background:rgba(120,53,15,0.2); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold;";
+                         const isSuperAdmin = USER_ROLE === 'super_admin';
 
                          if(type === 'client') {
                              btns += `<a href="${r.url}" style="color:#fbbf24; text-decoration:none; margin-right:10px; font-weight:bold;">Dash</a>`;
-                             btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
-                             btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}')" style="${editStyle}">Edit</button>`;
+                             if (isSuperAdmin) {
+                                 btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
+                                 btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}')" style="${editStyle}">Edit</button>`;
+                             }
                          } else if (type === 'trader') {
-                             btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
-                             btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
+                             if (isSuperAdmin) {
+                                 btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
+                                 btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
+                             }
                          } else {
-                             btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
-                             btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'  )" style="${editStyle}">Edit</button>`;
+                             if (isSuperAdmin) {
+                                 btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
+                                 btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'  )" style="${editStyle}">Edit</button>`;
+                             }
                          }
-                         // Reset Password button (all user types)
-                         const resetStyle = "color:#60a5fa; border:1px solid #1e3a5f; background:rgba(30,58,95,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:5px;";
-                         btns += `<button onclick="resetUserPassword('${safeName}', '${type}')" style="${resetStyle}" title="Reset login password">🔑</button>`;
-                         const setPwStyle = "color:#a78bfa; border:1px solid #4c1d95; background:rgba(76,29,149,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:3px;";
-                         btns += `<button onclick="openSetPasswordModal('${safeName}', '${type}')" style="${setPwStyle}" title="Set specific password">🔐</button>`;
+                         if (isSuperAdmin) {
+                             // Reset Password button (all user types)
+                             const resetStyle = "color:#60a5fa; border:1px solid #1e3a5f; background:rgba(30,58,95,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:5px;";
+                             btns += `<button onclick="resetUserPassword('${safeName}', '${type}')" style="${resetStyle}" title="Reset login password">🔑</button>`;
+                             const setPwStyle = "color:#a78bfa; border:1px solid #4c1d95; background:rgba(76,29,149,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:3px;";
+                             btns += `<button onclick="openSetPasswordModal('${safeName}', '${type}')" style="${setPwStyle}" title="Set specific password">🔐</button>`;
+                         }
 
                          let parentCol = (type !== 'admin') ? `<td style="padding:10px; color:#cbd5e1;">${r.parent || '-'}</td>` : '';
                          
@@ -1113,7 +1141,7 @@
                          html += `
                             <tr style="border-bottom: 1px solid #334155;">
                                 <td style="padding:10px; color:#f1f5f9;">
-                                    <div style="font-weight:bold; font-size:1rem;">${r.name}</div>
+                                    <div style="font-weight:bold; font-size:1rem;">${type === 'client' ? '<a href="' + r.url + '" style="color:#818cf8; text-decoration:none; font-weight:bold;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.name + '</a>' : r.name}</div>
                                     <div style="font-size:0.85rem; color:#94a3b8; margin-top:2px; cursor:pointer;" 
                                          title="Click to Edit Email"
                                          onclick="openEditUserModal(${editArgs})">
@@ -1407,6 +1435,9 @@
             if(profile === 'BEF' && btnBef) btnBef.classList.add('active');
             if(profile === 'PRIVATE' && btnPrv) btnPrv.classList.add('active');
             
+            // Update sidebar client directory filter
+            filterSidebarClients();
+            
             // Reload Data
             loadData();
         }
@@ -1434,6 +1465,7 @@
                     renderTree();
                     updateSelects();
                     updateStats(); // Initial stats based on hierarchy counts
+                    populateSidebarClients(); // Fill client directory
                     debugLog("Hierarchy Render Complete");
                 })
                 .catch(err => {
@@ -1517,6 +1549,68 @@
             document.getElementById('total-admins').textContent = a;
             document.getElementById('total-traders').textContent = t;
             document.getElementById('total-clients').textContent = c;
+        }
+
+        // --- Sidebar Client Directory ---
+        let sidebarAllClients = [];
+
+        function populateSidebarClients() {
+            sidebarAllClients = [];
+            if (!hierarchyData.admins) return;
+            Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
+                    let clients = traderData.clients || [];
+                    if (Array.isArray(traderData)) clients = traderData;
+                    clients.forEach(cl => {
+                        if (!cl) return;
+                        const name = (typeof cl === 'object') ? cl.name : cl;
+                        const cat = (typeof cl === 'object') ? (cl.profile || cl.category || cl.source || 'Private') : 'Private';
+                        if (name) {
+                            sidebarAllClients.push({ name, trader: traderName, admin: adminName, category: cat.toUpperCase() });
+                        }
+                    });
+                });
+            });
+            sidebarAllClients.sort((a, b) => a.name.localeCompare(b.name));
+            renderSidebarClients(sidebarAllClients);
+        }
+
+        function filterSidebarClients() {
+            const q = (document.getElementById('sidebar-client-search').value || '').toLowerCase();
+            const filtered = sidebarAllClients.filter(c => {
+                if (currentProfile !== 'ALL' && (c.category || 'PRIVATE') !== currentProfile) return false;
+                if (!q) return true;
+                return c.name.toLowerCase().includes(q) || c.trader.toLowerCase().includes(q) || c.admin.toLowerCase().includes(q);
+            });
+            renderSidebarClients(filtered);
+        }
+
+        function renderSidebarClients(clients) {
+            const container = document.getElementById('sidebar-client-list');
+            if (!container) return;
+            if (clients.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:#475569; font-size:0.82rem;">No clients found</div>';
+                return;
+            }
+            let html = '';
+            clients.forEach(c => {
+                const safeId = encodeURIComponent(c.name);
+                const safeName = c.name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeTrader = c.trader.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                html += `<a href="/dashboard/${safeId}" style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-radius:8px; text-decoration:none; color:#e2e8f0; transition:all 0.15s; border:1px solid transparent;"
+                            onmouseover="this.style.background='rgba(30,58,138,0.2)';this.style.borderColor='rgba(99,102,241,0.3)'" 
+                            onmouseout="this.style.background='transparent';this.style.borderColor='transparent'">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                        <div style="width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,#1e3a8a,#172554); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.72rem; font-weight:700; color:#7baef0; border:1px solid rgba(30,58,138,0.5);">${safeName.charAt(0).toUpperCase()}</div>
+                        <div style="min-width:0;">
+                            <div style="font-size:0.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeName}</div>
+                            <div style="font-size:0.7rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeTrader}</div>
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="font-size:0.6rem; color:#334155; flex-shrink:0;"></i>
+                </a>`;
+            });
+            container.innerHTML = html;
         }
 
         function updateSelects() {
