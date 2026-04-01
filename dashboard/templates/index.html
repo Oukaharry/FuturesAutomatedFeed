@@ -4605,7 +4605,8 @@
                 }
                 if (elSplit) {
                     // Use last_split_net_profit from waterlog if available
-                    const lsnp = window._lastSplitNetProfit || 0;
+                    // Use max(0, lsnp) so recovery from negative doesn't inflate split
+                    const lsnp = Math.max(window._lastSplitNetProfit || 0, 0);
                     const splitAmt = (netProfit > lsnp && netProfit > 0) ? (netProfit - lsnp) * 0.5 : 0;
                     elSplit.textContent = formatMoney(splitAmt);
                     elSplit.style.color = splitAmt > 0 ? '#fbbf24' : '#94a3b8';
@@ -6795,7 +6796,7 @@
                             if (currentData) {
                                 const cs = (currentData.statistics || {}).cashflow_inprogress || {};
                                 const np = cs.net_profit || 0;
-                                const lsnp = rawData.last_split_net_profit;
+                                const lsnp = Math.max(rawData.last_split_net_profit, 0);
                                 const elSplit = document.getElementById('split-profit-amount');
                                 if (elSplit) {
                                     const splitAmt = (np > lsnp && np > 0) ? (np - lsnp) * 0.5 : 0;

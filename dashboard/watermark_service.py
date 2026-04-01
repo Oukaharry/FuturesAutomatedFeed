@@ -379,8 +379,10 @@ def compute_waterlog_from_db(client_id):
     condensed_daily = [v for (d, v) in daily if TRANSITION_START <= d <= TRANSITION_END]
     transition_net = condensed_daily[-1] if condensed_daily else 0.0
 
-    if transition_net > last_pre_transition_net and transition_net > 0:
-        transition_split = (transition_net - last_pre_transition_net) * 0.5
+    # Use max(0, ...) as base so recovery from negative doesn't inflate split
+    effective_base = max(last_pre_transition_net, 0.0)
+    if transition_net > effective_base and transition_net > 0:
+        transition_split = (transition_net - effective_base) * 0.5
     else:
         transition_split = 0.0
 
@@ -413,8 +415,10 @@ def compute_waterlog_from_db(client_id):
 
         # Split = 50% of (this period's net profit − previous period's net profit)
         # Only if net profit grew and is positive
-        if net_profit > prev_period_net and net_profit > 0:
-            profit_split = (net_profit - prev_period_net) * 0.5
+        # Use max(0, prev) as base so recovery from negative doesn't inflate split
+        effective_base = max(prev_period_net, 0.0)
+        if net_profit > effective_base and net_profit > 0:
+            profit_split = (net_profit - effective_base) * 0.5
         else:
             profit_split = 0.0
 
