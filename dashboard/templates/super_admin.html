@@ -880,7 +880,7 @@
     <!-- Breakdown Modal -->
     <div id="breakdownModal" onclick="if(event.target===this)closeBreakdownModal()" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:11000; background:rgba(0,0,0,0.85);">
         <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
-            <div style="width:92%; max-width:900px; height:85vh; background:#1e293b; border:2px solid rgba(99,102,241,0.5); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 0 30px rgba(99,102,241,0.2);">
+            <div style="width:75%; max-width:680px; height:80vh; background:#1e293b; border:2px solid rgba(99,102,241,0.5); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 0 30px rgba(99,102,241,0.2);">
                 <!-- Header -->
                 <div style="padding:16px 24px; background:linear-gradient(135deg,#0f172a,#1e293b); border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
                     <h3 id="breakdownTitle" style="margin:0; color:#f8fafc; font-size:1.15rem;"><i class="fas fa-chart-bar" style="margin-right:8px; color:#818cf8;"></i>Breakdown</h3>
@@ -893,9 +893,7 @@
                             <tr style="background:#334155;">
                                 <th style="text-align:center; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600; width:45px;">#</th>
                                 <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Client</th>
-                                <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Trader</th>
-                                <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Admin</th>
-                                <th id="breakdownValueHeader" style="text-align:right; padding:10px 14px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Value</th>
+                                <th id="breakdownValueHeader" style="text-align:left; padding:10px 14px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Value</th>
                                 <th id="breakdownActionHeader" style="text-align:center; padding:10px 8px; color:#94a3b8; font-size:0.8rem; font-weight:600; width:50px;"></th>
                             </tr>
                         </thead>
@@ -1385,8 +1383,6 @@
                     const clientId = c.client_id || '-';
                     const safeId = encodeURIComponent(clientId);
                     const safeName = escHtml(clientId);
-                    const safeTrader = escHtml(c.trader || '-');
-                    const safeAdmin = escHtml(c.admin || '-');
                     const actionTd = showExpand ? (val > 0 ?
                         `<td style="text-align:center; padding:10px 4px;"><button onclick="togglePayoutDetail(this,'${safeId}','detail-${i}')" title="View payout details" style="background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); color:#a5b4fc; cursor:pointer; width:28px; height:28px; border-radius:6px; font-size:0.7rem; display:inline-flex; align-items:center; justify-content:center; transition:all 0.2s;" onmouseover="this.style.background='rgba(99,102,241,0.35)';this.style.borderColor='#818cf8'" onmouseout="this.style.background='rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.3)'">▶</button></td>` :
                         `<td style="text-align:center; padding:10px 4px;"></td>`) : '';
@@ -1398,13 +1394,11 @@
                             <a href="/dashboard/${safeId}" style="color:#818cf8; text-decoration:none; font-weight:600;" 
                                onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${safeName}</a>
                         </td>
-                        <td style="padding:10px 12px; color:#94a3b8; font-size:0.9rem;">${safeTrader}</td>
-                        <td style="padding:10px 12px; color:#94a3b8; font-size:0.9rem;">${safeAdmin}</td>
-                        <td style="text-align:right; padding:10px 14px; color:${valColor}; font-weight:700; font-size:0.95rem;">${displayVal}</td>
+                        <td style="text-align:left; padding:10px 14px; color:${valColor}; font-weight:700; font-size:0.95rem;">${displayVal}</td>
                         ${actionTd}
                     </tr>
                     <tr id="detail-${i}" style="display:none;">
-                        <td colspan="6" style="padding:0;"></td>
+                        <td colspan="4" style="padding:0;"></td>
                     </tr>`;
                 });
             }
