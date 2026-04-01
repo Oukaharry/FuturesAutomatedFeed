@@ -1575,13 +1575,11 @@ def get_client_performance_stats(profile_filter=None):
                 pass
         c_stats['deposits'] = abs(current_dep) + abs(hist_dep)
 
-        # Net Profit = Payouts + Hedge + Farming - Fees
-        # (Deposits are capital, not profit, so usually excluded from Net Profit calc depending on definition)
-        # Definition: Net Profit typically = (Payouts + Hedge + Farming) - (Fees + Losses) ??
-        # Or just (Payouts - Fees) + Side Income?
-        # Let's stick to: Payouts + Hedge + Farming - Fees. 
-        # (Note: 'Fees' includes challenge fees. 'Deposits' usually separate capital).
-        c_stats['net_profit'] = c_stats['payouts'] + c_stats['hedge_profit'] + c_stats['farming_profit'] - c_stats['fees']
+        # Net Profit — use stored value from cashflow_inprogress (matches Net Profit In Progress display)
+        if stored_cf and stored_cf.get('net_profit') is not None:
+            c_stats['net_profit'] = stored_cf.get('net_profit', 0.0)
+        else:
+            c_stats['net_profit'] = c_stats['payouts'] + c_stats['hedge_profit'] + c_stats['farming_profit'] - c_stats['fees']
         
         clients_list.append(c_stats)
 
