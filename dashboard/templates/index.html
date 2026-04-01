@@ -2790,10 +2790,6 @@
                     } else {
                         payoutsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#64748b;">No payouts found for this period.</td></tr>';
                     }
-                    // Collapse payouts section on refresh
-                    document.getElementById('kyc-payouts-section').style.display = 'none';
-                    const btn = document.getElementById('kyc-payouts-toggle-btn');
-                    btn.innerHTML = '<i class="fas fa-eye"></i> See All Payouts';
                 })
                 .catch(() => {});
         }
