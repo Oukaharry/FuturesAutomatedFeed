@@ -4023,14 +4023,14 @@ def api_kyc_accounts():
             if not is_bef:
                 result.append({"name": name, "eval_count": 0, "is_current": name == client_id})
             continue
-        evals = cdata.get('evaluations', [])
         if is_bef:
-            # Only count evaluations for BEF (non-hidden) prop firms
-            evals = [ev for ev in evals if isinstance(ev, dict)
-                     and str(ev.get('Prop Firm') or '').strip().lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
-            if not evals:
+            # BEF admin: only show clients whose profile/category is BEF
+            identity = cdata.get('identity') or {}
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if client_profile != 'BEF':
                 continue
-        result.append({"name": name, "eval_count": len(evals), "is_current": name == client_id})
+        eval_count = len(cdata.get('evaluations', [])) if cdata else 0
+        result.append({"name": name, "eval_count": eval_count, "is_current": name == client_id})
     return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1, "is_primary": is_kyc_primary(client_id)})
 
 @app.route('/api/kyc/portfolio', methods=['GET'])
@@ -4133,19 +4133,20 @@ def api_kyc_portfolio():
     for name in accounts:
         cdata = get_client_data(name)
         if not cdata:
-            per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
+            if not is_bef:
+                per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
             continue
+
+        # BEF admin: skip clients whose profile is not BEF
+        if is_bef:
+            identity = cdata.get('identity') or {}
+            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
+            if client_profile != 'BEF':
+                continue
 
         all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
 
-        # BEF admin: only show evaluations for non-hidden (BEF) prop firms
-        if is_bef:
-            all_evals = [ev for ev in all_evals
-                         if str(ev.get('Prop Firm') or '').strip().lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
-            if not all_evals:
-                continue
-
-        if not has_date_filter and not is_bef:
+        if not has_date_filter:
             # ── No date filter: use stored statistics (consistent with Stats tab) ──
             stats = cdata.get('statistics', {}) or {}
             cashflow = stats.get('cashflow_inprogress', {})
