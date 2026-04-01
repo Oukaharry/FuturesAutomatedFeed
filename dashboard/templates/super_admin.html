@@ -172,6 +172,10 @@
             color: white;
             width: 100%;
         }
+        .form-dark option {
+            background: #0f172a;
+            color: #e8eeff;
+        }
         
         .stat-grid-modern {
             display: grid;
@@ -336,6 +340,10 @@
             font-family: 'IBM Plex Mono', monospace !important;
             font-size: 0.84rem !important;
             transition: all 0.18s ease;
+        }
+        .form-dark option {
+            background: #0f172a;
+            color: #e8eeff;
         }
         .form-dark:focus {
             border-color: #2a4a8a !important;
@@ -2058,18 +2066,13 @@
         function populateKycSelects() {
             const primarySel = document.getElementById('kyc-primary-client');
             const linkedSel = document.getElementById('kyc-linked-client');
-            if (!primarySel || !linkedSel || !hierarchyData || !hierarchyData.admins) return;
-            // Gather all client names from hierarchy data
-            const clientNames = [];
-            Object.values(hierarchyData.admins).forEach(admin => {
-                Object.values(admin.traders || {}).forEach(trader => {
-                    (trader.clients || []).forEach(c => {
-                        const name = (typeof c === 'object') ? c.name : c;
-                        if (name) clientNames.push(name);
-                    });
-                });
-            });
-            clientNames.sort((a, b) => a.localeCompare(b));
+            if (!primarySel || !linkedSel) return;
+            // Reuse sidebarAllClients (already built & sorted from hierarchy)
+            // If not yet populated (e.g. slow load), try to build it first
+            if (sidebarAllClients.length === 0 && hierarchyData && hierarchyData.admins) {
+                populateSidebarClients();
+            }
+            const clientNames = sidebarAllClients.map(c => c.name);
             const makeOpts = (sel, placeholder) => {
                 const val = sel.value;
                 sel.innerHTML = `<option value="">${placeholder}</option>` +
@@ -2154,10 +2157,7 @@
         window.linkKycAccounts = linkKycAccounts;
         window.unlinkKyc = unlinkKyc;
 
-        // Load KYC selects on page load (links load on modal open)
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(() => { populateKycSelects(); }, 1500);
-        });
+        // KYC selects are populated fresh each time modal opens
     </script>
 
     <!-- KYC Links Modal -->
@@ -2165,7 +2165,7 @@
         <div style="background:#0f172a; border:1px solid #1e3a5f; border-radius:14px; padding:24px; width:420px; max-width:95vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
                 <span style="font-weight:700; color:#a78bfa; font-size:1rem;"><i class="fas fa-link" style="margin-right:6px;"></i>Link KYC Accounts</span>
-                <button onclick="closeKycModal()" style="background:none; border:none; color:#64748b; font-size:1.1rem; cursor:pointer; line-height:1;" title="Close">✕</button>
+                <button onclick="closeKycModal()" style="background:#ef4444; border:none; color:#fff; font-size:0.7rem; font-weight:700; cursor:pointer; line-height:1; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; padding:0;" title="Close">✕</button>
             </div>
             <select id="kyc-primary-client" class="form-dark" style="margin-bottom:8px;">
                 <option value="">— Primary Client —</option>
