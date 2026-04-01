@@ -1801,6 +1801,28 @@
     <!-- History Panel Overlay -->
     <div id="history-overlay" class="history-overlay" onclick="closeHistoryPanel()"></div>
 
+    <!-- Payout Confirmation Modal -->
+    <div id="payout-confirm-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:2500; justify-content:center; align-items:center;">
+        <div style="background:#1e293b; border:1px solid #f59e0b; border-radius:14px; width:420px; max-width:90%; overflow:hidden; box-shadow:0 15px 40px rgba(0,0,0,0.6);">
+            <div style="background:rgba(245,158,11,0.12); padding:18px 20px; border-bottom:1px solid rgba(245,158,11,0.25); text-align:center;">
+                <div style="font-size:2.2rem; margin-bottom:6px;">&#9888;</div>
+                <h3 style="margin:0; color:#fbbf24; font-size:1.15rem; font-weight:700;">Confirm Payout Amount</h3>
+            </div>
+            <div style="padding:24px 20px; text-align:center;">
+                <p style="color:#94a3b8; font-size:0.92rem; margin:0 0 16px 0;">You are about to save the following payout:</p>
+                <div style="background:rgba(0,0,0,0.3); border:1px solid #334155; border-radius:10px; padding:16px; margin-bottom:8px;">
+                    <div id="payout-confirm-field" style="color:#94a3b8; font-size:0.85rem; margin-bottom:6px;"></div>
+                    <div id="payout-confirm-amount" style="color:#22d3ee; font-size:2rem; font-weight:800; letter-spacing:0.5px;"></div>
+                </div>
+                <p style="color:#ef4444; font-size:0.82rem; margin:12px 0 0 0; opacity:0.9;">Please double-check the amount is correct before confirming.</p>
+            </div>
+            <div style="padding:0 20px 20px; display:flex; gap:12px;">
+                <button onclick="cancelPayoutConfirm()" style="flex:1; background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:12px; border-radius:8px; font-size:0.95rem; font-weight:600; cursor:pointer; transition:all 0.2s;">Cancel</button>
+                <button onclick="acceptPayoutConfirm()" style="flex:1; background:linear-gradient(135deg,#f59e0b,#d97706); color:#0f172a; border:none; padding:12px; border-radius:8px; font-size:0.95rem; font-weight:700; cursor:pointer; transition:all 0.2s;">Yes, Save Payout</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Note Modal -->
     <div id="note-modal" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:2000; justify-content:center; align-items:center;">
         <div style="background:#1e293b; border:1px solid #fbbf24; border-radius:12px; width:400px; max-width:90%; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
@@ -6036,6 +6058,44 @@
             handleInputChange(index, key, newValue);
         }
 
+        // --- Payout confirmation state ---
+        let _pendingPayout = null;  // { index, key, value, oldValue }
+
+        function showPayoutConfirm(index, key, value, oldValue) {
+            const num = parseFloat(value);
+            const formatted = isNaN(num) ? value : (num < 0 ? `-$${Math.abs(num).toFixed(2)}` : `$${num.toFixed(2)}`);
+            document.getElementById('payout-confirm-field').textContent = key + ' — Row ' + (index + 1);
+            document.getElementById('payout-confirm-amount').textContent = formatted;
+            _pendingPayout = { index, key, value, oldValue };
+            const modal = document.getElementById('payout-confirm-modal');
+            modal.style.display = 'flex';
+        }
+
+        function cancelPayoutConfirm() {
+            const modal = document.getElementById('payout-confirm-modal');
+            modal.style.display = 'none';
+            if (_pendingPayout) {
+                // Revert the value in data
+                const { index, key, oldValue } = _pendingPayout;
+                if (currentData.evaluations[index]) {
+                    currentData.evaluations[index][key] = oldValue;
+                }
+                // Remove from changed fields since we reverted
+                if (_changedFields[index]) _changedFields[index].delete(key);
+                _pendingPayout = null;
+                renderEvaluationsTable();
+            }
+        }
+
+        function acceptPayoutConfirm() {
+            const modal = document.getElementById('payout-confirm-modal');
+            modal.style.display = 'none';
+            _pendingPayout = null;
+            // Value is already set in data, just save
+            if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
+            saveData();
+        }
+
         function handleInputChange(index, key, value) {
             if (!currentData.evaluations[index]) return;
             
@@ -6060,7 +6120,17 @@
                 }
             }
             
+            const oldValue = currentData.evaluations[index][key];
             currentData.evaluations[index][key] = value;
+            
+            // For payout fields, require confirmation before saving
+            if (key.startsWith('Payout') && value && value !== '' && !isNaN(value)) {
+                // Cancel any pending debounce — we'll save only after confirmation
+                if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
+                _saveDebounceTimer = null;
+                showPayoutConfirm(index, key, value, oldValue);
+                return;
+            }
             
             // Debounce: batch rapid edits into a single save (400ms window)
             if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
