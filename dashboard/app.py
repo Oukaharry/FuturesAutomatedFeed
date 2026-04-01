@@ -3389,7 +3389,7 @@ def api_get_watermark_history(client_id):
     # Handle URL encoding spaces if necessary (Flask usually decodes)
     # Check authorization
     is_authorized = False
-    if user_type in ['super_admin', 'admin', 'trader']:
+    if user_type in ['super_admin', 'admin', 'trader', 'bef_admin']:
         is_authorized = True
     elif user_type == 'client':
         # Check specific client ownership
