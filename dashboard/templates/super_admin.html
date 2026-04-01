@@ -589,8 +589,9 @@
             </div>
         </div>
 
-        <div class="dashboard-grid" style="grid-template-columns: 350px 1fr; gap: 24px; display: grid;">
+        <div class="dashboard-grid" style="grid-template-columns: {% if user_role|default('super_admin') == 'super_admin' %}350px 1fr{% else %}1fr{% endif %}; gap: 24px; display: grid;">
             
+            {% if user_role|default('super_admin') == 'super_admin' %}
             <!-- Management Panel (Left Sidebar) -->
             <div class="client-card" style="height: fit-content; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0; overflow: hidden;">
                 <div class="admin-header">
@@ -695,6 +696,7 @@
 
                 </div>
             </div>
+            {% endif %}
 
             <!-- Financial & Hierarchy View (Main Content) -->
             <div style="display: flex; flex-direction: column; gap: 24px;">
