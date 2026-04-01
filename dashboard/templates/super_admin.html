@@ -891,6 +891,7 @@
                                 <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Trader</th>
                                 <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Admin</th>
                                 <th id="breakdownValueHeader" style="text-align:right; padding:10px 14px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Value</th>
+                                <th id="breakdownActionHeader" style="text-align:center; padding:10px 8px; color:#94a3b8; font-size:0.8rem; font-weight:600; width:50px;"></th>
                             </tr>
                         </thead>
                         <tbody id="breakdownBody"></tbody>
@@ -1354,6 +1355,7 @@
             valHeader.textContent = label;
 
             const isCurrency = CURRENCY_METRICS.includes(metric);
+            const showExpand = (metric === 'payouts');
 
             // Sort descending by absolute value for currency, or by count for status metrics
             const sorted = [...clientsBreakdownData]
@@ -1363,9 +1365,13 @@
                     return vb - va;  // highest first
                 });
 
+            // Show/hide action column header
+            const actionHeader = document.getElementById('breakdownActionHeader');
+            if (actionHeader) actionHeader.style.display = showExpand ? '' : 'none';
+
             let html = '';
             if (sorted.length === 0) {
-                html = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#64748b;">No client data available.</td></tr>';
+                html = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#64748b;">No client data available.</td></tr>';
             } else {
                 sorted.forEach((c, i) => {
                     const val = parseFloat(c[metric]) || 0;
@@ -1376,6 +1382,9 @@
                     const safeName = escHtml(clientId);
                     const safeTrader = escHtml(c.trader || '-');
                     const safeAdmin = escHtml(c.admin || '-');
+                    const actionTd = showExpand ? (val > 0 ?
+                        `<td style="text-align:center; padding:10px 4px;"><button onclick="togglePayoutDetail(this,'${safeId}','detail-${i}')" title="View payout details" style="background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); color:#a5b4fc; cursor:pointer; width:28px; height:28px; border-radius:6px; font-size:0.7rem; display:inline-flex; align-items:center; justify-content:center; transition:all 0.2s;" onmouseover="this.style.background='rgba(99,102,241,0.35)';this.style.borderColor='#818cf8'" onmouseout="this.style.background='rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.3)'">▶</button></td>` :
+                        `<td style="text-align:center; padding:10px 4px;"></td>`) : '';
                     html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.15s;"
                                  onmouseover="this.style.background='rgba(99,102,241,0.1)'"
                                  onmouseout="this.style.background='transparent'">
@@ -1387,12 +1396,86 @@
                         <td style="padding:10px 12px; color:#94a3b8; font-size:0.9rem;">${safeTrader}</td>
                         <td style="padding:10px 12px; color:#94a3b8; font-size:0.9rem;">${safeAdmin}</td>
                         <td style="text-align:right; padding:10px 14px; color:${valColor}; font-weight:700; font-size:0.95rem;">${displayVal}</td>
+                        ${actionTd}
+                    </tr>
+                    <tr id="detail-${i}" style="display:none;">
+                        <td colspan="6" style="padding:0;"></td>
                     </tr>`;
                 });
             }
 
             body.innerHTML = html;
             modal.style.display = 'block';
+        }
+
+        async function togglePayoutDetail(btn, clientId, rowId) {
+            const detailRow = document.getElementById(rowId);
+            if (!detailRow) return;
+
+            // Toggle off
+            if (detailRow.style.display !== 'none') {
+                detailRow.style.display = 'none';
+                btn.innerHTML = '▶';
+                btn.style.background = 'rgba(99,102,241,0.15)';
+                return;
+            }
+
+            // Show loading
+            btn.innerHTML = '<span style="animation:spin 1s linear infinite;display:inline-block;">↻</span>';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/client_payouts/' + clientId);
+                const data = await res.json();
+                const payouts = data.payouts || [];
+
+                if (payouts.length === 0) {
+                    detailRow.querySelector('td').innerHTML = `
+                        <div style="padding:12px 20px; color:#64748b; font-style:italic;">No individual payout records found.</div>`;
+                } else {
+                    let subHtml = `
+                    <div style="margin:0 12px 12px 40px; background:#0f172a; border:1px solid #334155; border-radius:8px; overflow:hidden;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#1e293b;">
+                                    <th style="text-align:center; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600; width:30px;">#</th>
+                                    <th style="text-align:left; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Date</th>
+                                    <th style="text-align:left; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Prop Firm</th>
+                                    <th style="text-align:right; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Amount</th>
+                                    <th style="text-align:right; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Running Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                    payouts.forEach((p, j) => {
+                        const amtColor = p.amount >= 0 ? '#34d399' : '#f87171';
+                        subHtml += `
+                                <tr style="border-top:1px solid rgba(255,255,255,0.03);">
+                                    <td style="text-align:center; padding:6px 10px; color:#475569; font-size:0.8rem;">${j + 1}</td>
+                                    <td style="padding:6px 10px; color:#94a3b8; font-size:0.85rem;">${escHtml(p.date)}</td>
+                                    <td style="padding:6px 10px; color:#94a3b8; font-size:0.85rem;">${escHtml(p.prop_firm)}</td>
+                                    <td style="text-align:right; padding:6px 10px; color:${amtColor}; font-weight:600; font-size:0.85rem;">${formatCurrency(p.amount)}</td>
+                                    <td style="text-align:right; padding:6px 10px; color:#818cf8; font-weight:600; font-size:0.85rem;">${formatCurrency(p.running_total)}</td>
+                                </tr>`;
+                    });
+                    subHtml += `
+                            </tbody>
+                        </table>
+                        <div style="padding:8px 14px; background:#1e293b; border-top:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+                            <span style="color:#64748b; font-size:0.8rem;">${payouts.length} payout${payouts.length !== 1 ? 's' : ''}</span>
+                            <span style="color:#34d399; font-weight:700; font-size:0.95rem;">Total: ${formatCurrency(payouts[payouts.length - 1].running_total)}</span>
+                        </div>
+                    </div>`;
+                    detailRow.querySelector('td').innerHTML = subHtml;
+                }
+
+                detailRow.style.display = '';
+                btn.innerHTML = '▼';
+                btn.style.background = 'rgba(99,102,241,0.35)';
+            } catch (err) {
+                console.error('Error loading payouts:', err);
+                btn.innerHTML = '⚠';
+            }
+            btn.disabled = false;
         }
 
         function closeBreakdownModal() {

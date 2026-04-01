@@ -2475,6 +2475,49 @@ def get_super_admin_totals():
     
     return jsonify(response_data)
 
+@app.route('/api/client_payouts/<client_id>')
+@require_session
+def get_client_payouts_detail(client_id):
+    """Return individual payout records for a client (used by breakdown modal expand)."""
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+        return jsonify({"status": "error"}), 403
+
+    from dashboard.financial_overview import parse_currency, parse_date
+    data = get_client_data(client_id)
+    if not data:
+        return jsonify({"payouts": []})
+
+    evaluations = data.get('evaluations', [])
+    records = []
+    for ev in evaluations:
+        if not isinstance(ev, dict):
+            continue
+        prop_firm = str(ev.get('Prop Firm') or 'Unknown').strip() or 'Unknown'
+        account = str(ev.get('Account #') or ev.get('Account #.1') or '-').strip()
+        for i in range(1, 10):
+            amt = parse_currency(ev.get(f'Payout {i}'))
+            if amt != 0:
+                pdate = str(ev.get(f'Date {i}') or '-').strip()
+                d_obj = parse_date(pdate)
+                records.append({
+                    "prop_firm": prop_firm,
+                    "account": account,
+                    "amount": round(amt, 2),
+                    "date": pdate,
+                    "_sort": d_obj.isoformat() if d_obj else "0000-00-00"
+                })
+
+    records.sort(key=lambda r: r['_sort'])
+    # Add running total
+    running = 0.0
+    for r in records:
+        running += r['amount']
+        r['running_total'] = round(running, 2)
+        del r['_sort']
+
+    return jsonify({"payouts": records})
+
 @app.route('/api/super_admin/recalculate_stats', methods=['POST'])
 @require_session
 def recalculate_all_stats():
