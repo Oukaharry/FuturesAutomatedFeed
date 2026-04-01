@@ -1612,6 +1612,9 @@ def get_client_performance_stats(profile_filter=None):
                 c_stats['hedge_profit'] = sheet_hedge
             c_stats['farming_profit'] = 0.0  # farming already included in hedge_profit
             c_stats['fees'] = stored_cf.get('challenge_fees', 0.0) + stored_cf.get('activation_fee', 0.0)
+            # Use payouts from cashflow_inprogress so it matches Net Profit In Progress
+            if stored_cf.get('payouts') is not None:
+                c_stats['payouts'] = stored_cf.get('payouts', 0.0)
         else:
             # Fallback: recalculate from evaluation columns
             for ev in evaluations:
