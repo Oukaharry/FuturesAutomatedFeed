@@ -512,6 +512,7 @@ def normalize_prop_firm_name(name):
         "fundingtick": "Funding Ticks",
         "tradeday": "TradeDay",
         "tradeify": "Tradeify",
+        "tradify": "Tradeify",
         "ftmo": "FTMO",
         "alphafutures": "Alpha Futures",
         "blueguardian": "Blue Guardian",
