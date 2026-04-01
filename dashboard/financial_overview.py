@@ -431,6 +431,9 @@ def calculate_all_financials(profile_filter=None):
     if "total_duration" in global_stats: del global_stats["total_duration"]
 
     # --- Finalize Time Series ---
+    from datetime import date as _date_type
+    today_str = _date_type.today().strftime("%Y-%m-%d")
+
     def process_ts(events):
         if not events: return [], []
         events.sort(key=lambda x: x[0])
@@ -446,6 +449,10 @@ def calculate_all_financials(profile_filter=None):
             cum += daily[day]
             dates.append(day)
             vals.append(cum)
+        # Extend to current date so chart always ends at today
+        if dates and dates[-1] < today_str:
+            dates.append(today_str)
+            vals.append(cum)
         return dates, vals
     
     # Process Deposits from simple dict
@@ -457,6 +464,10 @@ def calculate_all_financials(profile_filter=None):
         for day in sorted(d_dict.keys()):
             cum += d_dict[day]
             dates.append(day)
+            vals.append(cum)
+        # Extend to current date so chart always ends at today
+        if dates and dates[-1] < today_str:
+            dates.append(today_str)
             vals.append(cum)
         return dates, vals
 
