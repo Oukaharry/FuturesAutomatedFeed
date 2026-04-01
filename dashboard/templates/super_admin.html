@@ -1350,10 +1350,6 @@
 
             // Sort descending by absolute value for currency, or by count for status metrics
             const sorted = [...clientsBreakdownData]
-                .filter(c => {
-                    const v = parseFloat(c[metric]) || 0;
-                    return v !== 0;
-                })
                 .sort((a, b) => {
                     const va = parseFloat(a[metric]) || 0;
                     const vb = parseFloat(b[metric]) || 0;
@@ -1362,7 +1358,7 @@
 
             let html = '';
             if (sorted.length === 0) {
-                html = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#64748b;">No clients with non-zero values for this metric.</td></tr>';
+                html = '<tr><td colspan="5" style="text-align:center; padding:40px; color:#64748b;">No client data available.</td></tr>';
             } else {
                 sorted.forEach((c, i) => {
                     const val = parseFloat(c[metric]) || 0;
