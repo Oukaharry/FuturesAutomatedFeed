@@ -4029,8 +4029,12 @@ def api_kyc_accounts():
             client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
             if client_profile != 'BEF':
                 continue
-        eval_count = len(cdata.get('evaluations', [])) if cdata else 0
-        result.append({"name": name, "eval_count": eval_count, "is_current": name == client_id})
+        evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
+        if is_bef:
+            # Exclude hidden prop firms from eval count
+            evals = [ev for ev in evals
+                     if str(ev.get('Prop Firm') or '').strip().lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
+        result.append({"name": name, "eval_count": len(evals), "is_current": name == client_id})
     return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1, "is_primary": is_kyc_primary(client_id)})
 
 @app.route('/api/kyc/portfolio', methods=['GET'])
@@ -4146,7 +4150,12 @@ def api_kyc_portfolio():
 
         all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
 
-        if not has_date_filter:
+        # BEF admin: exclude hidden prop firms (Lucid, Apex, TradeDay, TopOneFutures)
+        if is_bef:
+            all_evals = [ev for ev in all_evals
+                         if str(ev.get('Prop Firm') or '').strip().lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
+
+        if not has_date_filter and not is_bef:
             # ── No date filter: use stored statistics (consistent with Stats tab) ──
             stats = cdata.get('statistics', {}) or {}
             cashflow = stats.get('cashflow_inprogress', {})

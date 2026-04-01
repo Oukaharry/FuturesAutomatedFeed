@@ -2810,13 +2810,9 @@
             }
         }
         function setKycDefaultPeriod() {
-            // Default to current month
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = String(now.getMonth() + 1).padStart(2, '0');
-            const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
-            document.getElementById('kyc-date-from').value = `${y}-${m}-01`;
-            document.getElementById('kyc-date-to').value = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
+            // Default to all time (empty dates)
+            document.getElementById('kyc-date-from').value = '';
+            document.getElementById('kyc-date-to').value = '';
         }
         function toggleKycDropdown(event) {
             event.stopPropagation();
