@@ -440,7 +440,9 @@ def calculate_all_financials(profile_filter=None):
         from collections import defaultdict
         daily = defaultdict(float)
         for dt, val in events:
-            daily[dt.strftime("%Y-%m-%d")] += val
+            day_str = dt.strftime("%Y-%m-%d")
+            if day_str <= today_str:  # Exclude future dates
+                daily[day_str] += val
         
         dates = []
         vals = []
@@ -462,6 +464,8 @@ def calculate_all_financials(profile_filter=None):
         vals = []
         cum = 0.0
         for day in sorted(d_dict.keys()):
+            if day > today_str:  # Exclude future dates
+                break
             cum += d_dict[day]
             dates.append(day)
             vals.append(cum)
