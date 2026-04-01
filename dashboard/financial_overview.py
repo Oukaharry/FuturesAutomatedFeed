@@ -85,6 +85,48 @@ def _get_cached_clients():
 get_cached_clients_dataset = _get_cached_clients
 # ------------------------------------------------
 
+# --- Hierarchy-aware Profile Resolution ---
+_hierarchy_profile_cache = {}
+_hierarchy_profile_cache_time = 0
+
+def _get_hierarchy_profile_map():
+    """Build a {client_name: category} map from the hierarchy JSON (cached 60s)."""
+    global _hierarchy_profile_cache, _hierarchy_profile_cache_time
+    if _hierarchy_profile_cache and (time.time() - _hierarchy_profile_cache_time) < 60:
+        return _hierarchy_profile_cache
+    try:
+        from config.hierarchy import SYSTEM_HIERARCHY
+    except ImportError:
+        return {}
+    profile_map = {}
+    if SYSTEM_HIERARCHY and 'admins' in SYSTEM_HIERARCHY:
+        for admin_data in SYSTEM_HIERARCHY['admins'].values():
+            for trader_data in admin_data.get('traders', {}).values():
+                for client in trader_data.get('clients', []):
+                    c_name = client.get('name')
+                    cat = (client.get('category') or '').upper()
+                    if c_name and cat:
+                        profile_map[c_name] = cat
+    _hierarchy_profile_cache = profile_map
+    _hierarchy_profile_cache_time = time.time()
+    return profile_map
+
+def get_client_profile(client_id, identity=None):
+    """Resolve client profile: check identity fields first, then hierarchy category, default PRIVATE."""
+    if identity:
+        p = (identity.get('profile') or identity.get('category') or identity.get('source') or '').upper()
+        if p:
+            return p
+    # Fallback: check hierarchy
+    h_map = _get_hierarchy_profile_map()
+    real_name = identity.get('name') if identity else None
+    if real_name and real_name in h_map:
+        return h_map[real_name]
+    if client_id in h_map:
+        return h_map[client_id]
+    return 'PRIVATE'
+# ------------------------------------------------
+
 def parse_currency(value_str):
     """
     Parses a currency string like "$120.65", "1,200.00", "-", "$ -" into a float.
@@ -153,8 +195,7 @@ def calculate_all_financials(profile_filter=None):
         # --- Profile Filtering ---
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not client_profile: client_profile = "PRIVATE"
+            client_profile = get_client_profile(client_id, identity)
             if client_profile != profile_filter.upper():
                 continue
         
@@ -550,8 +591,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None, p
 
         # Apply Profile Filter
         if profile_filter and profile_filter.upper() != "ALL":
-            c_prof = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not c_prof: c_prof = "PRIVATE"
+            c_prof = get_client_profile(client_id, identity)
             if c_prof != profile_filter.upper():
                 continue
 
@@ -620,10 +660,7 @@ def get_payouts_growth_data(profile_filter=None):
         # Apply Profile Filter
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if client_profile == 'BEF': client_profile = 'BEF'
-            else: client_profile = 'PRIVATE'
-                
+            client_profile = get_client_profile(client_id, identity)
             if client_profile != profile_filter.upper():
                 continue
         
@@ -683,9 +720,7 @@ def get_mt5_deals_data(profile_filter=None):
         # Apply Profile Filter
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if client_profile == 'BEF': client_profile = 'BEF'
-            else: client_profile = 'PRIVATE'
+            client_profile = get_client_profile(client_id, identity)
             if client_profile != profile_filter.upper(): continue
             
         deals_json = data.get('deals', '[]')
@@ -784,8 +819,7 @@ def get_cumulative_trading_profit(profile_filter=None):
         # Profile Filter
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not client_profile: client_profile = "PRIVATE"
+            client_profile = get_client_profile(client_id, identity)
             if client_profile != profile_filter.upper():
                 continue
         
@@ -887,10 +921,7 @@ def get_portfolio_growth_data(profile_filter=None):
         # Apply Profile Filter
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if client_profile == 'BEF': client_profile = 'BEF'
-            else: client_profile = 'PRIVATE'
-                
+            client_profile = get_client_profile(client_id, identity)
             if client_profile != profile_filter.upper():
                 continue
         
@@ -979,12 +1010,7 @@ def calculate_propfirm_overview(profile_filter=None):
         # Filter by Profile if profile_filter is provided
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            # Check 'profile' or 'category' field (handle both for compatibility)
-            client_profile = (identity.get('profile') or identity.get('category') or 'PRIVATE').upper()
-            
-            # Normalize to clean string
-            if not client_profile: client_profile = "PRIVATE"
-            
+            client_profile = get_client_profile(client_id, identity)
             if client_profile != profile_filter.upper():
                 continue
             
@@ -1137,8 +1163,7 @@ def get_cumulative_fees_data(profile_filter=None):
         # Profile Filter
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not client_profile: client_profile = "PRIVATE"
+            client_profile = get_client_profile(client_id, identity)
             if client_profile != profile_filter.upper(): continue
         
         evaluations = data.get('evaluations', [])
@@ -1176,8 +1201,7 @@ def get_cumulative_hedge_data(profile_filter=None):
         if not data: continue
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            cp = (identity.get('profile') or identity.get('category') or 'PRIVATE').upper()
-            if not cp: cp = 'PRIVATE'
+            cp = get_client_profile(client_id, identity)
             if cp != profile_filter.upper(): continue
             
         evaluations = data.get('evaluations', [])
@@ -1212,8 +1236,7 @@ def get_cumulative_farming_data(profile_filter=None):
         if not data: continue
         if profile_filter and profile_filter.upper() != "ALL":
             identity = data.get('identity', {})
-            cp = (identity.get('profile') or identity.get('category') or 'PRIVATE').upper()
-            if not cp: cp = 'PRIVATE'
+            cp = get_client_profile(client_id, identity)
             if cp != profile_filter.upper(): continue
             
         evaluations = data.get('evaluations', [])
@@ -1270,8 +1293,7 @@ def calculate_trader_stats(profile_filter=None):
         
         # Apply Profile Filter
         if profile_filter and profile_filter.upper() != "ALL":
-            c_prof = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if not c_prof: c_prof = "PRIVATE"
+            c_prof = get_client_profile(client_id, identity)
             if c_prof != profile_filter.upper():
                 continue
 
@@ -1416,7 +1438,8 @@ def get_client_performance_stats(profile_filter=None):
                     if c_name:
                         client_map[c_name] = {
                             'admin': admin_name,
-                            'trader': trader_name
+                            'trader': trader_name,
+                            'category': (client.get('category') or '').upper()
                         }
 
     clients_data = _get_cached_clients()
@@ -1429,9 +1452,8 @@ def get_client_performance_stats(profile_filter=None):
         identity = data.get('identity', {})
         real_client_name = identity.get('name') or client_id
         
-        # Profile Filter
-        source = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-        if not source: source = "PRIVATE"
+        # Profile Filter — check identity first, then hierarchy category as fallback
+        source = get_client_profile(client_id, identity)
         
         if profile_filter and profile_filter.upper() != "ALL":
             if source != profile_filter.upper():
@@ -1566,5 +1588,36 @@ def get_client_performance_stats(profile_filter=None):
         c_stats['net_profit'] = c_stats['payouts'] + c_stats['hedge_profit'] + c_stats['farming_profit'] - c_stats['fees']
         
         clients_list.append(c_stats)
+
+    # Include hierarchy clients that have no DB records yet
+    seen_clients = {c['client_id'] for c in clients_list}
+
+    try:
+        from config.hierarchy import SYSTEM_HIERARCHY
+        h = SYSTEM_HIERARCHY
+    except ImportError:
+        h = {}
+
+    if h and 'admins' in h:
+        for admin_name, admin_data in h['admins'].items():
+            for trader_name, trader_data in admin_data.get('traders', {}).items():
+                for client in trader_data.get('clients', []):
+                    c_name = client.get('name')
+                    if not c_name or c_name in seen_clients:
+                        continue
+                    c_cat = (client.get('category') or '').upper()
+                    if profile_filter and profile_filter.upper() != "ALL":
+                        if (c_cat or 'PRIVATE') != profile_filter.upper():
+                            continue
+                    clients_list.append({
+                        "client_id": c_name,
+                        "trader": trader_name,
+                        "admin": admin_name,
+                        "source": c_cat or 'PRIVATE',
+                        "payouts": 0.0, "deposits": 0.0, "fees": 0.0,
+                        "net_profit": 0.0, "active": 0, "passed": 0, "failed": 0,
+                        "hedge_profit": 0.0, "farming_profit": 0.0,
+                        "hwm": 0.0, "lwm": 0.0
+                    })
         
     return clients_list
