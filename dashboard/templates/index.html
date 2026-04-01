@@ -2447,12 +2447,12 @@
                         <div id="kyc-total-fees" style="font-size:1.8rem; font-weight:800; color:#f87171;">$0.00</div>
                     </div>
                     <!-- Net Profit -->
-                    <div style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                    <div id="kyc-net-card" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
                         <div style="font-size:0.75rem; color:#d8b4fe; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">NET PROFIT</div>
                         <div id="kyc-total-net" style="font-size:1.8rem; font-weight:800; color:#c084fc;">$0.00</div>
                     </div>
                     <!-- Hedging Results (includes farming) -->
-                    <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                    <div id="kyc-hedge-card" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
                         <div style="font-size:0.75rem; color:#bae6fd; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">HEDGING RESULTS</div>
                         <div id="kyc-total-hedge" style="font-size:1.8rem; font-weight:800; color:#38bdf8;">$0.00</div>
                     </div>
@@ -2724,9 +2724,32 @@
                     document.getElementById('kyc-passed').textContent = t.passed_accounts;
                     document.getElementById('kyc-failed').textContent = t.failed_accounts;
                     
-                    // Net profit color
+                    // Net profit color + card background
                     const netEl = document.getElementById('kyc-total-net');
-                    netEl.style.color = t.total_net_profit >= 0 ? '#c084fc' : '#f87171';
+                    const netCard = document.getElementById('kyc-net-card');
+                    if (t.total_net_profit >= 0) {
+                        netEl.style.color = '#34d399';
+                        netCard.style.background = 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(6,78,59,0.6) 100%)';
+                        netCard.style.borderColor = 'rgba(52,211,153,0.4)';
+                    } else {
+                        netEl.style.color = '#f87171';
+                        netCard.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(127,29,29,0.6) 100%)';
+                        netCard.style.borderColor = 'rgba(248,113,113,0.4)';
+                    }
+                    
+                    // Hedging results color + card background
+                    const hedgeVal = (t.total_hedge || 0) + (t.total_farming || 0);
+                    const hedgeEl = document.getElementById('kyc-total-hedge');
+                    const hedgeCard = document.getElementById('kyc-hedge-card');
+                    if (hedgeVal >= 0) {
+                        hedgeEl.style.color = '#34d399';
+                        hedgeCard.style.background = 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(6,78,59,0.6) 100%)';
+                        hedgeCard.style.borderColor = 'rgba(52,211,153,0.4)';
+                    } else {
+                        hedgeEl.style.color = '#f87171';
+                        hedgeCard.style.background = 'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(127,29,29,0.6) 100%)';
+                        hedgeCard.style.borderColor = 'rgba(248,113,113,0.4)';
+                    }
                     
                     // Per-account table
                     const tbody = document.getElementById('kyc-portfolio-body');
@@ -2740,8 +2763,8 @@
                                 <td style="text-align:left; color:#fff;">${a.active}</td>
                                 <td style="text-align:left; color:#34d399;">${fmt(a.payouts)}</td>
                                 <td style="text-align:left; color:#f87171;">${fmt(a.fees)}</td>
-                                <td style="text-align:left;">${fmt(a.hedge + a.farming)}</td>
-                                <td style="text-align:left; font-weight:700; color:${a.net >= 0 ? '#c084fc' : '#f87171'};">${fmt(a.net)}</td>
+                                <td style="text-align:left; color:${(a.hedge + a.farming) >= 0 ? '#34d399' : '#f87171'};">${fmt(a.hedge + a.farming)}</td>
+                                <td style="text-align:left; font-weight:700; color:${a.net >= 0 ? '#34d399' : '#f87171'};">${fmt(a.net)}</td>
                             </tr>
                         `).join('');
                     } else {
@@ -2758,8 +2781,8 @@
                                 <td style="text-align:left; color:#fff;">${pf.active}</td>
                                 <td style="text-align:left; color:#34d399;">${fmt(pf.payouts)}</td>
                                 <td style="text-align:left; color:#f87171;">${fmt(pf.fees)}</td>
-                                <td style="text-align:left;">${fmt(pf.hedge + pf.farming)}</td>
-                                <td style="text-align:left; font-weight:700; color:${pf.net >= 0 ? '#c084fc' : '#f87171'};">${fmt(pf.net)}</td>
+                                <td style="text-align:left; color:${(pf.hedge + pf.farming) >= 0 ? '#34d399' : '#f87171'};">${fmt(pf.hedge + pf.farming)}</td>
+                                <td style="text-align:left; font-weight:700; color:${pf.net >= 0 ? '#34d399' : '#f87171'};">${fmt(pf.net)}</td>
                             </tr>
                         `).join('');
                     } else {
