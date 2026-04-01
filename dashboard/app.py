@@ -2466,17 +2466,12 @@ def get_super_admin_totals():
         "clients": clients
     }
 
-    # 4. Global Watermarks (14 days)
-    # Import here to avoid circular
-    from dashboard.watermark_service import get_aggregate_watermarks
-    global_watermarks = get_aggregate_watermarks(14)
-    
-    # Ensure values are non-negative
-    hwm = global_watermarks.get('hwm', 0.0)
-    lwm = global_watermarks.get('lwm', 0.0)
-    
-    response_data['totals']['total_hwm'] = round(max(0.0, float(hwm)), 2)
-    response_data['totals']['total_lwm'] = round(max(0.0, float(lwm)), 2)
+    # 4. Global Watermarks — sum directly from per-client stats (already loaded above)
+    t_hwm = sum(c.get('hwm', 0) or 0 for c in clients if (c.get('hwm') or 0) > 0)
+    t_lwm = sum(c.get('lwm', 0) or 0 for c in clients if (c.get('lwm') or 0) > 0)
+
+    response_data['totals']['total_hwm'] = round(t_hwm, 2)
+    response_data['totals']['total_lwm'] = round(t_lwm, 2)
     
     return jsonify(response_data)
 
