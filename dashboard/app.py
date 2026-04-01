@@ -2058,6 +2058,23 @@ def financial_overview():
     overview_data = all_data['overview']
     global_stats = all_data.get('global_stats', {})
 
+    # Card totals from cashflow_inprogress (same source as BEF admin dashboard)
+    perf_clients = get_client_performance_stats(profile_filter)
+    card_totals = {
+        'payouts': round(sum(c.get('payouts', 0) for c in perf_clients), 2),
+        'deposits': round(sum(c.get('deposits', 0) for c in perf_clients), 2),
+        'fees': round(sum(c.get('fees', 0) for c in perf_clients), 2),
+        'net_profit': round(sum(c.get('net_profit', 0) for c in perf_clients), 2),
+        'hedge': round(sum(c.get('hedge_profit', 0) for c in perf_clients), 2),
+        'active': sum(c.get('active', 0) for c in perf_clients),
+        'passed': sum(c.get('passed', 0) for c in perf_clients),
+        'failed': sum(c.get('failed', 0) for c in perf_clients),
+    }
+    t_ended = sum(c.get('ended', 0) for c in perf_clients)
+    t_duration = sum(c.get('total_duration_days', 0) for c in perf_clients)
+    card_totals['ev'] = round(card_totals['net_profit'] / t_ended, 2) if t_ended > 0 else 0.0
+    card_totals['ev_day'] = round(card_totals['net_profit'] / t_duration, 2) if t_duration > 0 else 0.0
+
     # Hide restricted firms from BEF admin
     if session_user.get('user_type') == 'bef_admin':
         overview_data = {k: v for k, v in overview_data.items()
@@ -2074,6 +2091,7 @@ def financial_overview():
     return render_template('financial_overview.html', 
                            overview=overview_data,
                            global_stats=global_stats,
+                           card_totals=card_totals,
                            selected_profile=profile_filter,
                            is_bef_admin=(session_user.get('user_type') == 'bef_admin'),
                            growth_dates=growth_dates,

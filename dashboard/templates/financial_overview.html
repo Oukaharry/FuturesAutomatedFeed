@@ -413,32 +413,32 @@
                 <!-- Total Payouts -->
                 <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #6ee7b7 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Payouts</div>
-                    <div id="card-payouts" style="font-size: 1.45rem; font-weight: 700; color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">{{ "$%0.2f"|format(ns.pay) }}</div>
+                    <div id="card-payouts" style="font-size: 1.45rem; font-weight: 700; color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">{{ "${:,.2f}".format(card_totals.payouts) }}</div>
                 </div>
 
                 <!-- Total Deposits -->
                 <div style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #93c5fd !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Total Deposits</div>
-                    <div id="card-deposits" style="font-size: 1.45rem; font-weight: 700; color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">{{ "$%0.2f"|format(deposits_values[-1] if deposits_values else 0) }}</div>
+                    <div id="card-deposits" style="font-size: 1.45rem; font-weight: 700; color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">{{ "${:,.2f}".format(card_totals.deposits) }}</div>
                 </div>
 
                 <!-- Challenge Fees -->
                 <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #fca5a5 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Challenge Fees</div>
-                    <div id="card-fees" style="font-size: 1.45rem; font-weight: 700; color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">{{ "$%0.2f"|format(ns.fees + ns.act) }}</div>
+                    <div id="card-fees" style="font-size: 1.45rem; font-weight: 700; color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">{{ "${:,.2f}".format(card_totals.fees) }}</div>
                 </div>
 
                 <!-- Row 2 -->
                 <!-- Net Profit -->
                 <div style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #d8b4fe !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Net Profit</div>
-                    <div id="card-net" style="font-size: 1.45rem; font-weight: 700; color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">{{ "$%0.2f"|format(ns.net) }}</div>
+                    <div id="card-net" style="font-size: 1.45rem; font-weight: 700; color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">{{ "${:,.2f}".format(card_totals.net_profit) }}</div>
                 </div>
 
                 <!-- Hedging Results -->
                 <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #bae6fd !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Hedging Results</div>
-                    <div id="card-hedge" style="font-size: 1.45rem; font-weight: 700; color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">{{ "$%0.2f"|format(ns.hedge) }}</div>
+                    <div id="card-hedge" style="font-size: 1.45rem; font-weight: 700; color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">{{ "${:,.2f}".format(card_totals.hedge) }}</div>
                 </div>
 
 
@@ -446,13 +446,13 @@
                 <!-- Expected Value -->
                 <div style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #fde047 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Expected Value (EV)</div>
-                    <div id="card-ev" style="font-size: 1.45rem; font-weight: 700; color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);">{{ "$%0.2f"|format(global_stats.expected_value|default(0)) }}</div>
+                    <div id="card-ev" style="font-size: 1.45rem; font-weight: 700; color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);">{{ "${:,.2f}".format(card_totals.ev) }}</div>
                 </div>
 
                 <!-- EV / Day -->
                 <div style="background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(131, 24, 67, 0.6) 100%); border: 1px solid rgba(244, 114, 182, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                     <div style="color: #fbcfe8 !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">EV / Day</div>
-                    <div id="card-ev-day" style="font-size: 1.45rem; font-weight: 700; color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">{{ "$%0.2f"|format(global_stats.ev_per_day|default(0)) }}</div>
+                    <div id="card-ev-day" style="font-size: 1.45rem; font-weight: 700; color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">{{ "${:,.2f}".format(card_totals.ev_day) }}</div>
                 </div>
                 
                 <!-- Active/Passed/Failed Status List -->
@@ -460,15 +460,15 @@
                     <div style="display: flex; gap: 40px; justify-content: start;">
                         <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color: var(--text-secondary);">Active</span>
-                            <span id="stat-active" style="font-weight: 700; color: #fff !important;">{{ ns.active }}</span>
+                            <span id="stat-active" style="font-weight: 700; color: #fff !important;">{{ card_totals.active }}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color: var(--text-secondary);">Passed</span>
-                            <span id="stat-passed" style="font-weight: 700; color: #34d399 !important;">{{ ns.passed }}</span>
+                            <span id="stat-passed" style="font-weight: 700; color: #34d399 !important;">{{ card_totals.passed }}</span>
                         </div>
                         <div style="display: flex; justify-content: space-between; min-width: 150px;">
                             <span style="color: var(--text-secondary);">Failed</span>
-                            <span id="stat-failed" style="font-weight: 700; color: #f87171 !important;">{{ ns.failed }}</span>
+                            <span id="stat-failed" style="font-weight: 700; color: #f87171 !important;">{{ card_totals.failed }}</span>
                         </div>
                     </div>
                 </div>
