@@ -2410,12 +2410,9 @@ def get_super_admin_totals():
         overview = {k: v for k, v in overview.items()
                     if k.lower().replace(' ', '') not in BEF_HIDDEN_FIRMS}
 
-    # Calculate Deposits separately if not in global_stats
-    # In financial_overview.py, deposits are in data['deposits'] tuple (dates, cum_values)
-    # The last value of cum_values is the total.
+    # Calculate Deposits from per-client stats (authoritative hedging_review.total_deposits)
+    # Will be filled after client performance stats are computed below
     total_deposits = 0.0
-    if data.get('deposits') and data['deposits'][1]:
-        total_deposits = data['deposits'][1][-1]
         
     # Calculate Totals
     active_accounts = 0
@@ -2468,6 +2465,10 @@ def get_super_admin_totals():
     c_total_farming = sum(c.get('farming_profit', 0) for c in response_data['clients'])
     response_data['totals']['total_hedge'] = round(c_total_hedge, 2)
     response_data['totals']['total_farming'] = round(c_total_farming, 2)
+
+    # Sum deposits from per-client stats (uses MT5 account deposits)
+    total_deposits = sum(c.get('deposits', 0) for c in response_data['clients'])
+    response_data['totals']['total_deposits'] = round(total_deposits, 2)
 
     # 4. Global Watermarks (14 days)
     # Import here to avoid circular

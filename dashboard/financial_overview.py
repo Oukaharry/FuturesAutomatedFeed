@@ -1543,50 +1543,25 @@ def get_client_performance_stats(profile_filter=None):
                     for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
                                 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
                         c_stats['hedge_profit'] += parse_currency(ev.get(col))
-                    c_stats['farming_profit'] += parse_currency(ev.get('Farming Profit'))
+                    c_stats['farming_profit'] += sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
             
-        # 2. Deals for Deposits
-        # Assuming get_deals returns list of deals
-        # If deals are not readily available in data['deals'], we might have to skip or load usage
-        # Usually data has 'deals' key if loaded fully.
-        deals = data.get('deals', [])
-        for deal in deals:
-            # Deposits are positive 'profit' with type 'deal_entry_in' usually, but here assumed 'profit' field reflects deposit amount?
-            # Or usually type=2 (DEAL_ENTRY_IN) and check comment/type?
-            # Simplified: Use pre-calced deposits if stored, or iterate deals.
-            # Assuming 'profit' is the amount, and type implies deposit.
-            # Let's rely on standard logic: profit > 0 and comment indicates deposit?
-            # Or just sum 'profit' of all deals that are Deposits.
+        # 2. Deposits — use MT5 account deposits (current + historical), matching MT5 Accounts Overview
+        acct = data.get('account', {})
+        stats_data = data.get('statistics', {})
+        hr = stats_data.get('hedging_review', {})
+        # Current MT5 deposits: prefer account field, fall back to hedging_review
+        try:
+            current_dep = float(acct.get('total_deposits') or hr.get('total_deposits') or 0)
+        except (ValueError, TypeError):
+            current_dep = 0.0
+        # Historical MT5 accounts deposits
+        hist_dep = 0.0
+        for hist_acc in (hr.get('historical_accounts') or []):
             try:
-                # MT5 deal structure check
-                deal_type = int(deal.get('type', -1))
-                entry = int(deal.get('entry', -1))
-                profit = float(deal.get('profit', 0.0))
-                # Entry In (0) + Type Balance (2) ?? MQL5 constants vary.
-                # Let's trust the "total_deposits" logic used elsewhere if available.
-                # Since we don't have deal constants handy, let's look at get_cumulative_deposits logic.
+                hist_dep += float(hist_acc.get('deposits', 0))
+            except (ValueError, TypeError):
                 pass
-            except:
-                pass
-                
-        # Alternative: We don't have deals easily here without logic.
-        # But wait, calculate_all_financials uses deals!
-        # It calls: ev.get('Account #') -> finds specific deals? 
-        # Actually deposits usually come from MT5 via 'deals' in JSON.
-        # Let's check how 'get_cumulative_deposits' works.
-        
-        # Temporary: skip deep deposit calc per client for speed, or assume 0 if not critical.
-        # But user sees "Deposits" column.
-        # Let's look at how we got total_deposits in app.py: data['deposits'] tuple.
-        # That's global.
-        
-        # Fix: iterate deals simply if they exist.
-        if 'deals' in data:
-            for deal in data['deals']:
-                 # Check for deposit
-                 # If profit > 0 and it's a balance operation (usually no symbol)
-                 if deal.get('symbol') == '' and float(deal.get('profit', 0)) > 0:
-                     c_stats['deposits'] += float(deal.get('profit', 0))
+        c_stats['deposits'] = abs(current_dep) + abs(hist_dep)
 
         # Net Profit = Payouts + Hedge + Farming - Fees
         # (Deposits are capital, not profit, so usually excluded from Net Profit calc depending on definition)
