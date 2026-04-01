@@ -4033,8 +4033,10 @@ def api_kyc_portfolio():
     user_id = session_user.get('user_identifier', '')
     client_id = request.args.get('client_id', '')
     
+    is_bef = user_type == 'bef_admin'
+
     # Determine which client to query
-    if user_type in ('super_admin', 'admin', 'trader'):
+    if user_type in ('super_admin', 'bef_admin', 'admin', 'trader'):
         if not client_id:
             return jsonify({"status": "error", "message": "client_id required"}), 400
     elif user_type == 'client':
@@ -4125,7 +4127,14 @@ def api_kyc_portfolio():
 
         all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
 
-        if not has_date_filter:
+        # BEF admin: only show evaluations for non-hidden (BEF) prop firms
+        if is_bef:
+            all_evals = [ev for ev in all_evals
+                         if str(ev.get('Prop Firm') or '').strip().lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]
+            if not all_evals:
+                continue
+
+        if not has_date_filter and not is_bef:
             # ── No date filter: use stored statistics (consistent with Stats tab) ──
             stats = cdata.get('statistics', {}) or {}
             cashflow = stats.get('cashflow_inprogress', {})
