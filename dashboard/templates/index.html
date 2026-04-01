@@ -4183,6 +4183,7 @@
             const pc = (v) => { try { return parseFloat(String(v||'').replace(/[$,]/g,'').trim()) || 0; } catch(e) { return 0; } };
             evals.forEach(ev => {
                 const name = String(ev['Prop Firm']||'').trim() || 'Unknown';
+                if (isFirmHidden(name)) return;
                 if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
                 const f = firms[name];
                 f.evals++;
@@ -4312,6 +4313,21 @@
                             ftTF += (v.total_funding||0);
                         }
                         s.funded_totals = { not_started: ftNS, ongoing: ftOn, failed: ftF, completed: ftC, avg_net_failed: ftF ? ftNFv/ftF : 0, avg_net_completed: ftC ? ftNC/ftC : 0, total_funding: ftTF };
+
+                        // Recalculate cashflow_inprogress from filtered evaluations
+                        const pc = (v) => { try { return parseFloat(String(v||'').replace(/[$,]/g,'').trim()) || 0; } catch(e) { return 0; } };
+                        let cfPay=0, cfFees=0, cfHedge=0, cfFarm=0;
+                        (data.evaluations||[]).forEach(ev => {
+                            const fn = String(ev['Prop Firm']||'').trim();
+                            if (isFirmHidden(fn)) return;
+                            cfFees += pc(ev['Fee']) + pc(ev['Activation Fee']);
+                            const sp1 = String(ev['Status P1']||'').trim();
+                            const sf = String(ev['Status']||'').trim();
+                            if (sp1) { ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5'].forEach(c => { cfHedge += pc(ev[c]); }); }
+                            if (sf) { ['Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1','Hedge Result 6','Hedge Result 7'].forEach(c => { cfHedge += pc(ev[c]); }); for (let di=1;di<=50;di++) cfFarm += pc(ev['Hedge Day '+di]); }
+                            for (let i=1;i<=9;i++) cfPay += pc(ev['Payout '+i]);
+                        });
+                        s.cashflow_inprogress = { payouts: cfPay, challenge_fees: cfFees, hedging_results: cfHedge, farming_results: cfFarm };
                     }
 
                     // Helper for safe rate formatting
@@ -4549,6 +4565,7 @@
                 };
                 data.evaluations.forEach(ev => {
                     const propFirm = (ev['Prop Firm'] || 'Unknown').trim() || 'Unknown';
+                    if (isFirmHidden(propFirm)) return;
                     const account = (ev['Account #'] || ev['Account #.1'] || '-').toString().trim();
                     for (let i = 1; i <= 9; i++) {
                         const amt = parseCur(ev[`Payout ${i}`]);
