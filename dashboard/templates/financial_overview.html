@@ -441,11 +441,7 @@
                     <div id="card-hedge" style="font-size: 1.45rem; font-weight: 700; color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">{{ "$%0.2f"|format(ns.hedge) }}</div>
                 </div>
 
-                <!-- Farming Results -->
-                <div style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                    <div style="color: #d9f99d !important; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px; text-transform: uppercase;">Farming Results</div>
-                    <div id="card-farming" style="font-size: 1.45rem; font-weight: 700; color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">{{ "$%0.2f"|format(ns.farm) }}</div>
-                </div>
+
 
                 <!-- Expected Value -->
                 <div style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 12px; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
@@ -490,7 +486,7 @@
                     <option value="deposits">Total Deposits</option>
                     <option value="fees">Total Fees Spent</option>
                     <option value="hedge">Hedge Results</option>
-                    <option value="farming">Farming Results</option>
+
                 </select>
             </div>
             <div class="chart-wrapper">
@@ -528,7 +524,7 @@
                         <th colspan="2" class="group-header group-header-blue">Accounts</th>
                         <th colspan="3" class="group-header group-header-green">Performance Status</th>
                         <th colspan="2" class="group-header group-header-purple">Costs</th>
-                        <th colspan="3" class="group-header group-header-orange">Income / Results</th>
+                        <th colspan="2" class="group-header group-header-orange">Income / Results</th>
                         <th rowspan="2" class="group-header" style="vertical-align: middle; width: 150px; background: #0f172a;">Net Profit</th>
                         <th rowspan="2" class="group-header" style="vertical-align: middle; background: #1e293b;">EV</th>
                         <th rowspan="2" class="group-header" style="vertical-align: middle; background: #1e293b;">EV/Day</th>
@@ -547,7 +543,6 @@
                         <!-- Income -->
                         <th>Payouts</th>
                         <th>Hedge Res.</th>
-                        <th>Farm Res.</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -594,9 +589,7 @@
                         <td class="{{ 'positive' if data.hedge_results >= 0 else 'negative' }}">
                             {{ "$%0.2f"|format(data.hedge_results) }}
                         </td>
-                        <td class="{{ 'positive' if data.farming_results >= 0 else 'negative' }}">
-                            {{ "$%0.2f"|format(data.farming_results) }}
-                        </td>
+
                         
                         <!-- Net -->
                         <td class="{{ 'positive' if data.net >= 0 else 'negative' }}" style="font-weight: 700; background-color: rgba(255, 255, 255, 0.05); font-size: 1.05rem;">
@@ -627,9 +620,7 @@
                         <td class="{{ 'text-green-bright' if ns.hedge >= 0 else 'text-red-bright' }}">
                             {{ "$%0.2f"|format(ns.hedge) }}
                         </td>
-                        <td class="{{ 'text-green-bright' if ns.farm >= 0 else 'text-red-bright' }}">
-                            {{ "$%0.2f"|format(ns.farm) }}
-                        </td>
+
                         
                         <td class="bg-dark {{ 'text-green-bright' if ns.net >= 0 else 'text-red-bright' }}">
                             {{ "$%0.2f"|format(ns.net) }}
