@@ -268,7 +268,7 @@ print(f"\n\n{'='*100}")
 print("STEP 3: AUDIT LOG ANALYSIS — what happened during the missing week?")
 print(f"{'='*100}")
 
-conn = sqlite3.connect(CUR_DB)
+conn = sqlite3.connect(os.path.join(DASH_DIR, 'dashboard.db'))
 conn.row_factory = sqlite3.Row
 cols = [r[1] for r in conn.execute("PRAGMA table_info(audit_log)").fetchall()]
 print(f"  audit_log columns: {cols}")
