@@ -31,6 +31,11 @@ def check_and_repair_database():
     """Run integrity check and attempt recovery if database is corrupted.
     Returns (ok: bool, message: str)."""
     import shutil
+    import threading
+
+    if not os.path.exists(DB_PATH):
+        return True, 'No database file yet — will be created on init'
+
     try:
         with get_connection() as conn:
             result = conn.execute('PRAGMA integrity_check').fetchone()
@@ -39,25 +44,36 @@ def check_and_repair_database():
     except Exception as e:
         pass  # Fall through to repair
 
-    # Database is corrupt — attempt dump-and-rebuild recovery
+    # Database is corrupt — attempt dump-and-rebuild recovery with timeout
     backup_path = DB_PATH + '.corrupt.' + datetime.now().strftime('%Y%m%d_%H%M%S')
     new_path = DB_PATH + '.new'
     try:
         # Backup the corrupt file
         shutil.copy2(DB_PATH, backup_path)
 
-        # Try to dump what we can from the corrupt DB
-        src = sqlite3.connect(DB_PATH)
+        # Try to dump with a 15-second timeout (prevents hanging on severe corruption)
         lines = []
-        try:
-            for line in src.iterdump():
-                lines.append(line)
-        except Exception:
-            pass  # Get what we can
-        finally:
-            src.close()
+        dump_ok = False
 
-        if lines:
+        def _dump():
+            nonlocal lines, dump_ok
+            try:
+                src = sqlite3.connect(DB_PATH)
+                for line in src.iterdump():
+                    lines.append(line)
+                src.close()
+                dump_ok = True
+            except Exception:
+                try:
+                    src.close()
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=_dump, daemon=True)
+        t.start()
+        t.join(timeout=15)
+
+        if dump_ok and lines:
             # Rebuild into a new DB
             dst = sqlite3.connect(new_path)
             dst.executescript('\n'.join(lines))
@@ -68,12 +84,23 @@ def check_and_repair_database():
             init_database()  # Ensure all tables exist
             return True, f'Database repaired via dump-rebuild. Corrupt backup: {os.path.basename(backup_path)}'
         else:
-            # Nothing recoverable — reinitialize from scratch
+            # Dump timed out or nothing recoverable — reinitialize from scratch
+            try:
+                if os.path.exists(new_path):
+                    os.remove(new_path)
+            except Exception:
+                pass
             os.remove(DB_PATH)
             init_database()
             return True, f'Database was unrecoverable — reinitialized empty. Corrupt backup: {os.path.basename(backup_path)}'
     except Exception as e:
-        return False, f'Repair failed: {str(e)}'
+        # Last resort: delete and reinitialize
+        try:
+            os.remove(DB_PATH)
+            init_database()
+            return True, f'Repair failed ({e}) — reinitialized empty. Corrupt backup: {os.path.basename(backup_path)}'
+        except Exception as e2:
+            return False, f'Repair failed: {str(e2)}'
 
 def init_database():
     """Initialize the database with required tables."""

@@ -1896,10 +1896,15 @@ try:
 except Exception as _db_exc:
     print(f"[STARTUP] WARNING: DB check raised: {_db_exc}")
 
-try:
-    provision_hierarchy_passwords()
-except Exception as _prov_exc:
-    print(f"[STARTUP] WARNING: provision_hierarchy_passwords failed: {_prov_exc}")
+# Run password provisioning in background thread so it doesn't block WSGI startup
+def _bg_provision():
+    try:
+        provision_hierarchy_passwords()
+    except Exception as _prov_exc:
+        print(f"[STARTUP] WARNING: provision_hierarchy_passwords failed: {_prov_exc}")
+
+threading.Thread(target=_bg_provision, daemon=True).start()
+print("[STARTUP] Background provisioning thread started, continuing module load...")
 
 # ============ Authentication Decorators ============
 
