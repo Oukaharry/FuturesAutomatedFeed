@@ -29,7 +29,7 @@ from config.hierarchy import (
 
 # Import database module for secure storage
 from dashboard.database import (
-    init_database, 
+    init_database, check_and_repair_database,
     validate_api_key, generate_api_key, list_api_keys, revoke_api_key,
     verify_admin_password, set_admin_password, admin_password_exists,
     save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field, delete_client_data,
@@ -1885,7 +1885,20 @@ def provision_hierarchy_passwords():
     if created or reset:
         print(f"[AUTH] Provisioned {created} new, reset {reset} existing users to default password")
 
-provision_hierarchy_passwords()
+# Check DB integrity before provisioning (catches corrupt DB on startup)
+try:
+    _db_ok, _db_msg = check_and_repair_database()
+    if not _db_ok:
+        print(f"[STARTUP] WARNING: DB integrity check/repair failed: {_db_msg}")
+    else:
+        print(f"[STARTUP] {_db_msg}")
+except Exception as _db_exc:
+    print(f"[STARTUP] WARNING: DB check raised: {_db_exc}")
+
+try:
+    provision_hierarchy_passwords()
+except Exception as _prov_exc:
+    print(f"[STARTUP] WARNING: provision_hierarchy_passwords failed: {_prov_exc}")
 
 # ============ Authentication Decorators ============
 
