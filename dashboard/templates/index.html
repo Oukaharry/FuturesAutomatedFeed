@@ -2340,48 +2340,49 @@
             </div>
 
             <!-- Shared Address Section -->
-            <div id="payment-address-section" style="background: linear-gradient(180deg, #060a14, #04060e); border: 1px solid #162040; border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: 0 4px 18px rgba(1,3,10,0.7);">
-                <h4 style="margin: 0 0 12px 0; color: #7898be; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;">Billing Address</h4>
-                <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px;">
+            <div id="payment-address-section" style="background: linear-gradient(180deg, #060a14, #04060e); border: 1px solid #162040; border-radius: 12px; padding: 20px 22px; margin-bottom: 20px; box-shadow: 0 4px 18px rgba(1,3,10,0.7);">
+                <h4 style="margin: 0 0 14px 0; color: #7898be; font-size: 0.82em; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600;">Billing Address</h4>
+                <!-- Row 1: Address 1 + Address 2 -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div>
-                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:3px;">Address</label>
-                        <input type="text" class="cell-input" id="payment-address" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="Street Address" onchange="updatePaymentAddress('address', this.value)">
+                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Address Line 1</label>
+                        <input type="text" class="cell-input" id="payment-address" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Street Address" onchange="updatePaymentAddress('address', this.value)">
                     </div>
                     <div>
-                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:3px;">City</label>
-                        <input type="text" class="cell-input" id="payment-city" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="City" onchange="updatePaymentAddress('city', this.value)">
+                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Address Line 2 <span style="color:#475569; font-weight:400;">(optional)</span></label>
+                        <input type="text" class="cell-input" id="payment-address2" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Apt, Suite, Unit, etc." onchange="updatePaymentAddress('address2', this.value)">
+                    </div>
+                </div>
+                <!-- Row 2: City, State, Zip, Country, Phone -->
+                <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.5fr 1.5fr; gap: 12px;">
+                    <div>
+                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">City</label>
+                        <input type="text" class="cell-input" id="payment-city" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="City" onchange="updatePaymentAddress('city', this.value)">
                     </div>
                     <div>
-                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:3px;">State</label>
-                        <input type="text" class="cell-input" id="payment-state" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="State" onchange="updatePaymentAddress('state', this.value)">
+                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">State / Province</label>
+                        <input type="text" class="cell-input" id="payment-state" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="State" onchange="updatePaymentAddress('state', this.value)">
                     </div>
                     <div>
-                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:3px;">Zip</label>
-                        <input type="text" class="cell-input" id="payment-zip" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="Zip" onchange="updatePaymentAddress('zip', this.value)">
+                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">ZIP / Postal Code</label>
+                        <input type="text" class="cell-input" id="payment-zip" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="ZIP Code" onchange="updatePaymentAddress('zip', this.value)">
                     </div>
                     <div>
-                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:3px;">Phone Number</label>
-                        <input type="text" class="cell-input" id="payment-phone" style="width:100%; padding:6px 8px; font-size:0.9em;" placeholder="Phone Number" onchange="updatePaymentAddress('phone_number', this.value)">
+                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Country</label>
+                        <input type="text" class="cell-input" id="payment-country" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Country" onchange="updatePaymentAddress('country', this.value)">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Phone Number</label>
+                        <input type="text" class="cell-input" id="payment-phone" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="+1 (555) 000-0000" onchange="updatePaymentAddress('phone_number', this.value)">
                     </div>
                 </div>
             </div>
 
-            <!-- Cards Table -->
-            <table id="payment-info-table">
-                <thead>
-                    <tr>
-                        <th style="width:14%;">Bank</th>
-                        <th style="width:18%;">Name on Card</th>
-                        <th style="width:16%;">Prop Firm</th>
-                        <th style="width:22%;">Card Number</th>
-                        <th style="width:10%;">Expiration</th>
-                        <th style="width:8%;">CCV</th>
-                        <th style="width:60px;">Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="payment-info-body"></tbody>
-            </table>
-            <div id="no-payment-info-msg" class="no-data">No payment cards configured. Add one to get started.</div>
+            <!-- Cards Section -->
+            <div id="payment-cards-section"></div>
+            <div id="no-payment-info-msg" class="no-data" style="display:none;">No payment cards configured. Add one to get started.</div>
+            <!-- Legacy hidden table kept for backward compat -->
+            <table id="payment-info-table" style="display:none;"><thead><tr></tr></thead><tbody id="payment-info-body"></tbody></table>
         </div>
 
         <!-- Issues Tab (traders/admins only) -->
@@ -5081,48 +5082,173 @@
         }
 
         var paymentEditMode = false;
+        var _paymentDragSrcIndex = null;
 
         function renderPaymentInfo(data) {
-            const body = document.getElementById('payment-info-body');
             const noDataMsg = document.getElementById('no-payment-info-msg');
-            const table = document.getElementById('payment-info-table');
-            if (!body || !noDataMsg || !table) return;
+            const cardsSection = document.getElementById('payment-cards-section');
+            if (!noDataMsg || !cardsSection) return;
 
             const ro = !paymentEditMode;
 
             // Render shared address fields
             const addrData = data.payment_address || {};
-            const addrEl = document.getElementById('payment-address');
-            const cityEl = document.getElementById('payment-city');
-            const stateEl = document.getElementById('payment-state');
-            const zipEl = document.getElementById('payment-zip');
-            const phoneEl = document.getElementById('payment-phone');
-            if (addrEl) { addrEl.value = addrData.address || ''; addrEl.readOnly = ro; }
-            if (cityEl) { cityEl.value = addrData.city || ''; cityEl.readOnly = ro; }
-            if (stateEl) { stateEl.value = addrData.state || ''; stateEl.readOnly = ro; }
-            if (zipEl) { zipEl.value = addrData.zip || ''; zipEl.readOnly = ro; }
-            if (phoneEl) { phoneEl.value = addrData.phone_number || ''; phoneEl.readOnly = ro; }
+            const fields = [
+                ['payment-address',  'address',      addrData.address      || ''],
+                ['payment-address2', 'address2',     addrData.address2     || ''],
+                ['payment-city',     'city',         addrData.city         || ''],
+                ['payment-state',    'state',        addrData.state        || ''],
+                ['payment-zip',      'zip',          addrData.zip          || ''],
+                ['payment-country',  'country',      addrData.country      || ''],
+                ['payment-phone',    'phone_number', addrData.phone_number || ''],
+            ];
+            fields.forEach(([id, , val]) => {
+                const el = document.getElementById(id);
+                if (el) { el.value = val; el.readOnly = ro; }
+            });
 
-            body.innerHTML = '';
+            // Render card tiles
+            cardsSection.innerHTML = '';
             const items = data.payment_info || [];
+            const multiCard = items.length > 1;
 
-            if (items.length > 0) {
-                noDataMsg.style.display = 'none';
-                table.style.display = 'table';
-
-                items.forEach((item, index) => {
-                    const row = document.createElement('tr');
-                    const fields = ['bank','name_on_card','prop_firm','card_number','expiration','ccv'];
-                    const placeholders = ['Bank','Name on Card','Prop Firm','Card Number','MM/YY','CCV'];
-                    row.innerHTML = fields.map((f, i) =>
-                        `<td><input type="text" class="cell-input payment-field" style="width:100%; padding:6px 8px; font-size:0.9em;" value="${(item[f] || '').toString().replace(/"/g, '&quot;')}" placeholder="${placeholders[i]}" ${ro ? 'readonly' : ''} onchange="updatePaymentField(${index}, '${f}', this.value)"></td>`
-                    ).join('') + `<td style="text-align:center;"><button onclick="deletePaymentInfo(${index})" class="btn-delete" title="Remove" ${ro ? 'style="display:none"' : ''}>🗑️</button></td>`;
-                    body.appendChild(row);
-                });
-            } else {
+            if (items.length === 0) {
                 noDataMsg.style.display = 'block';
-                table.style.display = 'none';
+                return;
             }
+            noDataMsg.style.display = 'none';
+
+            const grid = document.createElement('div');
+            grid.id = 'payment-cards-grid';
+            grid.style.cssText = 'display:flex; flex-direction:column; gap:14px;';
+
+            items.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = 'payment-card-tile';
+                card.dataset.index = index;
+                card.style.cssText = [
+                    'background: linear-gradient(135deg, #07101f 0%, #0a1628 100%)',
+                    'border: 1px solid #1e3058',
+                    'border-radius: 14px',
+                    'padding: 18px 20px',
+                    'position: relative',
+                    'transition: border-color 0.2s, box-shadow 0.2s',
+                    'box-shadow: 0 2px 12px rgba(0,0,0,0.5)',
+                ].join(';');
+
+                // Drag handle & delete header bar
+                const headerBar = document.createElement('div');
+                headerBar.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;';
+
+                const leftMeta = document.createElement('div');
+                leftMeta.style.cssText = 'display:flex; align-items:center; gap:10px;';
+
+                if (multiCard && !ro) {
+                    const dragHandle = document.createElement('span');
+                    dragHandle.innerHTML = '&#x2630;';
+                    dragHandle.title = 'Drag to reorder';
+                    dragHandle.style.cssText = 'cursor:grab; color:#3a5070; font-size:1.1em; user-select:none; padding:2px 4px; border-radius:4px; transition:color 0.15s;';
+                    dragHandle.onmouseenter = () => { dragHandle.style.color = '#7898be'; };
+                    dragHandle.onmouseleave = () => { dragHandle.style.color = '#3a5070'; };
+                    leftMeta.appendChild(dragHandle);
+                }
+
+                const cardLabel = document.createElement('span');
+                cardLabel.style.cssText = 'font-size:0.78em; color:#3d6091; text-transform:uppercase; letter-spacing:1.2px; font-weight:600;';
+                cardLabel.textContent = multiCard ? `Card ${index + 1}` : 'Payment Card';
+                leftMeta.appendChild(cardLabel);
+                headerBar.appendChild(leftMeta);
+
+                if (!ro) {
+                    const delBtn = document.createElement('button');
+                    delBtn.innerHTML = '&#128465;';
+                    delBtn.title = 'Remove card';
+                    delBtn.className = 'btn-delete';
+                    delBtn.style.cssText = 'font-size:0.85em; padding:3px 8px; opacity:0.7; transition:opacity 0.15s;';
+                    delBtn.onmouseenter = () => { delBtn.style.opacity = '1'; };
+                    delBtn.onmouseleave = () => { delBtn.style.opacity = '0.7'; };
+                    delBtn.onclick = () => deletePaymentInfo(index);
+                    headerBar.appendChild(delBtn);
+                }
+                card.appendChild(headerBar);
+
+                // Fields grid: 3 cols top row, 3 cols bottom row
+                const fieldGrid = document.createElement('div');
+                fieldGrid.style.cssText = 'display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;';
+
+                const cardFields = [
+                    { key: 'bank',         label: 'Bank',         placeholder: 'e.g. Chase',         type: 'text', ac: 'off' },
+                    { key: 'name_on_card', label: 'Name on Card', placeholder: 'Full Name',           type: 'text', ac: 'off' },
+                    { key: 'prop_firm',    label: 'Prop Firm',    placeholder: 'Firm Name',           type: 'text', ac: 'off' },
+                    { key: 'card_number',  label: 'Card Number',  placeholder: '•••• •••• •••• ••••', type: 'text', ac: 'off' },
+                    { key: 'expiration',   label: 'Expiry',       placeholder: 'MM/YY',               type: 'text', ac: 'off' },
+                    { key: 'ccv',          label: 'CCV',          placeholder: '•••',                 type: 'text', ac: 'off' },
+                ];
+
+                cardFields.forEach(({ key, label, placeholder, type, ac }) => {
+                    const wrap = document.createElement('div');
+                    const lbl = document.createElement('label');
+                    lbl.style.cssText = 'display:block; font-size:0.73em; color:#5a7ba0; margin-bottom:4px; font-weight:500; text-transform:uppercase; letter-spacing:0.8px;';
+                    lbl.textContent = label;
+                    const inp = document.createElement('input');
+                    inp.type = type;
+                    inp.className = 'cell-input payment-field';
+                    inp.style.cssText = 'width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;';
+                    inp.placeholder = placeholder;
+                    inp.autocomplete = ac || 'off';
+                    inp.readOnly = ro;
+                    inp.value = (item[key] || '').toString();
+                    if (!ro) inp.addEventListener('change', e => updatePaymentField(index, key, e.target.value));
+                    wrap.appendChild(lbl);
+                    wrap.appendChild(inp);
+                    fieldGrid.appendChild(wrap);
+                });
+                card.appendChild(fieldGrid);
+
+                // Drag-and-drop events (only when editing + multiple cards)
+                if (multiCard && !ro) {
+                    card.draggable = true;
+                    card.addEventListener('dragstart', e => {
+                        _paymentDragSrcIndex = index;
+                        card.style.opacity = '0.45';
+                        e.dataTransfer.effectAllowed = 'move';
+                    });
+                    card.addEventListener('dragend', () => {
+                        card.style.opacity = '1';
+                        document.querySelectorAll('.payment-card-tile').forEach(c => {
+                            c.style.borderColor = '#1e3058';
+                            c.style.boxShadow = '0 2px 12px rgba(0,0,0,0.5)';
+                        });
+                    });
+                    card.addEventListener('dragover', e => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (parseInt(card.dataset.index) !== _paymentDragSrcIndex) {
+                            card.style.borderColor = '#3b82f6';
+                            card.style.boxShadow = '0 0 0 2px rgba(59,130,246,0.35)';
+                        }
+                    });
+                    card.addEventListener('dragleave', () => {
+                        card.style.borderColor = '#1e3058';
+                        card.style.boxShadow = '0 2px 12px rgba(0,0,0,0.5)';
+                    });
+                    card.addEventListener('drop', e => {
+                        e.preventDefault();
+                        const targetIndex = parseInt(card.dataset.index);
+                        if (_paymentDragSrcIndex !== null && _paymentDragSrcIndex !== targetIndex) {
+                            const arr = currentData.payment_info;
+                            const moved = arr.splice(_paymentDragSrcIndex, 1)[0];
+                            arr.splice(targetIndex, 0, moved);
+                            _paymentDragSrcIndex = null;
+                            renderPaymentInfo(currentData);
+                        }
+                    });
+                }
+
+                grid.appendChild(card);
+            });
+
+            cardsSection.appendChild(grid);
         }
 
         function updatePaymentAddress(key, value) {
