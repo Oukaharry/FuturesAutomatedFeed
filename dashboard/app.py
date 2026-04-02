@@ -4069,19 +4069,18 @@ def api_kyc_accounts():
         accounts = [client_id]
     # Enrich with basic client info
     is_bef = user_type == 'bef_admin'
+    from dashboard.financial_overview import get_client_profile as _gcp
     result = []
     for name in accounts:
         cdata = get_client_data(name)
-        if not cdata:
-            if not is_bef:
-                result.append({"name": name, "eval_count": 0, "is_current": name == client_id})
-            continue
         if is_bef:
-            # BEF admin: only show clients whose profile/category is BEF
-            identity = cdata.get('identity') or {}
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if client_profile != 'BEF':
+            # BEF admin: only show clients whose profile/category is BEF (with hierarchy fallback)
+            identity = cdata.get('identity') or {} if cdata else {}
+            if _gcp(name, identity) != 'BEF':
                 continue
+        if not cdata:
+            result.append({"name": name, "eval_count": 0, "is_current": name == client_id})
+            continue
         evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
         if is_bef:
             # Exclude hidden prop firms from eval count
@@ -4121,7 +4120,7 @@ def api_kyc_portfolio():
     to_date = request.args.get('to', '')
     
     accounts = get_all_kyc_accounts(client_id)
-    from dashboard.financial_overview import parse_currency
+    from dashboard.financial_overview import parse_currency, get_client_profile as _gcp
     
     def parse_date_safe(val):
         if not val or not isinstance(val, str):
@@ -4189,17 +4188,14 @@ def api_kyc_portfolio():
 
     for name in accounts:
         cdata = get_client_data(name)
-        if not cdata:
-            if not is_bef:
-                per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
-            continue
-
-        # BEF admin: skip clients whose profile is not BEF
+        # BEF admin: skip clients whose profile is not BEF (with hierarchy fallback)
         if is_bef:
-            identity = cdata.get('identity') or {}
-            client_profile = (identity.get('profile') or identity.get('category') or identity.get('source') or 'PRIVATE').upper()
-            if client_profile != 'BEF':
+            identity = cdata.get('identity') or {} if cdata else {}
+            if _gcp(name, identity) != 'BEF':
                 continue
+        if not cdata:
+            per_account.append({"name": name, "eval_count": 0, "payouts": 0, "fees": 0, "hedge": 0, "farming": 0, "net": 0, "active": 0, "passed": 0, "failed": 0})
+            continue
 
         all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
 
