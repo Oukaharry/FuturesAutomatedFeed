@@ -765,14 +765,7 @@
 
 
 
-                    <!-- LWM (14d) -->
-                    <div class="stat-card-modern" onclick="showBreakdown('lwm')" style="cursor:pointer; background: linear-gradient(135deg, rgba(244, 63, 94, 0.15) 0%, rgba(159, 18, 57, 0.6) 100%); border: 1px solid rgba(251, 113, 133, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                         <div class="stat-label-modern" style="color: #fda4af !important; font-weight: 700; display:flex; justify-content:space-between; align-items:center;">
-                             Cumulative LWM (14d)
-                             <i class="fas fa-info-circle" style="font-size:0.8rem; cursor:help;" title="Sum of positive individual LWMs only (Clients > 0)"></i>
-                         </div>
-                         <div id="grand-lwm" class="stat-value-modern" style="color: #fb7185 !important; text-shadow: 0 0 20px rgba(251, 113, 133, 0.3);">$0.00</div>
-                    </div>
+
 
                 </div>
 
@@ -1327,14 +1320,12 @@
             fees: 'Challenge Fees',
             net_profit: 'Net Profit',
             hedge_profit: 'Hedging Results',
-            hwm: 'HWM (14d)',
-            lwm: 'LWM (14d)',
             active: 'Active Accounts',
             passed: 'Passed Accounts',
             failed: 'Failed Accounts'
         };
 
-        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','hwm','lwm'];
+        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit'];
 
         function escHtml(str) {
             const d = document.createElement('div');
@@ -1550,10 +1541,7 @@
                             document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
                             document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
                             
-                            if (document.getElementById('grand-hwm')) {
-                                document.getElementById('grand-hwm').textContent = formatCurrency(t.total_hwm);
-                                document.getElementById('grand-lwm').textContent = formatCurrency(t.total_lwm);
-                            }
+
                             
                             const elActive = document.getElementById('grand-active-accounts');
                             const elCompleted = document.getElementById('grand-completed-accounts');
