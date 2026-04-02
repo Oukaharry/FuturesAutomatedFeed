@@ -2346,34 +2346,34 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Address Line 1</label>
-                        <input type="text" class="cell-input" id="payment-address" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Street Address" onchange="updatePaymentAddress('address', this.value)">
+                        <input type="text" class="cell-input" id="payment-address" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Street Address" onchange="updatePaymentAddress('address', this.value)">
                     </div>
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Address Line 2 <span style="color:#475569; font-weight:400;">(optional)</span></label>
-                        <input type="text" class="cell-input" id="payment-address2" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Apt, Suite, Unit, etc." onchange="updatePaymentAddress('address2', this.value)">
+                        <input type="text" class="cell-input" id="payment-address2" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Apt, Suite, Unit, etc." onchange="updatePaymentAddress('address2', this.value)">
                     </div>
                 </div>
                 <!-- Row 2: City, State, Zip, Country, Phone -->
                 <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.5fr 1.5fr; gap: 12px;">
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">City</label>
-                        <input type="text" class="cell-input" id="payment-city" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="City" onchange="updatePaymentAddress('city', this.value)">
+                        <input type="text" class="cell-input" id="payment-city" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="City" onchange="updatePaymentAddress('city', this.value)">
                     </div>
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">State / Province</label>
-                        <input type="text" class="cell-input" id="payment-state" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="State" onchange="updatePaymentAddress('state', this.value)">
+                        <input type="text" class="cell-input" id="payment-state" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="State" onchange="updatePaymentAddress('state', this.value)">
                     </div>
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">ZIP / Postal Code</label>
-                        <input type="text" class="cell-input" id="payment-zip" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="ZIP Code" onchange="updatePaymentAddress('zip', this.value)">
+                        <input type="text" class="cell-input" id="payment-zip" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="ZIP Code" onchange="updatePaymentAddress('zip', this.value)">
                     </div>
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Country</label>
-                        <input type="text" class="cell-input" id="payment-country" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Country" onchange="updatePaymentAddress('country', this.value)">
+                        <input type="text" class="cell-input" id="payment-country" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="Country" onchange="updatePaymentAddress('country', this.value)">
                     </div>
                     <div>
                         <label style="display:block; font-size:0.75em; color:var(--text-muted,#94a3b8); margin-bottom:4px; font-weight:500;">Phone Number</label>
-                        <input type="text" class="cell-input" id="payment-phone" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="+1 (555) 000-0000" onchange="updatePaymentAddress('phone_number', this.value)">
+                        <input type="text" class="cell-input" id="payment-phone" autocomplete="off" style="width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;" placeholder="+1 (555) 000-0000" onchange="updatePaymentAddress('phone_number', this.value)">
                     </div>
                 </div>
             </div>
@@ -5177,15 +5177,15 @@
                 fieldGrid.style.cssText = 'display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;';
 
                 const cardFields = [
-                    { key: 'bank',         label: 'Bank',         placeholder: 'e.g. Chase',        type: 'text' },
-                    { key: 'name_on_card', label: 'Name on Card', placeholder: 'Full Name',          type: 'text' },
-                    { key: 'prop_firm',    label: 'Prop Firm',    placeholder: 'Firm Name',          type: 'text' },
-                    { key: 'card_number',  label: 'Card Number',  placeholder: '•••• •••• •••• ••••', type: 'text' },
-                    { key: 'expiration',   label: 'Expiry',       placeholder: 'MM/YY',              type: 'text' },
-                    { key: 'ccv',          label: 'CCV',          placeholder: '•••',                type: 'text' },
+                    { key: 'bank',         label: 'Bank',         placeholder: 'e.g. Chase',         type: 'text', ac: 'off' },
+                    { key: 'name_on_card', label: 'Name on Card', placeholder: 'Full Name',           type: 'text', ac: 'off' },
+                    { key: 'prop_firm',    label: 'Prop Firm',    placeholder: 'Firm Name',           type: 'text', ac: 'off' },
+                    { key: 'card_number',  label: 'Card Number',  placeholder: '•••• •••• •••• ••••', type: 'text', ac: 'off' },
+                    { key: 'expiration',   label: 'Expiry',       placeholder: 'MM/YY',               type: 'text', ac: 'off' },
+                    { key: 'ccv',          label: 'CCV',          placeholder: '•••',                 type: 'text', ac: 'off' },
                 ];
 
-                cardFields.forEach(({ key, label, placeholder, type }) => {
+                cardFields.forEach(({ key, label, placeholder, type, ac }) => {
                     const wrap = document.createElement('div');
                     const lbl = document.createElement('label');
                     lbl.style.cssText = 'display:block; font-size:0.73em; color:#5a7ba0; margin-bottom:4px; font-weight:500; text-transform:uppercase; letter-spacing:0.8px;';
@@ -5195,6 +5195,7 @@
                     inp.className = 'cell-input payment-field';
                     inp.style.cssText = 'width:100%; padding:7px 10px; font-size:0.9em; box-sizing:border-box;';
                     inp.placeholder = placeholder;
+                    inp.autocomplete = ac || 'off';
                     inp.readOnly = ro;
                     inp.value = (item[key] || '').toString();
                     if (!ro) inp.addEventListener('change', e => updatePaymentField(index, key, e.target.value));
