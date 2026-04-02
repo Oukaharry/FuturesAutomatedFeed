@@ -1453,6 +1453,14 @@ def get_client_performance_stats(profile_filter=None):
     Returns a list of per-client performance statistics.
     Used for the Client Performance Table.
     """
+    # BEF hidden firms — evaluations from these firms are excluded for BEF view
+    BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
+    is_bef = profile_filter and profile_filter.upper() == 'BEF'
+
+    def _is_firm_hidden(firm_name):
+        if not is_bef:
+            return False
+        return (firm_name or '').strip().lower().replace(' ', '') in BEF_HIDDEN_FIRMS
     # Import hierarchy to map clients to traders/admins
     try:
         from config.hierarchy import SYSTEM_HIERARCHY
@@ -1535,6 +1543,9 @@ def get_client_performance_stats(profile_filter=None):
         for ev in evaluations:
             if not isinstance(ev, dict):
                 continue
+            # Skip hidden firms for BEF view
+            if _is_firm_hidden(ev.get('Prop Firm')):
+                continue
             # Status logic expanded
             status_p1_raw = str(ev.get('Status P1') or '').strip()
             status_funded_raw = str(ev.get('Status') or '').strip()
@@ -1567,8 +1578,9 @@ def get_client_performance_stats(profile_filter=None):
                 c_stats['payouts'] += parse_currency(ev.get(f'Payout {i}'))
             
         # Use stored cashflow_inprogress for hedge/farming/fees (matches Net Profit In Progress display)
+        # For BEF view, skip stored totals (they include all firms) — use per-eval sums instead
         stored_cf = data.get('statistics', {}).get('cashflow_inprogress', {})
-        if stored_cf and (stored_cf.get('hedging_results', 0) != 0 or stored_cf.get('farming_results', 0) != 0):
+        if not is_bef and stored_cf and (stored_cf.get('hedging_results', 0) != 0 or stored_cf.get('farming_results', 0) != 0):
             sheet_hedge = stored_cf.get('hedging_results', 0.0) + stored_cf.get('farming_results', 0.0)
             # Compute live actual hedging from MT5 (same formula as client dashboard)
             acct = data.get('account', {})
@@ -1620,6 +1632,8 @@ def get_client_performance_stats(profile_filter=None):
             for ev in evaluations:
                 if not isinstance(ev, dict):
                     continue
+                if _is_firm_hidden(ev.get('Prop Firm')):
+                    continue
                 status_p1 = str(ev.get('Status P1') or '').strip()
                 status_funded = str(ev.get('Status') or '').strip()
                 if status_p1:
@@ -1650,7 +1664,8 @@ def get_client_performance_stats(profile_filter=None):
         c_stats['deposits'] = abs(current_dep) + abs(hist_dep)
 
         # Net Profit — use stored value from cashflow_inprogress (matches Net Profit In Progress display)
-        if stored_cf and stored_cf.get('net_profit') is not None:
+        # For BEF view, always recalculate from filtered eval sums
+        if not is_bef and stored_cf and stored_cf.get('net_profit') is not None:
             c_stats['net_profit'] = stored_cf.get('net_profit', 0.0)
         else:
             c_stats['net_profit'] = c_stats['payouts'] + c_stats['hedge_profit'] + c_stats['farming_profit'] - c_stats['fees']
