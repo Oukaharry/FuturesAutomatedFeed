@@ -25,24 +25,35 @@ def fmt_size(n):
     return f"{n:.1f} TB"
 
 def find_junk_files():
-    """Find .corrupt backups, .new temp files, and other large DB copies."""
+    """Find .corrupt backups, .new temp files, and other large DB copies.
+    NEVER includes the main dashboard.db — only temp/backup copies."""
     patterns = [
         os.path.join(DASHBOARD_DIR, '*.corrupt.*'),
         os.path.join(DASHBOARD_DIR, '*.new'),
+        os.path.join(DASHBOARD_DIR, '*.rebuilt'),
+        os.path.join(DASHBOARD_DIR, '*.pre_repair.*'),
         os.path.join(DASHBOARD_DIR, 'dashboard.db-journal'),
         os.path.join(DASHBOARD_DIR, 'dashboard.db-wal'),
         os.path.join(DASHBOARD_DIR, 'dashboard.db-shm'),
     ]
-    # Also check project root for stray DB files
+    # Also check project root for stray backup files
     root = os.path.dirname(DASHBOARD_DIR)
     patterns += [
         os.path.join(root, '*.corrupt.*'),
         os.path.join(root, '*.db.bak'),
-        os.path.join(root, 'dashboard.db.*'),
     ]
+    
+    # Safety: explicitly protect the main database
+    protected = {
+        os.path.abspath(DB_PATH),
+        os.path.abspath(os.path.join(DASHBOARD_DIR, 'dashboard.db')),
+    }
+    
     files = []
     for pat in patterns:
-        files.extend(glob.glob(pat))
+        for f in glob.glob(pat):
+            if os.path.abspath(f) not in protected:
+                files.append(f)
     return files
 
 def check_integrity(db_path):
