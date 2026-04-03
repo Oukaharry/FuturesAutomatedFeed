@@ -204,31 +204,42 @@ def repair_empty_rows(report, db_data, dry_run=True):
             else:
                 row_to_acct[int(row_str)] = str(acct)
 
-        # Find empty rows
+        # Find rows needing repair (blank, partial account, or missing firm)
         row_fixes = []
         for idx, ev in enumerate(evals):
-            has_acct = bool(ev.get('Account Number', '').strip())
-            has_firm = bool(ev.get('Prop Firm', '').strip())
+            current_acct = ev.get('Account Number', '').strip()
+            current_firm = ev.get('Prop Firm', '').strip()
+
+            has_acct = bool(current_acct)
+            has_firm = bool(current_firm)
+
             if has_acct and has_firm:
                 continue  # Already populated
 
+            # Try to get partial from eval_account_map first, then from current DB value
             partial = row_to_acct.get(idx, '')
-            if not partial:
-                continue  # No log data for this row
+            if not partial and current_acct:
+                partial = current_acct.rsplit('-', 1)[-1] if '-' in current_acct else current_acct
 
+            if not partial:
+                continue  # No data to work with
+
+            # Look up full account to derive firm
             full_acct = suffix_to_full.get(partial, '')
             firm = ''
             if full_acct and '-' in full_acct:
                 prefix = full_acct.rsplit('-', 1)[0].upper()
                 firm = PREFIX_TO_FIRM.get(prefix, '')
 
-            acct_display = full_acct if full_acct else partial
+            # For account: use partial as-is if no full match
+            new_acct = partial if not has_acct else None
+            new_firm = firm if (not has_firm and firm) else None
 
-            if (not has_acct and acct_display) or (not has_firm and firm):
+            if new_acct or new_firm:
                 row_fixes.append({
                     'idx': idx,
-                    'account': acct_display if not has_acct else None,
-                    'firm': firm if not has_firm else None,
+                    'account': new_acct,
+                    'firm': new_firm,
                 })
 
         if row_fixes:
@@ -281,10 +292,10 @@ def repair_empty_rows(report, db_data, dry_run=True):
                 idx = fix['idx']
                 if idx >= len(evals):
                     continue
-                if fix['account'] and not evals[idx].get('Account Number', '').strip():
+                if fix['account']:
                     evals[idx]['Account Number'] = fix['account']
                     changed = True
-                if fix['firm'] and not evals[idx].get('Prop Firm', '').strip():
+                if fix['firm']:
                     evals[idx]['Prop Firm'] = fix['firm']
                     changed = True
 
