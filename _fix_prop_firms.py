@@ -88,17 +88,12 @@ def main():
     def get_all_clients():
         """Load all client data, skipping corrupt rows."""
         results = []
-        c = sqlite3.connect(DB_PATH, timeout=15)
-        c.execute("PRAGMA journal_mode=OFF")
-        c.execute("PRAGMA ignore_check_constraints=ON")
+        c = sqlite3.connect(DB_PATH, timeout=30)
         try:
             client_ids = [r[0] for r in c.execute('SELECT client_id FROM clients_data').fetchall()]
         except sqlite3.DatabaseError:
-            # If even the ID list fails, try with integrity_check off
             c.close()
-            c = sqlite3.connect(DB_PATH, timeout=15)
-            c.execute("PRAGMA journal_mode=OFF")
-            c.execute("PRAGMA ignore_check_constraints=ON")
+            c = sqlite3.connect(DB_PATH, timeout=30)
             c.execute("PRAGMA writable_schema=ON")
             client_ids = [r[0] for r in c.execute('SELECT client_id FROM clients_data').fetchall()]
         c.close()
@@ -106,8 +101,7 @@ def main():
 
         for cid in client_ids:
             try:
-                c2 = sqlite3.connect(DB_PATH, timeout=15)
-                c2.execute("PRAGMA journal_mode=OFF")
+                c2 = sqlite3.connect(DB_PATH, timeout=30)
                 row = c2.execute(
                     'SELECT client_id, evaluations FROM clients_data WHERE client_id=?', (cid,)
                 ).fetchone()
@@ -116,6 +110,10 @@ def main():
                     results.append({'client_id': row[0], 'evaluations': row[1]})
             except sqlite3.DatabaseError as e:
                 print(f"  ⚠ Skipping {cid}: {e}", flush=True)
+                try:
+                    c2.close()
+                except:
+                    pass
         return results
 
     rows = get_all_clients()
