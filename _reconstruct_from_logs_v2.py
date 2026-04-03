@@ -1420,7 +1420,7 @@ def main():
         clients_seen = set()
         for entry in audit_entries:
             actions[entry.get('action', '?')] += 1
-            detail = entry.get('details', '')
+            detail = entry.get('details', '') or ''
             if detail and 'Client:' in detail:
                 cid = detail.split('Client:')[1].split('(')[0].strip()
                 clients_seen.add(cid)
@@ -1438,8 +1438,8 @@ def main():
         for entry in audit_entries[:20]:
             ts = entry.get('timestamp', '?')
             action = entry.get('action', '?')
-            detail = entry.get('details', '')[:80]
-            user = entry.get('user_identifier', '?')
+            detail = (entry.get('details', '') or '')[:80]
+            user = entry.get('user_identifier', '') or '?'
             print(f"    [{ts}] {action} by {user}: {detail}")
         if len(audit_entries) > 20:
             print(f"    ... and {len(audit_entries) - 20} more")
