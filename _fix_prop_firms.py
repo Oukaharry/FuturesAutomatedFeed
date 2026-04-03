@@ -365,17 +365,24 @@ def main():
     # Close the read connection before apply phase
     conn.close()
 
-    # ── Backup ──
-    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup = DB_PATH + f'.pre_firmfix_{ts}'
-    shutil.copy2(DB_PATH, backup)
-    print(f"\n  Backup: {backup}")
-
-    # ── Apply (reconnect per client to survive corrupted pages) ──
+    # Group fixes by client
     fixes_by_client = defaultdict(list)
     for c, idx, field, old, new, reason in all_fixes:
         fixes_by_client[c].append((idx, field, new))
 
+    # ── Backup (skip if --no-backup to avoid hanging on large/corrupted DB) ──
+    if '--no-backup' not in sys.argv:
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup = DB_PATH + f'.pre_firmfix_{ts}'
+        print(f"\n  Creating backup... ", end='', flush=True)
+        shutil.copy2(DB_PATH, backup)
+        print(f"done: {backup}", flush=True)
+    else:
+        print(f"\n  Skipping backup (--no-backup)", flush=True)
+
+    print(f"\n  Applying {len(all_fixes)} fixes across {len(fixes_by_client)} clients...", flush=True)
+
+    # ── Apply (reconnect per client to survive corrupted pages) ──
     total_clients = len(fixes_by_client)
     updated = 0
     errors = 0
