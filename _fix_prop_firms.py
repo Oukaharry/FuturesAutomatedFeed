@@ -376,18 +376,22 @@ def main():
     for c, idx, field, old, new, reason in all_fixes:
         fixes_by_client[c].append((idx, field, new))
 
+    total_clients = len(fixes_by_client)
     updated = 0
     errors = 0
-    for client_id, fixes in fixes_by_client.items():
+    skipped = 0
+    for i, (client_id, fixes) in enumerate(fixes_by_client.items(), 1):
+        print(f"  [{i}/{total_clients}] {client_id} ({len(fixes)} fixes)...", end=' ', flush=True)
         conn = None
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = sqlite3.connect(DB_PATH, timeout=15)
             conn.row_factory = sqlite3.Row
             r = conn.execute(
                 'SELECT evaluations FROM clients_data WHERE client_id = ?', (client_id,)
             ).fetchone()
             if not r:
-                errors += 1
+                print("NOT FOUND")
+                skipped += 1
                 conn.close()
                 continue
 
@@ -411,6 +415,10 @@ def main():
                 )
                 conn.commit()
                 updated += 1
+                print("OK")
+            else:
+                skipped += 1
+                print("no changes")
             conn.close()
         except Exception as e:
             print(f"  ❌ Error updating {client_id}: {e}")
@@ -421,7 +429,7 @@ def main():
                 except:
                     pass
 
-    print(f"\n  ✅ Applied: {updated} clients updated, {errors} errors")
+    print(f"\n  ✅ Applied: {updated} clients updated, {skipped} skipped, {errors} errors")
 
 
 if __name__ == '__main__':
