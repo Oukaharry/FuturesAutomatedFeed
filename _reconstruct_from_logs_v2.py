@@ -92,7 +92,7 @@ def parse_all_logs():
 
     # ── Primary reconstruction patterns (cell writes) ──
     RE_PUSH     = re.compile(r'📥 Push for (.+?): (\d+) deals, balance=([\d.]+), (\d+) evaluations')
-    RE_HEDGE    = re.compile(r'✅ Matched session \(Start .+?\) -> Column: \[(.+?)\] \| Row: (\d+) \| New Value: \$([\d.,+-]+)')
+    RE_HEDGE    = re.compile(r'✅ Matched session \(Start (.+?)\) -> Column: \[(.+?)\] \| Row: (\d+) \| New Value: \$([\d.,+-]+)')
     RE_FARM     = re.compile(r'✅ 🌾 Row (\d+) \| Hedge Day (\d+): \$([\d.,+-]+) \((\d{4}-\d{2}-\d{2})\)')
 
     # ── MT5 account values (after push summary) ──
@@ -185,8 +185,8 @@ def parse_all_logs():
                 # ── Hedge result writes ──
                 m = RE_HEDGE.search(line)
                 if m:
-                    col, row, val = m.group(1), int(m.group(2)), float(m.group(3).replace(',', ''))
-                    pending_hedge_writes.append((row, col, val, last_timestamp or ''))
+                    sess_start, col, row, val = m.group(1), m.group(2), int(m.group(3)), float(m.group(4).replace(',', ''))
+                    pending_hedge_writes.append((row, col, val, last_timestamp or '', sess_start))
                     continue
 
                 # ── Farming writes ──
@@ -336,6 +336,34 @@ def parse_all_logs():
                         # Only add if not a duplicate
                         if entry not in existing:
                             existing.append(entry)
+
+                    # Link hedge writes → sessions by start time to fill gaps
+                    # in account_maps for rows without [MATCHED EVAL] entries
+                    if pending_sessions and pending_hedge_writes:
+                        sess_by_start = {}
+                        for s in pending_sessions:
+                            sess_by_start[s['start']] = s
+                        # Collect rows touched by hedge writes, keyed by session start
+                        for hw in pending_hedge_writes:
+                            hw_row = hw[0]
+                            hw_sess_start = hw[4] if len(hw) > 4 else ''
+                            if not hw_sess_start:
+                                continue
+                            sess = sess_by_start.get(hw_sess_start)
+                            if not sess:
+                                continue
+                            # Extract the account partial from account_guess
+                            acct_guess = sess['account_guess']
+                            acct_partial = acct_guess.rsplit('-', 1)[-1] if '-' in acct_guess else acct_guess
+                            entry = {
+                                'account': acct_partial,
+                                'phase': sess['phase'],
+                                'num': sess['num'],
+                            }
+                            existing = account_maps[client_id][hw_row]
+                            if entry not in existing:
+                                existing.append(entry)
+
                     for s in pending_sessions:
                         session_accounts[client_id].add(s['account_guess'])
                     for acct, info in pending_fa_accounts.items():
@@ -654,7 +682,8 @@ def get_merged_pushes(all_pushes):
         # Merge hedge writes: (row, col) → (val, timestamp)
         hedge_map = {}
         for push in sorted_pushes:
-            for row, col, val, ts in push['hedge_writes']:
+            for hw in push['hedge_writes']:
+                row, col, val, ts = hw[0], hw[1], hw[2], hw[3]
                 key = (row, col)
                 if key not in hedge_map or ts >= hedge_map[key][1]:
                     hedge_map[key] = (val, ts)
@@ -805,7 +834,8 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
             # ── 1. Apply ALL merged hedge result writes ──
             hedge_ok = 0
             hedge_oor = 0
-            for eval_row, column, value in push['hedge_writes']:
+            for hw in push['hedge_writes']:
+                eval_row, column, value = hw[0], hw[1], hw[2]
                 if eval_row < len(evaluations):
                     old_val = evaluations[eval_row].get(column, 'N/A')
                     evaluations[eval_row][column] = f"{value:.2f}"
@@ -822,7 +852,8 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
             # ── 2. Apply ALL merged farming writes ──
             farm_ok = 0
             farm_oor = 0
-            for eval_row, day_num, value, date_str in push['farming_writes']:
+            for fw in push['farming_writes']:
+                eval_row, day_num, value, date_str = fw[0], fw[1], fw[2], fw[3]
                 field = f'Hedge Day {day_num}'
                 date_field = f'_Hedge Day {day_num} Date'
                 if eval_row < len(evaluations):
