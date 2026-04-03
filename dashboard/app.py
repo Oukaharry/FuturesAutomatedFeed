@@ -53,7 +53,7 @@ from dashboard.notes_service import (
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
 # Firms hidden from BEF admin (normalised: lowercase, no spaces)
-BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
+BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'toponefutures'}
 
 # Start Midnight Watermark Scheduler
 try:
