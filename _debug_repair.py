@@ -9,7 +9,7 @@ report = json.load(open(REPORT_PATH))
 conn = sqlite3.connect(DB_PATH)
 
 # Pick a few clients with known empty rows
-test_clients = ['Chris Ream', 'Bec Dredge']
+test_clients = ['Chris Ream']
 
 for cid in test_clients:
     print(f"\n{'='*80}")
@@ -156,6 +156,20 @@ for cid in test_clients:
             print(f"\n    --- No Firm AND No Account ({len(neither)}) ---")
             for pr in neither[:20]:
                 print(f"    Row {pr['idx']:>4}: (completely empty)")
+
+        # Show all rows with raw data for manual checking
+        print(f"\n  ALL INCOMPLETE ROWS (DB index → Display #):")
+        print(f"  {'DB idx':>6} {'Display#':>8} {'Account':>15} {'Firm':<25} {'HR1':>10}")
+        print(f"  {'─'*6} {'─'*8} {'─'*15} {'─'*25} {'─'*10}")
+        total_rows = len(evals)
+        for idx, ev in enumerate(evals):
+            acct = ev.get('Account Number', '').strip()
+            firm = ev.get('Prop Firm', '').strip()
+            hr1 = ev.get('Hedge Result 1', '')
+            if acct and firm:
+                continue
+            display_num = total_rows - idx
+            print(f"  {idx:>6} {display_num:>8} {acct:>15} {firm:<25} {str(hr1):>10}")
 
 conn.close()
 print("\nDone.")
