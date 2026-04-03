@@ -747,8 +747,12 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
         print(f"ERROR: Database not found at {target_db}")
         return 0, 0, 0
 
-    conn = sqlite3.connect(target_db)
-    conn.row_factory = sqlite3.Row
+    def open_conn(path):
+        c = sqlite3.connect(path)
+        c.row_factory = sqlite3.Row
+        return c
+
+    conn = open_conn(target_db)
 
     updated = 0
     skipped = 0
@@ -756,11 +760,24 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
 
     for client_id, push in sorted(merged_pushes.items()):
         try:
-            row = conn.execute(
-                'SELECT client_id, evaluations, account, statistics, last_updated '
-                'FROM clients_data WHERE client_id = ?',
-                (client_id,)
-            ).fetchone()
+            try:
+                row = conn.execute(
+                    'SELECT client_id, evaluations, account, statistics, last_updated '
+                    'FROM clients_data WHERE client_id = ?',
+                    (client_id,)
+                ).fetchone()
+            except sqlite3.OperationalError:
+                # Reconnect once on disk I/O error (WAL corruption)
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                conn = open_conn(target_db)
+                row = conn.execute(
+                    'SELECT client_id, evaluations, account, statistics, last_updated '
+                    'FROM clients_data WHERE client_id = ?',
+                    (client_id,)
+                ).fetchone()
 
             if not row:
                 print(f"  ⚠️  {client_id}: NOT in database — skipping")
@@ -1020,9 +1037,33 @@ def compare_databases(main_db, backup_db, merged_pushes):
     conn_backup = sqlite3.connect(backup_db)
     conn_backup.row_factory = sqlite3.Row
 
+    # Check DB integrity before loading
+    try:
+        integrity = conn_main.execute('PRAGMA integrity_check').fetchone()[0]
+        if integrity != 'ok':
+            print(f"  ⚠️  Main DB integrity check FAILED: {integrity}")
+            print(f"  Skipping comparison — pre-apply backup is malformed (WAL corruption).")
+            conn_main.close()
+            conn_backup.close()
+            return
+    except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
+        print(f"  ⚠️  Main DB cannot be read: {e}")
+        print(f"  Skipping comparison — pre-apply backup is malformed (WAL corruption).")
+        conn_main.close()
+        conn_backup.close()
+        return
+
     # Load all clients from both
-    main_rows = {r['client_id']: dict(r) for r in
-                 conn_main.execute('SELECT * FROM clients_data ORDER BY client_id')}
+    try:
+        main_rows = {r['client_id']: dict(r) for r in
+                     conn_main.execute('SELECT * FROM clients_data ORDER BY client_id')}
+    except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
+        print(f"  ⚠️  Cannot read main DB clients_data: {e}")
+        print(f"  Skipping comparison — pre-apply backup is malformed.")
+        conn_main.close()
+        conn_backup.close()
+        return
+
     backup_rows = {r['client_id']: dict(r) for r in
                    conn_backup.execute('SELECT * FROM clients_data ORDER BY client_id')}
 
