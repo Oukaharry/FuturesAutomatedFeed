@@ -40,21 +40,24 @@ def derive_firm(account_number):
     if not acct:
         return None, None
 
-    # Method 1: Known prefix (e.g. FNFT-71643 → FundedNext)
+    upper = acct.upper()
+
+    # Method 1: Known prefix with hyphen (e.g. FNFT-71643 → FundedNext)
     if '-' in acct:
         prefix = acct.rsplit('-', 1)[0].upper()
         firm = PREFIX_TO_FIRM.get(prefix)
         if firm:
             return firm, f'prefix:{prefix}'
 
-    # Method 2: Heuristic for bare numbers
-    # ≤4 digits and all numeric → Topstep (V2 accounts stored without prefix)
+    # Method 2: Known prefix as start of full account string
+    # e.g. TDFYSL50816736838 → Tradeify, MFFUEVFLX372280283 → My Funded Futures
+    for prefix, firm in sorted(PREFIX_TO_FIRM.items(), key=lambda x: -len(x[0])):
+        if upper.startswith(prefix):
+            return firm, f'prefix-start:{prefix}'
+
+    # Method 3: Bare number heuristics
     if acct.isdigit() and len(acct) <= 4:
         return 'Topstep', 'heuristic:≤4digits'
-
-    # Starts with letter (M2247, R3866, K7732, etc.) → FundedNext
-    if acct and acct[0].isalpha():
-        return 'FundedNext', 'heuristic:letter-start'
 
     return None, None
 
@@ -225,7 +228,8 @@ def main():
                 all_fixes.append((client_id, idx, 'Account Size', '', '$50,000',
                                   'default for Alpha Futures'))
 
-    # ── Report ──
+    # ── Report (write details to file, summary to console) ──
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_fix_prop_firms_report.txt')
     ch_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account #']
     fd_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account #.1']
     firm_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Prop Firm']
@@ -233,78 +237,82 @@ def main():
     empty_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if not o]
     wrong_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if o]
 
-    print(f"\nScanned {len(rows)} clients")
-    print(f"  Already correct: {already_correct}")
-    print(f"  No data at all (no acct, no firm, no report entry): {no_data}")
-    print(f"  Unmappable (bare >4-digit numbers): {len(unmappable)}")
-    print(f"  Conflicts (manual data differs — left untouched): {len(conflicts)}")
-    print(f"\n  Fixes needed:")
-    print(f"    Account # to set (eval/challenge): {len(ch_fixes)}")
-    print(f"    Account #.1 to set (funded/farming): {len(fd_fixes)}")
-    print(f"    Empty Prop Firm → set: {len(empty_firm)}")
-    print(f"    Wrong Prop Firm → correct (prefix authoritative): {len(wrong_firm)}")
-    print(f"    Account Size to set (Alpha Futures default): {len(size_fixes)}")
-    print(f"    TOTAL: {len(all_fixes)}")
+    summary = []
+    summary.append(f"\nScanned {len(rows)} clients")
+    summary.append(f"  Already correct: {already_correct}")
+    summary.append(f"  No data at all (no acct, no firm, no report entry): {no_data}")
+    summary.append(f"  Unmappable: {len(unmappable)}")
+    summary.append(f"  Conflicts (manual data differs — left untouched): {len(conflicts)}")
+    summary.append(f"\n  Fixes needed:")
+    summary.append(f"    Account # to set (eval/challenge): {len(ch_fixes)}")
+    summary.append(f"    Account #.1 to set (funded/farming): {len(fd_fixes)}")
+    summary.append(f"    Empty Prop Firm → set: {len(empty_firm)}")
+    summary.append(f"    Wrong Prop Firm → correct (prefix authoritative): {len(wrong_firm)}")
+    summary.append(f"    Account Size to set (Alpha Futures default): {len(size_fixes)}")
+    summary.append(f"    TOTAL: {len(all_fixes)}")
 
-    if conflicts:
-        print(f"\n  ── Conflicts (manual ≠ derived — NOT overwriting) ──")
-        for c, i, f, existing, derived, reason in conflicts:
-            print(f"    {c} row {i} [{f}]: has '{existing}', derived '{derived}' ({reason})")
+    # Print summary to console
+    for line in summary:
+        print(line)
 
-    if ch_fixes:
-        by_client = defaultdict(list)
-        for c, i, f, o, n, r in ch_fixes:
-            by_client[c].append((i, n, r))
-        print(f"\n  ── Account # fills — eval/challenge ({len(ch_fixes)} rows across {len(by_client)} clients) ──")
-        for cid in sorted(by_client.keys()):
-            fixes = by_client[cid]
-            print(f"    {cid}: {len(fixes)} rows")
-            for idx, new_val, reason in fixes[:5]:
-                print(f"      row {idx}: → {new_val}  ({reason})")
-            if len(fixes) > 5:
-                print(f"      ... and {len(fixes) - 5} more")
+    # Write full details to file
+    with open(log_path, 'w') as lf:
+        for line in summary:
+            lf.write(line + '\n')
 
-    if fd_fixes:
-        by_client = defaultdict(list)
-        for c, i, f, o, n, r in fd_fixes:
-            by_client[c].append((i, n, r))
-        print(f"\n  ── Account #.1 fills — funded/farming ({len(fd_fixes)} rows across {len(by_client)} clients) ──")
-        for cid in sorted(by_client.keys()):
-            fixes = by_client[cid]
-            print(f"    {cid}: {len(fixes)} rows")
-            for idx, new_val, reason in fixes[:5]:
-                print(f"      row {idx}: → {new_val}  ({reason})")
-            if len(fixes) > 5:
-                print(f"      ... and {len(fixes) - 5} more")
+        if conflicts:
+            lf.write(f"\n  ── Conflicts (manual ≠ derived — NOT overwriting) ──\n")
+            for c, i, f, existing, derived, reason in conflicts:
+                lf.write(f"    {c} row {i} [{f}]: has '{existing}', derived '{derived}' ({reason})\n")
 
-    if wrong_firm:
-        print(f"\n  ── Wrong Prop Firm corrections ({len(wrong_firm)}) ──")
-        for c, i, f, old, new, reason in wrong_firm:
-            print(f"    {c} row {i}: {old} → {new}  ({reason})")
+        if ch_fixes:
+            by_client = defaultdict(list)
+            for c, i, f, o, n, r in ch_fixes:
+                by_client[c].append((i, n, r))
+            lf.write(f"\n  ── Account # fills — eval/challenge ({len(ch_fixes)} rows across {len(by_client)} clients) ──\n")
+            for cid in sorted(by_client.keys()):
+                fixes = by_client[cid]
+                lf.write(f"    {cid}: {len(fixes)} rows\n")
+                for idx, new_val, reason in fixes:
+                    lf.write(f"      row {idx}: → {new_val}  ({reason})\n")
 
-    if empty_firm:
-        by_client = defaultdict(list)
-        for c, i, f, o, n, r in empty_firm:
-            by_client[c].append((i, n, r))
-        print(f"\n  ── Empty Prop Firm fills ({len(empty_firm)} rows across {len(by_client)} clients) ──")
-        for cid in sorted(by_client.keys()):
-            fixes = by_client[cid]
-            print(f"    {cid}: {len(fixes)} rows")
-            for idx, new_val, reason in fixes[:5]:
-                print(f"      row {idx}: → {new_val}  ({reason})")
-            if len(fixes) > 5:
-                print(f"      ... and {len(fixes) - 5} more")
+        if fd_fixes:
+            by_client = defaultdict(list)
+            for c, i, f, o, n, r in fd_fixes:
+                by_client[c].append((i, n, r))
+            lf.write(f"\n  ── Account #.1 fills — funded/farming ({len(fd_fixes)} rows across {len(by_client)} clients) ──\n")
+            for cid in sorted(by_client.keys()):
+                fixes = by_client[cid]
+                lf.write(f"    {cid}: {len(fixes)} rows\n")
+                for idx, new_val, reason in fixes:
+                    lf.write(f"      row {idx}: → {new_val}  ({reason})\n")
 
-    if unmappable:
-        by_client = defaultdict(list)
-        for cid, idx, acct in unmappable:
-            by_client[cid].append((idx, acct))
-        print(f"\n  ── Unmappable accounts — left for later ({len(unmappable)} rows) ──")
-        for cid in sorted(by_client.keys()):
-            items = by_client[cid]
-            print(f"    {cid}: {', '.join(f'row {i} ({a})' for i, a in items[:10])}")
-            if len(items) > 10:
-                print(f"      ... and {len(items) - 10} more")
+        if wrong_firm:
+            lf.write(f"\n  ── Wrong Prop Firm corrections ({len(wrong_firm)}) ──\n")
+            for c, i, f, old, new, reason in wrong_firm:
+                lf.write(f"    {c} row {i}: {old} → {new}  ({reason})\n")
+
+        if empty_firm:
+            by_client = defaultdict(list)
+            for c, i, f, o, n, r in empty_firm:
+                by_client[c].append((i, n, r))
+            lf.write(f"\n  ── Empty Prop Firm fills ({len(empty_firm)} rows across {len(by_client)} clients) ──\n")
+            for cid in sorted(by_client.keys()):
+                fixes = by_client[cid]
+                lf.write(f"    {cid}: {len(fixes)} rows\n")
+                for idx, new_val, reason in fixes:
+                    lf.write(f"      row {idx}: → {new_val}  ({reason})\n")
+
+        if unmappable:
+            by_client = defaultdict(list)
+            for cid, idx, acct in unmappable:
+                by_client[cid].append((idx, acct))
+            lf.write(f"\n  ── Unmappable accounts ({len(unmappable)} rows) ──\n")
+            for cid in sorted(by_client.keys()):
+                items = by_client[cid]
+                lf.write(f"    {cid}: {', '.join(f'row {i} ({a})' for i, a in items)}\n")
+
+    print(f"\n  Full report: {log_path}")
 
     if not all_fixes:
         print("\nNothing to fix.")
