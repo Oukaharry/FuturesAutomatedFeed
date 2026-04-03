@@ -2999,6 +2999,7 @@ def api_client_push():
             'Status', 'Status Funded', 'Status P1',
             'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
             'Date Purchased',
+            'Account Number', 'Prop Firm',
         }
         existing_evals_push = existing_data.get('evaluations', [])
         for i, ev in enumerate(evaluations):
@@ -7366,7 +7367,25 @@ def push_evaluations():
                 size = str(ev.get('Account Size') or '').strip()
                 if acct and (acct, firm, size) in deleted_fingerprints:
                     ev['_deleted'] = True
-    
+
+    # Preserve dashboard-owned fields that the push should NOT overwrite
+    DASHBOARD_OWNED_KEYS = {
+        'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
+        'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+        'Fee', 'Activation Fee',
+        'Status', 'Status Funded', 'Status P1',
+        'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
+        'Date Purchased',
+        'Account Number', 'Prop Firm',
+    }
+    for i, ev in enumerate(new_evals):
+        if i < len(existing_evals) and isinstance(ev, dict):
+            ex = existing_evals[i]
+            for key in DASHBOARD_OWNED_KEYS:
+                existing_val = ex.get(key)
+                if existing_val and str(existing_val).strip() not in ('', '-'):
+                    ev[key] = existing_val
+
     update_client_field(client_id, 'evaluations', new_evals)
     log_action('PUSH_EVALUATIONS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
     
