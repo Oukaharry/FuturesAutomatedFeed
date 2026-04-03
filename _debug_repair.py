@@ -9,7 +9,7 @@ report = json.load(open(REPORT_PATH))
 conn = sqlite3.connect(DB_PATH)
 
 # Pick a few clients with known empty rows
-test_clients = ['Alex Mosart', 'Chris Ream']
+test_clients = ['Chris Ream', 'Bec Dredge']
 
 for cid in test_clients:
     print(f"\n{'='*80}")
@@ -117,7 +117,7 @@ for cid in test_clients:
                 fixable_firm += 1
         elif not acct or not firm:
             unfixable += 1
-            if len(problem_rows) < 30:
+            if len(problem_rows) < 200:
                 problem_rows.append({
                     'idx': idx, 'acct': acct, 'firm': firm,
                     'partial': partial, 'in_eval_map': in_eval_map,
@@ -135,17 +135,27 @@ for cid in test_clients:
     print(f"    Unfixable:             {unfixable}")
 
     if problem_rows:
-        print(f"\n  UNFIXABLE ROWS (first {len(problem_rows)}):")
-        for pr in problem_rows:
-            reason = []
-            if not pr['in_eval_map']:
-                reason.append('not in eval_account_map')
-            if pr['partial'] and not pr['in_suffix']:
-                reason.append(f"partial '{pr['partial']}' not in session_accounts")
-            if not pr['partial']:
-                reason.append('no partial account anywhere')
-            print(f"    [{pr['idx']}] Acct='{pr['acct']}' Firm='{pr['firm']}' "
-                  f"— {', '.join(reason)}")
+        print(f"\n  ROWS STILL MISSING PROP FIRM (first 50):")
+        no_firm = [pr for pr in problem_rows if not pr['firm']]
+        no_acct = [pr for pr in problem_rows if not pr['acct']]
+        has_acct_no_firm = [pr for pr in problem_rows if pr['acct'] and not pr['firm']]
+        has_firm_no_acct = [pr for pr in problem_rows if pr['firm'] and not pr['acct']]
+        neither = [pr for pr in problem_rows if not pr['firm'] and not pr['acct']]
+
+        if has_acct_no_firm:
+            print(f"\n    --- Has Account but NO Firm ({len(has_acct_no_firm)}) ---")
+            for pr in has_acct_no_firm[:50]:
+                print(f"    Row {pr['idx']:>4}: Acct='{pr['acct']}'")
+
+        if has_firm_no_acct:
+            print(f"\n    --- Has Firm but NO Account ({len(has_firm_no_acct)}) ---")
+            for pr in has_firm_no_acct[:50]:
+                print(f"    Row {pr['idx']:>4}: Firm='{pr['firm']}'")
+
+        if neither:
+            print(f"\n    --- No Firm AND No Account ({len(neither)}) ---")
+            for pr in neither[:20]:
+                print(f"    Row {pr['idx']:>4}: (completely empty)")
 
 conn.close()
 print("\nDone.")
