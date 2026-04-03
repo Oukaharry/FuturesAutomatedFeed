@@ -84,9 +84,11 @@ def reconstruct_missing_rows(discrepancies, db_data):
     # Based on MT5 login formats:
     #   FNFT (FundedNext):  FNFTCH... / FNFTFA...
     #   MFFU (MFF):         MFFUEV... / MFFUSF...
-    #   TDFY (Tradeify):    TDFYSL... / FTDFYSLX...
-    #   TDF  (TradeDay):    TDFUNDEDN...
-    #   ELTD (TradeDay):    ELTDEN...
+    #   TDFY (Tradeify challenge):  TDFYSL...
+    #   FTDF (Tradeify funded):    FTDF...
+    #   TDF  (TradeDay):           TDF-...
+    #   ELTD (TradeDay challenge):  ELTDEN...
+    #   TDFU (TradeDay funded):    TDFU...
     #   AFAD (Alpha):       AFADVEV... / AFADVQA...
     #   V2   (Topstep):     V2-...
     PREFIX_TO_FIRM = {
@@ -94,12 +96,12 @@ def reconstruct_missing_rows(discrepancies, db_data):
         'MFFU': 'My Funded Futures',
         'TDF': 'TradeDay',
         'TDFY': 'Tradeify',
-        'FTDFY': 'Tradeify',
+        'FTDF': 'Tradeify',
         'AFAD': 'Alpha Futures',
         'V2': 'Topstep',
         '50KTC': 'Topstep',
         'ELTD': 'TradeDay',
-        'TDFUNDED': 'TradeDay',
+        'TDFU': 'TradeDay',
     }
 
     reconstructions = []
@@ -182,12 +184,12 @@ def repair_empty_rows(report, db_data, dry_run=True):
         'MFFU': 'My Funded Futures',
         'TDF': 'TradeDay',
         'TDFY': 'Tradeify',
-        'FTDFY': 'Tradeify',
+        'FTDF': 'Tradeify',
         'AFAD': 'Alpha Futures',
         'V2': 'Topstep',
         '50KTC': 'Topstep',
         'ELTD': 'TradeDay',
-        'TDFUNDED': 'TradeDay',
+        'TDFU': 'TradeDay',
     }
 
     repairs = []

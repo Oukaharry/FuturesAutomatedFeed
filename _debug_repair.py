@@ -46,9 +46,9 @@ for cid in test_clients:
 
     PREFIX_TO_FIRM = {
         'FNFT': 'FundedNext', 'MFFU': 'My Funded Futures',
-        'TDF': 'TradeDay', 'TDFY': 'Tradeify', 'FTDFY': 'Tradeify',
+        'TDF': 'TradeDay', 'TDFY': 'Tradeify', 'FTDF': 'Tradeify',
         'AFAD': 'Alpha Futures', 'V2': 'Topstep', '50KTC': 'Topstep',
-        'ELTD': 'TradeDay', 'TDFUNDED': 'TradeDay',
+        'ELTD': 'TradeDay', 'TDFU': 'TradeDay',
     }
 
     # DB state
