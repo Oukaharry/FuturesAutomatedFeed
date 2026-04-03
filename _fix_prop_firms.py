@@ -227,13 +227,16 @@ def main():
         conn.close()
         return
 
+    # Close the read connection before apply phase
+    conn.close()
+
     # ── Backup ──
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup = DB_PATH + f'.pre_firmfix_{ts}'
     shutil.copy2(DB_PATH, backup)
     print(f"\n  Backup: {backup}")
 
-    # ── Apply ──
+    # ── Apply (reconnect per client to survive corrupted pages) ──
     fixes_by_client = defaultdict(list)
     for c, idx, field, old, new, reason in all_fixes:
         fixes_by_client[c].append((idx, field, new))
@@ -241,12 +244,16 @@ def main():
     updated = 0
     errors = 0
     for client_id, fixes in fixes_by_client.items():
+        conn = None
         try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
             r = conn.execute(
                 'SELECT evaluations FROM clients_data WHERE client_id = ?', (client_id,)
             ).fetchone()
             if not r:
                 errors += 1
+                conn.close()
                 continue
 
             evals = json.loads(r['evaluations'] or '[]')
@@ -261,13 +268,18 @@ def main():
                     'UPDATE clients_data SET evaluations = ? WHERE client_id = ?',
                     (json.dumps(evals), client_id)
                 )
+                conn.commit()
                 updated += 1
+            conn.close()
         except Exception as e:
             print(f"  ❌ Error updating {client_id}: {e}")
             errors += 1
+            if conn:
+                try:
+                    conn.close()
+                except:
+                    pass
 
-    conn.commit()
-    conn.close()
     print(f"\n  ✅ Applied: {updated} clients updated, {errors} errors")
 
 
