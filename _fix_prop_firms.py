@@ -119,6 +119,41 @@ def main():
             current_acct_fd = (ev.get('Account #.1') or '').strip()    # funded account
             current_firm = (ev.get('Prop Firm') or '').strip()
 
+            # ── Step 0: Migrate stale "Account Number" field into correct column ──
+            # Old V2 reconstruction wrote to "Account Number" — move to Account # or #.1
+            legacy_acct = (ev.get('Account Number') or '').strip()
+            if legacy_acct:
+                # Determine phase from eval_account_map
+                legacy_phase = ''
+                map_entry_legacy = eval_map.get(str(idx))
+                if map_entry_legacy:
+                    entries = map_entry_legacy if isinstance(map_entry_legacy, list) else [map_entry_legacy]
+                    for m in entries:
+                        if isinstance(m, dict) and legacy_acct in str(m.get('account', '')):
+                            legacy_phase = str(m.get('phase', '')).upper()
+                            break
+                    # If no exact match, use first entry's phase
+                    if not legacy_phase and entries:
+                        m0 = entries[0]
+                        if isinstance(m0, dict):
+                            legacy_phase = str(m0.get('phase', '')).upper()
+
+                if legacy_phase in ('FD', 'DD', 'FA'):
+                    if not current_acct_fd:
+                        all_fixes.append((client_id, idx, 'Account #.1', '', legacy_acct,
+                                          'migrated from Account Number (funded)'))
+                        current_acct_fd = legacy_acct
+                else:
+                    # Default to challenge column
+                    if not current_acct_ch:
+                        all_fixes.append((client_id, idx, 'Account #', '', legacy_acct,
+                                          'migrated from Account Number (challenge)'))
+                        current_acct_ch = legacy_acct
+
+                # Always remove the stale "Account Number" key
+                all_fixes.append((client_id, idx, 'Account Number', legacy_acct, '',
+                                  'remove legacy field'))
+
             # ── Step 1: Populate Account # / Account #.1 from report ──
             # eval_account_map entries have: {account, phase, num}
             # CH → Account #   |   FD/DD/FA → Account #.1
@@ -232,10 +267,12 @@ def main():
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '_fix_prop_firms_report.txt')
     ch_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account #']
     fd_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account #.1']
+    legacy_rm = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Number']
     firm_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Prop Firm']
     size_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Size']
     empty_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if not o]
     wrong_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if o]
+    real_fixes = [x for x in all_fixes if x[2] != 'Account Number']  # exclude removals from count
 
     summary = []
     summary.append(f"\nScanned {len(rows)} clients")
@@ -246,10 +283,11 @@ def main():
     summary.append(f"\n  Fixes needed:")
     summary.append(f"    Account # to set (eval/challenge): {len(ch_fixes)}")
     summary.append(f"    Account #.1 to set (funded/farming): {len(fd_fixes)}")
+    summary.append(f"    Legacy 'Account Number' → migrate + remove: {len(legacy_rm)}")
     summary.append(f"    Empty Prop Firm → set: {len(empty_firm)}")
     summary.append(f"    Wrong Prop Firm → correct (prefix authoritative): {len(wrong_firm)}")
     summary.append(f"    Account Size to set (Alpha Futures default): {len(size_fixes)}")
-    summary.append(f"    TOTAL: {len(all_fixes)}")
+    summary.append(f"    TOTAL (fields to update): {len(all_fixes)}")
 
     # Print summary to console
     for line in summary:
@@ -357,8 +395,14 @@ def main():
             changed = False
             for idx, field, new_val in fixes:
                 if idx < len(evals):
-                    evals[idx][field] = new_val
-                    changed = True
+                    if field == 'Account Number' and new_val == '':
+                        # Remove the legacy field entirely
+                        if 'Account Number' in evals[idx]:
+                            del evals[idx]['Account Number']
+                            changed = True
+                    else:
+                        evals[idx][field] = new_val
+                        changed = True
 
             if changed:
                 conn.execute(
