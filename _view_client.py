@@ -37,7 +37,7 @@ KEY_COLUMNS = [
 ]
 
 # Columns critical for our recovery — highlight if empty
-CRITICAL_COLUMNS = ['Account #', 'Account Number', 'Prop Firm', 'Account Size']
+CRITICAL_COLUMNS = ['Account #', 'Account #.1', 'Prop Firm', 'Account Size']
 
 
 def load_client(client_id):

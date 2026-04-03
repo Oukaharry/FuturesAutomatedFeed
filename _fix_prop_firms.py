@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Comprehensive fix for Account Number + Prop Firm across ALL clients.
+Comprehensive fix for Account #, Account #.1, Prop Firm, Account Size.
 
 Reads the push report (_log_push_report.json) to:
-1. Populate missing Account Numbers from eval_account_map + session_accounts
+1. Populate Account # (eval/challenge phase) and Account #.1 (funded/farming)
+   using eval_account_map phase data (CH → Account #, FD/DD/FA → Account #.1)
 2. Set empty Prop Firm from account prefix
 3. Correct wrong Prop Firm (prefix disagrees with current firm)
-4. Handle dual-account rows (challenge + funded on same row)
+4. Auto-fill Account Size for Alpha Futures ($50,000)
 
 Usage:
     python _fix_prop_firms.py            # dry run
@@ -111,50 +112,78 @@ def main():
             if ev.get('_deleted'):
                 continue
 
-            current_acct = ev.get('Account Number', '').strip()
+            current_acct_ch = ev.get('Account #', '').strip()      # challenge account
+            current_acct_fd = ev.get('Account #.1', '').strip()    # funded account
             current_firm = ev.get('Prop Firm', '').strip()
 
-            # ── Step 1: Try to populate Account Number from report data ──
-            new_acct = None
-            derived_acct = None
+            # ── Step 1: Populate Account # / Account #.1 from report ──
+            # eval_account_map entries have: {account, phase, num}
+            # CH → Account #   |   FD/DD/FA → Account #.1
             map_entry = eval_map.get(str(idx))
+            best_ch = None   # best challenge account for this row
+            best_fd = None   # best funded account for this row
+
             if map_entry:
                 matches = map_entry if isinstance(map_entry, list) else [map_entry]
-                best = None
                 for m in matches:
                     if isinstance(m, dict):
                         partial = str(m.get('account', ''))
+                        phase = str(m.get('phase', '')).upper()
                     else:
                         partial = str(m)
+                        phase = ''
                     full = resolve_account(partial, session_accts)
-                    if best is None or len(full) > len(best):
-                        best = full
-                derived_acct = best
 
-            if derived_acct:
-                if not current_acct:
-                    # Empty → fill
-                    new_acct = derived_acct
-                    all_fixes.append((client_id, idx, 'Account Number', '', new_acct,
-                                      'from eval_account_map'))
-                    current_acct = new_acct
-                elif current_acct != derived_acct:
-                    # Check if they refer to same account (suffix match)
-                    cur_suffix = current_acct.rsplit('-', 1)[-1] if '-' in current_acct else current_acct
-                    der_suffix = derived_acct.rsplit('-', 1)[-1] if '-' in derived_acct else derived_acct
-                    if cur_suffix == der_suffix:
-                        # Same account, different format — upgrade to fuller version
-                        if len(derived_acct) > len(current_acct):
-                            all_fixes.append((client_id, idx, 'Account Number', current_acct, derived_acct,
-                                              'upgrade partial→full'))
-                            current_acct = derived_acct
+                    if phase == 'CH':
+                        if best_ch is None or len(full) > len(best_ch):
+                            best_ch = full
+                    elif phase in ('FD', 'DD', 'FA'):
+                        if best_fd is None or len(full) > len(best_fd):
+                            best_fd = full
                     else:
-                        # Genuinely different — trader may have set manually, don't overwrite
-                        conflicts.append((client_id, idx, 'Account Number', current_acct, derived_acct,
-                                          'manual vs log mismatch'))
+                        # Unknown phase — try to place in whichever field is empty
+                        if not current_acct_ch and (best_ch is None or len(full) > len(best_ch)):
+                            best_ch = full
+                        elif not current_acct_fd and (best_fd is None or len(full) > len(best_fd)):
+                            best_fd = full
+
+            # Apply challenge account (Account #)
+            if best_ch:
+                if not current_acct_ch:
+                    all_fixes.append((client_id, idx, 'Account #', '', best_ch,
+                                      'from eval_account_map (CH)'))
+                    current_acct_ch = best_ch
+                elif current_acct_ch != best_ch:
+                    cur_s = current_acct_ch.rsplit('-', 1)[-1] if '-' in current_acct_ch else current_acct_ch
+                    der_s = best_ch.rsplit('-', 1)[-1] if '-' in best_ch else best_ch
+                    if cur_s == der_s and len(best_ch) > len(current_acct_ch):
+                        all_fixes.append((client_id, idx, 'Account #', current_acct_ch, best_ch,
+                                          'upgrade partial→full (CH)'))
+                        current_acct_ch = best_ch
+                    elif cur_s != der_s:
+                        conflicts.append((client_id, idx, 'Account #', current_acct_ch, best_ch,
+                                          'CH mismatch'))
+
+            # Apply funded account (Account #.1)
+            if best_fd:
+                if not current_acct_fd:
+                    all_fixes.append((client_id, idx, 'Account #.1', '', best_fd,
+                                      'from eval_account_map (FD)'))
+                    current_acct_fd = best_fd
+                elif current_acct_fd != best_fd:
+                    cur_s = current_acct_fd.rsplit('-', 1)[-1] if '-' in current_acct_fd else current_acct_fd
+                    der_s = best_fd.rsplit('-', 1)[-1] if '-' in best_fd else best_fd
+                    if cur_s == der_s and len(best_fd) > len(current_acct_fd):
+                        all_fixes.append((client_id, idx, 'Account #.1', current_acct_fd, best_fd,
+                                          'upgrade partial→full (FD)'))
+                        current_acct_fd = best_fd
+                    elif cur_s != der_s:
+                        conflicts.append((client_id, idx, 'Account #.1', current_acct_fd, best_fd,
+                                          'FD mismatch'))
 
             # ── Step 2: Derive correct firm ──
-            acct_for_firm = current_acct
+            # Use whichever account is available — prefer challenge account for prefix
+            acct_for_firm = current_acct_ch or current_acct_fd
             if not acct_for_firm:
                 if not current_firm:
                     no_data += 1
@@ -197,7 +226,8 @@ def main():
                                   'default for Alpha Futures'))
 
     # ── Report ──
-    acct_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Number']
+    ch_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account #']
+    fd_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account #.1']
     firm_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Prop Firm']
     size_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Size']
     empty_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if not o]
@@ -209,7 +239,8 @@ def main():
     print(f"  Unmappable (bare >4-digit numbers): {len(unmappable)}")
     print(f"  Conflicts (manual data differs — left untouched): {len(conflicts)}")
     print(f"\n  Fixes needed:")
-    print(f"    Account Numbers to set: {len(acct_fixes)}")
+    print(f"    Account # to set (eval/challenge): {len(ch_fixes)}")
+    print(f"    Account #.1 to set (funded/farming): {len(fd_fixes)}")
     print(f"    Empty Prop Firm → set: {len(empty_firm)}")
     print(f"    Wrong Prop Firm → correct (prefix authoritative): {len(wrong_firm)}")
     print(f"    Account Size to set (Alpha Futures default): {len(size_fixes)}")
@@ -220,11 +251,24 @@ def main():
         for c, i, f, existing, derived, reason in conflicts:
             print(f"    {c} row {i} [{f}]: has '{existing}', derived '{derived}' ({reason})")
 
-    if acct_fixes:
+    if ch_fixes:
         by_client = defaultdict(list)
-        for c, i, f, o, n, r in acct_fixes:
+        for c, i, f, o, n, r in ch_fixes:
             by_client[c].append((i, n, r))
-        print(f"\n  ── Account Number fills ({len(acct_fixes)} rows across {len(by_client)} clients) ──")
+        print(f"\n  ── Account # fills — eval/challenge ({len(ch_fixes)} rows across {len(by_client)} clients) ──")
+        for cid in sorted(by_client.keys()):
+            fixes = by_client[cid]
+            print(f"    {cid}: {len(fixes)} rows")
+            for idx, new_val, reason in fixes[:5]:
+                print(f"      row {idx}: → {new_val}  ({reason})")
+            if len(fixes) > 5:
+                print(f"      ... and {len(fixes) - 5} more")
+
+    if fd_fixes:
+        by_client = defaultdict(list)
+        for c, i, f, o, n, r in fd_fixes:
+            by_client[c].append((i, n, r))
+        print(f"\n  ── Account #.1 fills — funded/farming ({len(fd_fixes)} rows across {len(by_client)} clients) ──")
         for cid in sorted(by_client.keys()):
             fixes = by_client[cid]
             print(f"    {cid}: {len(fixes)} rows")

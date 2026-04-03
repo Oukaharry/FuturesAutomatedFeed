@@ -900,31 +900,52 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
                                f"wd={hr.get('total_withdrawals')}, bal={hr.get('current_balance')}, "
                                f"hedge={hr.get('actual_hedging_results')})")
 
-            # ── 5. Reconstruct Account Number in evaluations ──
+            # ── 5. Reconstruct Account # / Account #.1 in evaluations ──
+            # CH phase → Account # (challenge/eval account)
+            # FD/DD/FA phase → Account #.1 (funded/farming account)
             acct_changes = 0
             if client_id in account_maps:
                 for eval_idx, matches in account_maps[client_id].items():
                     if eval_idx < len(evaluations):
-                        # Pick the best full account from all matches for this row
-                        best_acct = None
+                        best_ch = None   # best challenge account
+                        best_fd = None   # best funded account
                         for info in matches:
                             raw_acct = info['account']
+                            phase = str(info.get('phase', '')).upper()
                             full_acct = raw_acct
                             if client_id in session_accounts:
                                 for sa in session_accounts[client_id]:
                                     if raw_acct in sa:
                                         full_acct = sa
                                         break
-                            # Prefer longer (more complete) account strings
-                            if best_acct is None or len(full_acct) > len(best_acct):
-                                best_acct = full_acct
-                        if best_acct:
-                            old_acct = evaluations[eval_idx].get('Account Number', '')
-                            if not old_acct or old_acct != best_acct:
-                                evaluations[eval_idx]['Account Number'] = best_acct
+                            if phase == 'CH':
+                                if best_ch is None or len(full_acct) > len(best_ch):
+                                    best_ch = full_acct
+                            elif phase in ('FD', 'DD', 'FA'):
+                                if best_fd is None or len(full_acct) > len(best_fd):
+                                    best_fd = full_acct
+                            else:
+                                # Unknown phase — place in whichever is empty
+                                cur_ch = evaluations[eval_idx].get('Account #', '').strip()
+                                cur_fd = evaluations[eval_idx].get('Account #.1', '').strip()
+                                if not cur_ch and (best_ch is None or len(full_acct) > len(best_ch)):
+                                    best_ch = full_acct
+                                elif not cur_fd and (best_fd is None or len(full_acct) > len(best_fd)):
+                                    best_fd = full_acct
+
+                        ev = evaluations[eval_idx]
+                        if best_ch:
+                            old = ev.get('Account #', '')
+                            if not old or old != best_ch:
+                                ev['Account #'] = best_ch
+                                acct_changes += 1
+                        if best_fd:
+                            old = ev.get('Account #.1', '')
+                            if not old or old != best_fd:
+                                ev['Account #.1'] = best_fd
                                 acct_changes += 1
             if acct_changes:
-                changes.append(f"Updated {acct_changes} evaluation Account Number fields")
+                changes.append(f"Updated {acct_changes} account fields (Account # / Account #.1)")
 
             # ── Print summary ──
             n_hedge = len(push['hedge_writes'])
