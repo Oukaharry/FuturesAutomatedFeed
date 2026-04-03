@@ -25,14 +25,35 @@ from collections import OrderedDict
 
 DB_PATH = os.path.expanduser('~/MT5Dashboard/dashboard/dashboard.db')
 
-# Key columns to always show first (in order), if they exist
+# Dashboard column order — matches the HTML template exactly
+# EVAL INFO → EVAL PHASE → FUNDED PHASE → FARMING PHASE
+DASHBOARD_COLUMN_ORDER = [
+    # ── EVAL INFO ──
+    'Prop Firm', 'Account Size', 'Date Purchased', 'Fee',
+    # ── EVAL PHASE ──
+    'Date Started', 'Date Ended', 'Status P1', 'Account #',
+    'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3',
+    'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
+    # ── FUNDED PHASE ──
+    'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
+    'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+    'Hedge Result 4.1', 'Hedge Result 5.1',
+    'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
+    'Payout 1', 'Date 1', 'Payout 2', 'Date 2',
+    'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
+    # ── FARMING PHASE ──
+] + [f'Prop Day {i}' for i in range(1, 35)] \
+  + [f'Prop Progress {i}' for i in range(1, 35)] \
+  + [f'Hedge Day {i}' for i in range(1, 35)]
+
+# Key columns for default terminal display (subset — skip farming bulk)
 KEY_COLUMNS = [
-    'Account #', 'Account #.1', 'Account Number', 'Prop Firm', 'Account Size',
-    'Status', 'Status Funded', 'Status P1',
+    'Account #', 'Account #.1', 'Prop Firm', 'Account Size',
+    'Status', 'Status P1',
     'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
     'Date Purchased',
     'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
-    'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+    'Payout 4', 'Date 4',
     'Fee', 'Activation Fee',
 ]
 
@@ -70,21 +91,23 @@ def load_client(client_id):
 
 
 def build_columns(evals):
-    """Build column list: key cols first, then remaining in discovery order."""
-    seen = set()
-    columns = []
-    # Key columns first (only if they appear in any eval)
+    """Build column list matching dashboard order, then any extras."""
+    # Collect all keys present in any eval (skip internal _ keys and legacy 'Account Number')
     all_keys = set()
     for ev in evals:
-        all_keys.update(k for k in ev if not k.startswith('_'))
-    for col in KEY_COLUMNS:
+        all_keys.update(k for k in ev if not k.startswith('_') and k != 'Account Number')
+
+    seen = set()
+    columns = []
+    # Dashboard-ordered columns first
+    for col in DASHBOARD_COLUMN_ORDER:
         if col in all_keys and col not in seen:
             seen.add(col)
             columns.append(col)
-    # Then remaining in first-occurrence order
+    # Then any remaining columns not in the dashboard order (in discovery order)
     for ev in evals:
         for key in ev:
-            if key not in seen and not key.startswith('_'):
+            if key not in seen and not key.startswith('_') and key != 'Account Number':
                 seen.add(key)
                 columns.append(key)
     return columns

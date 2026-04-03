@@ -123,32 +123,64 @@ def main():
             # Old V2 reconstruction wrote to "Account Number" — move to Account # or #.1
             legacy_acct = (ev.get('Account Number') or '').strip()
             if legacy_acct:
-                # Determine phase from eval_account_map
+                # Determine phase from eval_account_map if available
                 legacy_phase = ''
                 map_entry_legacy = eval_map.get(str(idx))
                 if map_entry_legacy:
                     entries = map_entry_legacy if isinstance(map_entry_legacy, list) else [map_entry_legacy]
+                    # Check if any entry's account matches the legacy value (substring either way)
                     for m in entries:
-                        if isinstance(m, dict) and legacy_acct in str(m.get('account', '')):
-                            legacy_phase = str(m.get('phase', '')).upper()
-                            break
-                    # If no exact match, use first entry's phase
+                        if isinstance(m, dict):
+                            map_acct = str(m.get('account', ''))
+                            if map_acct and (map_acct in legacy_acct or legacy_acct in map_acct
+                                             or (map_acct.split('-')[-1] if '-' in map_acct else map_acct)
+                                                 in legacy_acct):
+                                legacy_phase = str(m.get('phase', '')).upper()
+                                break
+                    # If no match found, use first entry's phase
                     if not legacy_phase and entries:
                         m0 = entries[0]
                         if isinstance(m0, dict):
                             legacy_phase = str(m0.get('phase', '')).upper()
+
+                # If still no phase, infer from which columns already have data:
+                # If Account # has data but Account #.1 is empty → funded
+                # If Account #.1 has data but Account # is empty → challenge
+                # If both empty → check hedge results to determine phase
+                if not legacy_phase:
+                    has_ch_results = any(ev.get(f'Hedge Result {i}') for i in range(1, 6))
+                    has_fd_results = any(ev.get(f'Hedge Result {i}.1') for i in range(1, 6))
+                    has_farming = any(ev.get(f'Hedge Day {i}') for i in range(1, 11))
+                    if current_acct_ch and not current_acct_fd:
+                        legacy_phase = 'FD'  # ch already filled, this must be funded
+                    elif current_acct_fd and not current_acct_ch:
+                        legacy_phase = 'CH'  # fd already filled, this must be challenge
+                    elif has_fd_results or has_farming:
+                        legacy_phase = 'FD'
+                    elif has_ch_results:
+                        legacy_phase = 'CH'
 
                 if legacy_phase in ('FD', 'DD', 'FA'):
                     if not current_acct_fd:
                         all_fixes.append((client_id, idx, 'Account #.1', '', legacy_acct,
                                           'migrated from Account Number (funded)'))
                         current_acct_fd = legacy_acct
+                    elif not current_acct_ch:
+                        # funded already filled — put in challenge instead
+                        all_fixes.append((client_id, idx, 'Account #', '', legacy_acct,
+                                          'migrated from Account Number (fallback to CH)'))
+                        current_acct_ch = legacy_acct
                 else:
                     # Default to challenge column
                     if not current_acct_ch:
                         all_fixes.append((client_id, idx, 'Account #', '', legacy_acct,
                                           'migrated from Account Number (challenge)'))
                         current_acct_ch = legacy_acct
+                    elif not current_acct_fd:
+                        # challenge already filled — put in funded instead
+                        all_fixes.append((client_id, idx, 'Account #.1', '', legacy_acct,
+                                          'migrated from Account Number (fallback to FD)'))
+                        current_acct_fd = legacy_acct
 
                 # Always remove the stale "Account Number" key
                 all_fixes.append((client_id, idx, 'Account Number', legacy_acct, '',

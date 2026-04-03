@@ -5332,12 +5332,35 @@ def export_client_csv():
     if not evaluations:
         return jsonify({"status": "error", "message": "No evaluation data"}), 404
 
-    # Build column list from all evaluations (preserving order from first row, then extras)
+    # Dashboard column order — matches the HTML template
+    DASHBOARD_COLUMN_ORDER = [
+        'Prop Firm', 'Account Size', 'Date Purchased', 'Fee',
+        'Date Started', 'Date Ended', 'Status P1', 'Account #',
+        'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3',
+        'Hedge Result 4', 'Hedge Result 5', 'Hedge Net',
+        'Account #.1', 'Activation Fee', 'Date Started.1', 'Date Ended.1', 'Status',
+        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+        'Hedge Result 4.1', 'Hedge Result 5.1',
+        'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
+        'Payout 1', 'Date 1', 'Payout 2', 'Date 2',
+        'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
+    ] + [f'Prop Day {i}' for i in range(1, 35)] \
+      + [f'Prop Progress {i}' for i in range(1, 35)] \
+      + [f'Hedge Day {i}' for i in range(1, 35)]
+
+    # Build column list: dashboard order first, then extras (skip Account Number)
+    all_keys = set()
+    for ev in evaluations:
+        all_keys.update(k for k in ev if not k.startswith('_') and k != 'Account Number')
     seen = set()
     columns = []
+    for col in DASHBOARD_COLUMN_ORDER:
+        if col in all_keys and col not in seen:
+            seen.add(col)
+            columns.append(col)
     for ev in evaluations:
         for key in ev:
-            if key not in seen and not key.startswith('_'):
+            if key not in seen and not key.startswith('_') and key != 'Account Number':
                 seen.add(key)
                 columns.append(key)
 
