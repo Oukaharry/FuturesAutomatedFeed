@@ -84,10 +84,41 @@ def main():
     else:
         print(f"No push report at {REPORT_PATH} — will fix firms from existing Account Numbers only")
 
-    # ── Load DB ──
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute('SELECT client_id, evaluations FROM clients_data').fetchall()
+    # ── Load DB (per-client to survive corrupt pages) ──
+    def get_all_clients():
+        """Load all client data, skipping corrupt rows."""
+        results = []
+        c = sqlite3.connect(DB_PATH, timeout=15)
+        c.execute("PRAGMA journal_mode=OFF")
+        c.execute("PRAGMA ignore_check_constraints=ON")
+        try:
+            client_ids = [r[0] for r in c.execute('SELECT client_id FROM clients_data').fetchall()]
+        except sqlite3.DatabaseError:
+            # If even the ID list fails, try with integrity_check off
+            c.close()
+            c = sqlite3.connect(DB_PATH, timeout=15)
+            c.execute("PRAGMA journal_mode=OFF")
+            c.execute("PRAGMA ignore_check_constraints=ON")
+            c.execute("PRAGMA writable_schema=ON")
+            client_ids = [r[0] for r in c.execute('SELECT client_id FROM clients_data').fetchall()]
+        c.close()
+        print(f"Found {len(client_ids)} clients in DB")
+
+        for cid in client_ids:
+            try:
+                c2 = sqlite3.connect(DB_PATH, timeout=15)
+                c2.execute("PRAGMA journal_mode=OFF")
+                row = c2.execute(
+                    'SELECT client_id, evaluations FROM clients_data WHERE client_id=?', (cid,)
+                ).fetchone()
+                c2.close()
+                if row:
+                    results.append({'client_id': row[0], 'evaluations': row[1]})
+            except sqlite3.DatabaseError as e:
+                print(f"  ⚠ Skipping {cid}: {e}", flush=True)
+        return results
+
+    rows = get_all_clients()
 
     all_fixes = []       # (client_id, idx, field, old_val, new_val, reason)
     conflicts = []       # (client_id, idx, field, existing_val, derived_val, reason)
@@ -386,16 +417,11 @@ def main():
 
     if not all_fixes:
         print("\nNothing to fix.")
-        conn.close()
         return
 
     if not apply:
         print(f"\nDRY RUN — would fix {len(all_fixes)} fields. Run with --apply to apply.")
-        conn.close()
         return
-
-    # Close the read connection before apply phase
-    conn.close()
 
     # Group fixes by client
     fixes_by_client = defaultdict(list)
