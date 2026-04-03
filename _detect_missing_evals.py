@@ -91,17 +91,25 @@ def reconstruct_missing_rows(discrepancies, db_data):
         # Build account number -> firm mapping
         acct_to_firm = {}
         for acct, firm in d.get('firms', {}).items():
-            acct_to_firm[acct] = firm
+            if isinstance(acct, str) and isinstance(firm, str):
+                acct_to_firm[acct] = firm
 
         # Build row index -> account mapping
         row_to_acct = {}
         for row_str, acct in d.get('eval_account_map', {}).items():
-            row_to_acct[int(row_str)] = acct
+            if isinstance(acct, str):
+                row_to_acct[int(row_str)] = acct
+            elif isinstance(acct, dict):
+                row_to_acct[int(row_str)] = acct.get('account', str(acct))
+            else:
+                row_to_acct[int(row_str)] = str(acct)
 
         # Create skeleton rows for missing indices
         new_rows = []
         for row_idx in range(db_count, target_count):
             acct = row_to_acct.get(row_idx, '')
+            if not isinstance(acct, str):
+                acct = str(acct)
             firm = acct_to_firm.get(acct, '')
 
             # Try to guess firm from account prefix if not in firm_map
