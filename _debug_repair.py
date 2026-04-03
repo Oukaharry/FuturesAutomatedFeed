@@ -45,9 +45,10 @@ for cid in test_clients:
             row_to_acct[int(row_str)] = str(acct)
 
     PREFIX_TO_FIRM = {
-        'FNFT': 'My Funded Futures', 'MFFU': 'My Funded Futures',
-        'TDF': 'Tradeify', 'TDFY': 'Tradeify',
-        'AFAD': 'Apex', 'V2': 'Topstep', '50KTC': 'Topstep', 'ELTD': 'Other',
+        'FNFT': 'FundedNext', 'MFFU': 'My Funded Futures',
+        'TDF': 'TradeDay', 'TDFY': 'Tradeify', 'FTDFY': 'Tradeify',
+        'AFAD': 'Alpha Futures', 'V2': 'Topstep', '50KTC': 'Topstep',
+        'ELTD': 'TradeDay', 'TDFUNDED': 'TradeDay',
     }
 
     # DB state
@@ -96,6 +97,13 @@ for cid in test_clients:
         if full and '-' in full:
             prefix = full.rsplit('-', 1)[0].upper()
             derived_firm = PREFIX_TO_FIRM.get(prefix, '')
+
+        # Heuristic fallback
+        if not derived_firm and partial:
+            if len(partial) <= 4 and partial.isdigit():
+                derived_firm = 'Topstep'
+            elif partial and partial[0].isalpha():
+                derived_firm = 'FundedNext'
 
         can_fix_acct = bool(not acct and partial)
         can_fix_firm = bool(not firm and derived_firm)

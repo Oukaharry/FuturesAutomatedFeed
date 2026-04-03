@@ -81,15 +81,25 @@ def reconstruct_missing_rows(discrepancies, db_data):
     Account Number and Prop Firm from log data.
     """
     # Exact Prop Firm names from dashboard dropdown
+    # Based on MT5 login formats:
+    #   FNFT (FundedNext):  FNFTCH... / FNFTFA...
+    #   MFFU (MFF):         MFFUEV... / MFFUSF...
+    #   TDFY (Tradeify):    TDFYSL... / FTDFYSLX...
+    #   TDF  (TradeDay):    TDFUNDEDN...
+    #   ELTD (TradeDay):    ELTDEN...
+    #   AFAD (Alpha):       AFADVEV... / AFADVQA...
+    #   V2   (Topstep):     V2-...
     PREFIX_TO_FIRM = {
-        'FNFT': 'My Funded Futures',
+        'FNFT': 'FundedNext',
         'MFFU': 'My Funded Futures',
-        'TDF': 'Tradeify',
+        'TDF': 'TradeDay',
         'TDFY': 'Tradeify',
-        'AFAD': 'Apex',
+        'FTDFY': 'Tradeify',
+        'AFAD': 'Alpha Futures',
         'V2': 'Topstep',
         '50KTC': 'Topstep',
-        'ELTD': 'Other',
+        'ELTD': 'TradeDay',
+        'TDFUNDED': 'TradeDay',
     }
 
     reconstructions = []
@@ -167,16 +177,17 @@ def repair_empty_rows(report, db_data, dry_run=True):
     and fill them from the push report data.
     Returns (repairs_list, updated_count, error_count).
     """
-    # Exact Prop Firm names from dashboard dropdown
     PREFIX_TO_FIRM = {
-        'FNFT': 'My Funded Futures',
+        'FNFT': 'FundedNext',
         'MFFU': 'My Funded Futures',
-        'TDF': 'Tradeify',
+        'TDF': 'TradeDay',
         'TDFY': 'Tradeify',
-        'AFAD': 'Apex',
+        'FTDFY': 'Tradeify',
+        'AFAD': 'Alpha Futures',
         'V2': 'Topstep',
         '50KTC': 'Topstep',
-        'ELTD': 'Other',
+        'ELTD': 'TradeDay',
+        'TDFUNDED': 'TradeDay',
     }
 
     repairs = []
@@ -221,18 +232,30 @@ def repair_empty_rows(report, db_data, dry_run=True):
             if not partial and current_acct:
                 partial = current_acct.rsplit('-', 1)[-1] if '-' in current_acct else current_acct
 
-            if not partial:
-                continue  # No data to work with
+            if not partial and not has_acct and not has_firm:
+                continue  # Nothing to work with at all
 
-            # Look up full account to derive firm
-            full_acct = suffix_to_full.get(partial, '')
+            # === Derive firm from known data ===
             firm = ''
-            if full_acct and '-' in full_acct:
-                prefix = full_acct.rsplit('-', 1)[0].upper()
-                firm = PREFIX_TO_FIRM.get(prefix, '')
+
+            # Method 1: suffix → full session account → prefix → firm
+            if partial:
+                full_acct = suffix_to_full.get(partial, '')
+                if full_acct and '-' in full_acct:
+                    prefix = full_acct.rsplit('-', 1)[0].upper()
+                    firm = PREFIX_TO_FIRM.get(prefix, '')
+
+            # Method 2: heuristic from account number pattern
+            if not firm and partial:
+                # 4 digits or fewer + all digits → V2 → Topstep
+                if len(partial) <= 4 and partial.isdigit():
+                    firm = 'Topstep'
+                # Starts with a letter (R3866, K7732, T4656, M6843, etc.) → FNFT → FundedNext
+                elif partial and partial[0].isalpha():
+                    firm = 'FundedNext'
 
             # For account: use partial as-is if no full match
-            new_acct = partial if not has_acct else None
+            new_acct = partial if (not has_acct and partial) else None
             new_firm = firm if (not has_firm and firm) else None
 
             if new_acct or new_firm:
