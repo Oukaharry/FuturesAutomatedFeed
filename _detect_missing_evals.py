@@ -80,6 +80,18 @@ def reconstruct_missing_rows(discrepancies, db_data):
     For clients with missing eval rows, create skeleton rows with
     Account Number and Prop Firm from log data.
     """
+    # Exact Prop Firm names from dashboard dropdown
+    PREFIX_TO_FIRM = {
+        'FNFT': 'My Funded Futures',
+        'MFFU': 'My Funded Futures',
+        'TDF': 'Tradeify',
+        'TDFY': 'Tradeify',
+        'AFAD': 'Apex',
+        'V2': 'Topstep',
+        '50KTC': 'Topstep',
+        'ELTD': 'Other',
+    }
+
     reconstructions = []
 
     for d in discrepancies:
@@ -88,61 +100,52 @@ def reconstruct_missing_rows(discrepancies, db_data):
         db_count = len(current_evals)
         target_count = d['log_max_count']
 
-        # Build account number -> firm mapping
-        acct_to_firm = {}
-        for acct, firm in d.get('firms', {}).items():
-            if isinstance(acct, str) and isinstance(firm, str):
-                acct_to_firm[acct] = firm
+        # Build suffix → full session account lookup
+        session_accts = d.get('session_accounts', [])
+        suffix_to_full = {}
+        for full_acct in session_accts:
+            if '-' in full_acct:
+                suffix = full_acct.rsplit('-', 1)[1]
+                suffix_to_full.setdefault(suffix, full_acct)
 
-        # Build row index -> account mapping
+        # Build row index -> partial account mapping
         row_to_acct = {}
         for row_str, acct in d.get('eval_account_map', {}).items():
             if isinstance(acct, str):
                 row_to_acct[int(row_str)] = acct
             elif isinstance(acct, dict):
-                row_to_acct[int(row_str)] = acct.get('account', str(acct))
+                row_to_acct[int(row_str)] = str(acct.get('account', ''))
             else:
                 row_to_acct[int(row_str)] = str(acct)
 
         # Create skeleton rows for missing indices
         new_rows = []
         for row_idx in range(db_count, target_count):
-            acct = row_to_acct.get(row_idx, '')
-            if not isinstance(acct, str):
-                acct = str(acct)
-            firm = acct_to_firm.get(acct, '')
+            partial = row_to_acct.get(row_idx, '')
+            if not isinstance(partial, str):
+                partial = str(partial)
 
-            # Try to guess firm from account prefix if not in firm_map
-            if not firm and acct:
-                prefix = acct.split('-')[0] if '-' in acct else ''
-                firm_guess = {
-                    'FNFT': 'My Funded Futures',
-                    'MFFU': 'My Funded Futures',
-                    'TDF': 'Tradeify',
-                    'TDFY': 'Tradeify',
-                    'AFAD': 'Apex Funded Trader',
-                    'V2': 'Topstep',
-                    'ELTD': 'Elite Trader Funding',
-                }.get(prefix.upper(), '')
-                firm = firm_guess
+            # Map partial → full session account (e.g. "10374" → "FNFT-10374")
+            full_acct = suffix_to_full.get(partial, '')
 
-            # Try to guess account size from account prefix
-            size = ''
-            if acct:
-                prefix = acct.split('-')[0] if '-' in acct else ''
-                # Common default sizes — these are approximations
-                if prefix.upper() in ('FNFT', 'MFFU', 'TDF', 'TDFY', 'V2', 'ELTD'):
-                    size = '$50,000'  # Most common
+            # Derive Prop Firm from full account prefix
+            firm = ''
+            if full_acct and '-' in full_acct:
+                prefix = full_acct.rsplit('-', 1)[0].upper()
+                firm = PREFIX_TO_FIRM.get(prefix, '')
+
+            # Use full account as Account Number, fall back to partial
+            acct_display = full_acct if full_acct else partial
 
             skeleton = {
-                'Account Number': acct,
+                'Account Number': acct_display,
                 'Prop Firm': firm,
-                'Account Size': size,
+                'Account Size': '$50,000',
                 'Fee': '',
                 'Date Purchased': '',
                 'Date Started': '',
                 'Date Ended': '',
-                'Status P1': 'In Progress' if acct else '',
+                'Status P1': '',
                 'Funded Status': '',
             }
             new_rows.append((row_idx, skeleton))
