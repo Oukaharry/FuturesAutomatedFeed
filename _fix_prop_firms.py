@@ -189,9 +189,17 @@ def main():
                 all_fixes.append((client_id, idx, 'Prop Firm', '', derived_firm,
                                   f'{method} from {acct_for_firm}'))
 
+            # ── Step 3: Auto-fill Account Size for Alpha Futures ──
+            effective_firm = derived_firm if derived_firm else current_firm
+            current_size = ev.get('Account Size', '').strip()
+            if effective_firm == 'Alpha Futures' and not current_size:
+                all_fixes.append((client_id, idx, 'Account Size', '', '$50,000',
+                                  'default for Alpha Futures'))
+
     # ── Report ──
     acct_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Number']
     firm_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Prop Firm']
+    size_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Size']
     empty_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if not o]
     wrong_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if o]
 
@@ -204,6 +212,7 @@ def main():
     print(f"    Account Numbers to set: {len(acct_fixes)}")
     print(f"    Empty Prop Firm → set: {len(empty_firm)}")
     print(f"    Wrong Prop Firm → correct (prefix authoritative): {len(wrong_firm)}")
+    print(f"    Account Size to set (Alpha Futures default): {len(size_fixes)}")
     print(f"    TOTAL: {len(all_fixes)}")
 
     if conflicts:

@@ -2999,7 +2999,7 @@ def api_client_push():
             'Status', 'Status Funded', 'Status P1',
             'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
             'Date Purchased',
-            'Account Number', 'Prop Firm',
+            'Account Number', 'Prop Firm', 'Account Size',
         }
         existing_evals_push = existing_data.get('evaluations', [])
         for i, ev in enumerate(evaluations):
@@ -7376,7 +7376,7 @@ def push_evaluations():
         'Status', 'Status Funded', 'Status P1',
         'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
         'Date Purchased',
-        'Account Number', 'Prop Firm',
+        'Account Number', 'Prop Firm', 'Account Size',
     }
     for i, ev in enumerate(new_evals):
         if i < len(existing_evals) and isinstance(ev, dict):
