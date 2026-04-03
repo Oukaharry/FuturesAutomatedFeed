@@ -161,6 +161,151 @@ def reconstruct_missing_rows(discrepancies, db_data):
     return reconstructions
 
 
+def repair_empty_rows(report, db_data, dry_run=True):
+    """
+    Find eval rows that exist but have blank Account Number / Prop Firm,
+    and fill them from the push report data.
+    Returns (repairs_list, updated_count, error_count).
+    """
+    # Exact Prop Firm names from dashboard dropdown
+    PREFIX_TO_FIRM = {
+        'FNFT': 'My Funded Futures',
+        'MFFU': 'My Funded Futures',
+        'TDF': 'Tradeify',
+        'TDFY': 'Tradeify',
+        'AFAD': 'Apex',
+        'V2': 'Topstep',
+        '50KTC': 'Topstep',
+        'ELTD': 'Other',
+    }
+
+    repairs = []
+
+    for client_id, client_data in report.get('clients', {}).items():
+        evals = db_data.get(client_id, [])
+        if not evals:
+            continue
+
+        # Build suffix → full session account lookup
+        session_accts = client_data.get('session_accounts', [])
+        suffix_to_full = {}
+        for full_acct in session_accts:
+            if '-' in full_acct:
+                suffix = full_acct.rsplit('-', 1)[1]
+                suffix_to_full.setdefault(suffix, full_acct)
+
+        # Build row index -> partial account mapping
+        row_to_acct = {}
+        for row_str, acct in client_data.get('eval_account_map', {}).items():
+            if isinstance(acct, dict):
+                row_to_acct[int(row_str)] = str(acct.get('account', ''))
+            elif isinstance(acct, str):
+                row_to_acct[int(row_str)] = acct
+            else:
+                row_to_acct[int(row_str)] = str(acct)
+
+        # Find empty rows
+        row_fixes = []
+        for idx, ev in enumerate(evals):
+            has_acct = bool(ev.get('Account Number', '').strip())
+            has_firm = bool(ev.get('Prop Firm', '').strip())
+            if has_acct and has_firm:
+                continue  # Already populated
+
+            partial = row_to_acct.get(idx, '')
+            if not partial:
+                continue  # No log data for this row
+
+            full_acct = suffix_to_full.get(partial, '')
+            firm = ''
+            if full_acct and '-' in full_acct:
+                prefix = full_acct.rsplit('-', 1)[0].upper()
+                firm = PREFIX_TO_FIRM.get(prefix, '')
+
+            acct_display = full_acct if full_acct else partial
+
+            if (not has_acct and acct_display) or (not has_firm and firm):
+                row_fixes.append({
+                    'idx': idx,
+                    'account': acct_display if not has_acct else None,
+                    'firm': firm if not has_firm else None,
+                })
+
+        if row_fixes:
+            repairs.append({
+                'client_id': client_id,
+                'fixes': row_fixes,
+            })
+
+    if not repairs:
+        print("  No empty rows to repair.")
+        return repairs, 0, 0
+
+    # Print summary
+    total_fixes = sum(len(r['fixes']) for r in repairs)
+    print(f"\n  Found {total_fixes} empty rows across {len(repairs)} clients to repair.\n")
+
+    for repair in repairs[:20]:
+        cid = repair['client_id']
+        print(f"  📋 {cid}: {len(repair['fixes'])} rows to fix")
+        for fix in repair['fixes'][:5]:
+            acct_str = fix['account'] or '(keep existing)'
+            firm_str = fix['firm'] or '(keep existing)'
+            print(f"    Row {fix['idx']}: Account={acct_str}, Firm={firm_str}")
+        if len(repair['fixes']) > 5:
+            print(f"    ... and {len(repair['fixes']) - 5} more")
+
+    if dry_run:
+        print(f"\n  DRY RUN — would repair {total_fixes} rows in {len(repairs)} clients.")
+        return repairs, 0, 0
+
+    # Apply fixes
+    conn = sqlite3.connect(DB_PATH)
+    updated = 0
+    errors = 0
+
+    for repair in repairs:
+        cid = repair['client_id']
+        try:
+            row = conn.execute(
+                'SELECT evaluations FROM clients_data WHERE client_id = ?', (cid,)
+            ).fetchone()
+            if not row:
+                errors += 1
+                continue
+
+            evals = json.loads(row[0] or '[]')
+            changed = False
+
+            for fix in repair['fixes']:
+                idx = fix['idx']
+                if idx >= len(evals):
+                    continue
+                if fix['account'] and not evals[idx].get('Account Number', '').strip():
+                    evals[idx]['Account Number'] = fix['account']
+                    changed = True
+                if fix['firm'] and not evals[idx].get('Prop Firm', '').strip():
+                    evals[idx]['Prop Firm'] = fix['firm']
+                    changed = True
+
+            if changed:
+                conn.execute(
+                    'UPDATE clients_data SET evaluations = ? WHERE client_id = ?',
+                    (json.dumps(evals), cid)
+                )
+                updated += 1
+                print(f"  ✅ {cid}: Repaired {len(repair['fixes'])} rows")
+
+        except Exception as e:
+            print(f"  ❌ {cid}: Error — {e}")
+            errors += 1
+
+    conn.commit()
+    conn.close()
+    print(f"\n  Repair complete: {updated} clients updated, {errors} errors")
+    return repairs, updated, errors
+
+
 def apply_missing_rows(reconstructions, dry_run=True):
     """Apply missing rows to the DB."""
     if not reconstructions:
@@ -295,46 +440,60 @@ def main():
 
     if not discrepancies:
         print(f"\n  ✅ ALL CLIENTS have correct eval row counts — no rows are missing!")
-        print(f"  The evaluation info visible on the dashboard is complete.")
-        print("=" * 100)
-        return
 
-    # Reconstruct
-    print(f"\n{'='*80}")
-    print("MISSING ROW RECONSTRUCTION PLAN")
-    print(f"{'='*80}\n")
-
-    reconstructions = reconstruct_missing_rows(discrepancies, db_data)
-
-    for recon in reconstructions:
-        cid = recon['client_id']
-        print(f"\n  📋 {cid}: needs {recon['target_count'] - recon['db_count']} new rows "
-              f"(DB: {recon['db_count']} → Target: {recon['target_count']})")
-        for row_idx, skeleton in recon['new_rows'][:10]:
-            acct = skeleton.get('Account Number', '?')
-            firm = skeleton.get('Prop Firm', '?')
-            print(f"    Row {row_idx}: {firm} | {acct}")
-        if len(recon['new_rows']) > 10:
-            print(f"    ... and {len(recon['new_rows']) - 10} more rows")
-
-    # Dry run
-    print(f"\n{'='*80}")
-    print("DRY RUN — APPLYING MISSING ROWS")
-    print(f"{'='*80}\n")
-
-    apply_missing_rows(reconstructions, dry_run=True)
-
-    # Apply if --apply
-    if '--apply' in sys.argv:
+    if discrepancies:
+        # Reconstruct
         print(f"\n{'='*80}")
-        print("APPLYING MISSING ROWS TO LIVE DB")
+        print("MISSING ROW RECONSTRUCTION PLAN")
         print(f"{'='*80}\n")
 
-        updated, errors = apply_missing_rows(reconstructions, dry_run=False)
-        print(f"\n  Applied: {updated}, Errors: {errors}")
-    else:
-        if reconstructions:
-            print(f"\n  To apply: python3 _detect_missing_evals.py --apply")
+        reconstructions = reconstruct_missing_rows(discrepancies, db_data)
+
+        for recon in reconstructions:
+            cid = recon['client_id']
+            print(f"\n  📋 {cid}: needs {recon['target_count'] - recon['db_count']} new rows "
+                  f"(DB: {recon['db_count']} → Target: {recon['target_count']})")
+            for row_idx, skeleton in recon['new_rows'][:10]:
+                acct = skeleton.get('Account Number', '?')
+                firm = skeleton.get('Prop Firm', '?')
+                print(f"    Row {row_idx}: {firm} | {acct}")
+            if len(recon['new_rows']) > 10:
+                print(f"    ... and {len(recon['new_rows']) - 10} more rows")
+
+        # Dry run
+        print(f"\n{'='*80}")
+        print("DRY RUN — APPLYING MISSING ROWS")
+        print(f"{'='*80}\n")
+
+        apply_missing_rows(reconstructions, dry_run=True)
+
+        # Apply if --apply
+        if '--apply' in sys.argv:
+            print(f"\n{'='*80}")
+            print("APPLYING MISSING ROWS TO LIVE DB")
+            print(f"{'='*80}\n")
+
+            updated, errors = apply_missing_rows(reconstructions, dry_run=False)
+            print(f"\n  Applied: {updated}, Errors: {errors}")
+
+            # Reload DB data after adding rows
+            db_counts, db_data = get_db_eval_counts()
+
+    # ── Phase 2: Repair empty rows (Account Number + Prop Firm) ──
+    print(f"\n{'='*80}")
+    print("PHASE 2: REPAIR EMPTY EVAL ROWS (Account Number + Prop Firm)")
+    print(f"{'='*80}\n")
+
+    repair_empty_rows(report, db_data, dry_run=True)
+
+    if '--apply' in sys.argv:
+        print(f"\n{'='*80}")
+        print("APPLYING REPAIRS TO EMPTY ROWS")
+        print(f"{'='*80}\n")
+        repair_empty_rows(report, db_data, dry_run=False)
+
+    if '--apply' not in sys.argv:
+        print(f"\n  To apply all changes: python3 _detect_missing_evals.py --apply")
 
     print(f"\n{'='*100}")
     print("COMPLETE")
