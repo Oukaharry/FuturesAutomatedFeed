@@ -112,9 +112,9 @@ def main():
             if ev.get('_deleted'):
                 continue
 
-            current_acct_ch = ev.get('Account #', '').strip()      # challenge account
-            current_acct_fd = ev.get('Account #.1', '').strip()    # funded account
-            current_firm = ev.get('Prop Firm', '').strip()
+            current_acct_ch = (ev.get('Account #') or '').strip()      # challenge account
+            current_acct_fd = (ev.get('Account #.1') or '').strip()    # funded account
+            current_firm = (ev.get('Prop Firm') or '').strip()
 
             # ── Step 1: Populate Account # / Account #.1 from report ──
             # eval_account_map entries have: {account, phase, num}
@@ -220,7 +220,7 @@ def main():
 
             # ── Step 3: Auto-fill Account Size for Alpha Futures ──
             effective_firm = derived_firm if derived_firm else current_firm
-            current_size = ev.get('Account Size', '').strip()
+            current_size = (ev.get('Account Size') or '').strip()
             if effective_firm == 'Alpha Futures' and not current_size:
                 all_fixes.append((client_id, idx, 'Account Size', '', '$50,000',
                                   'default for Alpha Futures'))
