@@ -86,6 +86,7 @@ def main():
     rows = conn.execute('SELECT client_id, evaluations FROM clients_data').fetchall()
 
     all_fixes = []       # (client_id, idx, field, old_val, new_val, reason)
+    conflicts = []       # (client_id, idx, field, existing_val, derived_val, reason)
     unmappable = []
     already_correct = 0
     no_data = 0
@@ -115,25 +116,42 @@ def main():
 
             # ── Step 1: Try to populate Account Number from report data ──
             new_acct = None
-            if not current_acct:
-                map_entry = eval_map.get(str(idx))
-                if map_entry:
-                    # Handle both old format (single dict) and new format (list of dicts)
-                    matches = map_entry if isinstance(map_entry, list) else [map_entry]
-                    best = None
-                    for m in matches:
-                        if isinstance(m, dict):
-                            partial = str(m.get('account', ''))
-                        else:
-                            partial = str(m)
-                        full = resolve_account(partial, session_accts)
-                        if best is None or len(full) > len(best):
-                            best = full
-                    if best:
-                        new_acct = best
-                        all_fixes.append((client_id, idx, 'Account Number', current_acct, new_acct,
-                                          f'from eval_account_map'))
-                        current_acct = new_acct  # use for firm derivation below
+            derived_acct = None
+            map_entry = eval_map.get(str(idx))
+            if map_entry:
+                matches = map_entry if isinstance(map_entry, list) else [map_entry]
+                best = None
+                for m in matches:
+                    if isinstance(m, dict):
+                        partial = str(m.get('account', ''))
+                    else:
+                        partial = str(m)
+                    full = resolve_account(partial, session_accts)
+                    if best is None or len(full) > len(best):
+                        best = full
+                derived_acct = best
+
+            if derived_acct:
+                if not current_acct:
+                    # Empty → fill
+                    new_acct = derived_acct
+                    all_fixes.append((client_id, idx, 'Account Number', '', new_acct,
+                                      'from eval_account_map'))
+                    current_acct = new_acct
+                elif current_acct != derived_acct:
+                    # Check if they refer to same account (suffix match)
+                    cur_suffix = current_acct.rsplit('-', 1)[-1] if '-' in current_acct else current_acct
+                    der_suffix = derived_acct.rsplit('-', 1)[-1] if '-' in derived_acct else derived_acct
+                    if cur_suffix == der_suffix:
+                        # Same account, different format — upgrade to fuller version
+                        if len(derived_acct) > len(current_acct):
+                            all_fixes.append((client_id, idx, 'Account Number', current_acct, derived_acct,
+                                              'upgrade partial→full'))
+                            current_acct = derived_acct
+                    else:
+                        # Genuinely different — trader may have set manually, don't overwrite
+                        conflicts.append((client_id, idx, 'Account Number', current_acct, derived_acct,
+                                          'manual vs log mismatch'))
 
             # ── Step 2: Derive correct firm ──
             acct_for_firm = current_acct
@@ -148,16 +166,28 @@ def main():
                 if not current_firm:
                     unmappable.append((client_id, idx, acct_for_firm))
                 else:
-                    already_correct += 1  # has firm, can't verify but leave it
+                    already_correct += 1
                 continue
 
             if current_firm == derived_firm:
                 already_correct += 1
                 continue
 
-            # Firm is either empty or wrong
-            all_fixes.append((client_id, idx, 'Prop Firm', current_firm, derived_firm,
-                              f'{method} from {acct_for_firm}'))
+            if current_firm:
+                # Trader has a firm set but it disagrees with account prefix
+                # Only auto-correct if prefix is definitive (not heuristic)
+                if method and method.startswith('prefix:'):
+                    # Prefix is authoritative — account says TDF, firm should be TradeDay
+                    all_fixes.append((client_id, idx, 'Prop Firm', current_firm, derived_firm,
+                                      f'corrected: {method} from {acct_for_firm}'))
+                else:
+                    # Heuristic — trader's manual choice is more trustworthy
+                    conflicts.append((client_id, idx, 'Prop Firm', current_firm, derived_firm,
+                                      f'heuristic {method} disagrees with manual'))
+            else:
+                # Empty firm → fill
+                all_fixes.append((client_id, idx, 'Prop Firm', '', derived_firm,
+                                  f'{method} from {acct_for_firm}'))
 
     # ── Report ──
     acct_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Number']
@@ -169,11 +199,17 @@ def main():
     print(f"  Already correct: {already_correct}")
     print(f"  No data at all (no acct, no firm, no report entry): {no_data}")
     print(f"  Unmappable (bare >4-digit numbers): {len(unmappable)}")
+    print(f"  Conflicts (manual data differs — left untouched): {len(conflicts)}")
     print(f"\n  Fixes needed:")
     print(f"    Account Numbers to set: {len(acct_fixes)}")
     print(f"    Empty Prop Firm → set: {len(empty_firm)}")
-    print(f"    Wrong Prop Firm → correct: {len(wrong_firm)}")
+    print(f"    Wrong Prop Firm → correct (prefix authoritative): {len(wrong_firm)}")
     print(f"    TOTAL: {len(all_fixes)}")
+
+    if conflicts:
+        print(f"\n  ── Conflicts (manual ≠ derived — NOT overwriting) ──")
+        for c, i, f, existing, derived, reason in conflicts:
+            print(f"    {c} row {i} [{f}]: has '{existing}', derived '{derived}' ({reason})")
 
     if acct_fixes:
         by_client = defaultdict(list)
