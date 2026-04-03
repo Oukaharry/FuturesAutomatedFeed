@@ -74,8 +74,8 @@ def parse_all_logs():
         mt5_balance/deposits/withdrawals, stats_*, hr_*, account_summary,
         received_groups, received_deals, acct_total_deposits_final,
         aggregated_groups_final
-    account_maps : {client_id: {eval_idx: {account, phase, num}}}
-        Cumulative eval-to-account mapping across ALL pushes
+    account_maps : {client_id: {eval_idx: [{account, phase, num}, ...]}}
+        Cumulative eval-to-account mapping across ALL pushes (list per row)
     mt5_mappings : [(mt5_account, dashboard_account, timestamp)]
     farming_accounts : {client_id: {account: {days, dates}}}
     session_accounts : {client_id: set(account_guess)}
@@ -83,7 +83,7 @@ def parse_all_logs():
     source_id_map : {client_id: {account: set(source_ids)}}
     """
     all_pushes = defaultdict(list)
-    account_maps = defaultdict(lambda: defaultdict(dict))
+    account_maps = defaultdict(lambda: defaultdict(list))
     mt5_mappings = []
     farming_accounts = defaultdict(lambda: defaultdict(dict))
     session_accounts = defaultdict(set)
@@ -329,9 +329,13 @@ def parse_all_logs():
 
                     # Accumulate global maps
                     for em in pending_eval_matches:
-                        account_maps[client_id][em['eval_idx']] = {
+                        existing = account_maps[client_id][em['eval_idx']]
+                        entry = {
                             'account': em['account'], 'phase': em['phase'], 'num': em['num'],
                         }
+                        # Only add if not a duplicate
+                        if entry not in existing:
+                            existing.append(entry)
                     for s in pending_sessions:
                         session_accounts[client_id].add(s['account_guess'])
                     for acct, info in pending_fa_accounts.items():
@@ -868,20 +872,26 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
             # ── 5. Reconstruct Account Number in evaluations ──
             acct_changes = 0
             if client_id in account_maps:
-                for eval_idx, info in account_maps[client_id].items():
+                for eval_idx, matches in account_maps[client_id].items():
                     if eval_idx < len(evaluations):
-                        raw_acct = info['account']
-                        # Find full account_guess containing this raw number
-                        full_acct = raw_acct
-                        if client_id in session_accounts:
-                            for sa in session_accounts[client_id]:
-                                if raw_acct in sa:
-                                    full_acct = sa
-                                    break
-                        old_acct = evaluations[eval_idx].get('Account Number', '')
-                        if not old_acct or old_acct != full_acct:
-                            evaluations[eval_idx]['Account Number'] = full_acct
-                            acct_changes += 1
+                        # Pick the best full account from all matches for this row
+                        best_acct = None
+                        for info in matches:
+                            raw_acct = info['account']
+                            full_acct = raw_acct
+                            if client_id in session_accounts:
+                                for sa in session_accounts[client_id]:
+                                    if raw_acct in sa:
+                                        full_acct = sa
+                                        break
+                            # Prefer longer (more complete) account strings
+                            if best_acct is None or len(full_acct) > len(best_acct):
+                                best_acct = full_acct
+                        if best_acct:
+                            old_acct = evaluations[eval_idx].get('Account Number', '')
+                            if not old_acct or old_acct != best_acct:
+                                evaluations[eval_idx]['Account Number'] = best_acct
+                                acct_changes += 1
             if acct_changes:
                 changes.append(f"Updated {acct_changes} evaluation Account Number fields")
 
@@ -1300,7 +1310,7 @@ def main():
      session_accounts, firm_map, source_id_map) = parse_all_logs()
 
     total_events = sum(len(v) for v in all_pushes.values())
-    total_eval_mappings = sum(len(v) for v in account_maps.values())
+    total_eval_mappings = sum(len(v) for v in account_maps.values())  # rows with matches
     total_farm_accts = sum(len(v) for v in farming_accounts.values())
     total_session_accts = sum(len(v) for v in session_accounts.values())
     total_firms = sum(len(v) for v in firm_map.values())

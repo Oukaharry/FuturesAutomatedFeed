@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Fix Prop Firm assignments across ALL clients.
+Comprehensive fix for Account Number + Prop Firm across ALL clients.
 
-1. If Account Number has a recognized prefix (FNFT-, TDF-, etc.), derive firm
-2. If Prop Firm is empty → set it
-3. If Prop Firm is wrong (doesn't match prefix) → correct it
-4. For bare numbers: ≤4 digits → Topstep, starts with letter → FundedNext
+Reads the push report (_log_push_report.json) to:
+1. Populate missing Account Numbers from eval_account_map + session_accounts
+2. Set empty Prop Firm from account prefix
+3. Correct wrong Prop Firm (prefix disagrees with current firm)
+4. Handle dual-account rows (challenge + funded on same row)
 
 Usage:
     python _fix_prop_firms.py            # dry run
@@ -13,8 +14,10 @@ Usage:
 """
 import sqlite3, json, os, sys, shutil
 from datetime import datetime
+from collections import defaultdict
 
 DB_PATH = os.path.expanduser('~/MT5Dashboard/dashboard/dashboard.db')
+REPORT_PATH = os.path.expanduser('~/MT5Dashboard/_log_push_report.json')
 
 PREFIX_TO_FIRM = {
     'FNFT': 'FundedNext',
@@ -28,11 +31,6 @@ PREFIX_TO_FIRM = {
     'ELTD': 'TradeDay',
     'TDFU': 'TradeDay',
 }
-
-# Reverse map: firm name → set of prefixes (for validation)
-FIRM_TO_PREFIXES = {}
-for pfx, firm in PREFIX_TO_FIRM.items():
-    FIRM_TO_PREFIXES.setdefault(firm, set()).add(pfx)
 
 
 def derive_firm(account_number):
@@ -60,90 +58,164 @@ def derive_firm(account_number):
     return None, None
 
 
+def resolve_account(partial, session_accts):
+    """Resolve a partial account number to full form via session_accounts."""
+    if not partial:
+        return partial
+    for sa in session_accts:
+        if partial in sa:
+            return sa
+    return partial
+
+
 def main():
     apply = '--apply' in sys.argv
 
+    # ── Load push report ──
+    report = {}
+    if os.path.exists(REPORT_PATH):
+        with open(REPORT_PATH) as f:
+            report = json.load(f)
+        print(f"Loaded push report: {len(report.get('clients', {}))} clients")
+    else:
+        print(f"No push report at {REPORT_PATH} — will fix firms from existing Account Numbers only")
+
+    # ── Load DB ──
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute('SELECT client_id, evaluations FROM clients_data').fetchall()
 
-    all_fixes = []       # (client_id, idx, old_firm, new_firm, account, method)
-    unmappable = []      # (client_id, idx, account) — can't determine firm
+    all_fixes = []       # (client_id, idx, field, old_val, new_val, reason)
+    unmappable = []
     already_correct = 0
-    no_account = 0
+    no_data = 0
 
     for row in rows:
         client_id = row['client_id']
         evals = json.loads(row['evaluations'] or '[]')
+        client_report = report.get('clients', {}).get(client_id, {})
+
+        # Get session accounts and eval_account_map from report
+        session_accts = client_report.get('session_accounts', [])
+        eval_map = client_report.get('eval_account_map', {})
+
+        # Build suffix → full session account lookup
+        suffix_to_full = {}
+        for full_acct in session_accts:
+            if '-' in full_acct:
+                suffix = full_acct.rsplit('-', 1)[1]
+                suffix_to_full.setdefault(suffix, full_acct)
 
         for idx, ev in enumerate(evals):
             if ev.get('_deleted'):
                 continue
 
-            acct = ev.get('Account Number', '').strip()
+            current_acct = ev.get('Account Number', '').strip()
             current_firm = ev.get('Prop Firm', '').strip()
 
-            if not acct:
+            # ── Step 1: Try to populate Account Number from report data ──
+            new_acct = None
+            if not current_acct:
+                map_entry = eval_map.get(str(idx))
+                if map_entry:
+                    # Handle both old format (single dict) and new format (list of dicts)
+                    matches = map_entry if isinstance(map_entry, list) else [map_entry]
+                    best = None
+                    for m in matches:
+                        if isinstance(m, dict):
+                            partial = str(m.get('account', ''))
+                        else:
+                            partial = str(m)
+                        full = resolve_account(partial, session_accts)
+                        if best is None or len(full) > len(best):
+                            best = full
+                    if best:
+                        new_acct = best
+                        all_fixes.append((client_id, idx, 'Account Number', current_acct, new_acct,
+                                          f'from eval_account_map'))
+                        current_acct = new_acct  # use for firm derivation below
+
+            # ── Step 2: Derive correct firm ──
+            acct_for_firm = current_acct
+            if not acct_for_firm:
                 if not current_firm:
-                    no_account += 1
+                    no_data += 1
                 continue
 
-            derived_firm, method = derive_firm(acct)
+            derived_firm, method = derive_firm(acct_for_firm)
 
             if derived_firm is None:
                 if not current_firm:
-                    unmappable.append((client_id, idx, acct))
+                    unmappable.append((client_id, idx, acct_for_firm))
+                else:
+                    already_correct += 1  # has firm, can't verify but leave it
                 continue
 
             if current_firm == derived_firm:
                 already_correct += 1
                 continue
 
-            # Firm is either empty or wrong — fix it
-            all_fixes.append((client_id, idx, current_firm, derived_firm, acct, method))
+            # Firm is either empty or wrong
+            all_fixes.append((client_id, idx, 'Prop Firm', current_firm, derived_firm,
+                              f'{method} from {acct_for_firm}'))
 
     # ── Report ──
-    print(f"Scanned {len(rows)} clients")
+    acct_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Account Number']
+    firm_fixes = [(c, i, f, o, n, r) for c, i, f, o, n, r in all_fixes if f == 'Prop Firm']
+    empty_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if not o]
+    wrong_firm = [(c, i, f, o, n, r) for c, i, f, o, n, r in firm_fixes if o]
+
+    print(f"\nScanned {len(rows)} clients")
     print(f"  Already correct: {already_correct}")
-    print(f"  No account at all: {no_account}")
-    print(f"  Unmappable (no prefix, >4 digits, no letter start): {len(unmappable)}")
-    print(f"  Fixes needed: {len(all_fixes)}")
+    print(f"  No data at all (no acct, no firm, no report entry): {no_data}")
+    print(f"  Unmappable (bare >4-digit numbers): {len(unmappable)}")
+    print(f"\n  Fixes needed:")
+    print(f"    Account Numbers to set: {len(acct_fixes)}")
+    print(f"    Empty Prop Firm → set: {len(empty_firm)}")
+    print(f"    Wrong Prop Firm → correct: {len(wrong_firm)}")
+    print(f"    TOTAL: {len(all_fixes)}")
 
-    # Break down fixes
-    empty_fixes = [(c, i, of, nf, a, m) for c, i, of, nf, a, m in all_fixes if not of]
-    wrong_fixes = [(c, i, of, nf, a, m) for c, i, of, nf, a, m in all_fixes if of]
-    print(f"    Empty Prop Firm → set: {len(empty_fixes)}")
-    print(f"    Wrong Prop Firm → correct: {len(wrong_fixes)}")
-
-    if wrong_fixes:
-        print(f"\n  ── Wrong Prop Firm corrections ──")
-        for client_id, idx, old_firm, new_firm, acct, method in wrong_fixes:
-            print(f"    {client_id} row {idx}: {old_firm} → {new_firm}  (account={acct}, {method})")
-
-    if empty_fixes:
-        # Group by client
-        from collections import defaultdict
+    if acct_fixes:
         by_client = defaultdict(list)
-        for client_id, idx, old_firm, new_firm, acct, method in empty_fixes:
-            by_client[client_id].append((idx, new_firm, acct, method))
-        print(f"\n  ── Empty Prop Firm fills ({len(empty_fixes)} rows across {len(by_client)} clients) ──")
+        for c, i, f, o, n, r in acct_fixes:
+            by_client[c].append((i, n, r))
+        print(f"\n  ── Account Number fills ({len(acct_fixes)} rows across {len(by_client)} clients) ──")
         for cid in sorted(by_client.keys()):
             fixes = by_client[cid]
             print(f"    {cid}: {len(fixes)} rows")
-            for idx, new_firm, acct, method in fixes[:5]:
-                print(f"      row {idx}: → {new_firm}  (account={acct}, {method})")
+            for idx, new_val, reason in fixes[:5]:
+                print(f"      row {idx}: → {new_val}  ({reason})")
+            if len(fixes) > 5:
+                print(f"      ... and {len(fixes) - 5} more")
+
+    if wrong_firm:
+        print(f"\n  ── Wrong Prop Firm corrections ({len(wrong_firm)}) ──")
+        for c, i, f, old, new, reason in wrong_firm:
+            print(f"    {c} row {i}: {old} → {new}  ({reason})")
+
+    if empty_firm:
+        by_client = defaultdict(list)
+        for c, i, f, o, n, r in empty_firm:
+            by_client[c].append((i, n, r))
+        print(f"\n  ── Empty Prop Firm fills ({len(empty_firm)} rows across {len(by_client)} clients) ──")
+        for cid in sorted(by_client.keys()):
+            fixes = by_client[cid]
+            print(f"    {cid}: {len(fixes)} rows")
+            for idx, new_val, reason in fixes[:5]:
+                print(f"      row {idx}: → {new_val}  ({reason})")
             if len(fixes) > 5:
                 print(f"      ... and {len(fixes) - 5} more")
 
     if unmappable:
-        from collections import defaultdict
         by_client = defaultdict(list)
         for cid, idx, acct in unmappable:
             by_client[cid].append((idx, acct))
-        print(f"\n  ── Unmappable accounts ({len(unmappable)} rows across {len(by_client)} clients) ──")
+        print(f"\n  ── Unmappable accounts — left for later ({len(unmappable)} rows) ──")
         for cid in sorted(by_client.keys()):
             items = by_client[cid]
-            print(f"    {cid}: {', '.join(f'row {i} ({a})' for i, a in items)}")
+            print(f"    {cid}: {', '.join(f'row {i} ({a})' for i, a in items[:10])}")
+            if len(items) > 10:
+                print(f"      ... and {len(items) - 10} more")
 
     if not all_fixes:
         print("\nNothing to fix.")
@@ -151,7 +223,7 @@ def main():
         return
 
     if not apply:
-        print(f"\nDRY RUN — would fix {len(all_fixes)} rows. Run with --apply to apply.")
+        print(f"\nDRY RUN — would fix {len(all_fixes)} fields. Run with --apply to apply.")
         conn.close()
         return
 
@@ -162,27 +234,26 @@ def main():
     print(f"\n  Backup: {backup}")
 
     # ── Apply ──
-    from collections import defaultdict
     fixes_by_client = defaultdict(list)
-    for client_id, idx, old_firm, new_firm, acct, method in all_fixes:
-        fixes_by_client[client_id].append((idx, new_firm))
+    for c, idx, field, old, new, reason in all_fixes:
+        fixes_by_client[c].append((idx, field, new))
 
     updated = 0
     errors = 0
     for client_id, fixes in fixes_by_client.items():
         try:
-            row = conn.execute(
+            r = conn.execute(
                 'SELECT evaluations FROM clients_data WHERE client_id = ?', (client_id,)
             ).fetchone()
-            if not row:
+            if not r:
                 errors += 1
                 continue
 
-            evals = json.loads(row['evaluations'] or '[]')
+            evals = json.loads(r['evaluations'] or '[]')
             changed = False
-            for idx, new_firm in fixes:
+            for idx, field, new_val in fixes:
                 if idx < len(evals):
-                    evals[idx]['Prop Firm'] = new_firm
+                    evals[idx][field] = new_val
                     changed = True
 
             if changed:
