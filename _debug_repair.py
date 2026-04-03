@@ -145,7 +145,10 @@ for cid in test_clients:
         if has_acct_no_firm:
             print(f"\n    --- Has Account but NO Firm ({len(has_acct_no_firm)}) ---")
             for pr in has_acct_no_firm[:50]:
-                print(f"    Row {pr['idx']:>4}: Acct='{pr['acct']}'")
+                # Show what suffix lookup returns
+                p = pr['partial']
+                full = suffix_to_full.get(p, 'NO MATCH') if p else 'no partial'
+                print(f"    Row {pr['idx']:>4}: Acct='{pr['acct']}' partial='{p}' suffix_lookup='{full}' derived_firm='{pr['derived_firm']}'  in_eval_map={pr['in_eval_map']}")
 
         if has_firm_no_acct:
             print(f"\n    --- Has Firm but NO Account ({len(has_firm_no_acct)}) ---")
