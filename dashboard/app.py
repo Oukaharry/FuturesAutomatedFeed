@@ -6870,58 +6870,31 @@ def import_csv_companion():
     if not existing_data:
         return jsonify({"status": "error", "message": f"No existing data for client {client_id}"}), 404
 
-    existing_evals = existing_data.get('evaluations', [])
+    old_count = len(existing_data.get('evaluations', []))
 
-    existing_by_account = {}
-    for idx, ev in enumerate(existing_evals):
-        acct = (ev.get('Account #') or '').strip()
-        if acct:
-            existing_by_account[acct] = idx
-
-    matched_indices = set()
-    updated_count = 0
-    added_count = 0
-    merged_evals = list(existing_evals)
-
-    for row_idx, csv_row in enumerate(rows):
-        acct = (csv_row.get('Account #') or '').strip()
+    # Full replacement: CSV becomes the new evaluations list
+    new_evals = []
+    for csv_row in rows:
         clean_row = {k: v for k, v in csv_row.items() if not k.startswith('_')}
+        new_evals.append(clean_row)
 
-        if acct and acct in existing_by_account:
-            idx = existing_by_account[acct]
-            matched_indices.add(idx)
-            for key, val in clean_row.items():
-                if val.strip():
-                    merged_evals[idx][key] = val
-            updated_count += 1
-        elif row_idx < len(existing_evals) and row_idx not in matched_indices:
-            # Positional fallback: update existing row at same index
-            for key, val in clean_row.items():
-                if val.strip():
-                    merged_evals[row_idx][key] = val
-            matched_indices.add(row_idx)
-            updated_count += 1
-        else:
-            merged_evals.append(clean_row)
-            added_count += 1
-
-    existing_data['evaluations'] = merged_evals
+    existing_data['evaluations'] = new_evals
     save_client_data_with_history(
         client_id, existing_data,
         changed_by=email,
         change_source='csv_import',
-        change_description=f"CSV import via companion: {updated_count} updated, {added_count} added"
+        change_description=f"CSV import via companion: replaced {old_count} evals with {len(new_evals)} from CSV"
     )
 
     log_action('CSV_IMPORT', 'companion', email, get_remote_address(),
-               f"Imported CSV for {client_id}: {updated_count} updated, {added_count} added from {len(rows)} rows")
+               f"Imported CSV for {client_id}: replaced {old_count} with {len(new_evals)} evals")
 
     return jsonify({
         'status': 'success',
-        'message': f'Import complete: {updated_count} rows updated, {added_count} rows added',
-        'updated': updated_count,
-        'added': added_count,
-        'total_rows': len(merged_evals)
+        'message': f'Import complete: {len(new_evals)} rows imported (replaced {old_count})',
+        'imported': len(new_evals),
+        'previous': old_count,
+        'total_rows': len(new_evals)
     })
 
 @app.route('/api/notes', methods=['POST'])
