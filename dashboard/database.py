@@ -1,411 +1,126 @@
 """
-SQLite Database Module for Trading Dashboard
-Provides secure storage with encrypted data and audit logging
+PostgreSQL Database Module for Trading Dashboard
+Provides secure storage with encrypted data and audit logging.
+
+Migrated from SQLite — uses psycopg2 with compatibility wrappers
+so all existing query code (? placeholders, row['col'] access) keeps working.
 """
-import sqlite3
 import json
 import os
 import hashlib
 import secrets
+import psycopg2
+import psycopg2.extras
 from datetime import datetime, timedelta
 from contextlib import contextmanager
+from dotenv import load_dotenv
 
-# Database file path
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard.db')
+load_dotenv()
 
-def get_db_path():
-    return DB_PATH
+DATABASE_URL = os.environ.get(
+    'DATABASE_URL',
+    'postgresql://postgres:postgres123@localhost:5432/tradeopss'
+)
+
+
+# ─── Compatibility wrappers ────────────────────────────────────────
+# Translate SQLite-style ? placeholders to psycopg2 %s automatically,
+# and return dict rows so row['col'] keeps working everywhere.
+
+class _PgCursorWrapper:
+    """Wraps psycopg2 RealDictCursor; translates ? → %s."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, sql, params=None):
+        sql = sql.replace('?', '%s')
+        self._cursor.execute(sql, params)
+        return self
+
+    def executemany(self, sql, params_list):
+        sql = sql.replace('?', '%s')
+        self._cursor.executemany(sql, params_list)
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    @property
+    def lastrowid(self):
+        return getattr(self._cursor, 'lastrowid', None)
+
+
+class _PgConnWrapper:
+    """Wraps a psycopg2 connection to match the sqlite3 interface used throughout."""
+
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+
+    def cursor(self):
+        return _PgCursorWrapper(
+            self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        )
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
 
 @contextmanager
 def get_connection():
-    """Context manager for database connections."""
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL')
+    """Context manager for database connections (PostgreSQL)."""
+    raw = psycopg2.connect(DATABASE_URL)
+    conn = _PgConnWrapper(raw)
     try:
         yield conn
+        raw.commit()   # auto-commit on clean exit (safety net)
+    except Exception:
+        raw.rollback()
+        raise
     finally:
-        conn.close()
+        raw.close()
+
+
+def get_db_path():
+    """Legacy helper — returns DATABASE_URL for PostgreSQL."""
+    return DATABASE_URL
 
 def check_and_repair_database():
-    """Run integrity check and attempt recovery if database is corrupted.
-    Returns (ok: bool, message: str)."""
-    import shutil
-    import threading
-
-    if not os.path.exists(DB_PATH):
-        return True, 'No database file yet — will be created on init'
-
+    """Connectivity check (PostgreSQL doesn't need SQLite-style repair)."""
     try:
         with get_connection() as conn:
-            result = conn.execute('PRAGMA integrity_check').fetchone()
-            if result and result[0] == 'ok':
-                return True, 'Database integrity OK'
+            conn.execute('SELECT 1')
+        return True, 'PostgreSQL connection OK'
     except Exception as e:
-        pass  # Fall through to repair
-
-    # Database is corrupt — attempt dump-and-rebuild recovery with timeout
-    backup_path = DB_PATH + '.corrupt.' + datetime.now().strftime('%Y%m%d_%H%M%S')
-    new_path = DB_PATH + '.new'
-    try:
-        # Backup the corrupt file
-        shutil.copy2(DB_PATH, backup_path)
-
-        # Try to dump with a 15-second timeout (prevents hanging on severe corruption)
-        lines = []
-        dump_ok = False
-
-        def _dump():
-            nonlocal lines, dump_ok
-            try:
-                src = sqlite3.connect(DB_PATH)
-                for line in src.iterdump():
-                    lines.append(line)
-                src.close()
-                dump_ok = True
-            except Exception:
-                try:
-                    src.close()
-                except Exception:
-                    pass
-
-        t = threading.Thread(target=_dump, daemon=True)
-        t.start()
-        t.join(timeout=15)
-
-        if dump_ok and lines:
-            # Rebuild into a new DB
-            dst = sqlite3.connect(new_path)
-            dst.executescript('\n'.join(lines))
-            dst.close()
-
-            # Swap files
-            os.replace(new_path, DB_PATH)
-            init_database()  # Ensure all tables exist
-            return True, f'Database repaired via dump-rebuild. Corrupt backup: {os.path.basename(backup_path)}'
-        else:
-            # Dump timed out or nothing recoverable — reinitialize from scratch
-            try:
-                if os.path.exists(new_path):
-                    os.remove(new_path)
-            except Exception:
-                pass
-            os.remove(DB_PATH)
-            init_database()
-            return True, f'Database was unrecoverable — reinitialized empty. Corrupt backup: {os.path.basename(backup_path)}'
-    except Exception as e:
-        # Last resort: delete and reinitialize
-        try:
-            os.remove(DB_PATH)
-            init_database()
-            return True, f'Repair failed ({e}) — reinitialized empty. Corrupt backup: {os.path.basename(backup_path)}'
-        except Exception as e2:
-            return False, f'Repair failed: {str(e2)}'
+        return False, f'PostgreSQL connection failed: {e}'
 
 def init_database():
-    """Initialize the database with required tables."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        
-        # API Keys table - stores hashed keys
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS api_keys (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                key_hash TEXT UNIQUE NOT NULL,
-                key_prefix TEXT NOT NULL,
-                admin TEXT NOT NULL,
-                trader TEXT NOT NULL,
-                client TEXT DEFAULT '',
-                scope TEXT DEFAULT 'full',
-                created_at TEXT NOT NULL,
-                last_used TEXT,
-                is_active INTEGER DEFAULT 1
-            )
-        ''')
-        # Migration: add scope column to existing databases
-        try:
-            cursor.execute("ALTER TABLE api_keys ADD COLUMN scope TEXT DEFAULT 'full'")
-        except Exception:
-            pass  # Column already exists
-        
-        # Admin passwords table - stores hashed passwords (for super_admin)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS admin_passwords (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT
-            )
-        ''')
-        
-        # User credentials table - for admins, traders, and clients
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_credentials (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                email TEXT,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                user_type TEXT NOT NULL,
-                parent_admin TEXT,
-                parent_trader TEXT,
-                is_active INTEGER DEFAULT 1,
-                must_change_password INTEGER DEFAULT 1,
-                last_login TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT,
-                UNIQUE(username, user_type)
-            )
-        ''')
-        
-        # Clients data table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS clients_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id TEXT UNIQUE NOT NULL,
-                deals TEXT DEFAULT '[]',
-                positions TEXT DEFAULT '[]',
-                account TEXT DEFAULT '{}',
-                evaluations TEXT DEFAULT '[]',
-                statistics TEXT DEFAULT '{}',
-                dropdown_options TEXT DEFAULT '{}',
-                identity TEXT DEFAULT '{}',
-                last_updated TEXT NOT NULL,
-                hedge_accounts TEXT DEFAULT '[]',
-                prop_accounts TEXT DEFAULT '[]',
-                vps_accounts TEXT DEFAULT '[]',
-                payment_info TEXT DEFAULT '[]',
-                payment_address TEXT DEFAULT '{}'
-            )
-        ''')
-
-        # Migration: add hedge_accounts, prop_accounts, vps_accounts, payment_info columns to existing databases
-        for _col, _default in [('hedge_accounts', "'[]'"), ('prop_accounts', "'[]'"), ('vps_accounts', "'[]'"), ('payment_info', "'[]'"), ('payment_address', "'{}'")]:
-            try:
-                cursor.execute(f"ALTER TABLE clients_data ADD COLUMN {_col} TEXT DEFAULT {_default}")
-            except Exception:
-                pass  # Column already exists
-        
-        # Audit log table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS audit_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                action TEXT NOT NULL,
-                user_type TEXT NOT NULL,
-                user_identifier TEXT NOT NULL,
-                ip_address TEXT,
-                details TEXT,
-                success INTEGER DEFAULT 1
-            )
-        ''')
-        
-        # Data history table - stores all versions of client data for rollback
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS data_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id TEXT NOT NULL,
-                version INTEGER NOT NULL,
-                action TEXT NOT NULL,
-                changed_by TEXT,
-                changed_by_type TEXT,
-                ip_address TEXT,
-                change_source TEXT,
-                change_description TEXT,
-                deals TEXT DEFAULT '[]',
-                positions TEXT DEFAULT '[]',
-                account TEXT DEFAULT '{}',
-                evaluations TEXT DEFAULT '[]',
-                statistics TEXT DEFAULT '{}',
-                dropdown_options TEXT DEFAULT '{}',
-                identity TEXT DEFAULT '{}',
-                created_at TEXT NOT NULL,
-                UNIQUE(client_id, version)
-            )
-        ''')
-        
-        # Create index for faster history lookups
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_data_history_client 
-            ON data_history(client_id, version DESC)
-        ''')
-        
-        # Sessions table for web login
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_token TEXT UNIQUE NOT NULL,
-                user_type TEXT NOT NULL,
-                user_identifier TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                ip_address TEXT
-            )
-        ''')
-        
-        # Cell Notes table (For client evaluations)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS cell_notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id TEXT NOT NULL,
-                row_index INTEGER NOT NULL,
-                column_key TEXT NOT NULL,
-                note_content TEXT,
-                created_by TEXT,
-                updated_at TEXT,
-                UNIQUE(client_id, row_index, column_key)
-            )
-        ''')
-        
-        # Daily Watermarks table - stores daily snapshots of Net Profit Complete
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS daily_watermarks (
-                client_id TEXT NOT NULL,
-                date TEXT NOT NULL,
-                net_profit_complete REAL DEFAULT 0.0,
-                source TEXT DEFAULT 'auto',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (client_id, date)
-            )
-        ''')
-
-        # Bi-weekly waterlog period schedule per client
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS waterlog_periods (
-                client_id TEXT NOT NULL,
-                from_date TEXT NOT NULL,
-                to_date TEXT NOT NULL,
-                period_low REAL DEFAULT NULL,
-                period_high REAL DEFAULT NULL,
-                split_pct INTEGER DEFAULT 50,
-                PRIMARY KEY (client_id, from_date)
-            )
-        ''')
-        # Migration: add period_low/period_high/split_pct to existing databases
-        for col, default in [('period_low', 'NULL'), ('period_high', 'NULL'), ('split_pct', '50')]:
-            try:
-                cursor.execute(f"ALTER TABLE waterlog_periods ADD COLUMN {col} {'REAL' if col != 'split_pct' else 'INTEGER'} DEFAULT {default}")
-            except Exception:
-                pass  # Column already exists
-
-        # Failed login attempts table (for lockout)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS login_attempts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,
-                user_type TEXT NOT NULL,
-                ip_address TEXT,
-                attempt_time TEXT NOT NULL,
-                success INTEGER DEFAULT 0
-            )
-        ''')
-
-        # Evaluations table (New Dynamic Phase Architecture)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS evaluations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_signature TEXT NOT NULL,
-                phase_number INTEGER NOT NULL,
-                phase_type TEXT NOT NULL,
-                status TEXT DEFAULT 'pending',
-                start_date TEXT,
-                end_date TEXT,
-                reset_id TEXT,
-                parent_id INTEGER,
-                meta_data TEXT DEFAULT '{}',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(parent_id) REFERENCES evaluations(id)
-            )
-        ''')
-
-        # Phase Definitions table (Dynamic Rules)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS phase_definitions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phase_name TEXT NOT NULL,
-                phase_code TEXT NOT NULL UNIQUE,
-                sequence_order INTEGER NOT NULL,
-                ruleset TEXT DEFAULT '{}',
-                next_phase_code TEXT
-            )
-        ''')
-        
-        conn.commit()
-        print("Database initialized successfully")
-
-        # KYC Links table - links multiple client accounts to one primary account
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS kyc_links (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                primary_client TEXT NOT NULL,
-                linked_client TEXT NOT NULL,
-                linked_by TEXT DEFAULT 'super_admin',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(primary_client, linked_client)
-            )
-        ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_kyc_primary ON kyc_links(primary_client)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_kyc_linked ON kyc_links(linked_client)')
-
-        # Quality scan results table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS quality_scan_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scan_date TEXT NOT NULL,
-                client_id TEXT NOT NULL,
-                trader TEXT,
-                admin TEXT,
-                total_issues INTEGER DEFAULT 0,
-                issues TEXT DEFAULT '[]',
-                health_score REAL DEFAULT 100.0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_quality_scan_date ON quality_scan_results(scan_date, client_id)')
-
-        # Daily checklists table (per-client daily summaries)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS daily_checklists (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL,
-                user_identifier TEXT NOT NULL,
-                user_type TEXT NOT NULL,
-                checklist_type TEXT NOT NULL,
-                client_id TEXT DEFAULT '',
-                items TEXT DEFAULT '[]',
-                submitted_at TEXT NOT NULL,
-                ip_address TEXT,
-                UNIQUE(date, user_identifier, checklist_type, client_id)
-            )
-        ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_date ON daily_checklists(date, user_identifier)')
-        # Migration: add client_id column if missing from older schema
-        try:
-            cursor.execute('SELECT client_id FROM daily_checklists LIMIT 1')
-        except Exception:
-            try:
-                cursor.execute('ALTER TABLE daily_checklists ADD COLUMN client_id TEXT DEFAULT ""')
-            except Exception:
-                pass
-        # Index on client_id (only after column is guaranteed to exist)
-        try:
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_checklist_client ON daily_checklists(date, client_id)')
-        except Exception:
-            pass
-
-        # System settings key-value store
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS system_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                updated_by TEXT DEFAULT ''
-            )
-        ''')
-
-        conn.commit()
+    """Schema is managed by Alembic migrations — verify connectivity only."""
+    try:
+        with get_connection() as conn:
+            conn.execute('SELECT 1')
+            conn.commit()
+        print("Database connection verified (schema managed by Alembic)")
+    except Exception as e:
+        print(f"Database connection failed: {e}")
 
 # ============ Password Hashing ============
 
@@ -498,8 +213,9 @@ def create_user(username: str, password: str, user_type: str,
             ''', (username, email, password_hash, salt, user_type, parent_admin, parent_trader, now))
             conn.commit()
             return True
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             # User already exists
+            conn.rollback()
             return False
         except Exception as e:
             print(f"Error creating user: {e}")
@@ -915,7 +631,8 @@ def add_kyc_link(primary_client: str, linked_client: str, linked_by: str = 'supe
             ''', (primary_client, linked_client, linked_by, datetime.now().isoformat()))
             conn.commit()
             return True
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
+            conn.rollback()
             return False
 
 def remove_kyc_link(primary_client: str, linked_client: str) -> bool:
@@ -1210,27 +927,8 @@ def update_client_field(client_id: str, field: str, value) -> bool:
 # ============ Quality Scan Functions ============
 
 def _repair_quality_table():
-    """Drop and recreate the quality_scan_results table when corruption is detected."""
-    print("[DB REPAIR] quality_scan_results table is malformed — rebuilding...")
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('DROP TABLE IF EXISTS quality_scan_results')
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS quality_scan_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scan_date TEXT NOT NULL,
-                client_id TEXT NOT NULL,
-                trader TEXT,
-                admin TEXT,
-                total_issues INTEGER DEFAULT 0,
-                issues TEXT DEFAULT '[]',
-                health_score REAL DEFAULT 100.0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_quality_scan_date ON quality_scan_results(scan_date, client_id)')
-        conn.commit()
-    print("[DB REPAIR] quality_scan_results table rebuilt successfully")
+    """No-op — schema is managed by Alembic. PostgreSQL handles table integrity."""
+    print("[DB] quality_scan_results table integrity is managed by PostgreSQL")
 
 def save_quality_scan_results(scan_date: str, results: list):
     """Save quality scan results for all clients."""
@@ -1245,31 +943,17 @@ def save_quality_scan_results(scan_date: str, results: list):
                 ''', (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
                       r['total_issues'], json.dumps(r['issues']), r['health_score']))
             conn.commit()
-    except sqlite3.DatabaseError as e:
-        if 'malformed' in str(e).lower():
-            _repair_quality_table()
-            # Retry once after repair
-            with get_connection() as conn:
-                cursor = conn.cursor()
-                for r in results:
-                    cursor.execute('''
-                        INSERT INTO quality_scan_results (scan_date, client_id, trader, admin, total_issues, issues, health_score)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''', (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
-                          r['total_issues'], json.dumps(r['issues']), r['health_score']))
-                conn.commit()
-        else:
-            raise
+    except Exception as e:
+        print(f"Error saving quality scan results: {e}")
+        raise
 
 def get_quality_scan_results(scan_date: str = None) -> list:
     """Get quality scan results. If no date, returns latest scan."""
     try:
         return _get_quality_scan_results_inner(scan_date)
-    except sqlite3.DatabaseError as e:
-        if 'malformed' in str(e).lower():
-            _repair_quality_table()
-            return []  # Table was rebuilt empty
-        raise
+    except Exception as e:
+        print(f"Error getting quality scan results: {e}")
+        return []
 
 def _get_quality_scan_results_inner(scan_date: str = None) -> list:
     with get_connection() as conn:
@@ -1300,44 +984,30 @@ def save_daily_checklist(date: str, user_identifier: str, user_type: str,
                          checklist_type: str, items: list, ip_address: str = None,
                          client_id: str = ''):
     """Save a daily checklist submission (per client)."""
-    _ensure_checklist_client_column()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT OR REPLACE INTO daily_checklists (date, user_identifier, user_type, checklist_type, client_id, items, submitted_at, ip_address)
+            INSERT INTO daily_checklists (date, user_identifier, user_type, checklist_type, client_id, items, submitted_at, ip_address)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, user_identifier, checklist_type, client_id) DO UPDATE SET
+                user_type = excluded.user_type,
+                items = excluded.items,
+                submitted_at = excluded.submitted_at,
+                ip_address = excluded.ip_address
         ''', (date, user_identifier, user_type, checklist_type, client_id, json.dumps(items),
               datetime.now().isoformat(), ip_address))
         conn.commit()
 
 
 def _ensure_checklist_client_column():
-    """Ensure client_id column exists in daily_checklists."""
-    try:
-        with get_connection() as conn:
-            conn.execute('SELECT client_id FROM daily_checklists LIMIT 1')
-    except Exception:
-        try:
-            with get_connection() as conn:
-                conn.execute('ALTER TABLE daily_checklists ADD COLUMN client_id TEXT DEFAULT ""')
-                conn.commit()
-        except Exception:
-            pass
+    """No-op — schema is managed by Alembic."""
+    pass
 
 # ============ System Settings ============
 
 def _ensure_settings_table():
-    """Create system_settings table if it doesn't exist."""
-    with get_connection() as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS system_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                updated_by TEXT DEFAULT ''
-            )
-        ''')
-        conn.commit()
+    """No-op — schema is managed by Alembic."""
+    pass
 
 
 def get_setting(key: str) -> str:
@@ -1360,9 +1030,9 @@ def set_setting(key: str, value: str, updated_by: str = ''):
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO system_settings (key, value, updated_at, updated_by)
-            VALUES (?, ?, datetime('now'), ?)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at, updated_by=excluded.updated_by
-        ''', (key, value, updated_by))
+        ''', (key, value, datetime.now().isoformat(), updated_by))
         conn.commit()
 
 
@@ -1466,11 +1136,9 @@ def get_weekly_scan_results(end_date: str = None, days: int = 7) -> list:
     """Get quality scan results for a date range (default: last 7 days)."""
     try:
         return _get_weekly_scan_results_inner(end_date, days)
-    except sqlite3.DatabaseError as e:
-        if 'malformed' in str(e).lower():
-            _repair_quality_table()
-            return []
-        raise
+    except Exception as e:
+        print(f"Error getting weekly scan results: {e}")
+        return []
 
 def _get_weekly_scan_results_inner(end_date: str = None, days: int = 7) -> list:
     with get_connection() as conn:
