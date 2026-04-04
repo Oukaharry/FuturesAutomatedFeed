@@ -1,0 +1,228 @@
+﻿Total evaluations: 649
+
+Account # filled: 513/649 (79.0%)
+Account #.1 filled: 535/649 (82.4%)
+Has either: 597/649 (92.0%)
+Missing both: 52/649 (8.0%)
+In Progress rows: 59
+
+=== Rows missing BOTH accounts (52) ===
+  Row   6: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=08/20/2025
+  Row   8: Firm=My Funded Futures      Status=Pass           Size=$50,000      Date=08/20/2025
+  Row  17: Firm=My Funded Futures      Status=Pass           Size=$50,000      Date=09/03/2025
+  Row  26: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=09/05/2025
+  Row  35: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=09/08/2025
+  Row  60: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=09/18/2025
+  Row  61: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=09/18/2025
+  Row  83: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=09/30/2025
+  Row 103: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=10/14/2025
+  Row 109: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=10/15/2025
+  Row 111: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=10/18/2025
+  Row 112: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=10/18/2025
+  Row 160: Firm=FundedNext             Status=Fail           Size=$50,000      Date=11/03/2025
+  Row 232: Firm=FundedNext             Status=Fail           Size=$50,000      Date=11/21/2025
+  Row 234: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=11/21/2025
+  Row 237: Firm=My Funded Futures      Status=Pass           Size=$50,000      Date=11/21/2025
+  Row 240: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=11/25/2025
+  Row 241: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=11/25/2025
+  Row 258: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=11/30/2025
+  Row 259: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=11/30/2025
+  Row 260: Firm=Funding Ticks          Status=Fail           Size=$50,000      Date=11/30/2025
+  Row 354: Firm=My Funded Futures      Status=Fail           Size=$nan         Date=01/16/2026
+  Row 358: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=01/19/2026
+  Row 371: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=01/23/2026
+  Row 372: Firm=Tradeify               Status=Fail           Size=$50,000      Date=01/23/2026
+  Row 389: Firm=Tradeify               Status=Fail           Size=$50,000      Date=02/02/2026
+  Row 390: Firm=Tradeify               Status=Fail           Size=$50,000      Date=02/02/2026
+  Row 399: Firm=Tradeify               Status=Fail           Size=$50,000      Date=02/04/2026
+  Row 401: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=02/04/2026
+  Row 452: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=02/24/2026
+  Row 480: Firm=Alpha Futures          Status=Fail           Size=$100,000     Date=03/03/2026
+  Row 493: Firm=Topstep                Status=Fail           Size=$50,000      Date=03/10/2026
+  Row 494: Firm=Topstep                Status=Fail           Size=$50,000      Date=03/10/2026
+  Row 497: Firm=Funding Ticks          Status=Fail           Size=$nan         Date=
+  Row 507: Firm=Tradeify               Status=Fail           Size=$50,000      Date=03/10/2026
+  Row 524: Firm=Tradeify               Status=Fail           Size=$50,000      Date=03/14/2026
+  Row 525: Firm=Tradeify               Status=Fail           Size=$50,000      Date=03/14/2026
+  Row 530: Firm=Tradeify               Status=Fail           Size=$50,000      Date=03/17/2026
+  Row 534: Firm=Tradeify               Status=Fail           Size=$50,000      Date=03/18/2026
+  Row 538: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=03/18/2026
+  Row 541: Firm=FundedNext             Status=Fail           Size=$50,000      Date=03/18/2026
+  Row 542: Firm=FundedNext             Status=Fail           Size=$50,000      Date=03/18/2026
+  Row 550: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=03/19/2026
+  Row 551: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=03/19/2026
+  Row 552: Firm=My Funded Futures      Status=Fail           Size=$50,000      Date=03/19/2026
+  Row 553: Firm=Tradeify               Status=Fail           Size=$50,000      Date=2026-03-18
+  Row 554: Firm=Tradeify               Status=Fail           Size=$50,000      Date=2026-03-18
+  Row 555: Firm=Tradeify               Status=Fail           Size=$50,000      Date=2026-03-19
+  Row 581: Firm=Topstep                Status=Fail           Size=$50,000      Date=2026-03-20
+  Row 587: Firm=Topstep                Status=Fail           Size=$50,000      Date=2026-03-23
+  Row 588: Firm=Topstep                Status=Fail           Size=$50,000      Date=2026-03-23
+  Row 616: Firm=My Funded Futures      Status=In Progress    Size=             Date=
+
+=== Rows missing Account # but HAS Account #.1 (84) ===
+  Row   5: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-96159       Date=08/20/2025
+  Row   7: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-42036       Date=08/20/2025
+  Row  12: Firm=FundedNext             Status=Pass           Acct#.1=FNFT-R3866       Date=08/29/2025
+  Row  37: Firm=Funding Ticks          Status=Pass           Acct#.1=FTPROPLUSM297310588 Date=09/08/2025
+  Row  38: Firm=Funding Ticks          Status=Pass           Acct#.1=FTPROPLUSM279651386 Date=09/08/2025
+  Row  39: Firm=Funding Ticks          Status=Pass           Acct#.1=FTPROPLUSM273246809 Date=09/08/2025
+  Row  44: Firm=Funding Ticks          Status=Pass           Acct#.1=FTPROPLUSM869547201 Date=09/09/2025
+  Row  94: Firm=Funding Ticks          Status=Pass           Acct#.1=FTPROPLUSM025903176841 Date=10/10/2025
+  Row 102: Firm=FundedNext             Status=Pass           Acct#.1=FNFT-FNFTFACHRISREAM4912 Date=10/10/2025
+  Row 113: Firm=Funding Ticks          Status=Pass           Acct#.1=FTPROPLUSM192364758102 Date=10/18/2025
+  Row 140: Firm=Funding Ticks          Status=Pass           Acct#.1=FTPROPLUSM046592137048 Date=10/28/2025
+  Row 145: Firm=My Funded Futures      Status=Pass           Acct#.1=MFFU-35079       Date=10/29/2025
+  Row 148: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-N2357       Date=10/29/2025
+  Row 149: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-25000       Date=10/29/2025
+  Row 151: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-44630       Date=10/29/2025
+  Row 152: Firm=FundedNext             Status=Pass           Acct#.1=FNFT-FNFTFACHRISREAM6048 Date=10/31/2025
+  Row 153: Firm=FundedNext             Status=Pass           Acct#.1=FNFT-M6843       Date=10/31/2025
+  Row 169: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-10385       Date=11/04/2025
+  Row 184: Firm=TradeDay               Status=Pass           Acct#.1=TDF-36296        Date=11/06/2025
+  Row 185: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-86072       Date=11/06/2025
+  Row 187: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-43071       Date=11/06/2025
+  Row 193: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-35166       Date=11/12/2025
+  Row 195: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-51836       Date=11/12/2025
+  Row 202: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-80177       Date=11/14/2025
+  Row 214: Firm=TradeDay               Status=Fail           Acct#.1=TDF-65039        Date=11/17/2025
+  Row 221: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-19423       Date=11/19/2025
+  Row 231: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-33099       Date=11/21/2025
+  Row 245: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-22477       Date=11/25/2025
+  Row 247: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-24774       Date=11/25/2025
+  Row 284: Firm=Topstep                Status=Fail           Acct#.1=V2-2213          Date=12/05/2025
+  Row 287: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-35107       Date=12/04/2025
+  Row 294: Firm=Topstep                Status=Fail           Acct#.1=V2-6690          Date=12/07/2025
+  Row 324: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-83147       Date=12/19/2025
+  Row 348: Firm=Funding Ticks          Status=Fail           Acct#.1=1632319          Date=
+  Row 349: Firm=Funding Ticks          Status=Fail           Acct#.1=1632320          Date=
+  Row 350: Firm=Funding Ticks          Status=Fail           Acct#.1=1632321          Date=
+  Row 356: Firm=Topstep                Status=Fail           Acct#.1=V2-5066          Date=01/19/2026
+  Row 364: Firm=Topstep                Status=Pass           Acct#.1=EXPRESS-V2-432909-67811153 Date=01/20/2026
+  Row 368: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-51071       Date=01/21/2026
+  Row 369: Firm=My Funded Futures      Status=Pass           Acct#.1=MFFU-MFFUSFCRFLX372280221 Date=01/23/2026
+  Row 373: Firm=Tradeify               Status=Pass           Acct#.1=TDFY-FTDFYSLX50677934906 Date=01/23/2026
+  Row 376: Firm=Tradeify               Status=Pass           Acct#.1=TDFY-FTDFYSLX50348572783 Date=01/23/2026
+  Row 377: Firm=Topstep                Status=               Acct#.1=EXPRESS-V2-432909-98550409 Date=01/26/2026
+  Row 378: Firm=Topstep                Status=               Acct#.1=EXPRESS-V2-432909-75253398 Date=01/26/2026
+  Row 379: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-42036       Date=01/29/2026
+  Row 380: Firm=Topstep                Status=Fail           Acct#.1=V2-7671          Date=01/30/2026
+  Row 387: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-61132       Date=02/02/2026
+  Row 388: Firm=Tradeify               Status=Fail           Acct#.1=TDFY-31511       Date=02/02/2026
+  Row 391: Firm=Topstep                Status=Pass           Acct#.1=EXPRESS-V2-432909-13689242 Date=02/02/2026
+  Row 392: Firm=Topstep                Status=Pass           Acct#.1=EXPRESS-V2-432909-20896337 Date=02/03/2026
+  Row 393: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-MFFUSFFLX372280228 Date=02/03/2026
+  Row 395: Firm=Tradeify               Status=Fail           Acct#.1=TDFY-41068       Date=02/03/2026
+  Row 403: Firm=TradeDay               Status=Fail           Acct#.1=TDF-47529        Date=02/04/2026
+  Row 427: Firm=Alpha Futures          Status=Pass           Acct#.1=AFAD-AFADQAS202603022099 Date=02/12/2026
+  Row 428: Firm=Alpha Futures          Status=Pass           Acct#.1=AFAD-AFADQAS202603022113 Date=02/12/2026
+  Row 429: Firm=Alpha Futures          Status=Pass           Acct#.1=AFAD-AFADQAS202603022118 Date=02/12/2026
+  Row 430: Firm=My Funded Futures      Status=Pass           Acct#.1=MFFU-MFFUSFFLX372280238 Date=02/13/2026
+  Row 444: Firm=FundedNext             Status=Pass           Acct#.1=FNFT-FNFTFACHRISREAM30756 Date=02/18/2026
+  Row 466: Firm=TradeDay               Status=Fail           Acct#.1=TDF-69078        Date=03/02/2026
+  Row 477: Firm=My Funded Futures      Status=Pass           Acct#.1=MFFU-80260       Date=03/03/2026
+  Row 496: Firm=Funding Ticks          Status=Fail           Acct#.1=1632319          Date=
+  Row 498: Firm=Funding Ticks          Status=Fail           Acct#.1=1632321          Date=
+  Row 501: Firm=Topstep                Status=Pass           Acct#.1=EXPRESS-V2-432909-86506582 Date=01/20/2026
+  Row 504: Firm=Tradeify               Status=Pass           Acct#.1=TDFY-MFFUSFFLX372280265 Date=03/11/2026
+  Row 508: Firm=My Funded Futures      Status=Fail           Acct#.1=MFFU-51164       Date=03/10/2026
+  Row 514: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-29430       Date=03/14/2026
+  Row 523: Firm=Tradeify               Status=Fail           Acct#.1=TDFY-23684       Date=03/14/2026
+  Row 529: Firm=Tradeify               Status=Fail           Acct#.1=TDFY-57809       Date=03/17/2026
+  Row 535: Firm=Tradeify               Status=Fail           Acct#.1=TDFY-91416       Date=03/18/2026
+  Row 540: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-71440       Date=03/18/2026
+  Row 544: Firm=FundedNext             Status=Fail           Acct#.1=FNFT-N3362       Date=03/18/2026
+  Row 558: Firm=Topstep                Status=Fail           Acct#.1=V2-3304          Date=2026-03-19
+  Row 559: Firm=Tradeify               Status=Fail           Acct#.1=TDFY-87573       Date=2026-03-19
+  Row 563: Firm=Topstep                Status=Fail           Acct#.1=V2-7419          Date=2026-03-19
+  Row 570: Firm=My Funded Futures      Status=Pass           Acct#.1=MFFU-80286       Date=2026-03-20
+  Row 579: Firm=Topstep                Status=Fail           Acct#.1=V2-4009          Date=2026-03-20
+  Row 580: Firm=Topstep                Status=Fail           Acct#.1=V2-2239          Date=2026-03-20
+  Row 592: Firm=FundedNext             Status=In Progress    Acct#.1=FNFT-93002       Date=2026-03-24
+  Row 596: Firm=Topstep                Status=In Progress    Acct#.1=V2-0436          Date=2026-03-24
+  Row 603: Firm=My Funded Futures      Status=In Progress    Acct#.1=MFFU-80283       Date=2026-03-24
+  Row 608: Firm=Tradeify               Status=In Progress    Acct#.1=TDFY-16862       Date=
+  Row 624: Firm=Topstep                Status=In Progress    Acct#.1=V2-7351          Date=
+  Row 638: Firm=My Funded Futures      Status=In Progress    Acct#.1=MFFU-80295       Date=
+  Row 646: Firm=FundedNext             Status=In Progress    Acct#.1=FNFT-19755       Date=
+
+=== Rows missing Account #.1 but HAS Account # (62) ===
+  Row 138: Firm=FundedNext             Status=Fail           Acct#=FNFT-47845       Date=10/25/2025
+  Row 147: Firm=FundedNext             Status=Fail           Acct#=FNFT-80591       Date=10/29/2025
+  Row 173: Firm=My Funded Futures      Status=Fail           Acct#=MFFU-35085       Date=11/05/2025
+  Row 181: Firm=My Funded Futures      Status=Pass           Acct#=MFFU-62052       Date=11/06/2025
+  Row 236: Firm=My Funded Futures      Status=Pass           Acct#=MFFU-06101       Date=11/21/2025
+  Row 276: Firm=Topstep                Status=Fail           Acct#=V2-2733          Date=12/01/2025
+  Row 301: Firm=My Funded Futures      Status=Pass           Acct#=MFFU-59234       Date=12/09/2025
+  Row 311: Firm=Tradeify               Status=Pass           Acct#=TDFY-42378       Date=12/11/2025
+  Row 343: Firm=My Funded Futures      Status=Fail           Acct#=MFFU-62198       Date=01/05/2025
+  Row 344: Firm=My Funded Futures      Status=Pass           Acct#=MFFU-62199       Date=01/08/2026
+  Row 346: Firm=My Funded Futures      Status=Fail           Acct#=MFFU-83147       Date=01/08/2026
+  Row 347: Firm=My Funded Futures      Status=Fail           Acct#=MFFU-78114       Date=01/08/2026
+  Row 352: Firm=My Funded Futures      Status=Fail           Acct#=MFFU-42175       Date=01/15/2025
+  Row 381: Firm=Tradeify               Status=Fail           Acct#=TDFY-81014       Date=01/30/2026
+  Row 382: Firm=Tradeify               Status=Fail           Acct#=TDFY-40387       Date=01/30/2026
+  Row 397: Firm=Tradeify               Status=Fail           Acct#=TDFY-88289       Date=02/03/2026
+  Row 409: Firm=Tradeify               Status=Fail           Acct#=TDFY-22955       Date=02/09/2026
+  Row 412: Firm=Tradeify               Status=Fail           Acct#=TDFY-98846       Date=02/10/2026
+  Row 413: Firm=Tradeify               Status=Fail           Acct#=TDFY-14420       Date=02/10/2026
+  Row 416: Firm=Tradeify               Status=Fail           Acct#=TDFY-82352       Date=02/11/2026
+  Row 418: Firm=Tradeify               Status=Fail           Acct#=TDFY-91749       Date=02/11/2026
+  Row 419: Firm=Tradeify               Status=Fail           Acct#=TDFY-78579       Date=02/11/2026
+  Row 431: Firm=FundedNext             Status=Fail           Acct#=FNFT-N6541       Date=02/13/2026
+  Row 437: Firm=Tradeify               Status=Fail           Acct#=TDFY-68190       Date=02/17/2026
+  Row 441: Firm=My Funded Futures      Status=Fail           Acct#=MFFU-90174       Date=02/17/2026
+  Row 455: Firm=Tradeify               Status=Fail           Acct#=TDFY-94188       Date=02/28/2026
+  Row 457: Firm=FundedNext             Status=Fail           Acct#=FNFT-44018       Date=03/02/2026
+  Row 458: Firm=FundedNext             Status=Fail           Acct#=FNFT-N7931       Date=03/02/2026
+  Row 459: Firm=Tradeify               Status=Fail           Acct#=TDFY-07793       Date=03/02/2026
+  Row 481: Firm=FundedNext             Status=Fail           Acct#=FNFT-W5521       Date=03/03/2026
+  Row 488: Firm=Tradeify               Status=Fail           Acct#=TDFY-28436       Date=03/05/2026
+  Row 489: Firm=Topstep                Status=Fail           Acct#=V2-7671          Date=03/05/2026
+  Row 518: Firm=FundedNext             Status=Fail           Acct#=FNFT-73868       Date=03/14/2026
+  Row 519: Firm=FundedNext             Status=Fail           Acct#=FNFT-44229       Date=03/14/2026
+  Row 520: Firm=FundedNext             Status=Fail           Acct#=FNFT-98238       Date=03/14/2026
+  Row 521: Firm=FundedNext             Status=Fail           Acct#=FNFT-51249       Date=03/14/2026
+  Row 522: Firm=FundedNext             Status=Fail           Acct#=FNFT-80400       Date=03/14/2026
+  Row 531: Firm=Tradeify               Status=Fail           Acct#=TDFY-32243       Date=03/17/2026
+  Row 537: Firm=My Funded Futures      Status=Fail           Acct#=MFFU-51029       Date=03/18/2026
+  Row 556: Firm=FundedNext             Status=Fail           Acct#=FNFT-76770       Date=2026-03-19
+  Row 565: Firm=Tradeify               Status=Fail           Acct#=TDFY-18743       Date=2026-03-19
+  Row 604: Firm=Tradeify               Status=In Progress    Acct#=TDFY-06402       Date=
+  Row 605: Firm=Tradeify               Status=In Progress    Acct#=TDFY-29830       Date=
+  Row 606: Firm=Tradeify               Status=In Progress    Acct#=TDFY-06402       Date=
+  Row 607: Firm=Tradeify               Status=In Progress    Acct#=TDFY-29830       Date=
+  Row 615: Firm=My Funded Futures      Status=In Progress    Acct#=MFFU-37203       Date=
+  Row 617: Firm=Topstep                Status=In Progress    Acct#=V2-6739          Date=
+  Row 618: Firm=Topstep                Status=In Progress    Acct#=V2-4949          Date=
+  Row 619: Firm=Topstep                Status=In Progress    Acct#=V2-1580          Date=
+  Row 620: Firm=Topstep                Status=In Progress    Acct#=V2-7443          Date=
+  Row 625: Firm=My Funded Futures      Status=In Progress    Acct#=MFFU-71140       Date=
+  Row 626: Firm=Tradeify               Status=In Progress    Acct#=TDFY-80536       Date=
+  Row 627: Firm=Tradeify               Status=In Progress    Acct#=TDFY-29973       Date=
+  Row 628: Firm=Topstep                Status=In Progress    Acct#=V2-0381          Date=
+  Row 629: Firm=Topstep                Status=In Progress    Acct#=V2-7208          Date=
+  Row 630: Firm=Topstep                Status=In Progress    Acct#=V2-0381          Date=
+  Row 635: Firm=Topstep                Status=In Progress    Acct#=V2-5066          Date=
+  Row 636: Firm=FundedNext             Status=In Progress    Acct#=FNFT-M2247       Date=
+  Row 637: Firm=FundedNext             Status=In Progress    Acct#=FNFT-45809       Date=
+  Row 639: Firm=FundedNext             Status=In Progress    Acct#=FNFT-45809       Date=
+  Row 642: Firm=FundedNext             Status=In Progress    Acct#=FNFT-38301       Date=
+  Row 643: Firm=FundedNext             Status=In Progress    Acct#=FNFT-71643       Date=
+
+=== Firm breakdown of missing Account # ===
+  My Funded Futures: 32
+  Funding Ticks: 28
+  FundedNext: 25
+  Tradeify: 22
+  Topstep: 21
+  TradeDay: 4
+  Alpha Futures: 4
+
+=== Firm breakdown of missing Account #.1 ===
+  Tradeify: 34
+  My Funded Futures: 27
+  FundedNext: 21
+  Funding Ticks: 16
+  Topstep: 15
+  Alpha Futures: 1

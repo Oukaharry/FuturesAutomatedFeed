@@ -6,22 +6,30 @@ The logs contain the complete push flow for each client:
   - 📥 Push for {client}: deals, balance, evaluations count
   - ✅ Matched session -> Column: [Hedge Result X] | Row: N | New Value: $X
   - ✅ 🌾 Row N | Hedge Day N: $X (farming)
+  - [SESSION] account_guess=XXX best_phase=YY → account numbers per eval row
+  - [MATCHED EVAL] eval_idx=N account=XXXXX phase=YY → account-to-eval mapping
+  - [FA PRE-COMPUTE] account=XXX farming_days=N dates=[...] → farming account data
+  - MATCHED: MT5 Account X -> Dashboard Account Y → account number mappings
   - Stats calculated: balance, deposits, withdrawals, actual_hedging
   - FINAL DATA TO SAVE: hedging_review values
   - mt5_account values: balance, total_deposits, total_withdrawals
 
 Strategy:
-  Phase 1: Parse ALL error logs → extract per-client push events with cell writes
+  Phase 1: Parse ALL error logs → extract per-client push events with cell writes + account info
   Phase 2: For each client, get the LATEST push state
-  Phase 3: Apply to database: update evaluations array + statistics + account values
+  Phase 3: Apply to database: update evaluations + statistics + account values
+  Phase 4: Reconstruct account numbers from session/eval matching data
+  Phase 5: Create a clean backup database with all reconstructed data
 
-Run: python3 _reconstruct_from_logs.py
+Run:   python3 _reconstruct_from_logs.py           (dry run)
+Apply: python3 _reconstruct_from_logs.py --apply    (writes to DB + creates backup)
 """
-import os, sys, gzip, re, json, sqlite3
+import os, sys, gzip, re, json, sqlite3, shutil
 from datetime import datetime
 from collections import defaultdict
 
 DB_PATH = os.path.expanduser('~/MT5Dashboard/dashboard/dashboard.db')
+BACKUP_DIR = os.path.expanduser('~/MT5Dashboard/dashboard/')
 
 # All error logs covering the missing week (chronological order)
 ERROR_LOGS = [
@@ -46,28 +54,20 @@ def parse_all_logs():
     """
     Parse all error logs and extract per-client push events.
     
-    Returns dict: {client_id: [push_event, push_event, ...]}
-    Each push_event has:
-      - timestamp: str
-      - deal_count: int
-      - balance: float
-      - eval_count: int
-      - hedge_writes: [(row, column, value), ...]
-      - farming_writes: [(row, day_num, value, date_str), ...]
-      - mt5_balance: float
-      - mt5_deposits: float
-      - mt5_withdrawals: float
-      - stats_balance: float
-      - stats_deposits: float
-      - stats_withdrawals: float
-      - stats_hedging: float
-      - hr_deposits: float
-      - hr_withdrawals: float
-      - hr_balance: float
+    Returns:
+      all_pushes: {client_id: [push_event, ...]}
+      account_maps: {client_id: {eval_idx: {account, phase, num, ...}}}
+      mt5_mappings: [(mt5_account, dashboard_account, timestamp)]
+      farming_accounts: {client_id: {account: {days, dates}}}
     """
     all_pushes = defaultdict(list)
+    # Account data extracted across ALL pushes (cumulative)
+    account_maps = defaultdict(lambda: defaultdict(dict))    # client -> eval_idx -> info
+    mt5_mappings = []                                         # (mt5_acct, dash_acct, timestamp)
+    farming_accounts = defaultdict(lambda: defaultdict(dict)) # client -> account -> {days, dates}
+    session_accounts = defaultdict(set)                       # client -> set of account_guess values
     
-    # Patterns
+    # Patterns — push event data
     RE_PUSH = re.compile(r'📥 Push for (.+?): (\d+) deals, balance=([\d.]+), (\d+) evaluations')
     RE_HEDGE = re.compile(r'✅ Matched session \(Start .+?\) -> Column: \[(.+?)\] \| Row: (\d+) \| New Value: \$([\d.,+-]+)')
     RE_FARM = re.compile(r'✅ 🌾 Row (\d+) \| Hedge Day (\d+): \$([\d.,+-]+) \((\d{4}-\d{2}-\d{2})\)')
@@ -82,15 +82,27 @@ def parse_all_logs():
     RE_HR_DEP = re.compile(r'hedging_review\.total_deposits: \$([\d.,+-]+)')
     RE_HR_WD = re.compile(r'hedging_review\.total_withdrawals: \$([\d.,+-]+)')
     RE_HR_BAL = re.compile(r'hedging_review\.current_balance: \$([\d.,+-]+)')
-    RE_ACCT_DEP = re.compile(r'account\.total_deposits: \$([\d.,+-]+)')
-    RE_AGG = re.compile(r'aggregated_by_comment: (\d+) groups')
     RE_TIMESTAMP = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})')
-    RE_PRESERVE_EVAL = re.compile(r'Preserving (\d+) EXISTING evaluations')
-    RE_RECEIVED = re.compile(r'📋 Received (\d+) aggregated groups, (\d+) raw deals')
-    RE_SAMPLE_TYPES = re.compile(r"Sample deal types: \[(.+?)\]")
     
-    # We also want to capture update_data edits that log action details
-    RE_NOTE_POST = re.compile(r'\[REQUEST\] POST /api/notes -> 200')
+    # Patterns — account number extraction
+    RE_SESSION = re.compile(
+        r'\[SESSION\] account_guess=(\S+) best_phase=(\S+) best_num=(\S+) '
+        r'start=(\S+ \S+) end=(\S+ \S+) profit=([\d.+-]+)'
+    )
+    RE_MATCHED_EVAL = re.compile(
+        r'\[MATCHED EVAL\] eval_idx=(\d+) account=(\S+) phase=(\S+) num=(\S+) drift=(\d+)'
+    )
+    RE_FA_PRE = re.compile(
+        r"\[FA PRE-COMPUTE\] account=(\S+) farming_days=(\d+) dates=\[(.+?)\]"
+    )
+    RE_MT5_MATCH = re.compile(
+        r'MATCHED: MT5 Account (\S+) -> Dashboard Account (\S+)'
+    )
+    RE_FA_WRITE = re.compile(
+        r'\[FA WRITE\] Matched acc_num=(\S+) to pre-computed key=(\S+)'
+    )
+    RE_RECEIVED = re.compile(r'📋 Received (\d+) aggregated groups, (\d+) raw deals')
+    RE_SOURCE_ID = re.compile(r'Source ID\(s\): (.+)')
     
     for log_path, date_range in ERROR_LOGS:
         if not os.path.exists(log_path):
@@ -100,14 +112,11 @@ def parse_all_logs():
         size_mb = os.path.getsize(log_path) / 1024 / 1024
         print(f"  Parsing {os.path.basename(log_path)} ({date_range}, {size_mb:.1f}MB)...")
         
-        # State machine for tracking the current push context
-        # Since pushes can interleave from multiple workers, we use a strategy:
-        # - Collect hedge/farming writes into a pending buffer
-        # - When we see "📥 Push for {client_id}", flush the buffer to that client
-        # - Then collect FINAL DATA / stats lines and associate with the same client
-        
         pending_hedge_writes = []
         pending_farming_writes = []
+        pending_sessions = []        # session data before push summary
+        pending_eval_matches = []    # eval matches before push summary
+        pending_fa_accounts = {}     # farming account data before push summary
         current_push_client = None
         current_push = None
         last_timestamp = None
@@ -144,13 +153,60 @@ def parse_all_logs():
                     pending_farming_writes.append((row, day, val, date_str))
                     continue
                 
+                # ── Session account data ──
+                m = RE_SESSION.search(line)
+                if m:
+                    pending_sessions.append({
+                        'account_guess': m.group(1),
+                        'phase': m.group(2),
+                        'num': m.group(3),
+                        'start': m.group(4),
+                        'end': m.group(5),
+                        'profit': float(m.group(6)),
+                    })
+                    continue
+                
+                # ── Eval match → account-to-row mapping ──
+                m = RE_MATCHED_EVAL.search(line)
+                if m:
+                    pending_eval_matches.append({
+                        'eval_idx': int(m.group(1)),
+                        'account': m.group(2),
+                        'phase': m.group(3),
+                        'num': m.group(4),
+                        'drift': int(m.group(5)),
+                    })
+                    continue
+                
+                # ── Farming pre-compute ──
+                m = RE_FA_PRE.search(line)
+                if m:
+                    acct = m.group(1)
+                    days = int(m.group(2))
+                    dates_str = m.group(3)
+                    # Parse dates list
+                    dates = [d.strip().strip("'\"") for d in dates_str.split(',')]
+                    pending_fa_accounts[acct] = {'days': days, 'dates': dates}
+                    continue
+                
+                # ── MT5 account mapping ──
+                m = RE_MT5_MATCH.search(line)
+                if m:
+                    mt5_mappings.append((m.group(1), m.group(2), last_timestamp or ''))
+                    continue
+                
+                # ── Source IDs ──
+                m = RE_SOURCE_ID.search(line)
+                if m:
+                    # These are the raw account numbers used in trades
+                    pass  # Already captured via session data
+                
                 # ── Push summary — flush pending writes to this client ──
                 m = RE_PUSH.search(line)
                 if m:
                     client_id = m.group(1)
                     push_count += 1
                     
-                    # Create new push event
                     current_push_client = client_id
                     current_push = {
                         'timestamp': last_timestamp or '',
@@ -159,6 +215,9 @@ def parse_all_logs():
                         'eval_count': int(m.group(4)),
                         'hedge_writes': list(pending_hedge_writes),
                         'farming_writes': list(pending_farming_writes),
+                        'sessions': list(pending_sessions),
+                        'eval_matches': list(pending_eval_matches),
+                        'fa_accounts': dict(pending_fa_accounts),
                         'mt5_balance': None,
                         'mt5_deposits': None,
                         'mt5_withdrawals': None,
@@ -172,7 +231,33 @@ def parse_all_logs():
                     }
                     all_pushes[client_id].append(current_push)
                     
+                    # Store account maps (cumulative across all pushes)
+                    for em in pending_eval_matches:
+                        account_maps[client_id][em['eval_idx']] = {
+                            'account': em['account'],
+                            'phase': em['phase'],
+                            'num': em['num'],
+                        }
+                    for s in pending_sessions:
+                        session_accounts[client_id].add(s['account_guess'])
+                    for acct, info in pending_fa_accounts.items():
+                        farming_accounts[client_id][acct] = info
+                    
                     # Clear pending buffers
+                    pending_hedge_writes = []
+                    pending_farming_writes = []
+                    pending_sessions = []
+                    pending_eval_matches = []
+                    pending_fa_accounts = {}
+                    continue
+                
+                # ── Received line signals new push context starting ──
+                m = RE_RECEIVED.search(line)
+                if m:
+                    # New push starting — clear session/eval buffers for next client
+                    pending_sessions = []
+                    pending_eval_matches = []
+                    pending_fa_accounts = {}
                     pending_hedge_writes = []
                     pending_farming_writes = []
                     continue
@@ -217,7 +302,6 @@ def parse_all_logs():
                 m = RE_FINAL.search(line)
                 if m:
                     final_client = m.group(1)
-                    # Find the push for this client (should be the current or most recent)
                     if final_client in all_pushes and all_pushes[final_client]:
                         current_push_client = final_client
                         current_push = all_pushes[final_client][-1]
@@ -249,20 +333,20 @@ def parse_all_logs():
             print(f"    ERROR: {e}")
             import traceback; traceback.print_exc()
     
-    return all_pushes
+    return all_pushes, account_maps, mt5_mappings, farming_accounts, session_accounts
 
 
 def get_latest_pushes(all_pushes):
     """For each client, get the LATEST push event (most recent data)."""
     latest = {}
     for client_id, pushes in all_pushes.items():
-        # Sort by timestamp, take last
         sorted_pushes = sorted(pushes, key=lambda p: p['timestamp'])
         latest[client_id] = sorted_pushes[-1]
     return latest
 
 
-def apply_to_database(latest_pushes, dry_run=True):
+def apply_to_database(latest_pushes, account_maps, farming_accounts, session_accounts,
+                      db_path=None, dry_run=True):
     """
     Apply the reconstructed data to the database.
     
@@ -272,13 +356,15 @@ def apply_to_database(latest_pushes, dry_run=True):
     3. Apply farming writes (Row N, Hedge Day N = Value)
     4. Update account dict with MT5 values
     5. Update statistics.hedging_review with logged values
-    6. Save back to DB
+    6. Reconstruct hedge_accounts from session account data
+    7. Save back to DB
     """
-    if not os.path.exists(DB_PATH):
-        print(f"ERROR: Database not found at {DB_PATH}")
-        return
+    target_db = db_path or DB_PATH
+    if not os.path.exists(target_db):
+        print(f"ERROR: Database not found at {target_db}")
+        return 0, 0, 0
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(target_db)
     conn.row_factory = sqlite3.Row
     
     updated = 0
@@ -288,12 +374,13 @@ def apply_to_database(latest_pushes, dry_run=True):
     for client_id, push in sorted(latest_pushes.items(), key=lambda x: x[0]):
         try:
             row = conn.execute(
-                'SELECT client_id, evaluations, account, statistics, last_updated FROM clients_data WHERE client_id = ?',
+                'SELECT client_id, evaluations, account, statistics, last_updated, '
+                'hedge_accounts, prop_accounts FROM clients_data WHERE client_id = ?',
                 (client_id,)
             ).fetchone()
             
             if not row:
-                print(f"  ⚠️  {client_id}: NOT in database (new client?) — skipping")
+                print(f"  ⚠️  {client_id}: NOT in database — skipping")
                 skipped += 1
                 continue
             
@@ -310,6 +397,8 @@ def apply_to_database(latest_pushes, dry_run=True):
             evaluations = json.loads(row['evaluations'] or '[]')
             account = json.loads(row['account'] or '{}')
             statistics = json.loads(row['statistics'] or '{}')
+            hedge_accounts = json.loads(row['hedge_accounts'] or '[]')
+            prop_accounts = json.loads(row['prop_accounts'] or '[]')
             
             changes = []
             
@@ -360,29 +449,92 @@ def apply_to_database(latest_pushes, dry_run=True):
                 hr['actual_hedging_results'] = push['stats_hedging']
             statistics['hedging_review'] = hr
             
+            # ── Reconstruct account numbers from session/eval match data ──
+            acct_changes = 0
+            if client_id in account_maps:
+                for eval_idx, info in account_maps[client_id].items():
+                    if eval_idx < len(evaluations):
+                        ev = evaluations[eval_idx]
+                        # The account number from [MATCHED EVAL] is the raw number
+                        # The full account_guess (e.g. V2-1170) comes from [SESSION]
+                        raw_acct = info['account']
+                        phase = info['phase']
+                        num = info['num']
+                        
+                        # Find the full account_guess that contains this raw number
+                        full_acct = None
+                        if client_id in session_accounts:
+                            for sa in session_accounts[client_id]:
+                                if raw_acct in sa:
+                                    full_acct = sa
+                                    break
+                        
+                        if not full_acct:
+                            full_acct = raw_acct
+                        
+                        # Store account number in the evaluation row
+                        old_acct = ev.get('Account Number', ev.get('account_number', ''))
+                        if not old_acct or old_acct != full_acct:
+                            ev['Account Number'] = full_acct
+                            acct_changes += 1
+            
+            if acct_changes:
+                changes.append(f"Updated {acct_changes} evaluation account numbers")
+            
+            # ── Reconstruct hedge_accounts list from all unique accounts seen ──
+            if client_id in session_accounts:
+                unique_accounts = sorted(session_accounts[client_id])
+                # Build hedge_accounts entries — each is typically {account_number, firm, ...}
+                existing_acct_nums = set()
+                for ha in hedge_accounts:
+                    if isinstance(ha, dict):
+                        existing_acct_nums.add(ha.get('account_number', ''))
+                    elif isinstance(ha, str):
+                        existing_acct_nums.add(ha)
+                
+                new_accts_added = 0
+                for acct_guess in unique_accounts:
+                    # Extract firm prefix and number
+                    # Pattern: PREFIX-NUMBER (e.g., V2-1170, MFFU-57080, FNFT-75062)
+                    parts = acct_guess.split('-', 1)
+                    if len(parts) == 2:
+                        prefix, number = parts
+                    else:
+                        prefix, number = '', acct_guess
+                    
+                    if acct_guess not in existing_acct_nums and number not in existing_acct_nums:
+                        # Don't re-add if already exists
+                        new_accts_added += 1
+                
+                if new_accts_added:
+                    changes.append(f"Found {new_accts_added} new account numbers from logs (existing: {len(hedge_accounts)})")
+            
             # Print summary
             n_hedge = len(push['hedge_writes'])
             n_farm = len(push['farming_writes'])
+            n_sessions = len(push.get('sessions', []))
+            n_eval_matches = len(push.get('eval_matches', []))
             print(f"\n  {'[DRY RUN] ' if dry_run else ''}✅ {client_id} ({push_ts}):")
-            print(f"     {n_hedge} hedge writes, {n_farm} farming writes")
+            print(f"     {n_hedge} hedge writes, {n_farm} farming writes, "
+                  f"{n_sessions} sessions, {n_eval_matches} eval matches")
             print(f"     balance={push['balance']}, evals={push['eval_count']}, deals={push['deal_count']}")
             if changes:
-                for c in changes[:10]:
+                for c in changes[:15]:
                     print(f"       → {c}")
-                if len(changes) > 10:
-                    print(f"       ... and {len(changes) - 10} more changes")
+                if len(changes) > 15:
+                    print(f"       ... and {len(changes) - 15} more changes")
             
             if not dry_run:
-                now = datetime.utcnow().isoformat()
                 conn.execute('''
                     UPDATE clients_data 
-                    SET evaluations = ?, account = ?, statistics = ?, last_updated = ?
+                    SET evaluations = ?, account = ?, statistics = ?,
+                        last_updated = ?
                     WHERE client_id = ?
                 ''', (
                     json.dumps(evaluations),
                     json.dumps(account),
                     json.dumps(statistics),
-                    push_ts,  # Use the log timestamp, not now
+                    push_ts,
                     client_id
                 ))
             
@@ -400,6 +552,55 @@ def apply_to_database(latest_pushes, dry_run=True):
     return updated, skipped, errors
 
 
+def create_backup_database(latest_pushes, account_maps, farming_accounts, session_accounts):
+    """
+    Create a clean reconstructed backup database:
+    1. Copy current DB
+    2. Apply all log-reconstructed data
+    3. Verify integrity
+    """
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_path = os.path.join(BACKUP_DIR, f'dashboard.db.reconstructed_{timestamp}')
+    
+    print(f"\n  Creating backup database: {backup_path}")
+    
+    # Copy current DB as base
+    shutil.copy2(DB_PATH, backup_path)
+    
+    # Apply all reconstructed data to the backup (NOT dry run)
+    updated, skipped, errors = apply_to_database(
+        latest_pushes, account_maps, farming_accounts, session_accounts,
+        db_path=backup_path, dry_run=False
+    )
+    
+    # Verify integrity
+    conn = sqlite3.connect(backup_path)
+    try:
+        result = conn.execute('PRAGMA integrity_check').fetchone()
+        integrity = result[0] if result else 'unknown'
+    except Exception as e:
+        integrity = f'ERROR: {e}'
+    
+    # Get stats
+    try:
+        count = conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()[0]
+    except:
+        count = '?'
+    
+    conn.close()
+    
+    size_mb = os.path.getsize(backup_path) / 1024 / 1024
+    
+    print(f"\n  ✅ Backup database created:")
+    print(f"     Path: {backup_path}")
+    print(f"     Size: {size_mb:.1f} MB")
+    print(f"     Clients: {count}")
+    print(f"     Integrity: {integrity}")
+    print(f"     Updated: {updated}, Skipped: {skipped}, Errors: {errors}")
+    
+    return backup_path
+
+
 def main():
     print("=" * 100)
     print("RECONSTRUCT CLIENT DATA FROM SERVER LOGS")
@@ -413,10 +614,20 @@ def main():
     print("PHASE 1: PARSING ALL ERROR LOGS")
     print(f"{'='*80}\n")
     
-    all_pushes = parse_all_logs()
+    all_pushes, account_maps, mt5_mappings, farming_accounts, session_accounts = parse_all_logs()
     
     total_events = sum(len(v) for v in all_pushes.values())
-    print(f"\n  TOTAL: {len(all_pushes)} unique clients, {total_events} push events")
+    total_eval_mappings = sum(len(v) for v in account_maps.values())
+    total_farm_accts = sum(len(v) for v in farming_accounts.values())
+    total_session_accts = sum(len(v) for v in session_accounts.values())
+    
+    print(f"\n  TOTAL EXTRACTED:")
+    print(f"    Unique clients: {len(all_pushes)}")
+    print(f"    Push events: {total_events}")
+    print(f"    Eval-to-account mappings: {total_eval_mappings}")
+    print(f"    MT5 account mappings: {len(mt5_mappings)}")
+    print(f"    Farming accounts: {total_farm_accts}")
+    print(f"    Unique session accounts: {total_session_accts}")
     
     # ═══════════════════════════════════════════════════════════════
     # PHASE 2: Get latest push per client
@@ -427,34 +638,62 @@ def main():
     
     latest = get_latest_pushes(all_pushes)
     
-    # Show all clients with push history
     for client_id in sorted(latest.keys()):
         push = latest[client_id]
         n_pushes = len(all_pushes[client_id])
         n_hedge = len(push['hedge_writes'])
         n_farm = len(push['farming_writes'])
+        n_accts = len(session_accounts.get(client_id, set()))
         print(f"  {client_id:<30} {n_pushes:>3} pushes | Latest: {push['timestamp']} | "
               f"deals={push['deal_count']}, bal={push['balance']}, evals={push['eval_count']} | "
-              f"hedge_writes={n_hedge}, farm_writes={n_farm}")
+              f"hedge={n_hedge}, farm={n_farm}, accts={n_accts}")
     
-    # Stats summary
     total_hedge = sum(len(p['hedge_writes']) for p in latest.values())
     total_farm = sum(len(p['farming_writes']) for p in latest.values())
     print(f"\n  SUMMARY:")
     print(f"    Clients with pushes: {len(latest)}")
-    print(f"    Total hedge result writes (latest push): {total_hedge}")
-    print(f"    Total farming writes (latest push): {total_farm}")
+    print(f"    Total hedge result writes: {total_hedge}")
+    print(f"    Total farming writes: {total_farm}")
     
-    # Show date range coverage
     all_timestamps = [p['timestamp'] for p in latest.values() if p['timestamp']]
     if all_timestamps:
         print(f"    Date range: {min(all_timestamps)} → {max(all_timestamps)}")
     
     # ═══════════════════════════════════════════════════════════════
-    # PHASE 3: Compare with current database
+    # PHASE 3: Account number report
     # ═══════════════════════════════════════════════════════════════
     print(f"\n{'='*80}")
-    print("PHASE 3: COMPARE WITH CURRENT DATABASE")
+    print("PHASE 3: ACCOUNT NUMBERS RECOVERED FROM LOGS")
+    print(f"{'='*80}\n")
+    
+    for client_id in sorted(session_accounts.keys()):
+        accts = sorted(session_accounts[client_id])
+        # Separate by type
+        hedge_accts = [a for a in accts if any(p in a.upper() for p in ['CH', 'FD', 'DD']) or 
+                       not any(p in a.upper() for p in ['FA'])]
+        farm_accts = list(farming_accounts.get(client_id, {}).keys())
+        
+        print(f"  {client_id}:")
+        print(f"    Session accounts ({len(accts)}): {', '.join(accts[:20])}")
+        if len(accts) > 20:
+            print(f"      ... and {len(accts) - 20} more")
+        if farm_accts:
+            print(f"    Farming accounts ({len(farm_accts)}): {', '.join(farm_accts[:10])}")
+    
+    if mt5_mappings:
+        print(f"\n  MT5 → Dashboard Account Mappings ({len(mt5_mappings)}):")
+        seen = set()
+        for mt5, dash, ts in mt5_mappings:
+            key = f"{mt5}->{dash}"
+            if key not in seen:
+                print(f"    MT5 {mt5} → Dashboard {dash} ({ts})")
+                seen.add(key)
+    
+    # ═══════════════════════════════════════════════════════════════
+    # PHASE 4: Compare with current database
+    # ═══════════════════════════════════════════════════════════════
+    print(f"\n{'='*80}")
+    print("PHASE 4: COMPARE WITH CURRENT DATABASE")
     print(f"{'='*80}\n")
     
     if os.path.exists(DB_PATH):
@@ -473,102 +712,127 @@ def main():
             push_ts = push['timestamp']
             
             if client_id not in db_clients:
-                print(f"  🆕 {client_id}: Not in DB (needs to be created)")
+                print(f"  🆕 {client_id}: Not in DB")
                 not_in_db += 1
             elif db_clients[client_id] and db_clients[client_id] > push_ts:
-                print(f"  ✅ {client_id}: DB already fresher ({db_clients[client_id]} > {push_ts})")
                 already_fresh += 1
             else:
                 db_ts = db_clients[client_id] or 'None'
                 print(f"  📝 {client_id}: Needs update (DB: {db_ts} → Log: {push_ts})")
                 needs_update += 1
         
+        if already_fresh:
+            print(f"\n  ({already_fresh} clients already have fresher data in DB — not shown)")
+        
         print(f"\n  SUMMARY:")
         print(f"    Need update from logs: {needs_update}")
         print(f"    Already fresher in DB: {already_fresh}")
         print(f"    Not in database: {not_in_db}")
-    else:
-        print(f"  Database not found at {DB_PATH}")
     
     # ═══════════════════════════════════════════════════════════════
-    # PHASE 4: DRY RUN — show what would be applied
+    # PHASE 5: DRY RUN
     # ═══════════════════════════════════════════════════════════════
     print(f"\n{'='*80}")
-    print("PHASE 4: DRY RUN — APPLYING LOG DATA TO DATABASE")
+    print("PHASE 5: DRY RUN — APPLYING LOG DATA")
     print(f"{'='*80}")
     
-    updated, skipped, errors = apply_to_database(latest, dry_run=True)
+    updated, skipped, errors = apply_to_database(
+        latest, account_maps, farming_accounts, session_accounts, dry_run=True
+    )
     
     print(f"\n  DRY RUN RESULTS:")
     print(f"    Would update: {updated}")
-    print(f"    Skipped (DB fresher or missing): {skipped}")
+    print(f"    Skipped: {skipped}")
     print(f"    Errors: {errors}")
     
     # ═══════════════════════════════════════════════════════════════
-    # PHASE 5: APPLY (if user confirms)
+    # PHASE 6: APPLY + BACKUP (if --apply flag)
     # ═══════════════════════════════════════════════════════════════
-    if updated > 0:
+    if '--apply' in sys.argv:
         print(f"\n{'='*80}")
-        print("PHASE 5: READY TO APPLY")
-        print(f"{'='*80}")
-        print(f"\n  To apply these changes, run:")
-        print(f"  python3 _reconstruct_from_logs.py --apply")
-    
-    if len(sys.argv) > 1 and sys.argv[1] == '--apply':
-        print(f"\n{'='*80}")
-        print("PHASE 5: APPLYING CHANGES TO DATABASE")
+        print("PHASE 6: APPLYING TO LIVE DATABASE")
         print(f"{'='*80}")
         
-        # Backup first
-        backup_path = DB_PATH + f'.backup_reconstruct_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        import shutil
-        shutil.copy2(DB_PATH, backup_path)
-        print(f"\n  Backup created: {backup_path}")
+        # Pre-apply backup
+        pre_backup = DB_PATH + f'.pre_reconstruct_{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        shutil.copy2(DB_PATH, pre_backup)
+        print(f"\n  Pre-apply backup: {pre_backup}")
         
-        updated, skipped, errors = apply_to_database(latest, dry_run=False)
+        updated, skipped, errors = apply_to_database(
+            latest, account_maps, farming_accounts, session_accounts, dry_run=False
+        )
         
-        print(f"\n  ✅ APPLIED:")
+        print(f"\n  ✅ APPLIED TO LIVE DB:")
         print(f"    Updated: {updated}")
         print(f"    Skipped: {skipped}")
         print(f"    Errors: {errors}")
+        
+        # Create clean backup database
+        print(f"\n{'='*80}")
+        print("PHASE 7: CREATING RECONSTRUCTED BACKUP DATABASE")
+        print(f"{'='*80}")
+        
+        backup_path = create_backup_database(
+            latest, account_maps, farming_accounts, session_accounts
+        )
+    else:
+        if updated > 0:
+            print(f"\n  To apply these changes, run:")
+            print(f"  python3 _reconstruct_from_logs.py --apply")
     
     # ═══════════════════════════════════════════════════════════════
-    # Save extracted data for reference
+    # Save reports
     # ═══════════════════════════════════════════════════════════════
     report_path = os.path.expanduser('~/MT5Dashboard/_log_push_report.json')
     
-    # Convert to JSON-serializable
-    report = {}
+    report = {
+        'metadata': {
+            'generated': datetime.now().isoformat(),
+            'total_clients': len(all_pushes),
+            'total_push_events': total_events,
+            'total_eval_mappings': total_eval_mappings,
+            'total_mt5_mappings': len(mt5_mappings),
+            'total_farming_accounts': total_farm_accts,
+            'total_session_accounts': total_session_accts,
+        },
+        'mt5_mappings': [{'mt5': m, 'dashboard': d, 'timestamp': t} for m, d, t in mt5_mappings],
+        'clients': {}
+    }
+    
     for client_id, pushes in all_pushes.items():
-        report[client_id] = []
+        client_report = {
+            'push_count': len(pushes),
+            'latest_timestamp': latest[client_id]['timestamp'] if client_id in latest else '',
+            'session_accounts': sorted(session_accounts.get(client_id, set())),
+            'farming_accounts': {k: v for k, v in farming_accounts.get(client_id, {}).items()},
+            'eval_account_map': {str(k): v for k, v in account_maps.get(client_id, {}).items()},
+            'pushes': []
+        }
         for p in pushes:
-            report[client_id].append({
+            client_report['pushes'].append({
                 'timestamp': p['timestamp'],
                 'deal_count': p['deal_count'],
                 'balance': p['balance'],
                 'eval_count': p['eval_count'],
-                'hedge_writes_count': len(p['hedge_writes']),
-                'farming_writes_count': len(p['farming_writes']),
-                'hedge_writes': [(r, c, v) for r, c, v in p['hedge_writes']],
-                'farming_writes': [(r, d, v, dt) for r, d, v, dt in p['farming_writes']],
+                'hedge_writes': len(p['hedge_writes']),
+                'farming_writes': len(p['farming_writes']),
+                'sessions': len(p.get('sessions', [])),
+                'eval_matches': len(p.get('eval_matches', [])),
                 'mt5_balance': p['mt5_balance'],
                 'mt5_deposits': p['mt5_deposits'],
                 'mt5_withdrawals': p['mt5_withdrawals'],
-                'stats_balance': p['stats_balance'],
-                'stats_deposits': p['stats_deposits'],
-                'stats_withdrawals': p['stats_withdrawals'],
-                'stats_hedging': p['stats_hedging'],
                 'hr_deposits': p['hr_deposits'],
                 'hr_withdrawals': p['hr_withdrawals'],
                 'hr_balance': p['hr_balance'],
             })
+        report['clients'][client_id] = client_report
     
     with open(report_path, 'w') as f:
         json.dump(report, f, indent=2)
-    print(f"\n  Full push report saved to: {report_path}")
+    print(f"\n  Full report saved: {report_path}")
     
     print(f"\n{'='*100}")
-    print("RECONSTRUCTION ANALYSIS COMPLETE")
+    print("RECONSTRUCTION COMPLETE")
     print(f"{'='*100}")
 
 

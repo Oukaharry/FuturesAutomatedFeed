@@ -1,0 +1,624 @@
+﻿======================================================================
+  EXTRACTING DATA FOR: Chris Ream
+  Log directory: C:\Users\harry\Music\MT5HedgingEngine\logs
+======================================================================
+
+ΓöÇΓöÇ PHASE 1: Parsing logs ΓöÇΓöÇ
+  Parsing www.tradeopss.com.error.log.9 (Mar 25-26, 80.5MB)...
+    ΓåÆ 874,913 lines, 26 Chris Ream pushes
+  Parsing www.tradeopss.com.error.log.8 (Mar 26-27, 98.0MB)...
+    ΓåÆ 1,028,217 lines, 44 Chris Ream pushes
+  Parsing www.tradeopss.com.error.log.7 (Mar 27-28, 35.4MB)...
+    ΓåÆ 380,459 lines, 2 Chris Ream pushes
+  Parsing www.tradeopss.com.error.log.6 (Mar 28-29, 1.3MB)...
+    ΓåÆ 17,455 lines, 0 Chris Ream pushes
+  Parsing www.tradeopss.com.error.log.5 (Mar 29-30, 51.1MB)...
+    ΓåÆ 528,934 lines, 11 Chris Ream pushes
+  Parsing www.tradeopss.com.error.log.4 (Mar 30-31, 99.7MB)...
+    ΓåÆ 1,043,699 lines, 41 Chris Ream pushes
+  Parsing www.tradeopss.com.error.log.2 (Mar 31-Apr 2, 177.1MB)...
+    ΓåÆ 1,853,356 lines, 57 Chris Ream pushes
+  Parsing www.tradeopss.com.error.log.1 (Apr 2-3, 19.6MB)...
+    ΓåÆ 219,187 lines, 2 Chris Ream pushes
+
+  Total: 183 Chris Ream pushes across 8421 total pushes
+  Session accounts: 545
+  Account maps: 415 eval rows
+  Farming accounts: 456
+
+ΓöÇΓöÇ PHASE 2: Merging pushes ΓöÇΓöÇ
+  Merged hedge cells: 128
+  Merged farming cells: 13
+  Latest push: 2026-04-02 07:37:14, 714 deals, 656 evals
+
+ΓöÇΓöÇ PHASE 3: Building evaluations ΓöÇΓöÇ
+
+  Building 656 evaluation rows...
+  Hedge result writes applied: 126
+  Farming day writes applied: 13
+  Hedge Net calculated: 71 eval, 18 funded
+  Account numbers placed: 400
+  Prop Firm derived: 399
+
+  Rows with data: 403
+  Empty rows: 253
+
+ΓöÇΓöÇ Writing outputs ΓöÇΓöÇ
+  JSON: C:\Users\harry\Music\MT5HedgingEngine\_chris_ream_extracted.json
+  CSV:  C:\Users\harry\Music\MT5HedgingEngine\_chris_ream_full.csv (138 columns)
+
+======================================================================
+  EXTRACTION SUMMARY
+======================================================================
+  Client:             Chris Ream
+  Total pushes:       183
+  Date range:         2026-03-25 ΓåÆ 2026-04-02
+  Latest eval count:  656
+  Hedge cells merged: 128
+  Farming cells:      13
+  Session accounts:   545
+  Account map rows:   415
+  Farming accounts:   456
+
+  Rows with hedge results: 77
+  Rows with farming data:  11
+  Rows with account #:     400
+  Rows with prop firm:     399
+  Empty rows:              579
+
+  Session accounts (545):
+    AFAD-21282                      ΓåÆ Alpha Futures
+    AFAD-25858                      ΓåÆ Alpha Futures
+    AFAD-25859                      ΓåÆ Alpha Futures
+    AFAD-26133                      ΓåÆ Alpha Futures
+    AFAD-51207                      ΓåÆ Alpha Futures
+    AFAD-51216                      ΓåÆ Alpha Futures
+    AFAD-51221                      ΓåÆ Alpha Futures
+    AFAD-83401                      ΓåÆ Alpha Futures
+    FNFT-10374                      ΓåÆ FundedNext
+    FNFT-10385                      ΓåÆ FundedNext
+    FNFT-10754                      ΓåÆ FundedNext
+    FNFT-15414                      ΓåÆ FundedNext
+    FNFT-15599                      ΓåÆ FundedNext
+    FNFT-15798                      ΓåÆ FundedNext
+    FNFT-16578                      ΓåÆ FundedNext
+    FNFT-16862                      ΓåÆ FundedNext
+    FNFT-16933                      ΓåÆ FundedNext
+    FNFT-19755                      ΓåÆ FundedNext
+    FNFT-20053                      ΓåÆ FundedNext
+    FNFT-22477                      ΓåÆ FundedNext
+    FNFT-23552                      ΓåÆ FundedNext
+    FNFT-23825                      ΓåÆ FundedNext
+    FNFT-24718                      ΓåÆ FundedNext
+    FNFT-24774                      ΓåÆ FundedNext
+    FNFT-25000                      ΓåÆ FundedNext
+    FNFT-25018                      ΓåÆ FundedNext
+    FNFT-26170                      ΓåÆ FundedNext
+    FNFT-26227                      ΓåÆ FundedNext
+    FNFT-27317                      ΓåÆ FundedNext
+    FNFT-28010                      ΓåÆ FundedNext
+    FNFT-28225                      ΓåÆ FundedNext
+    FNFT-28513                      ΓåÆ FundedNext
+    FNFT-29430                      ΓåÆ FundedNext
+    FNFT-29584                      ΓåÆ FundedNext
+    FNFT-29875                      ΓåÆ FundedNext
+    FNFT-31363                      ΓåÆ FundedNext
+    FNFT-31656                      ΓåÆ FundedNext
+    FNFT-33099                      ΓåÆ FundedNext
+    FNFT-35054                      ΓåÆ FundedNext
+    FNFT-35069                      ΓåÆ FundedNext
+    FNFT-35166                      ΓåÆ FundedNext
+    FNFT-35353                      ΓåÆ FundedNext
+    FNFT-35987                      ΓåÆ FundedNext
+    FNFT-36555                      ΓåÆ FundedNext
+    FNFT-37253                      ΓåÆ FundedNext
+    FNFT-37303                      ΓåÆ FundedNext
+    FNFT-37995                      ΓåÆ FundedNext
+    FNFT-38301                      ΓåÆ FundedNext
+    FNFT-40505                      ΓåÆ FundedNext
+    FNFT-41012                      ΓåÆ FundedNext
+    FNFT-43185                      ΓåÆ FundedNext
+    FNFT-44018                      ΓåÆ FundedNext
+    FNFT-44341                      ΓåÆ FundedNext
+    FNFT-44577                      ΓåÆ FundedNext
+    FNFT-44596                      ΓåÆ FundedNext
+    FNFT-44630                      ΓåÆ FundedNext
+    FNFT-45809                      ΓåÆ FundedNext
+    FNFT-46352                      ΓåÆ FundedNext
+    FNFT-46494                      ΓåÆ FundedNext
+    FNFT-46930                      ΓåÆ FundedNext
+    FNFT-46967                      ΓåÆ FundedNext
+    FNFT-47000                      ΓåÆ FundedNext
+    FNFT-47071                      ΓåÆ FundedNext
+    FNFT-47472                      ΓåÆ FundedNext
+    FNFT-47606                      ΓåÆ FundedNext
+    FNFT-47894                      ΓåÆ FundedNext
+    FNFT-49001                      ΓåÆ FundedNext
+    FNFT-49633                      ΓåÆ FundedNext
+    FNFT-50451                      ΓåÆ FundedNext
+    FNFT-50817                      ΓåÆ FundedNext
+    FNFT-51208                      ΓåÆ FundedNext
+    FNFT-51836                      ΓåÆ FundedNext
+    FNFT-54191                      ΓåÆ FundedNext
+    FNFT-55421                      ΓåÆ FundedNext
+    FNFT-55776                      ΓåÆ FundedNext
+    FNFT-56086                      ΓåÆ FundedNext
+    FNFT-56490                      ΓåÆ FundedNext
+    FNFT-57807                      ΓåÆ FundedNext
+    FNFT-61291                      ΓåÆ FundedNext
+    FNFT-62202                      ΓåÆ FundedNext
+    FNFT-62524                      ΓåÆ FundedNext
+    FNFT-62535                      ΓåÆ FundedNext
+    FNFT-62632                      ΓåÆ FundedNext
+    FNFT-62642                      ΓåÆ FundedNext
+    FNFT-62820                      ΓåÆ FundedNext
+    FNFT-62918                      ΓåÆ FundedNext
+    FNFT-63328                      ΓåÆ FundedNext
+    FNFT-63454                      ΓåÆ FundedNext
+    FNFT-64590                      ΓåÆ FundedNext
+    FNFT-64593                      ΓåÆ FundedNext
+    FNFT-65064                      ΓåÆ FundedNext
+    FNFT-65068                      ΓåÆ FundedNext
+    FNFT-65246                      ΓåÆ FundedNext
+    FNFT-67040                      ΓåÆ FundedNext
+    FNFT-67884                      ΓåÆ FundedNext
+    FNFT-68144                      ΓåÆ FundedNext
+    FNFT-71440                      ΓåÆ FundedNext
+    FNFT-71643                      ΓåÆ FundedNext
+    FNFT-72509                      ΓåÆ FundedNext
+    FNFT-72529                      ΓåÆ FundedNext
+    FNFT-74587                      ΓåÆ FundedNext
+    FNFT-75007                      ΓåÆ FundedNext
+    FNFT-76770                      ΓåÆ FundedNext
+    FNFT-78211                      ΓåÆ FundedNext
+    FNFT-78319                      ΓåÆ FundedNext
+    FNFT-81493                      ΓåÆ FundedNext
+    FNFT-81551                      ΓåÆ FundedNext
+    FNFT-81667                      ΓåÆ FundedNext
+    FNFT-82940                      ΓåÆ FundedNext
+    FNFT-84006                      ΓåÆ FundedNext
+    FNFT-84335                      ΓåÆ FundedNext
+    FNFT-85099                      ΓåÆ FundedNext
+    FNFT-89035                      ΓåÆ FundedNext
+    FNFT-89390                      ΓåÆ FundedNext
+    FNFT-90821                      ΓåÆ FundedNext
+    FNFT-91131                      ΓåÆ FundedNext
+    FNFT-91332                      ΓåÆ FundedNext
+    FNFT-91600                      ΓåÆ FundedNext
+    FNFT-93002                      ΓåÆ FundedNext
+    FNFT-93656                      ΓåÆ FundedNext
+    FNFT-94840                      ΓåÆ FundedNext
+    FNFT-96557                      ΓåÆ FundedNext
+    FNFT-99827                      ΓåÆ FundedNext
+    FNFT-E2237                      ΓåÆ FundedNext
+    FNFT-E3411                      ΓåÆ FundedNext
+    FNFT-E4521                      ΓåÆ FundedNext
+    FNFT-K7732                      ΓåÆ FundedNext
+    FNFT-L5663                      ΓåÆ FundedNext
+    FNFT-L9742                      ΓåÆ FundedNext
+    FNFT-M2247                      ΓåÆ FundedNext
+    FNFT-M3726                      ΓåÆ FundedNext
+    FNFT-M6843                      ΓåÆ FundedNext
+    FNFT-M9661                      ΓåÆ FundedNext
+    FNFT-N2357                      ΓåÆ FundedNext
+    FNFT-N2526                      ΓåÆ FundedNext
+    FNFT-N3362                      ΓåÆ FundedNext
+    FNFT-R2621                      ΓåÆ FundedNext
+    FNFT-R3866                      ΓåÆ FundedNext
+    FNFT-R9360                      ΓåÆ FundedNext
+    FNFT-S8657                      ΓåÆ FundedNext
+    MFFU-09008                      ΓåÆ My Funded Futures
+    MFFU-09009                      ΓåÆ My Funded Futures
+    MFFU-09010                      ΓåÆ My Funded Futures
+    MFFU-09013                      ΓåÆ My Funded Futures
+    MFFU-09014                      ΓåÆ My Funded Futures
+    MFFU-09015                      ΓåÆ My Funded Futures
+    MFFU-09016                      ΓåÆ My Funded Futures
+    MFFU-09017                      ΓåÆ My Funded Futures
+    MFFU-09018                      ΓåÆ My Funded Futures
+    MFFU-17162                      ΓåÆ My Funded Futures
+    MFFU-17167                      ΓåÆ My Funded Futures
+    MFFU-17211                      ΓåÆ My Funded Futures
+    MFFU-17212                      ΓåÆ My Funded Futures
+    MFFU-17213                      ΓåÆ My Funded Futures
+    MFFU-17221                      ΓåÆ My Funded Futures
+    MFFU-23041                      ΓåÆ My Funded Futures
+    MFFU-23117                      ΓåÆ My Funded Futures
+    MFFU-23118                      ΓåÆ My Funded Futures
+    MFFU-23119                      ΓåÆ My Funded Futures
+    MFFU-23120                      ΓåÆ My Funded Futures
+    MFFU-32008                      ΓåÆ My Funded Futures
+    MFFU-32009                      ΓåÆ My Funded Futures
+    MFFU-32025                      ΓåÆ My Funded Futures
+    MFFU-32026                      ΓåÆ My Funded Futures
+    MFFU-32027                      ΓåÆ My Funded Futures
+    MFFU-32029                      ΓåÆ My Funded Futures
+    MFFU-35079                      ΓåÆ My Funded Futures
+    MFFU-35080                      ΓåÆ My Funded Futures
+    MFFU-35081                      ΓåÆ My Funded Futures
+    MFFU-35085                      ΓåÆ My Funded Futures
+    MFFU-35110                      ΓåÆ My Funded Futures
+    MFFU-35117                      ΓåÆ My Funded Futures
+    MFFU-35118                      ΓåÆ My Funded Futures
+    MFFU-37037                      ΓåÆ My Funded Futures
+    MFFU-37038                      ΓåÆ My Funded Futures
+    MFFU-37039                      ΓåÆ My Funded Futures
+    MFFU-37040                      ΓåÆ My Funded Futures
+    MFFU-37041                      ΓåÆ My Funded Futures
+    MFFU-37056                      ΓåÆ My Funded Futures
+    MFFU-37140                      ΓåÆ My Funded Futures
+    MFFU-37141                      ΓåÆ My Funded Futures
+    MFFU-37200                      ΓåÆ My Funded Futures
+    MFFU-37201                      ΓåÆ My Funded Futures
+    MFFU-37203                      ΓåÆ My Funded Futures
+    MFFU-37204                      ΓåÆ My Funded Futures
+    MFFU-37205                      ΓåÆ My Funded Futures
+    MFFU-40199                      ΓåÆ My Funded Futures
+    MFFU-40201                      ΓåÆ My Funded Futures
+    MFFU-40202                      ΓåÆ My Funded Futures
+    MFFU-40203                      ΓåÆ My Funded Futures
+    MFFU-40211                      ΓåÆ My Funded Futures
+    MFFU-40219                      ΓåÆ My Funded Futures
+    MFFU-40221                      ΓåÆ My Funded Futures
+    MFFU-40222                      ΓåÆ My Funded Futures
+    MFFU-40227                      ΓåÆ My Funded Futures
+    MFFU-42016                      ΓåÆ My Funded Futures
+    MFFU-42017                      ΓåÆ My Funded Futures
+    MFFU-42018                      ΓåÆ My Funded Futures
+    MFFU-42019                      ΓåÆ My Funded Futures
+    MFFU-42020                      ΓåÆ My Funded Futures
+    MFFU-43071                      ΓåÆ My Funded Futures
+    MFFU-43072                      ΓåÆ My Funded Futures
+    MFFU-43073                      ΓåÆ My Funded Futures
+    MFFU-43077                      ΓåÆ My Funded Futures
+    MFFU-43087                      ΓåÆ My Funded Futures
+    MFFU-51010                      ΓåÆ My Funded Futures
+    MFFU-51011                      ΓåÆ My Funded Futures
+    MFFU-51012                      ΓåÆ My Funded Futures
+    MFFU-51029                      ΓåÆ My Funded Futures
+    MFFU-51070                      ΓåÆ My Funded Futures
+    MFFU-51071                      ΓåÆ My Funded Futures
+    MFFU-51072                      ΓåÆ My Funded Futures
+    MFFU-51073                      ΓåÆ My Funded Futures
+    MFFU-51074                      ΓåÆ My Funded Futures
+    MFFU-51164                      ΓåÆ My Funded Futures
+    MFFU-51165                      ΓåÆ My Funded Futures
+    MFFU-51166                      ΓåÆ My Funded Futures
+    MFFU-51167                      ΓåÆ My Funded Futures
+    MFFU-51168                      ΓåÆ My Funded Futures
+    MFFU-59022                      ΓåÆ My Funded Futures
+    MFFU-59034                      ΓåÆ My Funded Futures
+    MFFU-59233                      ΓåÆ My Funded Futures
+    MFFU-59234                      ΓåÆ My Funded Futures
+    MFFU-59243                      ΓåÆ My Funded Futures
+    MFFU-59283                      ΓåÆ My Funded Futures
+    MFFU-59284                      ΓåÆ My Funded Futures
+    MFFU-61028                      ΓåÆ My Funded Futures
+    MFFU-61029                      ΓåÆ My Funded Futures
+    MFFU-61030                      ΓåÆ My Funded Futures
+    MFFU-61048                      ΓåÆ My Funded Futures
+    MFFU-62105                      ΓåÆ My Funded Futures
+    MFFU-62106                      ΓåÆ My Funded Futures
+    MFFU-62129                      ΓåÆ My Funded Futures
+    MFFU-62186                      ΓåÆ My Funded Futures
+    MFFU-62187                      ΓåÆ My Funded Futures
+    MFFU-62188                      ΓåÆ My Funded Futures
+    MFFU-62189                      ΓåÆ My Funded Futures
+    MFFU-62190                      ΓåÆ My Funded Futures
+    MFFU-62191                      ΓåÆ My Funded Futures
+    MFFU-62193                      ΓåÆ My Funded Futures
+    MFFU-78028                      ΓåÆ My Funded Futures
+    MFFU-78029                      ΓåÆ My Funded Futures
+    MFFU-78038                      ΓåÆ My Funded Futures
+    MFFU-78039                      ΓåÆ My Funded Futures
+    MFFU-78043                      ΓåÆ My Funded Futures
+    MFFU-78044                      ΓåÆ My Funded Futures
+    MFFU-78110                      ΓåÆ My Funded Futures
+    MFFU-78111                      ΓåÆ My Funded Futures
+    MFFU-78112                      ΓåÆ My Funded Futures
+    MFFU-78113                      ΓåÆ My Funded Futures
+    MFFU-78114                      ΓåÆ My Funded Futures
+    MFFU-78126                      ΓåÆ My Funded Futures
+    MFFU-78143                      ΓåÆ My Funded Futures
+    MFFU-78144                      ΓåÆ My Funded Futures
+    MFFU-78145                      ΓåÆ My Funded Futures
+    MFFU-78146                      ΓåÆ My Funded Futures
+    MFFU-78147                      ΓåÆ My Funded Futures
+    MFFU-80229                      ΓåÆ My Funded Futures
+    MFFU-80230                      ΓåÆ My Funded Futures
+    MFFU-80233                      ΓåÆ My Funded Futures
+    MFFU-80237                      ΓåÆ My Funded Futures
+    MFFU-80260                      ΓåÆ My Funded Futures
+    MFFU-80264                      ΓåÆ My Funded Futures
+    MFFU-80283                      ΓåÆ My Funded Futures
+    MFFU-80284                      ΓåÆ My Funded Futures
+    MFFU-80285                      ΓåÆ My Funded Futures
+    MFFU-80286                      ΓåÆ My Funded Futures
+    MFFU-80287                      ΓåÆ My Funded Futures
+    MFFU-80288                      ΓåÆ My Funded Futures
+    MFFU-80289                      ΓåÆ My Funded Futures
+    MFFU-80290                      ΓåÆ My Funded Futures
+    MFFU-80291                      ΓåÆ My Funded Futures
+    MFFU-80292                      ΓåÆ My Funded Futures
+    MFFU-80293                      ΓåÆ My Funded Futures
+    MFFU-80294                      ΓåÆ My Funded Futures
+    MFFU-80295                      ΓåÆ My Funded Futures
+    MFFU-92020                      ΓåÆ My Funded Futures
+    MFFU-92030                      ΓåÆ My Funded Futures
+    MFFU-92031                      ΓåÆ My Funded Futures
+    MFFU-92032                      ΓåÆ My Funded Futures
+    MFFU-92033                      ΓåÆ My Funded Futures
+    TDF-06529                       ΓåÆ TradeDay
+    TDF-08195                       ΓåÆ TradeDay
+    TDF-08824                       ΓåÆ TradeDay
+    TDF-09074                       ΓåÆ TradeDay
+    TDF-10193                       ΓåÆ TradeDay
+    TDF-11128                       ΓåÆ TradeDay
+    TDF-13452                       ΓåÆ TradeDay
+    TDF-13554                       ΓåÆ TradeDay
+    TDF-13771                       ΓåÆ TradeDay
+    TDF-14302                       ΓåÆ TradeDay
+    TDF-17657                       ΓåÆ TradeDay
+    TDF-17863                       ΓåÆ TradeDay
+    TDF-19526                       ΓåÆ TradeDay
+    TDF-20330                       ΓåÆ TradeDay
+    TDF-20909                       ΓåÆ TradeDay
+    TDF-23093                       ΓåÆ TradeDay
+    TDF-27169                       ΓåÆ TradeDay
+    TDF-27494                       ΓåÆ TradeDay
+    TDF-27762                       ΓåÆ TradeDay
+    TDF-28665                       ΓåÆ TradeDay
+    TDF-28924                       ΓåÆ TradeDay
+    TDF-30207                       ΓåÆ TradeDay
+    TDF-30980                       ΓåÆ TradeDay
+    TDF-33159                       ΓåÆ TradeDay
+    TDF-33548                       ΓåÆ TradeDay
+    TDF-34571                       ΓåÆ TradeDay
+    TDF-34730                       ΓåÆ TradeDay
+    TDF-36296                       ΓåÆ TradeDay
+    TDF-36530                       ΓåÆ TradeDay
+    TDF-37054                       ΓåÆ TradeDay
+    TDF-37410                       ΓåÆ TradeDay
+    TDF-37538                       ΓåÆ TradeDay
+    TDF-38212                       ΓåÆ TradeDay
+    TDF-38984                       ΓåÆ TradeDay
+    TDF-39090                       ΓåÆ TradeDay
+    TDF-39229                       ΓåÆ TradeDay
+    TDF-40736                       ΓåÆ TradeDay
+    TDF-41716                       ΓåÆ TradeDay
+    TDF-42267                       ΓåÆ TradeDay
+    TDF-45329                       ΓåÆ TradeDay
+    TDF-47076                       ΓåÆ TradeDay
+    TDF-47289                       ΓåÆ TradeDay
+    TDF-47529                       ΓåÆ TradeDay
+    TDF-48113                       ΓåÆ TradeDay
+    TDF-49067                       ΓåÆ TradeDay
+    TDF-49639                       ΓåÆ TradeDay
+    TDF-53224                       ΓåÆ TradeDay
+    TDF-53662                       ΓåÆ TradeDay
+    TDF-53676                       ΓåÆ TradeDay
+    TDF-56750                       ΓåÆ TradeDay
+    TDF-57582                       ΓåÆ TradeDay
+    TDF-59522                       ΓåÆ TradeDay
+    TDF-59727                       ΓåÆ TradeDay
+    TDF-61122                       ΓåÆ TradeDay
+    TDF-62433                       ΓåÆ TradeDay
+    TDF-63628                       ΓåÆ TradeDay
+    TDF-65039                       ΓåÆ TradeDay
+    TDF-65191                       ΓåÆ TradeDay
+    TDF-67431                       ΓåÆ TradeDay
+    TDF-69078                       ΓåÆ TradeDay
+    TDF-71215                       ΓåÆ TradeDay
+    TDF-71524                       ΓåÆ TradeDay
+    TDF-72012                       ΓåÆ TradeDay
+    TDF-74051                       ΓåÆ TradeDay
+    TDF-76903                       ΓåÆ TradeDay
+    TDF-78801                       ΓåÆ TradeDay
+    TDF-79051                       ΓåÆ TradeDay
+    TDF-79824                       ΓåÆ TradeDay
+    TDF-79853                       ΓåÆ TradeDay
+    TDF-79998                       ΓåÆ TradeDay
+    TDF-83637                       ΓåÆ TradeDay
+    TDF-86545                       ΓåÆ TradeDay
+    TDF-89421                       ΓåÆ TradeDay
+    TDF-92894                       ΓåÆ TradeDay
+    TDF-95452                       ΓåÆ TradeDay
+    TDF-95847                       ΓåÆ TradeDay
+    TDF-96405                       ΓåÆ TradeDay
+    TDF-97386                       ΓåÆ TradeDay
+    TDF-98150                       ΓåÆ TradeDay
+    TDF-99684                       ΓåÆ TradeDay
+    TDF-99986                       ΓåÆ TradeDay
+    TDFY-00858                      ΓåÆ Tradeify
+    TDFY-02146                      ΓåÆ Tradeify
+    TDFY-05674                      ΓåÆ Tradeify
+    TDFY-06350                      ΓåÆ Tradeify
+    TDFY-06402                      ΓåÆ Tradeify
+    TDFY-07317                      ΓåÆ Tradeify
+    TDFY-12058                      ΓåÆ Tradeify
+    TDFY-13808                      ΓåÆ Tradeify
+    TDFY-17241                      ΓåÆ Tradeify
+    TDFY-18743                      ΓåÆ Tradeify
+    TDFY-21124                      ΓåÆ Tradeify
+    TDFY-22472                      ΓåÆ Tradeify
+    TDFY-23768                      ΓåÆ Tradeify
+    TDFY-27693                      ΓåÆ Tradeify
+    TDFY-29830                      ΓåÆ Tradeify
+    TDFY-30029                      ΓåÆ Tradeify
+    TDFY-30975                      ΓåÆ Tradeify
+    TDFY-31511                      ΓåÆ Tradeify
+    TDFY-31575                      ΓåÆ Tradeify
+    TDFY-36838                      ΓåÆ Tradeify
+    TDFY-42378                      ΓåÆ Tradeify
+    TDFY-45390                      ΓåÆ Tradeify
+    TDFY-47510                      ΓåÆ Tradeify
+    TDFY-52779                      ΓåÆ Tradeify
+    TDFY-54489                      ΓåÆ Tradeify
+    TDFY-57543                      ΓåÆ Tradeify
+    TDFY-61272                      ΓåÆ Tradeify
+    TDFY-67074                      ΓåÆ Tradeify
+    TDFY-71373                      ΓåÆ Tradeify
+    TDFY-80536                      ΓåÆ Tradeify
+    TDFY-81374                      ΓåÆ Tradeify
+    TDFY-82897                      ΓåÆ Tradeify
+    TDFY-83052                      ΓåÆ Tradeify
+    TDFY-85367                      ΓåÆ Tradeify
+    TDFY-87573                      ΓåÆ Tradeify
+    TDFY-96479                      ΓåÆ Tradeify
+    TDFY-98045                      ΓåÆ Tradeify
+    TDFY-99379                      ΓåÆ Tradeify
+    V2-0001                         ΓåÆ Topstep
+    V2-0253                         ΓåÆ Topstep
+    V2-0255                         ΓåÆ Topstep
+    V2-0381                         ΓåÆ Topstep
+    V2-0436                         ΓåÆ Topstep
+    V2-0494                         ΓåÆ Topstep
+    V2-0502                         ΓåÆ Topstep
+    V2-0639                         ΓåÆ Topstep
+    V2-0808                         ΓåÆ Topstep
+    V2-0817                         ΓåÆ Topstep
+    V2-0989                         ΓåÆ Topstep
+    V2-1083                         ΓåÆ Topstep
+    V2-1114                         ΓåÆ Topstep
+    V2-1153                         ΓåÆ Topstep
+    V2-1158                         ΓåÆ Topstep
+    V2-1173                         ΓåÆ Topstep
+    V2-1197                         ΓåÆ Topstep
+    V2-1284                         ΓåÆ Topstep
+    V2-1331                         ΓåÆ Topstep
+    V2-1580                         ΓåÆ Topstep
+    V2-1600                         ΓåÆ Topstep
+    V2-1647                         ΓåÆ Topstep
+    V2-1717                         ΓåÆ Topstep
+    V2-1720                         ΓåÆ Topstep
+    V2-1753                         ΓåÆ Topstep
+    V2-1888                         ΓåÆ Topstep
+    V2-2015                         ΓåÆ Topstep
+    V2-2072                         ΓåÆ Topstep
+    V2-2090                         ΓåÆ Topstep
+    V2-2123                         ΓåÆ Topstep
+    V2-2138                         ΓåÆ Topstep
+    V2-2239                         ΓåÆ Topstep
+    V2-2318                         ΓåÆ Topstep
+    V2-2385                         ΓåÆ Topstep
+    V2-2421                         ΓåÆ Topstep
+    V2-2531                         ΓåÆ Topstep
+    V2-2532                         ΓåÆ Topstep
+    V2-2641                         ΓåÆ Topstep
+    V2-2719                         ΓåÆ Topstep
+    V2-2722                         ΓåÆ Topstep
+    V2-2763                         ΓåÆ Topstep
+    V2-2767                         ΓåÆ Topstep
+    V2-2801                         ΓåÆ Topstep
+    V2-2897                         ΓåÆ Topstep
+    V2-3083                         ΓåÆ Topstep
+    V2-3114                         ΓåÆ Topstep
+    V2-3177                         ΓåÆ Topstep
+    V2-3304                         ΓåÆ Topstep
+    V2-3583                         ΓåÆ Topstep
+    V2-3584                         ΓåÆ Topstep
+    V2-3613                         ΓåÆ Topstep
+    V2-3732                         ΓåÆ Topstep
+    V2-3852                         ΓåÆ Topstep
+    V2-3877                         ΓåÆ Topstep
+    V2-3923                         ΓåÆ Topstep
+    V2-3989                         ΓåÆ Topstep
+    V2-4009                         ΓåÆ Topstep
+    V2-4021                         ΓåÆ Topstep
+    V2-4273                         ΓåÆ Topstep
+    V2-4289                         ΓåÆ Topstep
+    V2-4488                         ΓåÆ Topstep
+    V2-4646                         ΓåÆ Topstep
+    V2-4789                         ΓåÆ Topstep
+    V2-4920                         ΓåÆ Topstep
+    V2-4933                         ΓåÆ Topstep
+    V2-4938                         ΓåÆ Topstep
+    V2-4949                         ΓåÆ Topstep
+    V2-4972                         ΓåÆ Topstep
+    V2-4981                         ΓåÆ Topstep
+    V2-5008                         ΓåÆ Topstep
+    V2-5066                         ΓåÆ Topstep
+    V2-5151                         ΓåÆ Topstep
+    V2-5180                         ΓåÆ Topstep
+    V2-5267                         ΓåÆ Topstep
+    V2-5397                         ΓåÆ Topstep
+    V2-5405                         ΓåÆ Topstep
+    V2-5417                         ΓåÆ Topstep
+    V2-5503                         ΓåÆ Topstep
+    V2-5509                         ΓåÆ Topstep
+    V2-5560                         ΓåÆ Topstep
+    V2-5597                         ΓåÆ Topstep
+    V2-5672                         ΓåÆ Topstep
+    V2-5700                         ΓåÆ Topstep
+    V2-5801                         ΓåÆ Topstep
+    V2-5823                         ΓåÆ Topstep
+    V2-5846                         ΓåÆ Topstep
+    V2-6101                         ΓåÆ Topstep
+    V2-6131                         ΓåÆ Topstep
+    V2-6219                         ΓåÆ Topstep
+    V2-6292                         ΓåÆ Topstep
+    V2-6321                         ΓåÆ Topstep
+    V2-6337                         ΓåÆ Topstep
+    V2-6350                         ΓåÆ Topstep
+    V2-6602                         ΓåÆ Topstep
+    V2-6690                         ΓåÆ Topstep
+    V2-6739                         ΓåÆ Topstep
+    V2-6807                         ΓåÆ Topstep
+    V2-6853                         ΓåÆ Topstep
+    V2-6907                         ΓåÆ Topstep
+    V2-6977                         ΓåÆ Topstep
+    V2-7085                         ΓåÆ Topstep
+    V2-7107                         ΓåÆ Topstep
+    V2-7112                         ΓåÆ Topstep
+    V2-7173                         ΓåÆ Topstep
+    V2-7208                         ΓåÆ Topstep
+    V2-7216                         ΓåÆ Topstep
+    V2-7298                         ΓåÆ Topstep
+    V2-7306                         ΓåÆ Topstep
+    V2-7357                         ΓåÆ Topstep
+    V2-7419                         ΓåÆ Topstep
+    V2-7443                         ΓåÆ Topstep
+    V2-7471                         ΓåÆ Topstep
+    V2-7525                         ΓåÆ Topstep
+    V2-7671                         ΓåÆ Topstep
+    V2-7781                         ΓåÆ Topstep
+    V2-7799                         ΓåÆ Topstep
+    V2-7833                         ΓåÆ Topstep
+    V2-7835                         ΓåÆ Topstep
+    V2-8060                         ΓåÆ Topstep
+    V2-8077                         ΓåÆ Topstep
+    V2-8124                         ΓåÆ Topstep
+    V2-8238                         ΓåÆ Topstep
+    V2-8253                         ΓåÆ Topstep
+    V2-8255                         ΓåÆ Topstep
+    V2-8395                         ΓåÆ Topstep
+    V2-8410                         ΓåÆ Topstep
+    V2-8473                         ΓåÆ Topstep
+    V2-8479                         ΓåÆ Topstep
+    V2-8525                         ΓåÆ Topstep
+    V2-8558                         ΓåÆ Topstep
+    V2-8738                         ΓåÆ Topstep
+    V2-8947                         ΓåÆ Topstep
+    V2-8957                         ΓåÆ Topstep
+    V2-8967                         ΓåÆ Topstep
+    V2-9152                         ΓåÆ Topstep
+    V2-9236                         ΓåÆ Topstep
+    V2-9263                         ΓåÆ Topstep
+    V2-9309                         ΓåÆ Topstep
+    V2-9328                         ΓåÆ Topstep
+    V2-9359                         ΓåÆ Topstep
+    V2-9392                         ΓåÆ Topstep
+    V2-9522                         ΓåÆ Topstep
+    V2-9750                         ΓåÆ Topstep
+    V2-9848                         ΓåÆ Topstep
+    V2-9859                         ΓåÆ Topstep
+
+  Financial summary (latest):
+    MT5 Balance:      $67,540.10
+    MT5 Deposits:     $40,029.76
+    MT5 Withdrawals:  $0.00
+    Stats Balance:    $53,376.60
+    Stats Hedging:    $13,346.84
+    HR Deposits:      $40,029.76
+    HR Withdrawals:   $0.00
+    HR Balance:       $53,376.60

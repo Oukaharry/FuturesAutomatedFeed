@@ -1671,7 +1671,7 @@ class TraderCompanionApp:
                      font=("Consolas", 11, "bold"),
                      text_color="#00D4FF").pack(side="left", padx=(10, 0))
 
-        self.trades_count_var = tk.StringVar(value="Loading...")
+        self.trades_count_var = tk.StringVar(value="[ — ]")
         ctk.CTkLabel(trades_bezel, textvariable=self.trades_count_var,
                      font=("Consolas", 9), text_color="#3B6978").pack(side="left", padx=14)
 
@@ -2054,63 +2054,91 @@ class TraderCompanionApp:
         self.log(f"Looking up client: {email}")
         self.hierarchy_var.set("Looking up...")
         self.root.update_idletasks()
-        
-        try:
-            # Use public endpoint - no API key needed
-            response = requests.post(
-                f"{dashboard_url}/api/client/auth",
-                json={"email": email},
-                headers={"Content-Type": "application/json"},
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("status") == "success":
-                    self.client_info = data.get("identity", {})
-                    client = self.client_info.get("client", "Unknown")
-                    trader = self.client_info.get("trader", "Unknown")
-                    admin = self.client_info.get("admin", "Unknown")
-                    category = self.client_info.get("category", "Unknown")
-                    
-                    self.hierarchy_var.set(f"✅ {client} → Trader: {trader} → Admin: {admin} | Category: {category}")
-                    self.hierarchy_label.configure(text_color='#16a34a') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#16a34a')
-                    self.log(f"✅ Client found: {client} → {trader} → {admin}")
-                    # Auto-load active trades after successful lookup
-                    try:
-                        self._load_active_trades()
-                    except Exception:
-                        pass
-                else:
-                    error_msg = data.get("message", "Client not found")
-                    self.hierarchy_var.set(f"❌ {error_msg}")
-                    self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-                    self.client_info = None
-                    self.log(f"❌ Lookup failed: {error_msg}", "ERROR")
-            else:
-                error_msg = f"API Error: {response.status_code}"
-                try:
-                    error_data = response.json()
-                    error_msg = error_data.get("message", error_msg)
-                except:
-                    pass
-                self.hierarchy_var.set(f"❌ {error_msg}")
-                self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-                self.client_info = None
-                self.log(f"❌ Lookup failed: {error_msg}", "ERROR")
+
+        def _do_lookup():
+            try:
+                # Use public endpoint - no API key needed
+                response = requests.post(
+                    f"{dashboard_url}/api/client/auth",
+                    json={"email": email},
+                    headers={"Content-Type": "application/json"},
+                    timeout=30
+                )
                 
-        except requests.exceptions.Timeout:
-            self.hierarchy_var.set("❌ Connection timeout")
-            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-            self.log("❌ Connection timeout", "ERROR")
-        except requests.exceptions.ConnectionError:
-            self.hierarchy_var.set("❌ Cannot connect to server")
-            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-            self.log("❌ Cannot connect to server", "ERROR")
-        except Exception as e:
-            self.hierarchy_var.set(f"❌ Error: {str(e)}")
-            self.hierarchy_label.configure(text_color='#dc2626') if CTK_AVAILABLE else self.hierarchy_label.configure(foreground='#dc2626')
-            self.log(f"❌ Error: {e}", "ERROR")
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("status") == "success":
+                        def _on_success(data=data):
+                            self.client_info = data.get("identity", {})
+                            client = self.client_info.get("client", "Unknown")
+                            trader = self.client_info.get("trader", "Unknown")
+                            admin = self.client_info.get("admin", "Unknown")
+                            category = self.client_info.get("category", "Unknown")
+                            
+                            self.hierarchy_var.set(f"✅ {client} → Trader: {trader} → Admin: {admin} | Category: {category}")
+                            if CTK_AVAILABLE:
+                                self.hierarchy_label.configure(text_color='#16a34a')
+                            else:
+                                self.hierarchy_label.configure(foreground='#16a34a')
+                            self.log(f"✅ Client found: {client} → {trader} → {admin}")
+                        self.root.after(0, _on_success)
+                    else:
+                        error_msg = data.get("message", "Client not found")
+                        def _on_not_found(msg=error_msg):
+                            self.hierarchy_var.set(f"❌ {msg}")
+                            if CTK_AVAILABLE:
+                                self.hierarchy_label.configure(text_color='#dc2626')
+                            else:
+                                self.hierarchy_label.configure(foreground='#dc2626')
+                            self.client_info = None
+                            self.log(f"❌ Lookup failed: {msg}", "ERROR")
+                        self.root.after(0, _on_not_found)
+                else:
+                    error_msg = f"API Error: {response.status_code}"
+                    try:
+                        error_data = response.json()
+                        error_msg = error_data.get("message", error_msg)
+                    except:
+                        pass
+                    def _on_error(msg=error_msg):
+                        self.hierarchy_var.set(f"❌ {msg}")
+                        if CTK_AVAILABLE:
+                            self.hierarchy_label.configure(text_color='#dc2626')
+                        else:
+                            self.hierarchy_label.configure(foreground='#dc2626')
+                        self.client_info = None
+                        self.log(f"❌ Lookup failed: {msg}", "ERROR")
+                    self.root.after(0, _on_error)
+                    
+            except requests.exceptions.Timeout:
+                def _on_timeout():
+                    self.hierarchy_var.set("❌ Connection timeout")
+                    if CTK_AVAILABLE:
+                        self.hierarchy_label.configure(text_color='#dc2626')
+                    else:
+                        self.hierarchy_label.configure(foreground='#dc2626')
+                    self.log("❌ Connection timeout", "ERROR")
+                self.root.after(0, _on_timeout)
+            except requests.exceptions.ConnectionError:
+                def _on_conn_err():
+                    self.hierarchy_var.set("❌ Cannot connect to server")
+                    if CTK_AVAILABLE:
+                        self.hierarchy_label.configure(text_color='#dc2626')
+                    else:
+                        self.hierarchy_label.configure(foreground='#dc2626')
+                    self.log("❌ Cannot connect to server", "ERROR")
+                self.root.after(0, _on_conn_err)
+            except Exception as e:
+                def _on_exc(err=str(e)):
+                    self.hierarchy_var.set(f"❌ Error: {err}")
+                    if CTK_AVAILABLE:
+                        self.hierarchy_label.configure(text_color='#dc2626')
+                    else:
+                        self.hierarchy_label.configure(foreground='#dc2626')
+                    self.log(f"❌ Error: {err}", "ERROR")
+                self.root.after(0, _on_exc)
+
+        threading.Thread(target=_do_lookup, daemon=True).start()
         
     def toggle_mt5_connection(self):
         """Connect or disconnect from MT5."""
@@ -3034,61 +3062,83 @@ class TraderCompanionApp:
 
         self.log(f"📂 Importing CSV for {client_name}...")
         self.status_var.set("Importing CSV...")
+        self.import_btn.configure(state="disabled")
         self.root.update_idletasks()
 
-        try:
-            with open(csv_path, 'rb') as f:
-                response = requests.post(
-                    f"{dashboard_url}/api/client/import_csv_companion",
-                    data={"email": email},
-                    files={"file": (os.path.basename(csv_path), f, "text/csv")},
-                    timeout=120
-                )
+        def _do_import():
+            try:
+                with open(csv_path, 'rb') as f:
+                    response = requests.post(
+                        f"{dashboard_url}/api/client/import_csv_companion",
+                        data={"email": email},
+                        files={"file": (os.path.basename(csv_path), f, "text/csv")},
+                        timeout=120
+                    )
 
-            if response.status_code != 200:
-                error_msg = f"HTTP {response.status_code}"
-                try:
-                    error_msg = response.json().get("message", error_msg)
-                except:
-                    pass
-                self.log(f"❌ CSV import failed: {error_msg}", "ERROR")
-                self.status_var.set("Import failed")
-                messagebox.showerror("Error", error_msg)
-                return
+                if response.status_code != 200:
+                    error_msg = f"HTTP {response.status_code}"
+                    try:
+                        error_msg = response.json().get("message", error_msg)
+                    except:
+                        pass
+                    def _on_http_err(msg=error_msg):
+                        self.log(f"❌ CSV import failed: {msg}", "ERROR")
+                        self.status_var.set("Import failed")
+                        self.import_btn.configure(state="normal")
+                        messagebox.showerror("Error", msg)
+                    self.root.after(0, _on_http_err)
+                    return
 
-            data = response.json()
-            if data.get("status") != "success":
-                error_msg = data.get("message", "Import failed")
-                self.log(f"❌ {error_msg}", "ERROR")
-                self.status_var.set("Import failed")
-                messagebox.showerror("Error", error_msg)
-                return
+                data = response.json()
+                if data.get("status") != "success":
+                    error_msg = data.get("message", "Import failed")
+                    def _on_api_err(msg=error_msg):
+                        self.log(f"❌ {msg}", "ERROR")
+                        self.status_var.set("Import failed")
+                        self.import_btn.configure(state="normal")
+                        messagebox.showerror("Error", msg)
+                    self.root.after(0, _on_api_err)
+                    return
 
-            updated = data.get('updated', 0)
-            added = data.get('added', 0)
-            total = data.get('total_rows', 0)
-            self.log(f"   ✅ CSV import complete!")
-            self.log(f"   {updated} rows updated, {added} rows added ({total} total evaluations)")
-            self.status_var.set(f"Imported {updated + added} rows from CSV")
-            messagebox.showinfo("Success",
-                f"CSV import complete!\n\n"
-                f"• {updated} rows updated\n"
-                f"• {added} rows added\n"
-                f"• {total} total evaluations")
-            self.lookup_client()
+                updated = data.get('updated', 0)
+                added = data.get('added', 0)
+                total = data.get('total_rows', 0)
+                def _on_success():
+                    self.log(f"   ✅ CSV import complete!")
+                    self.log(f"   {updated} rows updated, {added} rows added ({total} total evaluations)")
+                    self.status_var.set(f"Imported {updated + added} rows from CSV")
+                    self.import_btn.configure(state="normal")
+                    messagebox.showinfo("Success",
+                        f"CSV import complete!\n\n"
+                        f"• {updated} rows updated\n"
+                        f"• {added} rows added\n"
+                        f"• {total} total evaluations")
+                    self.lookup_client()
+                self.root.after(0, _on_success)
 
-        except requests.exceptions.Timeout:
-            self.log("❌ Connection timeout during CSV import", "ERROR")
-            self.status_var.set("Timeout")
-            messagebox.showerror("Timeout", "Connection timed out. Please try again.")
-        except requests.exceptions.ConnectionError:
-            self.log("❌ Could not connect to dashboard server", "ERROR")
-            self.status_var.set("Connection failed")
-            messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
-        except Exception as e:
-            self.log(f"❌ CSV import error: {e}", "ERROR")
-            self.status_var.set("Import failed")
-            messagebox.showerror("Error", str(e))
+            except requests.exceptions.Timeout:
+                def _on_timeout():
+                    self.log("❌ Connection timeout during CSV import", "ERROR")
+                    self.status_var.set("Timeout")
+                    self.import_btn.configure(state="normal")
+                    messagebox.showerror("Timeout", "Connection timed out. Please try again.")
+                self.root.after(0, _on_timeout)
+            except requests.exceptions.ConnectionError:
+                def _on_conn_err():
+                    self.log("❌ Could not connect to dashboard server", "ERROR")
+                    self.status_var.set("Connection failed")
+                    self.import_btn.configure(state="normal")
+                    messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
+                self.root.after(0, _on_conn_err)
+            except Exception as e:
+                def _on_exc(err=str(e)):
+                    self.log(f"❌ CSV import error: {err}", "ERROR")
+                    self.status_var.set("Import failed")
+                    self.import_btn.configure(state="normal")
+                    messagebox.showerror("Error", err)
+                self.root.after(0, _on_exc)
+
+        threading.Thread(target=_do_import, daemon=True).start()
 
     def migrate_from_sheet(self):
         """Migrate data from Google Sheets to the dashboard with verification."""
@@ -3111,53 +3161,68 @@ class TraderCompanionApp:
         self.log(f"Migrating sheet data to dashboard...")
         self.status_var.set("Migrating sheet data...")
         self.root.update_idletasks()
-        
-        try:
-            response = requests.post(
-                f"{dashboard_url}/api/client/migrate_sheet",
-                json={"email": email, "sheet_url": sheet_url},
-                headers={"Content-Type": "application/json"},
-                timeout=180
-            )
-            
-            if response.status_code != 200:
-                error_msg = f"HTTP {response.status_code}"
-                try:
-                    error_msg = response.json().get("message", error_msg)
-                except:
-                    pass
-                self.log(f"❌ Migration failed: {error_msg}", "ERROR")
-                self.status_var.set("Migration failed")
-                messagebox.showerror("Error", error_msg)
-                return
-            
-            data = response.json()
-            if data.get("status") != "success":
-                error_msg = data.get("message", "Migration failed")
-                self.log(f"❌ {error_msg}", "ERROR")
-                self.status_var.set("Migration failed")
-                messagebox.showerror("Error", error_msg)
-                return
-            
-            records = data.get("records_imported", 0)
-            self.log(f"   ✅ Successfully imported {records} records")
-            self.log(f"   Dashboard data fully replaced.")
-            self.status_var.set(f"Imported {records} records")
-            messagebox.showinfo("Success", f"Successfully imported {records} records.\nDashboard data has been updated.")
-            self.lookup_client()
+
+        def _do_migrate():
+            try:
+                response = requests.post(
+                    f"{dashboard_url}/api/client/migrate_sheet",
+                    json={"email": email, "sheet_url": sheet_url},
+                    headers={"Content-Type": "application/json"},
+                    timeout=180
+                )
                 
-        except requests.exceptions.Timeout:
-            self.log("❌ Connection timeout - server is still processing the sheet", "ERROR")
-            self.status_var.set("Timeout")
-            messagebox.showerror("Timeout", "Connection timed out. The sheet may be too large or the server is busy. Please try again.")
-        except requests.exceptions.ConnectionError:
-            self.log("❌ Could not connect to dashboard server", "ERROR")
-            self.status_var.set("Connection failed")
-            messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
-        except Exception as e:
-            self.log(f"❌ Migration error: {e}", "ERROR")
-            self.status_var.set("Migration failed")
-            messagebox.showerror("Error", str(e))
+                if response.status_code != 200:
+                    error_msg = f"HTTP {response.status_code}"
+                    try:
+                        error_msg = response.json().get("message", error_msg)
+                    except:
+                        pass
+                    def _on_err(msg=error_msg):
+                        self.log(f"❌ Migration failed: {msg}", "ERROR")
+                        self.status_var.set("Migration failed")
+                        messagebox.showerror("Error", msg)
+                    self.root.after(0, _on_err)
+                    return
+                
+                data = response.json()
+                if data.get("status") != "success":
+                    error_msg = data.get("message", "Migration failed")
+                    def _on_api_err(msg=error_msg):
+                        self.log(f"❌ {msg}", "ERROR")
+                        self.status_var.set("Migration failed")
+                        messagebox.showerror("Error", msg)
+                    self.root.after(0, _on_api_err)
+                    return
+                
+                records = data.get("records_imported", 0)
+                def _on_success():
+                    self.log(f"   ✅ Successfully imported {records} records")
+                    self.log(f"   Dashboard data fully replaced.")
+                    self.status_var.set(f"Imported {records} records")
+                    messagebox.showinfo("Success", f"Successfully imported {records} records.\nDashboard data has been updated.")
+                    self.lookup_client()
+                self.root.after(0, _on_success)
+                    
+            except requests.exceptions.Timeout:
+                def _on_timeout():
+                    self.log("❌ Connection timeout - server is still processing the sheet", "ERROR")
+                    self.status_var.set("Timeout")
+                    messagebox.showerror("Timeout", "Connection timed out. The sheet may be too large or the server is busy. Please try again.")
+                self.root.after(0, _on_timeout)
+            except requests.exceptions.ConnectionError:
+                def _on_conn_err():
+                    self.log("❌ Could not connect to dashboard server", "ERROR")
+                    self.status_var.set("Connection failed")
+                    messagebox.showerror("Error", "Could not connect to dashboard server. Check the URL and try again.")
+                self.root.after(0, _on_conn_err)
+            except Exception as e:
+                def _on_exc(err=str(e)):
+                    self.log(f"❌ Migration error: {err}", "ERROR")
+                    self.status_var.set("Migration failed")
+                    messagebox.showerror("Error", err)
+                self.root.after(0, _on_exc)
+
+        threading.Thread(target=_do_migrate, daemon=True).start()
     
     def verify_stats(self, local_stats, dashboard_stats):
         """Compare local stats with dashboard stats and return list of discrepancies."""

@@ -1,0 +1,160 @@
+﻿=== Corrupted Account # values ===
+Total corrupted values: 143
+  Row  22 Account #   : MFFU-FTPROPLUS641502386                  Firm=My Funded Futures      Issues=FTPROPLUS corrupted
+  Row  24 Account #   : MFFU-FTPROPLUS468051927                  Firm=My Funded Futures      Issues=FTPROPLUS corrupted
+  Row  25 Account #   : MFFU-FTPROPLUS368274096                  Firm=My Funded Futures      Issues=FTPROPLUS corrupted
+  Row  27 Account #   : TDF-FTPROPLUS068721455                   Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row  28 Account #   : FNFT-FTPROPLUS620594187                  Firm=FundedNext             Issues=FTPROPLUS corrupted
+  Row  36 Account #   : TDF-FTPROPLUS237615404                   Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row  37 Account #.1 : FTPROPLUSM297310588                      Firm=Funding Ticks          Issues=FTPROPLUS corrupted
+  Row  38 Account #.1 : FTPROPLUSM279651386                      Firm=Funding Ticks          Issues=FTPROPLUS corrupted
+  Row  39 Account #.1 : FTPROPLUSM273246809                      Firm=Funding Ticks          Issues=FTPROPLUS corrupted
+  Row  40 Account #   : MFFU-FTPROPLUS476308129                  Firm=My Funded Futures      Issues=FTPROPLUS corrupted
+  Row  44 Account #.1 : FTPROPLUSM869547201                      Firm=Funding Ticks          Issues=FTPROPLUS corrupted
+  Row  47 Account #.1 : MFFU-FTPROPLUSM309147852664              Firm=My Funded Futures      Issues=FTPROPLUS corrupted
+  Row  56 Account #   : V2-FTPROPLUS123682059417                 Firm=Topstep                Issues=FTPROPLUS corrupted
+  Row  57 Account #   : TDF-FTPROPLUS858795034126                Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row  58 Account #   : TDF-FTPROPLUS873210865940                Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row  76 Account #   : V2-FTPROPLUS338459762016                 Firm=Topstep                Issues=FTPROPLUS corrupted
+  Row  81 Account #   : TDF-FTPROPLUS021347956810                Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row  82 Account #   : TDF-FTPROPLUS595172468037                Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row  84 Account #.1 : FNFT-FNFTFACHRISREAM41224                Firm=FundedNext             Issues=FNFT double prefix
+  Row  85 Account #.1 : FNFT-FNFTFACHRISREAM55794                Firm=FundedNext             Issues=FNFT double prefix
+  Row  86 Account #   : MFFU-FNFTCHCHRISREAM76425                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row  94 Account #.1 : FTPROPLUSM025903176841                   Firm=Funding Ticks          Issues=FTPROPLUS corrupted
+  Row  95 Account #   : TDF-FTPROPLUS460138759216                Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row  96 Account #   : TDF-FTPROPLUS858472309610                Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row 102 Account #.1 : FNFT-FNFTFACHRISREAM4912                 Firm=FundedNext             Issues=FNFT double prefix
+  Row 104 Account #.1 : FNFT-FNFTFACHRISREAM16931                Firm=FundedNext             Issues=FNFT double prefix
+  Row 113 Account #.1 : FTPROPLUSM192364758102                   Firm=Funding Ticks          Issues=FTPROPLUS corrupted
+  Row 125 Account #   : MFFU-FTPROPLUS978425031692               Firm=My Funded Futures      Issues=FTPROPLUS corrupted
+  Row 140 Account #.1 : FTPROPLUSM046592137048                   Firm=Funding Ticks          Issues=FTPROPLUS corrupted
+  Row 141 Account #   : V2-FTPROPLUS141980725362                 Firm=Topstep                Issues=FTPROPLUS corrupted
+  Row 142 Account #   : V2-FTPROPLUS702439586130                 Firm=Topstep                Issues=FTPROPLUS corrupted
+  Row 150 Account #   : MFFU-FNFTCHCHRISREAM76807                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 152 Account #.1 : FNFT-FNFTFACHRISREAM6048                 Firm=FundedNext             Issues=FNFT double prefix
+  Row 158 Account #   : V2-FNFTCHCHRISREAM14877                  Firm=Topstep                Issues=CHCHRISREAM corrupted
+  Row 159 Account #   : V2-FNFTCHCHRISREAM16433                  Firm=Topstep                Issues=CHCHRISREAM corrupted
+  Row 166 Account #   : MFFU-FNFTCHCHRISREAM24647                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 167 Account #   : TDF-FNFTCHCHRISREAM29013                 Firm=TradeDay               Issues=CHCHRISREAM corrupted
+  Row 168 Account #   : TDF-FNFTCHCHRISREAM92414                 Firm=TradeDay               Issues=CHCHRISREAM corrupted
+  Row 174 Account #   : MFFU-FNFTCHCHRISREAM79787                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 175 Account #.1 : FNFT-FNFTFACHRISREAM19099                Firm=FundedNext             Issues=FNFT double prefix
+  Row 176 Account #   : TDF-FNFTCHCHRISREAM54018                 Firm=TradeDay               Issues=CHCHRISREAM corrupted
+  Row 177 Account #   : TDF-FNFTCHCHRISREAM76018                 Firm=TradeDay               Issues=CHCHRISREAM corrupted
+  Row 178 Account #   : TDF-FNFTCHCHRISREAM78310                 Firm=TradeDay               Issues=CHCHRISREAM corrupted
+  Row 179 Account #   : TDF-FNFTCHCHRISREAM3022                  Firm=TradeDay               Issues=CHCHRISREAM corrupted
+  Row 189 Account #   : FNFT-FTPROPLUS18540679236                Firm=FundedNext             Issues=FTPROPLUS corrupted
+  Row 190 Account #   : MFFU-FTPROPLUS258923614709               Firm=My Funded Futures      Issues=FTPROPLUS corrupted
+  Row 197 Account #   : MFFU-FNFTCHCHRISREAM22124                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 215 Account #   : TDF-FTPROPLUS194158673092                Firm=TradeDay               Issues=FTPROPLUS corrupted
+  Row 227 Account #   : V2-FTPROPLUS463907281541                 Firm=Topstep                Issues=FTPROPLUS corrupted
+  Row 228 Account #   : V2-FNFTCHCHRISREAM61479                  Firm=Topstep                Issues=CHCHRISREAM corrupted
+  Row 229 Account #   : V2-FNFTCHCHRISREAM66042                  Firm=Topstep                Issues=CHCHRISREAM corrupted
+  Row 282 Account #   : TDF-FNFTCHCHRISREAM72402                 Firm=TradeDay               Issues=CHCHRISREAM corrupted
+  Row 303 Account #.1 : EXPRESS-V2-432909-93482600               Firm=My Funded Futures      Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for My Funded Futures
+  Row 304 Account #.1 : EXPRESS-V2-432909-99432635               Firm=My Funded Futures      Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for My Funded Futures
+  Row 305 Account #.1 : EXPRESS-V2-432909-57692590               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 306 Account #.1 : EXPRESS-V2-432909-12226852               Firm=FundedNext             Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for FundedNext
+  Row 307 Account #.1 : EXPRESS-V2-432909-19170147               Firm=FundedNext             Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for FundedNext
+  Row 331 Account #.1 : EXPRESS-V2-432909-62728758               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 333 Account #.1 : EXPRESS-V2-432909-18098460               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 334 Account #.1 : EXPRESS-V2-432909-29134808               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 335 Account #.1 : TDFY-FTDFYSLX50577647091                 Firm=Tradeify               Issues=TDFYSL corrupted, TDFY-FTDF corrupted
+  Row 336 Account #   : MFFU-TDFYSL50462244870                   Firm=My Funded Futures      Issues=TDFYSL corrupted
+  Row 359 Account #   : V2-TDFYSL50730435362                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 362 Account #   : TDF-TDFYSL50166019051                    Firm=TradeDay               Issues=TDFYSL corrupted
+  Row 363 Account #   : TDF-TDFYSL50905228494                    Firm=TradeDay               Issues=TDFYSL corrupted
+  Row 364 Account #.1 : EXPRESS-V2-432909-67811153               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 365 Account #.1 : EXPRESS-V2-432909-90175738               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 366 Account #.1 : EXPRESS-V2-432909-86506582               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 367 Account #.1 : EXPRESS-V2-432909-31758738               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 369 Account #.1 : MFFU-MFFUSFCRFLX372280221                Firm=My Funded Futures      Issues=MFFU concatenation, MFFU double prefix
+  Row 373 Account #.1 : TDFY-FTDFYSLX50677934906                 Firm=Tradeify               Issues=TDFYSL corrupted, TDFY-FTDF corrupted
+  Row 374 Account #   : MFFU-TDFYSL50226811699                   Firm=My Funded Futures      Issues=TDFYSL corrupted
+  Row 375 Account #   : MFFU-TDFYSL50824844298                   Firm=My Funded Futures      Issues=TDFYSL corrupted
+  Row 376 Account #.1 : TDFY-FTDFYSLX50348572783                 Firm=Tradeify               Issues=TDFYSL corrupted, TDFY-FTDF corrupted
+  Row 377 Account #.1 : EXPRESS-V2-432909-98550409               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 378 Account #.1 : EXPRESS-V2-432909-75253398               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 386 Account #   : V2-MFFUEVFLX372280224                    Firm=Topstep                Issues=MFFU concatenation
+  Row 391 Account #.1 : EXPRESS-V2-432909-13689242               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 392 Account #.1 : EXPRESS-V2-432909-20896337               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 393 Account #.1 : MFFU-MFFUSFFLX372280228                  Firm=My Funded Futures      Issues=MFFU concatenation, MFFU double prefix
+  Row 400 Account #   : MFFU-TDFYSL50110250908                   Firm=My Funded Futures      Issues=TDFYSL corrupted
+  Row 402 Account #   : TDF-MFFUEVCRFLX372280231                 Firm=TradeDay               Issues=MFFU concatenation
+  Row 407 Account #   : V2-TDFYSL50401519438                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 410 Account #   : V2-TDFYSL50741293520                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 411 Account #   : V2-TDFYSL50887319195                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 414 Account #   : MFFU-TDFYSL50631793102                   Firm=My Funded Futures      Issues=TDFYSL corrupted
+  Row 415 Account #   : TDF-TDFYSL50334605033                    Firm=TradeDay               Issues=TDFYSL corrupted
+  Row 417 Account #   : TDF-TDFYSL50996012271                    Firm=TradeDay               Issues=TDFYSL corrupted
+  Row 420 Account #.1 : TDFY-FTDFYSLX50109120190                 Firm=Tradeify               Issues=TDFYSL corrupted, TDFY-FTDF corrupted
+  Row 421 Account #.1 : TDFY-FTDFYSLX50724571404                 Firm=Tradeify               Issues=TDFYSL corrupted, TDFY-FTDF corrupted
+  Row 422 Account #.1 : TDFY-FTDFYSLX50948027613                 Firm=Tradeify               Issues=TDFYSL corrupted, TDFY-FTDF corrupted
+  Row 423 Account #.1 : EXPRESS-V2-432909-54821753               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 424 Account #.1 : EXPRESS-V2-432909-97362531               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 427 Account #.1 : AFAD-AFADQAS202603022099                 Firm=Alpha Futures          Issues=AFAD concatenation
+  Row 428 Account #.1 : AFAD-AFADQAS202603022113                 Firm=Alpha Futures          Issues=AFAD concatenation
+  Row 429 Account #.1 : AFAD-AFADQAS202603022118                 Firm=Alpha Futures          Issues=AFAD concatenation
+  Row 430 Account #.1 : MFFU-MFFUSFFLX372280238                  Firm=My Funded Futures      Issues=MFFU concatenation, MFFU double prefix
+  Row 436 Account #   : FNFT-TDFYSL50357887086                   Firm=FundedNext             Issues=TDFYSL corrupted
+  Row 438 Account #   : MFFU-TDFYSL50340558999                   Firm=My Funded Futures      Issues=TDFYSL corrupted
+  Row 443 Account #   : TDF-MFFUEVCRFLX372280243                 Firm=TradeDay               Issues=MFFU concatenation
+  Row 444 Account #.1 : FNFT-FNFTFACHRISREAM30756                Firm=FundedNext             Issues=FNFT double prefix
+  Row 447 Account #   : TDF-TDFYSL50804097272                    Firm=TradeDay               Issues=TDFYSL corrupted
+  Row 448 Account #   : TDF-TDFYSL50476787438                    Firm=TradeDay               Issues=TDFYSL corrupted
+  Row 449 Account #   : TDF-TDFYSL50418026880                    Firm=TradeDay               Issues=TDFYSL corrupted
+  Row 453 Account #   : MFFU-FNFTCHCHRISREAM1195                 Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 454 Account #   : MFFU-FNFTCHCHRISREAM15999                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 456 Account #   : V2-TDFYSL50616837931                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 460 Account #   : V2-TDFYSL50233315685                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 462 Account #   : V2-MFFUEVFLX372280246                    Firm=Topstep                Issues=MFFU concatenation
+  Row 463 Account #   : TDF-MFFUEVFLX372280247                   Firm=TradeDay               Issues=MFFU concatenation
+  Row 464 Account #   : AFAD-MFFUEVFLX372280248                  Firm=Alpha Futures          Issues=MFFU concatenation
+  Row 465 Account #   : AFAD-MFFUEVFLX372280249                  Firm=Alpha Futures          Issues=MFFU concatenation
+  Row 472 Account #   : FNFT-TDFYSL50880740062                   Firm=FundedNext             Issues=TDFYSL corrupted
+  Row 473 Account #.1 : MFFU-MFFUSFFLX372280255                  Firm=My Funded Futures      Issues=MFFU concatenation, MFFU double prefix
+  Row 474 Account #.1 : MFFU-MFFUSFFLX372280256                  Firm=My Funded Futures      Issues=MFFU concatenation, MFFU double prefix
+  Row 475 Account #.1 : MFFU-MFFUSFFLX372280257                  Firm=My Funded Futures      Issues=MFFU concatenation, MFFU double prefix
+  Row 476 Account #   : FNFT-MFFUEVFLX372280253                  Firm=FundedNext             Issues=MFFU concatenation
+  Row 484 Account #   : TDFY-FNFTCHCHRISREAM86721                Firm=Tradeify               Issues=CHCHRISREAM corrupted
+  Row 485 Account #   : MFFU-FNFTCHCHRISREAM71311                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 486 Account #   : MFFU-FNFTCHCHRISREAM35212                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 487 Account #   : V2-TDFYSL50905593025                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 499 Account #.1 : EXPRESS-V2-432909-67811153               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 500 Account #.1 : EXPRESS-V2-432909-90175738               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 501 Account #.1 : EXPRESS-V2-432909-86506582               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 502 Account #.1 : EXPRESS-V2-432909-98550409               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 503 Account #.1 : EXPRESS-V2-432909-75253398               Firm=Topstep                Issues=EXPRESS-V2 format, Prefix EXPRESS wrong for Topstep
+  Row 504 Account #.1 : TDFY-MFFUSFFLX372280265                  Firm=Tradeify               Issues=MFFU concatenation, TDFY-MFFU cross-prefix
+  Row 505 Account #.1 : MFFU-MFFUSFFLX372280266                  Firm=My Funded Futures      Issues=MFFU concatenation, MFFU double prefix
+  Row 506 Account #.1 : TDFY-MFFUSFFLX372280269                  Firm=Tradeify               Issues=MFFU concatenation, TDFY-MFFU cross-prefix
+  Row 516 Account #   : FNFT-MFFUEVFLX372280268                  Firm=FundedNext             Issues=MFFU concatenation
+  Row 532 Account #   : FNFT-TDFYSL50960938565                   Firm=FundedNext             Issues=TDFYSL corrupted
+  Row 533 Account #   : FNFT-TDFYSL50471438302                   Firm=FundedNext             Issues=TDFYSL corrupted
+  Row 547 Account #   : V2-FNFTCHCHRISREAM52382                  Firm=Topstep                Issues=CHCHRISREAM corrupted
+  Row 548 Account #   : V2-FNFTCHCHRISREAM54908                  Firm=Topstep                Issues=CHCHRISREAM corrupted
+  Row 549 Account #   : V2-TDFYSL50543783388                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 564 Account #   : V2-TDFYSL50750897397                     Firm=Topstep                Issues=TDFYSL corrupted
+  Row 568 Account #   : MFFU-MFFUEVRPD372280279                  Firm=My Funded Futures      Issues=MFFU double prefix
+  Row 572 Account #   : MFFU-FNFTCHCHRISREAM3352                 Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 573 Account #   : MFFU-FNFTCHCHRISREAM38017                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 574 Account #   : MFFU-FNFTCHCHRISREAM49957                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 575 Account #   : MFFU-FNFTCHCHRISREAM88064                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 576 Account #   : MFFU-FNFTCHCHRISREAM26268                Firm=My Funded Futures      Issues=CHCHRISREAM corrupted
+  Row 577 Account #   : FNFT-TDFYSL50122596371                   Firm=FundedNext             Issues=TDFYSL corrupted
+
+Issue counts:
+  TDFYSL corrupted: 33
+  FTPROPLUS corrupted: 30
+  CHCHRISREAM corrupted: 28
+  EXPRESS-V2 format: 23
+  Prefix EXPRESS wrong for Topstep: 19
+  MFFU concatenation: 18
+  MFFU double prefix: 8
+  FNFT double prefix: 7
+  TDFY-FTDF corrupted: 6
+  AFAD concatenation: 3
+  Prefix EXPRESS wrong for My Funded Futures: 2
+  Prefix EXPRESS wrong for FundedNext: 2
+  TDFY-MFFU cross-prefix: 2

@@ -1,0 +1,34 @@
+﻿Sheet imports: 17
+First data push: v2 @ 2026-03-09T16:06:56.125505
+
+Latest sheet import: v49 @ 2026-03-10T17:01:22.635890
+  Description: Imported 496 records from Google Sheets
+  Evaluations: 496
+  TradeDay rows in sheet import: 0
+
+=== Current In Progress TradeDay rows ===
+  Row 614: Acct#=  Acct#.1=
+    NOT IN SHEET IMPORT (row 614 > 496)
+  Row 615: Acct#=TDF-37538  Acct#.1=TDF-06529
+    NOT IN SHEET IMPORT (row 615 > 496)
+  Row 627: Acct#=TDF-61122  Acct#.1=TDF-08824
+    NOT IN SHEET IMPORT (row 627 > 496)
+  Row 628: Acct#=  Acct#.1=TDF-14302
+    NOT IN SHEET IMPORT (row 628 > 496)
+  Row 629: Acct#=TDF-37054  Acct#.1=TDF-08824
+    NOT IN SHEET IMPORT (row 629 > 496)
+  Row 630: Acct#=TDF-83637  Acct#.1=
+    NOT IN SHEET IMPORT (row 630 > 496)
+  Row 634: Acct#=TDF-17501  Acct#.1=
+    NOT IN SHEET IMPORT (row 634 > 496)
+
+=== First data push had 492 evals ===
+
+=== Original Dashboard CSV ===
+  Row 614: Orig CSV Firm=TradeDay  Acct#=  Status=In Progress
+  Row 615: Orig CSV Firm=TradeDay  Acct#=  Status=In Progress
+  Row 627: Orig CSV Firm=TradeDay  Acct#=  Status=In Progress
+  Row 628: Orig CSV Firm=TradeDay  Acct#=  Status=In Progress
+  Row 629: Orig CSV Firm=TradeDay  Acct#=  Status=In Progress
+  Row 630: Orig CSV Firm=TradeDay  Acct#=  Status=In Progress
+  Row 634: Orig CSV Firm=TradeDay  Acct#=  Status=In Progress

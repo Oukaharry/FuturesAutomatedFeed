@@ -1,0 +1,74 @@
+﻿Total versions: 60
+v1: SHEET_IMPORT @ 2026-03-09T15:46:27.854875  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v2: DATA_PUSH @ 2026-03-09T16:06:56.125505  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v3: SHEET_IMPORT @ 2026-03-09T16:39:53.665679  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v4: DATA_PUSH @ 2026-03-09T16:41:16.759818  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v5: SHEET_IMPORT @ 2026-03-09T16:44:48.432086  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v6: UPDATE @ 2026-03-09T16:45:27.425629  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v7: UPDATE @ 2026-03-09T16:45:30.270217  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v8: UPDATE @ 2026-03-09T16:45:32.561591  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v9: UPDATE @ 2026-03-09T16:45:35.638624  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v10: UPDATE @ 2026-03-09T16:45:37.863765  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v11: DATA_PUSH @ 2026-03-09T16:46:24.300260  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v12: SHEET_IMPORT @ 2026-03-09T16:47:38.540510  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v13: DATA_PUSH @ 2026-03-09T16:52:31.398210  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v14: SHEET_IMPORT @ 2026-03-09T17:13:05.369714  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v15: DATA_PUSH @ 2026-03-09T17:13:47.185547  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v16: SHEET_IMPORT @ 2026-03-09T17:26:40.145241  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v17: DATA_PUSH @ 2026-03-09T17:27:06.037965  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v18: SHEET_IMPORT @ 2026-03-09T17:33:31.259951  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v19: DATA_PUSH @ 2026-03-09T17:36:51.396402  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v20: UPDATE @ 2026-03-09T17:37:36.853842  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v21: UPDATE @ 2026-03-09T17:37:48.058894  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v22: UPDATE @ 2026-03-09T17:37:50.301803  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v23: DATA_PUSH @ 2026-03-09T17:38:11.569232  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v24: DATA_PUSH @ 2026-03-09T17:42:25.410775  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v25: DATA_PUSH @ 2026-03-09T17:48:41.966227  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v26: SHEET_IMPORT @ 2026-03-09T18:06:27.724994  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v27: DATA_PUSH @ 2026-03-09T18:07:14.997846  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v28: SHEET_IMPORT @ 2026-03-10T11:23:02.292999  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v29: DATA_PUSH @ 2026-03-10T11:24:33.434669  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v30: UPDATE @ 2026-03-10T11:25:44.249884  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v31: DATA_PUSH @ 2026-03-10T11:26:20.657463  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v32: SHEET_IMPORT @ 2026-03-10T12:04:39.300650  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v33: DATA_PUSH @ 2026-03-10T12:06:11.646030  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v34: SHEET_IMPORT @ 2026-03-10T12:26:39.632844  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v35: DATA_PUSH @ 2026-03-10T12:27:18.103317  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v36: SHEET_IMPORT @ 2026-03-10T12:32:39.212046  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v37: DATA_PUSH @ 2026-03-10T12:33:20.474996  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v38: SHEET_IMPORT @ 2026-03-10T12:36:18.685404  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v39: DATA_PUSH @ 2026-03-10T12:37:06.235651  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v40: SHEET_IMPORT @ 2026-03-10T13:04:31.013423  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v41: DATA_PUSH @ 2026-03-10T13:06:41.183452  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v42: SHEET_IMPORT @ 2026-03-10T13:27:06.570830  evals=492  TD total=0  TD InProgress=0  desc=Imported 492 records from Google Sheets
+v43: DATA_PUSH @ 2026-03-10T13:28:02.332804  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v44: UPDATE @ 2026-03-10T15:52:59.339289  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v45: UPDATE @ 2026-03-10T15:53:03.064022  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v46: UPDATE @ 2026-03-10T15:53:07.315746  evals=492  TD total=0  TD InProgress=0  desc=Manual edit from dashboard by super_admin
+v47: DATA_PUSH @ 2026-03-10T16:34:12.710195  evals=492  TD total=0  TD InProgress=0  desc=Data push from trader app with 492 evaluations
+v48: SHEET_IMPORT @ 2026-03-10T16:39:47.030802  evals=495  TD total=0  TD InProgress=0  desc=Imported 495 records from Google Sheets
+v49: SHEET_IMPORT @ 2026-03-10T17:01:22.635890  evals=496  TD total=0  TD InProgress=0  desc=Imported 496 records from Google Sheets
+v50: UPDATE @ 2026-04-03T17:51:36.247801  evals=496  TD total=17  TD InProgress=0  desc=Updated MT5 credentials
+v51: UPDATE @ 2026-04-03T17:56:06.110499  evals=659  TD total=59  TD InProgress=7  desc=CSV import via companion: 493 updated, 163 added
+v52: UPDATE @ 2026-04-03T19:09:16.272894  evals=722  TD total=66  TD InProgress=14  desc=CSV import via companion: 593 updated, 63 added
+v53: UPDATE @ 2026-04-03T20:57:22.681663  evals=785  TD total=67  TD InProgress=15  desc=CSV import via companion: 593 updated, 63 added
+v54: UPDATE @ 2026-04-04T13:59:36.668685  evals=1403  TD total=120  TD InProgress=15  desc=CSV import via companion: 38 updated, 618 added
+v55: UPDATE @ 2026-04-04T13:59:52.118663  evals=1403  TD total=120  TD InProgress=15  desc=Updated MT5 credentials
+python.exe : Traceback (most recent call last):
+At line:1 char:1
++ & "c:\Users\harry\Music\MT5HedgingEngine\.venv\Scripts\python.exe" "c ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last) 
+   ::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "c:\Users\harry\Music\MT5HedgingEngine\_trace_td_history.py", line 31, 
+in <module>
+    print(f'v{ver}: {action} @ {created}  evals={n}  TD total={total_td}  TD 
+InProgress={td_ip}  desc={desc[:80] if desc else ""}')
+  File "C:\Users\harry\AppData\Local\Programs\Python\Python312\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in 
+position 119: character maps to <undefined>

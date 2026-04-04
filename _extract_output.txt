@@ -1,0 +1,73 @@
+﻿Log files searched: 8
+Total session accounts: 3822
+Rows with [MATCHED EVAL]: 724
+
+Matches per log file:
+  www.tradeopss.com.error.log.1: 26149
+  www.tradeopss.com.error.log.2: 298209
+  www.tradeopss.com.error.log.4: 166293
+  www.tradeopss.com.error.log.5: 88173
+  www.tradeopss.com.error.log.6: 632
+  www.tradeopss.com.error.log.7: 54788
+  www.tradeopss.com.error.log.8: 164470
+  www.tradeopss.com.error.log.9: 118206
+
+Rows needing fixes: 519
+Rows we can fix from logs: 492
+Still unfixable: 27
+
+====================================================================================================
+FIXES TO APPLY:
+  Row   0 [My Funded Futures     ] Acct#=MFFU-46005
+  Row   1 [My Funded Futures     ] Acct#=MFFU-90036 | Acct#.1=MFFU-80229
+  Row   2 [My Funded Futures     ] Acct#=MFFU-37040
+  Row   3 [My Funded Futures     ] Acct#=MFFU-90038
+  Row   4 [My Funded Futures     ] Acct#=MFFU-46001
+  Row   5 [My Funded Futures     ] Acct#=FNFT-61889 | Acct#.1=MFFU-96159
+  Row   6 [My Funded Futures     ] Acct#=FNFT-11614
+  Row   7 [My Funded Futures     ] Acct#=FNFT-61981 | Acct#.1=MFFU-42036
+  Row   8 [My Funded Futures     ] Acct#=FNFT-36552 | Acct#.1=FNFT-51204
+  Row   9 [My Funded Futures     ] Acct#=MFFU-13045 | Acct#.1=MFFU-74012
+  Row  10 [TradeDay              ] Acct#=TDF-17657
+  Row  11 [My Funded Futures     ] Acct#=MFFU-13048
+  Row  12 [FundedNext            ] Acct#=TDFY-05674
+  Row  13 [My Funded Futures     ] Acct#=MFFU-13049
+  Row  15 [Topstep               ] Acct#.1=V2-9832
+  Row  16 [Topstep               ] Acct#.1=V2-7351
+  Row  17 [My Funded Futures     ] Acct#=FNFT-E4521
+  Row  19 [TradeDay              ] Acct#=TDF-61258
+  Row  20 [My Funded Futures     ] Acct#=MFFU-74027
+  Row  21 [My Funded Futures     ] Acct#=MFFU-61028
+  Row  23 [My Funded Futures     ] Acct#=MFFU-02010
+  Row  26 [Funding Ticks         ] Acct#=MFFU-11010 | Acct#.1=MFFU-74012
+  Row  31 [Topstep               ] Acct#=V2-7861
+  Row  32 [Topstep               ] Acct#=V2-5008
+  Row  34 [TradeDay              ] Acct#.1=TDF-95387
+  Row  35 [Funding Ticks         ] Acct#=FNFT-85016 | Acct#.1=MFFU-40222
+  Row  37 [Funding Ticks         ] Acct#=TDFY-26885
+  Row  38 [Funding Ticks         ] Acct#=TDFY-34370
+  Row  39 [Funding Ticks         ] Acct#=FNFT-20372
+  Row  42 [TradeDay              ] Acct#.1=TDF-92300
+  Row  44 [Funding Ticks         ] Acct#=FNFT-71123
+  Row  45 [My Funded Futures     ] Acct#=MFFU-15020 | Acct#.1=MFFU-06027
+  Row  46 [My Funded Futures     ] Acct#=MFFU-80233 | Acct#.1=MFFU-35079
+  Row  54 [TradeDay              ] Acct#=TDF-47539
+  Row  59 [My Funded Futures     ] Acct#=MFFU-15029 | Acct#.1=MFFU-17079
+  Row  60 [Funding Ticks         ] Acct#=TDF-55673 | Acct#.1=FNFT-23500
+  Row  61 [Funding Ticks         ] Acct#=TDFY-61828 | Acct#.1=FNFT-62642
+  Row  62 [Topstep               ] Acct#=V2-9883
+  Row  63 [Topstep               ] Acct#=V2-9883
+  Row  64 [FundedNext            ] Acct#=FNFT-96557
+  Row  65 [FundedNext            ] Acct#=FNFT-83723
+  Row  66 [Topstep               ] Acct#=V2-7288
+  Row  67 [Topstep               ] Acct#=V2-6690
+  Row  68 [FundedNext            ] Acct#=FNFT-44596
+  Row  69 [FundedNext            ] Acct#=FNFT-49001
+  Row  70 [My Funded Futures     ] Acct#=MFFU-62191
+  Row  71 [Topstep               ] Acct#=V2-0053
+  Row  72 [My Funded Futures     ] Acct#=MFFU-59098
+  Row  73 [My Funded Futures     ] Acct#=MFFU-37036 | Acct#.1=MFFU-16029
+  Row  74 [My Funded Futures     ] Acct#=MFFU-62191 | Acct#.1=MFFU-43077
+  ...and 442 more
+
+Saved to _log_account_fixes.json
