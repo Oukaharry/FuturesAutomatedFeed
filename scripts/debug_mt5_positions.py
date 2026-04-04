@@ -36,10 +36,10 @@ from collections import defaultdict
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURATION — Edit these before running
 # ═══════════════════════════════════════════════════════════════
-ACCOUNT_NUMBER = "44229"           # Account portion from MT5 comment (e.g. S8657, 24774, 35107)
-MT5_LOGIN      = 21589169           # MT5 login (integer)
-MT5_PASSWORD   = "9jm4iXLB1y2S$"          # MT5 password
-MT5_SERVER     = "VTMarkets-Live"          # MT5 server name
+ACCOUNT_NUMBER = "57543"           # Account portion from MT5 comment (e.g. S8657, 24774, 35107)
+MT5_LOGIN      = 3063841           # MT5 login (integer)
+MT5_PASSWORD   = "Vpf2140!"          # MT5 password
+MT5_SERVER     = "PlexyTrade Server-01"          # MT5 server name
 DAYS_BACK      = 365         # How many days of history to fetch
 PHASE_FILTER   = "FA"        # Set to "CH", "FD", "FA" to filter, or None for all
 
@@ -244,8 +244,10 @@ def main():
         phase_summary[key]['days'].add(datetime.fromtimestamp(d['time']).strftime('%Y-%m-%d'))
 
     W = 90
+    run_ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print()
     print("═" * W)
+    print(f"  RUN AT  : {run_ts}")
     print(f"  ACCOUNT : {ACCOUNT_NUMBER}")
     print(f"  MT5     : {MT5_LOGIN} @ {MT5_SERVER}")
     phase_label = f"  (phase filter: {PHASE_FILTER})" if PHASE_FILTER else ""
@@ -302,17 +304,22 @@ def main():
 
         print(f"  {'─'*4}  {'─'*12}  {'─'*20}  {'─'*5}  {'─'*10}  {'─'*19}  {'─'*10}  {'─'*4}  {'─'*6}  {'─'*13}")
 
+    # ── Build date → hedge day number map ───────────────────
+    date_to_hedge_day = {date_key: i for i, date_key in enumerate(sorted_dates, start=1)}
+
     # ── Detailed deal list ──────────────────────────────────
     print()
     print("  ALL MATCHED DEALS")
     print("  " + "─" * (W - 2))
-    print(f"  {'Time':<20}  {'Ticket':<12}  {'Symbol':<10}  {'Dir':<4}  {'Entry':<5}  {'Vol':>6}  {'Price':>13}  {'Profit':>10}  {'Comment'}")
-    print(f"  {'─'*20}  {'─'*12}  {'─'*10}  {'─'*4}  {'─'*5}  {'─'*6}  {'─'*13}  {'─'*10}  {'─'*30}")
+    print(f"  {'Hedge Day':<12}  {'Time':<20}  {'Ticket':<12}  {'Symbol':<10}  {'Dir':<4}  {'Entry':<5}  {'Vol':>6}  {'Price':>13}  {'Profit':>10}  {'Comment'}")
+    print(f"  {'─'*12}  {'─'*20}  {'─'*12}  {'─'*10}  {'─'*4}  {'─'*5}  {'─'*6}  {'─'*13}  {'─'*10}  {'─'*30}")
 
     for d in matched:
         ts = datetime.fromtimestamp(d['time']).strftime('%Y-%m-%d %H:%M:%S')
+        date_key = datetime.fromtimestamp(d['time']).strftime('%Y-%m-%d')
+        hedge_label = f"Hedge Day {date_to_hedge_day.get(date_key, '?')}"
         print(
-            f"  {ts:<20}  {d.get('ticket', ''):<12}  {d.get('symbol', ''):<10}  "
+            f"  {hedge_label:<12}  {ts:<20}  {d.get('ticket', ''):<12}  {d.get('symbol', ''):<10}  "
             f"{format_type(d.get('type', -1)):<4}  {format_entry(d.get('entry', -1)):<5}  "
             f"{d.get('volume', 0):>6.2f}  {d.get('price', 0):>13.5f}  "
             f"{d['_profit']:>+10.2f}  "
