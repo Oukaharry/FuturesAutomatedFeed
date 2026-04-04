@@ -1919,7 +1919,11 @@ def require_api_key(f):
             log_action('API_ACCESS_DENIED', 'unknown', 'no_key', client_ip, 'Missing API key', False)
             return jsonify({"status": "error", "message": "API key required"}), 401
         
-        user_info = validate_api_key(api_key)
+        try:
+            user_info = validate_api_key(api_key)
+        except Exception:
+            app.logger.exception('[AUTH] validate_api_key raised — DB may be corrupt')
+            return jsonify({"status": "error", "message": "Service temporarily unavailable"}), 503
         if not user_info:
             log_action('API_ACCESS_DENIED', 'unknown', api_key[:12], client_ip, 'Invalid API key', False)
             return jsonify({"status": "error", "message": "Invalid API key"}), 403
@@ -1990,14 +1994,19 @@ def require_session(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         session_token = request.cookies.get('session_token')
-        
+
         if not session_token:
             return redirect(url_for('index'))
-        
-        session_info = validate_session(session_token)
+
+        try:
+            session_info = validate_session(session_token)
+        except Exception:
+            app.logger.exception('[AUTH] validate_session raised — DB may be corrupt, redirecting to login')
+            return redirect(url_for('index'))
+
         if not session_info:
             return redirect(url_for('index'))
-        
+
         request.session_user = session_info
         return f(*args, **kwargs)
     return decorated_function
