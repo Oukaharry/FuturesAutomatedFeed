@@ -65,6 +65,84 @@ def safe_connect(db_path, readonly=False):
     return conn
 
 
+def try_read_table(conn, table, order_by=None):
+    """Try multiple strategies to read a table from a potentially corrupt DB."""
+    order = f' ORDER BY {order_by}' if order_by else ''
+    rows = []
+    cols = []
+
+    # Get column names first (small read, usually works)
+    try:
+        info = conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+        cols = [c[1] for c in info]
+    except Exception as e:
+        print(f"   Cannot read schema for {table}: {e}")
+        return [], []
+
+    # Strategy 1: Normal full read
+    try:
+        rows = conn.execute(f'SELECT * FROM "{table}"{order}').fetchall()
+        return [dict(r) for r in rows], cols
+    except Exception as e:
+        print(f"   Full read failed: {e}")
+        print(f"   Trying row-by-row via ROWID...")
+
+    # Strategy 2: Read by ROWID one at a time (skips corrupt pages)
+    try:
+        # Get all rowids first
+        rowids = []
+        try:
+            rowids = [r[0] for r in conn.execute(f'SELECT rowid FROM "{table}" ORDER BY rowid')]
+        except:
+            # If even rowid scan fails, try a range
+            try:
+                max_id = conn.execute(f'SELECT MAX(rowid) FROM "{table}"').fetchone()[0]
+                if max_id:
+                    rowids = list(range(1, max_id + 1))
+            except:
+                pass
+
+        if not rowids:
+            print(f"   Cannot enumerate rows for {table}")
+            return [], cols
+
+        ok = 0
+        fail = 0
+        for rid in rowids:
+            try:
+                row = conn.execute(f'SELECT * FROM "{table}" WHERE rowid = ?', (rid,)).fetchone()
+                if row:
+                    rows.append(dict(row))
+                    ok += 1
+            except:
+                fail += 1
+
+        print(f"   Row-by-row: {ok} recovered, {fail} corrupt/skipped")
+        return rows, cols
+    except Exception as e:
+        print(f"   Row-by-row also failed: {e}")
+
+    # Strategy 3: Read by primary key field if it exists (e.g., client_id)
+    if 'client_id' in cols:
+        try:
+            print(f"   Trying individual client_id reads...")
+            cids = [r[0] for r in conn.execute(f'SELECT DISTINCT client_id FROM "{table}"')]
+            ok = 0
+            for cid in cids:
+                try:
+                    for row in conn.execute(f'SELECT * FROM "{table}" WHERE client_id = ?', (cid,)):
+                        rows.append(dict(row))
+                        ok += 1
+                except:
+                    pass
+            print(f"   By client_id: {ok} recovered from {len(cids)} clients")
+            return rows, cols
+        except Exception as e:
+            print(f"   client_id strategy failed: {e}")
+
+    return rows, cols
+
+
 def find_best_source(report_fn=print):
     """Find the best database to export from — prefer .corrupt files with the most clients."""
     db_dir = os.path.dirname(DB_PATH)
@@ -90,7 +168,10 @@ def find_best_source(report_fn=print):
         info = {'path': fpath, 'name': f, 'size_mb': size_mb, 'clients': -1, 'readable': False}
 
         try:
-            conn = safe_connect(fpath, readonly=True)
+            # Use immutable mode to ignore corrupt WAL
+            uri = f"file:{cf['path']}?immutable=1"
+            conn = sqlite3.connect(uri, uri=True, timeout=30)
+            conn.row_factory = sqlite3.Row
             info['clients'] = conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()[0]
             info['readable'] = True
             conn.close()
@@ -127,79 +208,109 @@ def export_clients(source_path):
     print(f"EXPORTING from: {source_path}")
     print(f"{'='*70}")
 
-    conn = safe_connect(source_path, readonly=True)
+    # Try multiple connection strategies
+    conn = None
+    for strategy, desc in [
+        ('immutable', 'immutable mode (ignores WAL)'),
+        ('readonly', 'read-only mode'),
+        ('normal', 'normal mode'),
+    ]:
+        try:
+            if strategy == 'immutable':
+                uri = f"file:{source_path}?immutable=1"
+                conn = sqlite3.connect(uri, uri=True, timeout=60)
+            elif strategy == 'readonly':
+                uri = f"file:{source_path}?mode=ro"
+                conn = sqlite3.connect(uri, uri=True, timeout=60)
+            else:
+                conn = sqlite3.connect(source_path, timeout=60)
+            conn.row_factory = sqlite3.Row
+            # Quick test read
+            conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()
+            print(f"\n  Connected via {desc}")
+            break
+        except Exception as e:
+            print(f"  {desc}: {e}")
+            if conn:
+                try: conn.close()
+                except: pass
+                conn = None
+
+    if not conn:
+        print(f"ERROR: Cannot connect to {source_path} with any strategy")
+        return False
 
     # ── 1. Export clients_data ──
     print(f"\n1. Exporting clients_data...")
-    rows = conn.execute('SELECT * FROM clients_data ORDER BY client_id').fetchall()
-    cols = [desc[0] for desc in conn.execute('SELECT * FROM clients_data LIMIT 1').description]
+    client_rows, cols = try_read_table(conn, 'clients_data', order_by='client_id')
+
+    if not client_rows:
+        print(f"   ERROR: No client data recovered!")
+        conn.close()
+        return False
 
     os.makedirs(EXPORT_DIR, exist_ok=True)
 
     with open(EXPORT_CSV, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=ALL_COLUMNS, extrasaction='ignore')
         writer.writeheader()
-        for row in rows:
+        for row in client_rows:
             row_dict = {}
             for col in ALL_COLUMNS:
-                val = row[col] if col in cols else None
+                val = row.get(col)
                 if col in JSON_COLUMNS:
-                    # Store JSON as-is (it's already a JSON string in the DB)
                     row_dict[col] = val if val else ('[]' if col.endswith('s') or col in ('deals','positions','hedge_accounts','prop_accounts','vps_accounts','payment_info') else '{}')
                 else:
                     row_dict[col] = val
             writer.writerow(row_dict)
 
-    print(f"   {len(rows)} clients -> {EXPORT_CSV}")
+    print(f"   {len(client_rows)} clients -> {EXPORT_CSV}")
 
     # ── 2. Export cell_notes ──
     print(f"\n2. Exporting cell_notes...")
     try:
-        notes = conn.execute('SELECT * FROM cell_notes ORDER BY client_id, row_index, column_key').fetchall()
-        note_cols = [desc[0] for desc in conn.execute('SELECT * FROM cell_notes LIMIT 1').description] if notes else []
-        if notes and note_cols:
+        note_rows, note_cols = try_read_table(conn, 'cell_notes', order_by='client_id')
+        if note_rows and note_cols:
             with open(EXPORT_NOTES, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=note_cols)
                 writer.writeheader()
-                for n in notes:
-                    writer.writerow({c: n[c] for c in note_cols})
-            print(f"   {len(notes)} notes -> {EXPORT_NOTES}")
+                for n in note_rows:
+                    writer.writerow({c: n.get(c) for c in note_cols})
+            print(f"   {len(note_rows)} notes -> {EXPORT_NOTES}")
         else:
-            print(f"   0 notes (table empty)")
+            print(f"   0 notes (empty or unreadable)")
     except Exception as e:
         print(f"   cell_notes: {e}")
 
     # ── 3. Export daily_watermarks ──
     print(f"\n3. Exporting daily_watermarks...")
     try:
-        wm = conn.execute('SELECT * FROM daily_watermarks ORDER BY client_id, date').fetchall()
-        wm_cols = [desc[0] for desc in conn.execute('SELECT * FROM daily_watermarks LIMIT 1').description] if wm else []
-        if wm and wm_cols:
+        wm_rows, wm_cols = try_read_table(conn, 'daily_watermarks', order_by='client_id')
+        if wm_rows and wm_cols:
             with open(EXPORT_WATERMARKS, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=wm_cols)
                 writer.writeheader()
-                for w in wm:
-                    writer.writerow({c: w[c] for c in wm_cols})
-            print(f"   {len(wm)} watermarks -> {EXPORT_WATERMARKS}")
+                for w in wm_rows:
+                    writer.writerow({c: w.get(c) for c in wm_cols})
+            print(f"   {len(wm_rows)} watermarks -> {EXPORT_WATERMARKS}")
         else:
-            print(f"   0 watermarks (table empty)")
+            print(f"   0 watermarks (empty or unreadable)")
     except Exception as e:
         print(f"   daily_watermarks: {e}")
 
     # ── 4. Export waterlog_periods ──
     print(f"\n4. Exporting waterlog_periods...")
     try:
-        wp = conn.execute('SELECT * FROM waterlog_periods ORDER BY client_id, from_date').fetchall()
-        wp_cols = [desc[0] for desc in conn.execute('SELECT * FROM waterlog_periods LIMIT 1').description] if wp else []
-        if wp and wp_cols:
+        wp_rows, wp_cols = try_read_table(conn, 'waterlog_periods', order_by='client_id')
+        if wp_rows and wp_cols:
             with open(EXPORT_PERIODS, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=wp_cols)
                 writer.writeheader()
-                for p in wp:
-                    writer.writerow({c: p[c] for c in wp_cols})
-            print(f"   {len(wp)} periods -> {EXPORT_PERIODS}")
+                for p in wp_rows:
+                    writer.writerow({c: p.get(c) for c in wp_cols})
+            print(f"   {len(wp_rows)} periods -> {EXPORT_PERIODS}")
         else:
-            print(f"   0 periods (table empty)")
+            print(f"   0 periods (empty or unreadable)")
     except Exception as e:
         print(f"   waterlog_periods: {e}")
 
@@ -207,7 +318,7 @@ def export_clients(source_path):
 
     # ── Summary ──
     print(f"\n{'='*70}")
-    print(f"EXPORT COMPLETE — {len(rows)} clients")
+    print(f"EXPORT COMPLETE — {len(client_rows)} clients")
     print(f"  Main CSV:    {EXPORT_CSV}")
     print(f"  Notes:       {EXPORT_NOTES}")
     print(f"  Watermarks:  {EXPORT_WATERMARKS}")
