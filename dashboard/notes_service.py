@@ -44,8 +44,12 @@ def save_client_note(client_id, row_index, column_key, content, user):
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT OR REPLACE INTO cell_notes (client_id, row_index, column_key, note_content, created_by, updated_at)
+                INSERT INTO cell_notes (client_id, row_index, column_key, note_content, created_by, updated_at)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (client_id, row_index, column_key) DO UPDATE
+                    SET note_content = EXCLUDED.note_content,
+                        created_by = EXCLUDED.created_by,
+                        updated_at = CURRENT_TIMESTAMP
             ''', (client_id, row_index, column_key, content, user))
             conn.commit()
             return True

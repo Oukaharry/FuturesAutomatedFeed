@@ -21,11 +21,13 @@ def save_daily_profit(client_id, net_profit, date_str=None, source='auto'):
             existing = cursor.fetchone()
             if existing and abs(float(existing['net_profit_complete']) - float(net_profit)) < 0.005:
                 return True  # Unchanged — skip write
-            # Use SQLite's upsert capability (INSERT OR REPLACE)
-            # Since we defined PRIMARY KEY (client_id, date)
             cursor.execute('''
-                INSERT OR REPLACE INTO daily_watermarks (client_id, date, net_profit_complete, source, created_at)
+                INSERT INTO daily_watermarks (client_id, date, net_profit_complete, source, created_at)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (client_id, date) DO UPDATE
+                    SET net_profit_complete = EXCLUDED.net_profit_complete,
+                        source = EXCLUDED.source,
+                        created_at = CURRENT_TIMESTAMP
             ''', (client_id, date_str, float(net_profit), source))
             conn.commit()
             logging.info(f"Saved daily watermark for {client_id} on {date_str}: ${net_profit} ({source})")
@@ -205,13 +207,18 @@ def save_waterlog_periods(client_id, periods, period_values=None):
             for (from_d, to_d) in periods:
                 vals = (period_values or {}).get(from_d, {})
                 cursor.execute(
-                    '''INSERT OR REPLACE INTO waterlog_periods
+                    '''INSERT INTO waterlog_periods
                        (client_id, from_date, to_date, period_low, period_high, split_pct)
-                       VALUES (?, ?, ?, ?, ?, ?)''',
+                       VALUES (?, ?, ?, ?, ?, ?)
+                       ON CONFLICT (client_id, from_date) DO UPDATE
+                           SET to_date = EXCLUDED.to_date,
+                               period_low = EXCLUDED.period_low,
+                               period_high = EXCLUDED.period_high,
+                               split_pct = EXCLUDED.split_pct''',
                     (client_id, from_d, to_d,
-                     vals.get('low'),        # None if not provided
-                     vals.get('high'),       # None if not provided
-                     vals.get('split_pct'))  # None → defaults to 50 in DB
+                     vals.get('low'),
+                     vals.get('high'),
+                     vals.get('split_pct'))
                 )
             conn.commit()
             logging.info(f"Saved {len(periods)} waterlog periods for {client_id}")

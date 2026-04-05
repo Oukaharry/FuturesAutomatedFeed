@@ -1301,8 +1301,13 @@ def save_daily_checklist(date: str, user_identifier: str, user_type: str,
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT OR REPLACE INTO daily_checklists (date, user_identifier, user_type, checklist_type, client_id, items, submitted_at, ip_address)
+            INSERT INTO daily_checklists (date, user_identifier, user_type, checklist_type, client_id, items, submitted_at, ip_address)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date, user_identifier, checklist_type, client_id) DO UPDATE SET
+                user_type = excluded.user_type,
+                items = excluded.items,
+                submitted_at = excluded.submitted_at,
+                ip_address = excluded.ip_address
         ''', (date, user_identifier, user_type, checklist_type, client_id, json.dumps(items),
               datetime.now().isoformat(), ip_address))
         conn.commit()
