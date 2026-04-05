@@ -100,11 +100,14 @@ def repair_database(db_path=None):
             print(f"   Schema warning: {e}")
             print(f"   SQL: {sql[:200]}")
 
-    # Insert all data
+    # Insert all data (skip sqlite_sequence — SQLite manages it internally)
     for tname, data in table_data.items():
         rows = data['rows']
         cols = data['columns']
         if not rows or not cols:
+            continue
+        if tname == 'sqlite_sequence':
+            print(f"   {tname}: skipped (SQLite auto-manages this table)")
             continue
         placeholders = ', '.join(['?'] * len(cols))
         col_names = ', '.join([f'"{c}"' for c in cols])
@@ -142,7 +145,10 @@ def repair_database(db_path=None):
         try:
             new_count = conn_new.execute(f'SELECT COUNT(*) FROM "{tname}"').fetchone()[0]
             expected = len(table_data.get(tname, {}).get('rows', []))
-            if new_count != expected:
+            if tname == 'sqlite_sequence':
+                # SQLite auto-manages this; row count will differ and that's fine
+                print(f"   {tname}: {new_count} rows — OK (auto-managed)")
+            elif new_count != expected:
                 all_ok = False
                 print(f"   {tname}: {new_count} rows — MISMATCH (expected {expected}) !!!")
             else:
@@ -151,16 +157,18 @@ def repair_database(db_path=None):
             print(f"   {tname}: verify error — {e}")
             all_ok = False
 
-    # Deep verify clients_data — compare evaluations JSON content
+    # Deep verify clients_data — compare every field cell-by-cell
     print(f"\n4. Deep-verifying clients_data content (cell-level)...")
     try:
         conn_old2 = sqlite3.connect(target)
         conn_old2.row_factory = sqlite3.Row
         old_clients = {r['client_id']: dict(r) for r in
                        conn_old2.execute('SELECT * FROM clients_data').fetchall()}
+        conn_old2.close()
+
+        conn_new.row_factory = sqlite3.Row
         new_clients = {r['client_id']: dict(r) for r in
                        conn_new.execute('SELECT * FROM clients_data').fetchall()}
-        conn_old2.close()
 
         missing = set(old_clients.keys()) - set(new_clients.keys())
         extra = set(new_clients.keys()) - set(old_clients.keys())
