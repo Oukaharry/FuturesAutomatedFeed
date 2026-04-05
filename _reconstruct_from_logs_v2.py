@@ -820,68 +820,81 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
             db_last = row['last_updated'] or ''
             push_ts = push['timestamp']
 
-            # Only update if our log data is NEWER than what's in the DB
-            if db_last > push_ts:
-                print(f"  ⏭️  {client_id}: DB has newer data ({db_last} > {push_ts}) — skipping")
-                skipped += 1
-                continue
-
             evaluations = json.loads(row['evaluations'] or '[]')
             account = json.loads(row['account'] or '{}')
             statistics = json.loads(row['statistics'] or '{}')
             changes = []
 
-            # ── 1. Apply ALL merged hedge result writes ──
+            # ── 1. Apply hedge result writes (only fill empty/missing cells) ──
             hedge_ok = 0
+            hedge_skip_match = 0
+            hedge_skip_diff = 0
             hedge_oor = 0
             for hw in push['hedge_writes']:
                 eval_row, column, value = hw[0], hw[1], hw[2]
-                if eval_row < len(evaluations):
-                    old_val = evaluations[eval_row].get(column, 'N/A')
-                    evaluations[eval_row][column] = f"{value:.2f}"
-                    hedge_ok += 1
-                    if len(changes) < 20:
-                        changes.append(f"eval[{eval_row}][{column}] = {value:.2f} (was {old_val})")
-                else:
+                if eval_row >= len(evaluations):
                     hedge_oor += 1
+                    continue
+                new_val = f"{value:.2f}"
+                old_val = str(evaluations[eval_row].get(column, '') or '').strip()
+                if old_val == new_val:
+                    hedge_skip_match += 1
+                    continue
+                if old_val and old_val not in ('', 'N/A', 'None', '0', '$0.00'):
+                    # Cell has a different non-empty value — overwrite with log data
+                    # (log data is authoritative, from the actual push)
+                    hedge_skip_diff += 1
+                evaluations[eval_row][column] = new_val
+                hedge_ok += 1
+                if len(changes) < 20:
+                    changes.append(f"eval[{eval_row}][{column}] = {new_val} (was '{old_val}')")
             if hedge_ok:
-                changes.append(f"→ {hedge_ok} hedge writes applied")
+                changes.append(f"-> {hedge_ok} hedge writes applied")
+            if hedge_skip_match:
+                changes.append(f"   {hedge_skip_match} hedge writes already match")
+            if hedge_skip_diff:
+                changes.append(f"   {hedge_skip_diff} hedge writes replaced different values")
             if hedge_oor:
-                changes.append(f"⚠️ {hedge_oor} hedge writes OUT OF RANGE")
+                changes.append(f"   {hedge_oor} hedge writes OUT OF RANGE (row >= {len(evaluations)})")
 
-            # ── 2. Apply ALL merged farming writes ──
+            # ── 2. Apply farming writes (only fill empty/missing cells) ──
             farm_ok = 0
+            farm_skip_match = 0
             farm_oor = 0
             for fw in push['farming_writes']:
                 eval_row, day_num, value, date_str = fw[0], fw[1], fw[2], fw[3]
                 field = f'Hedge Day {day_num}'
                 date_field = f'_Hedge Day {day_num} Date'
-                if eval_row < len(evaluations):
-                    evaluations[eval_row][field] = f"{value:.2f}"
-                    evaluations[eval_row][date_field] = date_str
-                    farm_ok += 1
-                    if len(changes) < 30:
-                        changes.append(f"eval[{eval_row}][{field}] = {value:.2f} ({date_str})")
-                else:
+                if eval_row >= len(evaluations):
                     farm_oor += 1
+                    continue
+                new_val = f"{value:.2f}"
+                old_val = str(evaluations[eval_row].get(field, '') or '').strip()
+                if old_val == new_val:
+                    farm_skip_match += 1
+                    continue
+                evaluations[eval_row][field] = new_val
+                evaluations[eval_row][date_field] = date_str
+                farm_ok += 1
+                if len(changes) < 30:
+                    changes.append(f"eval[{eval_row}][{field}] = {new_val} ({date_str})")
             if farm_ok:
-                changes.append(f"→ {farm_ok} farming writes applied")
+                changes.append(f"-> {farm_ok} farming writes applied")
+            if farm_skip_match:
+                changes.append(f"   {farm_skip_match} farming writes already match")
             if farm_oor:
-                changes.append(f"⚠️ {farm_oor} farming writes OUT OF RANGE")
+                changes.append(f"   {farm_oor} farming writes OUT OF RANGE")
 
-            # ── 3. Update account MT5 values ──
-            if push['mt5_balance'] is not None:
-                old_b = account.get('balance', 'N/A')
-                account['balance'] = push['mt5_balance']
-                changes.append(f"account.balance = {push['mt5_balance']} (was {old_b})")
-            if push['mt5_deposits'] is not None:
-                old_d = account.get('total_deposits', 'N/A')
-                account['total_deposits'] = push['mt5_deposits']
-                changes.append(f"account.total_deposits = {push['mt5_deposits']} (was {old_d})")
-            if push['mt5_withdrawals'] is not None:
-                old_w = account.get('total_withdrawals', 'N/A')
-                account['total_withdrawals'] = push['mt5_withdrawals']
-                changes.append(f"account.total_withdrawals = {push['mt5_withdrawals']} (was {old_w})")
+            # ── 3. Update account MT5 values (only if different) ──
+            for field_key, push_key in [('balance', 'mt5_balance'),
+                                         ('total_deposits', 'mt5_deposits'),
+                                         ('total_withdrawals', 'mt5_withdrawals')]:
+                new_v = push.get(push_key)
+                if new_v is not None:
+                    old_v = account.get(field_key)
+                    if old_v != new_v:
+                        account[field_key] = new_v
+                        changes.append(f"account.{field_key} = {new_v} (was {old_v})")
 
             # ── 4. Update hedging_review in statistics ──
             hr = statistics.get('hedging_review', {})
@@ -951,8 +964,16 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
             n_hedge = len(push['hedge_writes'])
             n_farm = len(push['farming_writes'])
             n_total_pushes = push['total_pushes']
+            actual_changes = hedge_ok + farm_ok + acct_changes + (1 if hr_changed else 0)
             tag = '[DRY RUN] ' if dry_run else ''
-            print(f"\n  {tag}✅ {client_id} ({push_ts}, {n_total_pushes} pushes merged):")
+
+            if actual_changes == 0:
+                print(f"  {tag}-- {client_id} ({push_ts}, {n_total_pushes} pushes): "
+                      f"NO changes needed ({hedge_skip_match} hedge + {farm_skip_match} farm already match)")
+                skipped += 1
+                continue
+
+            print(f"\n  {tag}>> {client_id} ({push_ts}, {n_total_pushes} pushes merged):")
             print(f"     {n_hedge} hedge writes, {n_farm} farming writes, "
                   f"evals={push['eval_count']}, deals={push['deal_count']}, bal={push['balance']}")
             if changes:
@@ -962,6 +983,8 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
                     print(f"       ... and {len(changes) - 25} more changes")
 
             if not dry_run:
+                # Keep the newer timestamp (don't downgrade if DB is already fresher)
+                final_ts = max(db_last, push_ts) if db_last else push_ts
                 conn.execute('''
                     UPDATE clients_data
                     SET evaluations = ?, account = ?, statistics = ?, last_updated = ?
@@ -970,7 +993,7 @@ def apply_to_database(merged_pushes, account_maps, session_accounts,
                     json.dumps(evaluations),
                     json.dumps(account),
                     json.dumps(statistics),
-                    push_ts,
+                    final_ts,
                     client_id
                 ))
             updated += 1
