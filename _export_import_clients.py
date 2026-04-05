@@ -143,6 +143,37 @@ def try_read_table(conn, table, order_by=None):
     return rows, cols
 
 
+def _try_connect(db_path):
+    """Try multiple connection strategies. Returns (conn, strategy_name) or (None, error)."""
+    import urllib.parse
+    # Ensure absolute path for URI
+    abs_path = os.path.abspath(db_path)
+
+    strategies = [
+        ('immutable', f"file:{urllib.parse.quote(abs_path)}?immutable=1"),
+        ('readonly', f"file:{urllib.parse.quote(abs_path)}?mode=ro"),
+        ('normal', None),
+    ]
+    last_err = None
+    for name, uri in strategies:
+        try:
+            if uri:
+                conn = sqlite3.connect(uri, uri=True, timeout=30)
+            else:
+                conn = sqlite3.connect(abs_path, timeout=30)
+            conn.row_factory = sqlite3.Row
+            # Test that we can actually read
+            conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()
+            return conn, name
+        except Exception as e:
+            last_err = e
+            try:
+                conn.close()
+            except:
+                pass
+    return None, str(last_err)
+
+
 def find_best_source(report_fn=print):
     """Find the best database to export from — prefer .corrupt files with the most clients."""
     db_dir = os.path.dirname(DB_PATH)
@@ -154,7 +185,8 @@ def find_best_source(report_fn=print):
 
     candidates = []
 
-    # Check all .corrupt* files
+    # Check all .corrupt* files (skip tiny ones < 1 MB first pass, check large ones first)
+    all_files = []
     for f in sorted(os.listdir(db_dir)):
         if not f.startswith(db_name):
             continue
@@ -163,38 +195,56 @@ def find_best_source(report_fn=print):
         fpath = os.path.join(db_dir, f)
         if not os.path.isfile(fpath):
             continue
-
         size_mb = os.path.getsize(fpath) / 1024 / 1024
-        info = {'path': fpath, 'name': f, 'size_mb': size_mb, 'clients': -1, 'readable': False}
+        all_files.append((f, fpath, size_mb))
 
-        try:
-            # Use immutable mode to ignore corrupt WAL
-            uri = f"file:{cf['path']}?immutable=1"
-            conn = sqlite3.connect(uri, uri=True, timeout=30)
-            conn.row_factory = sqlite3.Row
-            info['clients'] = conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()[0]
-            info['readable'] = True
-            conn.close()
-        except:
-            pass
+    # Sort largest first (more likely to have data)
+    all_files.sort(key=lambda x: x[2], reverse=True)
+
+    for f, fpath, size_mb in all_files:
+        info = {'path': fpath, 'name': f, 'size_mb': size_mb, 'clients': -1, 'readable': False, 'strategy': None, 'error': None}
+
+        # Skip tiny files (< 0.5 MB) — they're empty DBs
+        if size_mb < 0.5:
+            info['error'] = 'too small'
+            candidates.append(info)
+            report_fn(f"  {f}: {size_mb:.1f} MB — skipped (too small)")
+            continue
+
+        conn, result = _try_connect(fpath)
+        if conn:
+            try:
+                info['clients'] = conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()[0]
+                info['readable'] = True
+                info['strategy'] = result
+                conn.close()
+            except Exception as e:
+                info['error'] = str(e)
+                try: conn.close()
+                except: pass
+        else:
+            info['error'] = result
 
         candidates.append(info)
-        status = f"{info['clients']} clients" if info['readable'] else "UNREADABLE"
-        report_fn(f"  {f}: {size_mb:.1f} MB, {status}")
+        if info['readable']:
+            report_fn(f"  {f}: {size_mb:.1f} MB, {info['clients']} clients [{info['strategy']}]")
+        else:
+            report_fn(f"  {f}: {size_mb:.1f} MB, UNREADABLE ({info['error'][:80]})")
 
     if not candidates:
         report_fn("No database files found!")
         return None
 
     # Sort: most clients wins, then largest file
-    candidates.sort(key=lambda x: (x['readable'], x['clients'], x['size_mb']), reverse=True)
+    candidates.sort(key=lambda x: (x['readable'], x.get('clients', -1), x['size_mb']), reverse=True)
     best = candidates[0]
 
     if not best['readable'] or best['clients'] <= 0:
-        report_fn(f"ERROR: No readable database with client data found")
+        report_fn(f"\nERROR: No readable database with client data found")
+        report_fn(f"  Try specifying a file directly: python3 _export_import_clients.py --source /path/to/file")
         return None
 
-    report_fn(f"\n  BEST: {best['name']} ({best['clients']} clients, {best['size_mb']:.1f} MB)")
+    report_fn(f"\n  BEST: {best['name']} ({best['clients']} clients, {best['size_mb']:.1f} MB) [{best['strategy']}]")
     return best['path']
 
 
@@ -208,37 +258,12 @@ def export_clients(source_path):
     print(f"EXPORTING from: {source_path}")
     print(f"{'='*70}")
 
-    # Try multiple connection strategies
-    conn = None
-    for strategy, desc in [
-        ('immutable', 'immutable mode (ignores WAL)'),
-        ('readonly', 'read-only mode'),
-        ('normal', 'normal mode'),
-    ]:
-        try:
-            if strategy == 'immutable':
-                uri = f"file:{source_path}?immutable=1"
-                conn = sqlite3.connect(uri, uri=True, timeout=60)
-            elif strategy == 'readonly':
-                uri = f"file:{source_path}?mode=ro"
-                conn = sqlite3.connect(uri, uri=True, timeout=60)
-            else:
-                conn = sqlite3.connect(source_path, timeout=60)
-            conn.row_factory = sqlite3.Row
-            # Quick test read
-            conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()
-            print(f"\n  Connected via {desc}")
-            break
-        except Exception as e:
-            print(f"  {desc}: {e}")
-            if conn:
-                try: conn.close()
-                except: pass
-                conn = None
-
+    conn, strategy = _try_connect(source_path)
     if not conn:
-        print(f"ERROR: Cannot connect to {source_path} with any strategy")
+        print(f"\nERROR: Cannot connect to {source_path}")
+        print(f"  Last error: {strategy}")
         return False
+    print(f"\n  Connected via {strategy}")
 
     # ── 1. Export clients_data ──
     print(f"\n1. Exporting clients_data...")
