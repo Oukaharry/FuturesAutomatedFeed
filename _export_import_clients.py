@@ -34,6 +34,9 @@ import time
 import glob
 from datetime import datetime
 
+# JSON blobs can be huge — raise CSV field size limit
+csv.field_size_limit(sys.maxsize)
+
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
