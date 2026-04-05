@@ -157,14 +157,19 @@ def repair_database(db_path=None):
             print(f"   {tname}: verify error — {e}")
             all_ok = False
 
-    # Deep verify clients_data — compare every field cell-by-cell
+    # Deep verify clients_data — compare repaired DB against what we read in step 1
+    # (NOT re-reading the original, which may have changed from live writes)
     print(f"\n4. Deep-verifying clients_data content (cell-level)...")
     try:
-        conn_old2 = sqlite3.connect(target)
-        conn_old2.row_factory = sqlite3.Row
-        old_clients = {r['client_id']: dict(r) for r in
-                       conn_old2.execute('SELECT * FROM clients_data').fetchall()}
-        conn_old2.close()
+        # Build expected data from what we read in step 1
+        cd_data = table_data.get('clients_data', {})
+        cd_cols = cd_data.get('columns', [])
+        cd_rows = cd_data.get('rows', [])
+        cid_col_idx = cd_cols.index('client_id') if 'client_id' in cd_cols else 0
+        old_clients = {}
+        for row in cd_rows:
+            cid = row[cid_col_idx]
+            old_clients[cid] = {cd_cols[i]: row[i] for i in range(len(cd_cols))}
 
         conn_new.row_factory = sqlite3.Row
         new_clients = {r['client_id']: dict(r) for r in
