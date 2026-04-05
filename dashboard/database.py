@@ -1218,7 +1218,7 @@ def save_data_snapshot(client_id: str, data: dict, action: str,
     """
     Save a snapshot of client data to history for versioning/rollback.
     Version number is assigned atomically inside the transaction using
-    SELECT … FOR UPDATE to prevent duplicate-key races under concurrent writes.
+    an advisory lock to prevent duplicate-key races under concurrent writes.
 
     Returns:
         The version number of the saved snapshot, or -1 on failure.
@@ -1237,11 +1237,15 @@ def save_data_snapshot(client_id: str, data: dict, action: str,
         with get_connection() as conn:
             cursor = conn.cursor()
 
-            # Lock this client's history rows so concurrent workers can't
-            # read the same MAX(version) and produce a duplicate key.
+            # Advisory lock keyed on client_id hash — prevents concurrent
+            # workers from reading the same MAX(version). Released on commit.
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                (client_id,)
+            )
             cursor.execute(
                 'SELECT COALESCE(MAX(version), 0) FROM data_history '
-                'WHERE client_id = %s FOR UPDATE',
+                'WHERE client_id = %s',
                 (client_id,)
             )
             row = cursor.fetchone()
