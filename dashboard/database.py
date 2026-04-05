@@ -1217,42 +1217,43 @@ def save_data_snapshot(client_id: str, data: dict, action: str,
                        change_description: str = None) -> int:
     """
     Save a snapshot of client data to history for versioning/rollback.
-    
-    Args:
-        client_id: The client identifier
-        data: The client data dict to snapshot
-        action: Type of action (INITIAL, UPDATE, SHEET_IMPORT, MT5_PUSH, ROLLBACK, etc.)
-        changed_by: Username/email of who made the change
-        changed_by_type: Type of user (client, trader, admin, system)
-        ip_address: IP address of the request
-        change_source: Source of change (trader_app, dashboard_api, sheet_migration, etc.)
-        change_description: Human-readable description of what changed
-    
+    Version number is assigned atomically inside the transaction using
+    SELECT … FOR UPDATE to prevent duplicate-key races under concurrent writes.
+
     Returns:
-        The version number of the saved snapshot
+        The version number of the saved snapshot, or -1 on failure.
     """
     try:
-        version = get_next_version(client_id)
         now = datetime.now().isoformat()
-        
-        # Serialize fields safely
-        deals_json = json.dumps(data.get('deals', []))
-        positions_json = json.dumps(data.get('positions', []))
-        account_json = json.dumps(data.get('account', {}))
-        evaluations_json = json.dumps(data.get('evaluations', []))
-        statistics_json = json.dumps(data.get('statistics', {}))
+
+        deals_json           = json.dumps(data.get('deals', []))
+        positions_json       = json.dumps(data.get('positions', []))
+        account_json         = json.dumps(data.get('account', {}))
+        evaluations_json     = json.dumps(data.get('evaluations', []))
+        statistics_json      = json.dumps(data.get('statistics', {}))
         dropdown_options_json = json.dumps(data.get('dropdown_options', {}))
-        identity_json = json.dumps(data.get('identity', {}))
+        identity_json        = json.dumps(data.get('identity', {}))
 
         with get_connection() as conn:
             cursor = conn.cursor()
+
+            # Lock this client's history rows so concurrent workers can't
+            # read the same MAX(version) and produce a duplicate key.
+            cursor.execute(
+                'SELECT COALESCE(MAX(version), 0) FROM data_history '
+                'WHERE client_id = %s FOR UPDATE',
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            version = (row[0] if row else 0) + 1
+
             cursor.execute('''
                 INSERT INTO data_history (
                     client_id, version, action, changed_by, changed_by_type,
                     ip_address, change_source, change_description,
                     deals, positions, account, evaluations, statistics,
                     dropdown_options, identity, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (
                 client_id, version, action, changed_by, changed_by_type,
                 ip_address, change_source, change_description,
