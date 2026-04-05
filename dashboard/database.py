@@ -22,6 +22,8 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA wal_autocheckpoint=1000')
+    conn.execute('PRAGMA busy_timeout=5000')
     try:
         yield conn
     finally:
