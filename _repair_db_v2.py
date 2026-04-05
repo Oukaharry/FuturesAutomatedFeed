@@ -2,22 +2,26 @@
 """
 Repair a corrupted SQLite database — analysis-first approach.
 
-This script has TWO modes:
-  1. ANALYZE (default) — diagnose corruption without modifying anything
-  2. REPAIR  (--repair) — dump all readable data into a fresh database
+The auto-repair in database.py renames the real data to .corrupt.TIMESTAMP
+and replaces dashboard.db with an empty copy. This script recovers data
+FROM those .corrupt files back into a working dashboard.db.
+
+This script has THREE modes:
+  1. ANALYZE (default) — find .corrupt files, diagnose them, pick the best one
+  2. REPAIR  (--repair) — dump all readable data into a fresh dashboard.db.repaired
+  3. SWAP    (--swap)   — make the repaired copy the active dashboard.db
 
 SAFETY RULES:
-  - The original DB is NEVER modified or deleted
-  - Corrupt originals are preserved as .corrupt.TIMESTAMP
-  - Swap only happens with explicit --swap flag after verification
+  - .corrupt files are NEVER modified or deleted
+  - Current dashboard.db is preserved as .empty.TIMESTAMP before swap
   - Every step is logged to _repair_report.txt
 
 USAGE:
-  python3 _repair_db_v2.py                        # Analyze only (safe)
-  python3 _repair_db_v2.py --repair               # Analyze + create repaired copy
-  python3 _repair_db_v2.py --swap                  # Swap (after verifying repaired copy)
-  python3 _repair_db_v2.py --db /path/to/db        # Custom DB path
-  python3 _repair_db_v2.py --vacuum                # Also VACUUM the repaired copy (slow but shrinks size)
+  python3 _repair_db_v2.py                        # Scan for .corrupt files + analyze best one
+  python3 _repair_db_v2.py --repair               # Analyze + create repaired copy from best .corrupt
+  python3 _repair_db_v2.py --repair --vacuum       # Same + compact the repaired DB
+  python3 _repair_db_v2.py --swap                  # Make repaired copy the active dashboard.db
+  python3 _repair_db_v2.py --db /path/to/file.db   # Point at a specific file instead of auto-detect
 """
 import os
 import sys
@@ -366,10 +370,12 @@ def analyze_database(db_path, report):
 #  PHASE 2: REPAIR (creates a new DB alongside, never touches original)
 # ═══════════════════════════════════════════════════════════════════
 
-def repair_database(db_path, report, do_vacuum=False):
+def repair_database(db_path, report, do_vacuum=False, output_path=None):
     """Dump all readable data from corrupt DB into a fresh copy."""
-    fresh_path = db_path + '.repaired'
+    fresh_path = output_path or (db_path + '.repaired')
     report.section("PHASE 2: REPAIR")
+    report.log(f"Source (corrupt): {db_path}")
+    report.log(f"Output (repaired): {fresh_path}")
 
     if os.path.exists(fresh_path):
         report.log(f"Removing previous repaired copy: {fresh_path}")
@@ -651,7 +657,8 @@ def repair_database(db_path, report, do_vacuum=False):
 # ═══════════════════════════════════════════════════════════════════
 
 def swap_databases(db_path, report):
-    """Swap the original with the repaired copy. Original is NEVER deleted."""
+    """Make dashboard.db.repaired the active dashboard.db.
+    Current dashboard.db (likely empty) is preserved as .empty.TIMESTAMP."""
     fresh_path = db_path + '.repaired'
     report.section("SWAP")
 
@@ -660,12 +667,8 @@ def swap_databases(db_path, report):
         report.log(f"Run: python3 _repair_db_v2.py --repair")
         return False
 
-    if not os.path.exists(db_path):
-        report.log(f"Original DB not found at {db_path}", 'ERROR')
-        return False
-
     # Pre-swap validation
-    report.log(f"Pre-swap validation...")
+    report.log(f"Pre-swap validation on {fresh_path}...")
     conn = safe_connect(fresh_path, readonly=True)
     integrity = conn.execute('PRAGMA integrity_check').fetchone()[0]
     try:
@@ -682,23 +685,28 @@ def swap_databases(db_path, report):
         report.log(f"ABORT: Repaired DB integrity check FAILED: {integrity}", 'ERROR')
         return False
 
+    if client_count <= 0:
+        report.log(f"ABORT: Repaired DB has {client_count} clients — something is wrong", 'ERROR')
+        return False
+
     report.log(f"  Repaired DB: {client_count} clients, {user_count} users, integrity=ok")
 
-    # Rename original → .corrupted_TIMESTAMP
+    # Preserve current dashboard.db (likely empty from auto-repair)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    corrupted_path = db_path + f'.corrupted_{ts}'
     wal_path = db_path + '-wal'
     shm_path = db_path + '-shm'
 
-    report.log(f"\n1. Preserving original → {os.path.basename(corrupted_path)}")
-    os.rename(db_path, corrupted_path)
+    if os.path.exists(db_path):
+        preserved_path = db_path + f'.empty_{ts}'
+        report.log(f"\n1. Preserving current dashboard.db → {os.path.basename(preserved_path)}")
+        os.rename(db_path, preserved_path)
 
-    if os.path.exists(wal_path):
-        os.rename(wal_path, corrupted_path + '-wal')
-        report.log(f"   Also preserved WAL file")
-    if os.path.exists(shm_path):
-        os.rename(shm_path, corrupted_path + '-shm')
-        report.log(f"   Also preserved SHM file")
+        if os.path.exists(wal_path):
+            os.rename(wal_path, preserved_path + '-wal')
+        if os.path.exists(shm_path):
+            os.rename(shm_path, preserved_path + '-shm')
+    else:
+        report.log(f"\n1. No existing dashboard.db to preserve")
 
     report.log(f"2. Activating repaired → {os.path.basename(db_path)}")
     os.rename(fresh_path, db_path)
@@ -726,8 +734,103 @@ def swap_databases(db_path, report):
     report.log(f"  Clients:      {count}")
     report.log(f"  Integrity:    {integrity}")
     report.log(f"  Writes:       {'OK' if write_ok else 'BLOCKED'}")
-    report.log(f"  Old original: {corrupted_path} (preserved, NEVER deleted)")
+    report.log(f"  .corrupt files: still preserved (NEVER deleted)")
     return True
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  AUTO-DETECT: find .corrupt files and pick the best one
+# ═══════════════════════════════════════════════════════════════════
+
+def find_corrupt_files(db_path, report):
+    """Scan for .corrupt.* files alongside dashboard.db. Returns list sorted by quality."""
+    db_dir = os.path.dirname(db_path)
+    db_name = os.path.basename(db_path)
+
+    if not os.path.isdir(db_dir):
+        report.log(f"Directory not found: {db_dir}", 'ERROR')
+        return []
+
+    # Find all .corrupt* files
+    corrupt_files = []
+    for f in sorted(os.listdir(db_dir)):
+        if f.startswith(db_name) and ('.corrupt' in f or '.corrupted' in f):
+            # Skip WAL/SHM sidecars
+            if f.endswith('-wal') or f.endswith('-shm'):
+                continue
+            fpath = os.path.join(db_dir, f)
+            size_mb = os.path.getsize(fpath) / 1024 / 1024
+            corrupt_files.append({'path': fpath, 'name': f, 'size_mb': size_mb})
+
+    if not corrupt_files:
+        report.log(f"No .corrupt files found in {db_dir}")
+        return []
+
+    report.section("CORRUPT FILE SCAN")
+    report.log(f"Found {len(corrupt_files)} corrupt backup(s) in {db_dir}:\n")
+
+    # Analyze each one quickly (count clients + check readability)
+    for cf in corrupt_files:
+        try:
+            conn = safe_connect(cf['path'], readonly=True)
+            # Count clients
+            try:
+                clients = conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()[0]
+                cf['clients'] = clients
+            except:
+                cf['clients'] = -1
+            # Count audit rows
+            try:
+                audit = conn.execute('SELECT COUNT(*) FROM audit_log').fetchone()[0]
+                cf['audit'] = audit
+            except:
+                cf['audit'] = -1
+            # Quick integrity
+            try:
+                qi = conn.execute('PRAGMA quick_check(1)').fetchone()[0]
+                cf['quick_check'] = qi
+            except:
+                cf['quick_check'] = 'error'
+            cf['readable'] = True
+            conn.close()
+        except Exception as e:
+            cf['readable'] = False
+            cf['clients'] = -1
+            cf['audit'] = -1
+            cf['quick_check'] = str(e)
+
+        status = 'READABLE' if cf['readable'] else 'UNREADABLE'
+        report.log(
+            f"  {cf['name']}\n"
+            f"    Size: {cf['size_mb']:.1f} MB | Clients: {cf['clients']} | "
+            f"Audit: {cf['audit']:,} | Quick check: {cf['quick_check']} | {status}"
+        )
+
+    # Sort: prefer readable, most clients, most audit rows, largest size
+    corrupt_files.sort(key=lambda x: (
+        x['readable'],
+        x.get('clients', -1),
+        x.get('audit', -1),
+        x['size_mb'],
+    ), reverse=True)
+
+    best = corrupt_files[0]
+    report.log(f"\n  BEST candidate: {best['name']} ({best['clients']} clients, {best['size_mb']:.1f} MB)")
+
+    # Also show current dashboard.db status
+    if os.path.exists(db_path):
+        curr_size = os.path.getsize(db_path) / 1024 / 1024
+        try:
+            conn = safe_connect(db_path, readonly=True)
+            curr_clients = conn.execute('SELECT COUNT(*) FROM clients_data').fetchone()[0]
+            conn.close()
+        except:
+            curr_clients = '?'
+        report.log(f"\n  Current dashboard.db: {curr_size:.1f} MB, {curr_clients} clients")
+        if isinstance(curr_clients, int) and curr_clients == 0:
+            report.log(f"  ^^^ EMPTY — auto-repair wiped it. Data is in the .corrupt files above.")
+
+    return corrupt_files
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -737,35 +840,65 @@ def swap_databases(db_path, report):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description='Analyze and repair corrupted SQLite database')
-    parser.add_argument('--db', default=None, help='Path to database (default: ~/MT5Dashboard/dashboard/dashboard.db)')
-    parser.add_argument('--repair', action='store_true', help='Create a repaired copy (analyze first)')
-    parser.add_argument('--swap', action='store_true', help='Swap original with repaired copy')
+    parser.add_argument('--db', default=None, help='Path to a specific .corrupt file (default: auto-detect)')
+    parser.add_argument('--repair', action='store_true', help='Create a repaired copy from the best .corrupt file')
+    parser.add_argument('--swap', action='store_true', help='Make the repaired copy the active dashboard.db')
     parser.add_argument('--vacuum', action='store_true', help='VACUUM the repaired copy to reclaim space')
     args = parser.parse_args()
 
-    db_path = args.db or DB_PATH
     report = RepairReport()
-
     report.log(f"Database Repair Tool v2 — {datetime.now().isoformat()}")
-    report.log(f"Target: {db_path}")
 
     if args.swap:
-        success = swap_databases(db_path, report)
-    else:
-        # Always analyze first
-        findings = analyze_database(db_path, report)
+        # Swap mode: make dashboard.db.repaired → dashboard.db
+        success = swap_databases(DB_PATH, report)
+        report.save(REPORT_PATH)
+        report.log(f"\nReport saved to: {REPORT_PATH}")
+        return success
 
-        if args.repair:
-            if not findings.get('can_read'):
-                report.log(f"\nCannot proceed with repair — database is not readable.", 'ERROR')
-                report.save(REPORT_PATH)
-                return False
-            success = repair_database(db_path, report, do_vacuum=args.vacuum)
+    # Determine which file to analyze/repair
+    if args.db:
+        # User specified a specific file
+        source_path = args.db
+        report.log(f"Target (manual): {source_path}")
+    else:
+        # Auto-detect: scan for .corrupt files
+        report.log(f"Scanning for .corrupt files in {os.path.dirname(DB_PATH)}...")
+        corrupt_files = find_corrupt_files(DB_PATH, report)
+
+        if corrupt_files:
+            # Use the best corrupt file as source
+            source_path = corrupt_files[0]['path']
+            report.log(f"\nUsing: {source_path}")
+        elif os.path.exists(DB_PATH):
+            # No corrupt files found, analyze the main DB
+            source_path = DB_PATH
+            report.log(f"No .corrupt files found. Analyzing main DB: {DB_PATH}")
         else:
-            success = not findings.get('needs_repair', False)
-            if findings.get('needs_repair'):
-                report.log(f"\n  To repair: python3 _repair_db_v2.py --repair")
-                report.log(f"  To repair + compact: python3 _repair_db_v2.py --repair --vacuum")
+            report.log(f"No database files found at {DB_PATH}", 'ERROR')
+            report.save(REPORT_PATH)
+            return False
+
+    # Analyze the source
+    findings = analyze_database(source_path, report)
+
+    if args.repair:
+        if not findings.get('can_read'):
+            report.log(f"\nCannot proceed — database is not readable.", 'ERROR')
+            report.save(REPORT_PATH)
+            return False
+
+        # Repair: dump from corrupt source → dashboard.db.repaired
+        # The repaired file goes next to the MAIN db, not next to the corrupt file
+        success = repair_database(source_path, report, do_vacuum=args.vacuum,
+                                   output_path=DB_PATH + '.repaired')
+        if success:
+            report.log(f"\n  To activate: python3 _repair_db_v2.py --swap")
+    else:
+        success = not findings.get('needs_repair', False)
+        if findings.get('needs_repair'):
+            report.log(f"\n  To repair: python3 _repair_db_v2.py --repair")
+            report.log(f"  To repair + compact: python3 _repair_db_v2.py --repair --vacuum")
 
     # Save report
     report.save(REPORT_PATH)
