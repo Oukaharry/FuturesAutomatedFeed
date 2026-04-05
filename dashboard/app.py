@@ -7739,6 +7739,26 @@ def get_waterlog_sheet_data():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ============ Global Error Handlers ============
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    """Show maintenance page on any 500 Internal Server Error."""
+    import logging
+    logging.error(f"500 error: {e}")
+    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
+        return jsonify({"status": "error", "message": "Internal server error"}), 500
+    return render_template('500.html'), 500
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    """Catch-all for any unhandled exception — show maintenance page."""
+    import logging
+    logging.exception(f"Unhandled exception: {e}")
+    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
+        return jsonify({"status": "error", "message": "An unexpected error occurred"}), 500
+    return render_template('500.html'), 500
+
 # ============ Main Entry Point ============
 
 def run_dashboard():
