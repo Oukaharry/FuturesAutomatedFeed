@@ -2013,6 +2013,28 @@ def require_session(f):
 
 # ============ Web Routes ============
 
+# ============ Maintenance Mode ============
+# Set to True to show maintenance page to all non-super-admin users
+MAINTENANCE_MODE = True
+MAINTENANCE_EXEMPT = {'super_admin', 'bef_admin'}
+
+@app.route('/maintenance')
+def maintenance_page():
+    session_token = request.cookies.get('session_token')
+    if session_token:
+        try:
+            session_info = validate_session(session_token)
+            if session_info and session_info.get('user_type') in MAINTENANCE_EXEMPT:
+                user_type = session_info.get('user_type')
+                user_id = session_info.get('user_identifier')
+                if user_type == 'super_admin':
+                    return redirect('/super_admin')
+                elif user_type == 'bef_admin':
+                    return redirect('/bef_admin')
+        except Exception:
+            pass
+    return render_template('maintenance.html')
+
 @app.route('/')
 def index():
     # Check if already logged in
@@ -2027,6 +2049,8 @@ def index():
                 return redirect('/super_admin')
             elif user_type == 'bef_admin':
                 return redirect('/bef_admin')
+            elif MAINTENANCE_MODE:
+                return redirect('/maintenance')
             elif user_type == 'admin':
                 return redirect(f'/admin/{user_id}')
             elif user_type == 'trader':
@@ -3697,12 +3721,15 @@ def unified_login():
     log_action('LOGIN_SUCCESS', user_type, username, client_ip)
     
     # Determine redirect URL based on user type
-    redirect_map = {
-        'admin': f'/admin/{username}',
-        'trader': f'/trader/{username}',
-        'client': f'/dashboard/{username}'
-    }
-    redirect_url = redirect_map.get(user_type, '/')
+    if MAINTENANCE_MODE and user_type not in MAINTENANCE_EXEMPT:
+        redirect_url = '/maintenance'
+    else:
+        redirect_map = {
+            'admin': f'/admin/{username}',
+            'trader': f'/trader/{username}',
+            'client': f'/dashboard/{username}'
+        }
+        redirect_url = redirect_map.get(user_type, '/')
     
     must_change = verified.get('must_change_password', False)
     
