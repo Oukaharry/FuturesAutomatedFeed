@@ -21,8 +21,30 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 if not os.getenv('FLASK_ENV'):
     os.environ['FLASK_ENV'] = 'production'
 
+# ── WSGI-level maintenance fallback ──────────────────────────────────────────
+# If the Flask app fails to import (startup crash), serve the maintenance page
+# as a plain WSGI callable so PythonAnywhere shows something friendly.
+def _maintenance_fallback(environ, start_response):
+    """Static WSGI app returned when Flask itself fails to load."""
+    _html = open(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     'dashboard', 'templates', '500.html'),
+        'rb'
+    ).read()
+    status = '500 Internal Server Error'
+    headers = [('Content-Type', 'text/html; charset=utf-8'),
+               ('Content-Length', str(len(_html)))]
+    start_response(status, headers)
+    return [_html]
+
 # Import the Flask application
-from dashboard.app import app
+try:
+    from dashboard.app import app
+    _import_error = None
+except Exception as _import_error:
+    import logging, traceback
+    logging.critical("Failed to import dashboard app:\n" + traceback.format_exc())
+    app = _maintenance_fallback
 
 # Apply production configurations
 def configure_app(app):
@@ -48,13 +70,14 @@ def configure_app(app):
     return app
 
 
-# Configure the app for production
-app = configure_app(app)
+# Configure the app for production (only when Flask imported successfully)
+if _import_error is None:
+    app = configure_app(app)
 
 
 # Note: /health endpoint is already defined in dashboard/app.py
 # Only add /ready if it doesn't exist
-if '/ready' not in [rule.rule for rule in app.url_map.iter_rules()]:
+if _import_error is None and '/ready' not in [rule.rule for rule in app.url_map.iter_rules()]:
     @app.route('/ready')
     def readiness_check():
         """Readiness check - verifies the app can serve requests."""
@@ -69,6 +92,8 @@ if '/ready' not in [rule.rule for rule in app.url_map.iter_rules()]:
 
 
 if __name__ == '__main__':
+    if _import_error:
+        raise RuntimeError("App failed to import; cannot start dev server.") from _import_error
     # Run development server
     port = int(os.getenv('PORT', 5001))
     debug = os.getenv('FLASK_ENV') == 'development'
