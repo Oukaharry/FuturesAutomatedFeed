@@ -7747,7 +7747,7 @@ def run_dashboard():
     print(f"\n{'='*60}")
     print("SECURE DASHBOARD API SERVER STARTING")
     print(f"{'='*60}")
-    print(f"Database: SQLite with encrypted storage")
+    print(f"Database: PostgreSQL (Alembic-managed schema)")
     print(f"Rate Limiting: Enabled")
     print(f"Password Hashing: PBKDF2-SHA256 (100,000 iterations)")
     print(f"API Keys: Hashed with SHA-256")
