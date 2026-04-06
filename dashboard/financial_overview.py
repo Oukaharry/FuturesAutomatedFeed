@@ -158,10 +158,11 @@ def clear_financial_cache():
     _overview_cache.clear()
 
 @cache_result(ttl=30)
-def calculate_all_financials(profile_filter=None):
+def calculate_all_financials(profile_filter=None, start_date=None, end_date=None):
     """
     Optimized aggregator that computes all financial metrics in a single pass.
     Returns a dictionary containing all necessary datasets for the dashboard.
+    Optionally filters by start_date and end_date (datetime objects).
     """
     clients_data = _get_cached_clients()
     
@@ -203,6 +204,14 @@ def calculate_all_financials(profile_filter=None):
         for ev in evaluations:
             if not isinstance(ev, dict):
                 continue
+            # Date filtering
+            if start_date or end_date:
+                eval_date = parse_date(ev.get('Date Started')) or parse_date(ev.get('Date Purchased')) or parse_date(ev.get('Date'))
+                if eval_date:
+                    if start_date and eval_date.date() < start_date.date():
+                        continue
+                    if end_date and eval_date.date() > end_date.date():
+                        continue
             # Prop Firm Overview Logic
             raw_prop_firm = ev.get('Prop Firm')
             if raw_prop_firm and raw_prop_firm != "-" and str(raw_prop_firm).lower() != "prop firm":
@@ -370,6 +379,12 @@ def calculate_all_financials(profile_filter=None):
                         dt = datetime.fromisoformat(str(d_time))
                     date_str = dt.strftime("%Y-%m-%d")
                 except:
+                    continue
+                
+                # Date filtering for deals
+                if start_date and dt.date() < start_date.date():
+                    continue
+                if end_date and dt.date() > end_date.date():
                     continue
                 
                 d_type = deal.get('type')
@@ -1449,10 +1464,11 @@ def calculate_trader_stats(profile_filter=None):
     return list(traders_stats.values())
 
 @cache_result(ttl=300)
-def get_client_performance_stats(profile_filter=None):
+def get_client_performance_stats(profile_filter=None, start_date=None, end_date=None):
     """
     Returns a list of per-client performance statistics.
     Used for the Client Performance Table.
+    Optionally filters by start_date and end_date (datetime objects).
     """
     # BEF hidden firms — evaluations from these firms are excluded for BEF view
     BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
@@ -1529,6 +1545,14 @@ def get_client_performance_stats(profile_filter=None):
         for ev in evaluations:
             if not isinstance(ev, dict):
                 continue
+            # Date filtering
+            if start_date or end_date:
+                eval_date = parse_date(ev.get('Date Started')) or parse_date(ev.get('Date Purchased')) or parse_date(ev.get('Date'))
+                if eval_date:
+                    if start_date and eval_date.date() < start_date.date():
+                        continue
+                    if end_date and eval_date.date() > end_date.date():
+                        continue
             # Skip hidden firms for BEF view
             if _is_firm_hidden(ev.get('Prop Firm')):
                 continue
@@ -1565,8 +1589,9 @@ def get_client_performance_stats(profile_filter=None):
             
         # Use stored cashflow_inprogress for hedge/farming/fees (matches Net Profit In Progress display)
         # For BEF view, skip stored totals (they include all firms) — use per-eval sums instead
+        # When date filtering is active, skip stored totals as they represent all-time data
         stored_cf = data.get('statistics', {}).get('cashflow_inprogress', {})
-        if not is_bef and stored_cf and (stored_cf.get('hedging_results', 0) != 0 or stored_cf.get('farming_results', 0) != 0):
+        if not is_bef and not start_date and not end_date and stored_cf and (stored_cf.get('hedging_results', 0) != 0 or stored_cf.get('farming_results', 0) != 0):
             sheet_hedge = stored_cf.get('hedging_results', 0.0) + stored_cf.get('farming_results', 0.0)
             # Compute live actual hedging from MT5 (same formula as client dashboard)
             acct = data.get('account', {})
@@ -1651,7 +1676,8 @@ def get_client_performance_stats(profile_filter=None):
 
         # Net Profit — use stored value from cashflow_inprogress (matches Net Profit In Progress display)
         # For BEF view, always recalculate from filtered eval sums
-        if not is_bef and stored_cf and stored_cf.get('net_profit') is not None:
+        # When date filtering is active, always recalculate
+        if not is_bef and not start_date and not end_date and stored_cf and stored_cf.get('net_profit') is not None:
             c_stats['net_profit'] = stored_cf.get('net_profit', 0.0)
         else:
             c_stats['net_profit'] = c_stats['payouts'] + c_stats['hedge_profit'] + c_stats['farming_profit'] - c_stats['fees']

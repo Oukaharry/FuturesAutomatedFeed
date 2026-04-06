@@ -2109,14 +2109,32 @@ def financial_overview():
     if session_user.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
     
+    # Date filtering
+    start_date_str = request.args.get('start_date')
+    end_date_str = request.args.get('end_date')
+    
+    start_date = None
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        except:
+            pass
+            
+    end_date = None
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        except:
+            pass
+    
     # NEW: Use optimized single-pass aggregator
-    all_data = calculate_all_financials(profile_filter=profile_filter)
+    all_data = calculate_all_financials(profile_filter=profile_filter, start_date=start_date, end_date=end_date)
     
     overview_data = all_data['overview']
     global_stats = all_data.get('global_stats', {})
 
     # Card totals from cashflow_inprogress (same source as BEF admin dashboard)
-    perf_clients = get_client_performance_stats(profile_filter)
+    perf_clients = get_client_performance_stats(profile_filter, start_date=start_date, end_date=end_date)
     card_totals = {
         'payouts': round(sum(c.get('payouts', 0) for c in perf_clients), 2),
         'deposits': round(sum(c.get('deposits', 0) for c in perf_clients), 2),
@@ -2150,6 +2168,8 @@ def financial_overview():
                            global_stats=global_stats,
                            card_totals=card_totals,
                            selected_profile=profile_filter,
+                           start_date=start_date_str,
+                           end_date=end_date_str,
                            is_bef_admin=(session_user.get('user_type') == 'bef_admin'),
                            growth_dates=growth_dates,
                            growth_values=growth_values,
