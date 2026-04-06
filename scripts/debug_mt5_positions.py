@@ -81,21 +81,26 @@ def parse_comment(comment):
     }
 
 
-def phase_to_field(phase, number):
+def phase_to_field(phase, number, is_mffu=False):
     """
     Map phase code to dashboard column name.
     Same logic as trade_matcher._get_field_name
+    is_mffu: True for MFFU prefix — FD uses +1 offset (FD0→HR1.1, FD1→HR2.1)
+             False for all other firms — FD uses no offset (FD1→HR1.1, FD2→HR2.1)
     """
     if phase == 'CH':
         if 1 <= number <= 5:
             return f"Hedge Result {number}"
     elif phase == 'FD':
-        if number == 0:
-            return "Hedge Result 1.1"
-        if 1 <= number <= 4:
+        if is_mffu:
+            # MFFU: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1 ...
             return f"Hedge Result {number + 1}.1"
-        if number >= 5:
-            return f"Hedge Result {number + 1}"
+        else:
+            # Others: FD1→HR1.1, FD2→HR2.1, FD3→HR3.1 ...
+            return f"Hedge Result {max(1, number)}.1"
+    elif phase == 'DD':
+        # DD1→HR1.1, DD2→HR2.1, DD3→HR3.1, DD4→HR4.1
+        return f"Hedge Result {number}.1"
     elif phase == 'FA':
         return f"Hedge Day {number}" if number >= 1 else "Hedge Day 1"
     return f"{phase}{number}"
@@ -261,11 +266,12 @@ def main():
     print(f"  {'Phase':<10}  {'Dashboard Field':<22}  {'Deals':>6}  {'Days':>6}  {'Net P/L':>10}")
     print(f"  {'─'*10}  {'─'*22}  {'─'*6}  {'─'*6}  {'─'*10}")
     total_profit = 0.0
+    is_mffu = any(str(d.get('comment', '')).upper().startswith('MFFU') for d in matched)
     for key in sorted(phase_summary.keys()):
         info = phase_summary[key]
         parsed_phase = key[:2]
         parsed_num = int(key[2:]) if key[2:] else 1
-        field = phase_to_field(parsed_phase, parsed_num)
+        field = phase_to_field(parsed_phase, parsed_num, is_mffu=is_mffu)
         total_profit += info['profit']
         print(f"  {key:<10}  {field:<22}  {info['count']:>6}  {len(info['days']):>6}  {info['profit']:>+10.2f}")
     print(f"  {'─'*10}  {'─'*22}  {'─'*6}  {'─'*6}  {'─'*10}")

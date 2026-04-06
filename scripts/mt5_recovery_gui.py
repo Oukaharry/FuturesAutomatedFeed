@@ -47,17 +47,24 @@ def parse_comment(comment):
     }
 
 
-def phase_to_field(phase, number):
+def phase_to_field(phase, number, is_mffu=False):
+    """Map phase code + number to dashboard field name.
+    is_mffu: True for MFFU prefix — FD uses +1 offset (FD0→HR1.1, FD1→HR2.1)
+             False for all other firms — FD uses no offset (FD1→HR1.1, FD2→HR2.1)
+    """
     if phase == 'CH':
         if 1 <= number <= 5:
             return f"Hedge Result {number}"
     elif phase == 'FD':
-        if number == 0:
-            return "Hedge Result 1.1"
-        if 1 <= number <= 4:
+        if is_mffu:
+            # MFFU: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1 ...
             return f"Hedge Result {number + 1}.1"
-        if number >= 5:
-            return f"Hedge Result {number + 1}"
+        else:
+            # Others: FD1→HR1.1, FD2→HR2.1, FD3→HR3.1 ...
+            return f"Hedge Result {max(1, number)}.1"
+    elif phase == 'DD':
+        # DD1→HR1.1, DD2→HR2.1, DD3→HR3.1, DD4→HR4.1
+        return f"Hedge Result {number}.1"
     elif phase == 'FA':
         return f"Hedge Day {number}" if number >= 1 else "Hedge Day 1"
     return f"{phase}{number}"
@@ -347,7 +354,8 @@ def fetch_all_deals_from_mt5(mt5_login, mt5_password, mt5_server,
             # Field will be assigned by date order later
             field_label = 'Hedge Day (by date)'
         else:
-            field_label = phase_to_field(phase, number)
+            is_mffu = parsed.get('prefix', '') == 'MFFU'
+            field_label = phase_to_field(phase, number, is_mffu=is_mffu)
 
         if firm not in accounts_data:
             accounts_data[firm] = {}
@@ -1157,11 +1165,12 @@ class MT5RecoveryApp:
         # ── Phase Breakdown tab ─────────────────────────────────
         total_deals = 0
         total_pl = 0.0
+        is_mffu = any(str(d.get('comment', '')).upper().startswith('MFFU') for d in matched)
         for key in sorted(phase_summary.keys()):
             info = phase_summary[key]
             parsed_phase = key[:2]
             parsed_num = int(key[2:]) if key[2:] else 1
-            field = phase_to_field(parsed_phase, parsed_num)
+            field = phase_to_field(parsed_phase, parsed_num, is_mffu=is_mffu)
             total_deals += info['count']
             total_pl += info['profit']
             self.phase_tree.insert('', 'end', values=(
@@ -1232,7 +1241,8 @@ class MT5RecoveryApp:
                 date_key = ts.strftime('%Y-%m-%d')
                 hd_num = date_to_hd.get(date_key, 0)
                 p = d['_parsed']
-                field = phase_to_field(p['phase'], p['number'])
+                is_mffu = str(d.get('comment', '')).upper().startswith('MFFU')
+                field = phase_to_field(p['phase'], p['number'], is_mffu=is_mffu)
                 writer.writerow([
                     f"Hedge Day {hd_num}", date_key, ts.strftime('%H:%M:%S'),
                     d.get('ticket', ''), d.get('symbol', ''),
