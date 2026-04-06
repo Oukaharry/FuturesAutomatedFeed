@@ -1276,6 +1276,7 @@ class TraderCompanionApp:
         "TradeDay":         "#9B59B6",
         "Tradeify":         "#1ABC9C",
         "Alpha Futures":    "#2980B9",
+        "Top One Futures": "#0D9488",
     }
 
     PHASE_BADGE = {

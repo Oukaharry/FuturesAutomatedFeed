@@ -69,6 +69,8 @@ def normalize_prop_firm_name(name):
         "mffu": "My Funded Futures",
         "mffuflex": "My Funded Futures",
         "fundednextlegacyaccount": "FundedNext (Legacy)", # Keep distinct if wanted, or merge to FundedNext
+        "toponefutures": "Top One Futures",
+        "topone": "Top One Futures",
     }
     
     # Direct match in mapping

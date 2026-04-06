@@ -4236,6 +4236,7 @@
             if (v.includes('fundednext')) return '#a855f6';
             if (v.includes('lucid')) return '#9ca3af';
             if (v.includes('apex')) return '#60a5fa';
+            if (v.includes('topone')) return '#0d9488';
             if (v.includes('takeprofit') || v.includes('take profit')) return '#f472b6';
             return '#fbbf24';
         }
@@ -4334,6 +4335,7 @@
                         'fundednext': 'FundedNext',
                         'tradeday': 'TradeDay', 'tradeify': 'Tradeify',
                         'alphafutures': 'Alpha Futures', 'lucid': 'Lucid',
+                        'toponefutures': 'Top One Futures', 'topone': 'Top One Futures',
                     };
                     function normFirm(name) {
                         if (!name) return 'Unknown';
@@ -4862,7 +4864,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Topstep', 'Tradeify', 'Alpha Futures', 'Apex', 'Other'
+                    'FundedNext', 'Topstep', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -5852,7 +5854,7 @@
         }
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted', 'Completed']
@@ -5893,6 +5895,9 @@
                 } else if (v.includes('apex')) {
                     // Blue (Apex)
                     return "background-color: #2563eb; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                } else if (v.includes('topone')) {
+                    // Teal (Top One Futures)
+                    return "background-color: #0d9488; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                 }
                 return "";
             };
@@ -6090,6 +6095,7 @@
                                 if (v.includes('fundednext')) return "background-color: #6a0dad; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('lucid')) return "background-color: #808080; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('apex')) return "background-color: #2563eb; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('topone')) return "background-color: #0d9488; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 return "";
                             };
                             
@@ -7111,7 +7117,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections() {
             const d = {};

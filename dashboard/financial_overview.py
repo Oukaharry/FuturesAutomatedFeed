@@ -541,6 +541,8 @@ def normalize_prop_firm_name(name):
         "elitetraderfunding": "Elite Trader Funding",
         "take profit trader": "Take Profit Trader",
         "takeprofittrader": "Take Profit Trader",
+        "toponefutures": "Top One Futures",
+        "topone": "Top One Futures",
         "mff": "My Funded Futures",
         "mffu": "My Funded Futures",
         "mffuflex": "My Funded Futures",
