@@ -74,6 +74,7 @@ PREFIX_TO_FIRM = {
     'MFFU': 'My Funded Futures', 'FNFT': 'FundedNext', 'TDFY': 'Tradeify',
     'V2': 'Topstep', '50KTC': 'Topstep', 'TDF': 'TradeDay', 'ELTD': 'TradeDay',
     'FTDF': 'TradeDay', 'AFAD': 'Alpha Futures', 'APEX': 'Apex',
+    'TPOF': 'Top One Futures',
 }
 
 

@@ -42,6 +42,8 @@ _FIRM_MAP = {
     "elitetraderfunding": "Elite Trader Funding",
     "takeprofittrader": "Take Profit Trader",
     "lucid": "Lucid",
+    "toponefutures": "Top One Futures",
+    "topone": "Top One Futures",
 }
 
 def normalize_prop_firm(name):
@@ -494,7 +496,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         return stats[section][firm_name]
 
     # Pre-populate target firms to match sheet structure
-    TARGET_FIRMS = ["My Funded Futures", "Funding Ticks", "TradeDay", "FundedNext", "Topstep"]
+    TARGET_FIRMS = ["My Funded Futures", "Funding Ticks", "TradeDay", "FundedNext", "Topstep", "Top One Futures"]
     for firm in TARGET_FIRMS:
         get_firm_stats(firm, "evaluation_data")
         get_firm_stats(firm, "funded_data")
@@ -921,7 +923,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Other'},
+        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }

@@ -368,6 +368,8 @@
                                     {% set b_style = "background-color: #27ae60; color: white;" %}
                                 {% elif 'quick' in fk or 'tick' in fk or 'funding' in fk %}
                                     {% set b_style = "background-color: #ffcc99; color: black;" %}
+                                {% elif 'topone' in fk %}
+                                    {% set b_style = "background-color: #0d9488; color: white;" %}
                                 {% elif 'tradeday' in fk %}
                                     {% set b_style = "background-color: #FFFFFF; color: black; border: 1px solid #ccc;" %}
                                 {% else %}

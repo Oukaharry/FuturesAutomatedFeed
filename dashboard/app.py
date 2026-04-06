@@ -1189,7 +1189,8 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                                 'TDFY': ['TRADEIFY', 'TDFY'],
                                 'ELTD': ['TRADEDAY', 'ELTD'],
                                 'TDF': ['TRADEDAY', 'TDF', 'TRADEIFY'],
-                                'FTDF': ['TRADEDAY', 'TDF', 'TRADEIFY']
+                                'FTDF': ['TRADEDAY', 'TDF', 'TRADEIFY'],
+                                'TPOF': ['TOPONEFUTURES', 'TOP ONE', 'TPOF']
                             }
                             if prefix_part in mapping:
                                 valid_keywords = mapping[prefix_part]

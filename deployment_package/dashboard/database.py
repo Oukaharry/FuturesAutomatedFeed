@@ -740,6 +740,7 @@ def save_client_data(client_id: str, data: dict) -> bool:
                 "fundednext": "FundedNext",
                 "tradeday": "TradeDay", "tradeify": "Tradeify",
                 "alphafutures": "Alpha Futures",
+                "toponefutures": "Top One Futures", "topone": "Top One Futures",
             }
             for ev in merged_evaluations:
                 if isinstance(ev, dict) and ev.get('Prop Firm'):
