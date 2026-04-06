@@ -23,6 +23,21 @@ import glob
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
+# Load .env from the project root (two levels up from scripts/)
+_env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+if os.path.exists(_env_path):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_path)
+    except ImportError:
+        # dotenv not installed — parse manually
+        with open(_env_path) as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith('#') and '=' in _line:
+                    _k, _, _v = _line.partition('=')
+                    os.environ.setdefault(_k.strip(), _v.strip())
+
 # ─────────────────────────────────────────────────────────────
 # CONFIGURATION — edit these or set env vars to override
 # ─────────────────────────────────────────────────────────────
