@@ -7724,6 +7724,12 @@ def get_waterlog_sheet_data():
 
 # ============ Global Error Handlers ============
 
+@app.errorhandler(404)
+def not_found(e):
+    if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
+        return jsonify({"status": "error", "message": "Not found"}), 404
+    return "Page not found", 404
+
 @app.errorhandler(500)
 def internal_server_error(e):
     """Show maintenance page on any 500 Internal Server Error."""
@@ -7735,7 +7741,10 @@ def internal_server_error(e):
 
 @app.errorhandler(Exception)
 def unhandled_exception(e):
-    """Catch-all for any unhandled exception — show maintenance page."""
+    """Catch-all for any unhandled exception — skip HTTP exceptions (404, 403, etc.)."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
     import logging
     logging.exception(f"Unhandled exception: {e}")
     if request.accept_mimetypes.accept_json and not request.accept_mimetypes.accept_html:
