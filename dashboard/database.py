@@ -1244,12 +1244,12 @@ def save_data_snapshot(client_id: str, data: dict, action: str,
                 (client_id,)
             )
             cursor.execute(
-                'SELECT COALESCE(MAX(version), 0) FROM data_history '
+                'SELECT COALESCE(MAX(version), 0) AS max_ver FROM data_history '
                 'WHERE client_id = %s',
                 (client_id,)
             )
             row = cursor.fetchone()
-            version = (row[0] if row else 0) + 1
+            version = (row['max_ver'] if row else 0) + 1
 
             cursor.execute('''
                 INSERT INTO data_history (
