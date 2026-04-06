@@ -148,11 +148,30 @@ def fetch_mt5_data(mt5_login, mt5_password, mt5_server, account_number,
     acct = mt5.account_info()
     account_info = {}
     if acct:
+        # Compute total deposits/withdrawals from all-time BALANCE deals (type=2)
+        total_deposits = 0.0
+        total_withdrawals = 0.0
+        try:
+            import time as _t
+            bal_deals = mt5.history_deals_get(0, _t.time() + 86400)
+            if bal_deals:
+                for _bd in bal_deals:
+                    if _bd.type == 2:           # DEAL_TYPE_BALANCE
+                        if _bd.profit > 0:
+                            total_deposits += _bd.profit
+                        else:
+                            total_withdrawals += _bd.profit
+        except Exception:
+            pass
         account_info = {
-            'name': acct.name,
-            'balance': acct.balance,
-            'equity': acct.equity,
-            'login': acct.login,
+            'name':               acct.name,
+            'balance':            acct.balance,
+            'equity':             acct.equity,
+            'login':              acct.login,
+            'currency':           getattr(acct, 'currency', ''),
+            'leverage':           getattr(acct, 'leverage', 0),
+            'total_deposits':     total_deposits,
+            'total_withdrawals':  total_withdrawals,
         }
 
     # Fetch deals
@@ -184,13 +203,22 @@ def fetch_mt5_data(mt5_login, mt5_password, mt5_server, account_number,
         d = deal._asdict()
         comment = d.get('comment', '')
         parsed = parse_comment(comment)
-        if parsed and parsed['account_number'].upper() == account_upper:
-            if phase_filter and phase_filter != 'ALL' and parsed['phase'] != phase_filter:
-                continue
-            d['_parsed'] = parsed
-            matched.append(d)
-        elif parsed:
-            other_accounts.add(parsed['account_number'])
+        if parsed:
+            extracted = parsed['account_number'].upper()
+            # Match exact OR suffix (MT5 comments often truncate leading digits,
+            # e.g. dashboard account '17879' appears as '7879' in the comment)
+            account_match = (
+                extracted == account_upper
+                or (len(extracted) >= 4 and account_upper.endswith(extracted))
+                or (len(account_upper) >= 4 and extracted.endswith(account_upper))
+            )
+            if account_match:
+                if phase_filter and phase_filter != 'ALL' and parsed['phase'] != phase_filter:
+                    continue
+                d['_parsed'] = parsed
+                matched.append(d)
+            else:
+                other_accounts.add(parsed['account_number'])
 
     if not matched:
         return {
@@ -237,11 +265,18 @@ def fetch_mt5_data(mt5_login, mt5_password, mt5_server, account_number,
         for pos in positions:
             p = pos._asdict()
             parsed = parse_comment(p.get('comment', ''))
-            if parsed and parsed['account_number'].upper() == account_upper:
-                if phase_filter and phase_filter != 'ALL' and parsed['phase'] != phase_filter:
-                    continue
-                p['_parsed'] = parsed
-                open_matched.append(p)
+            if parsed:
+                extracted = parsed['account_number'].upper()
+                open_acct_match = (
+                    extracted == account_upper
+                    or (len(extracted) >= 4 and account_upper.endswith(extracted))
+                    or (len(account_upper) >= 4 and extracted.endswith(account_upper))
+                )
+                if open_acct_match:
+                    if phase_filter and phase_filter != 'ALL' and parsed['phase'] != phase_filter:
+                        continue
+                    p['_parsed'] = parsed
+                    open_matched.append(p)
 
     return {
         'matched': matched,
@@ -450,6 +485,64 @@ def fetch_all_deals_from_mt5(mt5_login, mt5_password, mt5_server,
 
 
 # ═══════════════════════════════════════════════════════════════
+# Tooltip helper
+# ═══════════════════════════════════════════════════════════════
+
+class Tooltip:
+    """Hover tooltip for any widget.  Shows a small dark popup with help text."""
+    PAD = 6
+    DELAY = 400  # ms before popup appears
+
+    def __init__(self, widget, text, bg='#1e2235', fg='#cbd5e1'):
+        self._widget = widget
+        self._text   = text
+        self._bg     = bg
+        self._fg     = fg
+        self._win    = None
+        self._after  = None
+        widget.bind('<Enter>',    self._schedule, add='+')
+        widget.bind('<Leave>',    self._cancel,   add='+')
+        widget.bind('<Button>',   self._cancel,   add='+')
+        widget.bind('<Destroy>',  self._cancel,   add='+')
+
+    def _schedule(self, event=None):
+        self._cancel()
+        self._after = self._widget.after(self.DELAY, self._show)
+
+    def _cancel(self, event=None):
+        if self._after:
+            self._widget.after_cancel(self._after)
+            self._after = None
+        if self._win:
+            self._win.destroy()
+            self._win = None
+
+    def _show(self):
+        if self._win:
+            return
+        x = self._widget.winfo_rootx() + 20
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
+        self._win = tw = tk.Toplevel(self._widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f'+{x}+{y}')
+        tw.configure(bg='#3a4460')
+        outer = tk.Frame(tw, bg='#3a4460', padx=1, pady=1)
+        outer.pack()
+        inner = tk.Frame(outer, bg=self._bg)
+        inner.pack()
+        tk.Label(inner, text=self._text, justify='left',
+                 bg=self._bg, fg=self._fg,
+                 font=('Segoe UI', 9), wraplength=360,
+                 padx=self.PAD + 4, pady=self.PAD).pack()
+
+
+def tip(widget, text):
+    """Attach a tooltip to widget and return the widget (for chaining)."""
+    Tooltip(widget, text)
+    return widget
+
+
+# ═══════════════════════════════════════════════════════════════
 # GUI
 # ═══════════════════════════════════════════════════════════════
 
@@ -512,6 +605,71 @@ class MT5RecoveryApp:
                  bg=self.BG2, fg=self.ACCENT,
                  font=('Segoe UI', 16, 'bold')).pack(side='left', padx=8, pady=10)
 
+        # Help toggle button on right of header
+        self._help_open = tk.BooleanVar(value=False)
+        help_btn = ctk.CTkButton(
+            header, text='📖  How to use',
+            fg_color='#1e2235', hover_color='#2d3a55',
+            text_color=self.FG2, font=('Segoe UI', 9),
+            corner_radius=6, height=28, width=120,
+            command=self._toggle_help)
+        help_btn.pack(side='right', padx=12, pady=10)
+
+        # ── collapsible instructions panel ───────────────────
+        self._help_frame = tk.Frame(self.root, bg='#1e2235', bd=0)
+        # (packed/unpacked by _toggle_help — hidden by default)
+
+        INSTRUCTIONS = (
+            "QUICK START\n"
+            "──────────────────────────────────────────────────────\n"
+            "FETCH DEALS (single account)\n"
+            "  1. Enter your HEDGE account MT5 Login, Password and Server.\n"
+            "  2. Enter the dashboard Account # — the number shown in the\n"
+            "     client's MT5 comment, e.g. '7879' or '17879'.\n"
+            "  3. Choose a Phase filter (ALL / FA / CH / FD / DD) or leave ALL.\n"
+            "  4. Set Days Back — how far into history to pull (default 365).\n"
+            "  5. Click  🔍 FETCH DEALS  — results appear in the tabs below.\n"
+            "\n"
+            "RECONSTRUCT ALL (every account at once)\n"
+            "  1. Fill in MT5 Login / Password / Server (same as above).\n"
+            "  2. Set From Date and To Date for the period to scan.\n"
+            "  3. Click  ⚡ RECONSTRUCT ALL  — every parseable MT5 comment is\n"
+            "     decoded and grouped by Firm → Account → Phase → Hedge Day.\n"
+            "  4. Click any row in the table to see individual deal detail below.\n"
+            "  5. Use the Filter box to search by firm name, account, or phase.\n"
+            "\n"
+            "TABS (after Fetch Deals)\n"
+            "  Summary        — totals: balance, equity, matched deals, P/L\n"
+            "  Phase Breakdown— deals grouped by phase code → dashboard field\n"
+            "  Hedge Days     — one row per trading day with P/L\n"
+            "  All Deals      — every individual deal with ticket, price, profit\n"
+            "  Open Positions — currently open trades on this MT5 account\n"
+            "  Reconstruct All— multi-account recovery view\n"
+            "\n"
+            "EXPORT\n"
+            "  💾 EXPORT CSV saves all matched deals to a CSV file you can open\n"
+            "  in Excel and use to fill the dashboard manually.\n"
+            "\n"
+            "NOTES\n"
+            "  • MT5 Login is the numeric hedge account ID (e.g. 123456).\n"
+            "  • Server name must match exactly what MT5 shows (case-sensitive).\n"
+            "  • Account # is the client account fragment in the MT5 comment\n"
+            "    (the part after ... and before _CH/_FD/_FA/_DD).\n"
+            "  • Phase codes: CH=Challenge  FD=Funded  FA=Farming  DD=Daily Draw\n"
+            "  • Hover over any field label for a quick tip."
+        )
+
+        tip_frame = tk.Frame(self._help_frame, bg='#1e2235')
+        tip_frame.pack(fill='both', expand=True, padx=16, pady=10)
+        tk.Text(tip_frame, wrap='word', bg='#1e2235', fg='#cbd5e1',
+                font=('Consolas', 9), relief='flat', padx=8, pady=6,
+                height=22, state='normal',
+                selectbackground=self.SEL).pack(fill='both', expand=True)
+        # insert text then lock
+        txt_w = tip_frame.winfo_children()[0]
+        txt_w.insert('1.0', INSTRUCTIONS)
+        txt_w.configure(state='disabled')
+
         # ── credential card ───────────────────────────────────
         cred = tk.Frame(self.root, bg=self.BG2, bd=0)
         cred.pack(fill='x', padx=14, pady=(10, 0))
@@ -531,16 +689,21 @@ class MT5RecoveryApp:
             return e
 
         # Row 0 – credentials
-        lbl(cred, 'MT5 Login', col=0, row=0)
-        self.mt5_login_var  = tk.StringVar()
-        ent(cred, self.mt5_login_var, 12).grid(row=0, column=1, padx=(0,8), pady=4, sticky='w')
+        tip(lbl(cred, 'MT5 Login', col=0, row=0),
+            'The numeric login ID of your HEDGE MT5 account.\nExample: 123456')
+        self.mt5_login_var = tk.StringVar()
+        tip(ent(cred, self.mt5_login_var, 12),
+            'Numeric MT5 account login (hedge account, not client account).'
+            ).grid(row=0, column=1, padx=(0,8), pady=4, sticky='w')
 
-        lbl(cred, 'Password', col=2, row=0)
+        tip(lbl(cred, 'Password', col=2, row=0),
+            'The MT5 account password (investor or full access).')
         self.mt5_pass_var = tk.StringVar()
         self.pass_entry = ctk.CTkEntry(cred, textvariable=self.mt5_pass_var, width=140,
                                         fg_color=self.BG3, border_color=self.BG3,
                                         text_color=self.FG, font=('Consolas', 11),
                                         show='●', corner_radius=6, height=32)
+        tip(self.pass_entry, 'MT5 account password. Tick "Show" to reveal.')
         self.pass_entry.grid(row=0, column=3, padx=(0,4), pady=4, sticky='w')
 
         self.show_pass_var = tk.BooleanVar(value=False)
@@ -551,16 +714,23 @@ class MT5RecoveryApp:
                         checkbox_width=16, checkbox_height=16
                         ).grid(row=0, column=4, padx=(2,12), sticky='w')
 
-        lbl(cred, 'Server', col=5, row=0)
+        tip(lbl(cred, 'Server', col=5, row=0),
+            'The MT5 broker server name — must match exactly what MT5 shows.\nExample: PlexyTrade-Server01')
         self.mt5_server_var = tk.StringVar(value='PlexyTrade-Server01')
-        ent(cred, self.mt5_server_var, 22).grid(row=0, column=6, padx=(0,8), pady=4, sticky='w')
+        tip(ent(cred, self.mt5_server_var, 22),
+            'Broker server name (case-sensitive). Find it in MT5 → File → Login.'
+            ).grid(row=0, column=6, padx=(0,8), pady=4, sticky='w')
 
         # Fetch + Export buttons (right side of row 0)
-        self.fetch_btn = ctk.CTkButton(cred, text='🔍  FETCH DEALS',
-                                        fg_color=self.ACCENT, hover_color='#3a7bd5',
-                                        text_color='#ffffff', font=('Segoe UI', 11, 'bold'),
-                                        corner_radius=8, height=36, width=170,
-                                        command=self._on_fetch)
+        self.fetch_btn = ctk.CTkButton(
+                cred, text='🔍  FETCH DEALS',
+                fg_color=self.ACCENT, hover_color='#3a7bd5',
+                text_color='#ffffff', font=('Segoe UI', 11, 'bold'),
+                corner_radius=8, height=36, width=170,
+                command=self._on_fetch)
+        tip(self.fetch_btn,
+            'Connect to MT5 and pull all deals for the specified Account # and Phase.\n'
+            'Results appear in the tabs below.')
         self.fetch_btn.grid(row=0, column=7, padx=(16,4), pady=4)
 
         self.export_btn = ctk.CTkButton(cred, text='💾  EXPORT CSV',
@@ -568,26 +738,43 @@ class MT5RecoveryApp:
                                          text_color=self.FG2, font=('Segoe UI', 9, 'bold'),
                                          corner_radius=8, height=28, width=140,
                                          state='disabled', command=self._on_export)
+        tip(self.export_btn, 'Save all matched deals to a CSV file for manual dashboard entry.')
         self.export_btn.grid(row=1, column=7, padx=(16,4), pady=2)
 
         # Row 1 – account / phase / days
-        lbl(cred, 'Account #', col=0, row=1)
+        tip(lbl(cred, 'Account #', col=0, row=1),
+            'The client account number as it appears in the MT5 comment.\n'
+            'E.g. if the comment is  FNFT...7879_CH2  enter  7879.\n'
+            'Partial matches work — entering 17879 will also find 7879.')
         self.account_var = tk.StringVar()
-        ent(cred, self.account_var, 12).grid(row=1, column=1, padx=(0,8), pady=4, sticky='w')
+        tip(ent(cred, self.account_var, 12),
+            'Client account fragment from MT5 comment (before _CH / _FD / _FA / _DD).'
+            ).grid(row=1, column=1, padx=(0,8), pady=4, sticky='w')
 
-        lbl(cred, 'Phase', col=2, row=1)
+        tip(lbl(cred, 'Phase', col=2, row=1),
+            'Filter deals by phase code:\n'
+            '  ALL — return every phase\n'
+            '  FA  — Farming (maps to Hedge Day columns)\n'
+            '  CH  — Challenge (Hedge Result 1-5)\n'
+            '  FD  — Funded (Hedge Result 1.1-5.1)\n'
+            '  DD  — Daily Drawdown (Hedge Result 1.1-4.1)')
         self.phase_var = tk.StringVar(value='ALL')
-        ctk.CTkComboBox(cred, variable=self.phase_var,
+        phase_cb = ctk.CTkComboBox(cred, variable=self.phase_var,
                          values=['ALL', 'FA', 'CH', 'FD', 'DD'],
                          fg_color=self.BG3, border_color=self.BG3,
                          button_color=self.ACCENT, dropdown_fg_color=self.BG2,
                          text_color=self.FG, font=('Segoe UI', 10),
-                         width=120, height=32, state='readonly'
-                         ).grid(row=1, column=3, padx=(0,8), pady=4, sticky='w')
+                         width=120, height=32, state='readonly')
+        tip(phase_cb, 'FA=Farming  CH=Challenge  FD=Funded  DD=Daily Drawdown\nALL returns every phase.')
+        phase_cb.grid(row=1, column=3, padx=(0,8), pady=4, sticky='w')
 
-        lbl(cred, 'Days Back', col=5, row=1)
+        tip(lbl(cred, 'Days Back', col=5, row=1),
+            'How many calendar days of MT5 history to fetch.\n'
+            'Default 365 = one year.  Increase for older deals.')
         self.days_var = tk.StringVar(value='365')
-        ent(cred, self.days_var, 6).grid(row=1, column=6, padx=(0,8), pady=4, sticky='w')
+        tip(ent(cred, self.days_var, 6),
+            'Number of days to look back in MT5 history (default: 365).'
+            ).grid(row=1, column=6, padx=(0,8), pady=4, sticky='w')
 
         # ── thin divider ──────────────────────────────────────
         div = tk.Frame(self.root, bg=self.BG3, height=1)
@@ -597,28 +784,41 @@ class MT5RecoveryApp:
         rrow = tk.Frame(self.root, bg=self.BG2)
         rrow.pack(fill='x', padx=14, pady=(4, 0))
 
-        lbl(rrow, 'From Date').pack(side='left', padx=(8,4))
+        tip(tk.Label(rrow, text='From Date', bg=self.BG2, fg=self.FG2, font=('Segoe UI', 9)),
+            'Start date for Reconstruct All scan (YYYY-MM-DD).\n'
+            'Only used by the ⚡ RECONSTRUCT ALL button.').pack(side='left', padx=(8,4))
         self.from_date_var = tk.StringVar(value='2026-03-15')
-        ctk.CTkEntry(rrow, textvariable=self.from_date_var, width=110,
+        tip(ctk.CTkEntry(rrow, textvariable=self.from_date_var, width=110,
                      fg_color=self.BG3, border_color=self.BG3,
                      text_color=self.FG, font=('Consolas', 11),
-                     corner_radius=6, height=30).pack(side='left', padx=(0,12))
+                     corner_radius=6, height=30),
+            'Start date — format: YYYY-MM-DD').pack(side='left', padx=(0,12))
 
-        lbl(rrow, 'To Date').pack(side='left', padx=(0,4))
+        tip(tk.Label(rrow, text='To Date', bg=self.BG2, fg=self.FG2, font=('Segoe UI', 9)),
+            'End date for Reconstruct All scan (YYYY-MM-DD).\n'
+            'Defaults to today.').pack(side='left', padx=(0,4))
         self.to_date_var = tk.StringVar(value=datetime.now().strftime('%Y-%m-%d'))
-        ctk.CTkEntry(rrow, textvariable=self.to_date_var, width=110,
+        tip(ctk.CTkEntry(rrow, textvariable=self.to_date_var, width=110,
                      fg_color=self.BG3, border_color=self.BG3,
                      text_color=self.FG, font=('Consolas', 11),
-                     corner_radius=6, height=30).pack(side='left', padx=(0,12))
+                     corner_radius=6, height=30),
+            'End date — format: YYYY-MM-DD').pack(side='left', padx=(0,12))
 
-        tk.Label(rrow, text='(Uses same Login / Password / Server above — no Account # needed)',
-                 bg=self.BG2, fg=self.FG2, font=('Segoe UI', 9)).pack(side='left', padx=4)
+        tip(tk.Label(rrow, text='(Uses same Login / Password / Server above — no Account # needed)',
+                 bg=self.BG2, fg=self.FG2, font=('Segoe UI', 9)),
+            'Reconstruct All ignores the Account # field — it parses every comment on the MT5 account.'
+            ).pack(side='left', padx=4)
 
         self.recon_btn = ctk.CTkButton(rrow, text='⚡  RECONSTRUCT ALL',
                                         fg_color=self.ACCENT2, hover_color='#2db87a',
                                         text_color='#0f1117', font=('Segoe UI', 11, 'bold'),
                                         corner_radius=8, height=36, width=190,
                                         command=self._on_reconstruct_all)
+        tip(self.recon_btn,
+            'Fetch ALL deals between From Date and To Date.\n'
+            'Parses every MT5 comment and groups results by\n'
+            'Prop Firm → Account → Phase → Hedge Day.\n'
+            'No Account # needed — finds everything automatically.')
         self.recon_btn.pack(side='right', padx=(0,8), pady=4)
 
         # ── status strip ──────────────────────────────────────
@@ -694,6 +894,11 @@ class MT5RecoveryApp:
         f6 = tk.Frame(self.notebook, bg=self.BG3)
         self.notebook.add(f6, text='  ⚡  Reconstruct All  ')
         self._build_reconstruct_tab(f6)
+
+        # Tab 7 – Push to Dashboard
+        f7 = tk.Frame(self.notebook, bg=self.BG3)
+        self.notebook.add(f7, text='  🚀  Push to Dashboard  ')
+        self._build_push_tab(f7)
 
     # ══════════════════════════════════════════════════════════
     def _build_reconstruct_tab(self, parent):
@@ -833,6 +1038,15 @@ class MT5RecoveryApp:
         setattr(self, attr_name, tree)
 
 
+
+    def _toggle_help(self):
+        if self._help_open.get():
+            self._help_frame.pack_forget()
+            self._help_open.set(False)
+        else:
+            # Insert after header (before cred card)
+            self._help_frame.pack(fill='x', after=self.root.winfo_children()[0])
+            self._help_open.set(True)
 
     def _toggle_password(self):
         self.pass_entry.configure(show='' if self.show_pass_var.get() else '●')
@@ -1255,6 +1469,477 @@ class MT5RecoveryApp:
 
         self.status_var.set(f"Exported {len(matched)} deals to {os.path.basename(path)}")
         messagebox.showinfo("Export Complete", f"Saved to:\n{path}")
+
+    # ══════════════════════════════════════════════════════════
+    def _build_push_tab(self, parent):
+        """Tab 7 — Push recovered deals to the live dashboard (mirrors trader companion)."""
+        self._push_client_info = None   # stores /auth identity response
+
+        # ── Row 1: Dashboard URL ──────────────────────────────
+        r1 = tk.Frame(parent, bg=self.BG2)
+        r1.pack(fill='x', padx=12, pady=(10, 4))
+        tk.Label(r1, text='Dashboard URL', bg=self.BG2, fg=self.FG2,
+                 font=('Segoe UI', 9)).pack(side='left', padx=(8, 4))
+        self.push_url_var = tk.StringVar(value='https://www.tradeopss.com')
+        url_e = ctk.CTkEntry(r1, textvariable=self.push_url_var, width=340,
+                             fg_color=self.BG3, border_color=self.BG3,
+                             text_color=self.FG, font=('Consolas', 10),
+                             corner_radius=6, height=30)
+        Tooltip(url_e,
+                'Dashboard base URL.\n'
+                'Use http://localhost:5000 for local testing,\n'
+                'or https://www.tradeopss.com for production.\n'
+                'No trailing slash.')
+        url_e.pack(side='left', padx=(0, 8))
+
+        # ── Row 2: Email + Lookup button + Push button ────────
+        r2 = tk.Frame(parent, bg=self.BG2)
+        r2.pack(fill='x', padx=12, pady=(0, 4))
+        tk.Label(r2, text='Client Email', bg=self.BG2, fg=self.FG2,
+                 font=('Segoe UI', 9)).pack(side='left', padx=(8, 4))
+        self.push_email_var = tk.StringVar()
+        email_e = ctk.CTkEntry(r2, textvariable=self.push_email_var, width=260,
+                               fg_color=self.BG3, border_color=self.BG3,
+                               text_color=self.FG, font=('Consolas', 10),
+                               corner_radius=6, height=30)
+        Tooltip(email_e,
+                'The client\'s email registered on the dashboard.\n'
+                'Used to find which evaluation rows belong to them.\n'
+                'You must click "Lookup Client" before pushing.')
+        email_e.pack(side='left', padx=(0, 8))
+
+        lookup_btn = ctk.CTkButton(
+            r2, text='🔍  Lookup Client',
+            fg_color='#0f4c75', hover_color='#1b6ca8',
+            text_color='#ffffff', font=('Segoe UI', 10, 'bold'),
+            corner_radius=8, height=32, width=150,
+            command=self._on_push_lookup)
+        Tooltip(lookup_btn,
+                'Verify the client email exists on the dashboard.\n'
+                'This retrieves their hierarchy (Client → Trader → Admin).\n'
+                'The Push button is enabled only after a successful lookup.')
+        lookup_btn.pack(side='left', padx=(0, 12))
+
+        self.push_btn = ctk.CTkButton(
+            r2, text='🚀  PUSH TO DASHBOARD',
+            fg_color='#555555', hover_color='#555555',
+            text_color='#aaaaaa', font=('Segoe UI', 11, 'bold'),
+            corner_radius=8, height=32, width=210,
+            state='disabled',
+            command=self._on_push_to_dashboard)
+        Tooltip(self.push_btn,
+                'Push all fetched deals to the dashboard.\n\n'
+                'Steps:\n'
+                '  1. Run FETCH DEALS to load MT5 data for the account.\n'
+                '  2. Enter client email and click Lookup Client.\n'
+                '  3. Click this button.\n\n'
+                'What gets pushed:\n'
+                '  • Hedge Result fields for CH / FD / DD phases\n'
+                '  • Hedge Day fields for FA (Farming) — latest day only\n'
+                '  • Open / Close timestamps stored as companion notes\n'
+                '  • Auto-runs Hedging Review push after success')
+        self.push_btn.pack(side='left', padx=(0, 8))
+
+        # ── Hierarchy / status label ──────────────────────────
+        self.push_hierarchy_var = tk.StringVar(
+            value='Enter client email and click Lookup Client to begin.')
+        self.push_hierarchy_lbl = tk.Label(
+            parent, textvariable=self.push_hierarchy_var,
+            bg=self.BG2, fg=self.FG2, font=('Segoe UI', 9, 'italic'),
+            anchor='w', padx=16, pady=4)
+        self.push_hierarchy_lbl.pack(fill='x')
+
+        # ── Divider ───────────────────────────────────────────
+        tk.Frame(parent, bg=self.BG3, height=1).pack(fill='x', padx=12, pady=(2, 0))
+
+        # ── Push log ──────────────────────────────────────────
+        log_hdr = tk.Frame(parent, bg='#1e2235', height=30)
+        log_hdr.pack(fill='x', padx=12, pady=(4, 0))
+        log_hdr.pack_propagate(False)
+        tk.Label(log_hdr, text='  Push Log', bg='#1e2235', fg=self.ACCENT,
+                 font=('Segoe UI', 9, 'bold')).pack(side='left', pady=5)
+        ctk.CTkButton(log_hdr, text='Clear', fg_color='#1e2235', hover_color=self.BG3,
+                      text_color=self.FG2, font=('Segoe UI', 8), corner_radius=4,
+                      height=22, width=50,
+                      command=lambda: self._push_log('', clear=True)
+                      ).pack(side='right', padx=8, pady=4)
+
+        log_wrap = tk.Frame(parent, bg=self.BG3)
+        log_wrap.pack(fill='both', expand=True, padx=12, pady=(0, 8))
+        self.push_log_text = tk.Text(
+            log_wrap, wrap='word', bg=self.BG3, fg=self.FG,
+            font=('Consolas', 9), relief='flat', padx=10, pady=8,
+            state='disabled', selectbackground=self.SEL,
+            insertbackground=self.FG)
+        self.push_log_text.tag_configure('ok',   foreground=self.GOOD)
+        self.push_log_text.tag_configure('warn', foreground=self.WARN)
+        self.push_log_text.tag_configure('err',  foreground=self.BAD)
+        self.push_log_text.tag_configure('info', foreground=self.FG2)
+        vsb = ttk.Scrollbar(log_wrap, orient='vertical', command=self.push_log_text.yview)
+        self.push_log_text.configure(yscrollcommand=vsb.set)
+        self.push_log_text.pack(side='left', fill='both', expand=True)
+        vsb.pack(side='right', fill='y')
+
+    # ── Lookup ────────────────────────────────────────────────
+    def _on_push_lookup(self):
+        """POST /api/client/auth — mirrors companion's lookup_client."""
+        import requests as _req
+        url   = self.push_url_var.get().strip().rstrip('/')
+        email = self.push_email_var.get().strip()
+        if not url:
+            messagebox.showwarning('Missing', 'Enter the Dashboard URL.'); return
+        if not email:
+            messagebox.showwarning('Missing', 'Enter the client email.'); return
+
+        self.push_hierarchy_var.set('Looking up client…')
+        self.push_hierarchy_lbl.configure(fg=self.FG2)
+        self._push_client_info = None
+        # Disable push button while looking up
+        self.push_btn.configure(state='disabled', fg_color='#555555',
+                                hover_color='#555555', text_color='#aaaaaa')
+        self._push_log(f'🔍 Looking up: {email} @ {url}')
+
+        def _run():
+            try:
+                resp = _req.post(
+                    f'{url}/api/client/auth',
+                    json={'email': email},
+                    headers={'Content-Type': 'application/json'},
+                    timeout=30)
+                self.root.after(0, lambda: self._handle_lookup_response(resp))
+            except _req.exceptions.Timeout:
+                self.root.after(0, lambda: self._lookup_fail('Connection timeout'))
+            except _req.exceptions.ConnectionError:
+                self.root.after(0, lambda: self._lookup_fail('Cannot connect to server'))
+            except Exception as ex:
+                self.root.after(0, lambda: self._lookup_fail(str(ex)))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _handle_lookup_response(self, resp):
+        try:
+            data = resp.json()
+        except Exception:
+            self._lookup_fail(f'HTTP {resp.status_code} — invalid JSON'); return
+
+        if resp.status_code == 200 and data.get('status') == 'success':
+            self._push_client_info = data.get('identity', {})
+            client   = self._push_client_info.get('client', '?')
+            trader   = self._push_client_info.get('trader', '?')
+            admin    = self._push_client_info.get('admin', '?')
+            category = self._push_client_info.get('category', '')
+            label = f'✅  {client}  →  Trader: {trader}  →  Admin: {admin}'
+            if category:
+                label += f'  |  Category: {category}'
+            self.push_hierarchy_var.set(label)
+            self.push_hierarchy_lbl.configure(fg='#16a34a')
+            # Enable push button
+            self.push_btn.configure(state='normal', fg_color='#7c3aed',
+                                    hover_color='#6d28d9', text_color='#ffffff')
+            self._push_log(f'✅ Client found: {client} → {trader} → {admin}')
+        else:
+            msg = data.get('message', f'HTTP {resp.status_code}')
+            self._lookup_fail(msg)
+
+    def _lookup_fail(self, msg):
+        self._push_client_info = None
+        self.push_hierarchy_var.set(f'❌  {msg}')
+        self.push_hierarchy_lbl.configure(fg=self.BAD)
+        self._push_log(f'❌ Lookup failed: {msg}', 'err')
+
+    # ── Push ─────────────────────────────────────────────────
+    def _on_push_to_dashboard(self):
+        """Build payload from fetched deals and POST to /api/client/push.
+        Mirrors push_data() in trader_app.py exactly."""
+        import requests as _req
+        from collections import defaultdict as _ddict
+
+        url   = self.push_url_var.get().strip().rstrip('/')
+        email = self.push_email_var.get().strip()
+
+        if not self._push_client_info:
+            messagebox.showerror('Not Looked Up',
+                'Please look up the client first.\n'
+                'Enter their email and click "Lookup Client".')
+            return
+        if not self.result_data or not self.result_data.get('matched'):
+            messagebox.showwarning('No Data',
+                'Run FETCH DEALS first to load deals for an account.')
+            return
+
+        matched   = self.result_data['matched']
+        acct_info = self.result_data.get('account_info', {})
+        client_name = self._push_client_info.get('client', '')
+
+        self.push_btn.configure(state='disabled', text='Pushing…')
+        self._push_log('', clear=True)
+        self._push_log(f'Dashboard : {url}')
+        self._push_log(f'Client    : {email}  ({client_name})')
+
+        # ── Statistics (mirrors calculate_statistics) ─────────────────────
+        # Only OUT trades with BUY/SELL type; deduplicate by position_id
+        seen_pos = set()
+        unique_out = []
+        for d in matched:
+            if d.get('type') in [0, 1] and d.get('entry') == 1:
+                if d['position_id'] not in seen_pos:
+                    seen_pos.add(d['position_id'])
+                    unique_out.append(d)
+        profits  = [d['_profit'] for d in unique_out]
+        winning  = [p for p in profits if p > 0]
+        losing   = [p for p in profits if p < 0]
+        statistics = {
+            'total_trades':   len(unique_out),
+            'winning_trades': len(winning),
+            'losing_trades':  len(losing),
+            'win_rate':       round(len(winning) / len(unique_out) * 100, 2) if unique_out else 0,
+            'total_profit':   round(sum(profits), 2),
+            'average_win':    round(sum(winning) / len(winning), 2) if winning else 0,
+            'average_loss':   round(sum(losing) / len(losing), 2) if losing else 0,
+            'profit_factor':  round(abs(sum(winning) / sum(losing)), 2)
+                              if losing and sum(losing) != 0 else 0,
+            'largest_win':    round(max(winning), 2) if winning else 0,
+            'largest_loss':   round(min(losing), 2) if losing else 0,
+        }
+
+        # ── Aggregate by (account, phase, number) — position dedup ───────
+        # One entry per position_id (take the matched deal that has _parsed comment)
+        seen_pid = {}
+        for d in matched:
+            pid = d.get('position_id')
+            if pid not in seen_pid:
+                seen_pid[pid] = d
+        all_unique = list(seen_pid.values())
+
+        # Non-FA groups: keyed by (account, phase, number)
+        non_fa = _ddict(lambda: {
+            'net_profit': 0.0, 'deal_count': 0,
+            'open_time': None, 'close_time': None,
+            'account_number': '', 'phase_code': '',
+            'trade_number': None, 'farming_date': None,
+        })
+        # FA groups: keyed by (account, date_str) — same-day merge
+        fa_by_day = _ddict(lambda: {
+            'net_profit': 0.0, 'deal_count': 0,
+            'open_time': None, 'close_time': None,
+            'account_number': '', 'phase_code': 'FA',
+            'trade_number': 1, 'farming_date': None,
+        })
+
+        for d in all_unique:
+            p      = d['_parsed']
+            phase  = p['phase']
+            num    = p['number']
+            acct   = p['account_number']
+            dt_str = datetime.fromtimestamp(d['time']).strftime('%Y-%m-%d')
+            dt_iso = datetime.fromtimestamp(d['time']).isoformat()
+            profit = d['_profit']
+
+            if phase == 'FA':
+                g = fa_by_day[(acct, dt_str)]
+                g['account_number'] = acct
+                g['farming_date']   = dt_str
+                g['net_profit']    += profit
+                g['deal_count']    += 1
+                if not g['open_time'] or dt_iso < g['open_time']:
+                    g['open_time'] = dt_iso
+                if not g['close_time'] or dt_iso > g['close_time']:
+                    g['close_time'] = dt_iso
+            else:
+                g = non_fa[(acct, phase, num)]
+                g['account_number'] = acct
+                g['phase_code']     = phase
+                g['trade_number']   = num
+                g['net_profit']    += profit
+                g['deal_count']    += 1
+                if not g['open_time'] or dt_iso < g['open_time']:
+                    g['open_time'] = dt_iso
+                if not g['close_time'] or dt_iso > g['close_time']:
+                    g['close_time'] = dt_iso
+
+        # FA: group by account, sort chronologically, _fa_slot = total days,
+        # push ONLY the latest date per account (companion behaviour).
+        fa_per_account = _ddict(list)
+        for (acct, dt_str), entry in fa_by_day.items():
+            fa_per_account[acct].append((dt_str, dict(entry)))
+
+        fa_to_push = []
+        for acct, date_entries in fa_per_account.items():
+            date_entries.sort(key=lambda x: x[0])   # chronological
+            total_days = len(date_entries)           # count IS the hedge day slot
+            latest_date, latest_entry = date_entries[-1]
+            latest_entry['_fa_slot']    = total_days
+            latest_entry['trade_number'] = total_days
+            fa_to_push.append(latest_entry)
+            self._push_log(
+                f'   📅 {acct}: {total_days} FA day(s) in history '
+                f'→ push as Hedge Day {total_days} ({latest_date})')
+
+        aggregated = list(non_fa.values()) + fa_to_push
+
+        # ── Deals payload (string types/entry matching companion) ─────────
+        deals_payload = []
+        for d in matched:
+            deals_payload.append({
+                'ticket':      d.get('ticket', ''),
+                'order':       d.get('order', ''),
+                'position_id': d.get('position_id', ''),
+                'symbol':      d.get('symbol', ''),
+                'type':        DEAL_TYPE_MAP.get(d.get('type', -1), str(d.get('type', ''))),
+                'entry':       ENTRY_MAP.get(d.get('entry', -1), str(d.get('entry', ''))),
+                'volume':      d.get('volume', 0),
+                'price':       d.get('price', 0),
+                'profit':      d.get('profit', 0),
+                'commission':  d.get('commission', 0),
+                'swap':        d.get('swap', 0),
+                'time':        datetime.fromtimestamp(d['time']).isoformat(),
+                'time_raw':    d['time'],
+                'comment':     d.get('comment', ''),
+            })
+
+        payload = {
+            'email':                  email,
+            'account':                acct_info,
+            'positions':              [],
+            'deals':                  deals_payload,
+            'statistics':             statistics,
+            'evaluations':            [],
+            'aggregated_by_comment':  aggregated,
+            'comment_summary':        {},
+            'dropdown_options':       {},
+        }
+
+        bal = acct_info.get('balance', 0)
+        dep = acct_info.get('total_deposits', 0)
+        self._push_log(
+            f'📦 Payload: Bal=${bal:,.0f} | Dep=${dep:,.0f} | '
+            f'{len(deals_payload)} deals | {len(aggregated)} hedge groups '
+            f'(CH/FD/DD: {len(non_fa)}, FA: {len(fa_to_push)})')
+
+        def _run():
+            try:
+                resp = _req.post(
+                    f'{url}/api/client/push',
+                    json=payload,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=120)
+                self.root.after(
+                    0, lambda: self._handle_push_response(resp, url, email, acct_info))
+            except _req.exceptions.Timeout:
+                self.root.after(0, lambda: self._push_done(
+                    False, 'Timeout — server did not respond within 120s'))
+            except _req.exceptions.ConnectionError:
+                self.root.after(0, lambda: self._push_done(False, 'Cannot connect to server'))
+            except Exception as ex:
+                self.root.after(0, lambda: self._push_done(False, str(ex)))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _handle_push_response(self, resp, url, email, acct_info):
+        try:
+            data = resp.json()
+        except Exception:
+            self._push_done(False, f'HTTP {resp.status_code} — invalid JSON response')
+            return
+
+        if resp.status_code == 200 and data.get('status') == 'success':
+            hedge_updates = data.get('hedge_updates', 0)
+            for entry in data.get('hedge_match_log', []):
+                self._push_log(f'  {entry}')
+            if hedge_updates:
+                self._push_log(f'📊 {hedge_updates} hedge cell(s) updated on dashboard')
+            self._push_done(True, f'{hedge_updates} hedge cell(s) updated.')
+            # Auto-trigger hedging review — same as companion does after push_data()
+            self._push_hedging_review_auto(url, email, acct_info)
+        else:
+            msg = data.get('message', f'HTTP {resp.status_code}')
+            for entry in data.get('hedge_match_log', []):
+                self._push_log(f'  {entry}')
+            self._push_done(False, msg)
+
+    def _push_hedging_review_auto(self, url, email, acct_info):
+        """POST /api/client/push_hedging_review — auto-called after successful push."""
+        import requests as _req
+        deposits    = float(acct_info.get('total_deposits', 0) or 0)
+        withdrawals = float(acct_info.get('total_withdrawals', 0) or 0)
+        balance     = float(acct_info.get('balance', 0) or 0)
+        payload = {
+            'email':              email,
+            'total_deposits':     deposits,
+            'total_withdrawals':  withdrawals,
+            'current_balance':    balance,
+        }
+        self._push_log(
+            f'📊 Hedging Review → Dep=${deposits:,.0f} | '
+            f'Wth=${withdrawals:,.0f} | Bal=${balance:,.0f}')
+
+        def _run():
+            try:
+                resp = _req.post(
+                    f'{url}/api/client/push_hedging_review',
+                    json=payload,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=30)
+                self.root.after(0, lambda: self._handle_hr_response(resp, balance))
+            except _req.exceptions.Timeout:
+                self.root.after(0, lambda: self._push_log(
+                    '⚠️ Hedging review timeout', 'warn'))
+            except _req.exceptions.ConnectionError:
+                self.root.after(0, lambda: self._push_log(
+                    '⚠️ Hedging review — cannot connect', 'warn'))
+            except Exception as ex:
+                self.root.after(0, lambda: self._push_log(
+                    f'⚠️ Hedging review error: {ex}', 'warn'))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _handle_hr_response(self, resp, balance):
+        try:
+            data = resp.json()
+        except Exception:
+            self._push_log(
+                f'⚠️ Hedging review: HTTP {resp.status_code} — invalid JSON', 'warn')
+            return
+        if resp.status_code == 200 and data.get('status') == 'success':
+            hr     = data.get('hedging_review') or {}
+            actual = hr.get('actual_hedging_results', 0)
+            disc   = hr.get('discrepancy', 0)
+            self._push_log(
+                f'✅ Hedging Review → Actual: ${actual:,.2f} | '
+                f'Disc: ${disc:,.2f} | Bal: ${balance:,.0f}')
+        else:
+            msg = data.get('message', f'HTTP {resp.status_code}')
+            self._push_log(f'⚠️ Hedging review failed: {msg}', 'warn')
+
+    def _push_log(self, msg, tag='info', clear=False):
+        """Append a colour-coded line to the push log."""
+        self.push_log_text.configure(state='normal')
+        if clear:
+            self.push_log_text.delete('1.0', 'end')
+            self.push_log_text.configure(state='disabled')
+            return
+        if msg.startswith('✅'):
+            tag = 'ok'
+        elif msg.startswith('⚠') or msg.startswith('⏭') or msg.startswith('SKIP'):
+            tag = 'warn'
+        elif msg.startswith('❌'):
+            tag = 'err'
+        self.push_log_text.insert('end', msg + '\n', tag)
+        self.push_log_text.see('end')
+        self.push_log_text.configure(state='disabled')
+
+    def _push_done(self, success, msg):
+        self.push_btn.configure(
+            state='normal', text='🚀  PUSH TO DASHBOARD',
+            fg_color='#7c3aed', hover_color='#6d28d9', text_color='#ffffff')
+        if success:
+            self._push_log(f'✅ Push complete — {msg}')
+        else:
+            self._push_log(f'❌ Push failed — {msg}', 'err')
+
+
+
+
 
 
 def main():

@@ -191,11 +191,20 @@ def main():
         comment = d.get('comment', '')
         parsed = parse_comment(comment)
 
-        if parsed and parsed['account_number'].upper() == account_upper:
-            if PHASE_FILTER and parsed['phase'] != PHASE_FILTER:
-                continue
-            d['_parsed'] = parsed
-            matched.append(d)
+        if parsed:
+            extracted = parsed['account_number'].upper()
+            # Match exact OR suffix (MT5 comments often truncate leading digits,
+            # e.g. dashboard account '17879' appears as '7879' in the comment)
+            account_match = (
+                extracted == account_upper
+                or (len(extracted) >= 4 and account_upper.endswith(extracted))
+                or (len(account_upper) >= 4 and extracted.endswith(account_upper))
+            )
+            if account_match:
+                if PHASE_FILTER and parsed['phase'] != PHASE_FILTER:
+                    continue
+                d['_parsed'] = parsed
+                matched.append(d)
         elif comment:
             unmatched_comments.add(comment)
 
@@ -347,11 +356,18 @@ def main():
             for pos in positions:
                 p = pos._asdict()
                 parsed = parse_comment(p.get('comment', ''))
-                if parsed and parsed['account_number'].upper() == account_upper:
-                    if PHASE_FILTER and parsed['phase'] != PHASE_FILTER:
-                        continue
-                    p['_parsed'] = parsed
-                    open_matched.append(p)
+                if parsed:
+                    extracted = parsed['account_number'].upper()
+                    open_acct_match = (
+                        extracted == account_upper
+                        or (len(extracted) >= 4 and account_upper.endswith(extracted))
+                        or (len(account_upper) >= 4 and extracted.endswith(account_upper))
+                    )
+                    if open_acct_match:
+                        if PHASE_FILTER and parsed['phase'] != PHASE_FILTER:
+                            continue
+                        p['_parsed'] = parsed
+                        open_matched.append(p)
 
             if open_matched:
                 print(f"  Open positions matching '{ACCOUNT_NUMBER}': {len(open_matched)}")
