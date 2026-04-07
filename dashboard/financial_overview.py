@@ -1,4 +1,4 @@
-from dashboard.database import get_all_clients
+from dashboard.database import get_all_clients, get_all_clients_lean
 import re
 from datetime import datetime, timedelta
 import json
@@ -75,10 +75,16 @@ def cache_result(ttl=300):
 
 # --- Internal Data Access Helpers ---
 # Wraps database calls to provide short-term caching within a request cycle or short period
-@cache_result(ttl=10) 
+@cache_result(ttl=300) 
 def _get_cached_clients():
     """Cached wrapper for database.get_all_clients"""
     return get_all_clients()
+
+@cache_result(ttl=300)
+def _get_cached_clients_lean():
+    """Lean cached loader: only identity, statistics, account, evaluations.
+    Used for performance/totals calculations — avoids loading deals, positions, etc."""
+    return get_all_clients_lean()
 
 # Public alias for external use
 get_cached_clients_dataset = _get_cached_clients
@@ -157,7 +163,7 @@ def clear_financial_cache():
     """Invalidate the financial overview cache."""
     _overview_cache.clear()
 
-@cache_result(ttl=30)
+@cache_result(ttl=300)
 def calculate_all_financials(profile_filter=None, start_date=None, end_date=None):
     """
     Optimized aggregator that computes all financial metrics in a single pass.
@@ -1500,12 +1506,14 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
                             'category': (client.get('category') or '').upper()
                         }
 
-    clients_data = _get_cached_clients()
+    # Use lean loader (no deals/positions/etc.) when no date filtering — much faster
+    # Full loader only needed when date-filtering (evaluations used for per-date payout breakdown)
+    clients_data = _get_cached_clients_lean() if not start_date and not end_date else _get_cached_clients()
     clients_list = []
-    
+
     for client_id, data in clients_data.items():
         if not data: continue
-        
+
         identity = data.get('identity', {})
         real_client_name = identity.get('name') or client_id
         
