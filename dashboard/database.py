@@ -849,21 +849,6 @@ def get_client_data(client_id: str) -> dict:
         
         return None
 
-def get_all_client_identities() -> dict:
-    """Fetch only client_id + identity for all clients in one query.
-    Used to avoid N+1 queries when only identity fields are needed."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT client_id, identity FROM clients_data')
-        result = {}
-        for row in cursor.fetchall():
-            try:
-                identity = json.loads(row['identity'] or '{}') or {}
-            except Exception:
-                identity = {}
-            result[row['client_id']] = identity
-        return result
-
 def get_all_clients() -> dict:
     """Get all client data in a single query (avoids N+1 pattern)."""
     with get_connection() as conn:
@@ -891,29 +876,6 @@ def get_all_clients() -> dict:
                 'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
                 'payment_info': json.loads(row['payment_info'] or '[]'),
                 'payment_address': json.loads(row['payment_address'] or '{}'),
-            }
-        return clients
-
-def get_all_clients_lean() -> dict:
-    """Lean version of get_all_clients: only fetches columns needed for performance/totals calculations.
-    Excludes deals, positions, dropdown_options, hedge_accounts, prop_accounts, vps_accounts,
-    payment_info, payment_address — significantly faster for large datasets."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT client_id, identity, statistics, account, evaluations, last_updated FROM clients_data')
-        clients = {}
-        for row in cursor.fetchall():
-            client_id = row['client_id']
-            try:
-                identity = json.loads(row['identity'] or '{}') or {}
-            except Exception:
-                identity = {}
-            clients[client_id] = {
-                'identity': identity,
-                'statistics': json.loads(row['statistics'] or '{}'),
-                'account': json.loads(row['account'] or '{}'),
-                'evaluations': json.loads(row['evaluations'] or '[]'),
-                'last_updated': row['last_updated'],
             }
         return clients
 
