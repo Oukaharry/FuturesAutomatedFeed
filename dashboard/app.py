@@ -2447,21 +2447,17 @@ def get_hierarchy():
     
     filtered = get_filtered_hierarchy(user_type, user_identifier)
     
-    # Enrich client objects with active_status from DB
+    # Enrich client objects with active_status from DB — single bulk query instead of N+1
+    from dashboard.database import get_all_client_identities
     import copy
+    all_identities = get_all_client_identities()
     enriched = copy.deepcopy(filtered)
     for admin_data in enriched.get('admins', {}).values():
         for trader_data in admin_data.get('traders', {}).values():
             for client in trader_data.get('clients', []):
                 cname = client.get('name', '')
-                try:
-                    cd = get_client_data(cname)
-                    if cd and isinstance(cd.get('identity'), dict):
-                        client['active_status'] = cd['identity'].get('active_status', 'active')
-                    else:
-                        client['active_status'] = 'active'
-                except Exception:
-                    client['active_status'] = 'active'
+                identity = all_identities.get(cname, {})
+                client['active_status'] = identity.get('active_status', 'active')
     
     # Debug logging for empty hierarchy results
     if not enriched.get('admins') or all(
