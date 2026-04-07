@@ -7105,7 +7105,7 @@
             { id: 'trade_count', num: 7, title: '# of times account traded today',
               okText: 'Trade counts recorded.',
               fields: [{ key: 'count', label: '# of trades' }],
-              template: (f) => `${f.count || 0} trade(s) today`,
+              template: (f) => { const v = (f.count || '').trim(); const m = v.match(/^(\d+\.?\d*)\s*(.*)/); if (m) { const n = parseFloat(m[1]); const rest = m[2].trim() || 'hit TP today'; return `${n} ${n == 1 ? 'trade' : 'trades'} ${rest}`; } return v || '0 trades hit TP today'; },
               conditional: true }
         ];
 
@@ -7358,8 +7358,8 @@
                                 }
                                 return `<div class="prop-field-group">
                                     <label class="prop-field-label">${f.label}</label>
-                                    <input type="number" class="prop-field-input" value="${val}" min="0" step="any"
-                                        placeholder="0"
+                                    <input type="text" class="prop-field-input" value="${val}"
+                                        placeholder=""
                                         oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">
                                 </div>`;
                             }).join('') : '';
