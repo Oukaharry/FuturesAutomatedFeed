@@ -2672,11 +2672,13 @@
         const IS_CLIENT = USER_TYPE === 'client';
         const IS_BEF_ADMIN = USER_TYPE === 'bef_admin';
         // Firms hidden from BEF admin view
-        const BEF_HIDDEN_FIRMS = ['Lucid', 'Apex', 'TradeDay', 'Top One Futures'];
+        // Precomputed normalized keys for O(1) Set lookup instead of O(n) array scan
+        const BEF_HIDDEN_FIRMS_SET = new Set(['lucid', 'apex', 'tradeday', 'toponefutures']);
+        const BEF_HIDDEN_FIRMS = ['Lucid', 'Apex', 'TradeDay', 'Top One Futures']; // kept for iteration use
         function isFirmHidden(firmName) {
             if (!IS_BEF_ADMIN) return false;
             const n = (firmName || '').toLowerCase().replace(/[^a-z]/g, '');
-            return BEF_HIDDEN_FIRMS.some(h => h.toLowerCase().replace(/[^a-z]/g, '') === n);
+            return BEF_HIDDEN_FIRMS_SET.has(n);
         }
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
         const CLIENT_TRADER_NAME = "{{ client_trader_name|default('') }}";
