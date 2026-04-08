@@ -3067,6 +3067,15 @@ def api_client_push():
                 for key in DASHBOARD_OWNED_KEYS:
                     existing_val = ex.get(key)
                     if existing_val and str(existing_val).strip() not in ('', '-'):
+                        # For monetary fields, treat zero values as empty/placeholder
+                        # so that autofill from billing can overwrite them
+                        if key in ('Fee', 'Activation Fee'):
+                            try:
+                                numeric = float(str(existing_val).replace('$', '').replace(',', '').strip())
+                                if numeric == 0:
+                                    continue  # don't preserve $0.00 — let pushed value win
+                            except (ValueError, TypeError):
+                                pass
                         ev[key] = existing_val
     else:
         evaluations = existing_data.get("evaluations", [])
@@ -7449,6 +7458,15 @@ def push_evaluations():
             for key in DASHBOARD_OWNED_KEYS:
                 existing_val = ex.get(key)
                 if existing_val and str(existing_val).strip() not in ('', '-'):
+                    # For monetary fields, treat zero values as empty/placeholder
+                    # so that autofill from billing can overwrite them
+                    if key in ('Fee', 'Activation Fee'):
+                        try:
+                            numeric = float(str(existing_val).replace('$', '').replace(',', '').strip())
+                            if numeric == 0:
+                                continue  # don't preserve $0.00 — let pushed value win
+                        except (ValueError, TypeError):
+                            pass
                     ev[key] = existing_val
 
     update_client_field(client_id, 'evaluations', new_evals)

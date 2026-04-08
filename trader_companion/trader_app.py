@@ -132,6 +132,20 @@ except Exception as _tsx_err:
 _TOPSTEPX_IMPORT_ERROR = str(_tsx_err) if not TOPSTEPX_AVAILABLE and '_tsx_err' in dir() and _tsx_err else None
 
 try:
+    from trader_companion.fundednext import FundedNextAccount
+    FUNDEDNEXT_AVAILABLE = True
+except Exception as _fn_err:
+    try:
+        from fundednext import FundedNextAccount
+        FUNDEDNEXT_AVAILABLE = True
+        _fn_err = None
+    except Exception as _fn_err2:
+        FUNDEDNEXT_AVAILABLE = False
+        FundedNextAccount = None
+        _fn_err = _fn_err2
+_FUNDEDNEXT_IMPORT_ERROR = str(_fn_err) if not FUNDEDNEXT_AVAILABLE and '_fn_err' in dir() and _fn_err else None
+
+try:
     from trader_companion.trade_limit_manager import TradeLimitManager
 except ImportError:
     try:
@@ -1347,6 +1361,7 @@ class TraderCompanionApp:
         self.tradovate_account = None
         self.topstepx_account = None
         self._broker_connections = {}  # {firm_name: {user_entry, pass_entry, status_var, connect_btn, account, row_frame}}
+        self._propfirm_browsers = {}   # {firm_name: FundedNextAccount/etc} for dashboard scraping
         self.prop_firm_mgr = PropFirmManager() if PROP_FIRM_AVAILABLE else None
         self._auto_trading_stop = threading.Event()
         self._auto_trading_thread = None
@@ -3957,6 +3972,11 @@ class TraderCompanionApp:
                 prop_accounts = data.get("prop_accounts", [])
                 self.root.after(0, lambda ae=active_evals, pa=prop_accounts: self._populate_broker_rows(ae, pa))
 
+                # Auto-launch browsers for prop firms that need dashboard monitoring
+                active_firms = list(dict.fromkeys(
+                    ev.get("Prop Firm", "") for ev in active_evals if ev.get("Prop Firm")))
+                self.root.after(2000, lambda af=active_firms: self._auto_launch_propfirm_browsers(af))
+
                 # Auto-fill MT5 credentials from dashboard if available
                 mt5_creds = data.get("mt5_credentials") or {}
                 mt5_login = (mt5_creds.get("login") or "").strip()
@@ -4982,6 +5002,26 @@ class TraderCompanionApp:
                                          corner_radius=4,
                                          command=lambda f=firm: self._connect_broker_firm(f))
                 conn_btn.pack(side="right", padx=(8, 4))
+
+                # Dashboard button — only for firms with browser-based dashboards
+                if firm in self._BROWSER_MONITORED_FIRMS:
+                    dash_btn = ctk.CTkButton(row, text="🌐 Dashboard", width=90, height=24,
+                                             fg_color="#1A1A3E", hover_color="#2A2A5E",
+                                             border_width=1, border_color="#3B3B6E",
+                                             font=("Consolas", 9), text_color="#A78BFA",
+                                             corner_radius=4,
+                                             command=lambda f=firm: self._launch_propfirm_dashboard(f))
+                    dash_btn.pack(side="right", padx=(4, 0))
+
+                # Dashboard button — only for firms with browser-based dashboards
+                if firm in self._BROWSER_MONITORED_FIRMS:
+                    dash_btn = ctk.CTkButton(row, text="🌐 Dashboard", width=90, height=24,
+                                             fg_color="#1A1A3E", hover_color="#2A2A5E",
+                                             border_width=1, border_color="#3B3B6E",
+                                             font=("Consolas", 9), text_color="#A78BFA",
+                                             corner_radius=4,
+                                             command=lambda f=firm: self._launch_propfirm_dashboard(f))
+                    dash_btn.pack(side="right", padx=(4, 0))
             else:
                 row = tk.Frame(self._broker_rows_frame, bg="#0A1220")
                 row.pack(fill="x", padx=4, pady=1)
@@ -5139,6 +5179,378 @@ class TraderCompanionApp:
                 time.sleep(3)  # stagger to avoid overwhelming
 
         threading.Thread(target=_do_auto, daemon=True).start()
+
+    _BROWSER_MONITORED_FIRMS = {
+        "Funded Next":  {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
+                         "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
+        "FundedNext":   {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
+                         "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
+    }
+
+    def _auto_launch_propfirm_browsers(self, active_firms):
+        """
+        Detect which active prop firms have browser-based dashboards and store
+        them so the UI dashboard buttons know what to launch.  Does NOT auto-open
+        browsers — the user clicks the "Dashboard" button in the broker row.
+        Tradovate/TopStepX auto-connect with credentials as before.
+        """
+        for firm in active_firms:
+            cfg = self._BROWSER_MONITORED_FIRMS.get(firm)
+            if not cfg:
+                continue
+            class_avail = globals().get(cfg["class_available"], False)
+            if class_avail:
+                self.log(f"🌐 {firm} has a dashboard — click the Dashboard button to connect")
+
+    def _launch_propfirm_dashboard(self, firm_name):
+        """
+        Launch a Chrome browser for the prop firm's dashboard, show login dialog.
+        Called when user clicks the 'Dashboard' button in a broker row.
+        """
+        cfg = self._BROWSER_MONITORED_FIRMS.get(firm_name)
+        if not cfg:
+            self.log(f"⚠ No dashboard config for {firm_name}", "WARN")
+            return
+
+        # Skip if already connected
+        if firm_name in self._propfirm_browsers and self._propfirm_browsers[firm_name]:
+            try:
+                if self._propfirm_browsers[firm_name].is_connected():
+                    self.log(f"🌐 {firm_name} dashboard already open")
+                    return
+            except Exception:
+                pass
+
+        class_avail = globals().get(cfg["class_available"], False)
+        if not class_avail:
+            self.log(f"⚠ {firm_name} browser module not available", "WARN")
+            return
+
+        self.log(f"🌐 Opening {firm_name} dashboard login page...")
+
+        def _do_launch():
+            try:
+                account_cls = globals().get(cfg["account_class"])
+                if not account_cls:
+                    return
+
+                acct = account_cls(attach_to_existing=False, use_real_profile=False)
+                acct.driver.get(cfg["login_url"])
+                self._propfirm_browsers[firm_name] = acct
+
+                self.root.after(0, lambda f=firm_name, a=acct, c=cfg:
+                    self._show_propfirm_login_dialog(f, a, c))
+
+            except Exception as e:
+                self.root.after(0, lambda f=firm_name, err=str(e):
+                    self.log(f"❌ Failed to launch {f} browser: {err}", "ERROR"))
+
+        threading.Thread(target=_do_launch, daemon=True).start()
+
+    def _show_propfirm_login_dialog(self, firm_name, account, cfg):
+        """Show a dialog prompting the user to log in to the prop firm dashboard."""
+        if CTK_AVAILABLE:
+            dialog = ctk.CTkToplevel(self.root)
+        else:
+            dialog = tk.Toplevel(self.root)
+        dialog.title(f"{firm_name} Dashboard Login")
+        dialog.geometry("380x140")
+        dialog.resizable(False, False)
+        dialog.attributes("-topmost", True)
+
+        status_var = tk.StringVar(value=f"Please log in to {firm_name} in the browser window,\nthen click the button below.")
+        if CTK_AVAILABLE:
+            status_lbl = ctk.CTkLabel(dialog, textvariable=status_var, font=("Consolas", 11),
+                                       wraplength=340, justify="center")
+            status_lbl.pack(pady=(16, 8), padx=16)
+            confirm_btn = ctk.CTkButton(dialog, text="✅ I've logged in", width=160, height=30,
+                                         fg_color="#14532D", hover_color="#166534",
+                                         font=("Consolas", 11), text_color="#D1FAE5",
+                                         command=lambda: self._on_login_confirmed(firm_name, account, cfg, dialog, status_var, confirm_btn))
+            confirm_btn.pack(pady=(4, 16))
+        else:
+            status_lbl = tk.Label(dialog, textvariable=status_var, font=("Consolas", 10),
+                                   wraplength=340, justify="center")
+            status_lbl.pack(pady=(16, 8), padx=16)
+            confirm_btn = tk.Button(dialog, text="✅ I've logged in", width=20,
+                                     command=lambda: self._on_login_confirmed(firm_name, account, cfg, dialog, status_var, confirm_btn))
+            confirm_btn.pack(pady=(4, 16))
+
+    def _on_login_confirmed(self, firm_name, account, cfg, dialog, status_var, confirm_btn):
+        """Called when user clicks 'I've logged in' — disable button and verify in background."""
+        confirm_btn.configure(state="disabled")
+        status_var.set("⏳ Verifying login...")
+        threading.Thread(target=self._verify_propfirm_browser,
+                         args=(firm_name, account, cfg, dialog, status_var),
+                         daemon=True).start()
+
+    def _verify_propfirm_browser(self, firm_name, account, cfg, dialog=None, status_var=None):
+        """Navigate to accounts page, verify login, auto-fill fees, close dialog."""
+        def _update_status(msg):
+            if status_var:
+                self.root.after(0, lambda m=msg: status_var.set(m))
+
+        def _close_dialog():
+            if dialog:
+                self.root.after(0, lambda: dialog.destroy())
+
+        try:
+            _update_status("⏳ Navigating to accounts page...")
+            account.driver.get(cfg["accounts_url"])
+            time.sleep(3)
+
+            current_url = account.driver.current_url
+            if "accounts" in current_url or account.is_connected():
+                account.logged_in = True
+                account._login_timestamp = time.time()
+                self.root.after(0, lambda:
+                    self.log(f"✅ {firm_name} browser connected — monitoring active"))
+
+                # Auto-fill challenge fees from billing history
+                _update_status("⏳ Fetching billing history...")
+                self._autofill_challenge_fees(firm_name, account)
+
+                _update_status("✅ Connected!")
+                time.sleep(1)
+                _close_dialog()
+            else:
+                self.root.after(0, lambda:
+                    self.log(f"⚠ {firm_name} may not be logged in (URL: {current_url}). "
+                             f"You can reconnect later.", "WARN"))
+                _update_status("⚠ Login not detected — try again")
+                # Re-enable the button so user can retry
+                if dialog:
+                    self.root.after(0, lambda: [
+                        w.configure(state="normal")
+                        for w in dialog.winfo_children()
+                        if hasattr(w, 'configure') and isinstance(w, (ctk.CTkButton if CTK_AVAILABLE else tk.Button,))
+                    ])
+        except Exception as e:
+            self.root.after(0, lambda err=str(e):
+                self.log(f"❌ {firm_name} browser verification failed: {err}", "ERROR"))
+            _update_status(f"❌ Error: {str(e)[:50]}")
+
+    def _autofill_challenge_fees(self, firm_name, account):
+        """
+        Scrape billing history from the prop firm dashboard and auto-fill
+        the 'Fee' and 'Date Purchased' fields of active evaluations.
+        Then push the updated evaluations to the dashboard.
+        """
+        try:
+            if not hasattr(account, 'get_billing_history'):
+                self.root.after(0, lambda:
+                    self.log(f"🌐 {firm_name}: No get_billing_history method — skipping"))
+                return
+
+            self.root.after(0, lambda:
+                self.log(f"🌐 {firm_name}: Scraping billing history..."))
+
+            billing = account.get_billing_history()
+            if not billing:
+                self.root.after(0, lambda:
+                    self.log(f"🌐 {firm_name}: No billing records found on page"))
+                return
+
+            self.root.after(0, lambda b=len(billing):
+                self.log(f"🌐 {firm_name}: Found {b} billing record(s)"))
+
+            # Log all billing entries for visibility
+            for i, entry in enumerate(billing):
+                acct = entry.get("account_no", "?")
+                amt = entry.get("paid_amount", "?")
+                status = entry.get("status", "?")
+                date = entry.get("date", "?")
+                pkg = entry.get("funding_package", "?")
+                self.root.after(0, lambda idx=i, a=acct, m=amt, s=status, d=date, p=pkg:
+                    self.log(f"   📋 Billing #{idx+1}: Acct={a} | Amount={m} | Status={s} | Date={d} | Pkg={p}"))
+
+            # Build lookup: account_no -> {amount, date, package} (use first approved entry per account)
+            billing_by_acct = {}
+            # Also build a size-based lookup for fallback when Account # is empty
+            # billing funding_package contains size e.g. "Futures Legacy Challenge 50000 USD"
+            billing_by_size = {}
+            for entry in billing:
+                acct_no = (entry.get("account_no") or "").strip()
+                status = (entry.get("status") or "").strip().upper()
+                amount = entry.get("paid_amount_numeric", 0.0)
+                bill_date = (entry.get("date") or "").strip()
+                pkg = (entry.get("funding_package") or "").strip()
+                if acct_no and amount > 0 and status == "APPROVED":
+                    info = {"amount": amount, "date": bill_date, "package": pkg, "account_no": acct_no}
+                    if acct_no not in billing_by_acct:
+                        billing_by_acct[acct_no] = info
+                    # Extract numeric size from package string (e.g. "50000" from "Futures Legacy Challenge 50000 USD")
+                    import re as _re
+                    size_match = _re.search(r'(\d{4,})', pkg.replace(",", ""))
+                    if size_match:
+                        size_key = int(size_match.group(1))
+                        if size_key not in billing_by_size:
+                            billing_by_size[size_key] = info
+
+            if not billing_by_acct and not billing_by_size:
+                self.root.after(0, lambda:
+                    self.log(f"🌐 {firm_name}: No APPROVED billing entries with amount > 0"))
+                return
+
+            self.root.after(0, lambda n=len(billing_by_acct), s=len(billing_by_size),
+                                   ak=list(billing_by_acct.keys()), sk=list(billing_by_size.keys()):
+                self.log(f"🌐 {firm_name}: {n} by-acct ({ak}), {s} by-size ({sk})"))
+
+            # Log active trade rows for debugging
+            row_count = len(self._active_trade_rows)
+            self.root.after(0, lambda c=row_count:
+                self.log(f"🌐 {firm_name}: Checking {c} active trade row(s) for missing Fee/Date"))
+
+            # Canonical firm name for comparison
+            canonical_firm = self._FIRM_MAP.get(firm_name, firm_name)
+
+            # Match billing to active evaluations missing Fee or Date Purchased
+            updated_evals = []
+            filled_count = 0
+            for row_data in self._active_trade_rows:
+                ev = row_data.get("eval")
+                if not ev:
+                    continue
+
+                # Check if eval belongs to this prop firm (flexible matching)
+                ev_firm = ev.get("Prop Firm", "")
+                ev_canonical = self._FIRM_MAP.get(ev_firm, ev_firm)
+                if ev_canonical != canonical_firm and ev_firm != firm_name:
+                    continue
+
+                acct_challenge = (ev.get("Account #") or "").strip()
+                acct_funded = (ev.get("Account #.1") or "").strip()
+                existing_fee = (ev.get("Fee") or "").strip()
+                existing_date = (ev.get("Date Purchased") or "").strip()
+
+                fee_filled = False
+                if existing_fee:
+                    try:
+                        existing_val = float(existing_fee.replace("$", "").replace(",", ""))
+                        fee_filled = existing_val > 0
+                    except ValueError:
+                        fee_filled = existing_fee not in ("", "$0", "$0.00", "0")
+                date_filled = bool(existing_date)
+
+                # Log each eval's current state
+                self.root.after(0, lambda f=ev_firm, ac=acct_challenge, af=acct_funded,
+                                       ef=existing_fee, ed=existing_date, ff=fee_filled, df=date_filled:
+                    self.log(f"   🔍 Eval: Firm={f} | Acct#={ac} | Acct#.1={af} | "
+                             f"Fee='{ef}' ({'✓' if ff else '✗'}) | Date='{ed}' ({'✓' if df else '✗'})"))
+
+                # Note: we no longer skip early — fee is always updated if it differs from billing
+
+                # Try matching by Account # or Account #.1
+                matched = None
+                matched_via = ""
+                for acct_key, label in [(acct_challenge, "Account #"), (acct_funded, "Account #.1")]:
+                    if not acct_key:
+                        continue
+                    # Direct match
+                    if acct_key in billing_by_acct:
+                        matched = billing_by_acct[acct_key]
+                        matched_via = f"{label} direct: {acct_key}"
+                        break
+                    # Partial match: billing account_no may be a substring
+                    for bill_acct, bill_info in billing_by_acct.items():
+                        if bill_acct in acct_key or acct_key in bill_acct:
+                            matched = bill_info
+                            matched_via = f"{label} partial: eval={acct_key} ~ bill={bill_acct}"
+                            break
+                    if matched:
+                        break
+
+                # Fallback: match by Account Size when Account # is empty
+                if not matched and billing_by_size:
+                    ev_size_str = (ev.get("Account Size") or "").strip()
+                    import re as _re
+                    size_match = _re.search(r'(\d[\d,]*)', ev_size_str.replace(",", ""))
+                    if size_match:
+                        ev_size = int(size_match.group(1))
+                        if ev_size in billing_by_size:
+                            matched = billing_by_size[ev_size]
+                            matched_via = f"Account Size fallback: ${ev_size:,} → bill acct {matched.get('account_no', '?')}"
+
+                if matched:
+                    billing_fee = f"${matched['amount']:.2f}"
+                    changes = []
+                    # Always overwrite fee with billing value
+                    ev["Fee"] = billing_fee
+                    changes.append(f"Fee={billing_fee}")
+                    if not date_filled and matched["date"]:
+                        ev["Date Purchased"] = matched["date"]
+                        changes.append(f"Date={matched['date']}")
+                    filled_count += 1
+                    updated_evals.append(ev)
+                    self.root.after(0, lambda v=matched_via, c=", ".join(changes):
+                        self.log(f"   💰 Matched ({v}): {c}"))
+                else:
+                    acct_display = acct_challenge or acct_funded or "no-acct"
+                    bill_keys = list(billing_by_acct.keys())
+                    self.root.after(0, lambda a=acct_display, bk=bill_keys:
+                        self.log(f"   ⚠ No billing match for {a} (billing accts: {bk})"))
+
+            if not filled_count:
+                self.root.after(0, lambda:
+                    self.log(f"🌐 {firm_name}: No accounts needed Fee/Date updates"))
+                return
+
+            self.root.after(0, lambda c=filled_count:
+                self.log(f"🌐 {firm_name}: Pushing {c} updated eval(s) to dashboard..."))
+
+            # Push updated evaluations to dashboard
+            email = self.client_email_entry.get().strip()
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+            if not email or not dashboard_url:
+                self.root.after(0, lambda:
+                    self.log(f"⚠ Cannot push fee updates — no email/dashboard URL", "WARN"))
+                return
+
+            # Collect ALL active evals (server expects the full set)
+            all_evals = [rd.get("eval") for rd in self._active_trade_rows if rd.get("eval")]
+
+            # Debug: log the Fee value we're about to push
+            for ev_debug in all_evals:
+                ev_fee = ev_debug.get("Fee", "N/A")
+                ev_acct = ev_debug.get("Account #", "?")
+                self.root.after(0, lambda f=ev_fee, a=ev_acct:
+                    self.log(f"   📤 Pushing eval Acct={a} Fee={f}"))
+
+            self.root.after(0, lambda n=len(all_evals):
+                self.log(f"🌐 {firm_name}: Sending {n} total eval(s) in push payload"))
+
+            payload = {
+                "email": email,
+                "evaluations": all_evals,
+                "statistics": {},
+                "dropdown_options": {}
+            }
+
+            try:
+                response = requests.post(
+                    f"{dashboard_url}/api/client/push",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("status") == "success":
+                        self.root.after(0, lambda c=filled_count:
+                            self.log(f"✅ Auto-filled Fee & Date Purchased for {c} account(s) → synced to dashboard"))
+                    else:
+                        self.root.after(0, lambda m=data.get('message', 'Unknown'):
+                            self.log(f"⚠ Fee sync response: {m}", "WARN"))
+                else:
+                    self.root.after(0, lambda s=response.status_code:
+                        self.log(f"⚠ Fee sync failed: HTTP {s}", "WARN"))
+            except Exception as e:
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"⚠ Fee sync error: {err}", "WARN"))
+
+        except Exception as e:
+            self.root.after(0, lambda err=str(e):
+                self.log(f"⚠ {firm_name} billing auto-fill failed: {err}", "WARN"))
 
     def _get_broker_for_firm(self, firm_name):
         """Get the connected broker account for a specific prop firm."""
