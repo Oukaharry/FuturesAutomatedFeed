@@ -5679,14 +5679,19 @@ def run_quality_scan(target_client=None):
                                    'detail': f'{row_label}: Fee not filled in',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
 
-                # Zero Fee (fee present but 0 or 0.00 — must be 1 or more)
+                # Zero Fee and no note (fee present but 0 or 0.00 — must be 1 or more, unless a note explains it)
                 if fee and has_data and not is_double_dip:
                     try:
                         fee_val = float(fee.replace(',', '').replace('$', ''))
                         if fee_val == 0.0:
-                            issues.append({'check': 'Zero Fee', 'severity': 'low', 'row': idx,
-                                           'detail': f'{row_label}: Fee is 0.00 — must be 1 or more',
-                                           'estimated_date': _estimate_issue_date(ev, 'Zero Fee', scan_date_str)})
+                            cell_notes = ev.get('_notes', {}) or {}
+                            has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
+                            notes_col = str(ev.get('Notes', '') or '').strip()
+                            has_note = has_any_note or bool(notes_col)
+                            if not has_note:
+                                issues.append({'check': 'Zero Fee, no note', 'severity': 'low', 'row': idx,
+                                               'detail': f'{row_label}: Fee is 0.00 — must be 1 or more',
+                                               'estimated_date': _estimate_issue_date(ev, 'Zero Fee', scan_date_str)})
                     except ValueError:
                         pass
 
