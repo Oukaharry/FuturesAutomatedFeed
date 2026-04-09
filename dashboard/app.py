@@ -2016,7 +2016,7 @@ def require_session(f):
 
 # ============ Maintenance Mode ============
 # Set to True to show maintenance page to clients only
-MAINTENANCE_MODE = True
+MAINTENANCE_MODE = False
 MAINTENANCE_EXEMPT = {'super_admin', 'bef_admin', 'admin', 'trader'}
 
 @app.route('/maintenance')
@@ -5549,7 +5549,7 @@ def _estimate_issue_date(ev, issue_check, fallback):
     dp = _parse_date_str(ev.get('Date Purchased', ''))
     ds = _parse_date_str(ev.get('Date Started', ''))
     # Setup/entry issues → earliest date (purchase/start)
-    if issue_check in ('Status blank', 'Empty Fee', 'Empty Account Size', 'Missing Date Started'):
+    if issue_check in ('Status blank', 'Empty Fee', 'Zero Fee', 'Empty Account Size', 'Missing Date Started'):
         return dp or ds or dates[0]
     # End-of-life issues → latest known date
     if issue_check == 'Missing Date Ended':
@@ -5701,6 +5701,17 @@ def run_quality_scan(target_client=None):
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Fee not filled in',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
+
+                # Zero Fee (fee present but 0 or 0.00 — must be 1 or more)
+                if fee and has_data and not is_double_dip:
+                    try:
+                        fee_val = float(fee.replace(',', '').replace('$', ''))
+                        if fee_val == 0.0:
+                            issues.append({'check': 'Zero Fee', 'severity': 'low', 'row': idx,
+                                           'detail': f'{row_label}: Fee is 0.00 — must be 1 or more',
+                                           'estimated_date': _estimate_issue_date(ev, 'Zero Fee', scan_date_str)})
+                    except ValueError:
+                        pass
 
                 # Empty Account Size
                 if not acct_size and prop_firm and not is_double_dip:
