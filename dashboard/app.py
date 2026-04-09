@@ -1346,14 +1346,6 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     logging.warning(f"[FA WRITE] No pre-computed farming data for account {acc_num} (eval_idx={best_eval_idx})")
                     continue
 
-                # Only write if this account has farming activity on the target date
-                # (otherwise it's stale data from a previous push)
-                sorted_dates = sorted(account_days.keys())
-                if target_date and target_date not in account_days:
-                    logging.info(f"[FA SKIP] account={acc_num} has no farming on target_date={target_date} (last={sorted_dates[-1]}), skipping")
-                    fa_evals_written.discard(best_eval_idx)  # Allow re-check if another session hits this eval
-                    continue
-
                 # Sort dates chronologically — position = Hedge Day number
                 total_farming_days = len(sorted_dates)
                 last_date = sorted_dates[-1]
