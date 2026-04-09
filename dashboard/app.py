@@ -1347,6 +1347,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     continue
 
                 # Sort dates chronologically — position = Hedge Day number
+                sorted_dates = sorted(account_days.keys())
                 total_farming_days = len(sorted_dates)
                 last_date = sorted_dates[-1]
                 last_profit = account_days[last_date]
