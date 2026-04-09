@@ -2016,7 +2016,7 @@ def require_session(f):
 
 # ============ Maintenance Mode ============
 # Set to True to show maintenance page to clients only
-MAINTENANCE_MODE = True
+MAINTENANCE_MODE = False
 MAINTENANCE_EXEMPT = {'super_admin', 'bef_admin', 'admin', 'trader'}
 
 @app.route('/maintenance')
