@@ -145,6 +145,24 @@ except Exception as _fn_err:
         _fn_err = _fn_err2
 _FUNDEDNEXT_IMPORT_ERROR = str(_fn_err) if not FUNDEDNEXT_AVAILABLE and '_fn_err' in dir() and _fn_err else None
 
+# CDP-based prop firm scrapers (Tradeify, Lucid Trading, TopStep dashboard, MFFU, FundedNext)
+try:
+    from trader_companion.prop_firm_scrapers import (
+        TradeifyAccount, LucidTradingAccount, TopStepAccount, MFFUAccount,
+        FundedNextCDPAccount, ensure_chrome_debug)
+    CDP_SCRAPERS_AVAILABLE = True
+except Exception:
+    try:
+        from prop_firm_scrapers import (
+            TradeifyAccount, LucidTradingAccount, TopStepAccount, MFFUAccount,
+            FundedNextCDPAccount, ensure_chrome_debug)
+        CDP_SCRAPERS_AVAILABLE = True
+    except Exception:
+        CDP_SCRAPERS_AVAILABLE = False
+        TradeifyAccount = LucidTradingAccount = TopStepAccount = MFFUAccount = None
+        FundedNextCDPAccount = None
+        ensure_chrome_debug = None
+
 try:
     from trader_companion.trade_limit_manager import TradeLimitManager
 except ImportError:
@@ -316,23 +334,6 @@ class MT5DataPusher:
         
         from_timestamp = time.time() - (days * 24 * 3600)
         to_timestamp = time.time() + 86400
-        
-        # FNFT Specific Logic: Only push current day's trades (Midnight to Now)
-        # This prevents fetching history from previous failed challenges on the same account number (Resets).
-        is_fnft = False
-        try:
-            srv = str(self.server).upper() if self.server else ""
-            cmp = str(getattr(self, 'company', '')).upper()
-            if 'FUNDEDNEXT' in srv or 'FNFT' in srv or 'FUNDEDNEXT' in cmp or 'FNFT' in cmp:
-                is_fnft = True
-        except Exception:
-            pass
-
-        if is_fnft and days < 60:
-            # Override small day values for FNFT to capture session-based history
-            # We no longer hard-limit to "today" because the server side will handle resets.
-            days = 60
-            from_timestamp = time.time() - (days * 24 * 3600)
 
         deals = mt5.history_deals_get(from_timestamp, to_timestamp)
         if deals is None:
@@ -609,7 +610,16 @@ class MT5DataPusher:
         
         account = self.get_account_info()
         positions = self.get_positions()
-        deals = self.get_deals(days=30)
+
+        # Calculate days from 23rd of last month
+        from datetime import datetime as _dt
+        _now = _dt.now()
+        if _now.month == 1:
+            _from_date = _dt(_now.year - 1, 12, 23)
+        else:
+            _from_date = _dt(_now.year, _now.month - 1, 23)
+        _days_since_23rd = (_now - _from_date).days + 1
+        deals = self.get_deals(days=_days_since_23rd)
         
         # Merge in full-history farming deals for correct hedge day calculation
         all_deals_full = self.get_deals(days=365) or []
@@ -2200,10 +2210,20 @@ class TraderCompanionApp:
         if positions is None:
             self.log("⚠️ MT5 positions returned None — sending empty list")
             positions = []
-        # Fetch recent deals (30 days) for regular trading stats
-        raw_deals = self.pusher.get_deals(days=30)
+        # Calculate "23rd of last month" as the from-date for deals
+        from datetime import datetime as _dt
+        _now = _dt.now()
+        if _now.month == 1:
+            _from_date = _dt(_now.year - 1, 12, 23)
+        else:
+            _from_date = _dt(_now.year, _now.month - 1, 23)
+        _days_since_23rd = (_now - _from_date).days + 1  # +1 to include the 23rd itself
+        self.log(f"📅 Fetching deals from {_from_date.strftime('%b %d')} ({_days_since_23rd} days)")
+
+        # Fetch deals from 23rd of last month
+        raw_deals = self.pusher.get_deals(days=_days_since_23rd)
         if raw_deals is None:
-            self.log("⚠️ MT5 deals(30d) returned None — MT5 may be disconnected")
+            self.log(f"⚠️ MT5 deals({_days_since_23rd}d) returned None — MT5 may be disconnected")
             raw_deals = []
         
         # Fetch full history (365 days) for farming deals only — needed for correct hedge day count
@@ -2216,6 +2236,37 @@ class TraderCompanionApp:
                 if deal_id not in fa_deal_ids:
                     raw_deals.append(d)
                     fa_deal_ids.add(deal_id)
+
+        # FNFT challenge filter: challenge accounts reuse the same account numbers
+        # across resets, so only keep last 24h of deals with _CH in the comment.
+        # Funded (_FU, _FD, _DD, _FA) deals keep the full date range.
+        is_fnft = False
+        try:
+            srv = str(self.pusher.server or '').upper()
+            cmp = str(getattr(self.pusher, 'company', '') or '').upper()
+            if 'FUNDEDNEXT' in srv or 'FNFT' in srv or 'FUNDEDNEXT' in cmp or 'FNFT' in cmp:
+                is_fnft = True
+        except Exception:
+            pass
+
+        if is_fnft and raw_deals:
+            _24h_ago = time.time() - 86400
+            before_count = len(raw_deals)
+            filtered = []
+            for d in raw_deals:
+                comment_upper = str(d.get('comment', '')).upper()
+                # Challenge deals: only keep last 24h
+                if '_CH' in comment_upper:
+                    deal_ts = d.get('time_raw', 0)
+                    if deal_ts and deal_ts >= _24h_ago:
+                        filtered.append(d)
+                    # else: skip old challenge deal
+                else:
+                    filtered.append(d)
+            dropped = before_count - len(filtered)
+            if dropped:
+                self.log(f"🔻 Filtered {dropped} old FNFT challenge deal(s) (>24h)")
+            raw_deals = filtered
         
         # Filter deals: Only keep Balance operations and Trades with valid comments
         deals = []
@@ -2247,10 +2298,20 @@ class TraderCompanionApp:
 
         statistics = self.pusher.calculate_statistics(deals)
         
-        # Full history for aggregated results to capture all farming trades
-        aggregated_result = self.pusher.get_deals_grouped_by_phase(days=365)
-        aggregated_by_comment = aggregated_result.get('aggregated', [])
-        comment_summary = aggregated_result.get('summary', {})
+        # Aggregate hedge results from the SAME filtered deals (respects 23rd cutoff
+        # and FNFT challenge 24h filter) so hedge values match the pushed deals.
+        aggregated_by_comment = []
+        comment_summary = {}
+        if COMMENT_PARSER_AVAILABLE and deals:
+            aggregated_by_comment, _unmatched, _log = aggregate_deals_by_position(deals)
+            by_phase = {}
+            for agg in aggregated_by_comment:
+                phase_name = agg.get('phase_name', 'UNKNOWN')
+                if phase_name not in by_phase:
+                    by_phase[phase_name] = {'count': 0, 'total_net_profit': 0.0}
+                by_phase[phase_name]['count'] += 1
+                by_phase[phase_name]['total_net_profit'] += agg.get('net_profit', 0)
+            comment_summary = {'by_phase': by_phase}
 
         # Pre-push diagnostic: log what we're about to send
         pos_count = len(positions) if positions else 0
@@ -5195,10 +5256,28 @@ class TraderCompanionApp:
         threading.Thread(target=_do_auto, daemon=True).start()
 
     _BROWSER_MONITORED_FIRMS = {
-        "Funded Next":       {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
-                              "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
-        "FundedNext":        {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
-                              "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
+        "Funded Next":       {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "FundedNextCDPAccount",
+                              "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts",
+                              "cdp": True},
+        "FundedNext":        {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "FundedNextCDPAccount",
+                              "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts",
+                              "cdp": True},
+        # CDP-based scrapers — attach to existing Chrome tab (no Selenium needed)
+        "Tradeify":          {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "TradeifyAccount",
+                              "login_url": "https://app-f.tradeify.co", "accounts_url": "https://app-f.tradeify.co",
+                              "cdp": True},
+        "Lucid Trading":     {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "LucidTradingAccount",
+                              "login_url": "https://dash.lucidtrading.com", "accounts_url": "https://dash.lucidtrading.com",
+                              "cdp": True},
+        "TopStep":           {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "TopStepAccount",
+                              "login_url": "https://dashboard.topstep.com", "accounts_url": "https://dashboard.topstep.com",
+                              "cdp": True},
+        "MFFU":              {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "MFFUAccount",
+                              "login_url": "https://myfundedfutures.com", "accounts_url": "https://myfundedfutures.com",
+                              "cdp": True},
+        "My Funded Futures": {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "MFFUAccount",
+                              "login_url": "https://myfundedfutures.com", "accounts_url": "https://myfundedfutures.com",
+                              "cdp": True},
     }
 
     def _auto_launch_propfirm_browsers(self, active_firms):
@@ -5220,6 +5299,7 @@ class TraderCompanionApp:
         """
         Launch a Chrome browser for the prop firm's dashboard, show login dialog.
         Called when user clicks the 'Dashboard' button in a broker row.
+        For CDP-based scrapers, attaches to an existing Chrome tab instead of launching new Chrome.
         """
         cfg = self._BROWSER_MONITORED_FIRMS.get(firm_name)
         if not cfg:
@@ -5240,26 +5320,49 @@ class TraderCompanionApp:
             self.log(f"⚠ {firm_name} browser module not available", "WARN")
             return
 
-        self.log(f"🌐 Opening {firm_name} dashboard login page...")
+        # CDP-based scrapers: launch Chrome (or reuse) → open tab → show login dialog → attach
+        if cfg.get("cdp"):
+            self.log(f"🌐 Attaching to {firm_name} dashboard tab (CDP)...")
+            def _do_cdp_launch():
+                try:
+                    account_cls = globals().get(cfg["account_class"])
+                    if not account_cls:
+                        self.root.after(0, lambda: self.log(f"❌ {firm_name}: scraper class not found", "ERROR"))
+                        return
 
-        def _do_launch():
-            try:
-                account_cls = globals().get(cfg["account_class"])
-                if not account_cls:
-                    return
+                    login_url = cfg.get("login_url", "")
 
-                acct = account_cls(attach_to_existing=False, use_real_profile=False)
-                acct.driver.get(cfg["login_url"])
-                self._propfirm_browsers[firm_name] = acct
+                    # Ensure Chrome debug is running and the tab is open
+                    try:
+                        ensure_chrome_debug(url=login_url, port=9222)
+                    except FileNotFoundError as e:
+                        self.root.after(0, lambda err=str(e):
+                            self.log(f"❌ {err}", "ERROR"))
+                        return
 
-                self.root.after(0, lambda f=firm_name, a=acct, c=cfg:
-                    self._show_propfirm_login_dialog(f, a, c))
+                    acct = account_cls(debug_port=9222)
 
-            except Exception as e:
-                self.root.after(0, lambda f=firm_name, err=str(e):
-                    self.log(f"❌ Failed to launch {f} browser: {err}", "ERROR"))
+                    # Try to attach immediately (tab may already be logged in)
+                    try:
+                        acct.login(open_url=login_url)
+                        self._propfirm_browsers[firm_name] = acct
+                        self.root.after(0, lambda:
+                            self.log(f"✅ {firm_name} dashboard connected via CDP"))
+                        self._autofill_challenge_fees(firm_name, acct)
+                        return
+                    except ConnectionError:
+                        # Tab not ready yet — show login dialog
+                        pass
 
-        threading.Thread(target=_do_launch, daemon=True).start()
+                    # Show dialog asking user to log in, then retry
+                    self.root.after(0, lambda: self._show_cdp_login_dialog(
+                        firm_name, acct, cfg))
+
+                except Exception as e:
+                    self.root.after(0, lambda err=str(e):
+                        self.log(f"❌ {firm_name} CDP launch failed: {err}", "ERROR"))
+            threading.Thread(target=_do_cdp_launch, daemon=True).start()
+            return
 
     def _show_propfirm_login_dialog(self, firm_name, account, cfg):
         """Show a dialog prompting the user to log in to the prop firm dashboard."""
@@ -5297,6 +5400,63 @@ class TraderCompanionApp:
         threading.Thread(target=self._verify_propfirm_browser,
                          args=(firm_name, account, cfg, dialog, status_var),
                          daemon=True).start()
+
+    def _show_cdp_login_dialog(self, firm_name, acct, cfg):
+        """Show dialog for CDP-based scrapers asking user to log in, then attach."""
+        if CTK_AVAILABLE:
+            dialog = ctk.CTkToplevel(self.root)
+        else:
+            dialog = tk.Toplevel(self.root)
+        dialog.title(f"{firm_name} Dashboard Login")
+        dialog.geometry("400x150")
+        dialog.resizable(False, False)
+        dialog.attributes("-topmost", True)
+
+        status_var = tk.StringVar(
+            value=f"Please log in to {firm_name} in the Chrome window,\nthen click the button below.")
+        if CTK_AVAILABLE:
+            ctk.CTkLabel(dialog, textvariable=status_var, font=("Consolas", 11),
+                         wraplength=360, justify="center").pack(pady=(16, 8), padx=16)
+            confirm_btn = ctk.CTkButton(
+                dialog, text="✅ I've logged in", width=160, height=30,
+                fg_color="#14532D", hover_color="#166634",
+                font=("Consolas", 11), text_color="#D1FAE5",
+                command=lambda: self._on_cdp_login_confirmed(
+                    firm_name, acct, cfg, dialog, status_var, confirm_btn))
+            confirm_btn.pack(pady=(4, 16))
+        else:
+            tk.Label(dialog, textvariable=status_var, font=("Consolas", 10),
+                     wraplength=360, justify="center").pack(pady=(16, 8), padx=16)
+            confirm_btn = tk.Button(
+                dialog, text="✅ I've logged in", width=20,
+                command=lambda: self._on_cdp_login_confirmed(
+                    firm_name, acct, cfg, dialog, status_var, confirm_btn))
+            confirm_btn.pack(pady=(4, 16))
+
+    def _on_cdp_login_confirmed(self, firm_name, acct, cfg, dialog, status_var, confirm_btn):
+        """Attach CDP after user confirms they've logged in."""
+        confirm_btn.configure(state="disabled")
+        status_var.set("⏳ Attaching to dashboard...")
+
+        def _attach():
+            try:
+                login_url = cfg.get("login_url", "")
+                acct.login(open_url=login_url)
+                self._propfirm_browsers[firm_name] = acct
+                self.root.after(0, lambda: self.log(
+                    f"✅ {firm_name} dashboard connected via CDP"))
+                self._autofill_challenge_fees(firm_name, acct)
+                self.root.after(0, dialog.destroy)
+            except ConnectionError:
+                self.root.after(0, lambda: status_var.set(
+                    f"❌ Could not find {firm_name} tab.\n"
+                    f"Make sure {cfg.get('login_url', '')} is open and loaded."))
+                self.root.after(0, lambda: confirm_btn.configure(state="normal"))
+            except Exception as e:
+                self.root.after(0, lambda err=str(e): status_var.set(f"❌ {err}"))
+                self.root.after(0, lambda: confirm_btn.configure(state="normal"))
+
+        threading.Thread(target=_attach, daemon=True).start()
 
     def _verify_propfirm_browser(self, firm_name, account, cfg, dialog=None, status_var=None):
         """Navigate to accounts page, verify login, auto-fill fees, close dialog."""
