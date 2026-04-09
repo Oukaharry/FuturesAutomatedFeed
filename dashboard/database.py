@@ -878,6 +878,21 @@ def get_all_clients() -> dict:
             }
         return clients
 
+def get_all_client_identities() -> dict:
+    """Fetch only client_id + identity for all clients in one query.
+    Used to avoid N+1 queries when only identity fields are needed."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT client_id, identity FROM clients_data')
+        result = {}
+        for row in cursor.fetchall():
+            try:
+                identity = json.loads(row['identity'] or '{}') or {}
+            except Exception:
+                identity = {}
+            result[row['client_id']] = identity
+        return result
+
 def delete_client_data(client_id: str) -> bool:
     """Permanently delete all data for a client from the database."""
     with get_connection() as conn:
