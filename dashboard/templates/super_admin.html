@@ -863,6 +863,7 @@
                 <input type="hidden" id="editUserOriginalName">
 
                 <div style="margin-top: 24px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button onclick="resetEditUserPassword()" style="padding: 10px 20px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4); color: #f87171; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; margin-right: auto;" onmouseover="this.style.background='rgba(239,68,68,0.25)';this.style.borderColor='#ef4444'" onmouseout="this.style.background='rgba(239,68,68,0.12)';this.style.borderColor='rgba(239,68,68,0.4)'">🔑 Reset Password</button>
                     <button onclick="closeEditUserModal()" style="padding: 10px 20px; background: transparent; border: 1px solid rgba(148,163,184,0.3); color: #cbd5e1; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(148,163,184,0.5)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(148,163,184,0.3)'">Cancel</button>
                     <button onclick="submitEditUser()" style="padding: 10px 20px; background: linear-gradient(135deg, #1e3a8a, #172554); border: none; color: white; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(23,37,84,0.5); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 6px 16px rgba(23,37,84,0.7)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(23,37,84,0.5)';this.style.transform='translateY(0)'">Save Changes</button>
                 </div>
@@ -2021,6 +2022,12 @@
         window.submitSetPassword = submitSetPassword;
 
         // ── Reset Password ────────────────────────────────────────────────
+        function resetEditUserPassword() {
+            const name = document.getElementById('editUserOriginalName').value;
+            const type = document.getElementById('editUserType').value;
+            resetUserPassword(name, type);
+        }
+
         async function resetUserPassword(name, userType) {
             if (!confirm(`Reset dashboard login password for "${name}" back to the default password?`)) return;
             try {
