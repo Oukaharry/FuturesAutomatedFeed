@@ -4033,7 +4033,14 @@ def api_deactivate_user():
 @require_session
 def change_password_page():
     """Page to change password."""
-    return render_template('change_password.html')
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    username = session_user.get('user_identifier')
+    must_change = False
+    if user_type not in ('super_admin', 'bef_admin'):
+        user_record = find_user_by_identifier(username)
+        must_change = bool(user_record and user_record.get('must_change_password'))
+    return render_template('change_password.html', must_change_password=must_change)
 
 @app.route('/api/auth/change_password', methods=['POST'])
 @require_session
@@ -4043,8 +4050,12 @@ def api_change_password():
     data = request.json
     current_password = data.get('current_password')
     new_password = data.get('new_password')
+    skip_current = data.get('skip_current', False)
     
-    if not current_password or not new_password:
+    if not new_password:
+        return jsonify({"status": "error", "message": "New password required"}), 400
+    
+    if not skip_current and not current_password:
         return jsonify({"status": "error", "message": "Current and new password required"}), 400
     
     if len(new_password) < 8:
@@ -4054,23 +4065,30 @@ def api_change_password():
     user_type = session_user.get('user_type')
     username = session_user.get('user_identifier')
     
-    # Verify current password
+    # If skip_current requested, verify user actually has must_change_password set
+    if skip_current and user_type not in ('super_admin', 'bef_admin'):
+        user_record = find_user_by_identifier(username)
+        if not user_record or not user_record.get('must_change_password'):
+            return jsonify({"status": "error", "message": "Current password is required"}), 400
+    
+    # Verify current password (unless must_change_password skip)
     if user_type == 'super_admin':
-        if not verify_admin_password('super_admin', current_password):
+        if not skip_current and not verify_admin_password('super_admin', current_password):
             return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
         if set_admin_password('super_admin', new_password):
             log_action('CHANGE_PASSWORD', 'super_admin', 'super_admin', get_remote_address())
             return jsonify({"status": "success", "message": "Password changed successfully"})
     elif user_type == 'bef_admin':
-        if not verify_admin_password('bef_admin', current_password):
+        if not skip_current and not verify_admin_password('bef_admin', current_password):
             return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
         if set_admin_password('bef_admin', new_password):
             log_action('CHANGE_PASSWORD', 'bef_admin', 'bef_admin', get_remote_address())
             return jsonify({"status": "success", "message": "Password changed successfully"})
     else:
-        user_info = verify_user_password(username, user_type, current_password)
-        if not user_info:
-            return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
+        if not skip_current:
+            user_info = verify_user_password(username, user_type, current_password)
+            if not user_info:
+                return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
         if update_user_password(username, user_type, new_password):
             log_action('CHANGE_PASSWORD', user_type, username, get_remote_address())
             return jsonify({"status": "success", "message": "Password changed successfully"})

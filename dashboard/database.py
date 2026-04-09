@@ -360,10 +360,9 @@ def activate_user(username: str, user_type: str) -> bool:
         conn.commit()
         return cursor.rowcount > 0
 
-def reset_user_password(username: str, user_type: str) -> str:
-    """Reset user password to a random temporary password."""
-    temp_password = secrets.token_urlsafe(12)
-    password_hash, salt = hash_password(temp_password)
+def reset_user_password(username: str, user_type: str, default_password: str = 'Test@123') -> str:
+    """Reset user password to the default password."""
+    password_hash, salt = hash_password(default_password)
     now = datetime.now().isoformat()
     
     with get_connection() as conn:
@@ -376,7 +375,7 @@ def reset_user_password(username: str, user_type: str) -> str:
         conn.commit()
         
         if cursor.rowcount > 0:
-            return temp_password
+            return default_password
         return None
 
 def find_user_by_identifier(identifier: str) -> dict:

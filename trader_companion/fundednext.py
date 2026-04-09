@@ -356,19 +356,47 @@ class FundedNextAccount:
         """
         Switch between CFDs and Futures tabs.
         FundedNext uses ant-tabs: .ant-tabs-tab > .ant-tabs-tab-btn
+        Uses CDP Runtime.evaluate to avoid Selenium page-load hangs on tab switch.
         """
         try:
-            tabs = self.driver.find_elements(By.CSS_SELECTOR, ".ant-tabs-tab")
-            for tab in tabs:
-                if tab.text.strip() == tab_name:
-                    tab.click()
-                    time.sleep(2)
-                    self.logger.info(f"[NAV] Switched to type tab: {tab_name}")
-                    return True
-            self.logger.warning(f"[NAV] Type tab '{tab_name}' not found")
-            return False
+            # Use CDP to click tab — avoids Selenium hanging when the tab
+            # triggers a React Server Component transition
+            result = self.driver.execute_cdp_cmd("Runtime.evaluate", {
+                "expression": f"""
+                    (function() {{
+                        var tabs = document.querySelectorAll('.ant-tabs-tab-btn');
+                        for (var i = 0; i < tabs.length; i++) {{
+                            if (tabs[i].textContent.trim() === '{tab_name}') {{
+                                tabs[i].click();
+                                return 'clicked';
+                            }}
+                        }}
+                        return 'not_found';
+                    }})()
+                """,
+                "returnByValue": True,
+                "timeout": 5000
+            })
+            status = result.get("result", {}).get("value", "")
+            if status == "clicked":
+                time.sleep(3)
+                self.logger.info(f"[NAV] Switched to type tab: {tab_name}")
+                return True
+            else:
+                self.logger.warning(f"[NAV] Type tab '{tab_name}' not found via CDP")
+                return False
         except Exception as e:
-            self.logger.error(f"[NAV] Failed to switch type tab: {e}")
+            self.logger.warning(f"[NAV] CDP tab switch failed ({e}), trying Selenium fallback")
+            try:
+                tabs = self.driver.find_elements(By.CSS_SELECTOR, ".ant-tabs-tab")
+                for tab in tabs:
+                    if tab.text.strip() == tab_name:
+                        tab.click()
+                        time.sleep(2)
+                        self.logger.info(f"[NAV] Switched to type tab via Selenium: {tab_name}")
+                        return True
+            except Exception as e2:
+                self.logger.error(f"[NAV] Selenium fallback also failed: {e2}")
             return False
 
     def switch_status_tab(self, status="Active"):
@@ -490,7 +518,7 @@ class FundedNextAccount:
     def get_all_accounts(self):
         """
         Get statistics for ALL accounts listed on the FundedNext accounts page.
-        Checks both CFDs and Futures tabs, Active status.
+        Checks both Futures and CFDs tabs (Futures first), Active status.
         Returns a list of dicts, one per account.
         """
         if not self.is_connected():
@@ -503,8 +531,8 @@ class FundedNextAccount:
                 
                 accounts = []
                 
-                # Check both type tabs
-                for type_tab in ["CFDs", "Futures"]:
+                # Check both type tabs — Futures first (primary use case)
+                for type_tab in ["Futures", "CFDs"]:
                     self.switch_type_tab(type_tab)
                     self.switch_status_tab("Active")
                     time.sleep(1)
@@ -916,6 +944,273 @@ class FundedNextAccount:
         except Exception as e:
             self.logger.error(f"[BILLING] Failed to scrape billing: {e}")
             return []
+
+    def get_billing_via_api(self):
+        """
+        Fetch billing history via the FundedNext REST API instead of DOM scraping.
+        Returns the same format as get_billing_history() but with richer data
+        including the 'login' field (FundedNext internal account ID).
+        
+        API: GET /api/v1/pending-payment-history?email=...&type=1&page=1&limit=20
+        Requires Bearer token from the tokenV1 cookie.
+        """
+        import json as _json
+        try:
+            # Get auth token from cookie
+            token = self.driver.execute_script("""
+                var c = document.cookie.split(';').find(function(c) {
+                    return c.trim().indexOf('tokenV1=') === 0;
+                });
+                return c ? decodeURIComponent(c.split('=')[1]) : null;
+            """)
+            if not token:
+                self.logger.warning("[BILLING-API] No tokenV1 cookie found, falling back to DOM scrape")
+                return self.get_billing_history()
+
+            # Get user email from profile or cookie
+            email = self.username
+            if not email:
+                profile = self.driver.execute_script("""
+                    try {
+                        var u = JSON.parse(localStorage.getItem('user') || '{}');
+                        return u.email || '';
+                    } catch(e) { return ''; }
+                """)
+                email = profile
+
+            if not email:
+                self.logger.warning("[BILLING-API] No email available, falling back to DOM scrape")
+                return self.get_billing_history()
+
+            # Call the billing API via the browser's fetch (avoids CORS issues)
+            api_url = f"https://api.fundednext.com/api/v1/pending-payment-history?email={email}&type=1&account_id=&page=1&limit=20"
+            result = self.driver.execute_script("""
+                var url = arguments[0];
+                var token = arguments[1];
+                try {
+                    var resp = await fetch(url, {
+                        headers: {
+                            'Authorization': 'Bearer ' + token,
+                            'Accept': 'application/json'
+                        }
+                    });
+                    var text = await resp.text();
+                    return {status: resp.status, body: text};
+                } catch(e) {
+                    return {error: e.toString()};
+                }
+            """, api_url, token)
+
+            if not result or result.get('error'):
+                self.logger.warning(f"[BILLING-API] Fetch failed: {result}")
+                return self.get_billing_history()
+
+            if result.get('status', 0) != 200:
+                self.logger.warning(f"[BILLING-API] HTTP {result.get('status')}, falling back to DOM")
+                return self.get_billing_history()
+
+            data = _json.loads(result['body'])
+            items = data.get('data', {}).get('data', []) if isinstance(data.get('data'), dict) else data.get('data', [])
+            if not items:
+                self.logger.info("[BILLING-API] No billing records from API")
+                return []
+
+            # Convert API format to the same format as get_billing_history()
+            billing = []
+            for item in items:
+                entry = {
+                    "sn": str(item.get("id", "")),
+                    "account_no": str(item.get("login", "")),
+                    "payment_method": item.get("payment_method", ""),
+                    "invoice": item.get("invoice_path", ""),
+                    "status": "APPROVED" if item.get("status") == 1 else str(item.get("status", "")),
+                    "date": (item.get("created_at") or "")[:10],  # "2026-03-30T..." -> "2026-03-30"
+                    "transaction_id": item.get("transaction_id", ""),
+                    "transition_type": item.get("payments_for", ""),
+                    "paid_amount": f"${item.get('paid_amount', 0):.2f}",
+                    "funding_package": item.get("funding_package", ""),
+                    "payment_proof": item.get("payment_proof", ""),
+                    "paid_amount_numeric": float(item.get("paid_amount", 0)),
+                    # Extra API fields not in DOM scrape
+                    "login": item.get("login"),
+                }
+                billing.append(entry)
+
+            self.logger.info(f"[BILLING-API] Got {len(billing)} billing records via API")
+            return billing
+
+        except Exception as e:
+            self.logger.warning(f"[BILLING-API] API billing failed ({e}), falling back to DOM scrape")
+            return self.get_billing_history()
+
+    def get_account_mapping(self):
+        """
+        Get the mapping from FundedNext billing login ID to Tradovate account name.
+        
+        Navigates to accounts page, clicks Futures tab, and extracts the
+        account data from React fiber props on dashboard cards.
+        
+        Returns dict: {login_id: {"tradovate_account_name": "FNFT...", "plan_title": "...", ...}}
+        
+        The React fiber on each .dashboard-card contains:
+          account.login -> 945576089
+          account.tradovate_account_name.tradovate_account_name -> "FNFTCHHARRISONOUKA85625"
+          account.plan.title -> "Futures Legacy Challenge | 50K"
+          account.balance, account.starting_balance, etc.
+        """
+        mapping = {}
+        try:
+            self.navigate_to_accounts()
+            time.sleep(2)
+            self.switch_type_tab("Futures")
+            time.sleep(2)
+
+            # Check for page error
+            body_check = self.driver.execute_cdp_cmd("Runtime.evaluate", {
+                "expression": "document.body.innerText.substring(0, 500)",
+                "returnByValue": True,
+                "timeout": 5000
+            })
+            body_text = body_check.get("result", {}).get("value", "")
+            if "Something Went Wrong" in body_text:
+                self.logger.warning("[MAPPING] Futures tab returned error page")
+                return mapping
+
+            # Extract React fiber data from all dashboard cards
+            fiber_result = self.driver.execute_cdp_cmd("Runtime.evaluate", {
+                "expression": """
+                    (function() {
+                        var cards = document.querySelectorAll('.dashboard-card');
+                        var results = [];
+                        for (var i = 0; i < cards.length; i++) {
+                            var keys = Object.keys(cards[i]);
+                            for (var j = 0; j < keys.length; j++) {
+                                if (keys[j].indexOf('__reactFiber') !== -1) {
+                                    var node = cards[i][keys[j]];
+                                    for (var k = 0; k < 30 && node; k++) {
+                                        var p = node.memoizedProps;
+                                        if (p && p.account && p.account.login) {
+                                            var acct = p.account;
+                                            results.push({
+                                                login: acct.login,
+                                                account_id: acct.id,
+                                                tradovate_name: (acct.tradovate_account_name || {}).tradovate_account_name || null,
+                                                plan_title: (acct.plan || {}).title || null,
+                                                balance: acct.balance,
+                                                starting_balance: acct.starting_balance,
+                                                server_type: (acct.server || {}).server_type || null,
+                                                breached: acct.breached,
+                                                breachedby: acct.breachedby || null
+                                            });
+                                            break;
+                                        }
+                                        node = node.return;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        return JSON.stringify(results);
+                    })()
+                """,
+                "returnByValue": True,
+                "timeout": 10000
+            })
+
+            import json as _json
+            raw = fiber_result.get("result", {}).get("value", "[]")
+            accounts = _json.loads(raw)
+
+            for acct in accounts:
+                login_id = acct.get("login")
+                tv_name = acct.get("tradovate_name")
+                if login_id:
+                    mapping[str(login_id)] = {
+                        "tradovate_account_name": tv_name,
+                        "account_id": acct.get("account_id"),
+                        "plan_title": acct.get("plan_title"),
+                        "balance": acct.get("balance"),
+                        "starting_balance": acct.get("starting_balance"),
+                        "server_type": acct.get("server_type"),
+                        "breached": acct.get("breached"),
+                        "breachedby": acct.get("breachedby"),
+                    }
+                    self.logger.info(
+                        f"[MAPPING] login={login_id} -> tradovate={tv_name} "
+                        f"({acct.get('plan_title')})")
+
+            self.logger.info(f"[MAPPING] Built mapping for {len(mapping)} account(s)")
+            return mapping
+
+        except Exception as e:
+            self.logger.error(f"[MAPPING] Failed to get account mapping: {e}")
+            return mapping
+
+    def get_account_overview(self, account_id):
+        """
+        Get detailed account overview via the FundedNext API.
+        
+        API: GET /api/v1/account-overview?account_id={account_id}
+        
+        Returns dict with account_details (breached, breached_by, login, account_name, type, etc.),
+        stats (balance, profit, win_rate), objectives, and breach_event_details.
+        Returns None on failure.
+        """
+        import json as _json
+        try:
+            token = self.driver.execute_script("""
+                var c = document.cookie.split(';').find(function(c) {
+                    return c.trim().indexOf('tokenV1=') === 0;
+                });
+                return c ? decodeURIComponent(c.split('=')[1]) : null;
+            """)
+            if not token:
+                self.logger.warning("[OVERVIEW] No tokenV1 cookie found")
+                return None
+
+            result = self.driver.execute_cdp_cmd("Runtime.evaluate", {
+                "expression": f"""
+                    (async function() {{
+                        try {{
+                            var resp = await fetch(
+                                'https://api.fundednext.com/api/v1/account-overview?account_id={account_id}',
+                                {{headers: {{'Authorization': 'Bearer {token}', 'Accept': 'application/json'}}}}
+                            );
+                            return await resp.text();
+                        }} catch(e) {{
+                            return JSON.stringify({{error: e.toString()}});
+                        }}
+                    }})()
+                """,
+                "returnByValue": True,
+                "awaitPromise": True,
+                "timeout": 15000
+            })
+
+            raw = result.get("result", {}).get("value", "{}")
+            data = _json.loads(raw)
+
+            if data.get("error"):
+                self.logger.warning(f"[OVERVIEW] API error for account_id={account_id}: {data['error']}")
+                return None
+
+            overview = data.get("data", {})
+            if not overview:
+                self.logger.warning(f"[OVERVIEW] Empty data for account_id={account_id}")
+                return None
+
+            acct_details = overview.get("account_details", {})
+            self.logger.info(
+                f"[OVERVIEW] account_id={account_id} | "
+                f"name={acct_details.get('account_name')} | "
+                f"breached={acct_details.get('breached')} | "
+                f"breached_by={acct_details.get('breached_by')}")
+
+            return overview
+
+        except Exception as e:
+            self.logger.error(f"[OVERVIEW] Failed for account_id={account_id}: {e}")
+            return None
 
     def disconnect(self):
         """Disconnect from FundedNext"""

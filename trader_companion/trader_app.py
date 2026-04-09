@@ -4937,11 +4937,25 @@ class TraderCompanionApp:
         auto_count = 0
         for firm in firms:
             strip_color = self.PROP_FIRM_COLORS.get(firm, "#95A5A6")
-            # Try exact match first, then case-insensitive, then unmatched pool
+            # Try exact match first, then case-insensitive, then alias match, then unmatched pool
             pa = pa_lookup.get(firm, {})
             if not pa:
                 for pf_key, pf_val in pa_lookup.items():
                     if pf_key.lower() == firm.lower():
+                        pa = pf_val
+                        break
+            if not pa:
+                # Alias matching: firm name variants that refer to the same firm
+                _FIRM_ALIASES = {
+                    "funded next": ["fundednext"],
+                    "fundednext": ["funded next"],
+                    "my funded futures": ["mffu"],
+                    "mffu": ["my funded futures"],
+                }
+                firm_lower = firm.lower()
+                aliases = _FIRM_ALIASES.get(firm_lower, [])
+                for pf_key, pf_val in pa_lookup.items():
+                    if pf_key.lower() in aliases:
                         pa = pf_val
                         break
             if not pa and pa_unmatched:
@@ -5181,10 +5195,10 @@ class TraderCompanionApp:
         threading.Thread(target=_do_auto, daemon=True).start()
 
     _BROWSER_MONITORED_FIRMS = {
-        "Funded Next":  {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
-                         "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
-        "FundedNext":   {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
-                         "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
+        "Funded Next":       {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
+                              "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
+        "FundedNext":        {"class_available": "FUNDEDNEXT_AVAILABLE", "account_class": "FundedNextAccount",
+                              "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts"},
     }
 
     def _auto_launch_propfirm_browsers(self, active_firms):
@@ -5308,7 +5322,11 @@ class TraderCompanionApp:
 
                 # Auto-fill challenge fees from billing history
                 _update_status("⏳ Fetching billing history...")
-                self._autofill_challenge_fees(firm_name, account)
+                acct_mapping = self._autofill_challenge_fees(firm_name, account)
+
+                # Auto-detect breached accounts and mark as failed
+                _update_status("⏳ Checking breach status...")
+                self._auto_detect_breached_accounts(firm_name, account, acct_mapping=acct_mapping)
 
                 _update_status("✅ Connected!")
                 time.sleep(1)
@@ -5333,26 +5351,49 @@ class TraderCompanionApp:
     def _autofill_challenge_fees(self, firm_name, account):
         """
         Scrape billing history from the prop firm dashboard and auto-fill
-        the 'Fee' and 'Date Purchased' fields of active evaluations.
+        the 'Fee', 'Date Purchased', and 'Account #' fields of active evaluations.
         Then push the updated evaluations to the dashboard.
+        
+        For FundedNext Futures accounts, also resolves the billing login ID
+        to the Tradovate account name (e.g. 945576089 -> FNFTCHHARRISONOUKA85625).
+        
+        Returns the acct_mapping dict (or {}) so callers can reuse it for breach detection.
         """
+        acct_mapping = {}
         try:
             if not hasattr(account, 'get_billing_history'):
                 self.root.after(0, lambda:
                     self.log(f"🌐 {firm_name}: No get_billing_history method — skipping"))
-                return
+                return acct_mapping
 
             self.root.after(0, lambda:
                 self.log(f"🌐 {firm_name}: Scraping billing history..."))
 
-            billing = account.get_billing_history()
+            # Prefer API-based billing if available (richer data with login field)
+            if hasattr(account, 'get_billing_via_api'):
+                billing = account.get_billing_via_api()
+            else:
+                billing = account.get_billing_history()
             if not billing:
                 self.root.after(0, lambda:
-                    self.log(f"🌐 {firm_name}: No billing records found on page"))
-                return
+                    self.log(f"🌐 {firm_name}: No billing records found"))
+                return acct_mapping
 
             self.root.after(0, lambda b=len(billing):
                 self.log(f"🌐 {firm_name}: Found {b} billing record(s)"))
+
+            # Get account mapping (billing login -> Tradovate account name)
+            if hasattr(account, 'get_account_mapping'):
+                try:
+                    self.root.after(0, lambda:
+                        self.log(f"🌐 {firm_name}: Fetching account mapping..."))
+                    acct_mapping = account.get_account_mapping()
+                    if acct_mapping:
+                        self.root.after(0, lambda n=len(acct_mapping):
+                            self.log(f"🌐 {firm_name}: Got {n} login→account mapping(s)"))
+                except Exception as e:
+                    self.root.after(0, lambda err=str(e):
+                        self.log(f"⚠ {firm_name}: Account mapping failed: {err}", "WARN"))
 
             # Log all billing entries for visibility
             for i, entry in enumerate(billing):
@@ -5369,14 +5410,17 @@ class TraderCompanionApp:
             # Also build a size-based lookup for fallback when Account # is empty
             # billing funding_package contains size e.g. "Futures Legacy Challenge 50000 USD"
             billing_by_size = {}
+            # Build login->billing info lookup for account mapping
+            billing_by_login = {}
             for entry in billing:
                 acct_no = (entry.get("account_no") or "").strip()
                 status = (entry.get("status") or "").strip().upper()
                 amount = entry.get("paid_amount_numeric", 0.0)
                 bill_date = (entry.get("date") or "").strip()
                 pkg = (entry.get("funding_package") or "").strip()
+                login_id = str(entry.get("login") or acct_no).strip()
                 if acct_no and amount > 0 and status == "APPROVED":
-                    info = {"amount": amount, "date": bill_date, "package": pkg, "account_no": acct_no}
+                    info = {"amount": amount, "date": bill_date, "package": pkg, "account_no": acct_no, "login": login_id}
                     if acct_no not in billing_by_acct:
                         billing_by_acct[acct_no] = info
                     # Extract numeric size from package string (e.g. "50000" from "Futures Legacy Challenge 50000 USD")
@@ -5386,11 +5430,26 @@ class TraderCompanionApp:
                         size_key = int(size_match.group(1))
                         if size_key not in billing_by_size:
                             billing_by_size[size_key] = info
+                    # Index by login ID for account mapping resolution
+                    if login_id and login_id not in billing_by_login:
+                        billing_by_login[login_id] = info
+
+            # Resolve billing login IDs to Tradovate account names via account mapping
+            # This enriches billing_by_acct so matching by FNFT account name works
+            for login_id, bill_info in billing_by_login.items():
+                if login_id in acct_mapping:
+                    tv_name = acct_mapping[login_id].get("tradovate_account_name")
+                    if tv_name and tv_name not in billing_by_acct:
+                        enriched = dict(bill_info)
+                        enriched["tradovate_account_name"] = tv_name
+                        billing_by_acct[tv_name] = enriched
+                        self.root.after(0, lambda lid=login_id, tv=tv_name:
+                            self.log(f"   🔗 Mapped billing login {lid} → {tv}"))
 
             if not billing_by_acct and not billing_by_size:
                 self.root.after(0, lambda:
                     self.log(f"🌐 {firm_name}: No APPROVED billing entries with amount > 0"))
-                return
+                return acct_mapping
 
             self.root.after(0, lambda n=len(billing_by_acct), s=len(billing_by_size),
                                    ak=list(billing_by_acct.keys()), sk=list(billing_by_size.keys()):
@@ -5480,6 +5539,16 @@ class TraderCompanionApp:
                     if not date_filled and matched["date"]:
                         ev["Date Purchased"] = matched["date"]
                         changes.append(f"Date={matched['date']}")
+                    # Auto-fill Account # from account mapping when empty
+                    tv_name = matched.get("tradovate_account_name")
+                    if not acct_challenge and tv_name:
+                        ev["Account #"] = tv_name
+                        changes.append(f"Account#={tv_name}")
+                    elif not acct_challenge and matched.get("login") and str(matched["login"]) in acct_mapping:
+                        tv_name = acct_mapping[str(matched["login"])].get("tradovate_account_name")
+                        if tv_name:
+                            ev["Account #"] = tv_name
+                            changes.append(f"Account#={tv_name}")
                     filled_count += 1
                     updated_evals.append(ev)
                     self.root.after(0, lambda v=matched_via, c=", ".join(changes):
@@ -5493,7 +5562,7 @@ class TraderCompanionApp:
             if not filled_count:
                 self.root.after(0, lambda:
                     self.log(f"🌐 {firm_name}: No accounts needed Fee/Date updates"))
-                return
+                return acct_mapping
 
             self.root.after(0, lambda c=filled_count:
                 self.log(f"🌐 {firm_name}: Pushing {c} updated eval(s) to dashboard..."))
@@ -5504,7 +5573,7 @@ class TraderCompanionApp:
             if not email or not dashboard_url:
                 self.root.after(0, lambda:
                     self.log(f"⚠ Cannot push fee updates — no email/dashboard URL", "WARN"))
-                return
+                return acct_mapping
 
             # Collect ALL active evals (server expects the full set)
             all_evals = [rd.get("eval") for rd in self._active_trade_rows if rd.get("eval")]
@@ -5548,9 +5617,236 @@ class TraderCompanionApp:
                 self.root.after(0, lambda err=str(e):
                     self.log(f"⚠ Fee sync error: {err}", "WARN"))
 
+            return acct_mapping
+
         except Exception as e:
             self.root.after(0, lambda err=str(e):
                 self.log(f"⚠ {firm_name} billing auto-fill failed: {err}", "WARN"))
+            return acct_mapping
+
+    def _auto_detect_breached_accounts(self, firm_name, account, acct_mapping=None):
+        """
+        Check if any evaluations have been breached on FundedNext
+        and auto-set their status to 'Failed' with the breach reason.
+
+        Uses the account mapping (from get_account_mapping) which includes
+        breach status from the React fiber, plus optionally the account-overview
+        API for detailed breach info (breach reason, reset price etc).
+
+        Fetches ALL evaluations from the dashboard (not just _active_trade_rows)
+        since breached accounts may already be filtered out of the active rows.
+        """
+        try:
+            if not acct_mapping:
+                if hasattr(account, 'get_account_mapping'):
+                    acct_mapping = account.get_account_mapping()
+                if not acct_mapping:
+                    return
+
+            # Build reverse lookup: tradovate_account_name -> mapping info
+            tv_to_info = {}
+            for login_id, info in acct_mapping.items():
+                tv_name = info.get("tradovate_account_name")
+                if tv_name:
+                    tv_to_info[tv_name] = info
+                    tv_to_info[login_id] = info  # also index by login
+
+            self.root.after(0, lambda keys=list(tv_to_info.keys()):
+                self.log(f"🔍 Breach check: mapping keys = {keys}"))
+
+            # Canonical firm name for comparison
+            canonical_firm = self._FIRM_MAP.get(firm_name, firm_name)
+
+            # Fetch ALL evaluations from dashboard (not just _active_trade_rows,
+            # since breached accounts may have been filtered out as inactive)
+            email = self.client_email_entry.get().strip()
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+            all_evals = []
+            if email and dashboard_url:
+                try:
+                    r = requests.get(
+                        f"{dashboard_url}/api/client/data",
+                        params={"email": email},
+                        timeout=15
+                    )
+                    if r.status_code == 200:
+                        all_evals = r.json().get("evaluations", [])
+                except Exception as e:
+                    self.root.after(0, lambda err=str(e):
+                        self.log(f"⚠ Breach check: couldn't fetch evals: {err}", "WARN"))
+
+            if not all_evals:
+                # Fallback to active trade rows
+                all_evals = [rd.get("eval") for rd in self._active_trade_rows if rd.get("eval")]
+
+            breached_count = 0
+            updated_evals = []
+
+            self.root.after(0, lambda n=len(all_evals), fn=firm_name, cf=canonical_firm:
+                self.log(f"🔍 Breach check: {n} eval(s), firm_name='{fn}', canonical='{cf}'"))
+
+            for ev in all_evals:
+                if not ev:
+                    continue
+
+                # Skip deleted
+                if ev.get("_deleted"):
+                    continue
+
+                # Check if eval belongs to this prop firm (with alias support)
+                ev_firm = ev.get("Prop Firm", "")
+                ev_canonical = self._FIRM_MAP.get(ev_firm, ev_firm)
+                firm_match = (ev_canonical == canonical_firm or ev_firm == firm_name)
+                if not firm_match:
+                    # Check aliases: firm name variants that refer to the same firm
+                    _FIRM_ALIASES = {
+                        "funded next": ["fundednext"],
+                        "fundednext": ["funded next"],
+                        "my funded futures": ["mffu"],
+                        "mffu": ["my funded futures"],
+                    }
+                    ev_aliases = _FIRM_ALIASES.get(ev_firm.lower(), [])
+                    firm_match = firm_name.lower() in ev_aliases or canonical_firm.lower() in ev_aliases
+                if not firm_match:
+                    continue
+
+                acct_challenge = (ev.get("Account #") or "").strip()
+                acct_funded = (ev.get("Account #.1") or "").strip()
+                current_status_p1 = (ev.get("Status P1") or "").strip().lower()
+                current_status = (ev.get("Status") or "").strip().lower()
+
+                self.root.after(0, lambda ac=acct_challenge, af=acct_funded, sp=current_status_p1, s=current_status:
+                    self.log(f"🔍 Breach eval: Acct#='{ac}' Acct#.1='{af}' P1='{sp}' Status='{s}'"))
+
+                # Skip if already marked as failed/breached
+                if any(kw in current_status_p1 for kw in self._INACTIVE_KEYWORDS):
+                    if not acct_funded or any(kw in current_status for kw in self._INACTIVE_KEYWORDS):
+                        self.root.after(0, lambda: self.log(f"🔍 Breach check: already inactive, skipping"))
+                        continue
+
+                # Find matching account in mapping
+                matched_info = None
+                for acct_key in [acct_challenge, acct_funded]:
+                    if not acct_key:
+                        continue
+                    if acct_key in tv_to_info:
+                        matched_info = tv_to_info[acct_key]
+                        break
+                    # Partial match
+                    for tv_name, info in tv_to_info.items():
+                        if tv_name in acct_key or acct_key in tv_name:
+                            matched_info = info
+                            break
+                    if matched_info:
+                        break
+
+                if not matched_info:
+                    # Fallback: match by Account Size to any mapping entry
+                    ev_size_str = (ev.get("Account Size") or "").strip()
+                    import re as _re
+                    size_match = _re.search(r'(\d[\d,]*)', ev_size_str.replace(",", ""))
+                    if size_match:
+                        ev_size = int(size_match.group(1))
+                        for _lid, info in acct_mapping.items():
+                            sb = info.get("starting_balance")
+                            if sb and int(sb) == ev_size:
+                                matched_info = info
+                                self.root.after(0, lambda sz=ev_size:
+                                    self.log(f"🔍 Breach: matched by Account Size ${sz:,}"))
+                                break
+
+                if not matched_info:
+                    self.root.after(0, lambda ac=acct_challenge, af=acct_funded:
+                        self.log(f"🔍 Breach check: no mapping match for Acct#='{ac}' Acct#.1='{af}'"))
+                    continue
+
+                # Check if account is breached
+                breached = matched_info.get("breached")
+                if not breached or breached == 0:
+                    self.root.after(0, lambda b=breached:
+                        self.log(f"🔍 Breach check: account not breached (breached={b})"))
+                    continue
+
+                # Account is breached — get detailed info from API if available
+                breach_reason = matched_info.get("breachedby") or "Breached"
+                account_id = matched_info.get("account_id")
+                if account_id and hasattr(account, 'get_account_overview'):
+                    try:
+                        overview = account.get_account_overview(account_id)
+                        if overview:
+                            details = overview.get("account_details", {})
+                            breach_reason = details.get("breached_by") or breach_reason
+                    except Exception:
+                        pass
+
+                # Determine which status field to set
+                acct_display = acct_challenge or acct_funded
+                changes = []
+
+                # If challenge phase is still active and breached
+                if acct_funded:
+                    # Has funded account — set funded status
+                    if not any(kw in current_status for kw in self._INACTIVE_KEYWORDS):
+                        ev["Status"] = f"Failed - {breach_reason}"
+                        changes.append(f"Status='Failed - {breach_reason}'")
+                else:
+                    # Challenge only — set P1 status
+                    if not any(kw in current_status_p1 for kw in self._INACTIVE_KEYWORDS):
+                        ev["Status P1"] = f"Failed - {breach_reason}"
+                        changes.append(f"Status P1='Failed - {breach_reason}'")
+
+                if changes:
+                    breached_count += 1
+                    updated_evals.append(ev)
+                    self.root.after(0, lambda a=acct_display, c=", ".join(changes):
+                        self.log(f"   🚫 BREACHED: {a} → {c}"))
+
+            if not breached_count:
+                self.root.after(0, lambda:
+                    self.log(f"🌐 {firm_name}: No breached accounts detected"))
+                return
+
+            self.root.after(0, lambda c=breached_count:
+                self.log(f"🌐 {firm_name}: {c} breached account(s) — pushing status updates..."))
+
+            # Push to dashboard
+            email = self.client_email_entry.get().strip()
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+            if not email or not dashboard_url:
+                return
+
+            payload = {
+                "email": email,
+                "evaluations": all_evals,
+                "statistics": {},
+                "dropdown_options": {}
+            }
+
+            try:
+                response = requests.post(
+                    f"{dashboard_url}/api/client/push",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("status") == "success":
+                        self.root.after(0, lambda c=breached_count:
+                            self.log(f"✅ Auto-failed {c} breached account(s) → synced to dashboard"))
+                    else:
+                        self.root.after(0, lambda m=data.get('message', 'Unknown'):
+                            self.log(f"⚠ Breach sync response: {m}", "WARN"))
+                else:
+                    self.root.after(0, lambda s=response.status_code:
+                        self.log(f"⚠ Breach sync failed: HTTP {s}", "WARN"))
+            except Exception as e:
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"⚠ Breach sync error: {err}", "WARN"))
+
+        except Exception as e:
+            self.root.after(0, lambda err=str(e):
+                self.log(f"⚠ {firm_name} breach detection failed: {err}", "WARN"))
 
     def _get_broker_for_firm(self, firm_name):
         """Get the connected broker account for a specific prop firm."""

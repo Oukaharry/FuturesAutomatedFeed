@@ -2022,7 +2022,7 @@
 
         // ── Reset Password ────────────────────────────────────────────────
         async function resetUserPassword(name, userType) {
-            if (!confirm(`Reset dashboard login password for "${name}"?\n\nA new random password will be generated.`)) return;
+            if (!confirm(`Reset dashboard login password for "${name}" back to the default password?`)) return;
             try {
                 const res = await fetch('/api/user/reset_password', {
                     method: 'POST',
@@ -2092,12 +2092,12 @@
             overlay.innerHTML = `
                 <div style="background:#1e293b;border:2px solid #60a5fa;border-radius:10px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
                     <h3 style="color:#f8fafc;margin:0 0 8px;">&#128273; Password Reset</h3>
-                    <p style="color:#94a3b8;margin:0 0 16px;font-size:0.9rem;"><strong style="color:#f1f5f9;">${name}</strong>'s new login password:</p>
+                    <p style="color:#94a3b8;margin:0 0 16px;font-size:0.9rem;"><strong style="color:#f1f5f9;">${name}</strong>'s password has been reset to the default.</p>
                     <div style="display:flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;padding:12px 16px;">
                         <code id="superAdminResetPw" style="flex:1;color:#fbbf24;font-size:1.15rem;letter-spacing:0.08em;word-break:break-all;">${safeDisplay}</code>
                         <button id="superAdminCopyPwBtn" onclick="(function(btn){navigator.clipboard&&navigator.clipboard.writeText('${password.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}').then(()=>{btn.textContent='✓';setTimeout(()=>btn.textContent='📋',1500)}).catch(()=>{})})(this)" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#60a5fa;font-size:1.3rem;" title="Copy to clipboard">📋</button>
                     </div>
-                    <p style="color:#ef4444;font-size:0.78rem;margin:12px 0 0;">⚠ Copy this now — it will not be shown again.</p>
+                    <p style="color:#60a5fa;font-size:0.78rem;margin:12px 0 0;">ℹ They will be asked to change it on first login.</p>
                     <div style="text-align:right;margin-top:22px;">
                         <button onclick="this.closest('div[style*=position]').remove()" style="padding:9px 22px;background:#475569;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Close</button>
                     </div>
