@@ -897,30 +897,14 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             # Track which evals have already had their Hedge Days written by FA pre-compute
             fa_evals_written = set()
             
-            # Identify Today
-            today_date = datetime.datetime.now().strftime('%Y-%m-%d')
-            
-            # Identify all unique dates in the data
+            # Identify all unique dates in the data for logging
             unique_dates = sorted(list({get_date_str(d['time']) for d in raw_deals})) if raw_deals else []
             
-            target_date = None
-            filter_reason = ""
-            
-            # SIMPLIFIED LOGIC: Always take the LATEST date found in the data.
-            # This handles both "Today (if trades exist)" and "Last Active Day (if no trades today)"
-            # without relying on server timezone matching MT5 timezone.
+            # Date filtering is now handled CLIENT-SIDE (push from 23rd of last month,
+            # FNFT challenge 24h filter). Server processes ALL deals received.
             if unique_dates:
-                target_date = unique_dates[-1]
-                filter_reason = f"Latest Active Date ({target_date})"
-            
-            if target_date:
-                original_count = len(raw_deals)
-                # Filter non-FA deals to target_date only; keep ALL FA deals so they form sessions
-                raw_deals = [d for d in raw_deals
-                             if get_date_str(d['time']) == target_date
-                             or parse_comment(d.get('comment', ''))[0] == 'FA']
-                match_log.append(f"📅 Filtered trades to {filter_reason}: {len(raw_deals)}/{original_count} positions kept (FA deals preserved).")
-                logging.info(f"   [DATE FILTER] Keeping trades for {target_date} ONLY + all FA deals ({len(raw_deals)} positions).")
+                match_log.append(f"📅 Processing deals across {len(unique_dates)} date(s): {unique_dates[0]} to {unique_dates[-1]}")
+                logging.info(f"   [DATES] Processing all {len(raw_deals)} deals across {len(unique_dates)} date(s)")
             
 
         # --------------------------------
