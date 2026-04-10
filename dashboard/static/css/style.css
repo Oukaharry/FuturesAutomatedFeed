@@ -395,6 +395,34 @@ tr:last-child td { border-bottom: none; }
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
+/* Prop-firm pills own the entire outer div — hide the dropdown chevron */
+#evaluations-table .cell-dropdown[style*="border-radius: 12px"]::after {
+    display: none;
+}
+
+/* Eval-table dropdowns: ghost by default, reveal on row hover */
+#evaluations-table .cell-dropdown {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    top: 0;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+#evaluations-table td:hover .cell-dropdown {
+    background-color: rgba(15, 23, 42, 0.5);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: none;
+    top: 0;
+}
+
+/* Client view: no border/background on dropdowns, ever */
+.client-view #evaluations-table .cell-dropdown,
+.client-view #evaluations-table td:hover .cell-dropdown {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
 .dropdown-menu {
     display: none;
     position: absolute;
