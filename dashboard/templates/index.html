@@ -340,6 +340,32 @@
             pointer-events: none;
         }
 
+        /* Hover tooltip hint on note cells */
+        td.has-note::before {
+            content: 'Right-click to view note';
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 17, 34, 0.95);
+            color: #fbbf24;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid rgba(251, 191, 36, 0.25);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            z-index: 9999;
+        }
+        td.has-note:hover::before {
+            opacity: 1;
+        }
+
         /* Note Modal */
         #note-modal {
             display: none;
@@ -3178,34 +3204,32 @@
              
              console.log("Has content:", hasContent);
 
-             // All users (clients, admins, traders) get full notes access
+             // All users can view notes; only non-clients can create/edit/delete
              {
                  if (hasContent) {
                      // View Mode
-                     console.log("Admin viewing existing note -> View Mode");
                      viewMode.style.display = 'block';
-                     editMode.style.display = 'none'; // Explicit
+                     editMode.style.display = 'none';
                      textDisplay.textContent = currentContent;
-                     if (btnEdit) btnEdit.style.display = 'inline-block';
-                     if (btnDelete) btnDelete.style.display = 'inline-block';
+                     // Show Edit/Delete only for non-clients
+                     if (btnEdit)   btnEdit.style.display   = isClient ? 'none' : 'inline-block';
+                     if (btnDelete) btnDelete.style.display = isClient ? 'none' : 'inline-block';
                  } else {
-                     // Edit Mode (New Note)
-                     console.log("Admin creating new note -> Edit Mode");
-                     viewMode.style.display = 'none'; // Explicit
+                     if (isClient) {
+                         // Client right-clicked a cell with no note — nothing to show, close silently
+                         modal.style.display = 'none';
+                         return;
+                     }
+                     // Non-client creating new note → Edit Mode
+                     viewMode.style.display = 'none';
                      editMode.style.display = 'block';
-                     
-                     // Clear previous value
-                     if(textArea) textArea.value = '';
-                     setTimeout(() => { if(textArea) textArea.focus(); }, 100);
+                     if (textArea) textArea.value = '';
+                     setTimeout(() => { if (textArea) textArea.focus(); }, 100);
                  }
              }
              
              modal.style.display = 'flex';
-             
-             // Force display flex directly
-             modal.style.display = 'flex';
              modal.style.opacity = '1';
-             console.log("Modal state set to flex/visible. Z-Index:", modal.style.zIndex);
              
              // Focus textarea if in edit mode
              if (editMode.style.display === 'block') {
@@ -3935,7 +3959,7 @@
                     // Helper to adding note attributes
                     const addNoteAttrs = (key) => {
                        const note = ev._notes && ev._notes[key] ? ev._notes[key] : '';
-                       return note ? `data-has-note="true" title="${note}"` : '';
+                       return note ? `data-has-note="true"` : '';
                     };
 
                     const cell = (content, key) => {
