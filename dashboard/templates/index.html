@@ -1684,14 +1684,15 @@
             box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.15) !important;
         }
 
-        /* Calendar icon: always hidden, reveal on row hover or focus */
+        /* Calendar icon: always hidden, reveal clearly on row hover or focus */
         #evaluations-table input[type="date"].cell-input::-webkit-calendar-picker-indicator {
             opacity: 0;
             transition: opacity 0.15s ease;
         }
         #evaluations-table td:hover input[type="date"].cell-input::-webkit-calendar-picker-indicator,
         #evaluations-table input[type="date"].cell-input:focus::-webkit-calendar-picker-indicator {
-            opacity: 0.6;
+            opacity: 1 !important;
+            filter: brightness(0) invert(1) !important;
         }
 
         /* CLIENT VIEW: never show border or background, not even on hover */
