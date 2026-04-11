@@ -1074,6 +1074,8 @@ def _recalculate_and_save(client_id, evals):
     new_hr['total_withdrawals'] = existing_hr.get('total_withdrawals', 0)
     new_hr['current_balance'] = existing_hr.get('current_balance', 0)
     new_hr['actual_hedging_results'] = existing_hr.get('actual_hedging_results', 0)
+    if existing_hr.get('current_mt5_prior_activity') is not None:
+        new_hr['current_mt5_prior_activity'] = existing_hr['current_mt5_prior_activity']
 
     # Preserve historical account fields
     hist = existing_hr.get('historical_accounts')
@@ -1181,15 +1183,26 @@ def apply_missing_to_db(client_id, missing_list):
         eval_idx = r["eval_row"]
         col      = r["column"]
         new_val  = r["net"]
-        if col == "Hedge Day ?":
-            log.debug("  SKIP  row=%d  col=%r  (unresolved FA day)", eval_idx, col)
-            continue
-        if 0 <= eval_idx < len(evals) and isinstance(evals[eval_idx], dict):
-            evals[eval_idx][col] = str(new_val)
-            log.info("  FILL  row=%-4d  col=%-22r  val=%+.2f", eval_idx, col, new_val)
-            filled.append({"eval_row": eval_idx, "column": col, "new": new_val})
-        else:
+        if not (0 <= eval_idx < len(evals) and isinstance(evals[eval_idx], dict)):
             log.warning("  SKIP row=%d  out of range or not a dict", eval_idx)
+            continue
+        if col == "Hedge Day ?":
+            # Find the first empty Hedge Day slot in this eval row
+            ev = evals[eval_idx]
+            free_col = None
+            for n in range(1, 51):
+                candidate = f"Hedge Day {n}"
+                val = ev.get(candidate)
+                if val is None or str(val).strip() in ("", "0", "0.0"):
+                    free_col = candidate
+                    break
+            if free_col is None:
+                log.warning("  SKIP  row=%d  col='Hedge Day ?'  no free Hedge Day slot found", eval_idx)
+                continue
+            col = free_col
+        evals[eval_idx][col] = str(new_val)
+        log.info("  FILL  row=%-4d  col=%-22r  val=%+.2f", eval_idx, col, new_val)
+        filled.append({"eval_row": eval_idx, "column": col, "new": new_val})
 
     if filled:
         cur.execute(
