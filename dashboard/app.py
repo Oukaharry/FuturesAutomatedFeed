@@ -5797,6 +5797,45 @@ def run_quality_scan(target_client=None):
     return results
 
 
+@app.route('/api/quality/discrepancies', methods=['GET'])
+@require_role('super_admin')
+def api_quality_discrepancies():
+    """Return all clients sorted by absolute discrepancy (highest first)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('SELECT client_id, identity, statistics FROM clients_data')
+        rows = cursor.fetchall()
+
+    results = []
+    for row in rows:
+        cid = row['client_id']
+        try:
+            identity = json.loads(row['identity'] or '{}') or {}
+        except Exception:
+            identity = {}
+        try:
+            stats = json.loads(row['statistics'] or '{}') or {}
+        except Exception:
+            stats = {}
+        hr = stats.get('hedging_review', {})
+        disc = hr.get('discrepancy', 0)
+        actual = hr.get('actual_hedging_results', 0)
+        sheet = hr.get('sheet_hedging_results', 0)
+        name = identity.get('name') or identity.get('display_name') or identity.get('client') or cid
+        if disc == 0 and actual == 0 and sheet == 0:
+            continue
+        results.append({
+            'client_id': cid,
+            'name': name,
+            'discrepancy': round(float(disc), 2),
+            'actual': round(float(actual), 2),
+            'sheet': round(float(sheet), 2),
+        })
+
+    results.sort(key=lambda r: abs(r['discrepancy']), reverse=True)
+    return jsonify({'status': 'success', 'clients': results})
+
+
 @app.route('/api/quality/scan', methods=['POST'])
 @require_role('super_admin')
 def api_run_quality_scan():
