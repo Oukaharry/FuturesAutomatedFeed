@@ -5797,6 +5797,90 @@ def run_quality_scan(target_client=None):
     return results
 
 
+@app.route('/api/quality/discrepancies', methods=['GET'])
+@require_role('super_admin')
+def api_quality_discrepancies():
+    """Return all clients sorted by absolute discrepancy (highest first)."""
+    from dashboard.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # Quote "identity" — it is a reserved keyword in PostgreSQL 10+
+        cursor.execute('SELECT client_id, "identity", account, statistics FROM clients_data')
+        rows = cursor.fetchall()
+
+    results = []
+    for row in rows:
+        cid = row['client_id']
+        try:
+            raw_id = row['identity']
+            identity = (json.loads(raw_id) if isinstance(raw_id, str) else raw_id) or {}
+        except Exception:
+            identity = {}
+        try:
+            raw_acct = row['account']
+            acct = (json.loads(raw_acct) if isinstance(raw_acct, str) else raw_acct) or {}
+        except Exception:
+            acct = {}
+        try:
+            raw_st = row['statistics']
+            stats = (json.loads(raw_st) if isinstance(raw_st, str) else raw_st) or {}
+        except Exception:
+            stats = {}
+        hr = stats.get('hedging_review', {}) or {}
+        cashflow = stats.get('cashflow_inprogress', {}) or {}
+
+        # Dashboard JS reads MT5 data from data.account (the account column):
+        #   const mt5Dep = parseFloat(mt5Acc.total_deposits) || 0;
+        #   const mt5With = parseFloat(mt5Acc.total_withdrawals) || 0;
+        #   const mt5Bal = parseFloat(mt5Acc.balance) || 0;
+        mt5_dep = float(acct.get('total_deposits') or 0)
+        mt5_with = float(acct.get('total_withdrawals') or 0)
+        mt5_bal = float(acct.get('balance') or 0)
+
+        # Historical accounts from hedging_review
+        hist_accts = hr.get('historical_accounts') or []
+        hist_dep = sum(float(a.get('deposits') or 0) for a in hist_accts)
+        hist_with = sum(float(a.get('withdrawals') or 0) for a in hist_accts)
+        hist_bal = sum(float(a.get('final_balance') or 0) for a in hist_accts)
+
+        combined_dep = mt5_dep + hist_dep
+        combined_with = mt5_with + hist_with
+        combined_bal = mt5_bal + hist_bal
+
+        # Prior activity
+        total_prior = float(hr.get('current_mt5_prior_activity') or 0)
+        for a in hist_accts:
+            total_prior += float(a.get('prior_activity_profit') or 0)
+
+        # Skip clients with no MT5 data (same guard as JS: mt5Dep !== 0 || mt5Bal !== 0)
+        if mt5_dep == 0 and mt5_bal == 0:
+            continue
+
+        # liveActualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity
+        actual = combined_bal - (combined_dep + combined_with) - total_prior
+
+        # sheet = cashflow_inprogress.hedging_results + farming_results
+        sheet = float(cashflow.get('hedging_results') or 0) + float(cashflow.get('farming_results') or 0)
+        disc = actual - sheet
+
+        name = identity.get('name') or identity.get('display_name') or identity.get('client') or cid
+        if disc == 0 and actual == 0 and sheet == 0:
+            continue
+        try:
+            results.append({
+                'client_id': cid,
+                'name': name,
+                'discrepancy': round(float(disc), 2),
+                'actual': round(float(actual), 2),
+                'sheet': round(float(sheet), 2),
+            })
+        except (TypeError, ValueError):
+            continue
+
+    results.sort(key=lambda r: abs(r['discrepancy']), reverse=True)
+    return jsonify({'status': 'success', 'clients': results})
+
+
 @app.route('/api/quality/scan', methods=['POST'])
 @require_role('super_admin')
 def api_run_quality_scan():
