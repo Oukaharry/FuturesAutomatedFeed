@@ -212,9 +212,39 @@
             <button class="scan-btn" id="run-scan-btn" onclick="runScan()">
                 <i class="fas fa-radar" id="scan-icon"></i> Run Quality Scan
             </button>
+            <button class="scan-btn" id="disc-btn" onclick="showDiscrepancies()" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" title="View clients by discrepancy">
+                <i class="fas fa-scale-unbalanced"></i> Discrepancies
+            </button>
             <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);" title="Post daily summary to Slack">
                 <i class="fab fa-slack"></i> Send to Slack
             </button>
+        </div>
+
+        <!-- Discrepancies Modal -->
+        <div id="disc-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(820px,94vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b;">
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-scale-unbalanced" style="color:#f87171; margin-right:8px;"></i>Client Discrepancies</h3>
+                    <button onclick="document.getElementById('disc-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                </div>
+                <div style="padding:14px 24px 8px;">
+                    <input type="text" id="disc-search" placeholder="Search client..." oninput="filterDiscTable()" style="width:100%; padding:8px 14px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.88rem; outline:none;">
+                </div>
+                <div style="overflow-y:auto; flex:1; padding:0 24px 18px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155; position:sticky; top:0; background:#0f172a;">
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">#</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Client</th>
+                                <th style="text-align:right; padding:10px 8px; color:#94a3b8; font-weight:600;">Sheet</th>
+                                <th style="text-align:right; padding:10px 8px; color:#94a3b8; font-weight:600;">Actual (MT5)</th>
+                                <th style="text-align:right; padding:10px 8px; color:#94a3b8; font-weight:600;">Discrepancy</th>
+                            </tr>
+                        </thead>
+                        <tbody id="disc-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- All Issues Table (flat, one row per issue) -->
@@ -696,6 +726,57 @@
             toast.innerHTML = `<i class="fas ${icons[type] || icons.info} toast-icon"></i><div class="toast-body">${title}${detail ? '<small>' + detail + '</small>' : ''}</div>`;
             container.appendChild(toast);
             setTimeout(() => { toast.classList.add('hiding'); setTimeout(() => toast.remove(), 300); }, type === 'error' ? 6000 : 4000);
+        }
+
+        /* ---------- Discrepancies modal ---------- */
+        let _discData = [];
+        async function showDiscrepancies() {
+            const btn = document.getElementById('disc-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            try {
+                const resp = await fetch('/api/quality/discrepancies');
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    _discData = data.clients || [];
+                    renderDiscTable(_discData);
+                    const modal = document.getElementById('disc-modal');
+                    modal.style.display = 'flex';
+                    document.getElementById('disc-search').value = '';
+                } else {
+                    showToast('error', 'Failed', data.message || 'Could not load discrepancies');
+                }
+            } catch (e) {
+                showToast('error', 'Error', e.message || 'Network error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-scale-unbalanced"></i> Discrepancies';
+            }
+        }
+
+        function renderDiscTable(items) {
+            const tbody = document.getElementById('disc-tbody');
+            if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:24px; color:#64748b;">No discrepancy data found</td></tr>'; return; }
+            tbody.innerHTML = items.map((c, i) => {
+                const d = parseFloat(c.discrepancy) || 0;
+                const color = d > 0 ? '#4ade80' : d < 0 ? '#f87171' : '#94a3b8';
+                const dFmt = d.toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
+                const sFmt = (parseFloat(c.sheet)||0).toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
+                const aFmt = (parseFloat(c.actual)||0).toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
+                return `<tr style="border-bottom:1px solid #1e293b; cursor:pointer;" onmouseenter="this.style.background='#1e293b'" onmouseleave="this.style.background=''" onclick="window.open('/dashboard/${encodeURIComponent(c.client_id)}','_blank')">
+                    <td style="padding:8px; color:#64748b;">${i+1}</td>
+                    <td style="padding:8px;"><a href="/dashboard/${encodeURIComponent(c.client_id)}" target="_blank" style="color:#60a5fa; text-decoration:none; font-weight:500;" onclick="event.stopPropagation()">${c.name}</a></td>
+                    <td style="padding:8px; text-align:right; color:#94a3b8;">${sFmt}</td>
+                    <td style="padding:8px; text-align:right; color:#94a3b8;">${aFmt}</td>
+                    <td style="padding:8px; text-align:right; color:${color}; font-weight:600;">${dFmt}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function filterDiscTable() {
+            const q = (document.getElementById('disc-search').value || '').toLowerCase();
+            const filtered = q ? _discData.filter(c => c.name.toLowerCase().includes(q) || c.client_id.toLowerCase().includes(q)) : _discData;
+            renderDiscTable(filtered);
         }
 
         async function sendToSlack() {
