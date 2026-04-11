@@ -5526,7 +5526,7 @@ def _estimate_issue_date(ev, issue_check, fallback):
     dp = _parse_date_str(ev.get('Date Purchased', ''))
     ds = _parse_date_str(ev.get('Date Started', ''))
     # Setup/entry issues → earliest date (purchase/start)
-    if issue_check in ('Status blank', 'Empty Fee', 'Zero Fee', 'Empty Account Size', 'Missing Date Started'):
+    if issue_check in ('Status blank', 'Empty Fee', 'Empty Account Size', 'Missing Date Started'):
         return dp or ds or dates[0]
     # End-of-life issues → latest known date
     if issue_check == 'Missing Date Ended':
@@ -5678,22 +5678,6 @@ def run_quality_scan(target_client=None):
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Fee not filled in',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
-
-                # Zero Fee and no note (fee present but 0 or 0.00 — must be 1 or more, unless a note explains it)
-                if fee and has_data and not is_double_dip:
-                    try:
-                        fee_val = float(fee.replace(',', '').replace('$', ''))
-                        if fee_val == 0.0:
-                            cell_notes = ev.get('_notes', {}) or {}
-                            has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
-                            notes_col = str(ev.get('Notes', '') or '').strip()
-                            has_note = has_any_note or bool(notes_col)
-                            if not has_note:
-                                issues.append({'check': 'Zero Fee, no note', 'severity': 'low', 'row': idx,
-                                               'detail': f'{row_label}: Fee is 0.00 — must be 1 or more',
-                                               'estimated_date': _estimate_issue_date(ev, 'Zero Fee', scan_date_str)})
-                    except ValueError:
-                        pass
 
                 # Empty Account Size
                 if not acct_size and prop_firm and not is_double_dip:
