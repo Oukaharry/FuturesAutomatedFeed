@@ -5755,6 +5755,37 @@ def run_quality_scan(target_client=None):
                                        'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
                                        'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
+            # ── Hedge account or Prop Firm account: at least one must be filled ──
+            # If the client has evaluations with data, they need either hedge account
+            # credentials OR prop firm account credentials entered.
+            hedge_accounts = data.get('hedge_accounts') or []
+            prop_accounts  = data.get('prop_accounts')  or []
+            _hedge_filled = any(
+                str(hacc.get('login', '') or '').strip() or str(hacc.get('password', '') or '').strip()
+                for hacc in hedge_accounts
+                if isinstance(hacc, dict)
+            )
+            _prop_filled = any(
+                str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
+                for pa in prop_accounts
+                if isinstance(pa, dict)
+            )
+            if total_checks > 0 and not _hedge_filled and not _prop_filled:
+                issues.append({
+                    'check': 'Hedge account or Prop Firm missing',
+                    'severity': 'high',
+                    'tab': 'hedge',
+                    'detail': 'No hedge account credentials found — fill in Hedge Accounts tab',
+                    'estimated_date': scan_date_str,
+                })
+                issues.append({
+                    'check': 'Hedge account or Prop Firm missing',
+                    'severity': 'high',
+                    'tab': 'prop',
+                    'detail': 'No prop firm credentials found — fill in Prop Firm Accounts tab',
+                    'estimated_date': scan_date_str,
+                })
+
             # Calculate health score (100 - deductions)
             severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
             deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
