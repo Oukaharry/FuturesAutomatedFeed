@@ -7,8 +7,14 @@ import json
 import os
 import sqlite3
 
-HIERARCHY_FILE = os.path.join(os.path.dirname(__file__), 'config', 'hierarchy.json')
 DB_PATH = os.path.join(os.path.dirname(__file__), 'dashboard', 'dashboard.db')
+# Use the hierarchy file configured by config.hierarchy when available
+HIERARCHY_FILE = os.path.join(os.path.dirname(__file__), 'config', 'hierarchy.json')
+try:
+    from config import hierarchy as _hier
+    HIERARCHY_FILE = getattr(_hier, 'HIERARCHY_FILE', HIERARCHY_FILE)
+except Exception:
+    pass
 
 
 def main():

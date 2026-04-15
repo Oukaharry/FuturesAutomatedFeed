@@ -2,12 +2,50 @@ import json
 import os
 
 # Load hierarchy from JSON file
-HIERARCHY_FILE = os.path.join(os.path.dirname(__file__), "hierarchy.json")
+# Prefer the restructured hierarchy if it exists so the app can switch immediately
+BASE_DIR = os.path.dirname(__file__)
+RESTRUCTURED_FILE = os.path.join(BASE_DIR, "hierarchy_restructured.json")
+LEGACY_FILE = os.path.join(BASE_DIR, "hierarchy.json")
+# Use the restructured file when present, otherwise fall back to the legacy file
+HIERARCHY_FILE = RESTRUCTURED_FILE if os.path.exists(RESTRUCTURED_FILE) else LEGACY_FILE
 
 def load_hierarchy():
     if os.path.exists(HIERARCHY_FILE):
-        with open(HIERARCHY_FILE, "r") as f:
-            return json.load(f)
+        with open(HIERARCHY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Compatibility: if the file is the "restructured" shape (admins -> clients + top-level traders)
+        # convert it in-memory to the legacy nested shape {admins: {admin: {traders: {trader: {clients: []}}}}}
+        try:
+            if isinstance(data, dict) and 'admins' in data:
+                sample_admin = next(iter(data['admins'].values())) if data['admins'] else None
+                # Restructured format: admin entries contain 'clients' (list) and there is a top-level 'traders' registry
+                if sample_admin is not None and 'clients' in sample_admin and 'traders' not in sample_admin:
+                    trader_registry = data.get('traders', {}) if isinstance(data.get('traders', {}), dict) else {}
+                    new_admins = {}
+                    for admin_name, admin_data in data.get('admins', {}).items():
+                        traders_map = {}
+                        for client in admin_data.get('clients', []):
+                            assigned = (client.get('assigned_trader') or '').strip()
+                            # Use assigned trader as key; if missing, group under empty-string key
+                            key = assigned
+                            if key not in traders_map:
+                                tr_email = trader_registry.get(key, {}).get('email', '') if key else ''
+                                traders_map[key] = {'email': tr_email, 'clients': []}
+                            # Keep assigned_trader on the client object for frontend/UI use
+                            client_copy = dict(client)
+                            traders_map[key]['clients'].append(client_copy)
+                        new_admins[admin_name] = {
+                            'email': admin_data.get('email', ''),
+                            'traders': traders_map
+                        }
+                    data['admins'] = new_admins
+        except Exception:
+            # If conversion fails for any reason, fall back to raw data
+            pass
+
+        return data
+
     return {"admins": {}}
 
 SYSTEM_HIERARCHY = load_hierarchy()

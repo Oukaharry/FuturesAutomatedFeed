@@ -2878,9 +2878,37 @@
             return BEF_HIDDEN_FIRMS_SET.has(n);
         }
         const canEditHedging = JSON.parse("{{ can_edit_hedging|tojson }}");
-        const CLIENT_TRADER_NAME = "{{ client_trader_name|default('') }}";
+        let CLIENT_TRADER_NAME = "{{ client_trader_name|default('') }}";
         const CLIENT_ADMIN_NAME = "{{ client_admin_name|default('') }}";
         const CLIENT_ADMIN_SLACK_ID = "{{ client_admin_slack_id|default('') }}";
+
+        // If server didn't provide a trader name, try to resolve it from the hierarchy (supports restructured file)
+        (function resolveTraderFromHierarchy(){
+            if (CLIENT_TRADER_NAME && String(CLIENT_TRADER_NAME).trim()) return;
+            const cid = String(CLIENT_ID || '').trim().toLowerCase();
+            if (!cid) return;
+            fetch('/api/hierarchy').then(r => r.json()).then(data => {
+                if (!data || !data.admins) return;
+                for (const [adminName, adminData] of Object.entries(data.admins)){
+                    const traders = adminData.traders || {};
+                    for (const [tName, tData] of Object.entries(traders)){
+                        const clients = tData.clients || [];
+                        for (const c of clients){
+                            if (!c) continue;
+                            const cname = String(c.name || '').toLowerCase();
+                            const cemail = String(c.email || '').toLowerCase();
+                            if (cname === cid || cemail === cid){
+                                CLIENT_TRADER_NAME = tName;
+                                // Update any visible element that may show trader name
+                                const el = document.querySelector('[data-client-trader]');
+                                if (el) el.textContent = CLIENT_TRADER_NAME;
+                                return;
+                            }
+                        }
+                    }
+                }
+            }).catch(()=>{});
+        })();
 
         // ── KYC Account Switcher ──────────────────────────────────────────
         let kycAccounts = [];
