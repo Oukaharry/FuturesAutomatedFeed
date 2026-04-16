@@ -2608,6 +2608,10 @@ def update_data():
                 "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
                 "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
                 "payment_address": data.get("payment_address", existing_data.get("payment_address", {})),
+                "prop_accounts": data.get("prop_accounts", existing_data.get("prop_accounts", [])),
+                "vps_accounts": data.get("vps_accounts", existing_data.get("vps_accounts", [])),
+                "hedge_accounts": data.get("hedge_accounts", existing_data.get("hedge_accounts", [])),
+                "mt5_credentials": data.get("mt5_credentials", existing_data.get("mt5_credentials", {})),
             }
             
             # Ensure client ID is in identity
@@ -2682,6 +2686,10 @@ def update_data_with_api_key(data, identity, user_info):
         "identity": identity,
         "payment_info": data.get("payment_info", []),
         "payment_address": data.get("payment_address", {}),
+        "prop_accounts": data.get("prop_accounts", existing_data.get("prop_accounts", [])),
+        "vps_accounts": data.get("vps_accounts", existing_data.get("vps_accounts", [])),
+        "hedge_accounts": data.get("hedge_accounts", existing_data.get("hedge_accounts", [])),
+        "mt5_credentials": data.get("mt5_credentials", existing_data.get("mt5_credentials", {})),
     }
     
     # Save to database WITH history tracking

@@ -113,12 +113,23 @@ def check_and_repair_database():
         return False, f'PostgreSQL connection failed: {e}'
 
 def init_database():
-    """Schema is managed by Alembic migrations — verify connectivity only."""
+    """Schema is managed by Alembic migrations — verify connectivity and ensure columns exist."""
     try:
         with get_connection() as conn:
             conn.execute('SELECT 1')
             conn.commit()
         print("Database connection verified (schema managed by Alembic)")
+        # Defensive: ensure columns exist even if Alembic migration was stamped on legacy DB
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            for _col, _default in [('prop_accounts', "'[]'"), ('vps_accounts', "'[]'"),
+                                    ('hedge_accounts', "'[]'"), ('mt5_credentials', "'{}'"),
+                                    ('payment_info', "'[]'"), ('payment_address', "'{}'")]:
+                try:
+                    cursor.execute(f"ALTER TABLE clients_data ADD COLUMN IF NOT EXISTS {_col} TEXT DEFAULT {_default}")
+                except Exception:
+                    pass
+            conn.commit()
     except Exception as e:
         print(f"Database connection failed: {e}")
 
@@ -715,6 +726,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_vps_accounts = data.get('vps_accounts', [])
                 merged_payment_info = data.get('payment_info', [])
                 merged_payment_address = data.get('payment_address', {})
+                merged_mt5_credentials = data.get('mt5_credentials', {})
             else:
                 # Merge: get existing data so missing keys fall back gracefully
                 cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
@@ -730,10 +742,11 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                         'statistics': json.loads(row['statistics']),
                         'dropdown_options': json.loads(row['dropdown_options']),
                         'identity': json.loads(row['identity']),
-                        'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
-                        'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
-                        'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
-                        'payment_info': json.loads(row['payment_info'] or '[]'),
+                        'hedge_accounts': json.loads(row.get('hedge_accounts') or '[]'),
+                        'prop_accounts': json.loads(row.get('prop_accounts') or '[]'),
+                        'vps_accounts': json.loads(row.get('vps_accounts') or '[]'),
+                        'payment_info': json.loads(row.get('payment_info') or '[]'),
+                        'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
                     }
                 
                 # Merge existing data with new data (new data takes precedence)
@@ -749,6 +762,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_vps_accounts = data.get('vps_accounts', existing_data.get('vps_accounts', []))
                 merged_payment_info = data.get('payment_info', existing_data.get('payment_info', []))
                 merged_payment_address = data.get('payment_address', existing_data.get('payment_address', {}))
+                merged_mt5_credentials = data.get('mt5_credentials', existing_data.get('mt5_credentials', {}))
 
             # Strip _notes from evaluations — notes are stored separately in cell_notes table
             clean_evaluations = [
@@ -779,8 +793,9 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 INSERT INTO clients_data (
                     client_id, deals, positions, account, evaluations,
                     statistics, dropdown_options, identity, last_updated,
-                    hedge_accounts, prop_accounts, vps_accounts, payment_info, payment_address
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    hedge_accounts, prop_accounts, vps_accounts, payment_info, payment_address,
+                    mt5_credentials
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     deals = excluded.deals,
                     positions = excluded.positions,
@@ -794,7 +809,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                     prop_accounts = excluded.prop_accounts,
                     vps_accounts = excluded.vps_accounts,
                     payment_info = excluded.payment_info,
-                    payment_address = excluded.payment_address
+                    payment_address = excluded.payment_address,
+                    mt5_credentials = excluded.mt5_credentials
             ''', (
                 client_id,
                 json.dumps(merged_deals),
@@ -810,6 +826,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 json.dumps(merged_vps_accounts),
                 json.dumps(merged_payment_info),
                 json.dumps(merged_payment_address),
+                json.dumps(merged_mt5_credentials),
             ))
             conn.commit()
             return True
@@ -839,11 +856,12 @@ def get_client_data(client_id: str) -> dict:
                 'identity': identity,
                 'sheet_url': identity.get('sheet_url') if isinstance(identity, dict) else None,
                 'last_updated': row['last_updated'],
-                'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
-                'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
-                'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
-                'payment_info': json.loads(row['payment_info'] or '[]'),
-                'payment_address': json.loads(row['payment_address'] or '{}'),
+                'hedge_accounts': json.loads(row.get('hedge_accounts') or '[]'),
+                'prop_accounts': json.loads(row.get('prop_accounts') or '[]'),
+                'vps_accounts': json.loads(row.get('vps_accounts') or '[]'),
+                'payment_info': json.loads(row.get('payment_info') or '[]'),
+                'payment_address': json.loads(row.get('payment_address') or '{}'),
+                'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
             }
         
         return None
@@ -870,11 +888,12 @@ def get_all_clients() -> dict:
                 'identity': identity,
                 'sheet_url': identity.get('sheet_url') if isinstance(identity, dict) else None,
                 'last_updated': row['last_updated'],
-                'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
-                'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
-                'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
-                'payment_info': json.loads(row['payment_info'] or '[]'),
-                'payment_address': json.loads(row['payment_address'] or '{}'),
+                'hedge_accounts': json.loads(row.get('hedge_accounts') or '[]'),
+                'prop_accounts': json.loads(row.get('prop_accounts') or '[]'),
+                'vps_accounts': json.loads(row.get('vps_accounts') or '[]'),
+                'payment_info': json.loads(row.get('payment_info') or '[]'),
+                'payment_address': json.loads(row.get('payment_address') or '{}'),
+                'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
             }
         return clients
 

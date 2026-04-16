@@ -3505,7 +3505,14 @@ def api_migrate_sheet():
                 "sheet_url": sheet_url
             },
             "sheet_url": sheet_url,
-            "migrated_at": datetime.now().isoformat()
+            "migrated_at": datetime.now().isoformat(),
+            # Preserve manually-entered fields that are not sourced from the sheet
+            "prop_accounts": existing_import_data.get('prop_accounts', []),
+            "vps_accounts": existing_import_data.get('vps_accounts', []),
+            "hedge_accounts": existing_import_data.get('hedge_accounts', []),
+            "payment_info": existing_import_data.get('payment_info', []),
+            "payment_address": existing_import_data.get('payment_address', {}),
+            "mt5_credentials": existing_import_data.get('mt5_credentials', {}),
         }
         
         # Save to database WITH history tracking - full overwrite (import replaces all existing data)
