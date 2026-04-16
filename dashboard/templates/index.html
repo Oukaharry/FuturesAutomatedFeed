@@ -2070,24 +2070,6 @@
     </div>
 
     <div class="container">
-        {% if user_type == 'super_admin' %}
-        <nav class="modern-nav" style="justify-content:space-between;">
-            <div class="brand" style="flex-shrink:0;">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width:90px; height:auto; object-fit:contain; display:block;">
-            </div>
-            <div class="nav-links" style="flex:1; justify-content:center;">
-                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
-                <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
-                <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
-                <a href="/client_performance" class="tab-btn active"><i class="fas fa-users"></i> Clients</a>
-            </div>
-            <div style="flex-shrink:0; display:flex; align-items:center; gap:6px;">
-                <div style="height:20px; width:1px; background:rgba(255,255,255,0.1); margin:0 2px;"></div>
-                <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
-                <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-sign-out-alt"></i></a>
-            </div>
-        </nav>
-        {% endif %}
         <header>
             <div class="header-combined-bar">
                 {% if user_type != 'super_admin' %}
@@ -2095,6 +2077,10 @@
                      style="width: 40px; height: auto; object-fit: contain; flex-shrink: 0; position: relative; z-index: 10;">
                 {% endif %}
                 <div class="tabs" style="margin-bottom:0; display:flex; align-items:center; flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none;">
+                    {% if user_type == 'super_admin' %}
+                    <a href="/super_admin" class="tab-btn" title="Super Admin Home" style="flex-shrink:0; padding:6px 10px;"><i class="fas fa-home"></i></a>
+                    <span style="color:rgba(255,255,255,0.25); padding:0 4px; user-select:none; flex-shrink:0;">|</span>
+                    {% endif %}
                     <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
                     <button class="tab-btn" onclick="openTab('stats')">Stats</button>
                     <button class="tab-btn" onclick="openTab('waterlog')">Profit Split</button>
