@@ -7,7 +7,13 @@ import os, sys, json, sqlite3
 # Paths relative to this script
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(SCRIPT_DIR, 'dashboard', 'dashboard.db')
+# Prefer the hierarchy file chosen by config.hierarchy (may point to restructured JSON)
 HIERARCHY_PATH = os.path.join(SCRIPT_DIR, 'config', 'hierarchy.json')
+try:
+    from config import hierarchy as _hier
+    HIERARCHY_PATH = getattr(_hier, 'HIERARCHY_FILE', HIERARCHY_PATH)
+except Exception:
+    pass
 
 # Load hierarchy
 if not os.path.exists(HIERARCHY_PATH):
