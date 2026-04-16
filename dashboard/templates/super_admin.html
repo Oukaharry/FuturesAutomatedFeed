@@ -2062,6 +2062,21 @@
                         });
                         nameRow.appendChild(nameSpan);
 
+                        // Small link to client dashboard
+                        const clientLink = document.createElement('a');
+                        clientLink.href = '/dashboard/' + encodeURIComponent(cName);
+                        clientLink.style.color = 'rgba(148,163,184,0.5)';
+                        clientLink.style.fontSize = '0.65rem';
+                        clientLink.style.marginLeft = '2px';
+                        clientLink.style.transition = 'color 0.15s';
+                        clientLink.style.textDecoration = 'none';
+                        clientLink.title = 'View client dashboard';
+                        clientLink.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i>';
+                        clientLink.addEventListener('mouseenter', () => { clientLink.style.color = '#93c5fd'; });
+                        clientLink.addEventListener('mouseleave', () => { clientLink.style.color = 'rgba(148,163,184,0.5)'; });
+                        clientLink.addEventListener('click', (e) => e.stopPropagation());
+                        nameRow.appendChild(clientLink);
+
                         card.appendChild(nameRow);
 
                         // Email — click to copy, stops propagation so card modal doesn't open
