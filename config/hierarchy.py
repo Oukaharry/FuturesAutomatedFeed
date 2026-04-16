@@ -35,10 +35,10 @@ def load_hierarchy():
                             # Keep assigned_trader on the client object for frontend/UI use
                             client_copy = dict(client)
                             traders_map[key]['clients'].append(client_copy)
-                        new_admins[admin_name] = {
-                            'email': admin_data.get('email', ''),
-                            'traders': traders_map
-                        }
+                        # Preserve all original admin fields (email, slack_user_id, etc.)
+                        preserved = {k: v for k, v in admin_data.items() if k != 'clients'}
+                        preserved['traders'] = traders_map
+                        new_admins[admin_name] = preserved
                     data['admins'] = new_admins
         except Exception:
             # If conversion fails for any reason, fall back to raw data
@@ -58,16 +58,102 @@ def reload_hierarchy():
     SYSTEM_HIERARCHY.update(new_data)
     return SYSTEM_HIERARCHY
 
+def _to_flat_format(hierarchy_data):
+    """Convert in-memory nested format back to flat format for disk persistence."""
+    import copy
+    out = copy.deepcopy(hierarchy_data)
+    for admin_name, admin_data in out.get('admins', {}).items():
+        if 'traders' in admin_data and 'clients' not in admin_data:
+            flat_clients = []
+            for trader_name, trader_data in admin_data['traders'].items():
+                for client in trader_data.get('clients', []):
+                    c = dict(client)
+                    c['assigned_trader'] = trader_name
+                    flat_clients.append(c)
+            # Preserve non-traders keys (email, slack_user_id, etc.)
+            preserved = {k: v for k, v in admin_data.items() if k != 'traders'}
+            out['admins'][admin_name] = {**preserved, 'clients': flat_clients}
+    return out
+
+
 def save_hierarchy(hierarchy_data):
     # Ensure directory exists
     os.makedirs(os.path.dirname(HIERARCHY_FILE), exist_ok=True)
+    # Always persist in flat format so the JSON structure stays consistent
+    flat = _to_flat_format(hierarchy_data)
     with open(HIERARCHY_FILE, "w") as f:
-        json.dump(hierarchy_data, f, indent=4)
+        json.dump(flat, f, indent=4)
         
     # Also update in-memory reference immediately
     if hierarchy_data is not SYSTEM_HIERARCHY:
         SYSTEM_HIERARCHY.clear()
         SYSTEM_HIERARCHY.update(hierarchy_data)
+
+def reassign_client_trader(client_name, admin_name, new_trader):
+    """
+    Reassign a client to a different trader within the same admin.
+    Auto-creates the new trader lane under the admin if it doesn't exist,
+    pulling the email from the top-level traders registry.
+    Returns True on success, False if the client or admin cannot be found.
+    """
+    reload_hierarchy()
+
+    admins = SYSTEM_HIERARCHY.get('admins', {})
+    if admin_name not in admins:
+        return False
+
+    # Find current trader lane for this client — search specified admin first,
+    # then fall back to all admins (client may have been moved across admins)
+    found_admin = None
+    old_trader = None
+    for search_admin in ([admin_name] + [a for a in admins if a != admin_name]):
+        traders = admins[search_admin].get('traders', {})
+        for t_name, t_data in traders.items():
+            for client in t_data.get('clients', []):
+                if client.get('name') == client_name:
+                    found_admin = search_admin
+                    old_trader = t_name
+                    break
+            if old_trader:
+                break
+        if old_trader:
+            break
+
+    if old_trader is None or found_admin is None:
+        return False
+
+    if old_trader == new_trader and found_admin == admin_name:
+        return True  # nothing to do
+
+    source_traders = admins[found_admin].get('traders', {})
+    target_traders = admins[admin_name].get('traders', {})
+
+    # Auto-create the new trader lane if missing under the target admin
+    if new_trader not in target_traders:
+        trader_email = SYSTEM_HIERARCHY.get('traders', {}).get(new_trader, {}).get('email', '')
+        target_traders[new_trader] = {'email': trader_email, 'clients': []}
+
+    # Remove client from old location
+    old_clients = source_traders[old_trader]['clients']
+    client_obj = None
+    for i, c in enumerate(old_clients):
+        if c.get('name') == client_name:
+            client_obj = old_clients.pop(i)
+            break
+
+    if client_obj is None:
+        return False
+
+    client_obj['assigned_trader'] = new_trader
+    target_traders[new_trader]['clients'].append(client_obj)
+
+    # Clean up empty trader lane
+    if not source_traders[old_trader]['clients']:
+        del source_traders[old_trader]
+
+    save_hierarchy(SYSTEM_HIERARCHY)
+    return True
+
 
 def add_admin(admin_name, email=""):
     reload_hierarchy() # Ensure we have latest data
