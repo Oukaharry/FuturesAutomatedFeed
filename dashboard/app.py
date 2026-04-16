@@ -2551,6 +2551,59 @@ def get_super_admin_totals():
 
     return jsonify(response_data)
 
+@app.route('/api/super_admin/profit_splits')
+@require_session
+def get_profit_splits():
+    """Return per-client current profit split (in progress) for the super admin dashboard."""
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
+
+    profile_filter = request.args.get('profile', 'ALL').upper()
+    if session_user.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
+
+    from dashboard.watermark_service import compute_waterlog_from_db
+    from dashboard.financial_overview import _get_cached_clients, get_client_profile
+    from concurrent.futures import ThreadPoolExecutor
+
+    clients_data = _get_cached_clients()
+    results = []
+
+    def _compute_one(client_id, data):
+        try:
+            identity = data.get('identity', {})
+            real_name = (identity.get('name') or client_id).strip()
+            # Profile filter
+            source = get_client_profile(client_id, identity)
+            if profile_filter != 'ALL' and source != profile_filter:
+                return None
+            stored_cf = data.get('statistics', {}).get('cashflow_inprogress', {})
+            net_profit = float(stored_cf.get('net_profit') or 0)
+            # Get waterlog reference point
+            wl = compute_waterlog_from_db(real_name)
+            lsnp = max(float(wl['last_split_net_profit']), 0.0) if wl else 0.0
+            split_amt = (net_profit - lsnp) * 0.5 if (net_profit > lsnp and net_profit > 0) else 0.0
+            return {
+                'client_id': real_name,
+                'net_profit': round(net_profit, 2),
+                'profit_split_inprogress': round(split_amt, 2),
+            }
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(_compute_one, cid, d) for cid, d in clients_data.items()]
+        for f in futures:
+            r = f.result()
+            if r is not None:
+                results.append(r)
+
+    total = round(sum(r['profit_split_inprogress'] for r in results), 2)
+    results.sort(key=lambda x: x['profit_split_inprogress'], reverse=True)
+    return jsonify({'status': 'success', 'clients': results, 'total': total})
+
+
 @app.route('/api/client_payouts/<client_id>')
 @require_session
 def get_client_payouts_detail(client_id):
@@ -6908,17 +6961,33 @@ def api_set_slack_webhook():
 @app.route('/api/quality/send_slack', methods=['POST'])
 @require_role('super_admin')
 def api_send_slack_summary():
-    """Manually post the daily quality summary to Slack. Super admin only."""
-    from dashboard.scheduler import send_slack_message, _build_daily_summary_text, _get_slack_webhook_url
-    if not _get_slack_webhook_url():
+    """Manually post the daily quality summary to Slack. Super admin only.
+    Accepts optional JSON body: { "test_webhook": "https://hooks.slack.com/..." }
+    to override the target (e.g. send to a DM or test channel instead of main).
+    """
+    from dashboard.scheduler import send_slack_message, send_slack_to_webhook, _build_daily_summary_text, _get_slack_webhook_url
+
+    data = request.get_json(silent=True) or {}
+    test_webhook = (data.get('test_webhook') or '').strip()
+
+    # Validate test webhook if provided
+    if test_webhook and not test_webhook.startswith('https://hooks.slack.com/'):
+        return jsonify({'status': 'error', 'message': 'Invalid webhook URL — must start with https://hooks.slack.com/'}), 400
+
+    if not test_webhook and not _get_slack_webhook_url():
         return jsonify({'status': 'error', 'message': 'Slack webhook not configured. Paste your webhook URL in the Settings section below.'}), 400
     try:
         text = _build_daily_summary_text()
-        ok = send_slack_message(text)
+        if test_webhook:
+            text = "🧪 *[TEST MODE — DM only]*\n\n" + text
+            ok = send_slack_to_webhook(test_webhook, text)
+        else:
+            ok = send_slack_message(text)
         if ok:
+            dest = 'test webhook (DM)' if test_webhook else 'main channel'
             log_action('SLACK_SUMMARY', 'super_admin', request.session_user.get('user_identifier'),
-                       get_remote_address(), 'Manual Slack summary posted')
-            return jsonify({'status': 'success', 'message': 'Summary posted to Slack.'})
+                       get_remote_address(), f'Manual Slack summary posted to {dest}')
+            return jsonify({'status': 'success', 'message': f'Summary posted to {dest}.'})
         else:
             return jsonify({'status': 'error', 'message': 'Slack post failed — check webhook URL and logs.'}), 502
     except Exception as e:

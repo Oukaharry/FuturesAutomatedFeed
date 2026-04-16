@@ -766,6 +766,12 @@
                          <div id="grand-ev-day" class="stat-value-modern" style="color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">$0.00</div>
                     </div>
 
+                    <!-- Profit Split (In Progress) -->
+                    <div class="stat-card-modern" onclick="showBreakdown('profit_split_inprogress')" style="cursor:pointer; background: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, rgba(92, 56, 0, 0.65) 100%); border: 1px solid rgba(251, 191, 36, 0.35); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #fde68a !important; font-weight: 700;">Profit Split (In Progress)</div>
+                        <div id="grand-profit-split" class="stat-value-modern" style="color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);"><i class="fas fa-spinner fa-spin" style="font-size:1rem;"></i></div>
+                    </div>
+
 
 
 
@@ -1326,10 +1332,11 @@
             hedge_profit: 'Hedging Results',
             active: 'Active Accounts',
             passed: 'Passed Accounts',
-            failed: 'Failed Accounts'
+            failed: 'Failed Accounts',
+            profit_split_inprogress: 'Profit Split (In Progress)',
         };
 
-        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit'];
+        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','profit_split_inprogress'];
 
         function escHtml(str) {
             const d = document.createElement('div');
@@ -1569,6 +1576,36 @@
                     // Show error state in cards
                     document.getElementById('grand-total-payouts').textContent = 'Error';
                     document.getElementById('grand-ev').textContent = 'Error';
+                });
+
+            // 3. Load Profit Splits (slow — lazy background load)
+            const splitsUrl = currentProfile === 'ALL' ? '/api/super_admin/profit_splits' : `/api/super_admin/profit_splits?profile=${currentProfile}`;
+            fetch(splitsUrl)
+                .then(r => r.json())
+                .then(sData => {
+                    if (sData.status === 'success') {
+                        const el = document.getElementById('grand-profit-split');
+                        if (el) el.textContent = formatCurrency(sData.total);
+                        // Merge profit_split_inprogress into clientsBreakdownData
+                        if (sData.clients && clientsBreakdownData.length) {
+                            const splitMap = {};
+                            sData.clients.forEach(c => { splitMap[c.client_id] = c.profit_split_inprogress; });
+                            clientsBreakdownData.forEach(c => {
+                                if (splitMap[c.client_id] !== undefined) {
+                                    c.profit_split_inprogress = splitMap[c.client_id];
+                                }
+                            });
+                        } else if (sData.clients) {
+                            // clientsBreakdownData not yet ready — store for later
+                            clientsBreakdownData = sData.clients;
+                        }
+                        debugLog("Profit splits loaded: total=" + sData.total);
+                    }
+                })
+                .catch(err => {
+                    const el = document.getElementById('grand-profit-split');
+                    if (el) el.textContent = 'Error';
+                    debugLog("Profit Splits Load Error: " + err.message, 'error');
                 });
         }
 

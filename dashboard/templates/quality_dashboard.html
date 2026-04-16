@@ -218,6 +218,9 @@
             <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);" title="Post daily summary to Slack">
                 <i class="fab fa-slack"></i> Send to Slack
             </button>
+            <button class="scan-btn" id="slack-dm-btn" onclick="sendToSlackDM()" style="background:linear-gradient(135deg,#1d4ed8,#1e40af);" title="Test: send to your DM webhook">
+                <i class="fas fa-user-secret"></i> Test DM
+            </button>
         </div>
 
         <!-- Discrepancies Modal -->
@@ -797,6 +800,41 @@
                 alert('Failed to send to Slack. Check console.');
                 btn.innerHTML = '<i class="fab fa-slack"></i> Send to Slack';
             } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function sendToSlackDM() {
+            let dmWebhook = localStorage.getItem('slack_dm_webhook') || '';
+            dmWebhook = prompt('Paste your Slack DM/test channel webhook URL:\n(saved locally for next time)', dmWebhook);
+            if (!dmWebhook) return;
+            dmWebhook = dmWebhook.trim();
+            if (!dmWebhook.startsWith('https://hooks.slack.com/')) {
+                alert('Invalid webhook URL — must start with https://hooks.slack.com/');
+                return;
+            }
+            localStorage.setItem('slack_dm_webhook', dmWebhook);
+            const btn = document.getElementById('slack-dm-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+            try {
+                const resp = await fetch('/api/quality/send_slack', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ test_webhook: dmWebhook })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    btn.innerHTML = '<i class="fas fa-check"></i> Sent to DM!';
+                    setTimeout(() => { btn.innerHTML = '<i class="fas fa-user-secret"></i> Test DM'; btn.disabled = false; }, 3000);
+                } else {
+                    alert(data.message || 'Failed to send.');
+                    btn.innerHTML = '<i class="fas fa-user-secret"></i> Test DM';
+                    btn.disabled = false;
+                }
+            } catch(e) {
+                alert('Failed to send. Check console.');
+                btn.innerHTML = '<i class="fas fa-user-secret"></i> Test DM';
                 btn.disabled = false;
             }
         }
