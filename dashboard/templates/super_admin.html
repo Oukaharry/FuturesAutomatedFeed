@@ -767,9 +767,9 @@
                     </div>
 
                     <!-- Profit Split (In Progress) -->
-                    <div class="stat-card-modern" onclick="showBreakdown('profit_split_inprogress')" style="cursor:pointer; background: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, rgba(92, 56, 0, 0.65) 100%); border: 1px solid rgba(251, 191, 36, 0.35); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                        <div class="stat-label-modern" style="color: #fde68a !important; font-weight: 700;">Profit Split (In Progress)</div>
-                        <div id="grand-profit-split" class="stat-value-modern" style="color: #fbbf24 !important; text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);"><i class="fas fa-spinner fa-spin" style="font-size:1rem;"></i></div>
+                    <div class="stat-card-modern" onclick="showBreakdown('profit_split_inprogress')" style="cursor:pointer; background: linear-gradient(135deg, rgba(20, 184, 166, 0.15) 0%, rgba(15, 118, 110, 0.6) 100%); border: 1px solid rgba(45, 212, 191, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #99f6e4 !important; font-weight: 700;">Profit Split (In Progress)</div>
+                        <div id="grand-profit-split" class="stat-value-modern" style="color: #2dd4bf !important; text-shadow: 0 0 20px rgba(45, 212, 191, 0.3);"><i class="fas fa-spinner fa-spin" style="font-size:1rem;"></i></div>
                     </div>
 
 
@@ -1312,6 +1312,7 @@
         let hierarchyData = {};
         let currentProfile = USER_ROLE === 'bef_admin' ? 'BEF' : 'ALL';
         let clientsBreakdownData = [];
+        let profitSplitsData = [];  // dedicated store for profit split breakdown
         
         // Glue code for new buttons
         function setFilter(profile) {
@@ -1350,7 +1351,10 @@
             const title = document.getElementById('breakdownTitle');
             const valHeader = document.getElementById('breakdownValueHeader');
 
-            if (!clientsBreakdownData || clientsBreakdownData.length === 0) {
+            // Use dedicated splits data for this metric
+            const dataSource = (metric === 'profit_split_inprogress') ? profitSplitsData : clientsBreakdownData;
+
+            if (!dataSource || dataSource.length === 0) {
                 alert('Data still loading. Please wait a moment.');
                 return;
             }
@@ -1363,7 +1367,7 @@
             const showExpand = (metric === 'payouts');
 
             // Sort descending by absolute value for currency, or by count for status metrics
-            const sorted = [...clientsBreakdownData]
+            const sorted = [...dataSource]
                 .sort((a, b) => {
                     const va = parseFloat(a[metric]) || 0;
                     const vb = parseFloat(b[metric]) || 0;
@@ -1586,18 +1590,9 @@
                     if (sData.status === 'success') {
                         const el = document.getElementById('grand-profit-split');
                         if (el) el.textContent = formatCurrency(sData.total);
-                        // Merge profit_split_inprogress into clientsBreakdownData
-                        if (sData.clients && clientsBreakdownData.length) {
-                            const splitMap = {};
-                            sData.clients.forEach(c => { splitMap[c.client_id] = c.profit_split_inprogress; });
-                            clientsBreakdownData.forEach(c => {
-                                if (splitMap[c.client_id] !== undefined) {
-                                    c.profit_split_inprogress = splitMap[c.client_id];
-                                }
-                            });
-                        } else if (sData.clients) {
-                            // clientsBreakdownData not yet ready — store for later
-                            clientsBreakdownData = sData.clients;
+                        // Store in dedicated splits data (always available for breakdown)
+                        if (sData.clients) {
+                            profitSplitsData = sData.clients;
                         }
                         debugLog("Profit splits loaded: total=" + sData.total);
                     }
