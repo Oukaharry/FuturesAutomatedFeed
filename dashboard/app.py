@@ -1,4 +1,5 @@
 from flask import Flask, render_template, jsonify, request, redirect, url_for, g
+from flask_compress import Compress
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import threading
@@ -24,7 +25,8 @@ from config.hierarchy import (
     get_client_by_email, get_user_by_email, get_client_profile,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader,
-    rename_admin, rename_trader, rename_client
+    rename_admin, rename_trader, rename_client,
+    reassign_client_trader
 )
 
 # Import database module for secure storage
@@ -138,11 +140,45 @@ _start_recent_log_purger()
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
+# Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+
+# ── Gzip compression ────────────────────────────────────────────────────────
+# Compress large JSON/HTML responses before sending to client.
+# Reduces 300-600 KB payloads to ~30-60 KB, preventing uWSGI read timeouts.
+app.config['COMPRESS_REGISTER'] = True
+app.config['COMPRESS_MIMETYPES'] = [
+    'application/json',
+    'text/html',
+    'text/css',
+    'application/javascript',
+    'text/plain',
+]
+app.config['COMPRESS_LEVEL'] = 6       # zlib level 1-9 (6 = good balance)
+app.config['COMPRESS_MIN_SIZE'] = 1000 # only compress responses > 1KB
+Compress(app)
 
 # ============ Request Duration Logging ============
 @app.before_request
 def _log_request_start():
     g._request_start = time.monotonic()
+
+# ── Auto-decompress gzip-encoded incoming request bodies ───────────────────
+# Trader Companion sends MT5 deal payloads with Content-Encoding: gzip.
+# uWSGI does not decompress these automatically, so we do it here before
+# Flask's request.json parser runs.
+@app.before_request
+def _decompress_request_body():
+    if request.content_encoding == 'gzip':
+        import gzip as _gzip
+        try:
+            decompressed = _gzip.decompress(request.get_data())
+            # Replace the request data in-place and clear the encoding header
+            request.environ['wsgi.input'] = __import__('io').BytesIO(decompressed)
+            request.environ['CONTENT_LENGTH'] = str(len(decompressed))
+            request.environ.pop('HTTP_CONTENT_ENCODING', None)
+        except Exception as e:
+            logging.warning(f'[DECOMPRESS] Failed to decompress gzip request: {e}')
 
 @app.after_request
 def _log_request_end(response):
@@ -2350,24 +2386,21 @@ def get_filtered_hierarchy(user_type, user_identifier):
         return {'admins': {}}
     
     if user_type == 'trader':
-        # Trader sees only their clients - need to find which admin they belong to
+        # Trader sees only their clients — collect from ALL admins
         trader_name = user_identifier.strip()
         trader_name_lower = trader_name.lower()
+        merged_admins = {}
         for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
             traders = admin_data.get('traders', {})
             for t_key in traders:
                 if t_key.strip().lower() == trader_name_lower:
-                    return {
-                        'admins': {
-                            admin_name: {
-                                'email': '',  # Hide admin email from trader
-                                'traders': {
-                                    t_key: traders[t_key]
-                                }
-                            }
+                    if admin_name not in merged_admins:
+                        merged_admins[admin_name] = {
+                            'email': '',
+                            'traders': {}
                         }
-                    }
-        return {'admins': {}}
+                    merged_admins[admin_name]['traders'][t_key] = traders[t_key]
+        return {'admins': merged_admins} if merged_admins else {'admins': {}}
     
     if user_type == 'client':
         # Client sees only themselves (case-insensitive match)
@@ -4763,6 +4796,81 @@ def api_update_client_profile():
         return jsonify({"status": "success"})
     
     return jsonify({"status": "error", "message": "Client not found"}), 404
+
+
+@app.route('/api/assign_client_trader', methods=['POST'])
+@require_session
+def api_assign_client_trader():
+    """
+    Reassign a client to a new trader and persist to:
+    - hierarchy JSON (reassign_client_trader — auto-creates lane if needed)
+    - user_credentials (parent_trader/parent_admin)
+    - clients_data.identity (admin/trader fields, if record exists)
+    """
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+
+    data = request.json or {}
+    client_name = (data.get('client_name') or '').strip()
+    target_admin = (data.get('admin') or '').strip()
+    new_trader = (data.get('new_trader') or '').strip()
+
+    if not client_name or not target_admin or not new_trader:
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    # Get current location before reassigning (for logging)
+    from config.hierarchy import reload_hierarchy, get_client_profile
+    reload_hierarchy()
+    current = get_client_profile(client_name)
+    if not current:
+        return jsonify({"status": "error", "message": "Client not found in hierarchy"}), 404
+
+    old_admin = (current.get('admin') or '').strip()
+    old_trader = (current.get('trader') or '').strip()
+
+    # Persist in hierarchy (auto-creates trader lane, handles idempotent same-assignment)
+    if not reassign_client_trader(client_name, target_admin, new_trader):
+        return jsonify({"status": "error", "message": "Reassignment failed"}), 400
+
+    # Skip DB/identity updates if nothing actually changed
+    if old_admin == target_admin and old_trader == new_trader:
+        return jsonify({"status": "success", "message": "No change"})
+
+    # Persist in DB
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE user_credentials SET parent_trader = ?, parent_admin = ? WHERE username = ? AND user_type = 'client'",
+                (new_trader, target_admin, client_name)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"[assign_client_trader] DB update failed (user_credentials): {e}")
+
+    # Update client identity record (if it exists)
+    try:
+        client_data = get_client_data(client_name)
+        if client_data:
+            identity = client_data.get('identity', {}) if isinstance(client_data, dict) else {}
+            if not isinstance(identity, dict):
+                identity = {}
+            identity['admin'] = target_admin
+            identity['trader'] = new_trader
+            update_client_field(client_name, 'identity', identity)
+    except Exception as e:
+        print(f"[assign_client_trader] identity update failed: {e}")
+
+    log_action(
+        'ASSIGN_CLIENT_TRADER',
+        session_user.get('user_type'),
+        client_name,
+        get_remote_address(),
+        f"{old_admin}/{old_trader} -> {target_admin}/{new_trader}"
+    )
+    return jsonify({"status": "success"})
+
 
 @app.route('/api/remove_admin', methods=['POST'])
 def api_remove_admin():
