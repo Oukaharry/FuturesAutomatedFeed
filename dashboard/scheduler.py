@@ -60,16 +60,16 @@ def run_scheduler():
                 _mark_ran('watermark', today)
                 time.sleep(60)
 
-            # 21:08 UTC (00:08 EAT) — Automated quality scan  [TEMP TEST]
-            if now.hour == 21 and now.minute == 8 and ran.get('quality_scan') != today:
-                logging.info("Running scheduled quality scan (TEST 00:08 EAT)...")
+            # 22:55 UTC (01:55 EAT) — Automated quality scan
+            if now.hour == 22 and now.minute == 55 and ran.get('quality_scan') != today:
+                logging.info("Running scheduled quality scan (01:55 EAT)...")
                 run_scheduled_quality_scan()
                 _mark_ran('quality_scan', today)
                 time.sleep(60)
 
-            # 21:10 UTC (00:10 EAT) — Post daily summary to Slack  [TEMP TEST]
-            if now.hour == 21 and now.minute == 10 and ran.get('slack_summary') != today:
-                logging.info("Posting daily quality summary to Slack (TEST 00:10 EAT)...")
+            # 23:00 UTC (02:00 EAT) — Post daily summary to Slack
+            if now.hour == 23 and now.minute == 0 and ran.get('slack_summary') != today:
+                logging.info("Posting daily quality summary to Slack (02:00 EAT)...")
                 post_slack_summary()
                 _mark_ran('slack_summary', today)
                 time.sleep(60)
