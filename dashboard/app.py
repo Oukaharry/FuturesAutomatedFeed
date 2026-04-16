@@ -6071,7 +6071,7 @@ def api_quality_client(client_id):
     if not can_access_client(user_type, user_identifier, client_id):
         return jsonify({"status": "error", "message": "Access denied"}), 403
     empty = {"client_id": client_id, "issues": [], "health_score": 100.0}
-    _hidden = {'Scan error', 'Daily summary not sent', 'Hedge account or Prop Firm missing'}
+    _hidden = {'Scan error'}
 
     # If rescan=1, run a live scan for this client and update the stored results
     if request.args.get('rescan') == '1':
