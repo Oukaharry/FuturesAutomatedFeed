@@ -5729,23 +5729,6 @@ def run_quality_scan(target_client=None):
     today_weekday = now.weekday()  # 0=Mon, 6=Sun
     scan_date_str = now.strftime('%Y-%m-%d')
 
-    # Downtime check: only today and next trading day are allowed.
-    # Next trading day: Mon-Thu → tomorrow, Fri → Mon, Sat → Mon, Sun → Mon
-    _day_names = {0: 'Monday', 1: 'Tuesday', 2: 'Wednesday', 3: 'Thursday', 4: 'Friday'}
-    if today_weekday <= 3:      # Mon-Thu → next day
-        _next_trading_day = today_weekday + 1
-    else:                        # Fri/Sat/Sun → Monday
-        _next_trading_day = 0
-    _allowed_days = {today_weekday, _next_trading_day}
-    # Map lowercase weekday tokens → day number
-    _wd_to_num = {
-        'monday': 0, 'mon': 0,
-        'tuesday': 1, 'tue': 1, 'tues': 1,
-        'wednesday': 2, 'wed': 2, 'weds': 2,
-        'thursday': 3, 'thu': 3, 'thurs': 3,
-        'friday': 4, 'fri': 4,
-    }
-
     for client_name in all_clients:
         profile = get_client_profile(client_name)
         trader = profile.get('trader', '') if profile else ''
@@ -5873,16 +5856,18 @@ def run_quality_scan(target_client=None):
                                    'detail': f'{row_label}: Funded but no activation fee',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
-                # Active account: at least one cell must contain a weekday name (Mon-Fri)
+                # Active account: at least one hedge result/day column must contain a weekday name (Mon-Fri)
                 _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
                 _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
+                # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
+                _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day')]
                 if not _inactive_p1 and not _inactive_p2 and status_p1:
                     weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
                                 'mon', 'tue', 'wed', 'thu', 'fri',
                                 'tues', 'weds', 'thurs'}
                     has_weekday = False
-                    for val in ev.values():
-                        s = str(val or '').strip().lower()
+                    for col in _day_columns:
+                        s = str(ev.get(col) or '').strip().lower()
                         if any(wd in s for wd in weekdays):
                             has_weekday = True
                             break
@@ -5890,25 +5875,6 @@ def run_quality_scan(target_client=None):
                         issues.append({'check': 'No current day value', 'severity': 'medium', 'row': idx,
                                        'detail': f'{row_label}: Active account has no cell with a weekday (Mon-Fri)',
                                        'estimated_date': _estimate_issue_date(ev, 'No current day value', scan_date_str)})
-
-                # ── Downtime detection ──────────────────────────────────
-                # Only today and the next trading day should appear.
-                # Any other weekday means that day was NOT traded → downtime.
-                if not _inactive_p1 and not _inactive_p2 and status_p1 and today_weekday < 5:
-                    found_days = set()
-                    for val in ev.values():
-                        s = str(val or '').strip().lower()
-                        for token, day_num in _wd_to_num.items():
-                            if token in s:
-                                found_days.add(day_num)
-                    stale_days = found_days - _allowed_days
-                    if stale_days:
-                        stale_names = sorted([_day_names[d] for d in stale_days], key=lambda n: list(_day_names.values()).index(n))
-                        allowed_names = ' & '.join(_day_names[d] for d in sorted(_allowed_days))
-                        _acct_display = acct_num or acct_num2 or 'no acct#'
-                        issues.append({'check': 'Downtime detected', 'severity': 'critical', 'row': idx,
-                                       'detail': f'{row_label} [{_acct_display}]: Stale day(s) found: {", ".join(stale_names)} — expected only {allowed_names}',
-                                       'estimated_date': scan_date_str})
 
                 # Negative Hedge Net without note
                 def _parse_num(v):

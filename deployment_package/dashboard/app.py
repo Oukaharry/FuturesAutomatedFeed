@@ -3160,6 +3160,7 @@ def run_quality_scan(target_client=None):
             except (ValueError, TypeError):
                 pass
 
+        total_checks = 0
         for idx, ev in enumerate(evaluations):
             row_label = f'Row {idx + 1}'
             if ev.get('_deleted'):
@@ -3172,6 +3173,7 @@ def run_quality_scan(target_client=None):
             prop_firm = str(ev.get('Prop Firm', '') or '').strip()
             acct_size = str(ev.get('Account Size', '') or '').strip()
             has_data = bool(prop_firm or acct_size)
+            total_checks += 1
 
             if not has_data:
                 continue
@@ -3218,13 +3220,15 @@ def run_quality_scan(target_client=None):
 
             _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
             _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
+            # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
+            _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day')]
             if not _inactive_p1 and not _inactive_p2 and status_p1:
                 weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
                             'mon', 'tue', 'wed', 'thu', 'fri',
                             'tues', 'weds', 'thurs'}
                 has_weekday = False
-                for val in ev.values():
-                    s = str(val or '').strip().lower()
+                for col in _day_columns:
+                    s = str(ev.get(col) or '').strip().lower()
                     if any(wd in s for wd in weekdays):
                         has_weekday = True
                         break
@@ -3260,7 +3264,7 @@ def run_quality_scan(target_client=None):
             for pa in prop_accounts
             if isinstance(pa, dict)
         )
-        if not _hedge_filled and not _prop_filled:
+        if total_checks > 0 and not _hedge_filled and not _prop_filled:
             issues.append({
                 'check': 'Hedge account or Prop Firm missing',
                 'severity': 'high',
