@@ -11,8 +11,32 @@ from dashboard.watermark_service import save_daily_profit
 
 stop_event = threading.Event()
 
-# Track which jobs already ran today to avoid double-runs
-_ran_today = {'watermark': None, 'quality_scan': None, 'slack_summary': None, 'db_cleanup': None}
+# File-based tracking of which jobs already ran today.
+# In-memory dicts get wiped when Flask reloader restarts the module, causing
+# duplicate runs.  A tiny JSON file survives reloads within the same day.
+_SCHEDULER_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.scheduler_state.json')
+
+def _load_ran_today():
+    """Load the ran-today state from disk (survives module reloads)."""
+    try:
+        with open(_SCHEDULER_STATE_FILE, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+def _mark_ran(job_name, date_str):
+    """Mark a job as completed for a given date and persist to disk."""
+    state = _load_ran_today()
+    state[job_name] = date_str
+    try:
+        with open(_SCHEDULER_STATE_FILE, 'w') as f:
+            json.dump(state, f)
+    except OSError as e:
+        logging.warning(f"Could not persist scheduler state: {e}")
+
+# Prevent duplicate scheduler threads across Flask reloader / multiple imports
+_scheduler_lock = threading.Lock()
+_scheduler_started = False
 
 
 def run_scheduler():
@@ -21,6 +45,7 @@ def run_scheduler():
         try:
             now = datetime.now()
             today = now.strftime('%Y-%m-%d')
+            ran = _load_ran_today()
 
             # All times in UTC — PythonAnywhere runs UTC
             # Kenya (EAT) is UTC+3, so we subtract 3 hours:
@@ -29,31 +54,31 @@ def run_scheduler():
             #   02:05 EAT = 23:05 UTC (previous day)
 
             # 21:00 UTC (00:00 EAT) — Midnight watermark snapshot
-            if now.hour == 21 and now.minute == 0 and _ran_today['watermark'] != today:
+            if now.hour == 21 and now.minute == 0 and ran.get('watermark') != today:
                 logging.info("Running midnight watermark update (00:00 EAT)...")
                 update_all_clients_watermarks()
-                _ran_today['watermark'] = today
+                _mark_ran('watermark', today)
                 time.sleep(60)
 
-            # 23:00 UTC (02:00 EAT) — Automated quality scan
-            if now.hour == 23 and now.minute == 0 and _ran_today['quality_scan'] != today:
-                logging.info("Running scheduled quality scan (02:00 EAT)...")
+            # 21:08 UTC (00:08 EAT) — Automated quality scan  [TEMP TEST]
+            if now.hour == 21 and now.minute == 8 and ran.get('quality_scan') != today:
+                logging.info("Running scheduled quality scan (TEST 00:08 EAT)...")
                 run_scheduled_quality_scan()
-                _ran_today['quality_scan'] = today
+                _mark_ran('quality_scan', today)
                 time.sleep(60)
 
-            # 23:05 UTC (02:05 EAT) — Post daily summary to Slack
-            if now.hour == 23 and now.minute == 5 and _ran_today['slack_summary'] != today:
-                logging.info("Posting daily quality summary to Slack (02:05 EAT)...")
+            # 21:10 UTC (00:10 EAT) — Post daily summary to Slack  [TEMP TEST]
+            if now.hour == 21 and now.minute == 10 and ran.get('slack_summary') != today:
+                logging.info("Posting daily quality summary to Slack (TEST 00:10 EAT)...")
                 post_slack_summary()
-                _ran_today['slack_summary'] = today
+                _mark_ran('slack_summary', today)
                 time.sleep(60)
 
             # 23:15 UTC (02:15 EAT) — Daily database cleanup
-            if now.hour == 23 and now.minute == 15 and _ran_today['db_cleanup'] != today:
+            if now.hour == 23 and now.minute == 15 and ran.get('db_cleanup') != today:
                 logging.info("Running daily database cleanup (02:15 EAT)...")
                 run_database_cleanup()
-                _ran_today['db_cleanup'] = today
+                _mark_ran('db_cleanup', today)
                 time.sleep(60)
 
             time.sleep(30)  # Check every 30s
@@ -197,13 +222,6 @@ def _build_daily_summary_text():
         for check, count in top_issues:
             lines.append(f"  • {check}: {count} occurrences")
         lines.append("")
-
-    # Collect downtime data (will be rendered at the bottom)
-    downtime_clients = []
-    for r in scan_results:
-        for iss in r['issues']:
-            if iss['check'] == 'Downtime detected':
-                downtime_clients.append((r.get('trader', 'Unknown'), r['client_id'], iss['detail']))
 
     if trader_stats:
         # Gamified Trader Health Leaderboard — ranked best to worst
@@ -365,24 +383,6 @@ def _build_daily_summary_text():
         import traceback
         traceback.print_exc()
 
-    # ── Downtime Alert (bottom of message for maximum visibility) ──
-    if downtime_clients:
-        lines.append("━" * 30)
-        lines.append("")
-        lines.append("🚨🚨🚨 *DOWNTIME ALERT — ZERO TOLERANCE* 🚨🚨🚨")
-        lines.append(f"⚠️ *{len(downtime_clients)} account(s) have stale trading days. This means the account was NOT traded on those days.*")
-        lines.append("")
-        for trader, client, detail in sorted(downtime_clients):
-            acct = ''
-            if '[' in detail and ']' in detail:
-                acct = detail.split('[')[1].split(']')[0]
-            stale_part = detail.split('Stale day(s) found: ')[-1].split(' —')[0] if 'Stale day(s) found: ' in detail else detail
-            acct_tag = f" · {acct}" if acct and acct != 'no acct#' else ''
-            lines.append(f"  🔴 *{client}* ({trader}{acct_tag}) — {stale_part}")
-        lines.append("")
-        lines.append("‼️ *Downtime is unacceptable. Every trading day must be accounted for. Traders responsible for these accounts must explain immediately.*")
-        lines.append("")
-
     return "\n".join(lines)
 
 
@@ -438,6 +438,23 @@ def update_all_clients_watermarks():
         logging.error(f"Error in update_all_clients_watermarks: {e}")
 
 def start_scheduler():
+    global _scheduler_started
+    # Flask's Werkzeug reloader spawns TWO processes: a parent watcher and a
+    # child that actually serves.  Only start the scheduler in the child
+    # (WERKZEUG_RUN_MAIN='true') to avoid duplicate threads.  When the
+    # reloader is disabled (e.g. production), WERKZEUG_RUN_MAIN is unset and
+    # there is only one process — that's fine, start normally.
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'false':
+        return None  # Parent watcher process — skip
+    with _scheduler_lock:
+        if _scheduler_started:
+            logging.info("Scheduler already running — skipping duplicate start.")
+            return None
+        _scheduler_started = True
+    # Stop any lingering scheduler from a previous reload cycle
+    stop_event.set()
+    time.sleep(0.1)
+    stop_event.clear()
     t = threading.Thread(target=run_scheduler, daemon=True)
     t.start()
     return t
