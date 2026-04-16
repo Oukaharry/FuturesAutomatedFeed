@@ -8,216 +8,721 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
         :root {
-            --bg-color: #f1f5f9;
-            --card-bg: #ffffff;
-            --text-primary: #1e293b;
-            --text-secondary: #64748b;
-            --accent-color: #2563eb;
-            --border-color: #e2e8f0;
-            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --bg: #040816;
+            --bg-soft: #0b1328;
+            --panel: rgba(10, 20, 44, 0.9);
+            --panel-strong: rgba(17, 31, 64, 0.96);
+            --border: rgba(115, 144, 255, 0.22);
+            --border-strong: rgba(115, 144, 255, 0.4);
+            --text-primary: #f8fbff;
+            --text-secondary: #96a6cf;
+            --accent: #6ea8ff;
+            --accent-strong: #8b5cf6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --shadow: 0 22px 60px rgba(0, 0, 0, 0.4);
             --font-family: 'Inter', sans-serif;
         }
 
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: var(--font-family);
-            background-color: var(--bg-color);
-            color: var(--text-primary);
             margin: 0;
-            padding: 40px;
+            min-height: 100vh;
+            font-family: var(--font-family);
+            background:
+                radial-gradient(circle at top left, rgba(110, 168, 255, 0.16), transparent 28%),
+                radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 24%),
+                linear-gradient(180deg, #050915 0%, #040816 100%);
+            color: var(--text-primary);
+            padding: 32px;
         }
 
         .container {
-            max-width: 1000px;
+            max-width: 1440px;
             margin: 0 auto;
         }
 
+        .hero {
+            display: grid;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        .hero-panel,
+        .toolbar,
+        .summary-card,
+        .admin-board,
+        .trader-lane,
+        .client-card {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            box-shadow: var(--shadow);
+        }
+
+        .hero-panel {
+            border-radius: 24px;
+            padding: 28px;
+        }
+
         h1 {
+            margin: 0 0 10px;
             font-size: 2rem;
-            margin-bottom: 10px;
+            letter-spacing: -0.03em;
         }
 
         .subtitle {
             color: var(--text-secondary);
-            margin-bottom: 40px;
+            max-width: 760px;
+            line-height: 1.6;
         }
 
-        .admin-section {
-            background: var(--card-bg);
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
+        .summary-card {
+            border-radius: 18px;
+            padding: 18px 20px;
+            background: linear-gradient(180deg, rgba(16, 27, 57, 0.95), rgba(9, 17, 37, 0.95));
+        }
+
+        .summary-label {
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .summary-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-top: 10px;
+        }
+
+        .toolbar {
+            display: grid;
+            grid-template-columns: minmax(220px, 1fr) auto;
+            gap: 14px;
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 22px;
+        }
+
+        .input,
+        .select {
+            width: 100%;
+            border: 1px solid var(--border);
             border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 24px;
-            box-shadow: var(--shadow-sm);
-            border: 1px solid var(--border-color);
+            background: rgba(4, 8, 22, 0.9);
+            color: var(--text-primary);
+            padding: 12px 14px;
+            font: inherit;
+            outline: none;
+        }
+
+        .input:focus,
+        .select:focus {
+            border-color: var(--border-strong);
+        }
+
+        .hierarchy-stack {
+            display: grid;
+            gap: 22px;
+        }
+
+        .admin-board {
+            border-radius: 24px;
+            overflow: hidden;
+            background: linear-gradient(180deg, rgba(14, 26, 55, 0.96), rgba(8, 16, 34, 0.96));
         }
 
         .admin-header {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 16px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            display: grid;
+            grid-template-columns: minmax(240px, 320px) 1fr;
+            gap: 22px;
+            padding: 22px;
+            border-bottom: 1px solid var(--border);
         }
 
-        .admin-badge {
-            background: #eff6ff;
-            color: #1d4ed8;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 0.75rem;
+        .admin-meta {
+            display: grid;
+            gap: 12px;
+        }
+
+        .role-tag,
+        .mini-tag,
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            width: fit-content;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 0.76rem;
             text-transform: uppercase;
+            letter-spacing: 0.08em;
             font-weight: 700;
         }
 
-        .trader-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
+        .role-tag {
+            background: rgba(110, 168, 255, 0.16);
+            color: #9bc0ff;
         }
 
-        .trader-card {
-            background: #f8fafc;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px;
+        .mini-tag {
+            background: rgba(139, 92, 246, 0.16);
+            color: #c7b5ff;
+        }
+
+        .status-pill.active {
+            background: rgba(16, 185, 129, 0.15);
+            color: #5eead4;
+        }
+
+        .status-pill.inactive {
+            background: rgba(239, 68, 68, 0.16);
+            color: #fda4af;
+        }
+
+        .admin-name {
+            font-size: 1.45rem;
+            font-weight: 700;
+        }
+
+        .admin-email,
+        .muted {
+            color: var(--text-secondary);
+        }
+
+        .admin-stats,
+        .trader-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .stat-pill,
+        .trader-chip {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 10px 12px;
+            background: rgba(5, 10, 24, 0.55);
+        }
+
+        .stat-pill strong,
+        .trader-chip strong {
+            display: block;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .stat-pill span,
+        .trader-chip span {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .admin-content {
+            padding: 22px;
+        }
+
+        .trader-lanes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 18px;
+        }
+
+        .trader-lane {
+            border-radius: 20px;
+            padding: 18px;
+            background: linear-gradient(180deg, rgba(9, 18, 38, 0.94), rgba(6, 12, 28, 0.94));
+        }
+
+        .trader-lane-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+            margin-bottom: 16px;
         }
 
         .trader-name {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .trader-badge {
-            background: #ecfdf5;
-            color: #047857;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.7rem;
+            font-size: 1.05rem;
+            font-weight: 700;
         }
 
-        .client-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
+        .client-grid {
+            display: grid;
+            gap: 12px;
         }
 
-        .client-item {
-            margin-bottom: 8px;
+        .client-card {
+            border-radius: 16px;
+            padding: 14px;
+            background: linear-gradient(180deg, rgba(19, 31, 64, 0.92), rgba(10, 18, 39, 0.92));
         }
 
-        .client-link {
-            display: block;
-            padding: 8px 12px;
-            background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            text-decoration: none;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-            transition: all 0.2s;
+        .client-topline,
+        .client-meta,
+        .client-actions {
             display: flex;
             justify-content: space-between;
+            gap: 10px;
             align-items: center;
+            flex-wrap: wrap;
         }
 
-        .client-link:hover {
-            border-color: var(--accent-color);
-            color: var(--accent-color);
-            transform: translateX(4px);
+        .client-name {
+            font-weight: 700;
         }
 
-        .arrow {
-            font-size: 1.2em;
+        .client-email {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            word-break: break-word;
         }
-        
+
+        .client-actions a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .client-actions a:hover {
+            color: #b8d2ff;
+        }
+
+        .trader-assign-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            width: 100%;
+            margin-bottom: 6px;
+        }
+
+        .trader-select {
+            flex: 1;
+            min-width: 130px;
+            background: rgba(10, 20, 44, 0.9);
+            border: 1px solid rgba(115, 144, 255, 0.3);
+            color: var(--text-primary);
+            border-radius: 6px;
+            padding: 5px 8px;
+            font-size: 0.82rem;
+            font-family: var(--font-family);
+            cursor: pointer;
+        }
+
+        .trader-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .save-trader-btn {
+            background: rgba(110, 168, 255, 0.15);
+            border: 1px solid rgba(110, 168, 255, 0.35);
+            color: var(--accent);
+            border-radius: 6px;
+            padding: 5px 12px;
+            font-size: 0.8rem;
+            font-family: var(--font-family);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .save-trader-btn:hover:not(:disabled) {
+            background: rgba(110, 168, 255, 0.28);
+            color: #c8e0ff;
+        }
+
+        .save-trader-btn:disabled {
+            opacity: 0.55;
+            cursor: default;
+        }
+
         .empty-state {
             text-align: center;
-            padding: 40px;
+            padding: 42px 24px;
+            border: 1px dashed var(--border);
+            border-radius: 20px;
             color: var(--text-secondary);
-            font-style: italic;
+            background: rgba(7, 13, 29, 0.72);
+        }
+
+        @media (max-width: 900px) {
+            body {
+                padding: 18px;
+            }
+
+            .toolbar,
+            .admin-header {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>System Hierarchy</h1>
-        <div class="subtitle">Overview of Admins, Traders, and Clients</div>
-        
-        <div id="hierarchy-content">
+        <section class="hero">
+            <div class="hero-panel">
+                <h1>System Hierarchy</h1>
+                <div class="subtitle">
+                    This view now builds a normalized hierarchy before rendering, so it can support both the legacy nested structure and a flatter client-assignment model without locking the UI to one JSON shape.
+                </div>
+            </div>
+            <div class="summary-grid" id="summary-grid">
+                <div class="summary-card"><div class="summary-label">Admins</div><div class="summary-value">-</div></div>
+                <div class="summary-card"><div class="summary-label">Traders</div><div class="summary-value">-</div></div>
+                <div class="summary-card"><div class="summary-label">Clients</div><div class="summary-value">-</div></div>
+                <div class="summary-card"><div class="summary-label">Active</div><div class="summary-value">-</div></div>
+            </div>
+        </section>
+
+        <div class="toolbar">
+            <input id="search-input" class="input" type="search" placeholder="Search admin, trader, client, email, or category">
+            <select id="status-filter" class="select">
+                <option value="all">All statuses</option>
+                <option value="active">Active only</option>
+                <option value="inactive">Inactive only</option>
+            </select>
+        </div>
+
+        <div id="hierarchy-content" class="hierarchy-stack">
             <div class="empty-state">Loading hierarchy...</div>
         </div>
     </div>
 
     <script>
-        function renderHierarchy() {
-            fetch('/api/hierarchy')
-                .then(response => response.json())
-                .then(data => {
-                    const container = document.getElementById('hierarchy-content');
-                    container.innerHTML = '';
+        const state = {
+            rawData: null,
+            search: '',
+            status: 'all'
+        };
 
-                    const admins = data.admins;
-                    if (Object.keys(admins).length === 0) {
-                        container.innerHTML = '<div class="empty-state">No data available yet. Please start the main application to publish data.</div>';
-                        return;
-                    }
-
-                    for (const [adminId, adminData] of Object.entries(admins)) {
-                        const adminSection = document.createElement('div');
-                        adminSection.className = 'admin-section';
-                        
-                        let tradersHtml = '';
-                        for (const [traderId, clients] of Object.entries(adminData.traders)) {
-                            let clientsHtml = clients.map(clientId => `
-                                <li class="client-item">
-                                    <a href="/dashboard/${clientId}" class="client-link">
-                                        <span>${clientId}</span>
-                                        <span class="arrow">→</span>
-                                    </a>
-                                </li>
-                            `).join('');
-
-                            tradersHtml += `
-                                <div class="trader-card">
-                                    <div class="trader-name">
-                                        ${traderId}
-                                        <span class="trader-badge">Trader</span>
-                                    </div>
-                                    <ul class="client-list">
-                                        ${clientsHtml || '<li style="color:#999; font-size:0.8em;">No clients</li>'}
-                                    </ul>
-                                </div>
-                            `;
-                        }
-
-                        adminSection.innerHTML = `
-                            <div class="admin-header">
-                                ${adminId}
-                                <span class="admin-badge">Admin</span>
-                            </div>
-                            <div class="trader-grid">
-                                ${tradersHtml || '<div style="grid-column: 1/-1; color:#999;">No traders assigned</div>'}
-                            </div>
-                        `;
-                        container.appendChild(adminSection);
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    document.getElementById('hierarchy-content').innerHTML = '<div class="empty-state" style="color:red">Error loading hierarchy</div>';
-                });
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
-        // Refresh every 5 seconds
-        renderHierarchy();
-        setInterval(renderHierarchy, 5000);
+        function normalizeHierarchy(payload) {
+            const admins = payload && payload.admins ? payload.admins : {};
+            const traderDirectory = payload && payload.traders ? payload.traders : {};
+
+            return Object.entries(admins).map(([adminName, adminData]) => {
+                const tradersMap = {};
+
+                if (adminData && adminData.traders && typeof adminData.traders === 'object') {
+                    Object.entries(adminData.traders).forEach(([traderName, traderData]) => {
+                        const clients = Array.isArray(traderData.clients) ? traderData.clients : [];
+                        tradersMap[traderName] = {
+                            name: traderName,
+                            email: traderData.email || traderDirectory[traderName]?.email || '',
+                            clients: clients.map(client => ({
+                                ...client,
+                                assigned_trader: client.assigned_trader || traderName
+                            }))
+                        };
+                    });
+                }
+
+                if (adminData && Array.isArray(adminData.clients)) {
+                    adminData.clients.forEach(client => {
+                        const traderName = (client.assigned_trader || 'Unassigned').trim() || 'Unassigned';
+                        if (!tradersMap[traderName]) {
+                            tradersMap[traderName] = {
+                                name: traderName,
+                                email: traderDirectory[traderName]?.email || '',
+                                clients: []
+                            };
+                        }
+                        tradersMap[traderName].clients.push({
+                            ...client,
+                            assigned_trader: traderName
+                        });
+                    });
+                }
+
+                const traders = Object.values(tradersMap)
+                    .map(trader => ({
+                        ...trader,
+                        clients: trader.clients.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+
+                const clients = traders.flatMap(trader => trader.clients);
+
+                return {
+                    name: adminName,
+                    email: adminData?.email || '',
+                    traders,
+                    clientCount: clients.length,
+                    traderCount: traders.length,
+                    activeCount: clients.filter(client => (client.active_status || 'active') === 'active').length
+                };
+            }).sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        function getFilteredHierarchy(admins) {
+            const query = state.search.trim().toLowerCase();
+
+            return admins.map(admin => {
+                const filteredTraders = admin.traders.map(trader => {
+                    const filteredClients = trader.clients.filter(client => {
+                        const status = (client.active_status || 'active').toLowerCase();
+                        const statusMatch = state.status === 'all' || status === state.status;
+                        if (!statusMatch) {
+                            return false;
+                        }
+
+                        if (!query) {
+                            return true;
+                        }
+
+                        const haystack = [
+                            admin.name,
+                            admin.email,
+                            trader.name,
+                            trader.email,
+                            client.name,
+                            client.email,
+                            client.category,
+                            client.assigned_trader
+                        ].join(' ').toLowerCase();
+
+                        return haystack.includes(query);
+                    });
+
+                    return {
+                        ...trader,
+                        clients: filteredClients
+                    };
+                }).filter(trader => trader.clients.length > 0 || (!query && state.status === 'all'));
+
+                return {
+                    ...admin,
+                    traders: filteredTraders,
+                    clientCount: filteredTraders.reduce((sum, trader) => sum + trader.clients.length, 0),
+                    traderCount: filteredTraders.filter(trader => trader.clients.length > 0).length,
+                    activeCount: filteredTraders.reduce(
+                        (sum, trader) => sum + trader.clients.filter(client => (client.active_status || 'active') === 'active').length,
+                        0
+                    )
+                };
+            }).filter(admin => admin.clientCount > 0 || (!query && state.status === 'all'));
+        }
+
+        function renderSummary(admins) {
+            const traderCount = admins.reduce((sum, admin) => sum + admin.traders.length, 0);
+            const clientCount = admins.reduce((sum, admin) => sum + admin.clientCount, 0);
+            const activeCount = admins.reduce((sum, admin) => sum + admin.activeCount, 0);
+
+            document.getElementById('summary-grid').innerHTML = `
+                <div class="summary-card">
+                    <div class="summary-label">Admins</div>
+                    <div class="summary-value">${admins.length}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Traders</div>
+                    <div class="summary-value">${traderCount}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Clients</div>
+                    <div class="summary-value">${clientCount}</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-label">Active</div>
+                    <div class="summary-value">${activeCount}</div>
+                </div>
+            `;
+        }
+
+        function renderHierarchy() {
+            const container = document.getElementById('hierarchy-content');
+            const normalized = normalizeHierarchy(state.rawData || {});
+            const filtered = getFilteredHierarchy(normalized);
+
+            renderSummary(filtered);
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty-state">No matching hierarchy records found. Adjust the filters or confirm the currently loaded hierarchy file contains the expected structure.</div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(admin => {
+                const traderChipHtml = admin.traders.map(trader => `
+                    <div class="trader-chip">
+                        <strong>${escapeHtml(trader.name)}</strong>
+                        <span>${trader.clients.length} client${trader.clients.length === 1 ? '' : 's'}</span>
+                    </div>
+                `).join('');
+
+                const traderLanesHtml = admin.traders.map(trader => `
+                    <section class="trader-lane">
+                        <div class="trader-lane-header">
+                            <div>
+                                <div class="mini-tag">Trader Lane</div>
+                                <div class="trader-name">${escapeHtml(trader.name)}</div>
+                                <div class="muted">${escapeHtml(trader.email || 'No email assigned')}</div>
+                            </div>
+                            <div class="stat-pill">
+                                <strong>${trader.clients.length}</strong>
+                                <span>Clients</span>
+                            </div>
+                        </div>
+                        <div class="client-grid">
+                            ${trader.clients.map(client => {
+                                const status = (client.active_status || 'active').toLowerCase() === 'active' ? 'active' : 'inactive';
+                                const category = client.category ? escapeHtml(client.category) : 'Uncategorised';
+                                return `
+                                    <article class="client-card">
+                                        <div class="client-topline">
+                                            <div class="client-name">${escapeHtml(client.name || 'Unnamed client')}</div>
+                                            <span class="status-pill ${status}">${escapeHtml(status)}</span>
+                                        </div>
+                                        <div class="client-meta">
+                                            <div class="client-email">${escapeHtml(client.email || 'No email assigned')}</div>
+                                            <span class="mini-tag">${category}</span>
+                                        </div>
+                                        <div class="client-actions">
+                                            <div class="trader-assign-row">
+                                                <select class="trader-select"
+                                                    data-client="${escapeHtml(client.name || '')}"
+                                                    data-admin="${escapeHtml(admin.name)}"
+                                                    data-original="${escapeHtml(client.assigned_trader || trader.name)}">
+                                                    ${Object.keys((state.rawData && state.rawData.traders) || {}).sort().map(t =>
+                                                        `<option value="${escapeHtml(t)}"${t === (client.assigned_trader || trader.name) ? ' selected' : ''}>${escapeHtml(t)}</option>`
+                                                    ).join('')}
+                                                </select>
+                                                <button class="save-trader-btn" onclick="saveTraderAssignment(this)">Save</button>
+                                            </div>
+                                            <a href="/dashboard/${encodeURIComponent(client.name || '')}">Open dashboard</a>
+                                        </div>
+                                    </article>
+                                `;
+                            }).join('')}
+                        </div>
+                    </section>
+                `).join('');
+
+                return `
+                    <section class="admin-board">
+                        <div class="admin-header">
+                            <div class="admin-meta">
+                                <div class="role-tag">Admin Hub</div>
+                                <div class="admin-name">${escapeHtml(admin.name)}</div>
+                                <div class="admin-email">${escapeHtml(admin.email || 'No email assigned')}</div>
+                                <div class="admin-stats">
+                                    <div class="stat-pill">
+                                        <strong>${admin.traderCount}</strong>
+                                        <span>Visible traders</span>
+                                    </div>
+                                    <div class="stat-pill">
+                                        <strong>${admin.clientCount}</strong>
+                                        <span>Visible clients</span>
+                                    </div>
+                                    <div class="stat-pill">
+                                        <strong>${admin.activeCount}</strong>
+                                        <span>Active accounts</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="muted" style="margin-bottom: 10px;">Trader distribution</div>
+                                <div class="trader-chip-row">
+                                    ${traderChipHtml || '<div class="muted">No traders available</div>'}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="admin-content">
+                            <div class="trader-lanes">
+                                ${traderLanesHtml || '<div class="empty-state">No traders available for this admin.</div>'}
+                            </div>
+                        </div>
+                    </section>
+                `;
+            }).join('');
+        }
+
+        async function loadHierarchy() {
+            try {
+                const response = await fetch('/api/hierarchy');
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+
+                state.rawData = await response.json();
+                renderHierarchy();
+            } catch (error) {
+                console.error(error);
+                document.getElementById('hierarchy-content').innerHTML =
+                    '<div class="empty-state" style="color:#fda4af;">Error loading hierarchy. Check the API response and confirm the active hierarchy JSON file is the one you edited.</div>';
+            }
+        }
+
+        document.getElementById('search-input').addEventListener('input', event => {
+            state.search = event.target.value;
+            renderHierarchy();
+        });
+
+        document.getElementById('status-filter').addEventListener('change', event => {
+            state.status = event.target.value;
+            renderHierarchy();
+        });
+
+        async function saveTraderAssignment(btn) {
+            const row = btn.closest('.trader-assign-row');
+            const select = row.querySelector('.trader-select');
+            const clientName = select.dataset.client;
+            const adminName = select.dataset.admin;
+            const newTrader = select.value;
+            const originalTrader = select.dataset.original;
+
+            if (newTrader === originalTrader) return;
+
+            btn.disabled = true;
+            btn.textContent = '…';
+
+            try {
+                const resp = await fetch('/api/assign_client_trader', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_name: clientName, admin: adminName, new_trader: newTrader })
+                });
+                const result = await resp.json();
+                if (result.status === 'success') {
+                    select.dataset.original = newTrader;
+                    btn.textContent = '✓';
+                    btn.style.color = '#4ade80';
+                    btn.style.borderColor = 'rgba(74,222,128,0.4)';
+                    setTimeout(() => loadHierarchy(), 900);
+                } else {
+                    btn.textContent = 'Save';
+                    btn.disabled = false;
+                    alert('Error: ' + (result.message || 'Reassignment failed'));
+                }
+            } catch (e) {
+                btn.textContent = 'Save';
+                btn.disabled = false;
+                console.error(e);
+            }
+        }
+
+        loadHierarchy();
+        setInterval(loadHierarchy, 5000);
     </script>
 </body>
 </html>
