@@ -286,7 +286,8 @@
                     if (admin && admin.traders && typeof admin.traders === 'object' && !Array.isArray(admin.traders)) {
                         Object.entries(admin.traders).forEach(([tName, tData]) => {
                             if (norm(tName) === targetTrader) {
-                                clients = tData.clients || (Array.isArray(tData) ? tData : []);
+                                const tc = tData.clients || (Array.isArray(tData) ? tData : []);
+                                clients = clients.concat(tc);
                             }
                         });
                     }

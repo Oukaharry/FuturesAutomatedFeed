@@ -26,6 +26,7 @@ A desktop application for traders to push their MT5 data to the Trading Dashboar
 import sys
 import os
 import json
+import gzip as _gzip
 import requests
 import time
 from datetime import datetime
@@ -198,6 +199,24 @@ try:
     import pytz
 except ImportError:
     pytz = None
+
+
+def _gzip_post(url, payload, timeout=120, **kwargs):
+    """
+    POST JSON payload compressed with gzip.
+    Sends Content-Encoding: gzip so the server can decompress it.
+    Falls back to normal JSON POST if compression somehow fails.
+    """
+    try:
+        raw = json.dumps(payload).encode('utf-8')
+        compressed = _gzip.compress(raw, compresslevel=6)
+        headers = kwargs.pop('headers', {})
+        headers['Content-Type'] = 'application/json'
+        headers['Content-Encoding'] = 'gzip'
+        return requests.post(url, data=compressed, headers=headers, timeout=timeout, **kwargs)
+    except Exception:
+        # Fallback: plain JSON
+        return requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=timeout, **kwargs)
 
 
 class MT5DataPusher:
@@ -2334,10 +2353,9 @@ class TraderCompanionApp:
         
         try:
             # Use public endpoint - no API key needed
-            response = requests.post(
+            response = _gzip_post(
                 f"{dashboard_url}/api/client/push",
-                json=payload,
-                headers={"Content-Type": "application/json"},
+                payload,
                 timeout=120
             )
             
@@ -2537,10 +2555,9 @@ class TraderCompanionApp:
         }
         
         try:
-            response = requests.post(
+            response = _gzip_post(
                 f"{dashboard_url}/api/client/push",
-                json=payload,
-                headers={"Content-Type": "application/json"},
+                payload,
                 timeout=120
             )
             
@@ -2720,10 +2737,9 @@ class TraderCompanionApp:
         }
         
         try:
-            response = requests.post(
+            response = _gzip_post(
                 f"{dashboard_url}/api/client/push",
-                json=payload,
-                headers={"Content-Type": "application/json"},
+                payload,
                 timeout=120
             )
             
@@ -3032,10 +3048,9 @@ class TraderCompanionApp:
         }
         
         try:
-            response = requests.post(
+            response = _gzip_post(
                 f"{dashboard_url}/api/client/push",
-                json=payload,
-                headers={"Content-Type": "application/json"},
+                payload,
                 timeout=120
             )
             
@@ -5756,10 +5771,9 @@ class TraderCompanionApp:
             }
 
             try:
-                response = requests.post(
+                response = _gzip_post(
                     f"{dashboard_url}/api/client/push",
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
+                    payload,
                     timeout=30
                 )
                 if response.status_code == 200:
@@ -5983,10 +5997,9 @@ class TraderCompanionApp:
             }
 
             try:
-                response = requests.post(
+                response = _gzip_post(
                     f"{dashboard_url}/api/client/push",
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
+                    payload,
                     timeout=30
                 )
                 if response.status_code == 200:

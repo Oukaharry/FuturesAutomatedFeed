@@ -18,13 +18,7 @@ if len(sys.argv) < 2:
 SEARCH = sys.argv[1].strip()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "dashboard", "dashboard.db")
-# Prefer the hierarchy file selected by config.hierarchy (supports restructured file)
 HIERARCHY_PATH = os.path.join(BASE_DIR, "config", "hierarchy.json")
-try:
-    from config import hierarchy as _hier
-    HIERARCHY_PATH = getattr(_hier, 'HIERARCHY_FILE', HIERARCHY_PATH)
-except Exception:
-    pass
 
 print("=" * 70)
 print(f"DEBUG: Trader Portfolio for '{SEARCH}'")
