@@ -182,6 +182,16 @@
             transition: color 0.15s;
         }
         .client-card:hover .client-card-footer { color: #fbbf24; }
+        .client-card-email {
+            font-size: 0.72rem;
+            color: rgba(148,163,184,0.75);
+            margin-top: 6px;
+            cursor: pointer;
+            transition: color 0.15s;
+            word-break: break-all;
+            line-height: 1.4;
+        }
+        .client-card-email:hover { color: #93c5fd; }
         .badge-bef {
             background: rgba(234,179,8,0.15); color: #facc15;
             border: 1px solid rgba(234,179,8,0.25); border-radius: 99px;
@@ -336,12 +346,18 @@
                 const isBEF      = (c.category || '').toUpperCase() === 'BEF';
                 const isInactive = c.active_status === 'inactive';
                 const acc = cardAccents[idx % cardAccents.length];
+                const emailHtml = c.email ? `
+                        <div class="client-card-email" onclick="copyClientEmail(event, this, '${c.email.replace(/'/g, "\\'")}')"
+                             title="Click to copy email">
+                            <i class="fas fa-envelope" style="font-size:0.7rem; margin-right:4px; opacity:0.6;"></i>${c.email}
+                        </div>` : '';
                 return `
                     <a href="/dashboard/${encodeURIComponent(c.name)}" class="client-card${isInactive ? ' is-inactive' : ''}" style="--c-accent:${acc.border};--c-icon-bg:${acc.iconBg};--c-icon-bd:${acc.iconBd};--c-icon:${acc.icon};--c-glow:${acc.glow};">
                         <div class="client-card-icon"><i class="fas fa-user"></i></div>
                         <div class="client-card-name">${c.name}</div>
-                        ${(isBEF || isInactive) ? `<div class="client-card-badges">${isBEF ? '<span class="badge-bef">BEF</span>' : ''}${isInactive ? '<span class="badge-inactive">Inactive</span>' : ''}</div>` : ''}
+                        ${isInactive ? `<div class="client-card-badges"><span class="badge-inactive">Inactive</span></div>` : ''}
                         <div class="client-card-meta"><i class="fas fa-shield-halved" style="color:#2dd4bf;"></i> Managed Account</div>
+                        ${emailHtml}
                         <div class="client-card-footer">Open Dashboard <i class="fas fa-arrow-right"></i></div>
                     </a>`;
             }).join('');
@@ -369,6 +385,22 @@
                     <p style="color:var(--text-secondary);font-size:0.9rem;">Failed to load client list. Please refresh the page.</p>
                 </div>`;
         });
+
+    async function copyClientEmail(event, el, email) {
+        event.preventDefault();
+        event.stopPropagation();
+        try {
+            await navigator.clipboard.writeText(email);
+        } catch(ex) {
+            const ta = document.createElement('textarea');
+            ta.value = email; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        }
+        const orig = el.innerHTML;
+        el.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i>Copied!';
+        el.style.color = '#4ade80';
+        setTimeout(() => { el.innerHTML = orig; el.style.color = ''; }, 1500);
+    }
 </script>
 </body>
 </html>
