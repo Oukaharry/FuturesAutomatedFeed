@@ -2468,7 +2468,10 @@ def get_hierarchy():
                 cname = client.get('name', '')
                 identity = all_identities.get(cname, {})
                 client['active_status'] = identity.get('active_status', 'active')
-                client['email'] = identity.get('email', '')
+                # Hierarchy email is the source of truth (preserves original case).
+                # Only fall back to DB identity email if hierarchy has none.
+                if not client.get('email'):
+                    client['email'] = identity.get('email', '')
     # Debug logging for empty hierarchy results
     if not enriched.get('admins') or all(
         not admin_data.get('traders', {}) for admin_data in enriched.get('admins', {}).values()
@@ -3276,7 +3279,7 @@ def api_client_push():
             "admin": admin_id,
             "trader": trader_id,
             "client": client_id,
-            "email": email,
+            "email": client_info.get('email', email),
             "sheet_url": push_sheet_url
         },
         # Store aggregated comment data if provided (from Push by Comment feature)
@@ -3501,7 +3504,7 @@ def api_migrate_sheet():
                 "admin": admin_id,
                 "trader": trader_id,
                 "client": client_id,
-                "email": email,
+                "email": client_info.get('email', email),
                 "sheet_url": sheet_url
             },
             "sheet_url": sheet_url,

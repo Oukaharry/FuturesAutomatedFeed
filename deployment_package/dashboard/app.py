@@ -1307,7 +1307,7 @@ def api_client_push():
             "admin": admin_id,
             "trader": trader_id,
             "client": client_id,
-            "email": email
+            "email": client_info.get('email', email)
         },
         # Store aggregated comment data if provided (from Push by Comment feature)
         "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
@@ -1436,7 +1436,7 @@ def api_migrate_sheet():
                 "admin": admin_id,
                 "trader": trader_id,
                 "client": client_id,
-                "email": email
+                "email": client_info.get('email', email)
             },
             "sheet_url": sheet_url,
             "migrated_at": datetime.now().isoformat()
