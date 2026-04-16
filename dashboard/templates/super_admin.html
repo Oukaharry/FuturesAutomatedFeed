@@ -574,6 +574,7 @@
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
                 <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+                <a href="/trader_performance" class="tab-btn"><i class="fas fa-chart-line"></i> Traders</a>
                 {% if not is_bef_admin %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
             </div>
 
@@ -680,7 +681,8 @@
 
                 {% endif %}
 
-                <!-- Client Directory (visible to all roles) -->
+                <!-- Client Directory (bef_admin only) -->
+                {% if user_role|default('super_admin') == 'bef_admin' %}
                 <div style="height:1px; background:var(--border-color); margin:20px 0;"></div>
                 <div style="margin-bottom:12px;">
                     <label style="font-size:0.75rem; color:#94a3b8; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
@@ -700,6 +702,7 @@
                         <i class="fas fa-circle-notch fa-spin"></i> Loading...
                     </div>
                 </div>
+                {% endif %}
 
                 </div>
             </div>
@@ -1575,12 +1578,11 @@
             let a=0, t=0, c=0;
             a = Object.keys(hierarchyData.admins).length;
             Object.values(hierarchyData.admins).forEach(adm => {
-                const traders = adm.traders || {};
-                t += Object.keys(traders).length;
-                Object.values(traders).forEach(tr => {
+                const tradersMap = buildTraderMapForAdmin(adm);
+                t += Object.keys(tradersMap).length;
+                Object.values(tradersMap).forEach(tr => {
                     let clients = tr.clients || [];
-                    if(Array.isArray(tr)) clients = tr; // legacy
-                    
+
                     // Filter stats
                     clients = clients.filter(cl => {
                         if (currentProfile === 'ALL') return true;
@@ -1590,7 +1592,7 @@
                         }
                         return cat === currentProfile;
                     });
-                    
+
                     c += clients.length;
                 });
             });
@@ -1609,15 +1611,15 @@
             sidebarAllClients = [];
             if (!hierarchyData.admins) return;
             Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
-                    let clients = traderData.clients || [];
-                    if (Array.isArray(traderData)) clients = traderData;
+                const tradersMap = buildTraderMapForAdmin(adminData);
+                Object.entries(tradersMap).forEach(([traderName, traderData]) => {
+                    const clients = Array.isArray(traderData.clients) ? traderData.clients : [];
                     clients.forEach(cl => {
                         if (!cl) return;
                         const name = (typeof cl === 'object') ? cl.name : cl;
                         const cat = (typeof cl === 'object') ? (cl.profile || cl.category || cl.source || 'Private') : 'Private';
                         if (name) {
-                            sidebarAllClients.push({ name, trader: traderName, admin: adminName, category: cat.toUpperCase() });
+                            sidebarAllClients.push({ name, trader: traderName, admin: adminName, category: String(cat || 'PRIVATE').toUpperCase() });
                         }
                     });
                 });
@@ -1694,8 +1696,9 @@
             if (!adminName || !traderSel) return;
             const adminVal = adminName.value;
             
-            if(adminVal && hierarchyData.admins[adminVal] && hierarchyData.admins[adminVal].traders) {
-                Object.keys(hierarchyData.admins[adminVal].traders).forEach(t => {
+            if (adminVal && hierarchyData.admins && hierarchyData.admins[adminVal]) {
+                const tradersMap = buildTraderMapForAdmin(hierarchyData.admins[adminVal]);
+                Object.keys(tradersMap).forEach(t => {
                     traderSel.add(new Option(t, t));
                 });
             }
@@ -1796,6 +1799,71 @@
             }
         }
 
+        function buildTraderMapForAdmin(adminData) {
+            const tradersMap = {};
+
+            // Legacy / current API format: { traders: { traderName: {email, clients: []} } }
+            if (adminData && adminData.traders && typeof adminData.traders === 'object') {
+                Object.entries(adminData.traders).forEach(([traderName, traderData]) => {
+                    if (!traderName) return;
+                    const clients = Array.isArray(traderData?.clients) ? traderData.clients : (Array.isArray(traderData) ? traderData : []);
+                    tradersMap[traderName] = {
+                        email: traderData?.email || '',
+                        clients: clients.map(client => (typeof client === 'object' && client)
+                            ? { ...client, assigned_trader: client.assigned_trader || traderName }
+                            : { name: client, assigned_trader: traderName }
+                        )
+                    };
+                });
+            }
+
+            // Restructured format: { clients: [{name,email,category,assigned_trader}, ...] }
+            if (adminData && Array.isArray(adminData.clients)) {
+                adminData.clients.forEach(client => {
+                    if (!client) return;
+                    const traderName = String((client.assigned_trader || 'Unassigned')).trim() || 'Unassigned';
+                    if (!tradersMap[traderName]) {
+                        tradersMap[traderName] = { email: '', clients: [] };
+                    }
+                    tradersMap[traderName].clients.push({ ...client, assigned_trader: traderName });
+                });
+            }
+
+            return tradersMap;
+        }
+
+
+        async function assignClientToTrader(clientName, adminName, newTrader, saveBtn) {
+            try {
+                const res = await fetch('/api/assign_client_trader', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_name: clientName,
+                        admin: adminName,
+                        new_trader: newTrader
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || data.status !== 'success') {
+                    alert('Assign failed: ' + (data.message || 'Unknown error'));
+                    if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+                    return;
+                }
+                if (saveBtn) {
+                    saveBtn.textContent = '✓ Saved';
+                    saveBtn.style.color = '#4ade80';
+                    saveBtn.style.borderColor = 'rgba(74,222,128,0.4)';
+                    setTimeout(() => loadData(), 1200);
+                } else {
+                    loadData();
+                }
+            } catch (e) {
+                alert('Network error: ' + (e && e.message ? e.message : String(e)));
+                if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+            }
+        }
+
 
         function renderTree() {
             const container = document.getElementById('hierarchy-tree');
@@ -1804,156 +1872,552 @@
             
             if (!hierarchyData.admins) return;
 
-            // Robust escaping for HTML attributes: 
-            const esc = (s) => (s || '').replace(/[\\']/g, '\\$&').replace(/"/g, '&quot;');
+            const escHtml = (s) => String(s ?? '')
+                .replace(/&/g,'&amp;')
+                .replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;')
+                .replace(/'/g,'&#39;');
+
+            // Escape for inline handler attributes (drop/drag strings)
+            const escJsAttr = (s) => String(s ?? '').replace(/[\\']/g, '\\$&').replace(/"/g, '&quot;');
+
+            const board = document.createElement('div');
+            board.style.display = 'grid';
+            board.style.gap = '14px';
+            container.appendChild(board);
 
             Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                    const sAdmin = esc(adminName);
-                const sAdminEmail = esc(adminData.email);
-                const sAdminSlack = esc(adminData.slack_user_id || '');
+                const sAdmin = escJsAttr(adminName);
+                const sAdminEmail = escJsAttr(adminData?.email || '');
+                const sAdminSlack = escJsAttr(adminData?.slack_user_id || '');
 
-                // Admin Card
-                const card = document.createElement('div');
-                card.className = 'admin-card';
-                card.style.marginBottom = '12px';
-                
-                // --- Drop Zone Attributes for Admin (Result: Move Trader here) ---
-                card.setAttribute('ondragover', "allowDrop(event, 'admin')");
-                card.setAttribute('ondragleave', "dragLeave(event)");
-                card.setAttribute('ondrop', `drop(event, 'admin', '${sAdmin}', null)`);
-                
-                const header = document.createElement('div');
-                header.className = 'admin-header';
-                // Clickable Header
-                header.style.cursor = 'pointer';
-                header.onclick = (e) => {
-                    if (e.target.closest('button')) return;
-                    window.location.href = '/admin/' + encodeURIComponent(adminName);
-                };
+                const tradersMap = buildTraderMapForAdmin(adminData || {});
+                const traders = Object.entries(tradersMap)
+                    .map(([name, data]) => ({
+                        name,
+                        email: data.email || '',
+                        clients: Array.isArray(data.clients) ? data.clients : []
+                    }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
 
-                // Ultra Compact Layout
-                header.style.display = 'flex';
-                header.style.justifyContent = 'space-between';
-                header.style.alignItems = 'center';
-                header.style.padding = '4px 12px';
-                header.style.minHeight = '32px';
-                
-                header.innerHTML = `
-                    <div class="admin-title-group" style="display:flex; align-items:center;">
-                        <span class="badge badge-admin" style="margin-right:8px; font-size:0.6rem; padding: 1px 5px;">ADMIN</span>
-                        <div class="admin-name" style="margin-right:8px; font-size:0.9rem; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.3); text-underline-offset: 2px;">${adminName}</div> 
-                        <div class="admin-email" style="font-size:0.75rem; color:rgba(255,255,255,0.9); font-weight:500;">${adminData.email || ''}</div>
+                const adminCard = document.createElement('section');
+                adminCard.className = 'admin-card';
+                adminCard.style.borderRadius = '16px';
+                adminCard.style.overflow = 'hidden';
+                adminCard.style.marginBottom = '0';
+
+                // --- Drop Zone Attributes for Admin (Move Trader here) ---
+                adminCard.setAttribute('ondragover', "allowDrop(event, 'admin')");
+                adminCard.setAttribute('ondragleave', "dragLeave(event)");
+                adminCard.setAttribute('ondrop', `drop(event, 'admin', '${sAdmin}', null)`);
+
+                const adminHeader = document.createElement('div');
+                adminHeader.className = 'admin-header';
+                adminHeader.style.padding = '16px 20px';
+                adminHeader.style.display = 'flex';
+                adminHeader.style.justifyContent = 'space-between';
+                adminHeader.style.alignItems = 'center';
+                adminHeader.style.cursor = 'pointer';
+                adminHeader.style.userSelect = 'none';
+
+                const allClients = traders.flatMap(t => t.clients);
+                const filteredClients = allClients.filter(c => {
+                    if (currentProfile === 'ALL') return true;
+                    const cat = (typeof c === 'object')
+                        ? String(c.profile || c.category || c.source || 'PRIVATE').toUpperCase()
+                        : 'PRIVATE';
+                    return cat === currentProfile;
+                });
+
+                // Count active/inactive for summary
+                const activeCount = filteredClients.filter(c => String(c.active_status || 'active').toLowerCase() !== 'inactive').length;
+                const inactiveCount = filteredClients.length - activeCount;
+
+                adminHeader.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+                        <div style="width:38px; height:38px; border-radius:10px; background:linear-gradient(135deg, #1e40af, #3b82f6); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(59,130,246,0.3);">
+                            <i class="fas fa-user-shield" style="color:#fff; font-size:0.85rem;"></i>
+                        </div>
+                        <div style="min-width:0;">
+                            <div style="font-size:1.08rem; font-weight:800; color:#f0f4ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:0.01em;">
+                                ${escHtml(adminName)}
+                            </div>
+                            <div style="font-size:0.75rem; color:rgba(148,163,184,0.85); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                ${escHtml(adminData?.email || '')}
+                            </div>
+                        </div>
                     </div>
-                    <div class="action-buttons" style="display:flex; gap:8px; align-items:center;">
-                        <a href="/admin/${encodeURIComponent(adminName)}" onclick="event.stopPropagation()" style="color:var(--text-secondary); text-decoration:none;" title="View Dashboard"><i class="fas fa-external-link-alt" style="font-size:0.9rem;"></i></a>
-                        <button type="button" onclick="openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}', null, null, null, null, '${sAdminSlack}')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:0 2px;" title="Edit API/Info"><i class="fas fa-edit" style="font-size:0.9rem;"></i></button>
-                        <button type="button" onclick="deleteUser('admin', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Admin"><i class="fas fa-trash" style="font-size:0.9rem;"></i></button>
+                    <div style="display:flex; gap:14px; align-items:center; flex-shrink:0;">
+                        <div style="display:flex; gap:12px; align-items:center;">
+                            <span style="font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:#60a5fa; background:rgba(59,130,246,0.1); padding:3px 10px; border-radius:999px; border:1px solid rgba(59,130,246,0.2); font-weight:600;">${traders.length} <span style="color:rgba(148,163,184,0.7);">traders</span></span>
+                            <span style="font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:#34d399; background:rgba(16,185,129,0.08); padding:3px 10px; border-radius:999px; border:1px solid rgba(16,185,129,0.18); font-weight:600;">${activeCount} <span style="color:rgba(148,163,184,0.7);">active</span></span>
+                            ${inactiveCount > 0 ? `<span style="font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:#f87171; background:rgba(239,68,68,0.08); padding:3px 10px; border-radius:999px; border:1px solid rgba(239,68,68,0.18); font-weight:600;">${inactiveCount} <span style="color:rgba(148,163,184,0.7);">inactive</span></span>` : ''}
+                        </div>
+                        <div style="width:1px; height:20px; background:rgba(148,163,184,0.15);"></div>
+                        <div style="display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation()">
+                            <a href="/admin/${encodeURIComponent(adminName)}" onclick="event.stopPropagation()" style="color:rgba(148,163,184,0.7); text-decoration:none; padding:4px; border-radius:6px; transition:color 0.2s;" onmouseover="this.style.color='#60a5fa'" onmouseout="this.style.color='rgba(148,163,184,0.7)'" title="View Dashboard">
+                                <i class="fas fa-arrow-up-right-from-square" style="font-size:0.8rem;"></i>
+                            </a>
+                            <button type="button" onclick="event.stopPropagation(); openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}', null, null, null, null, '${sAdminSlack}')" class="action-btn" title="Edit Admin" style="font-size:0.8rem;">
+                                <i class="fas fa-pen-to-square"></i>
+                            </button>
+                            <button type="button" onclick="event.stopPropagation(); deleteUser('admin', '${sAdmin}')" class="action-btn danger" title="Delete Admin" style="font-size:0.8rem;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                 `;
-                card.appendChild(header);
-                
-                // Trader List
-                const tList = document.createElement('div');
-                tList.className = 'trader-list';
-                tList.style.padding = '8px'; // Reduced padding
-                
-                const traders = adminData.traders || {};
-                Object.entries(traders).forEach(([traderName, traderData]) => {
-                    const sTrader = esc(traderName);
-                    const sTraderEmail = esc(traderData.email);
 
-                    const tItem = document.createElement('div');
-                    tItem.className = 'trader-item';
-                    tItem.style.marginBottom = '8px'; // Reduced gap
-                    
-                    // --- Drag Attributes for Trader (Move this trader) ---
-                    tItem.draggable = true;
-                    tItem.setAttribute('ondragstart', `dragStart(event, 'trader', '${sTrader}', '${sAdmin}', null)`);
-                    tItem.setAttribute('ondragend', `dragEnd(event)`);
-                    
-                    // --- Drop Zone Attributes for Trader (Result: Move Client here) ---
-                    tItem.setAttribute('ondragover', "allowDrop(event, 'trader')");
-                    tItem.setAttribute('ondragleave', "dragLeave(event)");
-                    tItem.setAttribute('ondrop', `drop(event, 'trader', '${sTrader}', '${sAdmin}')`);
+                const adminBody = document.createElement('div');
+                adminBody.style.padding = '14px 14px 16px';
 
-                    
-                    // Trader Header - Clickable (Link)
-                    const safeTraderLink = '/trader/' + encodeURIComponent(traderName).replace(/'/g, '%27');
+                const lanes = document.createElement('div');
+                lanes.style.display = 'grid';
+                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))';
+                lanes.style.gap = '12px';
 
-                    tItem.innerHTML = `
-                        <div class="trader-header" onclick="if(!event.target.closest('button')) window.location.href='${safeTraderLink}'" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding: 4px 8px; min-height: 28px;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="badge badge-trader" style="font-size:0.6rem; padding: 1px 5px;">TRADER</span>
-                                <span class="trader-name" style="font-size:0.85rem; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.3); text-underline-offset: 2px;">${traderName}</span>
-                                <span class="trader-email" style="font-size:0.75rem; color:rgba(255,255,255,0.9); font-weight:500;">${traderData.email || ''}</span>
-                            </div>
-                            <div class="action-buttons" style="display:flex; gap:6px; align-items:center;">
-                                <a href="${safeTraderLink}" onclick="event.stopPropagation()" style="color:rgba(255,255,255,0.8); text-decoration:none;" title="View Dashboard"><i class="fas fa-external-link-alt" style="font-size:0.85rem;"></i></a>
-                                <button type="button" onclick="openEditUserModal('trader', '${sTrader}', '${sTraderEmail}', '${sAdmin}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer; padding:0 2px;" title="Edit Trader"><i class="fas fa-edit" style="font-size:0.85rem;"></i></button>
-                                <button type="button" onclick="deleteUser('trader', '${sTrader}', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Trader"><i class="fas fa-trash" style="font-size:0.85rem;"></i></button>
+                // Clients-first hierarchy (admin -> clients with assigned-trader dropdown)
+                lanes.innerHTML = '';
+                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(420px, 1fr))';
+
+                const clientsToShow = (filteredClients || [])
+                    .slice()
+                    .filter(cl => cl && cl.name)
+                    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+                if (!clientsToShow.length) {
+                    const empty = document.createElement('div');
+                    empty.style.padding = '18px';
+                    empty.style.border = '1px dashed rgba(148,163,184,0.25)';
+                    empty.style.borderRadius = '14px';
+                    empty.style.color = 'rgba(148,163,184,0.9)';
+                    empty.style.fontSize = '0.85rem';
+                    empty.style.textAlign = 'center';
+                    empty.textContent = traders.length ? 'No clients match your current filter.' : 'No traders for this admin.';
+                    lanes.appendChild(empty);
+                } else {
+                    const traderNames = hierarchyData.traders
+                        ? Object.keys(hierarchyData.traders).sort((a, b) => a.localeCompare(b))
+                        : traders.map(t => t.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+
+                    clientsToShow.forEach((clientObj) => {
+                        const cName = clientObj.name;
+                        const cEmail = clientObj.email || '';
+                        const assignedTrader = clientObj.assigned_trader || clientObj.trader || '';
+                        const catRaw = clientObj.category || clientObj.profile || clientObj.source || 'PRIVATE';
+                        const cCat = String(catRaw || 'PRIVATE').toUpperCase();
+                        const cActiveStatus = clientObj.active_status || 'active';
+                        const isInactive = String(cActiveStatus).toLowerCase() === 'inactive';
+
+                        const card = document.createElement('div');
+                        card.style.border = '1px solid rgba(30,58,138,0.3)';
+                        card.style.background = 'linear-gradient(135deg, rgba(10,18,42,0.95), rgba(6,12,30,0.95))';
+                        card.style.borderRadius = '12px';
+                        card.style.padding = '16px 18px 14px';
+                        card.style.cursor = 'pointer';
+                        card.style.transition = 'all 0.25s ease';
+                        card.style.position = 'relative';
+                        card.addEventListener('mouseenter', () => {
+                            card.style.border = '1px solid #3b82f6';
+                            card.style.boxShadow = '0 4px 20px rgba(59,130,246,0.15), 0 0 0 1px rgba(59,130,246,0.1)';
+                            card.style.transform = 'translateY(-1px)';
+                        });
+                        card.addEventListener('mouseleave', () => {
+                            card.style.border = '1px solid rgba(30,58,138,0.3)';
+                            card.style.boxShadow = 'none';
+                            card.style.transform = 'translateY(0)';
+                        });
+
+                        // Status dot + Client name
+                        const nameRow = document.createElement('div');
+                        nameRow.style.display = 'flex';
+                        nameRow.style.alignItems = 'center';
+                        nameRow.style.gap = '10px';
+
+                        const statusDot = document.createElement('span');
+                        statusDot.style.width = '8px';
+                        statusDot.style.height = '8px';
+                        statusDot.style.borderRadius = '50%';
+                        statusDot.style.background = isInactive ? '#ef4444' : '#22c55e';
+                        statusDot.style.boxShadow = isInactive ? '0 0 6px rgba(239,68,68,0.5)' : '0 0 6px rgba(34,197,94,0.5)';
+                        statusDot.style.flexShrink = '0';
+                        statusDot.title = isInactive ? 'Inactive' : 'Active';
+                        nameRow.appendChild(statusDot);
+
+                        const nameSpan = document.createElement('span');
+                        nameSpan.style.fontWeight = '700';
+                        nameSpan.style.fontSize = '1.05rem';
+                        nameSpan.style.color = '#f0f4ff';
+                        nameSpan.style.letterSpacing = '0.01em';
+                        nameSpan.style.cursor = 'pointer';
+                        nameSpan.style.transition = 'color 0.15s';
+                        nameSpan.textContent = cName;
+                        nameSpan.title = 'Edit client';
+                        nameSpan.addEventListener('mouseenter', () => { nameSpan.style.color = '#93c5fd'; });
+                        nameSpan.addEventListener('mouseleave', () => { nameSpan.style.color = '#f0f4ff'; });
+                        nameSpan.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openEditUserModal('client', escJsAttr(cName), escJsAttr(cEmail), escJsAttr(adminName), escJsAttr(assignedTrader), cCat, cActiveStatus, '');
+                        });
+                        nameRow.appendChild(nameSpan);
+
+                        card.appendChild(nameRow);
+
+                        // Email — click to copy, stops propagation so card modal doesn't open
+                        if (cEmail) {
+                            const emailDiv = document.createElement('div');
+                            emailDiv.style.marginTop = '5px';
+                            emailDiv.style.marginLeft = '18px';
+                            emailDiv.style.fontSize = '0.76rem';
+                            emailDiv.style.color = 'rgba(148,163,184,0.85)';
+                            emailDiv.style.wordBreak = 'break-word';
+                            emailDiv.style.cursor = 'pointer';
+                            emailDiv.style.transition = 'color 0.15s';
+                            emailDiv.title = 'Click to copy';
+                            emailDiv.textContent = cEmail;
+                            emailDiv.addEventListener('mouseenter', () => { emailDiv.style.color = '#93c5fd'; });
+                            emailDiv.addEventListener('mouseleave', () => { emailDiv.style.color = 'rgba(148,163,184,0.85)'; });
+                            emailDiv.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+                                try {
+                                    await navigator.clipboard.writeText(cEmail);
+                                } catch(ex) {
+                                    // fallback for browsers without clipboard API
+                                    const ta = document.createElement('textarea');
+                                    ta.value = cEmail; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                                    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+                                }
+                                const orig = emailDiv.textContent;
+                                emailDiv.textContent = '✓ Copied!';
+                                emailDiv.style.color = '#4ade80';
+                                setTimeout(() => { emailDiv.textContent = orig; emailDiv.style.color = 'rgba(148,163,184,0.85)'; }, 1500);
+                            });
+                            card.appendChild(emailDiv);
+                        }
+
+                        // Trader assignment row (click-to-edit inline)
+                        const traderArea = document.createElement('div');
+                        traderArea.className = 'trader-assign-area';
+                        traderArea.style.marginTop = '12px';
+                        traderArea.style.marginLeft = '18px';
+                        traderArea.style.display = 'flex';
+                        traderArea.style.alignItems = 'center';
+                        traderArea.style.gap = '8px';
+
+                        const traderLabel = document.createElement('span');
+                        traderLabel.style.fontFamily = "'IBM Plex Mono',monospace";
+                        traderLabel.style.fontSize = '0.65rem';
+                        traderLabel.style.color = 'rgba(255,255,255,0.5)';
+                        traderLabel.style.textTransform = 'uppercase';
+                        traderLabel.style.letterSpacing = '0.08em';
+                        traderLabel.style.fontWeight = '700';
+                        traderLabel.textContent = 'Trader';
+                        traderArea.appendChild(traderLabel);
+
+                        // Trader name (clickable to show dropdown)
+                        const traderDisplay = document.createElement('span');
+                        traderDisplay.style.color = '#fbbf24';
+                        traderDisplay.style.fontSize = '0.85rem';
+                        traderDisplay.style.fontWeight = '700';
+                        traderDisplay.style.cursor = 'pointer';
+                        traderDisplay.style.padding = '4px 8px';
+                        traderDisplay.style.borderRadius = '6px';
+                        traderDisplay.style.transition = 'background 0.15s, color 0.15s';
+                        traderDisplay.textContent = assignedTrader || '—';
+                        traderDisplay.addEventListener('mouseenter', () => { traderDisplay.style.background = 'rgba(251,191,36,0.1)'; traderDisplay.style.color = '#fde68a'; });
+                        traderDisplay.addEventListener('mouseleave', () => { traderDisplay.style.background = 'transparent'; traderDisplay.style.color = '#fbbf24'; });
+
+                        // Small link to trader dashboard
+                        const traderLink = document.createElement('a');
+                        traderLink.href = assignedTrader ? '/trader/' + encodeURIComponent(assignedTrader) : '#';
+                        traderLink.style.color = 'rgba(148,163,184,0.5)';
+                        traderLink.style.fontSize = '0.65rem';
+                        traderLink.style.marginLeft = '2px';
+                        traderLink.style.transition = 'color 0.15s';
+                        traderLink.style.textDecoration = 'none';
+                        traderLink.title = 'View trader portfolio';
+                        traderLink.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i>';
+                        traderLink.addEventListener('mouseenter', () => { traderLink.style.color = '#fbbf24'; });
+                        traderLink.addEventListener('mouseleave', () => { traderLink.style.color = 'rgba(148,163,184,0.5)'; });
+                        traderLink.addEventListener('click', (e) => e.stopPropagation());
+
+                        // Hidden select
+                        const select = document.createElement('select');
+                        select.style.position = 'absolute';
+                        select.style.opacity = '0';
+                        select.style.pointerEvents = 'none';
+                        select.style.width = '0';
+                        select.style.height = '0';
+
+                        const optionNames = traderNames.slice();
+                        if (assignedTrader && !optionNames.includes(assignedTrader)) optionNames.push(assignedTrader);
+                        optionNames.sort((a, b) => a.localeCompare(b));
+                        optionNames.forEach(tn => {
+                            const opt = document.createElement('option');
+                            opt.value = tn;
+                            opt.textContent = tn;
+                            if (tn === assignedTrader) opt.selected = true;
+                            select.appendChild(opt);
+                        });
+
+                        // Saved checkmark (hidden initially)
+                        const savedCheck = document.createElement('span');
+                        savedCheck.style.color = '#4ade80';
+                        savedCheck.style.fontSize = '0.75rem';
+                        savedCheck.style.fontWeight = '700';
+                        savedCheck.style.opacity = '0';
+                        savedCheck.style.transition = 'opacity 0.3s';
+                        savedCheck.innerHTML = '<i class="fas fa-check" style="margin-right:3px;"></i>Saved';
+
+                        // Click trader name → open native select
+                        traderDisplay.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            // Make select visible and positioned over the trader name
+                            select.style.position = 'absolute';
+                            select.style.opacity = '1';
+                            select.style.pointerEvents = 'auto';
+                            select.style.width = 'auto';
+                            select.style.height = 'auto';
+                            select.style.minWidth = '180px';
+                            select.style.padding = '8px 10px';
+                            select.style.borderRadius = '8px';
+                            select.style.border = '1px solid rgba(115,144,255,0.45)';
+                            select.style.background = 'rgba(4,8,22,0.95)';
+                            select.style.color = '#e8eeff';
+                            select.style.outline = 'none';
+                            select.style.zIndex = '100';
+                            select.style.fontSize = '0.85rem';
+                            select.focus();
+                            // Try to open the dropdown programmatically
+                            if (typeof select.showPicker === 'function') {
+                                try { select.showPicker(); } catch(ex) {}
+                            }
+                        });
+
+                        // On change → auto-save
+                        select.addEventListener('change', async () => {
+                            const newTrader = select.value;
+                            if (newTrader === assignedTrader) {
+                                // Hide select back
+                                select.style.opacity = '0';
+                                select.style.pointerEvents = 'none';
+                                select.style.width = '0';
+                                select.style.height = '0';
+                                return;
+                            }
+                            traderDisplay.textContent = newTrader || '—';
+                            // Hide select
+                            select.style.opacity = '0';
+                            select.style.pointerEvents = 'none';
+                            select.style.width = '0';
+                            select.style.height = '0';
+                            // Show saving state
+                            savedCheck.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:3px;"></i>Saving...';
+                            savedCheck.style.color = '#94a3b8';
+                            savedCheck.style.opacity = '1';
+                            try {
+                                const res = await fetch('/api/assign_client_trader', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ client_name: cName, admin: adminName, new_trader: newTrader })
+                                });
+                                const data = await res.json().catch(() => ({}));
+                                if (!res.ok || data.status !== 'success') {
+                                    savedCheck.innerHTML = '<i class="fas fa-xmark" style="margin-right:3px;"></i>Failed';
+                                    savedCheck.style.color = '#f87171';
+                                    setTimeout(() => { savedCheck.style.opacity = '0'; traderDisplay.textContent = assignedTrader || '—'; }, 2000);
+                                    return;
+                                }
+                                savedCheck.innerHTML = '<i class="fas fa-check" style="margin-right:3px;"></i>Saved';
+                                savedCheck.style.color = '#4ade80';
+                                setTimeout(() => { savedCheck.style.opacity = '0'; loadData(); }, 1200);
+                            } catch(err) {
+                                savedCheck.innerHTML = '<i class="fas fa-xmark" style="margin-right:3px;"></i>Error';
+                                savedCheck.style.color = '#f87171';
+                                setTimeout(() => { savedCheck.style.opacity = '0'; traderDisplay.textContent = assignedTrader || '—'; }, 2000);
+                            }
+                        });
+
+                        // If user clicks away from open select, hide it
+                        select.addEventListener('blur', () => {
+                            setTimeout(() => {
+                                select.style.opacity = '0';
+                                select.style.pointerEvents = 'none';
+                                select.style.width = '0';
+                                select.style.height = '0';
+                            }, 150);
+                        });
+
+                        const selectWrap = document.createElement('span');
+                        selectWrap.style.position = 'relative';
+                        selectWrap.style.display = 'inline-flex';
+                        selectWrap.style.alignItems = 'center';
+                        selectWrap.appendChild(traderDisplay);
+                        selectWrap.appendChild(select);
+                        traderArea.appendChild(selectWrap);
+                        traderArea.appendChild(traderLink);
+                        traderArea.appendChild(savedCheck);
+
+                        card.appendChild(traderArea);
+                        lanes.appendChild(card);
+                    });
+                }
+
+                if(false){
+                traders.forEach(trader => {
+                    const sTrader = escJsAttr(trader.name);
+                    const sTraderEmail = escJsAttr(trader.email || '');
+                    const safeTraderLink = '/trader/' + encodeURIComponent(trader.name).replace(/'/g, '%27');
+
+                    const lane = document.createElement('div');
+                    lane.className = 'trader-item';
+                    lane.style.borderRadius = '14px';
+                    lane.style.marginBottom = '0';
+
+                    // --- Drag Attributes for Trader (Move trader) ---
+                    lane.draggable = true;
+                    lane.setAttribute('ondragstart', `dragStart(event, 'trader', '${sTrader}', '${sAdmin}', null)`);
+                    lane.setAttribute('ondragend', `dragEnd(event)`);
+
+                    // --- Drop Zone Attributes for Trader (Move client here) ---
+                    lane.setAttribute('ondragover', "allowDrop(event, 'trader')");
+                    lane.setAttribute('ondragleave', "dragLeave(event)");
+                    lane.setAttribute('ondrop', `drop(event, 'trader', '${sTrader}', '${sAdmin}')`);
+
+                    const clientsFiltered = (trader.clients || []).filter(c => {
+                        if (currentProfile === 'ALL') return true;
+                        const cat = (typeof c === 'object')
+                            ? String(c.profile || c.category || c.source || 'PRIVATE').toUpperCase()
+                            : 'PRIVATE';
+                        return cat === currentProfile;
+                    });
+
+                    lane.innerHTML = `
+                        <div class="trader-header" onclick="if(!event.target.closest('button') && !event.target.closest('a')) window.location.href='${safeTraderLink}'" style="cursor:pointer; padding:10px 12px;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; width:100%;">
+                                <div style="min-width:0;">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <span class="badge badge-trader" style="font-size:0.62rem; padding:2px 7px;">TRADER</span>
+                                        <span class="trader-name" style="font-size:0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(trader.name)}</span>
+                                    </div>
+                                    <div style="margin-top:4px; font-size:0.78rem; color:rgba(255,255,255,0.8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(trader.email || '')}</div>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                                    <span style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:rgba(255,255,255,0.75);">${clientsFiltered.length} client${clientsFiltered.length!==1?'s':''}</span>
+                                    <a href="${safeTraderLink}" onclick="event.stopPropagation()" style="color:rgba(255,255,255,0.8); text-decoration:none;" title="View Dashboard">
+                                        <i class="fas fa-arrow-up-right-from-square"></i>
+                                    </a>
+                                    <button type="button" onclick="openEditUserModal('trader', '${sTrader}', '${sTraderEmail}', '${sAdmin}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer; padding:0 2px;" title="Edit Trader">
+                                        <i class="fas fa-pen-to-square"></i>
+                                    </button>
+                                    <button type="button" onclick="deleteUser('trader', '${sTrader}', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Trader">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `;
-                    
-                    // Client Tag List
-                    const cList = document.createElement('div');
-                    cList.className = 'client-list';
-                    cList.style.padding = '10px'; // Reduced padding inside trader box
-                    const clients = traderData.clients || [];
-                    
-                    clients.forEach(c => {
-                        // Filter logic
-                        if (currentProfile !== 'ALL') {
-                            let cat = 'PRIVATE';
-                            if (typeof c === 'object') {
-                                cat = (c.profile || c.category || c.source || 'PRIVATE').toUpperCase();
-                            }
-                            if (cat !== currentProfile) return;
-                        }
 
-                        const cName = (typeof c === 'object') ? c.name : c;
-                        const cEmail = (typeof c === 'object') ? c.email : '';
-                        const cCat = (typeof c === 'object') ? (c.category || c.profile || 'Private') : 'Private';
-                        const cActiveStatus = (typeof c === 'object') ? (c.active_status || 'active') : 'active';
-                        
-                        const sClient = esc(cName);
-                        const sClientEmail = esc(cEmail);
-                        const sCat = esc(cCat);
-                        const sActiveStatus = esc(cActiveStatus);
-                        
-                        const tag = document.createElement('div'); 
-                        tag.className = 'client-tag';
-                        
-                        // --- Drag Attributes for Client ---
-                        tag.draggable = true;
-                        tag.setAttribute('ondragstart', `dragStart(event, 'client', '${sClient}', '${sAdmin}', '${sTrader}')`);
-                        tag.setAttribute('ondragend', `dragEnd(event)`);
-                        
-                        tag.style.display = 'inline-flex';
-                        tag.style.alignItems = 'center';
-                        tag.style.gap = '6px';
-                        tag.style.padding = '6px 10px'; // Reduced tag size
-                        tag.style.fontSize = '0.85rem';
-                        
-                        tag.innerHTML = `
-                            <a href="/dashboard/${cName}" style="color:inherit; text-decoration:none; display:flex; align-items:center;">
-                                <i class="fas fa-user-circle" style="margin-right:5px;"></i> ${cName}
-                            </a>
-                            <div class="mini-actions" style="margin-left:4px; border-left:1px solid rgba(255,255,255,0.2); padding-left:6px; display:flex; gap:4px;">
-                                <button type="button" onclick="openEditUserModal('client', '${sClient}', '${sClientEmail}', '${sAdmin}', '${sTrader}', '${sCat}', '${sActiveStatus}')" style="background:none; border:none; cursor:pointer; font-size:0.75rem; opacity:0.7; color: inherit; padding:0;" title="Edit"><i class="fas fa-pencil-alt"></i></button>
-                                <button type="button" onclick="deleteUser('client', '${sClient}', '${sAdmin}', '${sTrader}')" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#ff8888; opacity:0.7; padding:0;" title="Delete"><i class="fas fa-times"></i></button>
-                            </div>
-                        `;
-                        
-                        cList.appendChild(tag);
-                    });
-                    
-                    tItem.appendChild(cList);
-                    tList.appendChild(tItem);
+                    const clientGrid = document.createElement('div');
+                    clientGrid.style.padding = '12px';
+                    clientGrid.style.display = 'grid';
+                    clientGrid.style.gridTemplateColumns = '1fr';
+                    clientGrid.style.gap = '10px';
+
+                    if (clientsFiltered.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.style.padding = '14px';
+                        empty.style.border = '1px dashed rgba(148,163,184,0.25)';
+                        empty.style.borderRadius = '12px';
+                        empty.style.color = 'rgba(148,163,184,0.9)';
+                        empty.style.fontSize = '0.82rem';
+                        empty.style.textAlign = 'center';
+                        empty.textContent = 'No clients in this lane (current filter).';
+                        clientGrid.appendChild(empty);
+                    } else {
+                        clientsFiltered.forEach(clientObj => {
+                            const cName = (typeof clientObj === 'object') ? clientObj.name : clientObj;
+                            const cEmail = (typeof clientObj === 'object') ? (clientObj.email || '') : '';
+                            const cCatRaw = (typeof clientObj === 'object') ? (clientObj.category || clientObj.profile || 'PRIVATE') : 'PRIVATE';
+                            const cCat = String(cCatRaw || 'PRIVATE').toUpperCase();
+                            const cActiveStatus = (typeof clientObj === 'object') ? (clientObj.active_status || 'active') : 'active';
+
+                            const sClient = escJsAttr(cName);
+                            const sClientEmail = escJsAttr(cEmail);
+                            const sCat = escJsAttr(cCat);
+                            const sActiveStatus = escJsAttr(cActiveStatus);
+
+                            const card = document.createElement('div');
+                            card.style.border = '1px solid rgba(30,58,138,0.25)';
+                            card.style.borderTop = '1px solid rgba(110,168,255,0.18)';
+                            card.style.background = 'linear-gradient(180deg, rgba(10,18,39,0.9), rgba(6,12,28,0.9))';
+                            card.style.borderRadius = '12px';
+                            card.style.padding = '10px 10px';
+                            card.style.display = 'grid';
+                            card.style.gap = '8px';
+
+                            // Make the client card draggable (move client)
+                            card.draggable = true;
+                            card.setAttribute('ondragstart', `dragStart(event, 'client', '${sClient}', '${sAdmin}', '${sTrader}')`);
+                            card.setAttribute('ondragend', `dragEnd(event)`);
+
+                            const isInactive = String(cActiveStatus).toLowerCase() === 'inactive';
+                            const badgeCat = cCat === 'BEF'
+                                ? `<span style="background:rgba(234,179,8,0.15);color:#facc15;border:1px solid rgba(234,179,8,0.25);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">BEF</span>`
+                                : `<span style="background:rgba(148,163,184,0.12);color:#cbd5e1;border:1px solid rgba(148,163,184,0.22);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">PRIVATE</span>`;
+                            const badgeStatus = isInactive
+                                ? `<span style="background:rgba(239,68,68,0.16);color:#fda4af;border:1px solid rgba(239,68,68,0.26);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">OFF</span>`
+                                : `<span style="background:rgba(16,185,129,0.14);color:#5eead4;border:1px solid rgba(16,185,129,0.24);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">ON</span>`;
+
+                            card.innerHTML = `
+                                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                                    <div style="min-width:0;">
+                                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                            <a href="/dashboard/${encodeURIComponent(cName)}" style="color:#e8eeff; text-decoration:none; font-weight:700; font-size:0.92rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                                <i class="fas fa-user-circle" style="opacity:0.9; margin-right:6px;"></i>${escHtml(cName)}
+                                            </a>
+                                            ${badgeCat}
+                                            ${badgeStatus}
+                                        </div>
+                                        <div style="margin-top:6px; font-size:0.78rem; color:rgba(148,163,184,0.95); word-break:break-word;">${escHtml(cEmail || '')}</div>
+                                    </div>
+                                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+                                        <button type="button" onclick="openEditUserModal('client', '${sClient}', '${sClientEmail}', '${sAdmin}', '${sTrader}', '${sCat}', '${sActiveStatus}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer; padding:2px 4px;" title="Edit Client">
+                                            <i class="fas fa-pen"></i>
+                                        </button>
+                                        <button type="button" onclick="deleteUser('client', '${sClient}', '${sAdmin}', '${sTrader}')" style="background:none; border:none; color:#ff8888; cursor:pointer; padding:2px 4px;" title="Delete Client">
+                                            <i class="fas fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+
+                            clientGrid.appendChild(card);
+                        });
+                    }
+
+                    lane.appendChild(clientGrid);
+                    lanes.appendChild(lane);
                 });
-                
-                card.appendChild(tList);
-                container.appendChild(card);
+
+                if (traders.length === 0) {
+                    const empty = document.createElement('div');
+                    empty.style.padding = '18px';
+                    empty.style.border = '1px dashed rgba(148,163,184,0.25)';
+                    empty.style.borderRadius = '14px';
+                    empty.style.color = 'rgba(148,163,184,0.9)';
+                    empty.style.fontSize = '0.85rem';
+                    empty.style.textAlign = 'center';
+                    empty.textContent = 'No traders for this admin.';
+                    lanes.appendChild(empty);
+                }
+                }
+
+                adminBody.appendChild(lanes);
+                adminCard.appendChild(adminHeader);
+                adminCard.appendChild(adminBody);
+                board.appendChild(adminCard);
             });
         }
 
