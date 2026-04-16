@@ -7,13 +7,7 @@ import json
 import os
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard', 'dashboard.db')
-# Respect config.hierarchy selection for which JSON file to read (restructured vs legacy)
 HIERARCHY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'hierarchy.json')
-try:
-    from config import hierarchy as _hier
-    HIERARCHY_PATH = getattr(_hier, 'HIERARCHY_FILE', HIERARCHY_PATH)
-except Exception:
-    pass
 
 def extract_from_db():
     """Extract emails from user_credentials table."""

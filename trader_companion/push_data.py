@@ -6,6 +6,7 @@ NO API KEY REQUIRED - just your email address!
 import sys
 import os
 import json
+import gzip as _gzip
 import argparse
 import requests
 
@@ -38,20 +39,23 @@ def lookup_client(url, email):
 
 
 def push_data(url, email, account, positions, deals, statistics):
-    """Push data to dashboard - NO API KEY."""
+    """Push data to dashboard - NO API KEY. Sends gzip-compressed JSON."""
     try:
+        payload = {
+            "email": email,
+            "account": account,
+            "positions": positions,
+            "deals": deals,
+            "statistics": statistics,
+            "evaluations": [],
+            "dropdown_options": {}
+        }
+        raw = json.dumps(payload).encode('utf-8')
+        compressed = _gzip.compress(raw, compresslevel=6)
         response = requests.post(
             f"{url.rstrip('/')}/api/client/push",
-            json={
-                "email": email,
-                "account": account,
-                "positions": positions,
-                "deals": deals,
-                "statistics": statistics,
-                "evaluations": [],
-                "dropdown_options": {}
-            },
-            headers={"Content-Type": "application/json"},
+            data=compressed,
+            headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
             timeout=30
         )
         

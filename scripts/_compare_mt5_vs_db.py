@@ -44,7 +44,17 @@ if os.path.exists(env_path):
                 os.environ.setdefault(_k.strip(), _v.strip())
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+# TEMPORARY OVERRIDE: use production DB if DATABASE_URL is not set or points to sqlite.
+# Remove this override after use.
 if not DATABASE_URL or DATABASE_URL.startswith("sqlite"):
+    # Production DB (temporary hardcode per user request)
+    DATABASE_URL = (
+        "postgresql://tradeopss_admin:BallerAdmin123@"
+        "ballerquotes-5185.postgres.pythonanywhere-services.com:15185/tradeopss"
+    )
+
+if not DATABASE_URL:
     sys.exit("ERROR: Set DATABASE_URL to your PostgreSQL connection string in .env")
 
 # ---------------------------------------------------------------------------
