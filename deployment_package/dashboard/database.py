@@ -92,12 +92,18 @@ def init_database():
                 identity TEXT DEFAULT '{}',
                 last_updated TEXT NOT NULL,
                 payment_info TEXT DEFAULT '[]',
-                payment_address TEXT DEFAULT '{}'
+                payment_address TEXT DEFAULT '{}',
+                prop_accounts TEXT DEFAULT '[]',
+                vps_accounts TEXT DEFAULT '[]',
+                hedge_accounts TEXT DEFAULT '[]',
+                mt5_credentials TEXT DEFAULT '{}'
             )
         ''')
 
-        # Migration: add payment_info column to existing databases
-        for _col, _default in [('payment_info', "'[]'"), ('payment_address', "'{}'")]:
+        # Migration: add columns to existing databases
+        for _col, _default in [('payment_info', "'[]'"), ('payment_address', "'{}'"),
+                                ('prop_accounts', "'[]'"), ('vps_accounts', "'[]'"),
+                                ('hedge_accounts', "'[]'"), ('mt5_credentials', "'{}'")]:
             try:
                 cursor.execute(f"ALTER TABLE clients_data ADD COLUMN {_col} TEXT DEFAULT {_default}")
             except Exception:
@@ -718,7 +724,11 @@ def save_client_data(client_id: str, data: dict) -> bool:
                     'evaluations': json.loads(row['evaluations']),
                     'statistics': json.loads(row['statistics']),
                     'dropdown_options': json.loads(row['dropdown_options']),
-                    'identity': json.loads(row['identity'])
+                    'identity': json.loads(row['identity']),
+                    'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
+                    'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
+                    'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
+                    'mt5_credentials': json.loads(row['mt5_credentials'] or '{}'),
                 }
             
             # Merge existing data with new data (new data takes precedence)
@@ -753,12 +763,17 @@ def save_client_data(client_id: str, data: dict) -> bool:
             merged_identity = data.get('identity', existing_data.get('identity', {}))
             merged_payment_info = data.get('payment_info', existing_data.get('payment_info', []))
             merged_payment_address = data.get('payment_address', existing_data.get('payment_address', {}))
+            merged_prop_accounts = data.get('prop_accounts', existing_data.get('prop_accounts', []))
+            merged_vps_accounts = data.get('vps_accounts', existing_data.get('vps_accounts', []))
+            merged_hedge_accounts = data.get('hedge_accounts', existing_data.get('hedge_accounts', []))
+            merged_mt5_credentials = data.get('mt5_credentials', existing_data.get('mt5_credentials', {}))
 
             cursor.execute('''
                 INSERT INTO clients_data (
                     client_id, deals, positions, account, evaluations,
-                    statistics, dropdown_options, identity, last_updated, payment_info, payment_address
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    statistics, dropdown_options, identity, last_updated, payment_info, payment_address,
+                    prop_accounts, vps_accounts, hedge_accounts, mt5_credentials
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     deals = excluded.deals,
                     positions = excluded.positions,
@@ -769,7 +784,11 @@ def save_client_data(client_id: str, data: dict) -> bool:
                     identity = excluded.identity,
                     last_updated = excluded.last_updated,
                     payment_info = excluded.payment_info,
-                    payment_address = excluded.payment_address
+                    payment_address = excluded.payment_address,
+                    prop_accounts = excluded.prop_accounts,
+                    vps_accounts = excluded.vps_accounts,
+                    hedge_accounts = excluded.hedge_accounts,
+                    mt5_credentials = excluded.mt5_credentials
             ''', (
                 client_id,
                 json.dumps(merged_deals),
@@ -782,6 +801,10 @@ def save_client_data(client_id: str, data: dict) -> bool:
                 now,
                 json.dumps(merged_payment_info),
                 json.dumps(merged_payment_address),
+                json.dumps(merged_prop_accounts),
+                json.dumps(merged_vps_accounts),
+                json.dumps(merged_hedge_accounts),
+                json.dumps(merged_mt5_credentials),
             ))
             conn.commit()
             return True
@@ -808,6 +831,10 @@ def get_client_data(client_id: str) -> dict:
                 'last_updated': row['last_updated'],
                 'payment_info': json.loads(row['payment_info'] or '[]'),
                 'payment_address': json.loads(row['payment_address'] or '{}'),
+                'prop_accounts': json.loads(row['prop_accounts'] or '[]'),
+                'vps_accounts': json.loads(row['vps_accounts'] or '[]'),
+                'hedge_accounts': json.loads(row['hedge_accounts'] or '[]'),
+                'mt5_credentials': json.loads(row['mt5_credentials'] or '{}'),
             }
         
         return None
