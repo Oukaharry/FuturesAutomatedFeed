@@ -6139,6 +6139,41 @@ def api_quality_discrepancies():
     return jsonify({'status': 'success', 'clients': results})
 
 
+@app.route('/api/quality/deleted_rows', methods=['GET'])
+@require_role('super_admin')
+def api_quality_deleted_rows():
+    """Return all evaluation rows across all clients where Status P1 == 'Deleted'."""
+    from config.hierarchy import get_all_clients as _get_all_clients, get_client_profile
+    from dashboard.database import get_client_data
+
+    all_clients = _get_all_clients()
+    rows = []
+    for client_name in all_clients:
+        try:
+            data = get_client_data(client_name)
+            if not data:
+                continue
+            profile = get_client_profile(client_name)
+            trader = profile.get('trader', '') if profile else ''
+            evaluations = data.get('evaluations', [])
+            for idx, ev in enumerate(evaluations):
+                status_p1 = str(ev.get('Status P1', '') or '').strip()
+                if status_p1.lower() == 'deleted':
+                    rows.append({
+                        'client': client_name,
+                        'trader': trader,
+                        'row': idx,
+                        'account': ev.get('Account #') or ev.get('Account #.1') or '',
+                        'prop_firm': ev.get('Prop Firm', ''),
+                        'date_started': ev.get('Date Started') or ev.get('Date Purchased') or '',
+                    })
+        except Exception as e:
+            logging.warning(f'deleted_rows scan error for {client_name}: {e}')
+            continue
+
+    return jsonify({'status': 'success', 'rows': rows, 'total': len(rows)})
+
+
 @app.route('/api/quality/scan', methods=['POST'])
 @require_role('super_admin')
 def api_run_quality_scan():
