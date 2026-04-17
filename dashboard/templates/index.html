@@ -4583,6 +4583,8 @@
 
                     // Hide restricted firms from BEF admin stats
                     if (IS_BEF_ADMIN) {
+                        // Preserve original unfiltered net profit for Profit Split (covers all firms)
+                        window._unfilteredNetProfit = (s.cashflow_inprogress || {}).net_profit || 0;
                         for (const firm of BEF_HIDDEN_FIRMS) {
                             delete s.evaluation_data[firm];
                             delete s.funded_data[firm];
@@ -4646,6 +4648,14 @@
                     totalPriorActivity = (s.hedging_review.current_mt5_prior_activity || 0);
                     histAccts.forEach(a => { totalPriorActivity += a.prior_activity_profit || 0; });
                     liveActualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity;
+                    // Compute Net Profit In Progress once — used by both Stats tab and Profit Split card
+                    const _mt5HasData = (mt5Dep !== 0 || mt5Bal !== 0);
+                    const _discrepancy = _mt5HasData ? (liveActualHedging - sheetHedgingResults) : 0;
+                    if (IS_BEF_ADMIN && window._unfilteredNetProfit !== undefined) {
+                        window._statsNetProfit = window._unfilteredNetProfit + _discrepancy;
+                    } else {
+                        window._statsNetProfit = (s.cashflow_inprogress.payouts || 0) + (s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0) + _discrepancy - (s.cashflow_inprogress.challenge_fees || 0);
+                    }
                     // Preserve payouts visibility across re-renders
                     const _prevPayoutsEl = document.getElementById('stats-payouts-detail');
                     const _payoutsWasOpen = _prevPayoutsEl && _prevPayoutsEl.style.display !== 'none';
@@ -4739,13 +4749,7 @@
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.cashflow_inprogress.farming_results || 0) + '</td></tr>'}
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Discrepancy from Google Sheets</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${(mt5Dep !== 0 || mt5Bal !== 0) ? formatMoney(liveActualHedging - sheetHedgingResults) : '<span style="color:#888">N/A</span>'}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right" style="color:#f87171;">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
-                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${((s.cashflow_inprogress.payouts || 0) + (s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0) + ((mt5Dep !== 0 || mt5Bal !== 0) ? (liveActualHedging - sheetHedgingResults) : 0) - (s.cashflow_inprogress.challenge_fees || 0)) >= 0 ? '#34d399' : '#f87171'};">${formatMoney(
-                                            (s.cashflow_inprogress.payouts || 0) +
-                                            (s.cashflow_inprogress.hedging_results || 0) +
-                                            (s.cashflow_inprogress.farming_results || 0) +
-                                            ((mt5Dep !== 0 || mt5Bal !== 0) ? (liveActualHedging - sheetHedgingResults) : 0) -
-                                            (s.cashflow_inprogress.challenge_fees || 0)
-                                        )}</strong></td></tr>
+                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${window._statsNetProfit >= 0 ? '#34d399' : '#f87171'};">${formatMoney(window._statsNetProfit)}</strong></td></tr>
                                     </table>
                                 </div>
                             </div>
@@ -4824,10 +4828,9 @@
                 if (statsContainer) statsContainer.innerHTML = `<div style="padding:20px;text-align:center;color:#ef4444;">Error loading stats: ${e.message}</div>`;
             }
 
-            // Update Profit Split tab cards from cashflow in progress (outside try/catch so it always runs)
+            // Update Profit Split tab cards — read directly from Stats tab computed value
             try {
-                const cs = (data.statistics || {}).cashflow_inprogress || {};
-                const netProfit = cs.net_profit || 0;
+                const netProfit = window._statsNetProfit || 0;
                 const elNet = document.getElementById('split-net-profit');
                 const elSplit = document.getElementById('split-profit-amount');
                 if (elNet) {
@@ -7201,6 +7204,10 @@
                         }
                         let psHtml = '';
                         const isAdmin = (USER_TYPE === 'admin' || USER_TYPE === 'super_admin');
+                        // Override the most recent row's net profit with live value
+                        if (rows.length && window._statsNetProfit !== undefined) {
+                            rows[0].low = formatMoney(window._statsNetProfit);
+                        }
                         rows.forEach(r => {
                             const psRaw = (r.profit_split || '').trim();
                             const psNum = parseFloat(psRaw.replace(/[^0-9.-]/g, '')) || 0;
@@ -7227,16 +7234,8 @@
                         if (psBody) psBody.innerHTML = psHtml;
 
                         // Sync top card to match the most recent row's Net Profit In Progress
-                        // so the card always reflects exactly what the table shows
-                        if (rows.length > 0) {
-                            const firstRowLow = (rows[0].low || '').trim();
-                            const firstRowNum = parseFloat(firstRowLow.replace(/[^0-9.\-]/g, '')) || 0;
-                            const elNet = document.getElementById('split-net-profit');
-                            if (elNet) {
-                                elNet.textContent = firstRowLow || formatMoney(0);
-                                elNet.style.color = firstRowNum >= 0 ? '#4ade80' : '#f87171';
-                            }
-                        }
+                        // only if no live stats are available (stats updateDashboard sets it with MT5 discrepancy)
+                        // Skip override — the card is already set by updateDashboard with the live formula
 
                         // --- Attach inline-edit behaviour to editable profit split cells ---
                         if (isAdmin) {

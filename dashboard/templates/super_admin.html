@@ -1530,6 +1530,7 @@
                     updateSelects();
                     updateStats(); // Initial stats based on hierarchy counts
                     populateSidebarClients(); // Fill client directory
+                    filterSidebarClients(); // Re-apply profile filter after rebuild
                     debugLog("Hierarchy Render Complete");
                 })
                 .catch(err => {
@@ -1609,10 +1610,9 @@
         function updateStats() {
             if(!hierarchyData.admins) return;
             let a=0, t=0, c=0;
-            a = Object.keys(hierarchyData.admins).length;
             Object.values(hierarchyData.admins).forEach(adm => {
                 const tradersMap = buildTraderMapForAdmin(adm);
-                t += Object.keys(tradersMap).length;
+                let adminHasFilteredClients = false;
                 Object.values(tradersMap).forEach(tr => {
                     let clients = tr.clients || [];
 
@@ -1627,7 +1627,14 @@
                     });
 
                     c += clients.length;
+                    if (clients.length > 0) {
+                        t += 1;
+                        adminHasFilteredClients = true;
+                    }
                 });
+                if (currentProfile === 'ALL' || adminHasFilteredClients) {
+                    a += 1;
+                }
             });
             const elA = document.getElementById('total-admins');
             const elT = document.getElementById('total-traders');
@@ -1662,7 +1669,9 @@
         }
 
         function filterSidebarClients() {
-            const q = (document.getElementById('sidebar-client-search').value || '').toLowerCase();
+            const searchEl = document.getElementById('sidebar-client-search');
+            if (!searchEl) return;
+            const q = (searchEl.value || '').toLowerCase();
             const filtered = sidebarAllClients.filter(c => {
                 if (currentProfile !== 'ALL' && (c.category || 'PRIVATE') !== currentProfile) return false;
                 if (!q) return true;

@@ -55,7 +55,7 @@ from dashboard.notes_service import (
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
 # Firms hidden from BEF admin (normalised: lowercase, no spaces)
-BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'toponefutures'}
+BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
 
 # Start Midnight Watermark Scheduler
 try:
@@ -2207,9 +2207,10 @@ def quality_dashboard():
 @require_session
 def admin_dashboard(admin_name):
     session_user = request.session_user
-    # Allow super_admin and bef_admin to access any admin dashboard
+    # Allow super_admin and bef_admin to access admin dashboards
     if session_user.get('user_type') in ('super_admin', 'bef_admin'):
-        return render_template('admin_dashboard.html', admin_name=admin_name)
+        return render_template('admin_dashboard.html', admin_name=admin_name,
+                               is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
     # Check if user is the correct admin
     if session_user.get('user_type') != 'admin' or session_user.get('user_identifier') != admin_name:
         return redirect('/')
@@ -2385,9 +2386,10 @@ def trader_performance():
 @require_session
 def trader_dashboard(trader_name):
     session_user = request.session_user
-    # Allow super_admin and bef_admin to access any trader dashboard
+    # Allow super_admin and bef_admin to access trader dashboards
     if session_user.get('user_type') in ('super_admin', 'bef_admin'):
-        return render_template('trader_dashboard.html', trader_name=trader_name)
+        return render_template('trader_dashboard.html', trader_name=trader_name,
+                               is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
     # Allow admin to access traders under them
     if session_user.get('user_type') == 'admin':
         return render_template('trader_dashboard.html', trader_name=trader_name)
@@ -2418,8 +2420,11 @@ def client_dashboard(client_id):
     _admin_data = SYSTEM_HIERARCHY.get('admins', {}).get(client_admin_name, {})
     client_admin_slack_id = _admin_data.get('slack_user_id', '')
 
-    # Allow super_admin, bef_admin, admin, and trader to access any client dashboard
+    # Allow super_admin, bef_admin, admin, and trader to access client dashboards
     if user_type in ['super_admin', 'bef_admin', 'admin', 'trader']:
+        # BEF admin can only access BEF-category clients
+        if user_type == 'bef_admin' and not can_access_client('bef_admin', None, client_id):
+            return redirect('/bef_admin')
         return render_template('index.html', client_id=client_id, user_type=user_type, 
                                can_edit_hedging=True, client_email=client_email, is_active=is_active,
                                client_trader_name=client_trader_name, client_admin_name=client_admin_name,
@@ -3708,8 +3713,10 @@ def api_get_watermark_history(client_id):
     # Handle URL encoding spaces if necessary (Flask usually decodes)
     # Check authorization
     is_authorized = False
-    if user_type in ['super_admin', 'admin', 'trader', 'bef_admin']:
+    if user_type in ['super_admin', 'admin', 'trader']:
         is_authorized = True
+    elif user_type == 'bef_admin':
+        is_authorized = can_access_client('bef_admin', None, client_id)
     elif user_type == 'client':
         # Check specific client ownership
         if user_id == client_id:
