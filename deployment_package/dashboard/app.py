@@ -1321,7 +1321,8 @@ def api_client_push():
         },
         # Store aggregated comment data if provided (from Push by Comment feature)
         "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
-        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {})
+        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {}),
+        "firm_billing": existing_data.get("firm_billing", {}),
     }
     
     # Final verification before save
@@ -2622,6 +2623,7 @@ def update_data():
                 "vps_accounts": data.get("vps_accounts", existing_data.get("vps_accounts", [])),
                 "hedge_accounts": data.get("hedge_accounts", existing_data.get("hedge_accounts", [])),
                 "mt5_credentials": data.get("mt5_credentials", existing_data.get("mt5_credentials", {})),
+                "firm_billing": existing_data.get("firm_billing", {}),
             }
             
             # Ensure client ID is in identity
@@ -2700,6 +2702,7 @@ def update_data_with_api_key(data, identity, user_info):
         "vps_accounts": data.get("vps_accounts", existing_data.get("vps_accounts", [])),
         "hedge_accounts": data.get("hedge_accounts", existing_data.get("hedge_accounts", [])),
         "mt5_credentials": data.get("mt5_credentials", existing_data.get("mt5_credentials", {})),
+        "firm_billing": existing_data.get("firm_billing", {}),
     }
     
     # Save to database WITH history tracking
