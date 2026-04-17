@@ -1,0 +1,124 @@
+﻿Found: [page] Topstep Dashboard | https://dashboard.topstep.com/dashboard/default?variant=new
+
+=== TOPSTEP TAB ===
+Title: Topstep Dashboard
+URL: https://dashboard.topstep.com/dashboard/default?variant=new
+
+URL: https://dashboard.topstep.com/dashboard/default?variant=new
+Title: Topstep Dashboard
+On login page: False
+
+=== NAV / SIDEBAR ===
+(none found)
+
+=== MAIN CONTENT ===
+[main] Welcome to Topstep
+Start your Topstep journey in a Trading Combine, and become a Funded Trader.
+Start your Trading Combine
+
+Prove your consistency and risk control, and pass in as little as 2 days.
+
+Start Trading Combine
+Earn from your trading
+
+Passing Combine moves you into a Funded Account.
+
+See the Topstep journey
+Learn the ropes in Training Camp
+
+Learn the essentials to start trading with confidence
+
+Lesson 1 � 15 min
+
+Orientation
+Welcome to Training Camp
+Meet Your Coach
+Trading vs Investing
+What is Topstep?
+Start Lesson
+
+Lesson 2 � 25 min
+
+Futures 101
+Intro To Futures
+Why We Think You�ll Like Trading Futures
+MES, ES, MNQ and NQ Explained
+How Futures Move
+Long and Short
+Start Lesson
+
+Lesson 3 � 22 min
+
+Using The Charts
+Intro To The Charts
+Navigating the Chart
+Candlestick Basics
+Choosing One Market
+Start Lesson
+See all lessons
+Explore more resources
+Watch Topstep TV
+OFF AIR
+
+Join us as our coaches and traders breakdown market moves, trade live, share tips, and welcome guests.
+
+Watch Topstep TV
+Join our Discord community
+
+Join the #group-coaching channel to meet our team and connect with other traders.
+
+Join Discord community
+
+=== ACCOUNT DATA SEARCH ===
+Funded
+
+=== FRAMEWORK DETECTION ===
+Apollo GraphQL
+
+=== NETWORK REQUESTS (API calls) ===
+[xmlhttprequest] https://app.launchdarkly.com/sdk/goals/62f27f5ffb29e21107643da4
+[xmlhttprequest] https://api.topstep.com/auth/refresh-token
+[xmlhttprequest] https://app.launchdarkly.com/sdk/evalx/62f27f5ffb29e21107643da4/contexts/eyJraW5kIjoic3lzdGVtIiwia2V5IjoidG9wc3RlcC10cm0tZnJvbnRlbmQtc2VydmljZSIsImFub255bW91cyI6ZmFsc2V9
+[fetch] https://us.i.posthog.com/e/?ip=0&_=1775721440194&ver=1.365.4&compression=gzip-js
+[xmlhttprequest] https://api.topstep.com/me/profile/
+[fetch] https://us.i.posthog.com/flags/?v=2&ip=0&_=1775721441849&ver=1.365.4&compression=base64
+[xmlhttprequest] https://app.launchdarkly.com/sdk/evalx/62f27f5ffb29e21107643da4/contexts/eyJraW5kIjoidXNlciIsImtleSI6IjkzMzQ4IiwiYW5vbnltb3VzIjpmYWxzZSwibmFtZSI6Ikpvc2VwaCBIaWNrZW4iLCJmaXJzdE5hbWUiOiJKb3NlcGgiLCJsYXN0TmFtZSI6IkhpY2tlbiIsImVtYWlsIjoiam9zaGlja2VuQGdtYWlsLmNvbSIsImN1c3RvbSI6eyJpc1ZlcmlmaWVkIjp0cnVlLCJpc0xvY2tlZCI6bnVsbCwibG9ja1R5cGUiOm51bGwsInJvbGUiOiJlbmR1c2VyIiwiY3JlYXRlZEF0IjoxNzUyNzg3MTE0NDQ5fX0
+[xmlhttprequest] https://api.topstep.com/me/accounts/basic?offset=0&limit=15&sortBy=createdAt&sortOrder=desc
+[xmlhttprequest] https://events.launchdarkly.com/events/bulk/62f27f5ffb29e21107643da4
+[xmlhttprequest] https://events.launchdarkly.com/events/bulk/62f27f5ffb29e21107643da4
+[fetch] https://crystal.topstep.com/graphql/TopstepTVLiveStatus
+[xmlhttprequest] https://events.launchdarkly.com/events/bulk/62f27f5ffb29e21107643da4
+[xmlhttprequest] https://events.launchdarkly.com/events/bulk/62f27f5ffb29e21107643da4
+[fetch] https://us.i.posthog.com/i/v0/e/?ip=0&_=1775721446697&ver=1.365.4&compression=gzip-js
+[xmlhttprequest] https://api.topstep.com/me/profile/
+[xmlhttprequest] https://app.launchdarkly.com/sdk/evalx/62f27f5ffb29e21107643da4/contexts/eyJraW5kIjoidXNlciIsImtleSI6IjkzMzQ4IiwiYW5vbnltb3VzIjpmYWxzZSwibmFtZSI6Ikpvc2VwaCBIaWNrZW4iLCJmaXJzdE5hbWUiOiJKb3NlcGgiLCJsYXN0TmFtZSI6IkhpY2tlbiIsImVtYWlsIjoiam9zaGlja2VuQGdtYWlsLmNvbSIsImN1c3RvbSI6eyJpc1ZlcmlmaWVkIjp0cnVlLCJpc0xvY2tlZCI6bnVsbCwibG9ja1R5cGUiOm51bGwsInJvbGUiOiJlbmR1c2VyIiwiY3JlYXRlZEF0IjoxNzUyNzg3MTE0NDQ5fX0
+[xmlhttprequest] https://events.launchdarkly.com/events/bulk/62f27f5ffb29e21107643da4
+[xmlhttprequest] https://events.launchdarkly.com/events/bulk/62f27f5ffb29e21107643da4
+
+=== ALL LINKS ===
+https://training-camp.topstep.com/lesson-1/chapter-1 | Start Lesson
+https://training-camp.topstep.com/lesson-2/chapter-1 | Start Lesson
+https://training-camp.topstep.com/lesson-3/chapter-1 | Start Lesson
+https://training-camp.topstep.com/ | See all lessons
+https://www.youtube.com/@TopstepOfficial/streams | Watch Topstep TV
+https://discord.com/invite/topstep | Join Discord community
+https://www.topstep.com/ | 
+https://dashboard.topstep.com/dashboard/default | 
+https://training-camp.topstep.com/ | 
+https://dashboard.topstep.com/dashboard/profile/details | 
+https://dashboard.topstep.com/dashboard/profile/billing | 
+https://dashboard.topstep.com/dashboard/accounts | 
+https://dashboard.topstep.com/dashboard/payouts | 
+https://dashboard.topstep.com/dashboard/certificates | 
+https://help.topstep.com/en | 
+
+=== LOCAL STORAGE ===
+ld:62f27f5ffb29e21107643da4:$diagnostics = {"dataSinceDate":1775721406087,"droppedEvents":0,"eventsInLastBatch":0,"streamInits":[]}
+intercom.intercom-state-bjnr216i = {"app":{"openConfig":{"unifiedStyling":true,"openTo":"home","spaces":[{"type":"home","label":"Home","navigationLabel":"Home","badge":null},{"type":"messages","label":"Messages","navigationLabel":"Messages","badge":null},{"type":"tasks","label":"Tasks","navigationLabel":"Tasks","badge":null},{"type":
+ph_phc_QpzZSG277LT1zX2qXKolv2vPsxDW77MbayG9Ji8v3nS_posthog = {"$device_id":"019d7122-cb28-76a3-b2eb-8ec6a8b993e0","distinct_id":"019d7122-cb28-76a3-b2eb-8ec6a8b993e0","$sesid":[1775721443684,"019d7122-cb5c-7dd0-a24b-19cf0ad34db9",1775719598937],"$initial_person_info":{"r":"$direct","u":"https://dashboard.topstep.com/dashboard/default?variant=new"},"$user_stat
+ui-theme = dark
+
+=== COOKIES ===
+intercom-id-bjnr216i=5eff442f-c800-405f-84ed-90eecb420f9b; intercom-device-id-bjnr216i=8296507a-fdba-4f60-9eaf-7ae63d86724b; _dd_s=aid=8718ae3a-b5a3-465a-9bfb-9a509f1ea75c&rum=0&expire=1775722340126; ph_phc_QpzZSG277LT1zX2qXKolv2vPsxDW77MbayG9Ji8v3nS_posthog=%7B%22%24device_id%22%3A%22019d7122-cb28-76a3-b2eb-8ec6a8b993e0%22%2C%22distinct_id%22%3A%22019d7122-cb28-76a3-b2eb-8ec6a8b993e0%22%2C%22%24sesid%22%3A%5B1775721443684%2C%22019d7122-cb5c-7dd0-a24b-19cf0ad34db9%22%2C1775719598937%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fdashboard.topstep.com%2Fdashboard%2Fdefault%3Fvariant%3Dnew%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D; intercom-session-bjnr216i=QjV2ZGlpWjlLbDJSTDFLU1owWUlHakdYRVk1dFFEUXlNVnNTbnRwbE9IeWJDZ1IzOXpxbWhQNHB1b25WY3UzR3NGdUkzcG05akp5VjQveUh5YnVneUpEWmp1TWRWK0NrOUoxUFJ4Umdsd1RMNi9xNXZJZWZ4d0tBcG5tY2JDalpvSzQ2Zis2T3NYRWFSRmRHYTQ0ck5TQkg3NlExMDZrZ0tBa3NBQmNUdFFUT2RnTlR1WDFZdDFpRExMNmVvMG1KT1QxemxZK25uMFo1Yi95YVZVMEFPZz09LS1EYXhBOWZvaEcvZU9nNjBCZTB2ZUFRPT0=--87e97793e5e5a0a835f675a4a3f92a31614d8622
+
+Done.

@@ -4,6 +4,7 @@ __build__ = "20260219"
 import os
 import sys
 import time
+import json
 import threading
 import logging
 import random
@@ -138,8 +139,7 @@ class TradovateAccount:
         # PERFORMANCE: Faster page loading optimizations
         chrome_options.add_argument("--disable-extensions")  # No extensions = faster
         chrome_options.add_argument("--disable-plugins")  # No plugins = faster
-        chrome_options.add_argument("--disable-images")  # Skip images for faster load (Tradovate is mostly UI/Canvas)
-        chrome_options.add_argument("--blink-settings=imagesEnabled=false")  # Disable image rendering
+        # Images enabled — needed for CAPTCHA solving and normal page rendering
         chrome_options.add_argument("--disable-background-networking")  # No background requests
         chrome_options.add_argument("--disable-default-apps")  # No default apps
         chrome_options.add_argument("--disable-sync")  # No sync
@@ -2075,6 +2075,56 @@ class TradovateAccount:
             print(f"[SEARCH] _place_order_side DEBUG: Placing {side.upper()} order: {symbol} x{qty}")
             print(f"[SEARCH] _place_order_side DEBUG: Current logged_in state: {self.logged_in}")
             
+            # ── API-FIRST: Try placing via REST API (fast, no UI interaction) ──
+            try:
+                print(f"[API-FIRST] Attempting REST API order: {side.upper()} {qty}x {symbol}")
+                
+                # Resolve account_id from expected_account name
+                api_account_id = None
+                if expected_account:
+                    accounts = self._api_fetch("/account/list")
+                    if accounts and isinstance(accounts, list):
+                        expected_lower = str(expected_account).lower()
+                        for acct in accounts:
+                            acct_name = acct.get('name', '').lower()
+                            if expected_lower in acct_name or acct_name in expected_lower:
+                                api_account_id = acct['id']
+                                print(f"[API-FIRST] Matched account '{acct.get('name')}' (id={api_account_id}) for expected '{expected_account}'")
+                                break
+                            # Also try numeric suffix match
+                            import re as _re
+                            expected_digits = _re.search(r'(\d{5,})$', str(expected_account))
+                            if expected_digits and acct_name.endswith(expected_digits.group(1).lower()):
+                                api_account_id = acct['id']
+                                print(f"[API-FIRST] Suffix-matched account '{acct.get('name')}' (id={api_account_id})")
+                                break
+                        if not api_account_id:
+                            print(f"[API-FIRST] ⚠ No account match for '{expected_account}' — using default")
+                
+                api_result = self.place_order_api(
+                    symbol=symbol, side=side, qty=qty,
+                    order_type="Market", tp=tp, sl=sl,
+                    account_id=api_account_id,
+                )
+                
+                if api_result:
+                    order_id = api_result.get('orderId', api_result.get('id', '?'))
+                    status = api_result.get('ordStatus', '?')
+                    print(f"[API-FIRST] ✅ API order SUCCESS: id={order_id} status={status} — Selenium skipped")
+                    if on_click:
+                        try:
+                            on_click()
+                        except Exception:
+                            pass
+                    return  # API succeeded — done!
+                else:
+                    print(f"[API-FIRST] ⚠ API returned None — falling back to Selenium")
+            except Exception as api_err:
+                print(f"[API-FIRST] ⚠ API attempt failed: {api_err} — falling back to Selenium")
+            
+            # ── SELENIUM FALLBACK: Place via UI clicking ──
+            print(f"[SELENIUM FALLBACK] Proceeding with Selenium-based order placement")
+            
             # [ALARM] BLUEPRINT VALIDATION DISABLED: Using input timing instead
             print(f"[CHECK] TRADE APPROVED: Blueprint validation disabled - using input timing")
             
@@ -2537,3 +2587,747 @@ class TradovateAccount:
             raise
         finally:
             self._placing_order = False
+
+    # ── Tradovate REST API — Trade History ────────────────────────────────
+    
+    def _api_fetch(self, endpoint, method="GET", body=None):
+        """Execute a fetch() call in the browser against the Tradovate REST API.
+        Returns parsed JSON data or None on failure."""
+        body_js = f"opts.body = JSON.stringify({json.dumps(body)});" if body else ""
+        js = f"""
+        var cb = arguments[arguments.length - 1];
+        (async function() {{
+            try {{
+                var auth = JSON.parse(sessionStorage.getItem('api_authenticator_state') || '{{}}');
+                var token = auth.token || '';
+                var env = auth.environment || 'demo';
+                var base = 'https://' + env + '.tradovateapi.com/v1';
+                var opts = {{
+                    method: '{method}',
+                    headers: {{
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }}
+                }};
+                {body_js}
+                var r = await fetch(base + '{endpoint}', opts);
+                var txt = await r.text();
+                var d = null;
+                try {{ d = JSON.parse(txt); }} catch(e) {{}}
+                cb({{ok: r.ok, status: r.status, data: d}});
+            }} catch(e) {{
+                cb({{ok: false, error: e.toString()}});
+            }}
+        }})();
+        """
+        try:
+            result = self.driver.execute_async_script(js)
+            if result and result.get('ok'):
+                return result.get('data')
+            # Log the actual error instead of silently returning None
+            status = result.get('status', '?') if result else '?'
+            err = result.get('error', '') if result else 'no result'
+            data = result.get('data', '') if result else ''
+            print(f"[API] fetch {endpoint} FAILED: status={status} error={err} data={data}")
+            return None
+        except Exception as e:
+            print(f"[API] fetch {endpoint} exception: {e}")
+            return None
+
+    def _get_account_for_api(self):
+        """Get the first account id and name for API order placement."""
+        accounts = self._api_fetch("/account/list")
+        if not accounts or not isinstance(accounts, list) or len(accounts) == 0:
+            return None, None
+        acct = accounts[0]
+        return acct['id'], acct.get('name', '?')
+
+    def get_min_equity(self, account_id=None):
+        """Get the minimum equity (drawdown limit) for an account via the API.
+        
+        Uses /cashBalance/getCashBalanceSnapshot for current net liq,
+        /userAccountAutoLiq/deps for trailing drawdown limits, and
+        /accountRiskStatus/list for the max net liq (trailing reference).
+        
+        Returns:
+            dict with 'net_liq', 'min_equity', 'drawdown_remaining' or None on failure.
+        """
+        try:
+            if not account_id:
+                account_id, _ = self._get_account_for_api()
+            if not account_id:
+                return None
+
+            snapshot = self._api_fetch("/cashBalance/getCashBalanceSnapshot", "POST", {"accountId": account_id}) or {}
+            net_liq = snapshot.get('netLiq', 0)
+            net_liq_sod = snapshot.get('netLiqSOD', 0)  # balance at midnight
+
+            # Use deps endpoint — returns the autoLiq entry directly for this account
+            al_raw = self._api_fetch(f"/userAccountAutoLiq/deps?masterid={account_id}") or {}
+            # deps can return a single object or a list with one entry
+            if isinstance(al_raw, list):
+                al = al_raw[0] if al_raw else {}
+            else:
+                al = al_raw
+
+            trailing_max_drawdown = al.get('trailingMaxDrawdown', 0) or 0
+            trailing_max_drawdown_limit = al.get('trailingMaxDrawdownLimit', 0) or 0
+            trailing_mode = al.get('trailingMaxDrawdownMode', '')
+
+            print(f"[MIN EQUITY] autoLiq raw for {account_id}: TMD={trailing_max_drawdown}, "
+                  f"TMDL={trailing_max_drawdown_limit}, mode={trailing_mode}, keys={list(al.keys())}")
+
+            # Get max net liq from accountRiskStatus (the trailing reference point)
+            max_net_liq = 0
+            risk_raw = self._api_fetch(f"/accountRiskStatus/deps?masterid={account_id}") or {}
+            if isinstance(risk_raw, list):
+                rs = risk_raw[0] if risk_raw else {}
+            else:
+                rs = risk_raw
+            max_net_liq = rs.get('maxNetLiq', 0) or 0
+
+            # EOD trailing drawdown:
+            # SL floor from SOD: midnight_balance - trailing_max_drawdown
+            # Absolute floor:    trailingMaxDrawdownLimit - trailing_max_drawdown
+            # min_equity = max(sod_floor, absolute_floor)
+            if trailing_max_drawdown > 0:
+                absolute_floor = (trailing_max_drawdown_limit - trailing_max_drawdown) if trailing_max_drawdown_limit > 0 else 0
+                if net_liq_sod > 0:
+                    sod_floor = net_liq_sod - trailing_max_drawdown
+                    min_equity = max(sod_floor, absolute_floor)
+                else:
+                    min_equity = absolute_floor
+            else:
+                min_equity = 0
+
+            drawdown_remaining = net_liq - min_equity if min_equity else net_liq
+
+            result = {
+                'net_liq': net_liq,
+                'net_liq_sod': net_liq_sod,
+                'min_equity': min_equity,
+                'trailing_max_drawdown': trailing_max_drawdown,
+                'trailing_max_drawdown_limit': trailing_max_drawdown_limit,
+                'trailing_mode': trailing_mode,
+                'max_net_liq': max_net_liq,
+                'drawdown_remaining': drawdown_remaining,
+            }
+            print(f"[MIN EQUITY] account={account_id}: netLiq=${net_liq:,.2f}, "
+                  f"SOD=${net_liq_sod:,.2f}, minEquity=${min_equity:,.2f}, "
+                  f"remaining=${drawdown_remaining:,.2f}, mode={trailing_mode}")
+            return result
+        except Exception as e:
+            import traceback
+            print(f"[MIN EQUITY] Failed to get min equity: {e}")
+            traceback.print_exc()
+            return None
+
+    def place_order_api(self, symbol, side, qty, order_type="Market", price=None,
+                        stop_price=None, tp=None, sl=None, account_id=None):
+        """Place an order via the Tradovate REST API (no Selenium UI clicking).
+        
+        Args:
+            symbol:     Contract symbol e.g. "NQM6", "ESM6"
+            side:       "Buy" or "Sell"
+            qty:        Number of contracts (int)
+            order_type: "Market", "Limit", "Stop", "StopLimit", "MIT"
+            price:      Limit price (required for Limit/StopLimit)
+            stop_price: Stop price (required for Stop/StopLimit)
+            tp:         Take profit — in ticks (int) or absolute price (float > tick_size * 200)
+            sl:         Stop loss  — in ticks (int) or absolute price (float > tick_size * 200)
+            account_id: Specific account ID (default: first account)
+            
+        Returns:
+            dict with order result on success, None on failure
+            
+        Tick reference:
+            NQ/MNQ = 0.25/tick ($5.00/tick NQ, $0.50/tick MNQ)
+            ES/MES = 0.25/tick ($12.50/tick ES, $1.25/tick MES)
+            YM/MYM = 1.00/tick ($5.00/tick YM, $0.50/tick MYM)
+            CL/MCL = 0.01/tick ($10.00/tick CL, $1.00/tick MCL)
+        """
+        # Normalize side
+        side = side.capitalize()
+        if side not in ("Buy", "Sell"):
+            print(f"[API ORDER] Invalid side: {side}")
+            return None
+
+        # Get account
+        if not account_id:
+            account_id, account_name = self._get_account_for_api()
+            if not account_id:
+                print("[API ORDER] No account found")
+                return None
+        else:
+            # Look up account name — accountSpec needs the name string, not numeric ID
+            account_name = str(account_id)
+            accounts = self._api_fetch("/account/list")
+            if accounts and isinstance(accounts, list):
+                for acct in accounts:
+                    if acct.get('id') == account_id:
+                        account_name = acct.get('name', str(account_id))
+                        break
+
+        # Find contract by symbol name
+        contract = self._api_fetch(f"/contract/find?name={symbol}")
+        if not contract or not contract.get('id'):
+            print(f"[API ORDER] Contract not found: {symbol}")
+            return None
+        contract_id = contract['id']
+        contract_name = contract.get('name', symbol)
+
+        # Get tick size from contract maturity (for tick-based TP/SL)
+        tick_size = None
+        if tp is not None or sl is not None:
+            mat_id = contract.get('contractMaturityId')
+            if mat_id:
+                mat = self._api_fetch(f"/contractMaturity/item?id={mat_id}")
+                if mat:
+                    prod_id = mat.get('productId')
+                    if prod_id:
+                        product = self._api_fetch(f"/product/item?id={prod_id}")
+                        if product:
+                            tick_size = product.get('tickSize', 0.25)
+            if not tick_size:
+                # Fallback: common tick sizes by symbol prefix
+                sym_upper = symbol.upper()
+                if any(sym_upper.startswith(p) for p in ("NQ", "MNQ", "ES", "MES")):
+                    tick_size = 0.25
+                elif any(sym_upper.startswith(p) for p in ("YM", "MYM")):
+                    tick_size = 1.0
+                elif any(sym_upper.startswith(p) for p in ("CL", "MCL")):
+                    tick_size = 0.01
+                else:
+                    tick_size = 0.25
+                print(f"[API ORDER] Using fallback tick size: {tick_size}")
+
+        # ── ref_price is determined AFTER the market fill (see below) ──
+        # Pre-order quotes from /md/getQuote are unreliable on prop firm accounts
+        # and have caused catastrophic bracket pricing (e.g. 7089 instead of 26474).
+        # We now ALWAYS place the market order first, then use the fill price.
+
+        print(f"[API ORDER] {side} {qty}x {contract_name} (id={contract_id}) on {account_name} — {order_type}"
+              + (f" tick={tick_size}" if tick_size else ""))
+
+        # Build order payload
+        payload = {
+            "accountSpec": account_name,
+            "accountId": account_id,
+            "action": side,
+            "symbol": contract_name,
+            "orderQty": qty,
+            "orderType": order_type,
+            "isAutomated": False,
+        }
+        if price is not None and order_type in ("Limit", "StopLimit"):
+            payload["price"] = price
+        if stop_price is not None and order_type in ("Stop", "StopLimit", "MIT"):
+            payload["stopPrice"] = stop_price
+
+        # Place market order FIRST, then add brackets using fill price
+        self._placing_order = True
+        try:
+            print(f"[API ORDER] Placing market order via /order/placeOrder")
+            result = self._api_fetch("/order/placeOrder", "POST", payload)
+
+            if not result:
+                print(f"[API ORDER] ❌ Order rejected or failed")
+                return None
+
+            # Parse result — may be nested or flat
+            if isinstance(result, dict):
+                order_id = result.get('orderId') or result.get('id') or '?'
+                status = result.get('ordStatus', '?')
+                fill_price = result.get('avgPx') or result.get('price')
+                print(f"[API ORDER] ✅ Order placed: id={order_id} status={status} fillPrice={fill_price}")
+                print(f"[API ORDER] Full result: {result}")
+            else:
+                print(f"[API ORDER] ✅ Order placed (non-dict response): {result}")
+                order_id = '?'
+                fill_price = None
+
+            # Now add TP/SL brackets using the actual fill price
+            if tp is not None or sl is not None:
+                import time as _time
+
+                # Retry loop — market orders may take a moment to fill
+                if not fill_price and order_id != '?':
+                    for attempt in range(8):
+                        _time.sleep(0.5)
+                        try:
+                            order_detail = self._api_fetch(f"/order/item?id={order_id}")
+                            if order_detail and isinstance(order_detail, dict):
+                                fill_price = order_detail.get('avgPx') or order_detail.get('price')
+                                detail_status = order_detail.get('ordStatus', '?')
+                                print(f"[API ORDER] Fill check #{attempt+1}: status={detail_status} avgPx={fill_price}")
+                                if fill_price:
+                                    break
+                        except Exception as ex:
+                            print(f"[API ORDER] Fill check #{attempt+1} error: {ex}")
+
+                # Fallback: check position for price
+                if not fill_price:
+                    try:
+                        positions = self._api_fetch("/position/list")
+                        if positions and isinstance(positions, list):
+                            for pos in positions:
+                                if pos.get('contractId') == contract_id and pos.get('accountId') == account_id:
+                                    fill_price = pos.get('price') or pos.get('netPrice')
+                                    print(f"[API ORDER] Got price from position: {fill_price}")
+                                    break
+                    except Exception as ex:
+                        print(f"[API ORDER] Position lookup error: {ex}")
+
+                if fill_price:
+                    # Sanity check: NQ-like symbols should have prices > 1000
+                    sym_upper = symbol.upper()
+                    if any(sym_upper.startswith(p) for p in ("NQ", "MNQ")) and fill_price < 1000:
+                        print(f"[API ORDER] ❌ SANITY FAIL: fill_price={fill_price} is too low for {symbol}! Brackets NOT placed.")
+                    else:
+                        print(f"[API ORDER] Placing brackets at fill_price={fill_price}")
+                        self._place_brackets_post_fill(
+                            account_name, account_id, contract_name, qty,
+                            side, fill_price, tp, sl, tick_size
+                        )
+                else:
+                    print(f"[API ORDER] ❌ Could not determine fill price — brackets NOT placed!")
+
+            return result
+
+        except Exception as e:
+            import traceback
+            print(f"[API ORDER] ❌ Exception: {e}")
+            traceback.print_exc()
+            return None
+        finally:
+            self._placing_order = False
+
+    def _place_brackets_post_fill(self, account_name, account_id, contract_name,
+                                   qty, side, fill_price, tp, sl, tick_size):
+        """Place TP and SL bracket orders after a market order has filled.
+        
+        For BUY main order:  TP = Sell Limit (above fill), SL = Sell Stop (below fill)
+        For SELL main order: TP = Buy Limit (below fill),  SL = Buy Stop (above fill)
+        """
+        tp_price = self._resolve_bracket_price(tp, tick_size, fill_price, side, is_tp=True) if tp else None
+        sl_price = self._resolve_bracket_price(sl, tick_size, fill_price, side, is_tp=False) if sl else None
+
+        if not tp_price and not sl_price:
+            print(f"[BRACKET] No valid bracket prices computed — skipping")
+            return
+
+        # Determine bracket order sides and types
+        if side == "Buy":
+            # Close a long: Sell Limit for TP, Sell Stop for SL
+            tp_action, tp_type = "Sell", "Limit"
+            sl_action, sl_type = "Sell", "Stop"
+        else:
+            # Close a short: Buy Limit for TP, Buy Stop for SL
+            tp_action, tp_type = "Buy", "Limit"
+            sl_action, sl_type = "Buy", "Stop"
+
+        print(f"[BRACKET] Main={side} fill={fill_price} | "
+              f"TP={tp_action} {tp_type} @ {tp_price} | SL={sl_action} {sl_type} @ {sl_price}")
+
+        # Place TP order
+        if tp_price:
+            tp_payload = {
+                "accountSpec": account_name,
+                "accountId": account_id,
+                "action": tp_action,
+                "symbol": contract_name,
+                "orderQty": qty,
+                "orderType": tp_type,
+                "price": tp_price,
+                "isAutomated": False,
+            }
+            print(f"[BRACKET] Placing TP: {tp_action} {qty}x {contract_name} {tp_type} @ {tp_price}")
+            try:
+                tp_result = self._api_fetch("/order/placeOrder", "POST", tp_payload)
+                if tp_result:
+                    print(f"[BRACKET] ✅ TP placed: {tp_result}")
+                else:
+                    print(f"[BRACKET] ❌ TP failed — no response")
+            except Exception as e:
+                print(f"[BRACKET] ❌ TP exception: {e}")
+
+        # Place SL order
+        if sl_price:
+            sl_payload = {
+                "accountSpec": account_name,
+                "accountId": account_id,
+                "action": sl_action,
+                "symbol": contract_name,
+                "orderQty": qty,
+                "orderType": sl_type,
+                "stopPrice": sl_price,
+                "isAutomated": False,
+            }
+            print(f"[BRACKET] Placing SL: {sl_action} {qty}x {contract_name} {sl_type} @ {sl_price}")
+            try:
+                sl_result = self._api_fetch("/order/placeOrder", "POST", sl_payload)
+                if sl_result:
+                    print(f"[BRACKET] ✅ SL placed: {sl_result}")
+                else:
+                    print(f"[BRACKET] ❌ SL failed — no response")
+            except Exception as e:
+                print(f"[BRACKET] ❌ SL exception: {e}")
+
+    def _resolve_bracket_price(self, value, tick_size, ref_price, side, is_tp):
+        """Convert a TP/SL tick count to an absolute price.
+        
+        Values are Tradovate tick counts (e.g. 151 ticks for NQ).
+        Price offset = ticks × tick_size (151 × 0.25 = 37.75 pts).
+        
+        For Buy orders:  TP is above ref_price, SL is below
+        For Sell orders: TP is below ref_price, SL is above
+        """
+        if value is None or tick_size is None:
+            return None
+
+        if ref_price is None:
+            print(f"[API ORDER] Cannot calculate bracket: no reference price available")
+            return None
+
+        # Convert tick count → price offset
+        offset = value * tick_size
+        if side == "Buy":
+            result = round(ref_price + offset, 10) if is_tp else round(ref_price - offset, 10)
+        else:
+            result = round(ref_price - offset, 10) if is_tp else round(ref_price + offset, 10)
+
+        print(f"[API ORDER] Bracket calc: {value} ticks × {tick_size} = {offset} pts, "
+              f"ref={ref_price} → {'TP' if is_tp else 'SL'}={result}")
+        return result
+
+    def cancel_order_api(self, order_id):
+        """Cancel an order via the REST API."""
+        result = self._api_fetch("/order/cancelOrder", "POST", {"orderId": order_id})
+        if result:
+            print(f"[API] Order {order_id} cancelled")
+        return result
+
+    def liquidate_position_api(self, account_id=None):
+        """Liquidate (flatten) all positions on the account via the REST API.
+        
+        Strategy: 
+        1. Check for open positions first
+        2. Try /order/liquidatePosition endpoint
+        3. If that fails, close each position individually with opposite market orders
+        
+        Returns: dict with results, or None if no positions / all failed
+        """
+        if not account_id:
+            account_id, account_name = self._get_account_for_api()
+            if not account_id:
+                print("[API] No account found for liquidation")
+                return None
+        else:
+            account_name = str(account_id)
+
+        # Step 1: Check if there are actually open positions
+        positions = self.get_positions_api(account_id)
+        open_positions = [p for p in positions if p.get('netPos', 0) != 0]
+        if not open_positions:
+            print(f"[API] No open positions on {account_name} — already flat")
+            return None
+
+        print(f"[API] Found {len(open_positions)} open position(s) on {account_name} — liquidating...")
+
+        # Step 2: Try the liquidatePosition endpoint
+        result = self._api_fetch("/order/liquidatePosition", "POST", {"accountId": account_id})
+        if result:
+            print(f"[API] ✅ Positions liquidated via /order/liquidatePosition")
+            return result
+
+        # Step 3: Fallback — close each position with opposite market orders
+        print(f"[API] liquidatePosition failed — falling back to individual close orders")
+        closed = 0
+        for pos in open_positions:
+            net_pos = pos.get('netPos', 0)
+            contract_id = pos.get('contractId')
+            if net_pos == 0 or not contract_id:
+                continue
+            
+            # Get contract name for the order
+            contract = self._api_fetch(f"/contract/item?id={contract_id}")
+            contract_name = contract.get('name', '') if contract else ''
+            if not contract_name:
+                print(f"[API] Could not resolve contract {contract_id} — skipping")
+                continue
+
+            close_side = "Sell" if net_pos > 0 else "Buy"
+            close_qty = abs(net_pos)
+            payload = {
+                "accountSpec": account_name,
+                "accountId": account_id,
+                "action": close_side,
+                "symbol": contract_name,
+                "orderQty": close_qty,
+                "orderType": "Market",
+                "isAutomated": False,
+            }
+            print(f"[API] Closing: {close_side} {close_qty}x {contract_name}")
+            close_result = self._api_fetch("/order/placeOrder", "POST", payload)
+            if close_result:
+                print(f"[API] ✅ Closed {contract_name}")
+                closed += 1
+            else:
+                print(f"[API] ❌ Failed to close {contract_name}")
+
+        return {"closed": closed, "total": len(open_positions)} if closed > 0 else None
+
+    def get_positions_api(self, account_id=None):
+        """Get current open positions via the REST API."""
+        positions = self._api_fetch("/position/list") or []
+        if account_id:
+            positions = [p for p in positions if p.get('accountId') == account_id]
+        return positions
+
+    def cancel_all_orders_api(self, account_id=None):
+        """Cancel all working (pending) orders on the account via the REST API.
+        
+        Only cancels if the account has no open positions (i.e. is flat).
+        This cleans up orphaned bracket orders (stop/limit) after a position
+        is closed by TP, SL, or manual liquidation.
+        """
+        # Only cancel if no active positions
+        positions = self.get_positions_api(account_id)
+        open_positions = [p for p in positions if p.get('netPos', 0) != 0]
+        if open_positions:
+            return 0
+
+        orders = self.get_orders_api()
+        if not orders:
+            return 0
+
+        cancelled = 0
+        for order in orders:
+            status = order.get('ordStatus', '')
+            if status not in ('Working', 'Accepted', 'PendingNew'):
+                continue
+            if account_id and order.get('accountId') != account_id:
+                continue
+            oid = order.get('id')
+            if oid:
+                try:
+                    self.cancel_order_api(oid)
+                    cancelled += 1
+                except Exception as e:
+                    print(f"[API] Failed to cancel order {oid}: {e}")
+        if cancelled > 0:
+            print(f"[API] ✅ Cancelled {cancelled} pending order(s) (account is flat)")
+        return cancelled
+
+    def get_orders_api(self):
+        """Get current working orders via the REST API."""
+        return self._api_fetch("/order/list") or []
+
+    def get_trade_history(self):
+        """Get full trade history for ALL accounts under this login.
+        
+        Returns list of dicts, one per account:
+            account_name, account_id, environment, balance, balance_sod,
+            realized_pnl, open_pnl, trailing_max_drawdown, trailing_max_drawdown_limit,
+            drawdown_mode, daily_pnl, fills
+        """
+        try:
+            # Get environment info
+            env_info = self.driver.execute_script("""
+                try {
+                    var auth = JSON.parse(sessionStorage.getItem('api_authenticator_state') || '{}');
+                    return {env: auth.environment || 'demo', username: auth.username || ''};
+                } catch(e) { return {env: 'demo'}; }
+            """)
+            environment = env_info.get('env', 'demo') if env_info else 'demo'
+
+            # Get ALL accounts under this login
+            accounts = self._api_fetch("/account/list")
+            if not accounts or not isinstance(accounts, list) or len(accounts) == 0:
+                return None
+
+            # Shared data — fetch once for all accounts
+            all_fills = self._api_fetch("/fill/list") or []
+            all_autoliq = self._api_fetch("/userAccountAutoLiq/list") or []
+
+            # Resolve contract names for fills
+            contract_cache = {}
+            for f in all_fills:
+                cid = f.get('contractId')
+                if cid and cid not in contract_cache:
+                    c = self._api_fetch(f"/contract/item?id={cid}")
+                    contract_cache[cid] = c.get('name', str(cid)) if c else str(cid)
+
+            # Index auto-liq by account ID
+            autoliq_by_acct = {}
+            for al in all_autoliq:
+                autoliq_by_acct[al.get('accountId', al.get('account'))] = al
+
+            from collections import defaultdict
+            results = []
+
+            for acct in accounts:
+                aid = acct['id']
+                aname = acct.get('name', '?')
+
+                # Per-account data
+                balance_logs = self._api_fetch(f"/cashBalanceLog/ldeps?masterids={aid}") or []
+                snapshot = self._api_fetch("/cashBalance/getCashBalanceSnapshot", "POST", {"accountId": aid}) or {}
+
+                # Filter fills for this account
+                acct_fills = [f for f in all_fills if f.get('accountId') == aid]
+
+                # Build daily P&L from cashBalanceLog
+                daily_raw = defaultdict(lambda: {"trades": 0, "gross_pnl": 0.0, "fees": 0.0, "balance_eod": 0.0})
+                for entry in sorted(balance_logs, key=lambda x: x.get('id', 0)):
+                    td = entry.get('tradeDate', {})
+                    date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
+                    ctype = entry.get('cashChangeType', '')
+                    delta = entry.get('delta', 0)
+                    daily_raw[date_str]["balance_eod"] = entry.get('amount', 0)
+                    if ctype == "TradePaired":
+                        daily_raw[date_str]["gross_pnl"] += delta
+                        daily_raw[date_str]["trades"] += 1
+                    elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
+                        daily_raw[date_str]["fees"] += delta
+
+                daily_pnl = []
+                for date_str in sorted(daily_raw.keys()):
+                    d = daily_raw[date_str]
+                    net = d["gross_pnl"] + d["fees"]
+                    daily_pnl.append({
+                        "date": date_str,
+                        "trades": d["trades"],
+                        "gross_pnl": round(d["gross_pnl"], 2),
+                        "fees": round(d["fees"], 2),
+                        "net_pnl": round(net, 2),
+                        "balance_eod": round(d["balance_eod"], 2),
+                    })
+
+                # Build fills list for this account
+                fill_list = []
+                for f in sorted(acct_fills, key=lambda x: x.get('timestamp', '')):
+                    td = f.get('tradeDate', {})
+                    date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
+                    ts = f.get('timestamp', '')
+                    time_str = ts[11:19] if len(ts) > 19 else ts
+                    fill_list.append({
+                        "date": date_str,
+                        "time": time_str,
+                        "action": f.get('action', '?'),
+                        "qty": f.get('qty', 0),
+                        "contract": contract_cache.get(f.get('contractId'), '?'),
+                        "price": f.get('price', 0),
+                        "order_id": f.get('orderId', 0),
+                    })
+
+                al = autoliq_by_acct.get(aid, {})
+
+                results.append({
+                    "account_name": aname,
+                    "account_id": aid,
+                    "environment": environment,
+                    "balance": snapshot.get('netLiq', 0),
+                    "balance_sod": snapshot.get('netLiqSOD', 0),
+                    "realized_pnl": snapshot.get('realizedPnL', 0),
+                    "open_pnl": snapshot.get('openPnL', 0),
+                    "trailing_max_drawdown": al.get('trailingMaxDrawdown', 0),
+                    "trailing_max_drawdown_limit": al.get('trailingMaxDrawdownLimit', 0),
+                    "drawdown_mode": al.get('trailingMaxDrawdownMode', '?'),
+                    "daily_pnl": daily_pnl,
+                    "fills": fill_list,
+                })
+
+            return results
+        except Exception as e:
+            print(f"[HISTORY] get_trade_history failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def get_mnq_daily_pnl(self):
+        """Get daily P&L for days with MNQ trading activity (farming days).
+
+        Identifies farming days by checking for MNQ contract fills, then
+        pulls the daily P&L from cashBalanceLog for those dates.
+
+        Returns list of dicts, one per account that has MNQ activity:
+            [{"account_name": str, "account_id": int,
+              "mnq_daily_pnl": [{"date": "YYYY-MM-DD", "net_pnl": float}, ...]}]
+        """
+        try:
+            accounts = self._api_fetch("/account/list")
+            if not accounts or not isinstance(accounts, list):
+                return []
+
+            all_fills = self._api_fetch("/fill/list") or []
+
+            # Resolve unique contract IDs to names
+            contract_cache = {}
+            for f in all_fills:
+                cid = f.get('contractId')
+                if cid and cid not in contract_cache:
+                    c = self._api_fetch(f"/contract/item?id={cid}")
+                    contract_cache[cid] = c.get('name', str(cid)) if c else str(cid)
+
+            # Identify MNQ contract IDs
+            mnq_contract_ids = {cid for cid, name in contract_cache.items()
+                                if str(name).upper().startswith('MNQ')}
+
+            if not mnq_contract_ids:
+                return []
+
+            from collections import defaultdict
+            results = []
+
+            for acct in accounts:
+                aid = acct['id']
+                aname = acct.get('name', '?')
+
+                # Find dates where this account had MNQ fills
+                mnq_dates = set()
+                for f in all_fills:
+                    if f.get('accountId') == aid and f.get('contractId') in mnq_contract_ids:
+                        td = f.get('tradeDate', {})
+                        date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
+                        mnq_dates.add(date_str)
+
+                if not mnq_dates:
+                    continue
+
+                # Get daily P&L from cashBalanceLog for MNQ dates only
+                balance_logs = self._api_fetch(f"/cashBalanceLog/ldeps?masterids={aid}") or []
+
+                daily_raw = defaultdict(lambda: {"gross_pnl": 0.0, "fees": 0.0})
+                for entry in balance_logs:
+                    td = entry.get('tradeDate', {})
+                    date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
+                    if date_str not in mnq_dates:
+                        continue
+                    ctype = entry.get('cashChangeType', '')
+                    delta = entry.get('delta', 0)
+                    if ctype == "TradePaired":
+                        daily_raw[date_str]["gross_pnl"] += delta
+                    elif ctype in ("Commission", "ExchangeFee", "ClearingFee", "NfaFee"):
+                        daily_raw[date_str]["fees"] += delta
+
+                mnq_daily = []
+                for date_str in sorted(daily_raw.keys()):
+                    d = daily_raw[date_str]
+                    net = round(d["gross_pnl"] + d["fees"], 2)
+                    mnq_daily.append({"date": date_str, "net_pnl": net})
+
+                if mnq_daily:
+                    results.append({
+                        "account_name": aname,
+                        "account_id": aid,
+                        "mnq_daily_pnl": mnq_daily,
+                    })
+
+            return results
+        except Exception as e:
+            print(f"[FARMING] get_mnq_daily_pnl failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return []

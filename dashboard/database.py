@@ -727,6 +727,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_payment_info = data.get('payment_info', [])
                 merged_payment_address = data.get('payment_address', {})
                 merged_mt5_credentials = data.get('mt5_credentials', {})
+                merged_firm_billing = data.get('firm_billing', {})
             else:
                 # Merge: get existing data so missing keys fall back gracefully
                 cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
@@ -763,6 +764,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 merged_payment_info = data.get('payment_info', existing_data.get('payment_info', []))
                 merged_payment_address = data.get('payment_address', existing_data.get('payment_address', {}))
                 merged_mt5_credentials = data.get('mt5_credentials', existing_data.get('mt5_credentials', {}))
+                merged_firm_billing = data.get('firm_billing', existing_data.get('firm_billing', {}))
 
             # Strip _notes from evaluations — notes are stored separately in cell_notes table
             clean_evaluations = [
@@ -794,8 +796,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                     client_id, deals, positions, account, evaluations,
                     statistics, dropdown_options, identity, last_updated,
                     hedge_accounts, prop_accounts, vps_accounts, payment_info, payment_address,
-                    mt5_credentials
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    mt5_credentials, firm_billing
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(client_id) DO UPDATE SET
                     deals = excluded.deals,
                     positions = excluded.positions,
@@ -810,7 +812,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                     vps_accounts = excluded.vps_accounts,
                     payment_info = excluded.payment_info,
                     payment_address = excluded.payment_address,
-                    mt5_credentials = excluded.mt5_credentials
+                    mt5_credentials = excluded.mt5_credentials,
+                    firm_billing = excluded.firm_billing
             ''', (
                 client_id,
                 json.dumps(merged_deals),
@@ -827,6 +830,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 json.dumps(merged_payment_info),
                 json.dumps(merged_payment_address),
                 json.dumps(merged_mt5_credentials),
+                json.dumps(merged_firm_billing),
             ))
             conn.commit()
             return True
@@ -862,6 +866,7 @@ def get_client_data(client_id: str) -> dict:
                 'payment_info': json.loads(row.get('payment_info') or '[]'),
                 'payment_address': json.loads(row.get('payment_address') or '{}'),
                 'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
+                'firm_billing': json.loads(row.get('firm_billing') or '{}'),
             }
         
         return None
@@ -894,6 +899,7 @@ def get_all_clients() -> dict:
                 'payment_info': json.loads(row.get('payment_info') or '[]'),
                 'payment_address': json.loads(row.get('payment_address') or '{}'),
                 'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
+                'firm_billing': json.loads(row.get('firm_billing') or '{}'),
             }
         return clients
 

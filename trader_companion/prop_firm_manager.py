@@ -1040,32 +1040,32 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 85,
+                            "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
-                            "mt5_volume": 3.6,
+                            "mt5_volume": 3,
                             "mt5_tp_points": 46,
-                            "mt5_sl_points": 26
+                            "mt5_sl_points": 30
                         }
                     },
                     "challenge_trade2": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 85,
+                            "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
-                            "mt5_volume": 5.6,
+                            "mt5_volume": 5.2,
                             "mt5_tp_points": 46,
-                            "mt5_sl_points": 26
+                            "mt5_sl_points": 30
                         }
                     },"challenge_trade3": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 85,
+                            "tradovate_tp_ticks": 102,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 8.8,
                             "mt5_tp_points": 46,
-                            "mt5_sl_points": 26
+                            "mt5_sl_points": 30
                         }
                     },
                     "funded_trade1": {
@@ -1074,7 +1074,7 @@ class PropFirmManager:
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 540,
                             "tradovate_sl_ticks": 200,
-                            "mt5_volume": 13.8,
+                            "mt5_volume": 15,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 139
                         }
@@ -1250,23 +1250,13 @@ class PropFirmManager:
                     "funded_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 300,
-                            "tradovate_sl_ticks": 100,
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
                             "mt5_tp_points": 46,
-                            "mt5_sl_points": 79
-                        }
-                    },
-                    "funded_trade1_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 400,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 79
+                            "mt5_sl_points": 79,
+                            "profit_target": 3000
                         }
                     },
                     "funded_trade2": {
@@ -1277,84 +1267,20 @@ class PropFirmManager:
                             "tradovate_sl_ticks": 100,
                             "mt5_volume": 0,
                             "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade2_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 200,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade3": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 100,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade3_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 200,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade4": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 100,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade4_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 200,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
+                            "mt5_sl_points": 29,
+                            "profit_target": 1000
                         }
                     },
                     "funded_trade_doubledip_1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 300,
-                            "tradovate_sl_ticks": 100,
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
                             "mt5_tp_points": 46,
-                            "mt5_sl_points": 79
-                        }
-                    },
-                    "funded_trade_doubledip_1_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 400,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 79
+                            "mt5_sl_points": 79,
+                            "profit_target": 3000
                         }
                     },
                     "funded_trade_doubledip_2": {
@@ -1365,62 +1291,8 @@ class PropFirmManager:
                             "tradovate_sl_ticks": 100,
                             "mt5_volume": 0,
                             "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade_doubledip_2_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 200,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade_doubledip_3": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 100,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade_doubledip_3_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 200,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade_doubledip_4": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 100,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
-                        }
-                    },
-                    "funded_trade_doubledip_4_2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 200,
-                            "tradovate_sl_ticks": 100,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29
+                            "mt5_sl_points": 29,
+                            "profit_target": 1000
                         }
                     }
                 }
@@ -1951,6 +1823,43 @@ class PropFirmManager:
             "stages": stages,
         }
 
+    def get_stage_start_target(self, firm_code: str, current_phase: str,
+                               phase_key: str, size_key: str = "50k") -> float:
+        """Return the cumulative $ profit expected BEFORE this stage begins.
+
+        E.g. if the phase order is [trade1, trade2, trade3] and each has a
+        $1000 TP target, then:
+          trade1 start = $0
+          trade2 start = $1000
+          trade3 start = $2000
+
+        This is the profit the account should already have when entering
+        this stage.  Used to adjust TP so the trade doesn't overshoot or
+        undershoot the stage target.
+        """
+        phase_map = {"Challenge": "Challenge", "Funded": "Funded",
+                     "Farming": "Farming", "Double Dip": "Double Dip",
+                     "Payout 1": "Funded", "Payout 2": "Funded",
+                     "Payout 3": "Funded", "Payout 4": "Funded"}
+        phase_group = phase_map.get(current_phase, current_phase)
+
+        firm_orders = self._PHASE_TRADE_ORDER.get(firm_code, {})
+        trade_keys = firm_orders.get(phase_group, [])
+
+        cumulative = 0.0
+        for key in trade_keys:
+            if key == phase_key:
+                return round(cumulative, 2)
+            cfg = self.get_strategy_config(firm_code, key, size_key)
+            if not cfg:
+                continue
+            sym = cfg.get("tradovate_symbol", "") or cfg.get("topstepx_symbol", "")
+            qty = int(cfg.get("tradovate_qty", 0) or cfg.get("topstepx_qty", 0))
+            tp = int(cfg.get("tradovate_tp_ticks", 0) or cfg.get("topstepx_tp_ticks", 0))
+            tick_val = self.get_tick_value(sym)
+            cumulative += qty * tp * tick_val
+        return round(cumulative, 2)
+
     def adjust_tp_sl_for_balance(self, config: Dict, current_profit: float) -> Dict:
         """Adjust TP and SL ticks/points based on current account profit.
 
@@ -1992,12 +1901,14 @@ class PropFirmManager:
         adjusted_tp = max(5, round(orig_tp * tp_ratio))
 
         # SL adjustment: if in profit, we can afford a wider SL (profit cushion).
-        # If in loss, tighten SL to limit further damage.
-        # New SL target in dollars = original SL risk + any existing profit
-        # (existing profit acts as a buffer we can afford to lose)
-        adjusted_sl_dollars = target_loss + current_profit
-        # Floor: at least 30% of original SL to avoid being stopped out instantly
-        adjusted_sl_dollars = max(adjusted_sl_dollars, target_loss * 0.30)
+        # If in loss, keep blueprint SL — don't tighten, let the prop account
+        # reach its actual drawdown limit before the hedge closes.
+        if current_profit > 0:
+            # Profit acts as a buffer we can afford to lose → widen SL
+            adjusted_sl_dollars = target_loss + current_profit
+        else:
+            # In loss — keep blueprint SL so hedge stays open until drawdown limit
+            adjusted_sl_dollars = target_loss
         sl_ratio = adjusted_sl_dollars / target_loss if target_loss > 0 else 1.0
         adjusted_sl = max(10, round(orig_sl * sl_ratio))
 
@@ -2042,6 +1953,69 @@ class PropFirmManager:
         "Lucid":            50000.0,
         "Top One Futures":  50000.0,
     }
+
+    # ── Profit targets for auto-status computation ────────────────────
+    # Maps firm_code → phase → cumulative profit needed to pass.
+    # "Challenge" target = total $ profit above starting balance to pass the challenge.
+    # "Funded" target per payout = profit needed before next payout request.
+    # These are used by compute_account_status() to auto-set Pass/Fail/In Progress.
+    _PROFIT_TARGETS: Dict[str, Dict[str, float]] = {
+        "MFFU":             {"Challenge": 3020, "Funded": 1020},
+        "MFFU_Flex":        {"Challenge": 3020, "Funded": 5400},
+        "Funded Next":      {"Challenge": 3050, "Funded": 5200},
+        "FundingTicks":     {"Challenge": 2540, "Funded": 5000},
+        "TopStep":          {"Challenge": 3020, "Funded": 5400},
+        "Lucid":            {"Challenge": 3020, "Funded": 3400},
+        "TradeDay":         {"Challenge": 3100, "Funded": 5000},
+        "AlphaFutures":     {"Challenge": 4040, "Funded": 6000},
+        "AlphaFutures GC":  {"Challenge": 4020, "Funded": 6000},
+        "Tradeify":         {"Challenge": 3060, "Funded": 5400},
+        "Apex":             {"Challenge": 7200, "Funded": 2000},
+        "Top One Futures":  {"Challenge": 3030, "Funded": 3000},
+    }
+
+    def compute_account_status(self, firm_code: str, phase: str,
+                               current_balance: float,
+                               starting_balance: float = 50000.0,
+                               breached: bool = False) -> str:
+        """Compute the account status based on balance vs profit targets.
+
+        Returns one of: 'Pass', 'Fail', 'In Progress', or None if unable to determine.
+
+        Parameters:
+            firm_code:        Canonical firm identifier (e.g. 'MFFU', 'TopStep')
+            phase:            Current phase display name ('Challenge' or 'Funded')
+            current_balance:  Live broker balance
+            starting_balance: Account starting balance (default $50,000)
+            breached:         Whether the prop firm reports the account as breached
+        """
+        if breached:
+            return "Fail"
+
+        targets = self._PROFIT_TARGETS.get(firm_code, {})
+        phase_key = "Challenge" if phase == "Challenge" else "Funded"
+        target = targets.get(phase_key)
+        if target is None:
+            return None  # unknown firm/phase, can't determine
+
+        profit = current_balance - starting_balance
+
+        if profit >= target:
+            return "Pass"
+
+        # Check if balance is at or below breach threshold
+        if firm_code in ("MFFU", "MFFU_Flex", "My Funded Futures"):
+            if current_balance < 50100.0:
+                hard_stop = 0.0
+            else:
+                hard_stop = 50100.0
+        else:
+            hard_stop = self._HARD_STOP_THRESHOLDS.get(firm_code, 50000.0)
+
+        if current_balance <= hard_stop:
+            return "Fail"
+
+        return "In Progress"
 
     # NQ tick-to-MT5-point conversion ratio (1 MT5 point = 4 Tradovate ticks)
     _NQ_TICK_TO_POINT_RATIO = 4

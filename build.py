@@ -3,7 +3,7 @@ import sys
 import shutil
 import subprocess
 
-# --- Build Script for TradeOpps Trader Companion ---
+# --- Build Script for TradeOpssAI ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 TRADER_APP = os.path.join(PROJECT_ROOT, 'trader_companion', 'trader_app.py')
 LOGO_SRC = os.path.join(PROJECT_ROOT, 'trader_companion', 'logo.png')
@@ -25,10 +25,12 @@ BUILD_NAME = f'TradeopssAI_v{VERSION}'
 
 # 1. Clean previous builds
 print("Cleaning build directories...")
-if os.path.exists(DIST_DIR):
-    shutil.rmtree(DIST_DIR)
-if os.path.exists(BUILD_DIR):
-    shutil.rmtree(BUILD_DIR)
+for d in [DIST_DIR, BUILD_DIR]:
+    if os.path.exists(d):
+        try:
+            shutil.rmtree(d)
+        except PermissionError:
+            print(f"Warning: Could not remove {d}, continuing anyway...")
 
 # 2. PyInstaller Command
 print(f"Building {BUILD_NAME}...")

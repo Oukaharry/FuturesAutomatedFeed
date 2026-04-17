@@ -4461,6 +4461,8 @@
 
         function buildByPropFirmRows(data) {
             const evals = data.evaluations || [];
+            const fb = data.firm_billing || {};
+            const hasFB = Object.keys(fb).length > 0;
             const firms = {};
             const pc = (v) => { try { return parseFloat(String(v||'').replace(/[$,]/g,'').trim()) || 0; } catch(e) { return 0; } };
             evals.forEach(ev => {
@@ -4499,6 +4501,9 @@
                 const hedgingTotal = f.hedge + f.farming;
                 const rowId = 'pf-' + name.replace(/[^a-zA-Z0-9]/g,'_');
                 const fundedPct = f.passed + f.failed > 0 ? Math.round(f.passed / (f.passed + f.failed) * 100) : null;
+                const fbEntry = fb[name] || {};
+                const actFees = fbEntry.total_fees;
+                const actPayouts = fbEntry.total_payouts;
                 return `
                 <tr style="border-bottom:1px solid #1e293b;" class="pf-main-row">
                     <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#e2e8f0;">${name}</td>
@@ -4506,6 +4511,7 @@
                     <td style="text-align:left;">${f.active}</td>
                     <td style="text-align:left;">${fmt(f.payouts)}</td>
                     <td style="text-align:left;">${fmt(f.fees)}</td>
+                    ${hasFB ? `<td style="text-align:left;color:${actFees !== undefined ? '#f59e0b' : '#475569'};">${actFees !== undefined ? fmt(actFees) : '—'}</td><td style="text-align:left;color:${actPayouts !== undefined ? '#34d399' : '#475569'};">${actPayouts !== undefined ? fmt(actPayouts) : '—'}</td>` : ''}
                     <td style="text-align:left;">${fmt(hedgingTotal)}</td>
                     <td style="text-align:left;padding-right:16px;font-weight:700;color:${net >= 0 ? '#34d399' : '#f87171'};">${fmt(net)}</td>
                 </tr>`;
@@ -4513,6 +4519,8 @@
                 const tHedgingTotal = tot.hedge + tot.farming + tot.discrepancy;
                 const tNet = tot.payouts - tot.fees + tHedgingTotal;
                 const tFundedPct = tot.passed + tot.failed > 0 ? Math.round(tot.passed / (tot.passed + tot.failed) * 100) : null;
+                const totActFees = Object.values(fb).reduce((s,e) => s + (e.total_fees || 0), 0);
+                const totActPayouts = Object.values(fb).reduce((s,e) => s + (e.total_payouts || 0), 0);
                 return `
                 <tr class="font-bold" style="background:rgba(255,255,255,0.05);">
                     <td style="position:sticky;left:0;z-index:15;background:inherit;padding:10px 16px;">Totals</td>
@@ -4520,6 +4528,7 @@
                     <td style="text-align:left;">${tot.active}</td>
                     <td style="text-align:left;">${fmt(tot.payouts)}</td>
                     <td style="text-align:left;">${fmt(tot.fees)}</td>
+                    ${hasFB ? `<td style="text-align:left;color:#f59e0b;font-weight:700;">${fmt(totActFees)}</td><td style="text-align:left;color:#34d399;font-weight:700;">${fmt(totActPayouts)}</td>` : ''}
                     <td style="text-align:left;">${fmt(tHedgingTotal)}</td>
                     <td style="text-align:left;padding-right:16px;font-weight:700;color:${tNet >= 0 ? '#34d399' : '#f87171'};">${fmt(tNet)}</td>
                 </tr>`;
@@ -4753,6 +4762,7 @@
                                             <th style="text-align:left;">Active</th>
                                             <th style="text-align:left;">Payouts</th>
                                             <th style="text-align:left;">Fees</th>
+                                            ${data.firm_billing ? '<th style="text-align:left;">Actual Fees</th><th style="text-align:left;">Actual Payouts</th>' : ''}
                                             <th style="text-align:left;">Hedging Results</th>
                                             <th style="text-align:left;padding-right:16px;">Net Profit</th>
                                         </tr>

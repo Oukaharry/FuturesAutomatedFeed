@@ -1,0 +1,103 @@
+﻿
+==================================================
+  Tradeify
+==================================================
+python : 2026-04-09 15:46:06,563 - INFO - [CDP] Connected to 
+https://app-f.tradeify.co/
+At line:1 char:1
++ python -u _test_cdp_scrapers.py 2>&1 | Out-File -FilePath _test_outpu ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-04-09 15:4...-f.tradeify.co/ 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-04-09 15:46:06,563 - INFO - [LOGIN] Attached to Tradeify tab
+  Connected: True
+  Stats:
+    Account Number: TDFYU995561466
+    Balance: N/A
+    Equity: N/A
+    Profit/Loss: N/A
+    Open Trades: 0
+    Symbol: 
+    Direction: 
+    Drawdown: N/A
+    Profit Target: N/A
+    Phase: N/A
+    Status: Active
+  Accounts: 1
+  Billing records: 0
+  Payouts: 0
+
+
+==================================================
+  Lucid Trading
+==================================================
+2026-04-09 15:46:11,741 - INFO - [CDP] Connected to 
+https://dash.lucidtrading.com/#/account-summary
+2026-04-09 15:46:11,741 - INFO - [LOGIN] Attached to Lucid Trading tab
+  Connected: True
+  Stats:
+    Account Number: LFE0507327601001 (Ouka Harry)
+    Balance: $50,000.00
+    Equity: N/A
+    Profit/Loss: $0.00
+    Open Trades: 0
+    Symbol: 
+    Direction: 
+    Drawdown: $48,000.00
+    Profit Target: $3,000.00
+    Phase: LFE050
+    Status: Active
+  Accounts: 1
+  Billing records: 0
+  Payouts: 0
+
+
+==================================================
+  TopStep
+==================================================
+2026-04-09 15:46:14,456 - INFO - [CDP] Connected to 
+https://dashboard.topstep.com/dashboard/default?variant=new
+2026-04-09 15:46:14,456 - INFO - [LOGIN] Attached to TopStep tab
+  Connected: True
+  Stats:
+    Account Number: joshicken@gmail.com
+    Balance: N/A
+    Equity: N/A
+    Profit/Loss: N/A
+    Open Trades: 0
+    Symbol: 
+    Direction: 
+    Drawdown: N/A
+    Profit Target: N/A
+    Phase: N/A
+    Status: N/A
+  Accounts: 0
+  Billing records: 0
+  Payouts: 0
+
+
+==================================================
+  MFFU
+==================================================
+2026-04-09 15:46:24,204 - INFO - [CDP] Connected to 
+https://myfundedfutures.com/billing
+2026-04-09 15:46:24,204 - INFO - [LOGIN] Attached to MFFU tab
+  Connected: True
+  Stats:
+    Account Number: MFFUSFSCL223761110
+    Balance: $50,930.32
+    Equity: N/A
+    Profit/Loss: $930.32
+    Open Trades: 0
+    Symbol: 
+    Direction: 
+    Drawdown: $2,000.00
+    Profit Target: N/A
+    Phase: Sim Funded
+    Status: Failed
+  Accounts: 110
+  Billing records: 126
+  Payouts: 20
+

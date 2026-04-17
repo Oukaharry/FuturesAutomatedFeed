@@ -18,6 +18,12 @@ $prodPass = "BallerAdmin123"
 
 $localPass = "postgres123"
 
+# ── Add PostgreSQL to PATH if not already available ───────────────────────────
+$pgBin = "C:\Program Files\PostgreSQL\18\bin"
+if (!(Get-Command psql -ErrorAction SilentlyContinue)) {
+    $env:Path += ";$pgBin"
+}
+
 # ── Set env vars for pg tools ─────────────────────────────────────────────────
 $env:PGPASSWORD = $localPass
 

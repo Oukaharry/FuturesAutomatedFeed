@@ -612,6 +612,40 @@ def recalculate_hedge_nets(evaluations):
     return evaluations
 
 
+def _match_tradovate_farming(tradovate_farming_days, fa_account_key):
+    """Find Tradovate MNQ daily P&L matching a farming account.
+
+    Args:
+        tradovate_farming_days: List of {account_name, account_id, mnq_daily_pnl: [{date, net_pnl}]}
+        fa_account_key: Account key from MT5 comment, e.g. 'FNFT-85625'
+
+    Returns:
+        Sorted list of {date, net_pnl} dicts, or None if no match.
+    """
+    if not tradovate_farming_days or not fa_account_key:
+        return None
+
+    fa_key_upper = fa_account_key.upper()
+    # Extract digits (4+ chars) from the FA key for fallback matching
+    digits = [d for d in re.findall(r'\d+', fa_key_upper) if len(d) >= 4]
+
+    for tv_data in tradovate_farming_days:
+        tv_name = (tv_data.get('account_name') or '').upper()
+        if not tv_name:
+            continue
+
+        # Direct substring match (either direction)
+        if fa_key_upper in tv_name or tv_name in fa_key_upper:
+            return tv_data.get('mnq_daily_pnl', [])
+
+        # Digit-based match: significant digit sequences from the FA key
+        for d in digits:
+            if d in tv_name:
+                return tv_data.get('mnq_daily_pnl', [])
+
+    return None
+
+
 def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
     """
     Determine the correct field name to update based on phase.
@@ -686,7 +720,7 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
     return None
 
 
-def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, raw_deals=None):
+def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, raw_deals=None, tradovate_farming_days=None):
     """
     Update evaluation hedge result fields from aggregated MT5 comment data OR raw deals.
     
@@ -697,11 +731,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         evaluations: List of evaluation records
         aggregated_data: List of aggregated trade data (from client)
         raw_deals: List of raw MT5 deal objects (from client)
+        tradovate_farming_days: List of Tradovate MNQ daily P&L per account (for Prop Day values)
     
     Returns:
         Tuple of (updated_evaluations, match_log)
     """
     aggregated_data = aggregated_data or []
+    tradovate_farming_days = tradovate_farming_days or []
     
     # -------------------------------------------------------------------------
     # SERVER-SIDE SESSION MATCHING LOGIC
@@ -835,8 +871,18 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         # Synthesize Positions
         synthesized_deals = []
         
-        # Add non-position deals (Balance/Credit) directly
-        synthesized_deals.extend(non_position_deals)
+        # Add non-position deals — but skip internal transfers.
+        # Internal transfers are BALANCE-type deals with NO comment (no
+        # Tradovate account number).  Positive balance resets (also no comment
+        # but profit > 0) are kept because they drive session splitting.
+        for _npd in non_position_deals:
+            _npd_type = str(_npd.get('type', '')).upper()
+            _npd_comment = str(_npd.get('comment', '')).strip()
+            _npd_profit = float(_npd.get('profit', 0))
+            if _npd_type in ('BALANCE', '2') and not _npd_comment and _npd_profit <= 0:
+                # Internal transfer — no comment, negative balance. Skip.
+                continue
+            synthesized_deals.append(_npd)
         
         for pos_id, p_deals in position_map.items():
             # Create a single 'deal' representing the whole position
@@ -1072,8 +1118,15 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
             logging.info(f"[DEBUG] Processing Session: AccountGuess={session['account_guess']}, Deals={len(session['deals'])}")
                 
-            # Aggregate stats for session
-            session_profit = sum(float(d.get('profit', 0)) + float(d.get('commission', 0)) + float(d.get('swap', 0)) for d in session['deals'])
+            # Aggregate stats for session — exclude internal transfers.
+            # Internal transfers are BALANCE-type deals with no comment (no
+            # Tradovate account number).  Real trades always have comments.
+            def _is_internal_transfer(d):
+                dt = str(d.get('type', '')).upper()
+                comment = str(d.get('comment', '')).strip()
+                return dt in ('BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS') and not comment
+            trade_deals_only = [d for d in session['deals'] if not _is_internal_transfer(d)]
+            session_profit = sum(float(d.get('profit', 0)) + float(d.get('commission', 0)) + float(d.get('swap', 0)) for d in trade_deals_only)
             
             # Determine Phase/TradeNum from MOST frequent in session
             # (To handle noise)
@@ -1409,6 +1462,29 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                     f"total_farming_days={total_farming_days} → {field_name}=${last_profit:.2f} date={last_date}"
                 )
 
+                # --- Write Prop Day values from Tradovate MNQ daily P&L ---
+                if tradovate_farming_days:
+                    tv_mnq_days = _match_tradovate_farming(tradovate_farming_days, acc_num)
+                    if tv_mnq_days:
+                        prop_days_written = 0
+                        for day_idx, tv_day in enumerate(tv_mnq_days):
+                            prop_slot = day_idx + 1
+                            if prop_slot > 50:
+                                break
+                            best_eval[f'Prop Day {prop_slot}'] = f"{tv_day['net_pnl']:.2f}"
+                            prop_days_written += 1
+                        if prop_days_written:
+                            match_log.append(
+                                f"   ✅ 💰 Row {row_num} | Prop Days 1-{prop_days_written}: "
+                                f"Tradovate MNQ P&L written"
+                            )
+                            logging.info(
+                                f"[FA PROP DAY] row={row_num} account={acc_num} "
+                                f"wrote {prop_days_written} Prop Day value(s) from Tradovate MNQ"
+                            )
+                    else:
+                        logging.info(f"[FA PROP DAY] No matching Tradovate MNQ data for account {acc_num}")
+
                 # --- Also add to trade_summary for logging ---
                 try:
                     p_firm = best_eval.get('Prop Firm') or 'Unknown Firm'
@@ -1564,12 +1640,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
                 summary_node['profit'] += float(session_profit)
                 
-                # We need to count synthesized "deals" (which are actually positions) as 1 trade each
-                summary_node['trades'] += len(session['deals'])
+                # Count only actual trade deals (exclude internal transfers)
+                _session_trade_deals = [d for d in session['deals'] if not _is_internal_transfer(d)]
+                summary_node['trades'] += len(_session_trade_deals)
                 summary_node['source_accounts'].add(str(acc_num))
                 
-                # Add detailed trade info
-                for d in session['deals']:
+                # Add detailed trade info (only real trades)
+                for d in _session_trade_deals:
                     t_profit = float(d.get('profit', 0))
                     t_comment = d.get('comment', '')
                     t_acc = extract_account_from_comment(t_comment) or "N/A"
@@ -3127,10 +3204,15 @@ def api_client_push():
             'Account #', 'Account #.1',
         }
         existing_evals_push = existing_data.get('evaluations', [])
+        # Allow callers to force-overwrite specific dashboard-owned fields
+        # (e.g. auto-status updates pushing "Status P1" / "Status" changes)
+        force_fields = set(data.get('force_fields', []))
         for i, ev in enumerate(evaluations):
             if i < len(existing_evals_push):
                 ex = existing_evals_push[i]
                 for key in DASHBOARD_OWNED_KEYS:
+                    if key in force_fields:
+                        continue  # caller explicitly wants to overwrite this field
                     existing_val = ex.get(key)
                     if existing_val and str(existing_val).strip() not in ('', '-'):
                         # For monetary fields, treat zero values as empty/placeholder
@@ -3153,15 +3235,20 @@ def api_client_push():
     # Check for aggregated comment data (from Push by Comment feature) OR raw deals
     aggregated_by_comment = data.get("aggregated_by_comment", [])
     comment_summary = data.get("comment_summary", {})
+    tradovate_farming_days = data.get("tradovate_farming_days", [])
     hedge_match_log = []
     
     if aggregated_by_comment or mt5_deals:
         app.logger.info(f"📋 Received {len(aggregated_by_comment)} aggregated groups, {len(mt5_deals)} raw deals")
+        if tradovate_farming_days:
+            app.logger.info(f"🌾 Received Tradovate farming data for {len(tradovate_farming_days)} account(s)")
         
         # Update evaluations with hedge results from aggregated data OR raw deals
         if evaluations:
             app.logger.info(f"🔄 Matching hedge results to evaluations...")
-            evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals)
+            evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(
+                evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals,
+                tradovate_farming_days=tradovate_farming_days)
             
             # If server-side aggregation occurred, use THAT instead of the client's.
             if generated_sessions:
@@ -3288,9 +3375,20 @@ def api_client_push():
         },
         # Store aggregated comment data if provided (from Push by Comment feature)
         "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
-        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {})
+        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {}),
     }
     
+    # Merge firm_billing: new push data wins per-firm, but preserve firms not in this push
+    existing_firm_billing = existing_data.get("firm_billing") or {}
+    pushed_firm_billing = data.get("firm_billing")
+    if pushed_firm_billing:
+        merged_billing = dict(existing_firm_billing)
+        merged_billing.update(pushed_firm_billing)
+        client_data["firm_billing"] = merged_billing
+        app.logger.info(f"   - firm_billing: {list(merged_billing.keys())} (pushed: {list(pushed_firm_billing.keys())})")
+    elif existing_firm_billing:
+        client_data["firm_billing"] = existing_firm_billing
+
     # Final verification before save
     hr_final = statistics.get('hedging_review', {})
     app.logger.info(f"FINAL DATA TO SAVE for {client_id}:")
@@ -7360,6 +7458,10 @@ def update_data():
                     'Hedge Result 4.1', 'Hedge Result 5.1',
                     'Hedge Result 6', 'Hedge Result 7',
                 }
+                # Include farming Hedge Day / Prop Day fields (push-sourced)
+                for _i in range(1, 51):
+                    PUSH_SOURCED_KEYS.add(f'Hedge Day {_i}')
+                    PUSH_SOURCED_KEYS.add(f'Prop Day {_i}')
                 # Payout/date fields that should only be overwritten by explicit user edits
                 # (prevents a stale browser tab from reverting dashboard-entered payouts)
                 PAYOUT_KEYS = {

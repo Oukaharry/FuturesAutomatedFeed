@@ -1,0 +1,151 @@
+﻿Current URL: https://app.fundednext.com/accounts
+
+=== NAVIGATION LINKS ===
+  Accounts                                 -> https://app.fundednext.com/accounts
+  Calculator                               -> https://app.fundednext.com/profit-loss-calculator
+  Transactions                             -> https://app.fundednext.com/billing/billing-history
+  Payouts                                  -> https://app.fundednext.com/payout
+  Refer & Earn                             -> https://app.fundednext.com/refer-and-earn
+  My Offers                                -> https://app.fundednext.com/my-offers
+  Competitions
+New                         -> https://app.fundednext.com/competition
+  Certificates                             -> https://app.fundednext.com/certificates
+  Notifications                            -> https://app.fundednext.com/notifications
+  Ticket                                   -> https://app.fundednext.com/support-tickets
+  FNmarkets                                -> https://app.fundednext.com/fnmarkets
+  Start Challenge                          -> https://app.fundednext.com/plans
+  Enable 2FA                               -> https://app.fundednext.com/profile/security
+  Trading Rules & Guidelines (Futures)     -> https://helpfutures.fundednext.com/en/collections/12136956-trading-rules-guidelines
+
+=== BILLING/PAYOUT LINKS ===
+  [billing href] text='Transactions' href='https://app.fundednext.com/billing/billing-history'
+  [payout href] text='Payouts' href='https://app.fundednext.com/payout'
+
+=== SIDEBAR/MENU ELEMENTS ===
+  [[class*='sidebar']] class='tw-overflow-y-auto tw-overflow-x-hidden tw-absolute tw-top-0 tw-left-0 tw-h-full tw-w-full sidebar-n'
+    Text: Accounts
+Calculator
+Transactions
+Payouts
+Rewards Hub
+Refer & Earn
+My Offers
+Competitions
+New
+Certificates
+Infinity Points
+Help & Support
+Resources
+Trading Rules
+Notifications
+FAQ
+Ticket
+Other Markets
+FNmarkets
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  active'
+    Text: Accounts
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Calculator
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Transactions
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Payouts
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Refer & Earn
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: My Offers
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Competitions
+New
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Certificates
+  [[class*='nav-']] class='nav-item tw-cursor-pointer'
+    Text: Infinity Points
+  [[class*='nav-']] class='nav-item tw-cursor-pointer'
+    Text: Resources
+  [[class*='nav-']] class='nav-item tw-cursor-pointer'
+    Text: Trading Rules
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Notifications
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item  '
+    Text: Ticket
+  [[class*='nav-']] class='link-adapter variant-default size-medium underline-hover nav-item tw-px-3 tw-py-2 tw-rounded-[6px] t'
+    Text: FNmarkets
+  [[class*='nav-']] class='ant-tabs-nav-wrap'
+    Text: CFDs
+Futures
+  [[class*='nav-']] class='ant-tabs-nav-list'
+    Text: CFDs
+Futures
+
+=== TRYING BILLING URLs ===
+
+  https://app.fundednext.com/billing
+  -> https://app.fundednext.com/billing
+  Title: FundedNext - Our Platform, Your Success | Best Prop Trading Firm
+  Body: Page not Found
+Go to Accounts
+Redirecting in 9 seconds
+
+  https://app.fundednext.com/billing-and-payouts
+  -> https://app.fundednext.com/billing-and-payouts
+  Title: FundedNext - Our Platform, Your Success | Best Prop Trading Firm
+  Body: Page not Found
+Go to Accounts
+Redirecting in 13 seconds
+
+  https://app.fundednext.com/payouts
+  -> https://app.fundednext.com/payouts
+  Title: FundedNext - Our Platform, Your Success | Best Prop Trading Firm
+  Body: Page not Found
+Go to Accounts
+Redirecting in 13 seconds
+
+  https://app.fundednext.com/payments
+  -> https://app.fundednext.com/payments
+  Title: FundedNext - Our Platform, Your Success | Best Prop Trading Firm
+  Body: Page not Found
+Go to Accounts
+Redirecting in 13 seconds
+
+  https://app.fundednext.com/transactions
+  -> https://app.fundednext.com/transactions
+  Title: FundedNext - Our Platform, Your Success | Best Prop Trading Firm
+  Body: Page not Found
+Go to Accounts
+Redirecting in 13 seconds
+
+  https://app.fundednext.com/orders
+  -> https://app.fundednext.com/orders
+  Title: FundedNext - Our Platform, Your Success | Best Prop Trading Firm
+  Body: Page not Found
+Go to Accounts
+Redirecting in 13 seconds
+
+=== ALL <a> HREFS ON PAGE ===
+                                           -> https://app.fundednext.com/profile/default
+                                           -> https://app.fundednext.com/accounts
+                                           -> https://app.fundednext.com/profit-loss-calculator
+                                           -> https://app.fundednext.com/billing/billing-history
+                                           -> https://app.fundednext.com/payout
+                                           -> https://app.fundednext.com/refer-and-earn
+                                           -> https://app.fundednext.com/my-offers
+                                           -> https://app.fundednext.com/competition
+                                           -> https://app.fundednext.com/certificates
+                                           -> https://app.fundednext.com/infinity-points
+                                           -> https://app.fundednext.com/infinity-points/profile
+                                           -> https://app.fundednext.com/infinity-points/history
+                                           -> https://app.fundednext.com/utilities
+                                           -> https://app.fundednext.com/calendar
+                                           -> https://fundednext.com/symbols
+                                           -> https://help.fundednext.com/en/collections/11026230-trading-rules-guidelines
+                                           -> https://helpfutures.fundednext.com/en/collections/12136956-trading-rules-guidelines
+                                           -> https://app.fundednext.com/notifications
+                                           -> https://help.fundednext.com/en/
+                                           -> https://helpfutures.fundednext.com/en/
+                                           -> https://app.fundednext.com/support-tickets
+                                           -> https://app.fundednext.com/fnmarkets
+                                           -> https://app.fundednext.com/plans
+  Enable 2FA                               -> https://app.fundednext.com/profile/security
+
+Done!

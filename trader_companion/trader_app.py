@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.1"
+APP_VERSION = "1.5.1"
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -171,6 +171,17 @@ except ImportError:
         from trade_limit_manager import TradeLimitManager
     except ImportError:
         TradeLimitManager = None
+
+try:
+    from trader_companion.hedge_protector import HedgeProtector
+    HEDGE_PROTECTOR_AVAILABLE = True
+except ImportError:
+    try:
+        from hedge_protector import HedgeProtector
+        HEDGE_PROTECTOR_AVAILABLE = True
+    except ImportError:
+        HEDGE_PROTECTOR_AVAILABLE = False
+        HedgeProtector = None
 
 try:
     from trader_companion.signals.rsi import get_rsi_signal
@@ -1292,7 +1303,7 @@ class MT5DataPusher:
         return evaluations, match_log
 
 
-class TraderCompanionApp:
+class TradeOpssAIApp:
     """GUI Application for Tradeopss AI."""
 
     # ── Design System (FuturesEngine-inspired Dark Theme) ──
@@ -1344,33 +1355,40 @@ class TraderCompanionApp:
         else:
             self.root.configure(bg=self.C_BG)
         self.root.resizable(True, True)
+        self.root.bind("<Control-m>", self._test_min_equity)
 
-        # Set Window Icon
+        # Set Window Icon + section logo
+        self._section_logo = None  # small logo for section headers
         try:
             if hasattr(sys, '_MEIPASS'):
                 _base = sys._MEIPASS
             else:
                 _base = os.path.dirname(os.path.abspath(__file__))
-            ico_path = os.path.join(_base, 'logo.ico')
-            if os.path.exists(ico_path):
-                self.root.iconbitmap(ico_path)
-                self.root.after(200, lambda: self.root.iconbitmap(ico_path))
+            from PIL import Image as PILImage, ImageTk
+            png_path = os.path.join(_base, 'logo.png')
+            if os.path.exists(png_path):
+                _pil_icon = PILImage.open(png_path).convert('RGBA')
+                bbox = _pil_icon.getbbox()
+                if bbox:
+                    _pil_icon = _pil_icon.crop(bbox)
+                w, h = _pil_icon.size
+                s = max(w, h)
+                # Dark background so logo is visible in taskbar
+                _sq = PILImage.new('RGBA', (s, s), (6, 14, 26, 255))
+                _sq.paste(_pil_icon, ((s - w) // 2, (s - h) // 2), _pil_icon)
+                # Taskbar icon (64x64)
+                _taskbar = _sq.resize((64, 64), PILImage.LANCZOS)
+                self._app_icon = ImageTk.PhotoImage(_taskbar)
+                self.root.iconphoto(True, self._app_icon)
+                self.root.after(200, lambda: self.root.iconphoto(True, self._app_icon))
+                # Small logo for section headers (18x18)
+                _small = _sq.resize((18, 18), PILImage.LANCZOS)
+                self._section_logo = ImageTk.PhotoImage(_small)
             else:
-                png_path = os.path.join(_base, 'logo.png')
-                if os.path.exists(png_path):
-                    from PIL import Image as PILImage, ImageTk
-                    _pil_icon = PILImage.open(png_path)
-                    bbox = _pil_icon.getbbox()
-                    if bbox:
-                        _pil_icon = _pil_icon.crop(bbox)
-                    w, h = _pil_icon.size
-                    s = max(w, h)
-                    _sq = PILImage.new('RGBA', (s, s), (0, 0, 0, 0))
-                    _sq.paste(_pil_icon, ((s - w) // 2, (s - h) // 2))
-                    _sq = _sq.resize((64, 64), PILImage.LANCZOS)
-                    self._app_icon = ImageTk.PhotoImage(_sq)
-                    self.root.iconphoto(True, self._app_icon)
-                    self.root.after(200, lambda: self.root.iconphoto(True, self._app_icon))
+                ico_path = os.path.join(_base, 'logo.ico')
+                if os.path.exists(ico_path):
+                    self.root.iconbitmap(ico_path)
+                    self.root.after(200, lambda: self.root.iconbitmap(ico_path))
         except Exception:
             pass
 
@@ -1396,6 +1414,11 @@ class TraderCompanionApp:
         self._auto_trading_thread = None
         self._direction_locks = {}
         self._active_trade_rows = []
+        self._firm_billing_summary = {}   # {firm_name: {total_fees, total_payouts, records: [...]}}
+        self._hedge_protector = None
+        self._status_poll_active = False   # real-time status polling flag
+        self._last_known_statuses = {}     # {acct_display: last_computed_status} for change detection
+        self._cached_acct_mappings = {}    # {firm_name: {acct_key: info}} cached on connect
 
         self._show_login_screen()
         
@@ -1520,7 +1543,11 @@ class TraderCompanionApp:
             hdr = ctk.CTkFrame(card, fg_color="transparent", height=26)
             hdr.pack(fill="x", padx=10, pady=(6, 0))
             hdr.pack_propagate(False)
-            if icon:
+            if self._section_logo:
+                lbl = ctk.CTkLabel(hdr, text="", image=self._section_logo,
+                                   width=18, height=18)
+                lbl.pack(side="left", padx=(0, 6))
+            elif icon:
                 ctk.CTkLabel(hdr, text=icon, font=("Segoe UI", 12)).pack(side="left", padx=(0, 6))
             ctk.CTkLabel(hdr, text=title, font=("Segoe UI", 10, "bold"),
                          text_color=self.C_GOLD).pack(side="left")
@@ -1692,8 +1719,19 @@ class TraderCompanionApp:
 
         self.auto_trade_firms_var = tk.StringVar(value="")
 
+        # Separator before Push Billing
+        ctk.CTkFrame(toolbar, width=1, fg_color=self.C_BORDER).pack(side="left", fill="y", pady=6)
+
+        self.push_billing_btn = self._ctk_button(toolbar, text="💰 Push Billing",
+                                                  command=self._push_billing_data,
+                                                  fg="#f59e0b", hover="#d97706", width=110)
+        self.push_billing_btn.pack(side="left", padx=(8, 4), pady=5)
+
         self._ctk_button(toolbar, text="Save Config", command=self.save_config,
                          fg=self.C_BG_THIRD, hover=self.C_BORDER, width=90).pack(side="right", padx=(0, 8), pady=5)
+
+        self._ctk_button(toolbar, text="✕ Close All", command=self._close_all_trades,
+                         fg="#DC2626", hover="#B91C1C", width=90).pack(side="right", padx=(0, 4), pady=5)
 
         # ── Row 1: Active Trades (main area — futuristic terminal) ──
         trades_card = ctk.CTkFrame(self._live_view, fg_color="#000000", corner_radius=10,
@@ -2201,6 +2239,118 @@ class TraderCompanionApp:
                 self.mt5_btn.configure(text="Disconnect MT5")
             self.log(msg, "INFO" if success else "ERROR")
             
+    def _push_billing_data(self):
+        """Push only firm billing (actual fees & payouts) to the dashboard."""
+        if not self._firm_billing_summary:
+            self.log("⚠ No billing data collected yet — connect to prop firm dashboards first", "WARN")
+            return
+
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        email = self.client_email_entry.get().strip()
+
+        if not self.client_info:
+            messagebox.showerror("Error", "Please lookup the client first")
+            return
+
+        def _do_push():
+            try:
+                self.root.after(0, lambda: self.push_billing_btn.configure(state="disabled"))
+                self.log("💰 Pushing billing data to dashboard...")
+
+                # Match billing records to individual evaluations so
+                # per-account Fee, Date Purchased, and Date Started get pushed
+                import re as _re
+                all_evals = [rd.get("eval") for rd in self._active_trade_rows if rd.get("eval")]
+                filled_count = 0
+
+                # Build a combined lookup from all firms' billing records
+                billing_by_acct = {}
+                for firm_name, summary in self._firm_billing_summary.items():
+                    for rec in summary.get("records", []):
+                        acct_no = (rec.get("account_no") or "").strip()
+                        amount = rec.get("amount", 0)
+                        bill_date = rec.get("date", "")
+                        if acct_no and amount > 0:
+                            billing_by_acct[acct_no] = {
+                                "amount": amount,
+                                "date": bill_date,
+                                "firm": firm_name,
+                            }
+
+                if all_evals and billing_by_acct:
+                    for ev in all_evals:
+                        acct_challenge = (ev.get("Account #") or "").strip()
+                        acct_funded = (ev.get("Account #.1") or "").strip()
+                        existing_fee = (ev.get("Fee") or "").strip()
+                        fee_filled = False
+                        if existing_fee:
+                            try:
+                                fee_filled = float(existing_fee.replace("$", "").replace(",", "")) > 0
+                            except ValueError:
+                                fee_filled = existing_fee not in ("", "$0", "$0.00", "0")
+
+                        matched = None
+                        for acct_key in [acct_challenge, acct_funded]:
+                            if not acct_key:
+                                continue
+                            if acct_key in billing_by_acct:
+                                matched = billing_by_acct[acct_key]
+                                break
+                            for bill_acct, bill_info in billing_by_acct.items():
+                                if bill_acct in acct_key or acct_key in bill_acct:
+                                    matched = bill_info
+                                    break
+                            if matched:
+                                break
+
+                        if matched:
+                            billing_fee = f"${matched['amount']:.2f}"
+                            ev["Fee"] = billing_fee
+                            if not (ev.get("Date Purchased") or "").strip() and matched["date"]:
+                                ev["Date Purchased"] = matched["date"]
+                            if not (ev.get("Date Started") or "").strip() and matched["date"]:
+                                ev["Date Started"] = matched["date"]
+                            filled_count += 1
+
+                    self.root.after(0, lambda c=filled_count:
+                        self.log(f"💰 Matched billing to {c} evaluation(s)"))
+
+                payload = {
+                    "email": email,
+                    "firm_billing": self._firm_billing_summary,
+                }
+                if all_evals and filled_count > 0:
+                    payload["evaluations"] = all_evals
+
+                response = requests.post(
+                    f"{dashboard_url}/api/client/push",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=30
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("status") == "success":
+                        firms = list(self._firm_billing_summary.keys())
+                        total_fees = sum(f["total_fees"] for f in self._firm_billing_summary.values())
+                        total_payouts = sum(f["total_payouts"] for f in self._firm_billing_summary.values())
+                        self.root.after(0, lambda: self.log(
+                            f"✅ Billing pushed — {len(firms)} firm(s): "
+                            f"Fees ${total_fees:,.2f} | Payouts ${total_payouts:,.2f}"))
+                    else:
+                        self.root.after(0, lambda: self.log(
+                            f"❌ Billing push failed: {data.get('message', 'Unknown error')}", "ERROR"))
+                else:
+                    self.root.after(0, lambda: self.log(
+                        f"❌ Billing push HTTP {response.status_code}", "ERROR"))
+            except Exception as e:
+                self.root.after(0, lambda err=str(e): self.log(f"❌ Billing push error: {err}", "ERROR"))
+            finally:
+                self.root.after(0, lambda: self.push_billing_btn.configure(state="normal"))
+
+        threading.Thread(target=_do_push, daemon=True).start()
+
     def push_data(self):
         """Push data to dashboard - NO API KEY REQUIRED."""
         dashboard_url = self.url_entry.get().strip().rstrip('/')
@@ -2220,7 +2370,7 @@ class TraderCompanionApp:
         self.log(f"📤 Pushing {client_name}...")
         self.status_var.set("Pushing data...")
         
-        # Get MT5 data - Limit to 30 days for better coverage (especially Farming)
+        # Get MT5 data — only last trading day for deals
         account = self.pusher.get_account_info()
         if not account:
             self.log("⚠️ MT5 account info returned empty — pushing with no account data", "ERROR")
@@ -2229,32 +2379,13 @@ class TraderCompanionApp:
         if positions is None:
             self.log("⚠️ MT5 positions returned None — sending empty list")
             positions = []
-        # Calculate "23rd of last month" as the from-date for deals
-        from datetime import datetime as _dt
-        _now = _dt.now()
-        if _now.month == 1:
-            _from_date = _dt(_now.year - 1, 12, 23)
-        else:
-            _from_date = _dt(_now.year, _now.month - 1, 23)
-        _days_since_23rd = (_now - _from_date).days + 1  # +1 to include the 23rd itself
-        self.log(f"📅 Fetching deals from {_from_date.strftime('%b %d')} ({_days_since_23rd} days)")
 
-        # Fetch deals from 23rd of last month
-        raw_deals = self.pusher.get_deals(days=_days_since_23rd)
+        # Deals: only last trading day (1 day)
+        self.log(f"📅 Fetching deals for last trading day only")
+        raw_deals = self.pusher.get_deals(days=1)
         if raw_deals is None:
-            self.log(f"⚠️ MT5 deals({_days_since_23rd}d) returned None — MT5 may be disconnected")
+            self.log(f"⚠️ MT5 deals returned None — MT5 may be disconnected")
             raw_deals = []
-        
-        # Fetch full history (365 days) for farming deals only — needed for correct hedge day count
-        all_deals_full = self.pusher.get_deals(days=365) or []
-        fa_deal_ids = {d.get('ticket') or d.get('order') for d in raw_deals if '_FA' in str(d.get('comment', '')).upper()}
-        for d in all_deals_full:
-            comment = str(d.get('comment', '')).upper()
-            if '_FA' in comment:
-                deal_id = d.get('ticket') or d.get('order')
-                if deal_id not in fa_deal_ids:
-                    raw_deals.append(d)
-                    fa_deal_ids.add(deal_id)
 
         # FNFT challenge filter: challenge accounts reuse the same account numbers
         # across resets, so only keep last 24h of deals with _CH in the comment.
@@ -2317,8 +2448,7 @@ class TraderCompanionApp:
 
         statistics = self.pusher.calculate_statistics(deals)
         
-        # Aggregate hedge results from the SAME filtered deals (respects 23rd cutoff
-        # and FNFT challenge 24h filter) so hedge values match the pushed deals.
+        # Aggregate hedge results from last trading day only (same as deals)
         aggregated_by_comment = []
         comment_summary = {}
         if COMMENT_PARSER_AVAILABLE and deals:
@@ -2331,6 +2461,21 @@ class TraderCompanionApp:
                 by_phase[phase_name]['count'] += 1
                 by_phase[phase_name]['total_net_profit'] += agg.get('net_profit', 0)
             comment_summary = {'by_phase': by_phase}
+
+        # Collect Tradovate MNQ daily P&L for Prop Day values (farming)
+        tradovate_farming_days = []
+        for firm_name, conn in self._broker_connections.items():
+            tv_account = conn.get("account")
+            if not tv_account or not hasattr(tv_account, 'get_mnq_daily_pnl'):
+                continue
+            try:
+                mnq_data = tv_account.get_mnq_daily_pnl()
+                if mnq_data:
+                    tradovate_farming_days.extend(mnq_data)
+                    total_days = sum(len(a['mnq_daily_pnl']) for a in mnq_data)
+                    self.log(f"🌾 {firm_name}: {total_days} MNQ farming day(s) found")
+            except Exception as e:
+                self.log(f"⚠ {firm_name}: Could not fetch MNQ daily P&L: {e}", "WARN")
 
         # Pre-push diagnostic: log what we're about to send
         pos_count = len(positions) if positions else 0
@@ -2348,7 +2493,9 @@ class TraderCompanionApp:
             "evaluations": [],
             "aggregated_by_comment": aggregated_by_comment,
             "comment_summary": comment_summary,
-            "dropdown_options": {}
+            "tradovate_farming_days": tradovate_farming_days,
+            "dropdown_options": {},
+            "firm_billing": self._firm_billing_summary if self._firm_billing_summary else None,
         }
         
         try:
@@ -2392,11 +2539,7 @@ class TraderCompanionApp:
                         self._stat_push_var.set(f"Push: ✔ {hedge_updates}")
                     except Exception:
                         pass
-                    # Auto-trigger hedging review after successful data push
-                    try:
-                        self.push_hedging_review()
-                    except Exception as hr_err:
-                        self.log(f"⚠️ Hedging review failed: {hr_err}", "ERROR")
+                    # Hedging review moved to always run (after try/except)
                 else:
                     self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
                     self.status_var.set("Push failed")
@@ -2418,8 +2561,12 @@ class TraderCompanionApp:
         except Exception as e:
             self.log(f"❌ Push error: {e}", "ERROR")
             self.status_var.set("Push failed")
-    
-    def push_hedging_review(self):
+        
+        # Always push hedging review data (deposits/withdrawals/balance) regardless of push outcome
+        try:
+            self.push_hedging_review()
+        except Exception as hr_err:
+            self.log(f"⚠️ Hedging review failed: {hr_err}", "ERROR")
         """Push ONLY Live Hedging Review data (deposits, withdrawals, balance) from MT5."""
         dashboard_url = self.url_entry.get().strip().rstrip('/')
         email = self.client_email_entry.get().strip()
@@ -2780,7 +2927,7 @@ class TraderCompanionApp:
         
         if not COMMENT_PARSER_AVAILABLE:
             self.log("⚠️ Comment Parser module not available!", "ERROR")
-            self.log("   Please ensure mt5_comment_parser.py is in the trader_companion folder")
+            self.log("   Please ensure mt5_comment_parser.py is in the TradeOpssAI folder")
             return
         
         deals = self.pusher.get_deals(days=365)
@@ -3648,15 +3795,66 @@ class TraderCompanionApp:
         funded_status = (ev.get("Status", "") or "").strip().lower()
         has_funded_acct = bool((ev.get("Account #.1", "") or "").strip())
 
-        # Check if farming data exists
-        has_farming = bool((ev.get("Prop Day 1", "") or "").strip())
+        # Check if farming data exists — must have BOTH the farming marker
+        # AND actual Hedge Day cell data for THIS account (not just sheet columns)
+        has_farming_marker = bool((ev.get("Prop Day 1", "") or "").strip())
+        has_hedge_day_data = False
+        if has_farming_marker:
+            for i in range(1, 35):
+                val = (ev.get(f"Hedge Day {i}", "") or "").strip()
+                if val and val not in ("—", "-"):
+                    has_hedge_day_data = True
+                    break
 
-        if has_farming:
+        if has_farming_marker and has_hedge_day_data:
             return "Farming", "farming"
         elif has_funded_acct and funded_status not in self._FAILED_STATUSES:
             return "Funded", "funded_trade1"
         else:
             return "Challenge", "challenge_trade1"
+
+    def _resolve_phase_key_from_day(self, ev, firm_code, current_phase):
+        """Use the day placeholder cell index to determine the correct blueprint key.
+
+        The day placeholder position (0-based) maps directly to the trade order
+        in _PHASE_TRADE_ORDER.  E.g. cell index 2 → third trade in the sequence.
+
+        Scans all field sets if the detected phase has no day placeholder,
+        and corrects the phase accordingly.
+
+        Returns (resolved_phase_key, day_index, day_name) or (None, None, None)
+        if no day placeholder is found.
+        """
+        day_idx, day_name, is_today, matched_phase = self._find_tradeable_day_cell(ev, current_phase)
+        if day_idx is None:
+            return None, None, None
+
+        # If day was found in a different phase's fields, correct the phase
+        effective_phase = matched_phase if matched_phase else current_phase
+        if matched_phase and matched_phase != current_phase:
+            self.log(f"📅 Phase correction: detected '{current_phase}' but day "
+                     f"placeholder found in '{matched_phase}' fields")
+
+        if not self.prop_firm_mgr:
+            return None, day_idx, day_name
+
+        # Normalize phase for _PHASE_TRADE_ORDER lookup
+        phase_map = {"Challenge": "Challenge", "Funded": "Funded",
+                     "Farming": "Farming", "Double Dip": "Double Dip",
+                     "Payout 1": "Funded", "Payout 2": "Funded",
+                     "Payout 3": "Funded", "Payout 4": "Funded"}
+        phase_group = phase_map.get(effective_phase, effective_phase)
+
+        firm_orders = self.prop_firm_mgr._PHASE_TRADE_ORDER.get(firm_code, {})
+        trade_keys = firm_orders.get(phase_group, [])
+
+        if not trade_keys:
+            return None, day_idx, day_name
+
+        # Clamp day index to available trade keys
+        key_idx = min(day_idx, len(trade_keys) - 1)
+        resolved_key = trade_keys[key_idx]
+        return resolved_key, day_idx, day_name
 
     # Day-name abbreviations that traders use as placeholders
     _DAY_ABBREVS = {
@@ -3678,6 +3876,13 @@ class TraderCompanionApp:
         elif current_phase == "Farming":
             return [f"Hedge Day {i}" for i in range(1, 35)]
         return []
+
+    # All possible field sets for day placeholder scanning (phase → fields)
+    _ALL_PHASE_FIELD_SETS = [
+        ("Challenge",  [f"Hedge Result {i}" for i in range(1, 6)]),
+        ("Funded",     [f"Hedge Result {i}.1" for i in range(1, 8)]),
+        ("Farming",    [f"Hedge Day {i}" for i in range(1, 35)]),
+    ]
 
     def _count_completed_trades(self, ev, current_phase):
         """Count how many trading day cells are filled for the current phase.
@@ -3721,41 +3926,54 @@ class TraderCompanionApp:
         A cell whose day is AFTER today = already been prepared for the next
         trading day and should NOT be traded now.
 
-        Returns (stage_index, day_name, is_today) or (None, None, False).
+        Scans the detected phase's fields first. If nothing found, falls back
+        to scanning ALL other phase field sets so a misdetected phase doesn't
+        block trading.
+
+        Returns (stage_index, day_name, is_today, matched_phase) or
+        (None, None, False, None).
         stage_index is 0-based position in the field list.
+        matched_phase is the phase name whose fields contained the match.
         """
         import datetime
         today_weekday = datetime.date.today().weekday()  # 0=Mon .. 4=Fri
-        fields = self._get_phase_fields(current_phase)
 
-        best_idx = None
-        best_day_name = None
-        best_is_today = False
+        # Build ordered list: detected phase first, then all others as fallback
+        primary_fields = self._get_phase_fields(current_phase)
+        search_order = [(current_phase, primary_fields)]
+        for phase_name, field_list in self._ALL_PHASE_FIELD_SETS:
+            if field_list != primary_fields:
+                search_order.append((phase_name, field_list))
 
-        for i, f in enumerate(fields):
-            val = ev.get(f, None)
-            if val is None:
-                continue
-            val_str = str(val).strip().lower()
-            day_num = self._DAY_ABBREVS.get(val_str)
-            if day_num is None:
-                continue  # Not a day placeholder (result value or empty)
+        for phase_name, fields in search_order:
+            best_idx = None
+            best_day_name = None
+            best_is_today = False
 
-            if day_num == today_weekday:
-                # Exact match — this cell is for today
-                return i, str(val).strip().upper(), True
-            elif day_num < today_weekday:
-                # Previous day still has a day placeholder (not yet traded)
-                # Pick the latest previous day as the one to trade
-                if best_idx is None or day_num > self._DAY_ABBREVS.get(best_day_name.lower(), -1):
-                    best_idx = i
-                    best_day_name = str(val).strip().upper()
-                    best_is_today = False
-            # day_num > today_weekday → future day, skip (already prepared)
+            for i, f in enumerate(fields):
+                val = ev.get(f, None)
+                if val is None:
+                    continue
+                val_str = str(val).strip().lower()
+                day_num = self._DAY_ABBREVS.get(val_str)
+                if day_num is None:
+                    continue  # Not a day placeholder (result value or empty)
 
-        if best_idx is not None:
-            return best_idx, best_day_name, best_is_today
-        return None, None, False
+                if day_num == today_weekday:
+                    # Exact match — this cell is for today
+                    return i, str(val).strip().upper(), True, phase_name
+                elif day_num < today_weekday:
+                    # Previous day still has a day placeholder (not yet traded)
+                    if best_idx is None or day_num > self._DAY_ABBREVS.get(best_day_name.lower(), -1):
+                        best_idx = i
+                        best_day_name = str(val).strip().upper()
+                        best_is_today = False
+                # day_num > today_weekday → future day, skip
+
+            if best_idx is not None:
+                return best_idx, best_day_name, best_is_today, phase_name
+
+        return None, None, False, None
 
     def _validate_stage_consistency(self, prediction, ev, current_phase, acct_num):
         """Validate whether a trade should proceed using day placeholders as
@@ -3777,14 +3995,17 @@ class TraderCompanionApp:
         stages = prediction.get("stages", []) if prediction else []
 
         # ── Primary gate: day placeholder ──
-        day_idx, day_name, is_today = self._find_tradeable_day_cell(ev, current_phase)
+        day_idx, day_name, is_today, matched_phase = self._find_tradeable_day_cell(ev, current_phase)
 
         if day_idx is None:
             # No day placeholder for today or any missed day → don't trade
-            # Check if there's a future day placeholder
+            # Check if there's a future day placeholder across ALL field sets
             future_days = []
             today_wd = datetime.date.today().weekday()
-            for i, f in enumerate(fields):
+            all_fields = []
+            for _, flist in self._ALL_PHASE_FIELD_SETS:
+                all_fields.extend(flist)
+            for i, f in enumerate(all_fields):
                 val = ev.get(f, None)
                 if val is None:
                     continue
@@ -3956,6 +4177,7 @@ class TraderCompanionApp:
         """Fetch fresh eval data from dashboard for a specific account.
 
         Returns the updated eval dict, or None if fetch fails.
+        When duplicate rows exist for the same account, prefers the active one.
         """
         try:
             email = self.client_email_entry.get().strip()
@@ -3971,11 +4193,19 @@ class TraderCompanionApp:
             if r.status_code != 200:
                 return None
             data = r.json()
+            best = None
             for ev in data.get("evaluations", []):
+                if ev.get("_deleted"):
+                    continue
                 acct1 = (ev.get("Account #.1", "") or ev.get("Account #", "") or "").strip()
                 acct0 = (ev.get("Account #", "") or "").strip()
                 if acct_num in (acct1, acct0):
-                    return ev
+                    is_active = ev.get("_is_active", self._is_eval_active(ev))
+                    if is_active:
+                        return ev  # Active match — return immediately
+                    if best is None:
+                        best = ev  # Keep first inactive as fallback
+            return best
         except Exception:
             pass
         return None
@@ -4052,6 +4282,12 @@ class TraderCompanionApp:
                 active_firms = list(dict.fromkeys(
                     ev.get("Prop Firm", "") for ev in active_evals if ev.get("Prop Firm")))
                 self.root.after(2000, lambda af=active_firms: self._auto_launch_propfirm_browsers(af))
+
+                # Trigger a status poll immediately after scan
+                try:
+                    self._poll_tradovate_balances()
+                except Exception:
+                    pass
 
                 # Auto-fill MT5 credentials from dashboard if available
                 mt5_creds = data.get("mt5_credentials") or {}
@@ -4133,6 +4369,12 @@ class TraderCompanionApp:
             acct_num = (ev.get("Account #.1", "") or ev.get("Account #", "") or "—").strip()
             acct_size = ev.get("Account Size", "—") or "—"
             current_display, phase_key = self._detect_eval_phase(ev)
+
+            # Resolve phase_key from day placeholder (primary source of truth)
+            resolved_key, _di, _dn = self._resolve_phase_key_from_day(ev, firm_code, current_display)
+            if resolved_key:
+                phase_key = resolved_key
+
             next_display = self._get_next_phase(firm_code, current_display)
 
             strip_color = self.PROP_FIRM_COLORS.get(prop_firm_name, "#95A5A6")
@@ -4272,8 +4514,26 @@ class TraderCompanionApp:
             pass
         self.log(f"Loaded {count} active trades from dashboard")
 
+    def _eval_has_payout(self, ev):
+        """Check if any hedge result field contains 'payout' text."""
+        if not ev:
+            return False
+        for key, val in ev.items():
+            if "hedge result" in key.lower() and isinstance(val, str) and "payout" in val.lower():
+                return True
+        return False
+
     def _execute_row_trade(self, side, row_data):
         """Execute a trade for a specific row, then remove the row."""
+        # Check for payout — skip account if any hedge result has payout text
+        ev = row_data.get("eval", {})
+        if self._eval_has_payout(ev):
+            acct_num = row_data.get("acct_num", "?")
+            messagebox.showwarning("Payout Pending",
+                f"Account {acct_num} has a PAYOUT pending.\n"
+                f"Request payout first before continuing.")
+            return
+
         # Direction filter
         direction = self.direction_var.get()
         if direction == "Buy Only" and side == "sell":
@@ -4288,6 +4548,23 @@ class TraderCompanionApp:
         acct_size = row_data["acct_size"]
         acct_num = row_data["acct_num"]
 
+        # ── Resolve phase_key from day placeholder (primary source of truth) ──
+        fresh_ev = self._refresh_eval_for_account(acct_num)
+        if fresh_ev:
+            ev = fresh_ev
+            row_data["eval"] = fresh_ev
+        resolved_key, day_idx, day_name = self._resolve_phase_key_from_day(
+            ev, firm_code, row_data["current_phase"])
+        if resolved_key is None:
+            messagebox.showwarning("No Day Placeholder",
+                f"Account {acct_num}: No day placeholder found.\n"
+                f"Enter a day name (MON/TUE/etc.) in the next cell to enable trading.")
+            return
+        if resolved_key != phase_key:
+            self.log(f"📅 {acct_num}: Day cell {day_idx + 1} ({day_name}) → "
+                     f"blueprint {resolved_key} (was {phase_key})")
+            phase_key = resolved_key
+
         # Get trade config from blueprint
         config = None
         if self.prop_firm_mgr:
@@ -4297,8 +4574,12 @@ class TraderCompanionApp:
             return
 
         hedging = self.hedge_mode_var.get() == "Hedging"
-        platform = self.broker_var.get()
         prop_firm_name = row_data["eval"].get("Prop Firm", firm_code) if row_data.get("eval") else firm_code
+        # Auto-detect platform: TopStep firms always use TopStepX (Selenium)
+        if "topstep" in prop_firm_name.lower():
+            platform = "TopStepX"
+        else:
+            platform = self.broker_var.get()
         broker_account = self._get_broker_for_firm(prop_firm_name)
 
         if not broker_account:
@@ -4315,12 +4596,10 @@ class TraderCompanionApp:
         trado_sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
         trado_qty = int(config.get("tradovate_qty", 2) or config.get("topstepx_qty", 2))
 
-        # ── Balance-aware TP/SL adjustment ──
+        # ── Farming: cap MT5 TP based on hard-stop proximity ──
         ev = row_data.get("eval", {})
-        current_profit = self._get_current_phase_profit(ev, row_data["current_phase"], broker_account=broker_account, acct_size=acct_size)
         _is_farming_sym = "MNQ" in (config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")).upper()
         if _is_farming_sym and self.prop_firm_mgr:
-            # Farming: cap MT5 TP based on hard-stop proximity (not balance-based shrink)
             try:
                 _bal = None
                 if broker_account:
@@ -4340,69 +4619,134 @@ class TraderCompanionApp:
                     self.log(f"⚠ Farming {acct_num}: could not read balance — using blueprint TP/SL")
             except Exception as _fe:
                 self.log(f"⚠ Farming TP check failed for {acct_num}: {_fe}")
-        elif current_profit != 0.0 and self.prop_firm_mgr:
-            orig_tp = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
-            orig_sl = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
-            orig_mt5_tp = int(config.get("mt5_tp_points", 0))
-            orig_mt5_sl = int(config.get("mt5_sl_points", 0))
-            config = self.prop_firm_mgr.adjust_tp_sl_for_balance(config, current_profit)
-            new_tp = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
-            new_sl = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
-            new_mt5_tp = int(config.get("mt5_tp_points", 0))
-            new_mt5_sl = int(config.get("mt5_sl_points", 0))
-            if new_tp != orig_tp or new_sl != orig_sl:
-                mt5_part = f" | MT5 TP {orig_mt5_tp}→{new_mt5_tp}, SL {orig_mt5_sl}→{new_mt5_sl} pts" if (new_mt5_tp != orig_mt5_tp or new_mt5_sl != orig_mt5_sl) else ""
-                self.log(f"📊 Balance adjust {acct_num}: P/L=${current_profit:.2f} → TP {orig_tp}→{new_tp}, SL {orig_sl}→{new_sl} ticks{mt5_part}")
+        # TP/SL comes directly from the stage blueprint (selected by day placeholder)
 
         trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
         trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
+        blueprint_tp_orig = trado_tp  # save originals for confirm dialog
+        blueprint_sl_orig = trado_sl
+        _adj_reasons = []  # collect adjustment explanations for confirm dialog
         mt5_sym = config.get("mt5_symbol", "NAS100")
         mt5_vol = float(config.get("mt5_volume", 2.8))
         mt5_tp = int(config.get("mt5_tp_points", 46))
         mt5_sl = int(config.get("mt5_sl_points", 42))
 
+        # ── Adjust TP based on stage progress ──
+        # If we already have profit in this stage, shrink TP so we don't overshoot.
+        # If we're short of the expected start balance, grow TP to catch up.
+        if self.prop_firm_mgr and broker_account and not _is_farming_sym:
+            try:
+                current_profit = self._get_current_phase_profit(
+                    ev, row_data["current_phase"], broker_account=broker_account, acct_size=acct_size)
+                size_key = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
+                stage_start = self.prop_firm_mgr.get_stage_start_target(
+                    firm_code, row_data["current_phase"], phase_key, size_key)
+                stage_profit_so_far = current_profit - stage_start
+                trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+                tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
+                trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
+                if tick_val > 0 and trado_qty_for_calc > 0:
+                    orig_tp = trado_tp
+                    orig_mt5_sl = mt5_sl
+                    # Convert stage profit to ticks and subtract from TP
+                    profit_ticks = stage_profit_so_far / (tick_val * trado_qty_for_calc)
+                    adjusted_tp = max(5, round(trado_tp - profit_ticks))
+                    tp_ratio = adjusted_tp / trado_tp if trado_tp > 0 else 1.0
+                    adjusted_mt5_sl = max(5, round(mt5_sl * tp_ratio))
+                    if adjusted_tp != trado_tp:
+                        trado_tp = adjusted_tp
+                        mt5_sl = adjusted_mt5_sl
+                        _adj_reasons.append(
+                            f"TP {blueprint_tp_orig}→{trado_tp}t: stage P/L ${stage_profit_so_far:+,.0f} "
+                            f"(already earned in this stage)")
+                        self.log(f"📊 TP adjust {acct_num}: stage_start=${stage_start:,.0f}, "
+                                 f"current P/L=${current_profit:,.2f}, stage P/L=${stage_profit_so_far:+,.2f} → "
+                                 f"TP {orig_tp}→{trado_tp}t, MT5 SL {orig_mt5_sl}→{mt5_sl}pts")
+            except Exception as _te:
+                self.log(f"⚠ TP adjust failed for {acct_num}: {_te}")
+
+        # ── Adjust SL based on midnight balance + drawdown protection ──
+        if broker_account and platform == "Tradovate" and hasattr(broker_account, 'get_min_equity'):
+            try:
+                min_eq_data = broker_account.get_min_equity()
+                if min_eq_data:
+                    live_net_liq = min_eq_data['net_liq']
+                    net_liq_sod = min_eq_data.get('net_liq_sod', 0)
+                    live_min_equity = min_eq_data.get('min_equity', 0)
+                    tmdl = min_eq_data.get('trailing_max_drawdown_limit', 50000)
+                    trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
+                    trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+                    tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
+
+                    # Step 1: Midnight balance SL — floor = SOD - blueprint_sl_dollars
+                    if net_liq_sod > 0 and tick_val > 0 and trado_qty_for_calc > 0:
+                        blueprint_sl_dollars = trado_sl * tick_val * trado_qty_for_calc
+                        sl_floor = net_liq_sod - blueprint_sl_dollars
+                        available = live_net_liq - sl_floor
+                        if available > 0:
+                            midnight_sl = max(10, int(available / (tick_val * trado_qty_for_calc)))
+                            if midnight_sl != trado_sl:
+                                orig_sl = trado_sl
+                                orig_mt5_tp = mt5_tp
+                                trado_sl = midnight_sl
+                                mt5_tp = max(5, int(trado_sl / 4) - 1)
+                                daily_pnl = live_net_liq - net_liq_sod
+                                _adj_reasons.append(
+                                    f"SL {blueprint_sl_orig}→{trado_sl}t: midnight bal ${net_liq_sod:,.0f}, "
+                                    f"daily P/L ${daily_pnl:+,.0f}")
+                                self.log(f"🌙 Midnight SL {acct_num}: SOD=${net_liq_sod:,.2f}, "
+                                         f"live=${live_net_liq:,.2f}, daily P/L=${daily_pnl:+,.2f} → "
+                                         f"SL {orig_sl}→{trado_sl}t, MT5 TP {orig_mt5_tp}→{mt5_tp}pts")
+                            else:
+                                self.log(f"✅ Midnight SL OK {acct_num}: SOD=${net_liq_sod:,.2f}, SL={trado_sl}t unchanged")
+                        else:
+                            self.log(f"⚠ Midnight SL floor breached {acct_num}: "
+                                     f"live=${live_net_liq:,.2f} < floor=${sl_floor:,.2f} — using min SL")
+                            _adj_reasons.append(
+                                f"SL → 10t: balance below midnight SL floor ${sl_floor:,.0f}")
+                            trado_sl = 10
+                            mt5_tp = max(5, int(trado_sl / 4) - 1)
+
+                    # Step 2: TMDL drawdown cap — further tighten if near breach
+                    if live_min_equity > 0 and live_net_liq < tmdl:
+                        drawdown_remaining = live_net_liq - live_min_equity
+                        current_sl_risk = trado_sl * tick_val * trado_qty_for_calc
+                        if drawdown_remaining > 0 and current_sl_risk > drawdown_remaining:
+                            orig_sl = trado_sl
+                            orig_mt5_tp = mt5_tp
+                            trado_sl = max(10, int(drawdown_remaining / (tick_val * trado_qty_for_calc)))
+                            mt5_tp = max(5, int(trado_sl / 4) - 1)
+                            _adj_reasons.append(
+                                f"SL →{trado_sl}t: near drawdown limit, only ${drawdown_remaining:,.0f} remaining")
+                            self.log(f"🎯 TMDL SL cap {acct_num}: remaining=${drawdown_remaining:,.2f} → "
+                                     f"SL {orig_sl}→{trado_sl}t, MT5 TP {orig_mt5_tp}→{mt5_tp}pts")
+                        elif drawdown_remaining <= 0:
+                            self.log(f"⚠ No drawdown room for {acct_num} (${drawdown_remaining:,.2f})")
+                    elif live_min_equity > 0:
+                        self.log(f"✅ TMDL OK {acct_num}: ${live_net_liq:,.2f} ≥ TMDL=${tmdl:,.0f}")
+            except Exception:
+                pass
+
         hedge_text = f" + MT5 {('SELL' if side == 'buy' else 'BUY')} {mt5_vol} {mt5_sym}" if hedging else ""
-        balance_text = f"\nBalance P/L: ${current_profit:+.2f}" if current_profit != 0.0 else ""
 
-        # Predict current stage and next trade from balance
-        stage_text = ""
-        prediction = None
-        if current_profit != 0.0 and self.prop_firm_mgr:
-            prediction = self.prop_firm_mgr.predict_next_trade(
-                firm_code, row_data["current_phase"], current_profit,
-                self.prop_firm_mgr.convert_account_size_to_key(acct_size))
-            if prediction.get("stages"):
-                stage_text = (f"\n\n── Stage Prediction ──"
-                              f"\nCurrent: {prediction['current_stage']}  (target ${prediction['current_target']:,.0f})"
-                              f"\nNext Trade: {prediction['next_stage']}")
-                if prediction.get("next_config"):
-                    nc = prediction["next_config"]
-                    ntp = int(nc.get("tradovate_tp_ticks", 0) or nc.get("topstepx_tp_ticks", 0))
-                    nsl = int(nc.get("tradovate_sl_ticks", 0) or nc.get("topstepx_sl_ticks", 0))
-                    stage_text += f"  (TP:{ntp} SL:{nsl})"
+        # Stage info from day placeholder
+        stage_text = (f"\n\n── Stage Info ──"
+                      f"\nDay Cell: {day_idx + 1} ({day_name}) → Blueprint: {phase_key}")
 
-        # Cross-validate: refresh eval data from dashboard for live day placeholders
-        fresh_ev = self._refresh_eval_for_account(acct_num)
-        if fresh_ev:
-            ev = fresh_ev
-            row_data["eval"] = fresh_ev  # Update cached data
-        if prediction and prediction.get("stages"):
-            is_consistent, val_msg = self._validate_stage_consistency(
-                prediction, ev, row_data["current_phase"], acct_num)
-            self.log(val_msg)
-            if not is_consistent:
-                stage_text += "\n\n⚠️ MISMATCH: Balance stage ≠ filled day cells!"
-                messagebox.showwarning("Stage Mismatch",
-                    f"{val_msg}\n\nTrade blocked — balance and day cells do not agree.")
-                return
+        # Adjustment explanations
+        if _adj_reasons:
+            adj_text = "\n\n── Adjustments ──\n" + "\n".join(f"• {r}" for r in _adj_reasons)
+            adj_text += f"\n(Blueprint was TP {blueprint_tp_orig}t / SL {blueprint_sl_orig}t)"
+        else:
+            adj_text = ""
 
         confirm = messagebox.askyesno("Confirm Trade",
             f"{side.upper()} {trado_qty} {trado_sym} on {platform}\n"
             f"{hedge_text}\n\n"
             f"Account: {acct_num}  |  {firm_code}\n"
-            f"Phase: {row_data['current_phase']}  |  Size: {acct_size}{balance_text}\n"
+            f"Phase: {row_data['current_phase']}  |  Size: {acct_size}\n"
             f"TP: {trado_tp} ticks  |  SL: {trado_sl} ticks"
-            f"{stage_text}\n\nProceed?")
+            f"{stage_text}{adj_text}\n\nProceed?")
         if not confirm:
             return
 
@@ -4439,6 +4783,16 @@ class TraderCompanionApp:
                     else:
                         mt5_api.sell_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
                     self.log(f"✅ MT5 hedge {hedge_side.upper()} {mt5_vol} {mt5_sym} TP:{mt5_tp} SL:{mt5_sl} comment:{comment}")
+
+                # ── Auto-status: set "In Progress" when trade goes out ──
+                _ev = row_data.get("eval")
+                if _ev:
+                    _has_funded = bool((_ev.get("Account #.1") or "").strip())
+                    _sf = "Status" if _has_funded else "Status P1"
+                    _cur = (_ev.get(_sf) or "").strip().lower()
+                    if not _cur or _cur in ("not started", "in progress", ""):
+                        _ev[_sf] = "In Progress"
+                        self.log(f"🔄 Auto-status: {acct_num} → {_sf}='In Progress'")
 
                 # Remove row from list
                 def _remove():
@@ -4477,6 +4831,346 @@ class TraderCompanionApp:
             self._stop_auto_trade()
         else:
             self._start_auto_trade()
+
+    # ── Hedge Protector ──────────────────────────────────────────────
+
+    def _test_min_equity(self, event=None):
+        """Test: dump min equity data from cached prop firm mappings and Tradovate API."""
+        self.log("🔍 Testing min equity sources...")
+        # 1. Cached prop firm mappings
+        if self._cached_acct_mappings:
+            for firm_name, mapping in self._cached_acct_mappings.items():
+                self.log(f"  --- {firm_name} (cached mapping) ---")
+                for key, info in mapping.items():
+                    me = info.get("min_equity")
+                    pt = info.get("profit_target")
+                    bal = info.get("balance")
+                    start = info.get("starting_balance")
+                    self.log(f"    {key}: bal=${bal}, start=${start}, min_eq=${me}, target=${pt}")
+        else:
+            self.log("  ⚠ No cached account mappings (connect prop firm dashboards first)")
+        # 2. Tradovate API fallback
+        found = False
+        for firm_name, conn in self._broker_connections.items():
+            acct = conn.get("account")
+            if not acct or not hasattr(acct, 'get_min_equity'):
+                continue
+            found = True
+            self.log(f"  --- {firm_name} (Tradovate API) ---")
+            try:
+                result = acct.get_min_equity()
+                if result:
+                    self.log(f"    Net Liq:           ${result['net_liq']:,.2f}")
+                    self.log(f"    Min Equity:        ${result['min_equity']:,.2f}")
+                    self.log(f"    Drawdown Remaining:${result['drawdown_remaining']:,.2f}")
+                    self.log(f"    Max Net Liq:       ${result.get('max_net_liq', 0):,.2f}")
+                    self.log(f"    Trailing Max DD:   ${result['trailing_max_drawdown']:,.2f}")
+                    self.log(f"    Trailing DD Limit: ${result['trailing_max_drawdown_limit']:,.2f}")
+                    self.log(f"    Mode:              {result.get('trailing_mode', '?')}")
+                else:
+                    self.log(f"    ❌ get_min_equity returned None")
+            except Exception as e:
+                self.log(f"    ❌ Error: {e}", "ERROR")
+        if not found:
+            self.log("  ⚠ No connected Tradovate brokers")
+        self.log("🔍 Min equity test complete.")
+
+    def _start_hedge_protector(self):
+        """Start (or restart) the Hedge Protector engine. Called automatically on broker connect."""
+        if not HEDGE_PROTECTOR_AVAILABLE:
+            return
+
+        # If already running, stop first so we can pick up newly connected accounts
+        if self._hedge_protector and self._hedge_protector.is_running:
+            try:
+                self._hedge_protector.stop()
+            except Exception:
+                pass
+            self._hedge_protector = None
+
+        # Gather every connected Tradovate account
+        connected_tv = {}
+        for firm_name, conn in self._broker_connections.items():
+            acct = conn.get("account")
+            if acct and hasattr(acct, '_api_fetch'):
+                connected_tv[firm_name] = acct
+
+        if not connected_tv:
+            return  # nothing to guard yet
+
+        # Get MT5 API
+        mt5_api = self._get_mt5_trading_api() if hasattr(self, '_get_mt5_trading_api') else None
+
+        def on_event(event_type, message):
+            """Route HedgeProtector events to the UI."""
+            try:
+                kind = {
+                    "info": "info", "warn": "queue", "error": "error",
+                    "sl_detected": "error", "tp_detected": "success",
+                    "close_sent": "trade",
+                }.get(event_type, "info")
+                self.root.after(0, lambda: self._add_activity(f"🛡️ {message}", kind))
+                self.root.after(0, lambda: self.log(f"🛡️ [{event_type.upper()}] {message}"))
+            except Exception:
+                pass
+
+        def on_status_change(acct_name, close_reason, phase_key):
+            """Immediately update dashboard status when TP/SL detected."""
+            self.root.after(0, lambda: self._handle_hedge_status_change(acct_name, close_reason, phase_key))
+
+        self._hedge_protector = HedgeProtector(
+            mt5_api=mt5_api,
+            tradovate_accounts=connected_tv,
+            on_event=on_event,
+            on_status_change=on_status_change,
+        )
+        self._hedge_protector.start()
+
+        self.log(f"🛡️ Hedge Guard ACTIVE — monitoring {len(connected_tv)} Tradovate account(s)")
+
+    def _stop_hedge_protector(self):
+        """Stop the Hedge Protector engine."""
+        if self._hedge_protector:
+            stats = self._hedge_protector.get_status()
+            self._hedge_protector.stop()
+            self._hedge_protector = None
+            self.log(f"🛡️ Hedge Guard stopped — SL protected: {stats.get('sl_protected', 0)}, TP passed: {stats.get('tp_passed', 0)}")
+
+    def _handle_hedge_status_change(self, acct_name, close_reason, phase_key):
+        """Update dashboard status immediately when TP/SL detected by hedge protector.
+        
+        Args:
+            acct_name: Tradovate account name (e.g. "FNFTCHHARRISONOUKA85625")
+            close_reason: "tp_detected" or "sl_detected"
+            phase_key: Blueprint stage key from MT5 comment (e.g. "challenge_trade2", "funded_trade1")
+        """
+        import re
+
+        # 1. Find the matching eval from active trade rows
+        matched_ev = None
+        matched_rd = None
+        acct_lower = acct_name.lower()
+        for rd in self._active_trade_rows:
+            ev = rd.get("eval")
+            if not ev:
+                continue
+            acct_ch = (ev.get("Account #") or "").strip().lower()
+            acct_fd = (ev.get("Account #.1") or "").strip().lower()
+            if acct_lower in acct_ch or acct_ch in acct_lower or \
+               acct_lower in acct_fd or acct_fd in acct_lower:
+                matched_ev = ev
+                matched_rd = rd
+                break
+
+        if not matched_ev:
+            self.log(f"⚠ Hedge status: no eval found for {acct_name} — skipping status update")
+            return
+
+        # 2. Determine which status field to update
+        has_funded = bool((matched_ev.get("Account #.1") or "").strip())
+        status_field = "Status" if has_funded else "Status P1"
+
+        # 3. Extract trade number from phase_key → status value
+        # phase_key examples: "challenge_trade1", "funded_trade2", "funded_trade_doubledip_3"
+        # Dashboard TP statuses: "Hit TP1", "Hit TP2", "Hit TP3", "Hit TP4"
+        # Dashboard SL statuses: "Fail"
+        if close_reason == "sl_detected":
+            new_status = "Fail"
+        else:
+            # Extract the trade number from the phase_key
+            m = re.search(r'(\d+)$', phase_key)
+            trade_num = int(m.group(1)) if m else 1
+            new_status = f"Hit TP{trade_num}"
+
+        current_status = (matched_ev.get(status_field) or "").strip()
+        if current_status.lower() == new_status.lower():
+            self.log(f"📋 Hedge status: {acct_name} already {new_status}")
+            return
+
+        # 4. Update the eval
+        matched_ev[status_field] = new_status
+        self.log(f"📋 Hedge status: {acct_name} [{phase_key}] → {status_field}='{new_status}' "
+                 f"({'SL hit' if close_reason == 'sl_detected' else 'TP hit'})")
+        self._add_activity(
+            f"📋 {acct_name}: {new_status} ({phase_key})",
+            "error" if close_reason == "sl_detected" else "success")
+
+        # 5. Push to dashboard immediately
+        email = self.client_email_entry.get().strip()
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        if not email or not dashboard_url:
+            self.log(f"⚠ Hedge status: no email/dashboard URL — skipping push")
+            return
+        all_evals = [rd.get("eval") for rd in self._active_trade_rows if rd.get("eval")]
+        if not all_evals:
+            return
+
+        def _push():
+            try:
+                import requests
+                payload = {
+                    "email": email,
+                    "evaluations": all_evals,
+                    "statistics": {},
+                    "dropdown_options": {},
+                    "force_fields": [status_field],
+                }
+                resp = requests.post(
+                    f"{dashboard_url}/api/client/push",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                    timeout=15)
+                if resp.status_code == 200 and resp.json().get("status") == "success":
+                    self.root.after(0, lambda:
+                        self.log(f"✅ Hedge status pushed: {acct_name} → {new_status}"))
+                else:
+                    self.root.after(0, lambda s=resp.status_code:
+                        self.log(f"⚠ Hedge status push failed: HTTP {s}"))
+            except Exception as e:
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"⚠ Hedge status push error: {err}"))
+
+        import threading
+        threading.Thread(target=_push, daemon=True, name="HedgeStatusPush").start()
+
+    # ── Close All Trades ────────────────────────────────────────────
+
+    def _close_all_trades(self):
+        """Liquidate all positions across every connected broker and MT5."""
+        # Confirm first
+        connected = [f for f, c in self._broker_connections.items() if c.get("account")]
+        if not connected:
+            self.log("⚠ No brokers connected — nothing to close")
+            return
+
+        if not messagebox.askyesno(
+            "Close ALL Trades",
+            f"This will LIQUIDATE all open positions on:\n\n"
+            f"  • {len(connected)} broker(s): {', '.join(connected)}\n"
+            f"  • MT5 (all open positions)\n\n"
+            f"Are you sure?",
+            icon="warning",
+        ):
+            return
+
+        self.log("🔴 CLOSING ALL TRADES across all platforms...")
+        self._add_activity("🔴 Close All triggered — liquidating everything", "error")
+
+        def _do_close_all():
+            closed_tv = 0
+            closed_mt5 = 0
+            errors = []
+
+            # 1. Liquidate every connected Tradovate / TopStepX account
+            for firm_name, conn in self._broker_connections.items():
+                acct = conn.get("account")
+                if not acct:
+                    continue
+                try:
+                    if hasattr(acct, 'liquidate_position_api'):
+                        # Tradovate — liquidate all accounts under this login
+                        accounts = acct._api_fetch("/account/list")
+                        if accounts and isinstance(accounts, list):
+                            for a in accounts:
+                                aid = a['id']
+                                aname = a.get('name', '?')
+                                # Check if positions exist first
+                                positions = acct.get_positions_api(account_id=aid)
+                                open_pos = [p for p in positions if p.get('netPos', 0) != 0]
+                                if not open_pos:
+                                    self.root.after(0, lambda fn=firm_name, n=aname:
+                                        self.log(f"  ⏭ {fn} — {n} (already flat)"))
+                                    # Still cancel any orphaned bracket orders
+                                    try:
+                                        cancelled = acct.cancel_all_orders_api(account_id=aid)
+                                        if cancelled > 0:
+                                            self.root.after(0, lambda fn=firm_name, n=aname, c=cancelled:
+                                                self.log(f"  🧹 {fn} — {n} cancelled {c} orphaned order(s)"))
+                                    except Exception:
+                                        pass
+                                    continue
+                                self.root.after(0, lambda fn=firm_name, n=aname, cnt=len(open_pos):
+                                    self.log(f"  🔄 {fn} — {n} closing {cnt} position(s)..."))
+                                result = acct.liquidate_position_api(account_id=aid)
+                                if result:
+                                    closed_tv += 1
+                                    self.root.after(0, lambda fn=firm_name, n=aname:
+                                        self.log(f"  ✅ {fn} — {n} liquidated"))
+                                else:
+                                    errors.append(f"{firm_name}/{aname}: liquidate returned None")
+                                    self.root.after(0, lambda fn=firm_name, n=aname:
+                                        self.log(f"  ❌ {fn} — {n} liquidation FAILED", "ERROR"))
+                                # Cancel remaining bracket orders (stop/limit)
+                                try:
+                                    cancelled = acct.cancel_all_orders_api(account_id=aid)
+                                    if cancelled > 0:
+                                        self.root.after(0, lambda fn=firm_name, n=aname, c=cancelled:
+                                            self.log(f"  🧹 {fn} — {n} cancelled {c} pending order(s)"))
+                                except Exception:
+                                    pass
+                        else:
+                            self.root.after(0, lambda fn=firm_name:
+                                self.log(f"  ❌ {fn} — could not fetch account list", "ERROR"))
+                            errors.append(f"{firm_name}: account list fetch failed")
+                    elif hasattr(acct, 'close_all_positions'):
+                        # TopStepX
+                        acct.close_all_positions()
+                        closed_tv += 1
+                        self.root.after(0, lambda fn=firm_name:
+                            self.log(f"  ✅ {fn} positions closed"))
+                except Exception as e:
+                    errors.append(f"{firm_name}: {e}")
+                    self.root.after(0, lambda fn=firm_name, err=str(e):
+                        self.log(f"  ❌ {fn} close failed: {err}", "ERROR"))
+
+            # 2. Close all MT5 positions
+            try:
+                import MetaTrader5 as mt5
+                positions = mt5.positions_get()
+                if positions:
+                    mt5_api = self._get_mt5_trading_api() if hasattr(self, '_get_mt5_trading_api') else None
+                    for pos in positions:
+                        try:
+                            if mt5_api:
+                                mt5_api.close_trade(pos.ticket)
+                            else:
+                                # Direct close via MT5 API
+                                request = {
+                                    "action": mt5.TRADE_ACTION_DEAL,
+                                    "position": pos.ticket,
+                                    "symbol": pos.symbol,
+                                    "volume": pos.volume,
+                                    "type": mt5.ORDER_TYPE_SELL if pos.type == 0 else mt5.ORDER_TYPE_BUY,
+                                    "type_filling": mt5.ORDER_FILLING_IOC,
+                                }
+                                mt5.order_send(request)
+                            closed_mt5 += 1
+                            self.root.after(0, lambda t=pos.ticket, s=pos.symbol:
+                                self.log(f"  ✅ MT5 #{t} {s} closed"))
+                        except Exception as e:
+                            errors.append(f"MT5 #{pos.ticket}: {e}")
+                            self.root.after(0, lambda t=pos.ticket, err=str(e):
+                                self.log(f"  ❌ MT5 #{t} close failed: {err}", "ERROR"))
+            except Exception as e:
+                errors.append(f"MT5: {e}")
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"  ⚠ MT5 close skipped: {err}"))
+
+            # Summary
+            summary = f"🔴 Close All done — Brokers: {closed_tv}, MT5: {closed_mt5}"
+            if errors:
+                summary += f", Errors: {len(errors)}"
+            self.root.after(0, lambda s=summary: self.log(s))
+            self.root.after(0, lambda s=summary: self._add_activity(s, "error"))
+
+        threading.Thread(target=_do_close_all, daemon=True, name="CloseAll").start()
+
+    def _refresh_hedge_status(self):
+        """Periodically check Hedge Protector health and log stats."""
+        if not self._hedge_protector or not self._hedge_protector.is_running:
+            return
+        # Schedule next check
+        self.root.after(5000, self._refresh_hedge_status)
 
     def _start_auto_trade(self):
         """Activate auto-trade: compute randomized start time, begin countdown."""
@@ -4645,7 +5339,7 @@ class TraderCompanionApp:
         self.log(f"🚀 Auto-executing {len(rows)} accounts (parallel per firm)...")
 
         hedging = self.hedge_mode_var.get() == "Hedging"
-        platform = self.broker_var.get()
+        default_platform = self.broker_var.get()
         mt5_api = self._get_mt5_trading_api() if hedging else None
 
         # Group rows by firm so each firm's Chrome runs in its own thread
@@ -4653,6 +5347,20 @@ class TraderCompanionApp:
         for row_data in rows:
             firm_name = row_data["eval"].get("Prop Firm", row_data["firm_code"])
             rows_by_firm[firm_name].append(row_data)
+
+        # ── PAYOUT CHECK: skip accounts with payout pending ──
+        payout_skipped = []
+        for firm_name, firm_rows in list(rows_by_firm.items()):
+            clean = []
+            for rd in firm_rows:
+                if self._eval_has_payout(rd.get("eval", {})):
+                    payout_skipped.append(rd)
+                    self.log(f"   💰 {rd['acct_num']}  ({firm_name} / {rd['current_phase']}) — PAYOUT pending, skipped")
+                else:
+                    clean.append(rd)
+            rows_by_firm[firm_name] = clean
+        if payout_skipped:
+            self.log(f"💰 {len(payout_skipped)} account(s) skipped — payout pending (request payout first)")
 
         # ── PRE-VALIDATE: check which accounts actually exist on each Tradovate ──
         skipped_rows = []
@@ -4745,6 +5453,11 @@ class TraderCompanionApp:
 
         def _execute_firm_trades(firm_name, firm_rows):
             """Execute all trades for one firm sequentially on its own Chrome."""
+            # Auto-detect platform: TopStep firms always use TopStepX (Selenium)
+            if "topstep" in firm_name.lower():
+                platform = "TopStepX"
+            else:
+                platform = default_platform
             broker_account = self._get_broker_for_firm(firm_name)
             if not broker_account:
                 for rd in firm_rows:
@@ -4762,6 +5475,27 @@ class TraderCompanionApp:
                 phase_key = row_data["phase_key"]
                 acct_size = row_data["acct_size"]
                 acct_num = row_data["acct_num"]
+
+                # ── Resolve phase_key from day placeholder (primary source of truth) ──
+                auto_ev = row_data.get("eval", {})
+                fresh_auto_ev = self._refresh_eval_for_account(acct_num)
+                if fresh_auto_ev:
+                    auto_ev = fresh_auto_ev
+                    row_data["eval"] = fresh_auto_ev
+                resolved_key, day_idx, day_name = self._resolve_phase_key_from_day(
+                    auto_ev, firm_code, row_data.get("current_phase", ""))
+                if resolved_key is None:
+                    _an = acct_num
+                    self.root.after(0, lambda an=_an:
+                        self.log(f"⛔ {an}: No day placeholder — skipped", "ERROR"))
+                    with total_success:
+                        counters["fail"] += 1
+                    continue
+                if resolved_key != phase_key:
+                    _an, _di, _dn, _rk, _pk = acct_num, day_idx, day_name, resolved_key, phase_key
+                    self.root.after(0, lambda an=_an, di=_di, dn=_dn, rk=_rk, pk=_pk:
+                        self.log(f"📅 {an}: Day cell {di + 1} ({dn}) → blueprint {rk} (was {pk})"))
+                    phase_key = resolved_key
 
                 # Determine direction: signal-based or random bias
                 if use_signal:
@@ -4792,9 +5526,7 @@ class TraderCompanionApp:
                 trado_sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
                 trado_qty = int(config.get("tradovate_qty", 2) or config.get("topstepx_qty", 2))
 
-                # ── Balance-aware TP/SL adjustment ──
-                auto_ev = row_data.get("eval", {})
-                auto_profit = self._get_current_phase_profit(auto_ev, row_data.get("current_phase", ""), broker_account=broker_account, acct_size=acct_size)
+                # ── Farming: cap MT5 TP based on hard-stop proximity ──
                 _is_farming_sym_auto = "MNQ" in (config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")).upper()
                 if _is_farming_sym_auto and self.prop_firm_mgr:
                     # Farming: cap MT5 TP based on hard-stop proximity
@@ -4825,49 +5557,7 @@ class TraderCompanionApp:
                         _an, _err = acct_num, str(_fe)
                         self.root.after(0, lambda an=_an, err=_err:
                             self.log(f"⚠ Farming TP check failed for {an}: {err}"))
-                elif auto_profit != 0.0 and self.prop_firm_mgr:
-                    orig_tp_auto = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
-                    orig_sl_auto = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
-                    orig_mt5_tp_a = int(config.get("mt5_tp_points", 0))
-                    orig_mt5_sl_a = int(config.get("mt5_sl_points", 0))
-                    config = self.prop_firm_mgr.adjust_tp_sl_for_balance(config, auto_profit)
-                    new_tp_auto = int(config.get("tradovate_tp_ticks", 0) or config.get("topstepx_tp_ticks", 0))
-                    new_sl_auto = int(config.get("tradovate_sl_ticks", 0) or config.get("topstepx_sl_ticks", 0))
-                    new_mt5_tp_a = int(config.get("mt5_tp_points", 0))
-                    new_mt5_sl_a = int(config.get("mt5_sl_points", 0))
-                    if new_tp_auto != orig_tp_auto or new_sl_auto != orig_sl_auto:
-                        mt5_changed = new_mt5_tp_a != orig_mt5_tp_a or new_mt5_sl_a != orig_mt5_sl_a
-                        _an, _pl = acct_num, auto_profit
-                        _otp, _ntp, _osl, _nsl = orig_tp_auto, new_tp_auto, orig_sl_auto, new_sl_auto
-                        _omt, _nmt, _oms, _nms, _mc = orig_mt5_tp_a, new_mt5_tp_a, orig_mt5_sl_a, new_mt5_sl_a, mt5_changed
-                        self.root.after(0, lambda an=_an, pl=_pl, otp=_otp, ntp=_ntp, osl=_osl, nsl=_nsl, omt=_omt, nmt=_nmt, oms=_oms, nms=_nms, mc=_mc:
-                            self.log(f"📊 Balance adjust {an}: P/L=${pl:.2f} → TP {otp}→{ntp}, SL {osl}→{nsl} ticks"
-                                     f"{f' | MT5 TP {omt}→{nmt}, SL {oms}→{nms} pts' if mc else ''}"))
-
-                    # Log stage prediction and cross-validate
-                    pred = self.prop_firm_mgr.predict_next_trade(
-                        firm_code, row_data.get("current_phase", ""), auto_profit,
-                        self.prop_firm_mgr.convert_account_size_to_key(acct_size))
-                    if pred.get("stages"):
-                        _an2, _cs, _ns = acct_num, pred["current_stage"], pred["next_stage"]
-                        self.root.after(0, lambda an=_an2, cs=_cs, ns=_ns:
-                            self.log(f"   🎯 {an}: Stage={cs} → Next={ns}"))
-
-                        # Cross-validate stage vs filled day cells (refresh first)
-                        fresh_auto_ev = self._refresh_eval_for_account(acct_num)
-                        if fresh_auto_ev:
-                            auto_ev = fresh_auto_ev
-                            row_data["eval"] = fresh_auto_ev
-                        is_ok, val_msg = self._validate_stage_consistency(
-                            pred, auto_ev, row_data.get("current_phase", ""), acct_num)
-                        _vm = val_msg
-                        self.root.after(0, lambda m=_vm: self.log(m))
-                        if not is_ok:
-                            self.root.after(0, lambda an=acct_num:
-                                self.log(f"   🚫 {an}: Skipped — stage mismatch", "ERROR"))
-                            with total_success:
-                                counters["fail"] += 1
-                            continue
+                # TP/SL comes directly from the stage blueprint (selected by day placeholder)
 
                 trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
                 trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
@@ -4875,6 +5565,109 @@ class TraderCompanionApp:
                 mt5_vol = float(config.get("mt5_volume", 2.8))
                 mt5_tp = int(config.get("mt5_tp_points", 46))
                 mt5_sl = int(config.get("mt5_sl_points", 42))
+
+                # ── Adjust TP based on stage progress ──
+                if self.prop_firm_mgr and broker_account and not _is_farming_sym_auto:
+                    try:
+                        auto_profit = self._get_current_phase_profit(
+                            auto_ev, row_data.get("current_phase", ""),
+                            broker_account=broker_account, acct_size=acct_size)
+                        size_key_a = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
+                        stage_start = self.prop_firm_mgr.get_stage_start_target(
+                            firm_code, row_data.get("current_phase", ""), phase_key, size_key_a)
+                        stage_profit_so_far = auto_profit - stage_start
+                        trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+                        tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
+                        trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
+                        if tick_val > 0 and trado_qty_for_calc > 0:
+                            orig_tp_a = trado_tp
+                            orig_mt5_sl_a = mt5_sl
+                            profit_ticks = stage_profit_so_far / (tick_val * trado_qty_for_calc)
+                            adjusted_tp = max(5, round(trado_tp - profit_ticks))
+                            tp_ratio = adjusted_tp / trado_tp if trado_tp > 0 else 1.0
+                            adjusted_mt5_sl = max(5, round(mt5_sl * tp_ratio))
+                            if adjusted_tp != trado_tp:
+                                trado_tp = adjusted_tp
+                                mt5_sl = adjusted_mt5_sl
+                                _an, _ss, _ap, _sp = acct_num, stage_start, auto_profit, stage_profit_so_far
+                                _otp, _ntp, _oms, _nms = orig_tp_a, trado_tp, orig_mt5_sl_a, mt5_sl
+                                self.root.after(0, lambda an=_an, ss=_ss, ap=_ap, sp=_sp, otp=_otp, ntp=_ntp, oms=_oms, nms=_nms:
+                                    self.log(f"📊 TP adjust {an}: stage_start=${ss:,.0f}, "
+                                             f"P/L=${ap:,.2f}, stage P/L=${sp:+,.2f} → "
+                                             f"TP {otp}→{ntp}t, MT5 SL {oms}→{nms}pts"))
+                    except Exception as _te:
+                        _an, _err = acct_num, str(_te)
+                        self.root.after(0, lambda an=_an, err=_err:
+                            self.log(f"⚠ TP adjust failed for {an}: {err}"))
+
+                # ── Adjust SL based on midnight balance + drawdown protection ──
+                if broker_account and platform == "Tradovate" and hasattr(broker_account, 'get_min_equity'):
+                    try:
+                        min_eq_data = broker_account.get_min_equity()
+                        if min_eq_data:
+                            live_net_liq = min_eq_data['net_liq']
+                            net_liq_sod = min_eq_data.get('net_liq_sod', 0)
+                            live_min_equity = min_eq_data.get('min_equity', 0)
+                            tmdl = min_eq_data.get('trailing_max_drawdown_limit', 50000)
+                            trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
+                            trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+                            tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
+
+                            # Step 1: Midnight balance SL — floor = SOD - blueprint_sl_dollars
+                            if net_liq_sod > 0 and tick_val > 0 and trado_qty_for_calc > 0:
+                                blueprint_sl_dollars = trado_sl * tick_val * trado_qty_for_calc
+                                sl_floor = net_liq_sod - blueprint_sl_dollars
+                                available = live_net_liq - sl_floor
+                                if available > 0:
+                                    midnight_sl = max(10, int(available / (tick_val * trado_qty_for_calc)))
+                                    if midnight_sl != trado_sl:
+                                        orig_sl = trado_sl
+                                        orig_mt5_tp = mt5_tp
+                                        trado_sl = midnight_sl
+                                        mt5_tp = max(5, int(trado_sl / 4) - 1)
+                                        _an = acct_num
+                                        _sod, _nl, _dpnl = net_liq_sod, live_net_liq, live_net_liq - net_liq_sod
+                                        _osl, _nsl, _omt, _nmt = orig_sl, trado_sl, orig_mt5_tp, mt5_tp
+                                        self.root.after(0, lambda an=_an, sod=_sod, nl=_nl, dp=_dpnl, osl=_osl, nsl=_nsl, omt=_omt, nmt=_nmt:
+                                            self.log(f"🌙 Midnight SL {an}: SOD=${sod:,.2f}, "
+                                                     f"live=${nl:,.2f}, daily P/L=${dp:+,.2f} → "
+                                                     f"SL {osl}→{nsl}t, MT5 TP {omt}→{nmt}pts"))
+                                    else:
+                                        _an, _sod = acct_num, net_liq_sod
+                                        self.root.after(0, lambda an=_an, sod=_sod, sl=trado_sl:
+                                            self.log(f"✅ Midnight SL OK {an}: SOD=${sod:,.2f}, SL={sl}t unchanged"))
+                                else:
+                                    _an, _nl, _fl = acct_num, live_net_liq, sl_floor
+                                    self.root.after(0, lambda an=_an, nl=_nl, fl=_fl:
+                                        self.log(f"⚠ Midnight SL floor breached {an}: "
+                                                 f"live=${nl:,.2f} < floor=${fl:,.2f} — using min SL"))
+                                    trado_sl = 10
+                                    mt5_tp = max(5, int(trado_sl / 4) - 1)
+
+                            # Step 2: TMDL drawdown cap — further tighten if near breach
+                            if live_min_equity > 0 and live_net_liq < tmdl:
+                                drawdown_remaining = live_net_liq - live_min_equity
+                                current_sl_risk = trado_sl * tick_val * trado_qty_for_calc
+                                if drawdown_remaining > 0 and current_sl_risk > drawdown_remaining:
+                                    orig_sl = trado_sl
+                                    orig_mt5_tp = mt5_tp
+                                    trado_sl = max(10, int(drawdown_remaining / (tick_val * trado_qty_for_calc)))
+                                    mt5_tp = max(5, int(trado_sl / 4) - 1)
+                                    _an, _dr = acct_num, drawdown_remaining
+                                    _osl, _nsl, _omt, _nmt = orig_sl, trado_sl, orig_mt5_tp, mt5_tp
+                                    self.root.after(0, lambda an=_an, dr=_dr, osl=_osl, nsl=_nsl, omt=_omt, nmt=_nmt:
+                                        self.log(f"🎯 TMDL SL cap {an}: remaining=${dr:,.2f} → "
+                                                 f"SL {osl}→{nsl}t, MT5 TP {omt}→{nmt}pts"))
+                                elif drawdown_remaining <= 0:
+                                    _an, _dr = acct_num, drawdown_remaining
+                                    self.root.after(0, lambda an=_an, dr=_dr:
+                                        self.log(f"⚠ No drawdown room for {an} (${dr:,.2f})"))
+                            elif live_min_equity > 0:
+                                _an, _nl, _tmdl = acct_num, live_net_liq, tmdl
+                                self.root.after(0, lambda an=_an, nl=_nl, t=_tmdl:
+                                    self.log(f"✅ TMDL OK {an}: ${nl:,.2f} ≥ TMDL=${t:,.0f}"))
+                    except Exception:
+                        pass
 
                 try:
                     # 1. Broker order — uses this firm's own Chrome instance
@@ -4905,6 +5698,18 @@ class TraderCompanionApp:
 
                     with total_success:
                         counters["success"] += 1
+
+                    # ── Auto-status: set "In Progress" when trades go out ──
+                    _ev = row_data.get("eval")
+                    if _ev:
+                        _has_funded = bool((row_data.get("eval", {}).get("Account #.1") or "").strip())
+                        _sf = "Status" if _has_funded else "Status P1"
+                        _cur = (_ev.get(_sf) or "").strip().lower()
+                        # Only set In Progress if status is empty, Not Started, or already In Progress
+                        if not _cur or _cur in ("not started", "in progress", ""):
+                            _ev[_sf] = "In Progress"
+                            self.root.after(0, lambda an=acct_num, sf=_sf:
+                                self.log(f"🔄 Auto-status: {an} → {sf}='In Progress'"))
 
                     # Remove row from UI
                     def _remove(rd=row_data):
@@ -5027,6 +5832,8 @@ class TraderCompanionApp:
                     "fundednext": ["funded next"],
                     "my funded futures": ["mffu"],
                     "mffu": ["my funded futures"],
+                    "lucid": ["lucid trading"],
+                    "lucid trading": ["lucid"],
                 }
                 firm_lower = firm.lower()
                 aliases = _FIRM_ALIASES.get(firm_lower, [])
@@ -5093,18 +5900,24 @@ class TraderCompanionApp:
                                          command=lambda f=firm: self._connect_broker_firm(f))
                 conn_btn.pack(side="right", padx=(8, 4))
 
-                # Dashboard button — only for firms with browser-based dashboards
-                if firm in self._BROWSER_MONITORED_FIRMS:
-                    dash_btn = ctk.CTkButton(row, text="🌐 Dashboard", width=90, height=24,
-                                             fg_color="#1A1A3E", hover_color="#2A2A5E",
-                                             border_width=1, border_color="#3B3B6E",
-                                             font=("Consolas", 9), text_color="#A78BFA",
-                                             corner_radius=4,
-                                             command=lambda f=firm: self._launch_propfirm_dashboard(f))
-                    dash_btn.pack(side="right", padx=(4, 0))
+                # History button — shows full Tradovate trade history for this account
+                hist_btn = ctk.CTkButton(row, text="📊 History", width=78, height=24,
+                                         fg_color="#1A2332", hover_color="#2A3342",
+                                         border_width=1, border_color="#3B4B5E",
+                                         font=("Consolas", 9), text_color="#60A5FA",
+                                         corner_radius=4,
+                                         command=lambda f=firm: self._show_trade_history(f))
+                hist_btn.pack(side="right", padx=(4, 0))
 
-                # Dashboard button — only for firms with browser-based dashboards
-                if firm in self._BROWSER_MONITORED_FIRMS:
+                # Dashboard button — show for all firms (use _BROWSER_MONITORED_FIRMS with case-insensitive + alias match)
+                _dash_cfg = self._BROWSER_MONITORED_FIRMS.get(firm)
+                if not _dash_cfg:
+                    # Case-insensitive lookup
+                    for _bk, _bv in self._BROWSER_MONITORED_FIRMS.items():
+                        if _bk.lower() == firm.lower():
+                            _dash_cfg = _bv
+                            break
+                if _dash_cfg:
                     dash_btn = ctk.CTkButton(row, text="🌐 Dashboard", width=90, height=24,
                                              fg_color="#1A1A3E", hover_color="#2A2A5E",
                                              border_width=1, border_color="#3B3B6E",
@@ -5156,7 +5969,13 @@ class TraderCompanionApp:
         if not conn:
             return
 
-        platform = self.broker_var.get()
+        # Auto-detect platform: TopStep firms always use TopStepX (Selenium)
+        firm_lower = firm_name.lower()
+        if "topstep" in firm_lower:
+            platform = "TopStepX"
+        else:
+            platform = self.broker_var.get()
+
         user = conn["user_entry"].get().strip()
         pwd = conn["pass_entry"].get().strip()
         mode = self.trading_mode_var.get()
@@ -5213,6 +6032,10 @@ class TraderCompanionApp:
                     self.broker_status_var.set(f"{connected}/{total} connected")
                 self.root.after(0, _update_ui)
                 self.log(f"✅ {firm_name} connected to {platform} ({mode})")
+                # Start real-time status polling now that a broker is connected
+                self.root.after(0, self._start_status_polling)
+                # Auto-start hedge protector to monitor TP/SL
+                self.root.after(500, self._start_hedge_protector)
 
             except Exception as e:
                 def _fail():
@@ -5270,6 +6093,247 @@ class TraderCompanionApp:
 
         threading.Thread(target=_do_auto, daemon=True).start()
 
+    def _show_trade_history(self, firm_name):
+        """Show a popup window with full Tradovate trade history for the given firm."""
+        conn = self._broker_connections.get(firm_name)
+        if not conn or not conn.get("account"):
+            self.log(f"⚠ {firm_name} is not connected — connect first", "WARN")
+            return
+
+        account = conn["account"]
+        if not hasattr(account, 'get_trade_history'):
+            self.log(f"⚠ {firm_name} account does not support trade history", "WARN")
+            return
+
+        self.log(f"📊 Loading trade history for {firm_name}...")
+
+        def _fetch_and_show():
+            try:
+                data = account.get_trade_history()
+                if not data:
+                    self.root.after(0, lambda: self.log(f"⚠ No history data for {firm_name}", "WARN"))
+                    return
+                self.root.after(0, lambda d=data: self._build_history_window(firm_name, d))
+            except Exception as e:
+                self.root.after(0, lambda: self.log(f"❌ History fetch failed: {e}", "ERROR"))
+
+        threading.Thread(target=_fetch_and_show, daemon=True).start()
+
+    def _build_history_window(self, firm_name, data):
+        """Build and display the trade history popup window.
+        data is a list of account dicts (one per account under this login)."""
+        if isinstance(data, dict):
+            data = [data]  # backwards compat — single account
+
+        win = tk.Toplevel(self.root)
+        acct_count = len(data)
+        win.title(f"📊 Trade History — {firm_name} ({acct_count} account{'s' if acct_count > 1 else ''})")
+        win.geometry("800x660")
+        win.configure(bg="#0A0E17")
+        win.attributes("-topmost", True)
+        win.after(500, lambda: win.attributes("-topmost", False))
+
+        # ── Account selector tabs (if multiple accounts) ──────
+        if acct_count > 1:
+            tab_frame = tk.Frame(win, bg="#0A0E17")
+            tab_frame.pack(fill="x", padx=8, pady=(6, 0))
+            tk.Label(tab_frame, text=f"{acct_count} accounts found",
+                     bg="#0A0E17", fg="#64748B", font=("Consolas", 9)).pack(side="left", padx=(4, 12))
+
+        # Content container — will be cleared/rebuilt on account switch
+        content = tk.Frame(win, bg="#0A0E17")
+        content.pack(fill="both", expand=True)
+
+        def _show_account(acct_data):
+            # Clear existing content
+            for w in content.winfo_children():
+                w.destroy()
+            self._render_account_history(content, acct_data)
+
+        # Build tab buttons (if multiple)
+        if acct_count > 1:
+            for i, acct in enumerate(data):
+                aname = acct.get('account_name', f'Account {i+1}')
+                bal = acct.get('balance', 0)
+                btn_text = f"{aname}  ${bal:,.0f}"
+                btn = tk.Button(tab_frame, text=btn_text, bg="#1A2332", fg="#60A5FA",
+                                activebackground="#2A3342", activeforeground="#93C5FD",
+                                font=("Consolas", 9), bd=0, padx=8, pady=2,
+                                command=lambda d=acct: _show_account(d))
+                btn.pack(side="left", padx=2)
+
+        # Show first account by default
+        _show_account(data[0])
+
+        total_fills = sum(len(a.get('fills', [])) for a in data)
+        total_days = sum(len(a.get('daily_pnl', [])) for a in data)
+        self.log(f"📊 Trade history loaded for {firm_name}: {acct_count} account(s), {total_days} days, {total_fills} fills")
+
+    def _render_account_history(self, parent, data):
+        """Render a single account's history into the given parent frame."""
+        acct_name = data.get('account_name', '?')
+        env = data.get('environment', '?').upper()
+        balance = data.get('balance', 0)
+        balance_sod = data.get('balance_sod', 0)
+        realized = data.get('realized_pnl', 0)
+        open_pnl = data.get('open_pnl', 0)
+        dd_max = data.get('trailing_max_drawdown', 0)
+        dd_limit = data.get('trailing_max_drawdown_limit', 0)
+        dd_mode = data.get('drawdown_mode', '?')
+
+        # ── Header ────────────────────────────────────────────
+        hdr = tk.Frame(parent, bg="#0F1520", height=80)
+        hdr.pack(fill="x", padx=8, pady=(8, 4))
+        hdr.pack_propagate(False)
+
+        tk.Label(hdr, text=f"{acct_name}  [{env}]",
+                 bg="#0F1520", fg="#E2E8F0", font=("Consolas", 12, "bold"),
+                 anchor="w").place(x=12, y=6)
+
+        bal_color = "#22C55E" if realized >= 0 else "#EF4444"
+        tk.Label(hdr, text=f"Balance: ${balance:,.2f}   SOD: ${balance_sod:,.2f}   "
+                            f"P&L: ${realized:+,.2f}   Open: ${open_pnl:+,.2f}",
+                 bg="#0F1520", fg=bal_color, font=("Consolas", 10),
+                 anchor="w").place(x=12, y=32)
+
+        if dd_max:
+            dd_used = dd_limit - balance if dd_limit < 999_999_000 else 0
+            tk.Label(hdr, text=f"Drawdown: ${dd_max:,.0f} trailing ({dd_mode})   "
+                                f"Limit: ${dd_limit:,.0f}" + (f"   Used: ${dd_used:,.2f}" if dd_used else ""),
+                     bg="#0F1520", fg="#94A3B8", font=("Consolas", 9),
+                     anchor="w").place(x=12, y=54)
+
+        # ── Daily P&L Table ───────────────────────────────────
+        tk.Label(parent, text="Daily P&L", bg="#0A0E17", fg="#60A5FA",
+                 font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", padx=12, pady=(8, 0))
+
+        daily_frame = tk.Frame(parent, bg="#0A0E17")
+        daily_frame.pack(fill="both", expand=True, padx=8, pady=(2, 4))
+
+        # Canvas + scrollbar for the daily P&L
+        canvas = tk.Canvas(daily_frame, bg="#0A0E17", highlightthickness=0)
+        scrollbar = tk.Scrollbar(daily_frame, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg="#0A0E17")
+
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        # Table header
+        cols = [("Date", 90), ("Trades", 50), ("Gross P&L", 90), ("Fees", 80),
+                ("Net P&L", 90), ("Balance", 100)]
+        hdr_row = tk.Frame(scroll_frame, bg="#151D2B")
+        hdr_row.pack(fill="x", pady=(0, 1))
+        for col_name, col_w in cols:
+            tk.Label(hdr_row, text=col_name, width=col_w // 8, bg="#151D2B", fg="#64748B",
+                     font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+
+        # Table rows
+        daily_pnl = data.get('daily_pnl', [])
+        total_gross = total_fees = total_net = 0
+        for i, day in enumerate(daily_pnl):
+            bg = "#0D1320" if i % 2 == 0 else "#0A0E17"
+            r = tk.Frame(scroll_frame, bg=bg)
+            r.pack(fill="x")
+
+            date_str = day['date']
+            trades = day['trades']
+            gross = day['gross_pnl']
+            fees = day['fees']
+            net = day['net_pnl']
+            bal = day['balance_eod']
+
+            total_gross += gross
+            total_fees += fees
+            total_net += net
+
+            net_color = "#22C55E" if net > 0 else "#EF4444" if net < 0 else "#4A5568"
+            gross_color = "#22C55E" if gross > 0 else "#EF4444" if gross < 0 else "#4A5568"
+
+            tk.Label(r, text=date_str, width=11, bg=bg, fg="#CBD5E1",
+                     font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+            tk.Label(r, text=str(trades) if trades else "--", width=6, bg=bg,
+                     fg="#CBD5E1" if trades else "#334155",
+                     font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+            tk.Label(r, text=f"${gross:+,.2f}" if gross else "--", width=11, bg=bg,
+                     fg=gross_color, font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+            tk.Label(r, text=f"${fees:+,.2f}" if fees else "--", width=10, bg=bg,
+                     fg="#94A3B8" if fees else "#334155",
+                     font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+            tk.Label(r, text=f"${net:+,.2f}" if net else "--", width=11, bg=bg,
+                     fg=net_color, font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+            tk.Label(r, text=f"${bal:,.2f}", width=12, bg=bg, fg="#E2E8F0",
+                     font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+
+        # Totals row
+        tot_bg = "#1A2332"
+        tot_row = tk.Frame(scroll_frame, bg=tot_bg)
+        tot_row.pack(fill="x", pady=(2, 0))
+        tk.Label(tot_row, text="TOTAL", width=11, bg=tot_bg, fg="#E2E8F0",
+                 font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+        tk.Label(tot_row, text="", width=6, bg=tot_bg).pack(side="left", padx=1)
+        tk.Label(tot_row, text=f"${total_gross:+,.2f}", width=11, bg=tot_bg,
+                 fg="#22C55E" if total_gross >= 0 else "#EF4444",
+                 font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+        tk.Label(tot_row, text=f"${total_fees:+,.2f}", width=10, bg=tot_bg, fg="#94A3B8",
+                 font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+        tk.Label(tot_row, text=f"${total_net:+,.2f}", width=11, bg=tot_bg,
+                 fg="#22C55E" if total_net >= 0 else "#EF4444",
+                 font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+        tk.Label(tot_row, text="", width=12, bg=tot_bg).pack(side="left", padx=1)
+
+        # ── Fills Section ─────────────────────────────────────
+        fills = data.get('fills', [])
+        if fills:
+            tk.Label(parent, text=f"Trade Fills ({len(fills)})", bg="#0A0E17", fg="#60A5FA",
+                     font=("Consolas", 10, "bold"), anchor="w").pack(fill="x", padx=12, pady=(8, 0))
+
+            fills_frame = tk.Frame(parent, bg="#0A0E17")
+            fills_frame.pack(fill="both", expand=True, padx=8, pady=(2, 8))
+
+            f_canvas = tk.Canvas(fills_frame, bg="#0A0E17", highlightthickness=0, height=150)
+            f_scroll = tk.Scrollbar(fills_frame, orient="vertical", command=f_canvas.yview)
+            f_inner = tk.Frame(f_canvas, bg="#0A0E17")
+            f_inner.bind("<Configure>", lambda e: f_canvas.configure(scrollregion=f_canvas.bbox("all")))
+            f_canvas.create_window((0, 0), window=f_inner, anchor="nw")
+            f_canvas.configure(yscrollcommand=f_scroll.set)
+            f_canvas.pack(side="left", fill="both", expand=True)
+            f_scroll.pack(side="right", fill="y")
+
+            # Fills header
+            fhdr = tk.Frame(f_inner, bg="#151D2B")
+            fhdr.pack(fill="x", pady=(0, 1))
+            for col_name, col_w in [("Date", 80), ("Time", 65), ("Side", 40),
+                                     ("Qty", 35), ("Contract", 70), ("Price", 80)]:
+                tk.Label(fhdr, text=col_name, width=col_w // 7, bg="#151D2B", fg="#64748B",
+                         font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+
+            for i, fill in enumerate(fills):
+                bg = "#0D1320" if i % 2 == 0 else "#0A0E17"
+                fr = tk.Frame(f_inner, bg=bg)
+                fr.pack(fill="x")
+                action_color = "#22C55E" if fill['action'] == 'Buy' else "#EF4444"
+                tk.Label(fr, text=fill['date'], width=11, bg=bg, fg="#CBD5E1",
+                         font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+                tk.Label(fr, text=fill['time'], width=9, bg=bg, fg="#94A3B8",
+                         font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+                tk.Label(fr, text=fill['action'], width=5, bg=bg, fg=action_color,
+                         font=("Consolas", 9, "bold"), anchor="center").pack(side="left", padx=1)
+                tk.Label(fr, text=str(fill['qty']), width=5, bg=bg, fg="#CBD5E1",
+                         font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+                tk.Label(fr, text=fill['contract'], width=10, bg=bg, fg="#60A5FA",
+                         font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+                tk.Label(fr, text=f"{fill['price']:,.2f}", width=11, bg=bg, fg="#E2E8F0",
+                         font=("Consolas", 9), anchor="center").pack(side="left", padx=1)
+
     _BROWSER_MONITORED_FIRMS = {
         "Funded Next":       {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "FundedNextCDPAccount",
                               "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts",
@@ -5282,6 +6346,9 @@ class TraderCompanionApp:
                               "login_url": "https://app-f.tradeify.co", "accounts_url": "https://app-f.tradeify.co",
                               "cdp": True},
         "Lucid Trading":     {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "LucidTradingAccount",
+                              "login_url": "https://dash.lucidtrading.com", "accounts_url": "https://dash.lucidtrading.com",
+                              "cdp": True},
+        "Lucid":             {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "LucidTradingAccount",
                               "login_url": "https://dash.lucidtrading.com", "accounts_url": "https://dash.lucidtrading.com",
                               "cdp": True},
         "TopStep":           {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "TopStepAccount",
@@ -5317,6 +6384,12 @@ class TraderCompanionApp:
         For CDP-based scrapers, attaches to an existing Chrome tab instead of launching new Chrome.
         """
         cfg = self._BROWSER_MONITORED_FIRMS.get(firm_name)
+        if not cfg:
+            # Case-insensitive fallback
+            for _bk, _bv in self._BROWSER_MONITORED_FIRMS.items():
+                if _bk.lower() == firm_name.lower():
+                    cfg = _bv
+                    break
         if not cfg:
             self.log(f"⚠ No dashboard config for {firm_name}", "WARN")
             return
@@ -5363,7 +6436,9 @@ class TraderCompanionApp:
                         self._propfirm_browsers[firm_name] = acct
                         self.root.after(0, lambda:
                             self.log(f"✅ {firm_name} dashboard connected via CDP"))
-                        self._autofill_challenge_fees(firm_name, acct)
+                        acct_mapping = self._autofill_challenge_fees(firm_name, acct)
+                        self._cached_acct_mappings[firm_name] = acct_mapping or {}
+                        self._auto_detect_breached_accounts(firm_name, acct, acct_mapping=acct_mapping)
                         return
                     except ConnectionError:
                         # Tab not ready yet — show login dialog
@@ -5460,7 +6535,9 @@ class TraderCompanionApp:
                 self._propfirm_browsers[firm_name] = acct
                 self.root.after(0, lambda: self.log(
                     f"✅ {firm_name} dashboard connected via CDP"))
-                self._autofill_challenge_fees(firm_name, acct)
+                acct_mapping = self._autofill_challenge_fees(firm_name, acct)
+                self._cached_acct_mappings[firm_name] = acct_mapping or {}
+                self._auto_detect_breached_accounts(firm_name, acct, acct_mapping=acct_mapping)
                 self.root.after(0, dialog.destroy)
             except ConnectionError:
                 self.root.after(0, lambda: status_var.set(
@@ -5501,6 +6578,7 @@ class TraderCompanionApp:
 
                 # Auto-detect breached accounts and mark as failed
                 _update_status("⏳ Checking breach status...")
+                self._cached_acct_mappings[firm_name] = acct_mapping or {}
                 self._auto_detect_breached_accounts(firm_name, account, acct_mapping=acct_mapping)
 
                 _update_status("✅ Connected!")
@@ -5580,12 +6658,13 @@ class TraderCompanionApp:
                 self.root.after(0, lambda idx=i, a=acct, m=amt, s=status, d=date, p=pkg:
                     self.log(f"   📋 Billing #{idx+1}: Acct={a} | Amount={m} | Status={s} | Date={d} | Pkg={p}"))
 
-            # Build lookup: account_no -> {amount, date, package} (use first approved entry per account)
+            # Build lookup: account_no -> {amount, date, package}
+            # First entry wins for billing_by_acct (preserves original fee under login key).
+            # Last entry wins for billing_by_login (latest fee maps to current Tradovate account).
+            # This handles resets: e.g. FundedNext login 946645337 has $139.04 (new) + $142.13 (reset).
+            # The $139.04 stays under "946645337", while $142.13 maps to the active Tradovate account.
             billing_by_acct = {}
-            # Also build a size-based lookup for fallback when Account # is empty
-            # billing funding_package contains size e.g. "Futures Legacy Challenge 50000 USD"
             billing_by_size = {}
-            # Build login->billing info lookup for account mapping
             billing_by_login = {}
             for entry in billing:
                 acct_no = (entry.get("account_no") or "").strip()
@@ -5596,6 +6675,7 @@ class TraderCompanionApp:
                 login_id = str(entry.get("login") or acct_no).strip()
                 if acct_no and amount > 0 and status == "APPROVED":
                     info = {"amount": amount, "date": bill_date, "package": pkg, "account_no": acct_no, "login": login_id}
+                    # First entry wins — keeps oldest fee under the raw account_no key
                     if acct_no not in billing_by_acct:
                         billing_by_acct[acct_no] = info
                     # Extract numeric size from package string (e.g. "50000" from "Futures Legacy Challenge 50000 USD")
@@ -5604,13 +6684,13 @@ class TraderCompanionApp:
                     if size_match:
                         size_key = int(size_match.group(1))
                         if size_key not in billing_by_size:
-                            billing_by_size[size_key] = info
-                    # Index by login ID for account mapping resolution
-                    if login_id and login_id not in billing_by_login:
-                        billing_by_login[login_id] = info
+                            billing_by_size[size_key] = dict(info)
+                    # Last entry wins — latest fee maps to current active Tradovate account
+                    billing_by_login[login_id] = dict(info)
 
             # Resolve billing login IDs to Tradovate account names via account mapping
-            # This enriches billing_by_acct so matching by FNFT account name works
+            # This enriches billing_by_acct so matching by FNFT/TDFY/LFE account name works.
+            # billing_by_login has the LATEST entry per login → maps to current active Tradovate account.
             for login_id, bill_info in billing_by_login.items():
                 if login_id in acct_mapping:
                     tv_name = acct_mapping[login_id].get("tradovate_account_name")
@@ -5618,8 +6698,14 @@ class TraderCompanionApp:
                         enriched = dict(bill_info)
                         enriched["tradovate_account_name"] = tv_name
                         billing_by_acct[tv_name] = enriched
-                        self.root.after(0, lambda lid=login_id, tv=tv_name:
-                            self.log(f"   🔗 Mapped billing login {lid} → {tv}"))
+                    if tv_name:
+                        self.root.after(0, lambda lid=login_id, tv=tv_name, amt=bill_info["amount"]:
+                            self.log(f"   🔗 Mapped billing login {lid} → {tv} (${amt:.2f})"))
+
+            # Log challenge fees per account
+            for acct_key, info in billing_by_acct.items():
+                self.root.after(0, lambda a=acct_key, t=info["amount"]:
+                    self.log(f"   💳 {a}: ${t:.2f}"))
 
             if not billing_by_acct and not billing_by_size:
                 self.root.after(0, lambda:
@@ -5713,7 +6799,12 @@ class TraderCompanionApp:
                     changes.append(f"Fee={billing_fee}")
                     if not date_filled and matched["date"]:
                         ev["Date Purchased"] = matched["date"]
-                        changes.append(f"Date={matched['date']}")
+                        changes.append(f"DatePurchased={matched['date']}")
+                    # Also set Date Started from billing date when empty
+                    existing_start = (ev.get("Date Started") or "").strip()
+                    if not existing_start and matched["date"]:
+                        ev["Date Started"] = matched["date"]
+                        changes.append(f"DateStarted={matched['date']}")
                     # Auto-fill Account # from account mapping when empty
                     tv_name = matched.get("tradovate_account_name")
                     if not acct_challenge and tv_name:
@@ -5737,6 +6828,13 @@ class TraderCompanionApp:
             if not filled_count:
                 self.root.after(0, lambda:
                     self.log(f"🌐 {firm_name}: No accounts needed Fee/Date updates"))
+                # Still compute per-firm summary even when no evals updated
+                total_fees, total_payouts, records = self._compute_firm_billing(
+                    firm_name, account, billing)
+                self._firm_billing_summary[firm_name] = {
+                    "total_fees": total_fees, "total_payouts": total_payouts, "records": records}
+                self.root.after(0, lambda f=firm_name, tf=total_fees, tp=total_payouts:
+                    self.log(f"📊 {f} Summary — Total Fees: ${tf:.2f} | Total Payouts: ${tp:.2f}"))
                 return acct_mapping
 
             self.root.after(0, lambda c=filled_count:
@@ -5767,7 +6865,9 @@ class TraderCompanionApp:
                 "email": email,
                 "evaluations": all_evals,
                 "statistics": {},
-                "dropdown_options": {}
+                "dropdown_options": {},
+                "firm_billing": self._firm_billing_summary,
+                "force_fields": ["Fee", "Date Purchased", "Date Started"],
             }
 
             try:
@@ -5791,12 +6891,333 @@ class TraderCompanionApp:
                 self.root.after(0, lambda err=str(e):
                     self.log(f"⚠ Fee sync error: {err}", "WARN"))
 
+            # ── Per-firm totals: aggregate challenge fees + payouts ──
+            total_fees, total_payouts, records = self._compute_firm_billing(
+                firm_name, account, billing)
+            self._firm_billing_summary[firm_name] = {
+                "total_fees": total_fees, "total_payouts": total_payouts, "records": records}
+
+            self.root.after(0, lambda f=firm_name, tf=total_fees, tp=total_payouts:
+                self.log(f"📊 {f} Summary — Total Fees: ${tf:.2f} | Total Payouts: ${tp:.2f}"))
+
             return acct_mapping
 
         except Exception as e:
             self.root.after(0, lambda err=str(e):
                 self.log(f"⚠ {firm_name} billing auto-fill failed: {err}", "WARN"))
             return acct_mapping
+
+    def _compute_firm_billing(self, firm_name, account, billing):
+        """Compute per-firm total fees and payouts from scraped billing + payout data.
+        Returns (total_fees, total_payouts, records)."""
+        total_fees = sum(
+            e.get("paid_amount_numeric", 0.0)
+            for e in billing
+            if (e.get("status") or "").strip().upper() == "APPROVED"
+               and e.get("paid_amount_numeric", 0) > 0
+        )
+        records = []
+        for e in billing:
+            if (e.get("status") or "").strip().upper() == "APPROVED" and e.get("paid_amount_numeric", 0) > 0:
+                records.append({
+                    "account_no": e.get("account_no", ""),
+                    "amount": e.get("paid_amount_numeric", 0),
+                    "date": e.get("date", ""),
+                    "package": e.get("funding_package", ""),
+                    "type": e.get("transition_type", ""),
+                })
+        total_payouts = 0.0
+        try:
+            if hasattr(account, 'get_payouts'):
+                payouts = account.get_payouts()
+                for p in (payouts or []):
+                    for key in ("amount", "payout_amount", "netAmount", "total", "value"):
+                        val = p.get(key)
+                        if val is not None:
+                            try:
+                                total_payouts += abs(float(str(val).replace("$", "").replace(",", "")))
+                            except (ValueError, TypeError):
+                                pass
+                            break
+        except Exception:
+            pass
+        return total_fees, total_payouts, records
+
+    # ── Real-time status polling ───────────────────────────────────────
+    def _start_status_polling(self):
+        """Start the 10-second real-time status polling loop.
+        Uses Tradovate broker API to fetch live balances for all accounts."""
+        if self._status_poll_active:
+            return  # already running
+        self._status_poll_active = True
+        self.root.after(0, lambda: self.log("🔄 Status polling started (every 5 min)"))
+        # Run FIRST poll immediately, then schedule repeating every 5 min
+        def _first_poll():
+            try:
+                self._poll_tradovate_balances()
+            except Exception as e:
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"⚠ First status poll error: {err}", "WARN"))
+        threading.Thread(target=_first_poll, daemon=True).start()
+        self.root.after(300_000, self._poll_account_status)
+
+    def _poll_account_status(self):
+        """Self-rescheduling timer — fetches Tradovate balances and updates P1 status."""
+        if not self._status_poll_active:
+            return
+
+        def _poll_all():
+            try:
+                self._poll_tradovate_balances()
+            except Exception as e:
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"⚠ Status poll error: {err}", "WARN"))
+
+        threading.Thread(target=_poll_all, daemon=True).start()
+        self.root.after(300_000, self._poll_account_status)
+
+    def _poll_tradovate_balances(self):
+        """Fetch live balances from Tradovate broker API and update P1/Status on evaluations."""
+        # ── 1. Gather all Tradovate account balances from broker connections ──
+        tv_balances = {}  # {account_name: netLiq}
+        for firm_name, conn in list(self._broker_connections.items()):
+            tv_account = conn.get("account")
+            if not tv_account:
+                continue
+            # Support both TradovateAccount (_api_fetch) and DOM-based stats
+            if not hasattr(tv_account, '_api_fetch'):
+                continue
+            try:
+                # First check if browser/driver is alive
+                try:
+                    _ = tv_account.driver.title
+                except Exception:
+                    self.root.after(0, lambda fn=firm_name:
+                        self.log(f"⚠ Status poll: {fn} browser not accessible", "WARN"))
+                    continue
+
+                raw = tv_account._api_fetch("/account/list")
+                if not raw or not isinstance(raw, list):
+                    continue
+                for acct in raw:
+                    aid = acct.get('id')
+                    aname = acct.get('name', '')
+                    if not aid or not aname:
+                        continue
+                    snapshot = tv_account._api_fetch(
+                        "/cashBalance/getCashBalanceSnapshot", "POST",
+                        {"accountId": aid})
+                    if snapshot and isinstance(snapshot, dict):
+                        net_liq = snapshot.get('netLiq')
+                        if net_liq is not None:
+                            tv_balances[aname] = float(net_liq)
+            except Exception as e:
+                self.root.after(0, lambda fn=firm_name, err=str(e):
+                    self.log(f"⚠ Status poll: API error for {fn}: {err}", "WARN"))
+
+        if not tv_balances:
+            self.root.after(0, lambda: self.log("⚠ Status poll: no Tradovate balances fetched", "WARN"))
+            return
+
+        # Log Tradovate accounts on first poll only
+        if not hasattr(self, '_poll_logged_tv_accounts'):
+            self._poll_logged_tv_accounts = True
+            self.root.after(0, lambda n=len(tv_balances), names=list(tv_balances.keys()):
+                self.log(f"📊 Status poll: {n} Tradovate account(s): {names}"))
+
+        # Build case-insensitive lookup
+        tv_lower = {k.lower(): (k, v) for k, v in tv_balances.items()}
+
+        # ── 2. Fetch evaluations from dashboard ──
+        email = self.client_email_entry.get().strip()
+        dashboard_url = self.url_entry.get().strip().rstrip('/')
+        if not email or not dashboard_url:
+            return
+
+        try:
+            r = requests.post(
+                f"{dashboard_url}/api/client/data",
+                json={"email": email},
+                headers={"Content-Type": "application/json"},
+                timeout=15)
+            if r.status_code != 200:
+                self.root.after(0, lambda s=r.status_code:
+                    self.log(f"⚠ Status poll: dashboard returned HTTP {s}", "WARN"))
+                return
+            all_evals = r.json().get("evaluations", [])
+        except Exception as e:
+            # Only log dashboard connection errors once to avoid spam
+            if not getattr(self, '_poll_dashboard_err_logged', False):
+                self._poll_dashboard_err_logged = True
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"⚠ Status poll: dashboard not reachable (will retry silently)", "WARN"))
+            return
+
+        # Dashboard is reachable — reset error flag
+        self._poll_dashboard_err_logged = False
+
+        if not all_evals:
+            return
+
+        # ── 3. Match evaluations to Tradovate balances and compute status ──
+        any_changed = False
+        for ev in all_evals:
+            if not ev or ev.get("_deleted"):
+                continue
+
+            acct_challenge = (ev.get("Account #") or "").strip()
+            acct_funded = (ev.get("Account #.1") or "").strip()
+            current_p1 = (ev.get("Status P1") or "").strip().lower()
+            current_status = (ev.get("Status") or "").strip().lower()
+
+            # Determine which account and field to check
+            has_funded = bool(acct_funded)
+            if has_funded:
+                acct_key = acct_funded
+                status_field = "Status"
+                current_check = current_status
+            else:
+                acct_key = acct_challenge
+                status_field = "Status P1"
+                current_check = current_p1
+
+            if not acct_key:
+                continue
+
+            # Skip accounts already passed or failed
+            if "pass" in current_check or any(kw in current_check for kw in ("fail", "breach", "delete", "closed", "ended", "lost")):
+                continue
+
+            # ── Find matching Tradovate balance ──
+            acct_key_lower = acct_key.lower()
+            match = tv_lower.get(acct_key_lower)
+            if not match:
+                # Try partial match (account name might be substring)
+                for tv_name_lower, tv_pair in tv_lower.items():
+                    if tv_name_lower in acct_key_lower or acct_key_lower in tv_name_lower:
+                        match = tv_pair
+                        break
+            if not match:
+                # Account not found on any connected Tradovate — mark as Failed
+                miss_key = f"_miss_logged_{acct_key}"
+                if not self._last_known_statuses.get(miss_key):
+                    self._last_known_statuses[miss_key] = True
+                    self.root.after(0, lambda a=acct_key, tvk=list(tv_balances.keys()):
+                        self.log(f"   ⚠ No match for '{a}' in Tradovate accounts {tvk} → marking Fail"))
+                if current_check not in ("fail", "failed", "breach", "delete", "deleted", "closed", "ended", "lost"):
+                    ev[status_field] = "Fail"
+                    any_changed = True
+                    self.root.after(0, lambda a=acct_key, sf=status_field:
+                        self.log(f"   ❌ {a}: {sf}='Fail' — not found on Tradovate"))
+                continue
+
+            tv_name_orig, bal = match
+
+            # ── Get starting balance from Account Size ──
+            size_str = (ev.get("Account Size") or "").replace("$", "").replace(",", "").strip().lower()
+            if size_str.endswith("k"):
+                start = float(size_str[:-1]) * 1000
+            elif size_str.replace(".", "").isdigit():
+                start = float(size_str)
+            else:
+                start = 50000.0
+
+            # ── Get live targets from cached mapping if available ──
+            canonical_firm = self._FIRM_MAP.get(ev.get("Prop Firm", ""), ev.get("Prop Firm", ""))
+            phase = "Funded" if has_funded else "Challenge"
+            live_target = None
+            live_min_eq = None
+            for _fn, mapping in self._cached_acct_mappings.items():
+                for _mk, info in mapping.items():
+                    tv_name = info.get("tradovate_account_name", "")
+                    if tv_name and (tv_name.lower() in acct_key_lower or acct_key_lower in tv_name.lower()):
+                        live_target = info.get("profit_target")
+                        live_min_eq = info.get("min_equity")
+                        if info.get("starting_balance"):
+                            try:
+                                start = float(info["starting_balance"])
+                            except (ValueError, TypeError):
+                                pass
+                        break
+                if live_target is not None:
+                    break
+
+            # ── Compute status ──
+            # Use profit targets and min equity from _PROFIT_TARGETS table.
+            # Only mark Failed if balance <= minimum equity limit.
+            # Only mark Pass if balance >= start + profit target.
+            # Otherwise In Progress (if balance moved) or skip.
+            computed = None
+            try:
+                # Get profit target and min equity for this firm/phase
+                pt_target = None
+                pt_min_eq = None
+
+                # First try live targets from cached prop firm mapping
+                if live_target is not None:
+                    pt_target = float(live_target)
+                if live_min_eq is not None:
+                    pt_min_eq = float(live_min_eq)
+
+                # Fallback to hardcoded profit targets table
+                if pt_target is None and self.prop_firm_mgr:
+                    targets = self.prop_firm_mgr._PROFIT_TARGETS.get(canonical_firm, {})
+                    phase_key = "Challenge" if phase == "Challenge" else "Funded"
+                    t = targets.get(phase_key)
+                    if t is not None:
+                        pt_target = float(t)
+
+                # Determine status
+                if pt_min_eq is not None and bal <= pt_min_eq:
+                    computed = "Fail"
+                elif pt_target is not None and bal >= (start + pt_target):
+                    computed = "Pass"
+                elif abs(bal - start) > 0.50:
+                    computed = "In Progress"
+                # else: balance hasn't moved, skip
+            except (ValueError, TypeError):
+                continue
+
+            if not computed:
+                continue
+
+            # Set the status on the eval
+            if computed.lower() != current_check:
+                ev[status_field] = computed
+                any_changed = True
+                self.root.after(0, lambda a=acct_key, c=computed, b=bal, s=start:
+                    self.log(f"   📝 {a}: {c} (bal=${b:,.2f}, start=${s:,.0f})"))
+
+        # ── 4. Always push all evals so dashboard stays in sync ──
+        if not any_changed:
+            return
+
+        payload = {
+            "email": email,
+            "evaluations": all_evals,
+            "statistics": {},
+            "dropdown_options": {},
+            "force_fields": ["Status P1", "Status"],
+        }
+        try:
+            resp = requests.post(
+                f"{dashboard_url}/api/client/push",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30)
+            if resp.status_code == 200:
+                rj = resp.json()
+                if rj.get("status") == "success":
+                    self.root.after(0, lambda: self.log(f"✅ Status poll: synced to dashboard"))
+                else:
+                    self.root.after(0, lambda m=rj.get('message', '?'):
+                        self.log(f"⚠ Status poll push rejected: {m}", "WARN"))
+            else:
+                self.root.after(0, lambda s=resp.status_code, t=resp.text[:200]:
+                    self.log(f"⚠ Status poll push HTTP {s}: {t}", "WARN"))
+        except Exception as e:
+            self.root.after(0, lambda err=str(e):
+                self.log(f"⚠ Status poll push error: {err}", "WARN"))
 
     def _auto_detect_breached_accounts(self, firm_name, account, acct_mapping=None):
         """
@@ -5934,54 +7355,122 @@ class TraderCompanionApp:
                         self.log(f"🔍 Breach check: no mapping match for Acct#='{ac}' Acct#.1='{af}'"))
                     continue
 
-                # Check if account is breached
+                # ── Determine account status: Fail / Pass / In Progress ──
                 breached = matched_info.get("breached")
-                if not breached or breached == 0:
-                    self.root.after(0, lambda b=breached:
-                        self.log(f"🔍 Breach check: account not breached (breached={b})"))
-                    continue
-
-                # Account is breached — get detailed info from API if available
-                breach_reason = matched_info.get("breachedby") or "Breached"
-                account_id = matched_info.get("account_id")
-                if account_id and hasattr(account, 'get_account_overview'):
-                    try:
-                        overview = account.get_account_overview(account_id)
-                        if overview:
-                            details = overview.get("account_details", {})
-                            breach_reason = details.get("breached_by") or breach_reason
-                    except Exception:
-                        pass
-
-                # Determine which status field to set
                 acct_display = acct_challenge or acct_funded
                 changes = []
 
-                # If challenge phase is still active and breached
-                if acct_funded:
-                    # Has funded account — set funded status
-                    if not any(kw in current_status for kw in self._INACTIVE_KEYWORDS):
-                        ev["Status"] = f"Failed - {breach_reason}"
-                        changes.append(f"Status='Failed - {breach_reason}'")
+                # Detect current phase for this eval
+                has_funded_acct = bool(acct_funded)
+                if has_funded_acct:
+                    phase_for_status = "Funded"
+                    status_field = "Status"
+                    current_status_check = current_status
                 else:
-                    # Challenge only — set P1 status
-                    if not any(kw in current_status_p1 for kw in self._INACTIVE_KEYWORDS):
-                        ev["Status P1"] = f"Failed - {breach_reason}"
-                        changes.append(f"Status P1='Failed - {breach_reason}'")
+                    phase_for_status = "Challenge"
+                    status_field = "Status P1"
+                    current_status_check = current_status_p1
 
-                if changes:
+                # Skip if already marked with a terminal status
+                if any(kw in current_status_check for kw in self._INACTIVE_KEYWORDS):
+                    self.root.after(0, lambda: self.log(f"🔍 Status check: already inactive, skipping"))
+                    continue
+
+                if breached and breached != 0:
+                    # Account is breached — get detailed info from API if available
+                    breach_reason = matched_info.get("breachedby") or "Breached"
+                    account_id = matched_info.get("account_id")
+                    if account_id and hasattr(account, 'get_account_overview'):
+                        try:
+                            overview = account.get_account_overview(account_id)
+                            if overview:
+                                details = overview.get("account_details", {})
+                                breach_reason = details.get("breached_by") or breach_reason
+                        except Exception:
+                            pass
+
+                    ev[status_field] = "Fail"
+                    changes.append(f"{status_field}='Fail'")
                     breached_count += 1
-                    updated_evals.append(ev)
                     self.root.after(0, lambda a=acct_display, c=", ".join(changes):
                         self.log(f"   🚫 BREACHED: {a} → {c}"))
+                elif self.prop_firm_mgr:
+                    # ── Balance-based auto-status: Pass / In Progress / Fail ──
+                    # Prefer live profit_target / min_equity from dashboard API
+                    acct_balance = matched_info.get("balance")
+                    acct_starting = matched_info.get("starting_balance") or matched_info.get("initial_balance")
+                    live_target = matched_info.get("profit_target")
+                    live_min_eq = matched_info.get("min_equity")
+                    if acct_balance is not None:
+                        try:
+                            bal = float(acct_balance)
+                            start = float(acct_starting) if acct_starting else 50000.0
 
-            if not breached_count:
+                            if live_min_eq is not None or live_target is not None:
+                                # ── Use live values from prop firm dashboard ──
+                                min_eq = float(live_min_eq) if live_min_eq is not None else None
+                                target = float(live_target) if live_target is not None else None
+
+                                if min_eq is not None and bal < min_eq:
+                                    computed = "Fail"
+                                elif target is not None and bal >= (start + target):
+                                    computed = "Pass"
+                                elif abs(bal - start) > 0.50:
+                                    # Balance differs from starting → a trade was placed
+                                    computed = "In Progress"
+                                elif min_eq is not None and target is not None:
+                                    computed = "In Progress"
+                                else:
+                                    computed = self.prop_firm_mgr.compute_account_status(
+                                        canonical_firm, phase_for_status, bal, start,
+                                        breached=False)
+                            else:
+                                # ── No live data — fall back to hardcoded targets ──
+                                computed = self.prop_firm_mgr.compute_account_status(
+                                    canonical_firm, phase_for_status, bal, start,
+                                    breached=False)
+
+                            # If balance is exactly the starting balance, keep "Not Started"
+                            if computed == "In Progress" and abs(bal - start) < 0.50:
+                                if current_status_check in ("not started", ""):
+                                    computed = None  # no change — no trade placed yet
+
+                            # Only update if status actually changed
+                            last_key = f"{acct_display}_{status_field}"
+                            last_known = self._last_known_statuses.get(last_key)
+                            if computed and computed.lower() != current_status_check and computed != last_known:
+                                self._last_known_statuses[last_key] = computed
+                                if computed == "Pass":
+                                    ev[status_field] = "Pass"
+                                    changes.append(f"{status_field}='Pass'")
+                                    self.root.after(0, lambda a=acct_display, b=bal, s=start:
+                                        self.log(f"   ✅ PASS: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
+                                elif computed == "In Progress":
+                                    ev[status_field] = "In Progress"
+                                    changes.append(f"{status_field}='In Progress'")
+                                    self.root.after(0, lambda a=acct_display, b=bal, s=start:
+                                        self.log(f"   🔄 IN PROGRESS: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
+                                elif computed == "Fail":
+                                    ev[status_field] = "Fail"
+                                    changes.append(f"{status_field}='Fail'")
+                                    breached_count += 1
+                                    self.root.after(0, lambda a=acct_display, b=bal, s=start:
+                                        self.log(f"   🚫 FAIL: {a} — balance=${b:,.2f} (start=${s:,.0f})"))
+                        except (ValueError, TypeError) as _e:
+                            self.root.after(0, lambda a=acct_display, b=acct_balance, err=str(_e):
+                                self.log(f"⚠ {a}: couldn't parse balance '{b}': {err}", "WARN"))
+
+                if changes:
+                    updated_evals.append(ev)
+
+            status_updates = len(updated_evals)
+            if not status_updates:
                 self.root.after(0, lambda:
-                    self.log(f"🌐 {firm_name}: No breached accounts detected"))
+                    self.log(f"🌐 {firm_name}: No status changes detected"))
                 return
 
-            self.root.after(0, lambda c=breached_count:
-                self.log(f"🌐 {firm_name}: {c} breached account(s) — pushing status updates..."))
+            self.root.after(0, lambda c=status_updates, b=breached_count:
+                self.log(f"🌐 {firm_name}: {c} status update(s) ({b} breached) — pushing to dashboard..."))
 
             # Push to dashboard
             email = self.client_email_entry.get().strip()
@@ -5993,7 +7482,8 @@ class TraderCompanionApp:
                 "email": email,
                 "evaluations": all_evals,
                 "statistics": {},
-                "dropdown_options": {}
+                "dropdown_options": {},
+                "force_fields": ["Status P1", "Status"],
             }
 
             try:
@@ -6005,8 +7495,8 @@ class TraderCompanionApp:
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("status") == "success":
-                        self.root.after(0, lambda c=breached_count:
-                            self.log(f"✅ Auto-failed {c} breached account(s) → synced to dashboard"))
+                        self.root.after(0, lambda c=status_updates, b=breached_count:
+                            self.log(f"✅ Auto-status: {c} update(s) ({b} failed) → synced to dashboard"))
                     else:
                         self.root.after(0, lambda m=data.get('message', 'Unknown'):
                             self.log(f"⚠ Breach sync response: {m}", "WARN"))
@@ -6031,6 +7521,11 @@ class TraderCompanionApp:
         if conn is not None:
             return None
         # Legacy fallback: only for setups without multi-firm broker panel
+        # Auto-detect TopStep firms to use TopStepX
+        if "topstep" in firm_name.lower():
+            if self.topstepx_account:
+                return self.topstepx_account
+            return None
         platform = self.broker_var.get()
         if platform == "Tradovate" and self.tradovate_account:
             return self.tradovate_account
@@ -6334,7 +7829,7 @@ class TraderCompanionApp:
 def main():
     """Main entry point."""
     if GUI_AVAILABLE:
-        app = TraderCompanionApp()
+        app = TradeOpssAIApp()
         app.run()
     else:
         print("=" * 50)

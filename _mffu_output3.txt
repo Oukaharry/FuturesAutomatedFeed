@@ -1,0 +1,442 @@
+﻿
+=== PROFILE ===
+200 | {"business_id":1,"id":223761,"uuid":"30eefd80-6304-48ad-ab63-40a6dde3a912","username":"jhicken7","email":"joshicken@gmail.com","last_login":"2026-04-09T08:15:02.657517","role":"user","firstName":"Joseph","lastName":"Hicken","addressLine1":"2046 N Red Yearling Dr","addressLine2":"","city":"Saratoga Springs","state":"UT","postalCode":"84045","country":"US","defaultFuturesAccount":{"id":"b30d87ec-a5ea-4a4c-a2b9-2ea5ae1e9524","account_id":"30238161","account_name":"MFFUSFSCL223761110","created_at":"2025-10-05T22:48:01.234558","stage":"Sim Funded","step":1,"status":"Failed","broker":"Tradovate","platform":"Tradovate","visible":true,"ended_at":"2025-10-07T18:59:07.986674","updated_at":"2025-10-07T18:59:07.986998","balance":50930.32,"profit_target":0,"pnl":930.3199999999997,"starting_balance":50000.0,"max_drawdown_amount":2000,"funded":true,"activated":true,"daily_loss_limit":0.0,"daily_minimum_balance":0.0,"price_plan_id":58,"resets_to_plan_id":58,"product":{"sim_funded_resets":false,"category":"Scale","description":""},"activation_fee":false,"minimum_balance":48930.32,"minimum_balance_lock":50100.0,"drawdown_mode":"EOD","subscription_id":null,"next_billing_date":null,"cancels_on":null,"auto_renew":null,"live_account":false,"profit_above_buffer":930.3199999999997,"profit_below_buffer":0.0,"next_withdrawal_date":"2025-10-11","competition":null,"consistency_rule":false,"consistency_percentage":0.0,"minimum_trading_days":2,"trading_enabled":false,"max_position_size":1,"max_position_size_micros":5,"reset":{"allowed":false,"reason":"Cannot reset a funded account."},"funded_reset":{"allowed":false,"reason":"Cannot reset a funded account."},"minimum_withdrawal_amount":250.0,"withdrawal_cap_amount":1500.0,"time_based_requirements":false,"performance_based_requirements":true,"initial_withdrawal_days":5,"subsequent_withdrawal_days":5,"minimum_payout_trading_days":5,"minimum_payout_profit_per_day":100.0},"frontendSettings":{"hide_failed":false,"aggregation_basis":"bias"},"cme_status":"","phone":"19522158168","signatures_required":{"funded_account_agreement":false},"affiliate":false,"mfa_enabled":false,"user_timezone":"US/Eastern","marketing_opt_in":false,"email_verified":true,"moving_to_live":false,"auth_provider":"password","kyc":{"status":"reviewed","approved":true},"phone_verified":false}
+
+=== SUBSCRIPTIONS ===
+405 | {"detail":"Method \"GET\" not allowed."}
+
+=== RECEIPTS ===
+405 | {"detail":"Method \"GET\" not allowed."}
+
+=== PAYMENT METHODS ===
+200 | {"ok":[{"method_id":138697,"static_processor_id":1,"payment_type":"card","card_exp_year":"2028","card_exp_month":"9","card_name":"Joseph Hicken","card_number":"515676********6573","card_brand":"MASTERCARD","card_zip":"84045","account_id":"","account_name":"","account_type":"","account_subtype":"","institution_name":"","plaid_status":""},{"method_id":255244,"static_processor_id":1,"payment_type":"card","card_exp_year":"2028","card_exp_month":"4","card_name":"Joseph Hicken","card_number":"521267********0184","card_brand":"MASTERCARD","card_zip":"84045","account_id":"","account_name":"","account_type":"","account_subtype":"","institution_name":"","plaid_status":""},{"method_id":354410,"static_processor_id":1,"payment_type":"card","card_exp_year":"2030","card_exp_month":"6","card_name":"Joseph A Hicken","card_number":"41470990********4105","card_brand":"VISA","card_zip":"84045","account_id":"","account_name":"","account_type":"","account_subtype":"","institution_name":"","plaid_status":""}]}
+
+=== SUPPORTED PROCESSORS ===
+200 | {"ok":{"card":[{"id":2,"active":true,"staff_only":false,"public":true,"payment_type":"card","static_processor_id":1,"has_tokenization":true},{"id":7,"active":true,"staff_only":false,"public":true,"payment_type":"card","static_processor_id":6,"has_tokenization":true}],"crypto":[{"id":4,"active":true,"staff_only":false,"public":true,"payment_type":"crypto","static_processor_id":3,"has_tokenization":false}]}}
+
+=== SITE ALERTS ===
+200 | {"ok":[]}
+
+=== GLOBAL SETTINGS ===
+{}
+
+=== ACCOUNTS ===
+404 | 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</h1><p>The requested resource was not found on this server.</p>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e982c4d6ee28656',t:'MTc3NTcyMzY3MA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
+
+
+=== PAYOUTS ===
+404 | 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</h1><p>The requested resource was not found on this server.</p>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e982c504e1f8656',t:'MTc3NTcyMzY3MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
+
+
+=== STATS ===
+404 | 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</h1><p>The requested resource was not found on this server.</p>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e982c52fcff8656',t:'MTc3NTcyMzY3MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
+
+
+=== CERTIFICATES ===
+405 | {"detail":"Method \"GET\" not allowed."}
+
+=== PROMOTIONS ===
+404 | 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</h1><p>The requested resource was not found on this server.</p>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e982c5808a08656',t:'MTc3NTcyMzY3Mg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
+
+
+=== AFFILIATES ===
+404 | 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</h1><p>The requested resource was not found on this server.</p>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e982c5ac8128656',t:'MTc3NTcyMzY3Mg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
+
+
+=== PLATFORMS ===
+404 | 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</h1><p>The requested resource was not found on this server.</p>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9e982c5d6e058656',t:'MTc3NTcyMzY3Mw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
+
+
+=== NAVIGATING TO ACCOUNTS PAGE ===
+URL: https://myfundedfutures.com/accounts
+
+=== ACCOUNTS PAGE TEXT ===
+Stats
+
+Leaderboard
+
+Affiliates
+
+Billing
+
+Accounts
+
+Promotions
+
+Payouts
+
+Certificates
+
+Platforms
+
+Personal Settings
+
+Help Center
+
+Trade Copier
+Start Challenge
+LOG OUT
+Accounts
+Hide failed
+All Stages
+All Categories
+In Progress
+
+
+RESET
+NUMBER
+	START DATE
+	STAGE
+	STATUS
+	BROKER
+	PLATFORM
+	VISIBLE IN DROPDOWN
+	NEXT BILLING DATE
+	END DATE
+	ACTIONS
+
+
+Per page:
+10
+
+
+=== NEW API REQUESTS ===
+[fetch] https://app.fundedcms.com/api/global-setting?pLevel
+[fetch] https://api.myfundedfutures.com/api/getWSToken/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getProfile/
+[xmlhttprequest] https://api.myfundedfutures.com/api/user-prop-account-categories/
+[xmlhttprequest] https://api.myfundedfutures.com/api/user-prop-accounts/?page=1&page_size=10&status=In+Progress
+[xmlhttprequest] https://api.myfundedfutures.com/api/site-alerts/public/
+
+=== NAVIGATING TO PAYOUTS PAGE ===
+
+=== PAYOUTS PAGE TEXT ===
+Stats
+
+Leaderboard
+
+Affiliates
+
+Billing
+
+Accounts
+
+Promotions
+
+Payouts
+
+Certificates
+
+Platforms
+
+Personal Settings
+
+Help Center
+
+Trade Copier
+Start Challenge
+LOG OUT
+My Payouts
+Available & Upcoming Payouts
+
+You do not currently have any available or upcoming payouts.
+
+Past Payouts
+
+Privacy Mode
+
+MFFUSFSCL223761091
+
+Oct 3, 2025, 01:17:54 PM
+
+Processed
+Submitted
+Oct 3, 2025, 01:17:54 PM
+Funds Removed
+Oct 3, 2025, 01:17:54 PM
+Compliance Reviewed
+Oct 3, 2025, 01:17:54 PM
+Risk Reviewed
+Oct 3, 2025, 01:17:54 PM
+Payment Sent
+Oct 3, 2025, 01:18:03 PM
+
+Payout Amount
+
+$542.40
+
+Profit Share
+
+80%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSCL223761092
+
+Oct 2, 2025, 12:40:40 PM
+
+Processed
+Submitted
+Oct 2, 2025, 12:40:40 PM
+Funds Removed
+Oct 2, 2025, 12:40:40 PM
+Compliance Reviewed
+Oct 2, 2025, 12:40:40 PM
+Risk Reviewed
+Oct 2, 2025, 12:40:40 PM
+Payment Sent
+Oct 2, 2025, 12:40:50 PM
+
+Payout Amount
+
+$846.40
+
+Profit Share
+
+80%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSCL223761092
+
+Sep 23, 2025, 04:30:16 AM
+
+Processed
+Submitted
+Sep 23, 2025, 04:30:16 AM
+Funds Removed
+Sep 23, 2025, 04:30:16 AM
+Compliance Reviewed
+Sep 23, 2025, 04:30:16 AM
+Risk Reviewed
+Sep 23, 2025, 04:30:16 AM
+Payment Sent
+Sep 23, 2025, 04:30:26 AM
+
+Payout Amount
+
+$1,200.00
+
+Profit Share
+
+80%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSCL223761091
+
+Sep 23, 2025, 04:29:51 AM
+
+Processed
+Submitted
+Sep 23, 2025, 04:29:51 AM
+Funds Removed
+Sep 23, 2025, 04:29:51 AM
+Compliance Reviewed
+Sep 23, 2025, 04:29:52 AM
+Risk Reviewed
+Sep 23, 2025, 04:29:52 AM
+Payment Sent
+Sep 23, 2025, 04:30:02 AM
+
+Payout Amount
+
+$1,200.00
+
+Profit Share
+
+80%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSCL223761073
+
+Sep 8, 2025, 05:32:52 AM
+
+Processed
+Submitted
+Sep 8, 2025, 05:32:52 AM
+Funds Removed
+Sep 8, 2025, 05:32:52 AM
+Compliance Reviewed
+Sep 8, 2025, 07:41:22 AM
+Risk Reviewed
+Sep 8, 2025, 07:41:22 AM
+Payment Sent
+Sep 8, 2025, 07:41:32 AM
+
+Payout Amount
+
+$862.98
+
+Profit Share
+
+80%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSTP223761057
+
+Aug 31, 2025, 06:55:46 PM
+
+Processed
+Submitted
+Aug 31, 2025, 06:55:46 PM
+Funds Removed
+Aug 31, 2025, 06:55:46 PM
+Compliance Reviewed
+Aug 31, 2025, 06:55:46 PM
+Risk Reviewed
+Aug 31, 2025, 06:55:46 PM
+Payment Sent
+Aug 31, 2025, 06:55:59 PM
+
+Payout Amount
+
+$1,080.00
+
+Profit Share
+
+90%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSCL223761073
+
+Aug 26, 2025, 09:20:03 AM
+
+Processed
+Submitted
+Aug 26, 2025, 09:20:03 AM
+Funds Removed
+Aug 26, 2025, 09:20:03 AM
+Compliance Reviewed
+Aug 26, 2025, 09:20:03 AM
+Risk Reviewed
+Aug 26, 2025, 09:20:03 AM
+Payment Sent
+Aug 26, 2025, 09:20:13 AM
+
+Payout Amount
+
+$1,200.00
+
+Profit Share
+
+80%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSTP223761043
+
+Aug 26, 2025, 09:18:48 AM
+
+Processed
+Submitted
+Aug 26, 2025, 09:18:48 AM
+Funds Removed
+Aug 26, 2025, 09:18:48 AM
+Compliance Reviewed
+Aug 26, 2025, 09:18:48 AM
+Risk Reviewed
+Aug 26, 2025, 09:18:48 AM
+Payment Sent
+Aug 26, 2025, 09:18:58 AM
+
+Payout Amount
+
+$1,080.00
+
+Profit Share
+
+90%
+
+Account Size
+
+$50,000.00
+
+MFFUSFSTP223761057
+
+Aug 22, 2025, 06:51:50 PM
+
+Processed
+Submitted
+Aug 22, 2025, 06:51:
+
+=== ALL UNIQUE API REQUESTS ===
+[fetch] https://app.fundedcms.com/api/global-setting?pLevel
+[fetch] https://api.myfundedfutures.com/api/getWSToken/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getProfile/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getUserPayoutsPage/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getPastPayouts/?page=0&page_size=10
+[xmlhttprequest] https://api.myfundedfutures.com/api/site-alerts/public/
+
+Done.

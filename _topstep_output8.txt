@@ -1,0 +1,44 @@
+﻿
+=== NormalizedPurchasesByUserRecord FIELDS ===
+200 | {"data":{"__type":{"fields":[{"name":"id","type":{"name":"Int","kind":"SCALAR"}},{"name":"source","type":{"name":"String","kind":"SCALAR"}},{"name":"type","type":{"name":"String","kind":"SCALAR"}},{"name":"amount","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"discount","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"tax","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"subtotal","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"total","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"method","type":{"name":"String","kind":"SCALAR"}},{"name":"gateway","type":{"name":"String","kind":"SCALAR"}},{"name":"gatewayTransactionId","type":{"name":"String","kind":"SCALAR"}},{"name":"processor","type":{"name":"String","kind":"SCALAR"}},{"name":"processorTransactionId","type":{"name":"String","kind":"SCALAR"}},{"name":"paymentStatus","type":{"name":"String","kind":"SCALAR"}},{"name":"fulfillmentStatus","type":{"name":"String","kind":"SCALAR"}},{"name":"couponId","type":{"name":"Int","kind":"SCALAR"}},{"name":"billingStreet","type":{"name":"String","kind":"SCALAR"}},{"name":"billingCity","type":{"name":"String","kind":"SCALAR"}},{"name":"billingRegion","type":{"name":"String","kind":"SCALAR"}},{"name":"billingZip","type":{"name":"String","kind":"SCALAR"}},{"name":"billingCountry","type":{"name":"String","kind":"SCALAR"}},{"name":"shippingStreet","type":{"name":"String","kind":"SCALAR"}},{"name":"shippingCity","type":{"name":"String","kind":"SCALAR"}},{"name":"shippingRegion","type":{"name":"String","kind":"SCALAR"}},{"name":"shippingZip","type":{"name":"String","kind":"SCALAR"}},{"name":"shippingCountry","type":{"name":"String","kind":"SCALAR"}},{"name":"localCurrency","type":{"name":"String","kind":"SCALAR"}},{"name":"taxDisplayedInLocalCurrency","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"invoiceTemplate","type":{"name":"String","kind":"SCALAR"}},{"name":"platform","type":{"name":"Int","kind":"SCALAR"}},{"name":"platformName","type":{"name":"String","kind":"SCALAR"}},{"name":"subscriptionId","type":{"name":"Int","kind":"SCALAR"}},{"name":"accountId","type":{"name":"Int","kind":"SCALAR"}},{"name":"accountName","type":{"name":"String","kind":"SCALAR"}},{"name":"createdAt","type":{"name":"Datetime","kind":"SCALAR"}}]}}}
+
+=== NormalizedSubsByUserRecord FIELDS ===
+200 | {"data":{"__type":{"fields":[{"name":"id","type":{"name":"Int","kind":"SCALAR"}},{"name":"source","type":{"name":"String","kind":"SCALAR"}},{"name":"externalProcessor","type":{"name":"String","kind":"SCALAR"}},{"name":"externalReferenceId","type":{"name":"String","kind":"SCALAR"}},{"name":"productName","type":{"name":"String","kind":"SCALAR"}},{"name":"productPrice","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"amount","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"tax","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"total","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"couponId","type":{"name":"Int","kind":"SCALAR"}},{"name":"couponCode","type":{"name":"String","kind":"SCALAR"}},{"name":"couponIsRecurring","type":{"name":"Boolean","kind":"SCALAR"}},{"name":"selectedPaymentMethod","type":{"name":"String","kind":"SCALAR"}},{"name":"serviceAccessUntil","type":{"name":"Datetime","kind":"SCALAR"}},{"name":"subscriptionCancelledAt","type":{"name":"Datetime","kind":"SCALAR"}},{"name":"createdAt","type":{"name":"Datetime","kind":"SCALAR"}}]}}}
+
+=== NormalizedSubsDetailedByUserRecord FIELDS ===
+200 | {"data":{"__type":{"fields":[{"name":"id","type":{"name":"Int","kind":"SCALAR"}},{"name":"source","type":{"name":"String","kind":"SCALAR"}},{"name":"externalProcessor","type":{"name":"String","kind":"SCALAR"}},{"name":"externalReferenceId","type":{"name":"String","kind":"SCALAR"}},{"name":"productName","type":{"name":"String","kind":"SCALAR"}},{"name":"productPrice","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"amount","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"tax","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"total","type":{"name":"BigFloat","kind":"SCALAR"}},{"name":"couponId","type":{"name":"Int","kind":"SCALAR"}},{"name":"couponCode","type":{"name":"String","kind":"SCALAR"}},{"name":"couponIsRecurring","type":{"name":"Boolean","kind":"SCALAR"}},{"name":"associatedAccountId","type":{"name":"Int","kind":"SCALAR"}},{"name":"associatedAccountName","type":{"name":"String","kind":"SCALAR"}},{"name":"serviceAccessUntil","type":{"name":"Datetime","kind":"SCALAR"}},{"name":"subscriptionCancelledAt","type":{"name":"Datetime","kind":"SCALAR"}},{"name":"createdAt","type":{"name":"Datetime","kind":"SCALAR"}},{"name":"updatedAt","type":{"name":"Datetime","kind":"SCALAR"}}]}}}
+
+=== NormalizedSavedCardsByUserRecord FIELDS ===
+200 | {"data":{"__type":{"fields":[{"name":"id","type":{"name":"Int","kind":"SCALAR"}},{"name":"source","type":{"name":"String","kind":"SCALAR"}},{"name":"userId","type":{"name":"Int","kind":"SCALAR"}},{"name":"fullName","type":{"name":"String","kind":"SCALAR"}},{"name":"maskedCardNumber","type":{"name":"String","kind":"SCALAR"}},{"name":"cardNumber","type":{"name":"String","kind":"SCALAR"}},{"name":"expirationMonth","type":{"name":"String","kind":"SCALAR"}},{"name":"expirationYear","type":{"name":"String","kind":"SCALAR"}},{"name":"defaultCard","type":{"name":"Boolean","kind":"SCALAR"}},{"name":"active","type":{"name":"Boolean","kind":"SCALAR"}},{"name":"createdAt","type":{"name":"Datetime","kind":"SCALAR"}},{"name":"updatedAt","type":{"name":"Datetime","kind":"SCALAR"}}]}}}
+
+=== NORMALIZED_PURCHASES ===
+200 | {"data":{"normalizedPurchasesByUser":{"nodes":[]}}}
+
+=== NORMALIZED_PURCHASES_2 ===
+200 | {"data":{"normalizedPurchasesByUser":{"nodes":[]}}}
+
+=== PURCHASES_ROOT ===
+400 | {"errors":[{"message":"Unknown argument \"userid\" on field \"Query.purchases\".","locations":[{"line":1,"column":13}],"extensions":{}},{"message":"Cannot query field \"subtotal\" on type \"Purchase\". Did you mean \"total\"?","locations":[{"line":1,"column":49}],"extensions":{}}]}
+
+=== NAVIGATING TO BILLING ===
+URL: https://dashboard.topstep.com/dashboard/profile/billing
+
+=== FULL DOM TEXT ===
+START A TRADING COMBINE
+1
+
+=== LOADING STATE ===
+Spinners/loaders: 2
+Root children: 8
+Root innerHTML length: 19165
+Root innerText length: 23
+
+
+=== BILLING PAGE NETWORK REQUESTS ===
+[xmlhttprequest] https://api.topstep.com/auth/refresh-token
+[xmlhttprequest] https://api.topstep.com/me/profile/
+[xmlhttprequest] https://api.topstep.com/me/accounts/basic?offset=0&limit=15&sortBy=createdAt&sortOrder=desc
+[fetch] https://crystal.topstep.com/graphql/HeaderBannerData
+[xmlhttprequest] https://api.topstep.com/me/billing-v2/failedRebills
+
+Done.

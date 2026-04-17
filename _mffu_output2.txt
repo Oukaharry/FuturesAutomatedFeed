@@ -1,0 +1,187 @@
+﻿=== MFFU TAB ===
+Title: Billing | MyFundedFutures
+URL: https://myfundedfutures.com/billing
+
+URL: https://myfundedfutures.com/billing
+Title: Billing | MyFundedFutures
+
+=== BILLING PAGE CONTENT ===
+Stats
+
+Leaderboard
+
+Affiliates
+
+Billing
+
+Accounts
+
+Promotions
+
+Payouts
+
+Certificates
+
+Platforms
+
+Personal Settings
+
+Help Center
+
+Trade Copier
+Start Challenge
+LOG OUT
+Billing
+
+Payment Methods
+
+MASTERCARD ending in
+
+6573
+
+Expires on 9/2028
+
+MASTERCARD ending in
+
+0184
+
+Expires on 4/2028
+
+VISA ending in
+
+4105
+
+Expires on 6/2030
+
+Add New Payment Method
+
+Prop Account Subscriptions
+
+ALL
+ACTIVE
+EXPIRING
+Start New Challenge
+STARTED	ACCOUNT	RENEWS / EXPIRES	PRICE	COUPON	METHOD	STATUS	ACTIONS
+Sep 29 2025	
+Scale50K
+MFFUEVSCL223761104
+Oct 29 2025	Will not renew	iman	VISA ending in 4105	
+Cancelled
+	
+
+Sep 25 2025	
+Scale50K
+MFFUEVSCL223761103
+Oct 25 2025	$127	iman	VISA ending in 4105	
+Expired
+	
+
+Sep 25 2025	
+Scale50K
+MFFUEVSCL223761102
+Oct 25 2025	$127	iman	VISA ending in 4105	
+Expired
+	
+
+Sep 24 2025	
+Scale50K
+MFFUEVSCL223761101
+Oct 24 2025	Will not renew	iman	VISA ending in 4105	
+Cancelled
+	
+
+Sep 23 2025	
+Scale50K
+MFFUEVSCL223761100
+Oct 23 2025	$127	iman	MASTERCARD ending in 6573	
+Expired
+	
+Per page:
+5
+
+1
+2
+3
+4
+5
+…
+9
+
+Prop Account Receipts
+
+
+
+
+DATE
+SORTED ASCENDING
+	BILLING NUMBER
+	ACCOUNT
+	PRICE
+	STATUS
+	CATEGORY
+
+
+Per page:
+10
+
+
+=== ACCOUNT DATA SEARCH ===
+Accounts
+Account Subscriptions
+ACCOUNT	RENEWS
+Account Receipts
+ACCOUNT
+	PRICE
+Challenge
+ACTIVE
+
+=== FRAMEWORK DETECTION ===
+Next.js
+
+=== NETWORK REQUESTS (API) ===
+[xmlhttprequest] https://myfundedfutures.com/_next/static/css/8d0742c7e414cbe0.css
+[fetch] https://app.fundedcms.com/api/global-setting?pLevel
+[fetch] https://ph.myfundedfutures.com/flags/?v=2&config=true&ip=0&_=1775722507059&ver=1.289.0&compression=base64
+[fetch] https://cdn.segment.com/v1/projects/lmhsqUuB1q9LGeeNEsPxDWYuDfea2BxG/settings
+[fetch] https://myfundedfutures.com/_vercel/insights/view
+[fetch] https://ph.myfundedfutures.com/e/?ip=0&_=1775722507078&ver=1.289.0&compression=gzip-js
+[fetch] https://api.myfundedfutures.com/api/getWSToken/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getProfile/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getSubscriptions/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getReceipts/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getSupportedProcessors/
+[xmlhttprequest] https://api.myfundedfutures.com/api/getUserPaymentMethods/
+[xmlhttprequest] https://api.myfundedfutures.com/api/site-alerts/public/
+[fetch] https://api.iconify.design/streamline.json?icons=user-sync-online-in-person-solid
+[fetch] https://api.iconify.design/mdi.json?icons=logout%2Cmagnify%2Ctrophy
+[fetch] https://api.iconify.design/majesticons.json?icons=calendar-line
+[fetch] https://api.simplesvg.com/streamline.json?icons=user-sync-online-in-person-solid
+[fetch] https://api.simplesvg.com/mdi.json?icons=logout%2Cmagnify%2Ctrophy
+[fetch] https://api.simplesvg.com/majesticons.json?icons=calendar-line
+[fetch] https://ph.myfundedfutures.com/i/v0/e/?ip=0&_=1775722515596&ver=1.289.0&compression=gzip-js
+
+=== ALL LINKS ===
+https://myfundedfutures.com/ | 
+https://myfundedfutures.com/challenge | Start Challenge
+
+=== LOCAL STORAGE ===
+settings = {"appBarBlur":true,"contentWidth":"full","direction":"ltr","mode":"dark","navCollapsed":false,"skin":"default","themeColor":"primary","verticalNavToggleType":"accordion"}
+ph_phc_F26KvRwxTDEQqBjbWx6SplfsOLY06yFxrWGYy92nLwt_posthog = {"distinct_id":"019d7122-de5e-7bf3-916f-ce1514b5dc64","$sesid":[1775722516179,"019d7122-de81-7d4e-a8bf-191076c77f12",1775719603839],"$initial_person_info":{"r":"$direct","u":"https://myfundedfutures.com/billing"},"$initialization_time":"2026-04-09T08:15:07.056Z","$configured_session_timeout_ms":1800
+iconify-count = 7
+_vid_lr = [["8PCgBU4NTLk7","en2BfYoSzGXgvtr/J1wewt+33R1+AoXK+NMFKkfanOvdC34BlJzg3RVsV9aT6ssKbFy0juLFFmhf1Yb0xxFsP8KS+JxOfl/C1KnQFHJU0pDj3Qt+FYmc4N1lKSqsjeiWSmQxwpL4nk5+X8LVkJAXNyDQ+/jTBS4MwoT4x3cfAqLr7rFzEA7XnPbdRH5fwsqMpWUpDpX0uM8RNTSXi5mTTjULwpL4jU44R9qc68gQaVLSjO7GH2ld1pCssk86DdWc9t1CLkfa0K+TS3BHg8z4xUkpCY
+_vid_t = vImlKqlYIwZ4lNIkmGHl2r0FkKRqnXPzSROskame/o7riCx5RuTKdvQBsufNVCbc8dJaARBI1Jk+Iwd/PDwSM65vfmGStRLBlGAwtMArqUjBc5iBhg==
+iconify6 = {"cached":493256,"provider":"","data":{"prefix":"mdi","lastModified":1737398331,"aliases":{},"width":24,"height":24,"icons":{"pencil":{"body":"<path fill=\"currentColor\" d=\"M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83l3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-
+_grecaptcha = 09AKhCRwibZliwl7bE6bv0Q6o_PxC01MIx7i87IXg0aozULTXc193lfm7j3mxruRLRN0vMWaZGtE2WRIPJVu5zohQIHVoXMZTJgc-264gjs8yrZiFbNi7dz3LgXeR2mb64
+iconify2 = {"cached":493256,"provider":"","data":{"prefix":"mdi","lastModified":1737398331,"aliases":{},"width":24,"height":24,"icons":{"logout":{"body":"<path fill=\"currentColor\" d=\"m17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5M4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4z\"/>"},"magnify":{
+iconify3 = {"cached":493256,"provider":"","data":{"prefix":"majesticons","lastModified":1754899885,"aliases":{},"width":24,"height":24,"icons":{"calendar-line":{"body":"<path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 9v10a2 2 0 0 0 2 2h12
+iconify-version = iconify2
+iconify4 = {"cached":493256,"provider":"","data":{"prefix":"streamline","lastModified":1748325452,"aliases":{},"width":14,"height":14,"icons":{"user-sync-online-in-person-solid":{"body":"<path fill=\"currentColor\" fill-rule=\"evenodd\" d=\"M10.213 2.538A5.499 5.499 0 0 0 1.595 8.01a.75.75 0 0 1-1.474.277a6.99
+iconify1 = {"cached":493255,"provider":"","data":{"prefix":"mdi","lastModified":1737398331,"aliases":{},"width":24,"height":24,"icons":{"eye-off-outline":{"body":"<path fill=\"currentColor\" d=\"M2 5.27L3.28 4L20 20.72L18.73 22l-3.08-3.08c-1.15.38-2.37.58-3.65.58c-5 0-9.27-3.11-11-7.5c.69-1.76 1.79-3.31 3.19-4
+iconify0 = {"cached":493255,"provider":"","data":{"prefix":"ion","lastModified":1773121730,"aliases":{},"width":512,"height":512,"icons":{"checkmark":{"body":"<path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"32\" d=\"M416 128L192 384l-96-96\"/>"}}}}
+intercom.intercom-state-q04ao2hz = {"app":{"openConfig":{"unifiedStyling":true,"openTo":"home","spaces":[{"type":"home","label":"Home","navigationLabel":"Home","badge":null},{"type":"messages","label":"Messages","navigationLabel":"Messages","badge":null},{"type":"help","label":"Help","navigationLabel":"Help","badge":null}],"userHasRe
+iconify5 = {"cached":493256,"provider":"","data":{"prefix":"mdi","lastModified":1737398331,"aliases":{},"width":24,"height":24,"icons":{"dots-vertical":{"body":"<path fill=\"currentColor\" d=\"M12 16a2 2 0 0 1 2 2a2 2 0 0 1-2 2a2 2 0 0 1-2-2a2 2 0 0 1 2-2m0-6a2 2 0 0 1 2 2a2 2 0 0 1-2 2a2 2 0 0 1-2-2a2 2 0 0 1
+
+=== COOKIES ===
+intercom-id-q04ao2hz=b57e2189-4f1a-470f-afec-3f08b1906648; intercom-device-id-q04ao2hz=912be02c-f1ea-4f48-aed3-14ec3f616ecf; g_state={"i_l":0,"i_ll":1775719961833,"i_b":"CoHGnwKPWXi7uRUPpMQvQH1eyfGigpElk75nMY8m+5o","i_e":{"enable_itp_optimization":0}}; _vid_t=vImlKqlYIwZ4lNIkmGHl2r0FkKRqnXPzSROskame/o7riCx5RuTKdvQBsufNVCbc8dJaARBI1Jk+Iwd/PDwSM65vfmGStRLBlGAwtMArqUjBc5iBhg==; _mf_logged_in=1775744102; usr=jhicken7; intercom-session-q04ao2hz=ZXBHMVIyNmgwOEZiaUdBZ2wrWU1oUDhaT0pDZ0pra1hGV2pXWXMrMnd3KzVvWUFBbG8zRkt2SUpVMU1FekF6Sk9aWlI0emp5ZWduc2gvUCtTWm1uam5UYVJYUld5UlYwY2RaT3F6UFpzYjNsRkRqTHZUeXdNNmZ5SmMxTGZtcHpKT0Z3SnZkVkU5UlIzVmhtM0s4d1ZsVHpSVGgzS2s4TFhxWG9UUG5zTUoyYlZ6eTZvWk5QRjIxbzdSZ3piQkU0WndoL0dHc2R3NXdQcTY4QUpXZTFUY0c0YkFRaVZZRXUya3RCUmdYSFMrVT0tLVdVQzhBNFkvckNTSkF6ZUs1dkQ1MXc9PQ==--9c7f5a7950d4ea0f030def3c0dc300c88b4199ac; ph_phc_F26KvRwxTDEQqBjbWx6SplfsOLY06yFxrWGYy92nLwt_posthog=%7B%22distinct_id%22%3A%22019d7122-de5e-7bf3-916f-ce1514b5dc64%22%2C%22%24sesid%22%3A%5B1775722516179%2C%22019d7122-de81-7d4e-a8bf-191076c77f12%22%2C1775719603839%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fmyfundedfutures.com%2Fbilling%22%7D%7D
+
+Done.

@@ -1,0 +1,58 @@
+﻿python : C:\Users\harry\Music\MT5HedgingEngine\_explore_mffu8.py:53: 
+SyntaxWarning: invalid escape sequence '\('
+At line:1 char:32
++ $env:PYTHONIOENCODING='utf-8'; python _explore_mffu8.py 2>&1 | Out-Fi ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\harry\...e sequence '\(' 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  const concatMatches = text.match(/concat\([^)]*api[^)]*\)/gi) || [];
+=== PAYOUTS CHUNK - FETCH/API CALLS ===
+API URL strings: 
+
+Concat with api: 
+
+FETCH near payout: ...ate)([]),[h,p]=(0,a.useState)([]),[y,j]=(0,a.useState)([]),[b,f]=(0,a.useState)({status:""}),[v,Z]=(0,a.useState)(10),[_,k]=(0,a.useState)(0),[P,C]=(0,a.useState)(0),R=(0,a.useCallback)(()=>{n(!0),(0,d.j)({method:"GET",secure:!0,url:"getUserPayoutsPage/"},e=>{(null==e?void 0:e.ok)?(l(e.ok.available_payouts||[]),m(e.ok.upcoming_payouts||[]),p(e.ok.trading_awards||[])):x.ZP.error((null==e?void 0:e.error)||"Failed to fetch payout data"),n(!1)})},[]),z=(0,a.useCallback)(()=>{(0,d.j)({method:"GET",se
+
+FETCH near payout: ...([]),[y,j]=(0,a.useState)([]),[b,f]=(0,a.useState)({status:""}),[v,Z]=(0,a.useState)(10),[_,k]=(0,a.useState)(0),[P,C]=(0,a.useState)(0),R=(0,a.useCallback)(()=>{n(!0),(0,d.j)({method:"GET",secure:!0,url:"getUserPayoutsPage/"},e=>{(null==e?void 0:e.ok)?(l(e.ok.available_payouts||[]),m(e.ok.upcoming_payouts||[]),p(e.ok.trading_awards||[])):x.ZP.error((null==e?void 0:e.error)||"Failed to fetch payout data"),n(!1)})},[]),z=(0,a.useCallback)(()=>{(0,d.j)({method:"GET",secure:!0,url:"getPastPayouts/?
+
+FETCH near payout: ...(0,a.useState)(0),[P,C]=(0,a.useState)(0),R=(0,a.useCallback)(()=>{n(!0),(0,d.j)({method:"GET",secure:!0,url:"getUserPayoutsPage/"},e=>{(null==e?void 0:e.ok)?(l(e.ok.available_payouts||[]),m(e.ok.upcoming_payouts||[]),p(e.ok.trading_awards||[])):x.ZP.error((null==e?void 0:e.error)||"Failed to fetch payout data"),n(!1)})},[]),z=(0,a.useCallback)(()=>{(0,d.j)({method:"GET",secure:!0,url:"getPastPayouts/?page=".concat(_,"&page_size=").concat(v)},e=>{if(e.ok){var t,n;(null==e?void 0:null===(n=e.ok)|
+
+FETCH near payout: ...,z=(0,a.useCallback)(()=>{(0,d.j)({method:"GET",secure:!0,url:"getPastPayouts/?page=".concat(_,"&page_size=").concat(v)},e=>{if(e.ok){var t,n;(null==e?void 0:null===(n=e.ok)||void 0===n?void 0:null===(t=n.data)||void 0===t?void 0:t.user_verification)&&f(e.ok.data.user_verification),j(e.ok.data.past_payouts),C(e.ok.total)}else x.ZP.error("Failed to fetch past payouts")})},[_,v]);(0,a.useEffect)(()=>{R()},[R]),(0,a.useEffect)(()=>{z()},[z]);let I=(0,a.useCallback)(()=>{R(),z()},[R,z]);return(0,r.j
+
+FETCH near payout: ...:"getPastPayouts/?page=".concat(_,"&page_size=").concat(v)},e=>{if(e.ok){var t,n;(null==e?void 0:null===(n=e.ok)||void 0===n?void 0:null===(t=n.data)||void 0===t?void 0:t.user_verification)&&f(e.ok.data.user_verification),j(e.ok.data.past_payouts),C(e.ok.total)}else x.ZP.error("Failed to fetch past payouts")})},[_,v]);(0,a.useEffect)(()=>{R()},[R]),(0,a.useEffect)(()=>{z()},[z]);let I=(0,a.useCallback)(()=>{R(),z()},[R,z]);return(0,r.jsxs)(r.Fragment,{children:[(0,r.jsxs)(w(),{children:[(0,r.jsx
+
+FETCH near payout: ...v]);(0,a.useEffect)(()=>{R()},[R]),(0,a.useEffect)(()=>{z()},[z]);let I=(0,a.useCallback)(()=>{R(),z()},[R,z]);return(0,r.jsxs)(r.Fragment,{children:[(0,r.jsxs)(w(),{children:[(0,r.jsx)("title",{children:"Payouts | ".concat(g.Wg.firm_name)}),(0,r.jsx)("meta",{name:"description",content:"Manage your payouts and earnings on ".concat(g.Wg.firm_name,". Track your trading profits and request withdrawals.")}),(0,r.jsx)("link",{rel:"canonical",href:(0,S.Z)("/payouts")})]}),(0,r.jsxs)(em,{children:[(0,r
+
+FETCH near payout: ...sxs)(w(),{children:[(0,r.jsx)("title",{children:"Payouts | ".concat(g.Wg.firm_name)}),(0,r.jsx)("meta",{name:"description",content:"Manage your payouts and earnings on ".concat(g.Wg.firm_name,". Track your trading profits and request withdrawals.")}),(0,r.jsx)("link",{rel:"canonical",href:(0,S.Z)("/payouts")})]}),(0,r.jsxs)(em,{children:[(0,r.jsx)(s.Z,{className:"flex items-center",children:(0,r.jsx)(o.Z,{variant:"h4",component:"h1",sx:{fontWeight:500},children:"My Payouts"})}),(0,r.jsx)(el,{use
+
+=== SHARED CHUNK 1298 - PAYOUT API CALLS ===
+(no getpayout found)
+
+=== PROPBACKEND API ===
+404 | 
+<!doctype html>
+<html lang="en">
+<head>
+  <title>Not Found</title>
+</head>
+<body>
+  <h1>Not Found</h1><p>The requested resource was not found on this server.</p>
+</body>
+</html>
+
+
+=== PGW TOKEN ===
+200 | {"exp":1775744102,"hash":"96f8081636f3eeca70e46230abc268e539b8b77fd3ee9eac7372956b0d912819","sub":"30eefd80-6304-48ad-ab63-40a6dde3a912","token":"9ce558f0-2009-4f13-a986-34f559f2738b","type":"jwt"}
+
+=== GLOBAL API SERVICE ===
+(no global API service)
+
+=== REACT COMPONENT TREE ===
+no fiber
+
+=== WS CONNECTION CHECK ===
+(no WS in performance entries)
+
+Done.

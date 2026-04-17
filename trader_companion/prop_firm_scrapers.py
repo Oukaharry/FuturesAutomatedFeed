@@ -467,26 +467,91 @@ class TradeifyAccount(CDPBase):
             return stats
 
     def get_billing_history(self):
-        """Get subscriptions as billing history."""
-        result = self._fetch_json(f"{self.BASE}/api/dashboard/get-subscription-list?page=1&page_size=100")
-        if not result:
-            return []
-        # Response: {success, data: [...], meta: {count, ...}}
-        items = result.get('data', [])
-        if not isinstance(items, list):
-            items = items.get('results', []) if isinstance(items, dict) else []
+        """Get order history as billing records with Tradovate account linking."""
         billing = []
-        for item in items:
-            billing.append({
-                "sn": str(item.get("id", "")),
-                "account_no": str(item.get("account_number", item.get("id", ""))),
-                "status": "APPROVED" if str(item.get("status", "")).lower() in ("active", "paid", "approved") else str(item.get("status", "")),
-                "date": str(item.get("created_at", item.get("date", "")))[:10],
-                "paid_amount": f"${item.get('price', item.get('amount', 0))}",
-                "paid_amount_numeric": float(item.get("price", item.get("amount", 0)) or 0),
-                "funding_package": item.get("product", item.get("plan", item.get("name", ""))),
-            })
+        page = 1
+        while True:
+            result = self._fetch_json(
+                f"{self.BASE}/api/dashboard/get-order-list?page={page}&page_size=100")
+            if not result or not isinstance(result, dict):
+                break
+            items = result.get('data', [])
+            if not isinstance(items, list) or not items:
+                break
+            for item in items:
+                plan = item.get('plan', {}) or {}
+                payment = item.get('payment', {}) or {}
+                broker_acct = item.get('broker_account', {}) or {}
+                status_raw = str(item.get('status', '')).lower()
+                price = float(item.get('amount', payment.get('amount_paid', plan.get('price', 0))) or 0)
+                acct_no = broker_acct.get('broker_account_id', broker_acct.get('account_id', ''))
+                billing.append({
+                    "sn": str(item.get("id", "")),
+                    "account_no": acct_no or str(item.get("id", "")),
+                    "login": acct_no,
+                    "status": "APPROVED" if status_raw in ("completed", "active", "paid", "approved") else str(item.get("status", "")),
+                    "date": str(item.get("created_at", ""))[:10],
+                    "paid_amount": f"${price:.2f}",
+                    "paid_amount_numeric": price,
+                    "funding_package": f"{plan.get('plan_type', '')} {plan.get('account_type', '')}".strip(),
+                    "order_type": item.get("order_type", ""),
+                    "coupon_code": (item.get('coupon_data') or {}).get('code', ''),
+                    "payment_method": payment.get("payment_method", ""),
+                    "transaction_id": payment.get("transaction_id", ""),
+                })
+            meta = result.get('meta', {})
+            if page >= meta.get('total_pages', 1):
+                break
+            page += 1
         return billing
+
+    def get_account_mapping(self):
+        """Map Tradeify broker_account_id -> Tradovate account info.
+
+        Uses get-order-list (broker_account has tradovate account_id) and
+        account-overview (has broker_account_id + account_id) to build
+        a mapping keyed by broker_account_id.
+        """
+        mapping = {}
+        # account-overview gives broker_account_id -> account_id
+        overview = self._fetch_json(
+            f"{self.BASE}/api/dashboard/account-overview?hide_blown_account=false&page=1&page_size=100")
+        if overview and overview.get('success'):
+            outer = overview.get('data', {})
+            items = outer.get('data', []) if isinstance(outer, dict) else []
+            for item in (items if isinstance(items, list) else []):
+                bid = item.get('broker_account_id', '')
+                if bid:
+                    balance = item.get('account_balance')
+                    initial = item.get('initial_balance')
+                    profit_target = item.get('profit_target')
+                    daily_loss = item.get('daily_loss_limit')
+                    # min_equity = initial_balance - daily_loss_limit
+                    min_equity = None
+                    if initial is not None and daily_loss is not None:
+                        try:
+                            min_equity = float(initial) - float(daily_loss)
+                        except (ValueError, TypeError):
+                            pass
+                    acct_status = item.get('account_status', '')
+                    mapping[bid] = {
+                        "tradovate_account_name": bid,
+                        "tradovate_account_id": item.get('account_id'),
+                        "account_type": item.get('account_type'),
+                        "funded_status": item.get('funded_status'),
+                        "account_status": acct_status,
+                        "initial_balance": initial,
+                        "balance": balance,
+                        "starting_balance": initial,
+                        "profit_target": profit_target,
+                        "min_equity": min_equity,
+                        "breached": str(acct_status).lower() in ("breached", "failed", "blown"),
+                    }
+                    self.logger.info(
+                        f"[MAPPING] broker={bid} account_id={item.get('account_id')} "
+                        f"type={item.get('account_type')} target={profit_target} min_eq={min_equity}")
+        self.logger.info(f"[MAPPING] Built mapping for {len(mapping)} account(s)")
+        return mapping
 
     def get_all_accounts(self):
         """Get all accounts from account-overview endpoint."""
@@ -603,8 +668,81 @@ class LucidTradingAccount(CDPBase):
             return stats
 
     def get_billing_history(self):
-        """Lucid doesn't expose billing history through its API."""
-        return []
+        """Get order history from Lucid's profile/order-history API with account linking."""
+        user_key = self._get_user_key()
+        if not user_key:
+            return []
+        orders = self._fetch_lucid(
+            f"{self.BASE}/api/users/order-history?userKey={user_key}&limit=50&offset=0")
+        if not isinstance(orders, list):
+            return []
+
+        # Build plan label -> accountName mapping for linking orders to accounts
+        acct_by_plan = {}
+        summary = self._fetch_lucid(f"{self.BASE}/api/users/summary/{user_key}")
+        if isinstance(summary, list):
+            for s in summary:
+                label = (s.get('planLabel') or '').strip()
+                name = s.get('accountName', '')
+                if label and name:
+                    acct_by_plan[label] = name
+
+        billing = []
+        for item in orders:
+            amount = float(item.get("totalAmount", 0) or 0)
+            status_raw = str(item.get("status", "")).lower()
+            product = item.get("productNames", "")
+            # Resolve account name: match productNames against planLabel
+            # e.g. "LucidFlex 50K NT_TDV" matches planLabel "LucidFlex 50K"
+            matched_acct = ""
+            for label, acct_name in acct_by_plan.items():
+                if label in product or product in label:
+                    matched_acct = acct_name
+                    break
+            billing.append({
+                "sn": str(item.get("orderId", "")),
+                "account_no": matched_acct or str(item.get("orderId", "")),
+                "login": matched_acct,
+                "status": "APPROVED" if status_raw in ("completed", "active", "paid", "approved") else str(item.get("status", "")),
+                "date": str(item.get("dateCreated", ""))[:10],
+                "paid_amount": f"${amount:.2f}",
+                "paid_amount_numeric": amount,
+                "funding_package": product,
+                "payment_method": item.get("paymentMethodTitle", ""),
+                "transaction_id": item.get("transactionId", ""),
+            })
+        return billing
+
+    def get_account_mapping(self):
+        """Map Lucid account names to summary info for billing linking."""
+        user_key = self._get_user_key()
+        if not user_key:
+            return {}
+        summary = self._fetch_lucid(f"{self.BASE}/api/users/summary/{user_key}")
+        if not isinstance(summary, list):
+            return {}
+        mapping = {}
+        for s in summary:
+            name = s.get('accountName', '')
+            if name:
+                balance = s.get('accountBalance')
+                min_equity = s.get('minAccountBalance')  # minimum account balance before breach
+                profit_target = s.get('profitTarget')     # target to pass
+                status_raw = s.get('status', '')
+                mapping[name] = {
+                    "tradovate_account_name": name,
+                    "plan_title": s.get('planLabel', s.get('planCode', '')),
+                    "balance": balance,
+                    "starting_balance": None,
+                    "status": status_raw,
+                    "profit_target": profit_target,
+                    "min_equity": min_equity,
+                    "breached": str(status_raw).lower() in ("breached", "failed", "blown"),
+                }
+                self.logger.info(f"[MAPPING] account={name} plan={s.get('planLabel')} "
+                                 f"target={profit_target} min_eq={min_equity}")
+        self.logger.info(f"[MAPPING] Built mapping for {len(mapping)} account(s)")
+        return mapping
 
     def get_all_accounts(self):
         """Get all accounts from summary endpoint."""
@@ -957,10 +1095,17 @@ class MFFUAccount(CDPBase):
             return result.get('body')
 
     def get_billing_history(self):
-        """Get subscriptions + receipts as billing history."""
-        billing = []
+        """Get billing history: try DOM scrape first (has account numbers), then API fallback."""
+        # DOM scrape is preferred because it includes MFFU account numbers
+        # (e.g. MFFUEVSCL223761104) that the API endpoints do not return.
+        dom_billing = self._scrape_billing_dom()
+        if dom_billing:
+            return dom_billing
 
-        # Subscriptions (POST with no body)
+        # Fallback: API endpoints (subscriptions + receipts)
+        billing = []
+        _APPROVED = ("active", "paid", "approved", "processed", "completed", "expired")
+
         subs = self._fetch_post_empty(f"{self.API_BASE}/getSubscriptions/")
         if subs:
             ok = subs.get('ok', subs) if isinstance(subs, dict) else subs
@@ -970,7 +1115,7 @@ class MFFUAccount(CDPBase):
                     billing.append({
                         "sn": str(item.get("id", "")),
                         "account_no": str(item.get("account_name", item.get("id", ""))),
-                        "status": "APPROVED" if str(item.get("status", "")).lower() in ("active", "paid", "approved") else str(item.get("status", "")),
+                        "status": "APPROVED" if str(item.get("status", "")).lower() in _APPROVED else str(item.get("status", "")),
                         "date": str(item.get("created_at", item.get("date", "")))[:10],
                         "paid_amount": f"${item.get('price', item.get('amount', 0))}",
                         "paid_amount_numeric": float(item.get("price", item.get("amount", 0)) or 0),
@@ -979,7 +1124,6 @@ class MFFUAccount(CDPBase):
                         "coupon": item.get("coupon_code", ""),
                     })
 
-        # Receipts (POST with no body)
         receipts = self._fetch_post_empty(f"{self.API_BASE}/getReceipts/")
         if receipts:
             items = receipts.get('ok', receipts) if isinstance(receipts, dict) else receipts
@@ -988,7 +1132,7 @@ class MFFUAccount(CDPBase):
                     billing.append({
                         "sn": str(item.get("order_number", item.get("id", ""))),
                         "account_no": str(item.get("account_name", "")),
-                        "status": "APPROVED" if str(item.get("status", "")).lower() in ("paid", "completed", "approved") else str(item.get("status", "")),
+                        "status": "APPROVED" if str(item.get("status", "")).lower() in _APPROVED else str(item.get("status", "")),
                         "date": str(item.get("created_at", item.get("date", "")))[:10],
                         "paid_amount": f"${item.get('price_paid', item.get('amount', 0))}",
                         "paid_amount_numeric": float(item.get("price_paid", item.get("amount", 0)) or 0),
@@ -996,6 +1140,145 @@ class MFFUAccount(CDPBase):
                     })
 
         return billing
+
+    def _scrape_billing_dom(self):
+        """Scrape billing from the Prop Account Subscriptions table at /billing."""
+        # Navigate to billing page
+        current = self._js("window.location.href") or ""
+        if "/billing" not in current:
+            self._js("window.location.href = 'https://myfundedfutures.com/billing'")
+            time.sleep(4)
+
+        # Extract all rows from the billing table.
+        # Columns: STARTED | ACCOUNT | RENEWS/EXPIRES | PRICE | COUPON | METHOD | STATUS | ACTIONS
+        raw = self._js("""
+            (function() {
+                var rows = document.querySelectorAll('table tbody tr');
+                if (rows.length === 0) {
+                    // Try alternate selectors for Next.js / Tailwind tables
+                    rows = document.querySelectorAll('[class*="billing"] tr, [class*="subscription"] tr');
+                }
+                var results = [];
+                for (var i = 0; i < rows.length; i++) {
+                    var cells = rows[i].querySelectorAll('td');
+                    if (cells.length < 7) continue;
+                    results.push({
+                        started: (cells[0] || {}).innerText || '',
+                        account: (cells[1] || {}).innerText || '',
+                        renews: (cells[2] || {}).innerText || '',
+                        price: (cells[3] || {}).innerText || '',
+                        coupon: (cells[4] || {}).innerText || '',
+                        method: (cells[5] || {}).innerText || '',
+                        status: (cells[6] || {}).innerText || ''
+                    });
+                }
+                return JSON.stringify(results);
+            })()
+        """)
+
+        if not raw:
+            self.logger.warning("[BILLING] DOM scrape returned nothing")
+            return []
+
+        try:
+            items = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            self.logger.warning("[BILLING] DOM scrape JSON parse failed")
+            return []
+
+        billing = []
+        for item in items:
+            # Parse account: may contain badge text + account number, e.g. "Scale50K\nMFFUEVSCL223761104"
+            acct_text = item.get("account", "").strip()
+            acct_lines = [l.strip() for l in acct_text.split("\n") if l.strip()]
+            # Account number is typically the longest line starting with MFFU
+            account_no = ""
+            funding_package = ""
+            for line in acct_lines:
+                if line.upper().startswith("MFFU"):
+                    account_no = line
+                elif not funding_package:
+                    funding_package = line  # e.g. "Scale50K"
+
+            # Parse price
+            price_str = item.get("price", "").strip()
+            price_numeric = 0.0
+            try:
+                price_numeric = float(price_str.replace("$", "").replace(",", "").strip())
+            except (ValueError, AttributeError):
+                # "Will not renew" or empty
+                pass
+
+            # Parse status — map to APPROVED for active/expired paid subscriptions
+            status_raw = item.get("status", "").strip().lower()
+            if status_raw in ("active", "expired") and price_numeric > 0:
+                status = "APPROVED"
+            elif status_raw == "cancelled":
+                status = "CANCELLED"
+            else:
+                status = status_raw.upper()
+
+            # Parse date: "Sep 29 2025" → "2025-09-29"
+            date_str = item.get("started", "").strip()
+            try:
+                from datetime import datetime as _dt
+                parsed = _dt.strptime(date_str, "%b %d %Y")
+                date_str = parsed.strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                pass  # keep as-is
+
+            if account_no and price_numeric > 0:
+                billing.append({
+                    "sn": account_no,
+                    "account_no": account_no,
+                    "status": status,
+                    "date": date_str,
+                    "paid_amount": f"${price_numeric:.2f}",
+                    "paid_amount_numeric": price_numeric,
+                    "funding_package": funding_package,
+                    "payment_method": item.get("method", "").strip(),
+                    "coupon": item.get("coupon", "").strip(),
+                })
+
+        self.logger.info(f"[BILLING] DOM scrape got {len(billing)} record(s)")
+        return billing
+
+    def get_account_mapping(self):
+        """Build login_id → account info mapping from MFFU prop accounts.
+        Returns dict of account_name → {tradovate_account_name, balance, starting_balance, breached, ...}
+        """
+        mapping = {}
+        accounts = self.get_all_accounts()
+        for acct in accounts:
+            acct_name = acct.get("account_name", "")
+            if not acct_name:
+                continue
+            balance = acct.get("balance", acct.get("current_balance"))
+            starting = acct.get("starting_balance", acct.get("initial_balance"))
+            status = acct.get("status", "")
+            breached = status.lower() in ("breached", "failed", "blown") if status else False
+            # Extract profit target and drawdown limit from the account object
+            profit_target = acct.get("profit_target")
+            max_dd = acct.get("max_drawdown_amount", acct.get("max_drawdown"))
+            min_equity = None
+            if starting is not None and max_dd is not None:
+                try:
+                    min_equity = float(starting) - float(max_dd)
+                except (ValueError, TypeError):
+                    pass
+            mapping[acct_name] = {
+                "tradovate_account_name": acct_name,
+                "balance": balance,
+                "starting_balance": starting,
+                "breached": breached,
+                "breachedby": acct.get("breached_by", acct.get("breach_reason", "")),
+                "status": status,
+                "account_id": acct.get("id", ""),
+                "profit_target": profit_target,
+                "min_equity": min_equity,
+            }
+        self.logger.info(f"[MAPPING] Got {len(mapping)} MFFU account(s)")
+        return mapping
 
     def get_all_accounts(self):
         """Get all prop accounts (paginated)."""
@@ -1097,10 +1380,12 @@ class FundedNextCDPAccount(CDPBase):
         if self.username:
             return self.username
         email = self._js("""
-            try {
-                var u = JSON.parse(localStorage.getItem('user') || '{}');
-                return u.email || '';
-            } catch(e) { return ''; }
+            (function() {
+                try {
+                    var u = JSON.parse(localStorage.getItem('user') || '{}');
+                    return u.email || '';
+                } catch(e) { return ''; }
+            })()
         """)
         return email or ""
 
@@ -1311,25 +1596,27 @@ class FundedNextCDPAccount(CDPBase):
             return accounts
 
     def get_billing_history(self):
-        """Fetch billing via FundedNext REST API (Bearer token from tokenV1 cookie)."""
+        """Fetch billing via FundedNext REST API, with DOM scrape fallback."""
         token = self._get_token()
         if not token:
             self.logger.warning("[BILLING] No tokenV1 cookie found")
-            return []
+            return self._scrape_billing_dom()
 
         email = self._get_email()
         if not email:
             self.logger.warning("[BILLING] No email available")
-            return []
+            return self._scrape_billing_dom()
 
         url = f"{self.API_BASE}/pending-payment-history?email={email}&type=1&account_id=&page=1&limit=20"
         data = self._fetch_json_bearer(url, token)
         if not data:
-            return []
+            self.logger.info("[BILLING] API returned empty — falling back to DOM scrape")
+            return self._scrape_billing_dom()
 
         items = data.get("data", {}).get("data", []) if isinstance(data.get("data"), dict) else data.get("data", [])
         if not items:
-            return []
+            self.logger.info("[BILLING] API data empty — falling back to DOM scrape")
+            return self._scrape_billing_dom()
 
         billing = []
         for item in items:
@@ -1349,6 +1636,72 @@ class FundedNextCDPAccount(CDPBase):
             })
 
         self.logger.info(f"[BILLING] Got {len(billing)} records via API")
+        return billing
+
+    def _scrape_billing_dom(self):
+        """Scrape billing history from the DOM table on /billing/billing-history."""
+        self._navigate_to("/billing/billing-history")
+        time.sleep(3)
+
+        raw = self._js("""
+            (function() {
+                var rows = document.querySelectorAll('.ant-table-wrapper table tbody tr.ant-table-row');
+                if (rows.length === 0) {
+                    rows = document.querySelectorAll('table tbody tr');
+                }
+                var results = [];
+                for (var i = 0; i < rows.length; i++) {
+                    var cells = rows[i].querySelectorAll('td');
+                    if (cells.length < 9) continue;
+                    results.push({
+                        sn: cells[0].innerText.trim(),
+                        account_no: cells[1].innerText.trim(),
+                        payment_method: cells[2].innerText.trim(),
+                        status: cells[4].innerText.trim(),
+                        date: cells[5].innerText.trim(),
+                        transaction_id: cells[6].innerText.trim(),
+                        transition_type: cells[7].innerText.trim(),
+                        paid_amount: cells[8].innerText.trim(),
+                        funding_package: cells[9] ? cells[9].innerText.trim() : ''
+                    });
+                }
+                return JSON.stringify(results);
+            })()
+        """)
+
+        if not raw:
+            return []
+
+        try:
+            items = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+
+        billing = []
+        for item in items:
+            amount_str = item.get("paid_amount", "0")
+            amount_num = 0.0
+            try:
+                amount_num = float(amount_str.replace("$", "").replace(",", "").strip())
+            except (ValueError, AttributeError):
+                pass
+
+            billing.append({
+                "sn": item.get("sn", ""),
+                "account_no": item.get("account_no", ""),
+                "payment_method": item.get("payment_method", ""),
+                "invoice": "",
+                "status": item.get("status", "").upper(),
+                "date": item.get("date", ""),
+                "transaction_id": item.get("transaction_id", ""),
+                "transition_type": item.get("transition_type", ""),
+                "paid_amount": f"${amount_num:.2f}" if amount_num else amount_str,
+                "funding_package": item.get("funding_package", ""),
+                "paid_amount_numeric": amount_num,
+                "login": item.get("account_no", ""),
+            })
+
+        self.logger.info(f"[BILLING] Got {len(billing)} records via DOM scrape")
         return billing
 
     def get_payouts(self):
@@ -1393,7 +1746,9 @@ class FundedNextCDPAccount(CDPBase):
                                         starting_balance: acct.starting_balance,
                                         server_type: (acct.server || {}).server_type || null,
                                         breached: acct.breached,
-                                        breachedby: acct.breachedby || null
+                                        breachedby: acct.breachedby || null,
+                                        profit_target: acct.profit_target || acct.target || null,
+                                        drawdown: acct.drawdown || acct.max_drawdown || null
                                     });
                                     break;
                                 }
@@ -1414,19 +1769,29 @@ class FundedNextCDPAccount(CDPBase):
                 for acct in accounts:
                     login_id = acct.get("login")
                     if login_id:
+                        starting = acct.get("starting_balance")
+                        dd = acct.get("drawdown")
+                        min_equity = None
+                        if starting is not None and dd is not None:
+                            try:
+                                min_equity = float(starting) - float(dd)
+                            except (ValueError, TypeError):
+                                pass
                         mapping[str(login_id)] = {
                             "tradovate_account_name": acct.get("tradovate_name"),
                             "account_id": acct.get("account_id"),
                             "plan_title": acct.get("plan_title"),
                             "balance": acct.get("balance"),
-                            "starting_balance": acct.get("starting_balance"),
+                            "starting_balance": starting,
                             "server_type": acct.get("server_type"),
                             "breached": acct.get("breached"),
                             "breachedby": acct.get("breachedby"),
+                            "profit_target": acct.get("profit_target"),
+                            "min_equity": min_equity,
                         }
                         self.logger.info(
                             f"[MAPPING] login={login_id} -> tradovate={acct.get('tradovate_name')} "
-                            f"({acct.get('plan_title')})")
+                            f"({acct.get('plan_title')}) target={acct.get('profit_target')} min_eq={min_equity}")
             except (json.JSONDecodeError, TypeError):
                 pass
 

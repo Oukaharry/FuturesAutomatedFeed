@@ -1,0 +1,15 @@
+Eval Index,Column,Log Value,DB Value (was empty),Log Timestamp
+2,Hedge Day 5,$0.00,None,2026-03-25 14:15:11
+4,Hedge Day 5,$0.00,None,2026-03-25 14:15:11
+5,Hedge Day 10,$-139.20,None,2026-03-27 13:34:10
+5,Hedge Day 5,$468.35,None,2026-03-25 14:26:12
+12,Hedge Result 2.1,$-1365.10,None,2026-04-01 09:27:10
+14,Hedge Day 4,$-176.96,None,2026-03-25 14:15:11
+14,Hedge Day 6,$-177.28,None,2026-03-30 12:08:15
+14,Hedge Day 7,$0.00,None,2026-04-02 07:12:08
+16,Hedge Day 4,$465.76,None,2026-03-25 14:26:12
+17,Hedge Day 4,$0.00,None,2026-03-25 14:26:12
+21,Hedge Result 1.1,$-2335.20,None,2026-03-30 12:08:15
+22,Hedge Result 2.1,$0.00,None,2026-04-02 07:16:48
+23,Hedge Day 1,$0.00,None,2026-03-31 08:55:48
+23,Hedge Day 2,$-138.56,None,2026-04-01 09:27:16

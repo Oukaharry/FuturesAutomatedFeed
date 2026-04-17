@@ -1,0 +1,100 @@
+🚀 *Tradeopss AI v1.2 is here!*
+
+Hey team — we're excited to officially roll out *Tradeopss AI*, your new trading automation companion. This is the tool that handles hedging, syncing, billing, breach detection, and now *automatic status tracking* — all from one desktop app.
+
+Let's break it down 👇
+
+---
+
+🤖 *What is Tradeopss AI?*
+
+It's a desktop app that connects your prop firm accounts, MetaTrader 5, and the Tradeopss Dashboard into one workflow. You trade (or let the AI trade for you) — it handles everything else automatically.
+
+---
+
+🏢 *Supported Prop Firms*
+
+> MFFU  •  MFFU Flex  •  Funded Next  •  TopStep  •  Tradeify  •  Lucid Trading  •  FundingTicks  •  TradeDay  •  Alpha Futures (NQ & GC)  •  Apex  •  Top One Futures
+
+That's *10 firms* running in parallel, each in its own browser — no bottlenecks.
+
+---
+
+⚡ *Core Features*
+
+🔀 *Multi-Firm Trade Execution*
+Connect all your prop firm accounts at once. Each firm gets its own browser instance — trades fire simultaneously across Tradovate and TopStepX.
+
+📊 *MT5 Hedging Engine*
+Every prop firm trade is automatically hedged on MT5 in the opposite direction. TP/SL is calculated based on your current balance so you never overshoot a target or breach a drawdown limit.
+
+⏰ *Auto-Trade Scheduler*
+Set it and forget it. The scheduler fires trades with randomized timing, picks direction using 26+ technical indicators, and runs the full trade → hedge → sync pipeline hands-free.
+
+📡 *Signal-Based Direction*
+RSI, MACD, Supertrend, Bollinger Bands, ADX, Stochastic, and 20+ more. The signal engine reads live MT5 data and picks the optimal side for each trade.
+
+🛡️ *Hedge Guard (SL Protection)*
+Real-time monitoring across MT5 and your broker. SL hit on one side? The other closes instantly. TP hit? The hedge keeps running for a shot at double profit.
+
+🚨 *Automatic Breach Detection*
+The AI scrapes your prop firm dashboard on every connection. Breached accounts get flagged immediately on your Tradeopss Dashboard with the specific reason.
+
+💰 *Auto Billing & Fee Tracking*
+Challenge fees, purchase dates, and payout amounts scraped automatically from each firm's billing page and synced to your dashboard.
+
+🔄 *Smart Data Sync*
+MT5 deal history is parsed, matched to prop accounts via trade comments, and pushed to the dashboard. Only sends when new trades exist — no duplicates.
+
+🎯 *Balance-Aware Trade Sizing*
+Close to a target? TP shrinks to land precisely. Farming mode? MT5 TP is capped to prevent breaching the hard-stop threshold.
+
+📋 *Blueprint Stage Tracking*
+Challenge → Funded → Double Dip → Farming — the AI knows exactly where each account is and what comes next.
+
+---
+
+✨ *NEW in v1.2 — Auto-Status Tracking*
+
+This is the big one. Accounts now *automatically* update their status:
+
+    ✅  *Pass* — balance hits the profit target
+    🔄  *In Progress* — the moment a trade goes out
+    🚫  *Fail* — account breaches or balance drops below threshold
+
+No more manually changing statuses on the dashboard. The AI handles it based on live balance data from your prop firm.
+
+*Also new:*
+• Per-firm profit targets for every supported firm
+• Updated Top One Futures blueprints ($3,000 / $1,000 per payout)
+• Enhanced breach detection (balance-based + prop firm reported)
+• All scraper modules now bundled in the build
+
+---
+
+🏁 *Getting Started*
+
+1️⃣  Launch `TradeopssAI_v1.2.exe`
+2️⃣  Enter your client email → click *Lookup*
+3️⃣  Click *Load Trades* to pull your active evaluations
+4️⃣  Connect your prop firm browsers (one per firm)
+5️⃣  Connect MT5 with your hedging account credentials
+6️⃣  Hit *BUY/SELL* manually, or toggle *Auto-Trade*
+
+The AI takes it from there. 🤝
+
+---
+
+💻 *Requirements*
+
+• Windows 10+
+• Google Chrome
+• MetaTrader 5
+• Active Tradeopss Dashboard account
+• Internet connection
+
+---
+
+Questions or issues? Reach out to your Tradeopss account manager.
+
+_© 2026 Tradeopss. All rights reserved._

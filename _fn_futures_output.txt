@@ -1,0 +1,19 @@
+URL: https://app.fundednext.com/accounts
+Clicked Futures tab
+
+Page text (first 3000):
+Something Went Wrong
+
+Please try again
+
+Go to Dashboard
+
+Intercepted 0 API calls
+
+
+=== DASHBOARD CARDS ===
+Found 0 dashboard cards
+
+
+=== REACT FIBER ON ACCOUNT CARDS ===
+Found 0 fiber results

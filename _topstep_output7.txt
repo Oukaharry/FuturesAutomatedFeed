@@ -1,0 +1,51 @@
+﻿
+=== ACCOUNTS (userId=93348) ===
+200 | {"data":{"accounts":{"nodes":[]}}}
+
+=== PURCHASES (userId=93348) ===
+200 | {"data":{"purchaseOrders":{"nodes":[]}}}
+
+=== CARD_TX (userId=93348) ===
+200 | {"data":{"cardTransactions":null},"errors":[{"message":"permission denied for table CardTransaction","locations":[{"line":2,"column":7}],"path":["cardTransactions"],"extensions":{}}]}
+
+=== SUBSCRIPTIONS (userId=93348) ===
+200 | {"data":{"userSubscriptions":{"nodes":[]}}}
+
+=== PAYOUTS (userId=93348) ===
+200 | {"data":{"payoutRequests":null},"errors":[{"message":"permission denied for table PayoutRequest","locations":[{"line":2,"column":7}],"path":["payoutRequests"],"extensions":{}}]}
+
+=== ACCOUNTS (userId=93279) ===
+200 | {"data":{"accounts":{"nodes":[]}}}
+
+=== PURCHASES (userId=93279) ===
+200 | {"data":{"purchaseOrders":{"nodes":[]}}}
+
+=== CARD_TX (userId=93279) ===
+200 | {"data":{"cardTransactions":null},"errors":[{"message":"permission denied for table CardTransaction","locations":[{"line":2,"column":7}],"path":["cardTransactions"],"extensions":{}}]}
+
+=== SUBSCRIPTIONS (userId=93279) ===
+200 | {"data":{"userSubscriptions":{"nodes":[]}}}
+
+=== PAYOUTS (userId=93279) ===
+200 | {"data":{"payoutRequests":null},"errors":[{"message":"permission denied for table PayoutRequest","locations":[{"line":2,"column":7}],"path":["payoutRequests"],"extensions":{}}]}
+
+=== NORMALIZED_PURCHASES_93348 ===
+400 | {"errors":[{"message":"Cannot query field \"displayDate\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":65}],"extensions":{}},{"message":"Cannot query field \"displayType\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":77}],"extensions":{}},{"message":"Cannot query field \"displayOrderId\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":89}],"extensions":{}},{"message":"Cannot query field \"displayProduct\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":104}],"extensions":{}},{"message":"Cannot query field \"displayPaymentMethod\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":119}],"extensions":{}},{"message":"Cannot query field \"displaySubtotal\" on type \"NormalizedPurchasesByUserRecord\". Did you mean \"subtotal\"?","locations":[{"line":1,"column":140}],"extensions":{}},{"message":"Cannot query field \"displayDiscount\" on type \"NormalizedPurchasesByUserRecord\". Did you mean \"discount\"?","locations":[{"line":1,"column":156}],"extensions":{}},{"message":"Cannot query field \"displayTax\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":172}],"extensions":{}},{"message":"Cannot query field \"displayTotal\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":183}],"extensions":{}}]}
+
+=== NORMALIZED_PURCHASES_93279 ===
+400 | {"errors":[{"message":"Cannot query field \"displayDate\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":65}],"extensions":{}},{"message":"Cannot query field \"displayType\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":77}],"extensions":{}},{"message":"Cannot query field \"displayOrderId\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":89}],"extensions":{}},{"message":"Cannot query field \"displayProduct\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":104}],"extensions":{}},{"message":"Cannot query field \"displayPaymentMethod\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":119}],"extensions":{}},{"message":"Cannot query field \"displaySubtotal\" on type \"NormalizedPurchasesByUserRecord\". Did you mean \"subtotal\"?","locations":[{"line":1,"column":140}],"extensions":{}},{"message":"Cannot query field \"displayDiscount\" on type \"NormalizedPurchasesByUserRecord\". Did you mean \"discount\"?","locations":[{"line":1,"column":156}],"extensions":{}},{"message":"Cannot query field \"displayTax\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":172}],"extensions":{}},{"message":"Cannot query field \"displayTotal\" on type \"NormalizedPurchasesByUserRecord\".","locations":[{"line":1,"column":183}],"extensions":{}}]}
+
+=== NORMALIZED_SUBS_93348 ===
+400 | {"errors":[{"message":"Cannot query field \"displayDate\" on type \"NormalizedSubsByUserRecord\".","locations":[{"line":1,"column":60}],"extensions":{}},{"message":"Cannot query field \"displayProduct\" on type \"NormalizedSubsByUserRecord\".","locations":[{"line":1,"column":72}],"extensions":{}},{"message":"Cannot query field \"displayAmount\" on type \"NormalizedSubsByUserRecord\".","locations":[{"line":1,"column":87}],"extensions":{}},{"message":"Cannot query field \"displayStatus\" on type \"NormalizedSubsByUserRecord\".","locations":[{"line":1,"column":101}],"extensions":{}},{"message":"Cannot query field \"displayPaymentMethod\" on type \"NormalizedSubsByUserRecord\". Did you mean \"selectedPaymentMethod\"?","locations":[{"line":1,"column":115}],"extensions":{}}]}
+
+=== NAVIGATING TO BILLING ===
+
+=== BILLING PAGE FULL TEXT ===
+
+
+=== BILLING TABLES ===
+Found 0 tables
+
+MUI/grid elements: 0
+
+Done.
