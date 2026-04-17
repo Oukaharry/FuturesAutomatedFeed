@@ -7590,6 +7590,7 @@ def update_data():
                     "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
                     "payment_address": data.get("payment_address", existing_data.get("payment_address", {})),
                     "mt5_credentials": data.get("mt5_credentials", existing_data.get("mt5_credentials", {})),
+                    "firm_billing": existing_data.get("firm_billing", {}),
                     "evaluations": evaluations,
                     "statistics": merged_statistics,
                     "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),
