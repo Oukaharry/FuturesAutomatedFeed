@@ -1157,8 +1157,18 @@ def api_client_push():
     Automatically looks up hierarchy from email.
     Recalculates statistics using MT5 deals/account data if provided.
     """
-    data = request.json
-    email = data.get('email', '').strip().lower()
+    import gzip as _gzip, io as _io, json as _json
+    raw = request.get_data()
+    if request.headers.get('Content-Encoding') == 'gzip':
+        try:
+            raw = _gzip.decompress(raw)
+        except Exception:
+            return jsonify({"status": "error", "message": "Failed to decompress request body"}), 400
+    try:
+        data = _json.loads(raw) if raw else {}
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid JSON body"}), 400
+    email = (data.get('email') or '').strip().lower()
     
     if not email:
         return jsonify({"status": "error", "message": "Email required"}), 400
