@@ -3,19 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin - TradeOpss</title>
+    <title>{% if user_role|default('super_admin') == 'bef_admin' %}BEF Admin{% else %}Super Admin{% endif %} - TradeOpss</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Modern Styles Override/Extension */
+        /* ── COMPONENT STYLES ── */
         .admin-card {
-            background: rgba(30, 41, 59, 0.4); /* Dark transparency */
+            background: var(--card-bg);
             border: 1px solid var(--border-color);
+            border-top: 1px solid #1e3060;
             border-radius: var(--radius);
             margin-bottom: 24px;
-            padding: 2px; /* For border effect */
+            padding: 2px;
             position: relative;
             overflow: hidden;
+            box-shadow: var(--shadow-navy);
         }
 
         .admin-header {
@@ -35,9 +38,11 @@
         }
 
         .admin-name {
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: 700;
             color: var(--text-primary);
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: -0.02em;
         }
 
         .admin-email {
@@ -51,18 +56,21 @@
         }
 
         .trader-item {
-            background: linear-gradient(180deg, #0f172a 0%, #334155 100%); /* Slate Gradient Body */
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            margin-bottom: 16px;
-            transition: all 0.2s;
+            background: linear-gradient(180deg, #090f1e 0%, #0c1428 100%);
+            border: 1px solid #162040;
+            border-left: 2px solid #1e3a8a;
+            border-top: 1px solid #1e3060;
+            border-radius: 10px;
+            margin-bottom: 14px;
+            transition: all 0.2s ease;
             overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 6px 20px rgba(1, 3, 10, 0.75), 0 1px 0 rgba(30, 58, 138, 0.15);
         }
         
         .trader-item:hover {
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            border-color: #244068;
+            border-left-color: #3558a8;
+            box-shadow: 0 8px 28px rgba(1, 3, 10, 0.85), 0 0 0 1px rgba(30,58,138,0.28);
         }
 
         .trader-header {
@@ -78,7 +86,9 @@
         .trader-name {
             font-weight: 700;
             color: #fff;
-            letter-spacing: 0.02em;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: -0.01em;
+            font-size: 0.92rem;
         }
         
         .client-list {
@@ -90,26 +100,28 @@
 
         /* World Class Client Tag Design */
         .client-tag {
-            background: #1e293b; /* Slate 800 */
+            background: #1e293b;
             border: 1px solid rgba(255,255,255,0.08);
-            padding: 8px 14px;
+            padding: 6px 12px;
             border-radius: 6px;
-            font-size: 0.9rem;
+            font-size: 0.82rem;
             display: flex;
             align-items: center;
-            color: #cbd5e1; /* Slate 300 */
+            color: #e8c97a;
             text-decoration: none;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            box-shadow: 0 1px 3px rgba(1,3,10,0.4);
             font-weight: 500;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: 0.01em;
         }
         
         .client-tag:hover {
-            background: #334155; /* Slate 700 */
-            color: #ffffff;
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-            border-color: rgba(255,255,255,0.2);
+            background: #1c2e48;
+            color: #fde68a;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(1, 3, 10, 0.5);
+            border-color: rgba(251,191,36,0.25);
         }
         
         /* Icon styling inside tag */
@@ -120,25 +132,37 @@
         }
 
         .badge {
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 0.7rem;
+            padding: 3px 9px;
+            border-radius: 999px;
+            font-size: 0.62rem;
             font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.09em;
+            font-family: 'IBM Plex Mono', monospace;
         }
-        .badge-admin { background: var(--warning-color); color: #0f172a; }
-        .badge-trader { background: var(--accent-color); color: #0f172a; }
+        .badge-admin { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+        .badge-trader { background: rgba(45,212,191,0.12); color: #2dd4bf; border: 1px solid rgba(45,212,191,0.28); }
 
         .action-btn {
             background: transparent;
             border: none;
             cursor: pointer;
             color: var(--text-secondary);
-            padding: 4px;
-            transition: color 0.2s;
+            padding: 5px 7px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
-        .action-btn:hover { color: var(--text-primary); }
-        .action-btn.danger:hover { color: var(--danger-color); }
+        .action-btn:hover { 
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.07);
+        }
+        .action-btn.danger:hover { 
+            color: var(--danger-color);
+            background: rgba(248, 113, 113, 0.1);
+        }
 
         .form-dark {
             background: rgba(15, 23, 42, 0.6);
@@ -147,6 +171,10 @@
             border-radius: 8px;
             color: white;
             width: 100%;
+        }
+        .form-dark option {
+            background: #0f172a;
+            color: #e8eeff;
         }
         
         .stat-grid-modern {
@@ -159,24 +187,31 @@
         .stat-card-modern {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
+            border-top: 1px solid #1e3060;
             border-radius: var(--radius);
-            padding: 24px;
+            padding: 22px 24px;
             position: relative;
             overflow: hidden;
+            box-shadow: 0 4px 16px rgba(1, 3, 10, 0.7), 0 1px 0 rgba(30, 58, 138, 0.12);
         }
         
         .stat-label-modern {
-            font-size: 0.85rem;
+            font-size: 0.68rem;
             color: var(--text-secondary);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 8px;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 600;
         }
         
         .stat-value-modern {
-            font-size: 1.8rem;
-            font-weight: 700;
+            font-size: 1.75rem;
+            font-weight: 600;
             color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            letter-spacing: -0.02em;
+            line-height: 1;
         }
 
         /* Modal Overrides */
@@ -187,10 +222,11 @@
         }
         
         .modal-content {
-            background: #1e293b;
+            background: #0d1424;
             color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid #192848;
+            border-top: 1px solid #3d5fa0;
+            box-shadow: 0 30px 60px -12px rgba(3, 5, 12, 0.9), 0 1px 0 rgba(61,95,160,0.25);
         }
         
         .welcome-hero {
@@ -201,46 +237,54 @@
             color: var(--text-secondary);
             text-decoration: none;
             font-weight: 500;
-            font-size: 0.95rem;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 0.8rem;
+            transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 8px;
+            gap: 7px;
+            padding: 7px 14px;
+            border-radius: 7px;
         }
         .tab-btn:hover {
-            color: #60a5fa;
-            background: rgba(59, 130, 246, 0.08); /* Subtle Blue Hover */
+            color: #7baef0;
+            background: rgba(30, 58, 138, 0.14);
         }
         .tab-btn.active {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); /* Gemini Blue */
+            background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
             color: #ffffff;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            box-shadow: 0 3px 12px rgba(1, 3, 10, 0.5), inset 0 1px 0 rgba(100,140,220,0.15);
             font-weight: 600;
         }
+
+        body { padding: 0 16px; }
+        body::after { content: ''; position: fixed; bottom: 0; left: 0; right: 0; height: 72px; background: linear-gradient(to top, rgba(1,3,10,0.75), transparent); pointer-events: none; z-index: 999; }
         
         .modern-nav {
-            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%); /* Blue Gradient */
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: var(--radius);
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
             padding: 0 24px;
-            height: 80px;
+            height: 64px;
             display: flex;
-            justify-content: flex-end;
+            justify-content: center;
             align-items: center;
             margin-bottom: 20px;
-            box-shadow: var(--shadow-sm);
-            position: relative;
+            box-shadow: 0 8px 28px rgba(1, 3, 10, 0.8), 0 1px 0 rgba(30,58,138,0.22);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
         
-        /* User Management Header - Lighter Blue Gradient */
+        /* User Management Header - Deep Navy Gradient */
         .admin-header {
-            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
-            border-bottom: 2px solid #60a5fa;
+            background: linear-gradient(90deg, #1e3a8a 0%, #172554 100%);
+            border-top: 1px solid #3d5fa0; /* bright navy top highlight */
+            border-bottom: 2px solid #0f2060;
             position: relative;
             overflow: hidden;
             padding: 16px 24px;
+            box-shadow: 0 4px 20px rgba(3, 5, 12, 0.8), inset 0 1px 0 rgba(100, 140, 220, 0.18);
         }
         .admin-header::before {
             display: none;
@@ -248,8 +292,8 @@
         
         /* Table Headers - Matching the Gradient Style */
         .group-header-blue {
-            background: linear-gradient(90deg, #1e3a8a 0%, #0f172a 100%) !important;
-            border-bottom: 2px solid #3b82f6 !important; /* Bright blue bottom line */
+            background: linear-gradient(90deg, #172554 0%, #0f172a 100%) !important;
+            border-bottom: 2px solid #1e3a8a !important; /* Deep navy bottom line */
             color: #94a3b8 !important;
             font-weight: 700 !important;
             text-transform: uppercase;
@@ -262,80 +306,223 @@
         /* --- GRADIENT SECTION STYLES --- */
         
         .admin-header {
-            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%) !important;
-            border-bottom: 1px solid rgba(255,255,255,0.1) !important;
-            border-top: 1px solid rgba(255,255,255,0.2) !important;
+            background: linear-gradient(90deg, #1e3a8a 0%, #172554 100%) !important;
+            border-top: 1px solid #2e50a0 !important;
+            border-bottom: 2px solid #0c1848 !important;
+            box-shadow: 0 4px 20px rgba(1,3,10,0.85), inset 0 1px 0 rgba(80,120,210,0.18) !important;
         }
         
         .trader-header {
-             background: linear-gradient(90deg, #059669 0%, #047857 100%) !important;
-             border-bottom: 1px solid rgba(255,255,255,0.1);
-             border-top: 1px solid rgba(255,255,255,0.2);
+             background: linear-gradient(90deg, #065f46 0%, #047857 100%) !important;
+             border-top: 1px solid #10a070 !important; /* green top highlight */
+             border-bottom: 1px solid #033d2a !important;
+             box-shadow: inset 0 1px 0 rgba(16,185,129,0.15);
         }
         
         .client-tag {
-             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
-             border: 1px solid rgba(255,255,255,0.15) !important;
-             color: #fbbf24 !important; /* Gold text for names */
+             background: linear-gradient(135deg, #0d1424 0%, #080e1a 100%) !important;
+             border: 1px solid #192848 !important;
+             border-top: 1px solid #253660 !important;
+             color: #fbbf24 !important;
+             box-shadow: 0 2px 8px rgba(3, 5, 12, 0.6);
         }
         .client-tag:hover {
-             background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important;
+             background: linear-gradient(135deg, #131e36 0%, #0d1424 100%) !important;
              border-color: #fbbf24 !important;
+             box-shadow: 0 4px 16px rgba(3, 5, 12, 0.7), 0 0 0 1px rgba(251,191,36,0.15);
         }
 
         /* Form Inputs & Buttons */
         .form-dark {
-            background: rgba(15, 23, 42, 0.4) !important;
-            border: 1px solid rgba(255,255,255,0.1) !important;
-            color: #fff !important;
-            transition: all 0.2s;
+            background: rgba(1, 3, 10, 0.6) !important;
+            border: 1px solid #162040 !important;
+            color: #e8eeff !important;
+            font-family: 'IBM Plex Mono', monospace !important;
+            font-size: 0.84rem !important;
+            transition: all 0.18s ease;
+        }
+        .form-dark option {
+            background: #0f172a;
+            color: #e8eeff;
         }
         .form-dark:focus {
-            border-color: #60a5fa !important;
-            background: rgba(15, 23, 42, 0.8) !important;
-            box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+            border-color: #2a4a8a !important;
+            background: rgba(1, 3, 10, 0.85) !important;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.2), 0 1px 0 rgba(42, 74, 138, 0.15) !important;
+            outline: none !important;
+        }
+        .form-dark::placeholder {
+            color: rgba(120, 152, 190, 0.45) !important;
         }
         
         .btn-gold {
              background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%) !important;
-             box-shadow: 0 4px 6px -1px rgba(251, 191, 36, 0.3);
+             box-shadow: 0 2px 10px rgba(251, 191, 36, 0.3) !important;
              border: none !important;
+             transition: all 0.18s ease !important;
+             color: #0a0800 !important;
+             font-family: 'Space Grotesk', sans-serif !important;
+             font-weight: 700 !important;
         }
         .btn-gold:hover {
-             filter: brightness(1.1);
-             transform: translateY(-1px);
+             box-shadow: 0 4px 18px rgba(251, 191, 36, 0.45) !important;
+             transform: translateY(-1px) !important;
+             filter: brightness(1.06) !important;
+        }
+
+        /* Colored add buttons */
+        .btn-add-admin {
+            background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+            border: none; color: #fefce8; font-weight: 700;
+            width: auto; padding: 0 16px; cursor: pointer;
+            transition: all 0.18s ease;
+            border-radius: 0 8px 8px 0;
+            font-size: 1.1rem; line-height: 1;
+        }
+        .btn-add-admin:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(217,119,6,0.4); }
+
+        .btn-add-trader {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            border: none; color: #ecfdf5; font-weight: 700;
+            width: auto; padding: 0 16px; cursor: pointer;
+            transition: all 0.18s ease;
+            border-radius: 0 8px 8px 0;
+            font-size: 1.1rem; line-height: 1;
+        }
+        .btn-add-trader:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(5,150,105,0.4); }
+
+        .btn-add-client {
+            background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+            border: none; color: #eff6ff; font-weight: 700;
+            width: auto; padding: 0 16px; cursor: pointer;
+            transition: all 0.18s ease;
+            border-radius: 0 8px 8px 0;
+            font-size: 1.1rem; line-height: 1;
+        }
+        .btn-add-client:hover { filter: brightness(1.15); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(30,58,138,0.5); }
+
+        /* Profile segmented toggle */
+        .profile-toggle {
+            display: inline-flex;
+            background: #0a0f1e;
+            border: 1px solid #1a2848;
+            border-radius: 8px;
+            padding: 3px;
+            gap: 2px;
+        }
+        .profile-toggle .toggle-btn {
+            padding: 5px 16px;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: #6b88b0;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            width: auto;
+        }
+        .profile-toggle .toggle-btn:hover {
+            color: #c8d8f0;
+            background: rgba(255,255,255,0.05);
+            transform: none; box-shadow: none;
+        }
+        .profile-toggle #btn-profile-all.active {
+            background: linear-gradient(135deg, #1e3a8a 0%, #172554 100%);
+            color: #e0eaff;
+            box-shadow: 0 2px 8px rgba(1,3,10,0.6), inset 0 1px 0 rgba(100,150,240,0.2);
+        }
+        .profile-toggle #btn-profile-bef.active {
+            background: linear-gradient(135deg, #065f46 0%, #064e3b 100%);
+            color: #d1fae5;
+            box-shadow: 0 2px 8px rgba(1,3,10,0.6), inset 0 1px 0 rgba(52,211,153,0.2);
+        }
+        .profile-toggle #btn-profile-private.active {
+            background: linear-gradient(135deg, #78350f 0%, #92400e 100%);
+            color: #fef3c7;
+            box-shadow: 0 2px 8px rgba(1,3,10,0.6), inset 0 1px 0 rgba(251,191,36,0.2);
         }
 
         .nav-links {
             display: flex;
-            gap: 8px;
-            background: rgba(15, 23, 42, 0.6);
-            padding: 6px;
-            border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            gap: 4px;
+            background: none;
+            padding: 0;
+            border-radius: 0;
+            border: none;
+            align-items: center;
         }
         
         .tab-btn {
-            color: var(--text-secondary);
+            color: #7898be;
             text-decoration: none;
-            font-weight: 500;
-            font-size: 0.95rem;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 600;
+            font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: color 0.15s ease, background 0.15s ease;
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px 16px;
-            border-radius: 8px;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 7px;
+            border-bottom: 2px solid transparent;
+            background: transparent;
+            letter-spacing: 0.01em;
+        }
+        .tab-btn i {
+            font-size: 0.82rem;
+            opacity: 0.7;
+            transition: opacity 0.15s ease, color 0.15s ease;
         }
         .tab-btn:hover {
-            color: #f8fafc;
-            background: rgba(255, 255, 255, 0.05);
+            color: #e8eeff;
+            background: rgba(30, 48, 96, 0.22);
+        }
+        .tab-btn:hover i {
+            opacity: 1;
         }
         .tab-btn.active {
-            background: #3b82f6; /* Solid Blue like screenshot */
-            color: #ffffff;
+            color: #fbbf24;
+            border-bottom: 2px solid #fbbf24;
+            background: transparent;
             font-weight: 600;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        .tab-btn.active i {
+            opacity: 1;
+            color: #fbbf24;
+        }
+        /* Colored icon-only nav action buttons */
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28);
+            background: rgba(251,191,36,0.07);
+            text-decoration: none;
+            transition: all 0.18s ease;
+        }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover {
+            background: rgba(251,191,36,0.14);
+            border-color: rgba(251,191,36,0.5);
+            box-shadow: 0 0 14px rgba(251,191,36,0.18);
+        }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25);
+            background: rgba(239,68,68,0.07);
+            text-decoration: none;
+            transition: all 0.18s ease;
+        }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover {
+            background: rgba(239,68,68,0.14);
+            border-color: rgba(239,68,68,0.5);
+            box-shadow: 0 0 14px rgba(239,68,68,0.18);
         }
         /* Drag and Drop Visuals */
         .dragging { opacity: 0.5; border: 2px dashed #fbbf24 !important; }
@@ -367,6 +554,11 @@
             .nav-links { flex-wrap: wrap; justify-content: center; gap: 4px; }
             .tab-btn { font-size: 0.78rem !important; padding: 6px 9px !important; }
         }
+        /* Breakdown modal scrollbar */
+        #breakdownModal div::-webkit-scrollbar { width: 6px; }
+        #breakdownModal div::-webkit-scrollbar-track { background: #0f172a; }
+        #breakdownModal div::-webkit-scrollbar-thumb { background: #3b5bdb; border-radius: 3px; }
+        #breakdownModal div::-webkit-scrollbar-thumb:hover { background: #4c6ef5; }
     </style>
 </head>
 <body>
@@ -378,23 +570,27 @@
             </div>
             
             <div class="nav-links">
-                <a href="/super_admin" class="tab-btn active"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="{% if user_role|default('super_admin') == 'bef_admin' %}/bef_admin{% else %}/super_admin{% endif %}" class="tab-btn active"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
                 <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
-                <a href="/trader_performance" class="tab-btn"><i class="fas fa-user-tie"></i> Traders</a>
-                
-                <div style="height: 24px; width: 1px; background: rgba(255,255,255,0.1); margin: 0 4px;"></div>
-                
-                <a href="/logout" class="tab-btn" style="border: 1px solid rgba(255,255,255,0.1);">
-                    <i class="fas fa-sign-out-alt"></i> Logout
+                <a href="/trader_performance" class="tab-btn"><i class="fas fa-chart-line"></i> Traders</a>
+                {% if not is_bef_admin %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
+            </div>
+
+            <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
+                <a href="/change-password" class="nav-btn-key" title="Change Password">
+                    <i class="fas fa-key"></i>
+                </a>
+                <a href="/logout" class="nav-btn-logout" title="Logout">
+                    <i class="fas fa-right-from-bracket"></i>
                 </a>
             </div>
         </nav>
 
         <div class="welcome-hero" style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
-                <h1 style="font-size: 1.5rem; margin-bottom: 4px; color: #fff;">Platform Administration</h1>
+                <h1 style="font-size: 1.5rem; margin-bottom: 4px; color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; letter-spacing: -0.02em;">Platform Administration</h1>
                 <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Manage system hierarchy, users, and global financial data.</p>
             </div>
         </div>
@@ -404,12 +600,13 @@
             <!-- Management Panel (Left Sidebar) -->
             <div class="client-card" style="height: fit-content; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0; overflow: hidden;">
                 <div class="admin-header">
-                    <h3 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px; font-size: 1.1rem;">
-                        <i class="fas fa-users-cog"></i> User Management
+                    <h3 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; letter-spacing: -0.01em;">
+                        <i class="fas fa-users-cog"></i> {% if user_role|default('super_admin') == 'bef_admin' %}Client Directory{% else %}User Management{% endif %}
                     </h3>
                 </div>
                 <div style="padding: 20px;">
                 
+                {% if user_role|default('super_admin') == 'super_admin' %}
                 <div style="display: flex; gap: 15px; margin-bottom: 24px;">
                     <!-- ADMINS: Gold/Amber Gradient -->
                     <div id="stat-card-admin" class="stat-box-modern" onclick="window.openUserListModal('admin')" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(120, 53, 15, 0.6) 100%); border: 1px solid rgba(251, 191, 36, 0.4); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
@@ -423,19 +620,20 @@
                         <div id="total-traders" style="font-size:2rem; font-weight:800; color: #34d399; text-shadow: 0 0 20px rgba(52, 211, 153, 0.4); pointer-events: none;">0</div>
                     </div>
 
-                    <!-- CLIENTS: Blue Gradient -->
-                    <div id="stat-card-client" class="stat-box-modern" onclick="window.openUserListModal('client')" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
-                        <div style="font-size:0.8rem; color: #93c5fd; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 5px;">CLIENTS</div>
-                        <div id="total-clients" style="font-size:2rem; font-weight:800; color: #60a5fa; text-shadow: 0 0 20px rgba(96, 165, 250, 0.4); pointer-events: none;">0</div>
+                    <!-- CLIENTS: Deep Navy Gradient -->
+                    <div id="stat-card-client" class="stat-box-modern" onclick="window.openUserListModal('client')" style="background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(23, 37, 84, 0.7) 100%); border: 1px solid rgba(30, 58, 138, 0.6); flex:1; text-align:center; padding:16px; border-radius:12px; cursor:pointer; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); transition: transform 0.2s; position: relative; z-index: 10;">
+                        <div style="font-size:0.8rem; color: #7baef0; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 5px;">CLIENTS</div>
+                        <div id="total-clients" style="font-size:2rem; font-weight:800; color: #5a90d8; text-shadow: 0 0 20px rgba(30, 58, 138, 0.5); pointer-events: none;">0</div>
                     </div>
                 </div>
                 
                 <!-- Add Admin -->
+                {% if user_role|default('super_admin') == 'super_admin' %}
                 <div class="form-group" style="margin-bottom: 24px;">
                     <label class="form-label" style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px; display:block;">Add New Admin</label>
                     <div style="display:flex;">
                         <input type="text" id="new-admin-name" placeholder="Name" class="form-dark" style="border-radius: 8px 0 0 8px; border-right: none;">
-                        <button onclick="addAdmin()" class="btn-gold" style="width:auto; padding: 0 16px; border-radius: 0 8px 8px 0; background: var(--accent-color); border: none; color: #000; font-weight: bold; cursor: pointer;">+</button>
+                        <button onclick="addAdmin()" class="btn-add-admin">+</button>
                     </div>
                     <input type="email" id="new-admin-email" placeholder="Email (Optional)" class="form-dark" style="margin-top:8px;">
                 </div>
@@ -448,7 +646,7 @@
                     <select id="admin-select-trader" class="form-dark" style="margin-bottom:8px;"></select>
                     <div style="display:flex;">
                         <input type="text" id="new-trader-name" placeholder="Name" class="form-dark" style="border-radius: 8px 0 0 8px; border-right: none;">
-                        <button onclick="addTrader()" class="btn-gold" style="width:auto; padding: 0 16px; border-radius: 0 8px 8px 0; background: var(--accent-color); border: none; color: #000; font-weight: bold; cursor: pointer;">+</button>
+                        <button onclick="addTrader()" class="btn-add-trader">+</button>
                     </div>
                     <input type="email" id="new-trader-email" placeholder="Email (Optional)" class="form-dark" style="margin-top:8px;">
                 </div>
@@ -466,10 +664,46 @@
                     </div>
                     <div style="display:flex;">
                         <input type="text" id="new-client-name" placeholder="Name" class="form-dark" style="border-radius: 8px 0 0 8px; border-right: none;">
-                        <button onclick="addClient()" class="btn-gold" style="width:auto; padding: 0 16px; border-radius: 0 8px 8px 0; background: var(--accent-color); border: none; color: #000; font-weight: bold; cursor: pointer;">+</button>
+                        <button onclick="addClient()" class="btn-add-client">+</button>
                     </div>
                     <input type="email" id="new-client-email" placeholder="Email (Optional)" class="form-dark" style="margin-top:8px;">
                 </div>
+
+                <div style="height:1px; background:var(--border-color); margin:24px 0;"></div>
+
+                <!-- KYC Account Linking — compact button opens modal -->
+                <div style="margin-bottom:16px;">
+                    <button onclick="openKycModal()" style="width:100%; padding:8px 12px; background:rgba(124,58,237,0.15); border:1px solid rgba(167,139,250,0.35); border-radius:8px; color:#a78bfa; font-size:0.82rem; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; transition:all 0.2s;" onmouseover="this.style.background='rgba(124,58,237,0.25)'" onmouseout="this.style.background='rgba(124,58,237,0.15)'">
+                        <i class="fas fa-link"></i> Manage KYC Links
+                    </button>
+                </div>
+                {% endif %}
+
+                {% endif %}
+
+                <!-- Client Directory (bef_admin only) -->
+                {% if user_role|default('super_admin') == 'bef_admin' %}
+                <div style="height:1px; background:var(--border-color); margin:20px 0;"></div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.75rem; color:#94a3b8; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+                        <i class="fas fa-address-book" style="color:#818cf8;"></i> Client Directory
+                    </label>
+                    <div style="position:relative;">
+                        <i class="fas fa-search" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#475569; font-size:0.8rem;"></i>
+                        <input type="text" id="sidebar-client-search" placeholder="Search clients..." 
+                               oninput="filterSidebarClients()" 
+                               style="width:100%; padding:9px 10px 9px 32px; background:rgba(1,3,10,0.6); border:1px solid #162040; color:#e8eeff; border-radius:8px; font-size:0.82rem; font-family:'IBM Plex Mono',monospace; outline:none; box-sizing:border-box;"
+                               onfocus="this.style.borderColor='#2a4a8a';this.style.boxShadow='0 0 0 3px rgba(30,58,138,0.2)'" 
+                               onblur="this.style.borderColor='#162040';this.style.boxShadow='none'">
+                    </div>
+                </div>
+                <div id="sidebar-client-list" style="max-height:400px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; scrollbar-width:thin; scrollbar-color:#1e3a8a transparent;">
+                    <div style="text-align:center; padding:20px; color:#475569; font-size:0.82rem;">
+                        <i class="fas fa-circle-notch fa-spin"></i> Loading...
+                    </div>
+                </div>
+                {% endif %}
+
                 </div>
             </div>
 
@@ -478,50 +712,46 @@
                 
                 <!-- Financial Header with Filter -->
                 <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: -12px;">
-                    <div class="toggle-group" style="background: rgba(15, 23, 42, 0.6); padding: 4px; border-radius: 8px; display: inline-flex; border: 1px solid var(--border-color);">
-                        <button onclick="changeProfile('ALL')" id="btn-profile-all" class="toggle-btn active" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">ALL</button>
-                        <button onclick="changeProfile('BEF')" id="btn-profile-bef" class="toggle-btn" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">BEF</button>
-                        <button onclick="changeProfile('PRIVATE')" id="btn-profile-private" class="toggle-btn" style="font-size: 0.75rem; padding: 4px 12px; font-weight: 600;">PRV</button>
+                    {% if user_role|default('super_admin') == 'super_admin' %}
+                    <div class="profile-toggle">
+                        <button onclick="changeProfile('ALL')" id="btn-profile-all" class="toggle-btn active">ALL</button>
+                        <button onclick="changeProfile('BEF')" id="btn-profile-bef" class="toggle-btn">BEF</button>
+                        <button onclick="changeProfile('PRIVATE')" id="btn-profile-private" class="toggle-btn">PRV</button>
                     </div>
+                    {% endif %}
                 </div>
 
                 <!-- Financial Cards -->
                 <div class="stat-grid-modern" style="margin-bottom: 0; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
                     
                     <!-- Total Payouts -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('payouts')" style="cursor:pointer; background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 78, 59, 0.6) 100%); border: 1px solid rgba(52, 211, 153, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #6ee7b7 !important; font-weight: 700;">Total Payouts</div>
                         <div id="grand-total-payouts" class="stat-value-modern" style="color: #34d399 !important; text-shadow: 0 0 20px rgba(52, 211, 153, 0.3);">$0.00</div>
                     </div>
                     
                     <!-- Total Deposits -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.6) 100%); border: 1px solid rgba(96, 165, 250, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                        <div class="stat-label-modern" style="color: #93c5fd !important; font-weight: 700;">Total Deposits</div>
-                        <div id="grand-total-deposits" class="stat-value-modern" style="color: #60a5fa !important; text-shadow: 0 0 20px rgba(96, 165, 250, 0.3);">$0.00</div>
+                    <div class="stat-card-modern" onclick="showBreakdown('deposits')" style="cursor:pointer; background: linear-gradient(135deg, rgba(30, 58, 138, 0.2) 0%, rgba(23, 37, 84, 0.7) 100%); border: 1px solid rgba(30, 58, 138, 0.6); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #7baef0 !important; font-weight: 700;">Total Deposits</div>
+                        <div id="grand-total-deposits" class="stat-value-modern" style="color: #5a90d8 !important; text-shadow: 0 0 20px rgba(30, 58, 138, 0.4);">$0.00</div>
                     </div>
                     
                     <!-- Challenge Fees -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('fees')" style="cursor:pointer; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #fca5a5 !important; font-weight: 700;">Challenge Fees</div>
                         <div id="grand-total-fees" class="stat-value-modern" style="color: #f87171 !important; text-shadow: 0 0 20px rgba(248, 113, 113, 0.3);">$0.00</div>
                     </div>
                     
                     <!-- Net Profit -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('net_profit')" style="cursor:pointer; background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(88, 28, 135, 0.6) 100%); border: 1px solid rgba(192, 132, 252, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #d8b4fe !important; font-weight: 700;">Net Profit</div>
                         <div id="grand-total-net" class="stat-value-modern" style="color: #c084fc !important; text-shadow: 0 0 20px rgba(192, 132, 252, 0.3);">$0.00</div>
                     </div>
 
                     <!-- Hedging Results -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                    <div class="stat-card-modern" onclick="showBreakdown('hedge_profit')" style="cursor:pointer; background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 0%, rgba(12, 74, 110, 0.6) 100%); border: 1px solid rgba(56, 189, 248, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
                         <div class="stat-label-modern" style="color: #bae6fd !important; font-weight: 700;">Hedging Results</div>
                         <div id="grand-hedge" class="stat-value-modern" style="color: #38bdf8 !important; text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);">$0.00</div>
-                    </div>
-
-                    <!-- Farming Results -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(132, 204, 22, 0.15) 0%, rgba(20, 83, 45, 0.6) 100%); border: 1px solid rgba(163, 230, 53, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                        <div class="stat-label-modern" style="color: #d9f99d !important; font-weight: 700;">Farming Results</div>
-                        <div id="grand-farming" class="stat-value-modern" style="color: #a3e635 !important; text-shadow: 0 0 20px rgba(163, 230, 53, 0.3);">$0.00</div>
                     </div>
                     
                     <!-- Expected Value (EV) -->
@@ -536,43 +766,26 @@
                          <div id="grand-ev-day" class="stat-value-modern" style="color: #f472b6 !important; text-shadow: 0 0 20px rgba(244, 114, 182, 0.3);">$0.00</div>
                     </div>
 
-
-
-                    <!-- LWM (14d) -->
-                    <div class="stat-card-modern" style="background: linear-gradient(135deg, rgba(244, 63, 94, 0.15) 0%, rgba(159, 18, 57, 0.6) 100%); border: 1px solid rgba(251, 113, 133, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
-                         <div class="stat-label-modern" style="color: #fda4af !important; font-weight: 700; display:flex; justify-content:space-between; align-items:center;">
-                             Cumulative LWM (14d)
-                             <i class="fas fa-info-circle" style="font-size:0.8rem; cursor:help;" title="Sum of positive individual LWMs only (Clients > 0)"></i>
-                         </div>
-                         <div id="grand-lwm" class="stat-value-modern" style="color: #fb7185 !important; text-shadow: 0 0 20px rgba(251, 113, 133, 0.3);">$0.00</div>
+                    <!-- Profit Split (In Progress) -->
+                    <div class="stat-card-modern" onclick="showBreakdown('profit_split_inprogress')" style="cursor:pointer; background: linear-gradient(135deg, rgba(20, 184, 166, 0.15) 0%, rgba(15, 118, 110, 0.6) 100%); border: 1px solid rgba(45, 212, 191, 0.4); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #99f6e4 !important; font-weight: 700;">Profit Split (In Progress)</div>
+                        <div id="grand-profit-split" class="stat-value-modern" style="color: #2dd4bf !important; text-shadow: 0 0 20px rgba(45, 212, 191, 0.3);"><i class="fas fa-spinner fa-spin" style="font-size:1rem;"></i></div>
                     </div>
 
-                    <!-- Mini Stats in one card -->
-                     <!-- Mini Stats in one card -->
-                    <div class="stat-card-modern" style="grid-column: 1 / -1; background: linear-gradient(90deg, #1e293b 0%, #0f172a 100%); border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; justify-content: center; gap: 8px;">
-                        <div style="display: flex; gap: 40px; justify-content: start;">
-                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
-                            <span style="color:var(--text-secondary);">Active</span>
-                            <span id="grand-active-accounts" style="font-weight:700; color:#fff !important;">0</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
-                            <span style="color:var(--text-secondary);">Passed</span>
-                            <span id="grand-completed-accounts" style="font-weight:700; color:#34d399 !important;">0</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; min-width: 150px;">
-                            <span style="color:var(--text-secondary);">Failed</span>
-                            <span id="grand-failed-accounts" style="font-weight:700; color:#f87171 !important;">0</span>
-                        </div>
-                    </div>
-                </div>
+
+
+
+
                 </div>
 
+                {% if user_role|default('super_admin') == 'super_admin' %}
                 <!-- Hierarchy Tree -->
                 <div id="hierarchy-tree" style="min-height: 400px;">
                     <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
                         <i class="fas fa-circle-notch fa-spin"></i> Loading hierarchy...
                     </div>
                 </div>
+                {% endif %}
 
             </div>
         </div>
@@ -582,7 +795,7 @@
     <div id="userListModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10000; background: rgba(0,0,0,0.8);">
         <!-- Helper container to center content reliably -->
         <div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;">
-            <div class="modal-content" style="width: 90%; max-width: 800px; height: 80vh; background: #1e293b; border: 2px solid #60a5fa; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+            <div class="modal-content" style="width: 90%; max-width: 800px; height: 80vh; background: #1e293b; border: 2px solid #1e3a8a; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
                 
                 <!-- Header -->
                 <div class="modal-header" style="padding: 15px 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
@@ -595,9 +808,9 @@
                      <table class="user-list-table" style="width: 100%; border-collapse: collapse;">
                         <thead style="position: sticky; top: 0; background: #334155; color: white; z-index: 5;">
                             <tr>
-                                <th id="col-user" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">User</th>
-                                <th id="col-parent" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">Parent</th>
-                                <th id="col-actions" style="text-align: right; padding: 10px 15px; border-bottom: 2px solid #60a5fa;">Actions</th>
+                                <th id="col-user" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">User</th>
+                                <th id="col-parent" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Parent</th>
+                                <th id="col-actions" style="text-align: right; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="userListBody"></tbody>
@@ -614,28 +827,42 @@
 
     <!-- Edit User Modal -->
     <div id="editUserModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10050; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px); align-items: center; justify-content: center;">
-        <div style="width: 90%; max-width: 480px; background: linear-gradient(165deg, #1a2332 0%, #0f172a 100%); border: 1px solid rgba(96,165,250,0.2); border-radius: 16px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6), 0 0 40px rgba(59,130,246,0.08);">
+        <div style="width: 90%; max-width: 480px; background: linear-gradient(165deg, #1a2332 0%, #0f172a 100%); border: 1px solid rgba(30,58,138,0.4); border-radius: 16px; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6), 0 0 40px rgba(23,37,84,0.15);">
             <!-- Header -->
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(139,92,246,0.1) 100%); border-bottom: 1px solid rgba(96,165,250,0.15); border-radius: 16px 16px 0 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; background: linear-gradient(135deg, rgba(30,58,138,0.25) 0%, rgba(23,37,84,0.2) 100%); border-bottom: 1px solid rgba(30,58,138,0.35); border-radius: 16px 16px 0 0;">
                 <h3 id="editModalTitle" style="margin: 0; color: #f1f5f9; font-size: 1.15rem; font-weight: 700;">Edit User</h3>
                 <span onclick="closeEditUserModal()" style="cursor: pointer; font-size: 1.4rem; color: #94a3b8; transition: color 0.2s;" onmouseover="this.style.color='#ef4444'" onmouseout="this.style.color='#94a3b8'">&times;</span>
             </div>
             <!-- Body -->
             <div style="padding: 24px;">
                 <div style="margin-bottom: 18px;">
-                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Name</label>
-                    <input type="text" id="editUserName" placeholder="Name" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='rgba(96,165,250,0.25)'">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Name</label>
+                    <input type="text" id="editUserName" placeholder="Name" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#1e3a8a'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
                 </div>
                 <div style="margin-bottom: 18px;">
-                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Email</label>
-                    <input type="email" id="editUserEmail" placeholder="user@example.com" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='rgba(96,165,250,0.25)'">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Email</label>
+                    <input type="email" id="editUserEmail" placeholder="user@example.com" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#1e3a8a'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
                 </div>
                 <div style="margin-bottom: 18px; display:none;" id="editClientCategoryGroup">
-                    <label style="color: #60a5fa; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Category/Profile</label>
-                    <select id="editUserCategory" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(96,165,250,0.25); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Category/Profile</label>
+                    <select id="editUserCategory" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
                          <option value="Private">Private</option>
                          <option value="BEF">BEF</option>
                     </select>
+                </div>
+                <div style="margin-bottom: 18px; display:none;" id="editClientStatusGroup">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Status</label>
+                    <select id="editUserActiveStatus" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
+                         <option value="active">Active</option>
+                         <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 18px; display:none;" id="editAdminSlackGroup">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">
+                        <i class="fab fa-slack" style="margin-right:5px; color:#4A154B;"></i>Slack Member ID
+                    </label>
+                    <input type="text" id="editAdminSlackUserId" placeholder="e.g. U0123ABCDEF" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s; box-sizing:border-box;" onfocus="this.style.borderColor='#4A154B'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
+                    <div style="font-size:0.72rem; color:#64748b; margin-top:4px;">Find it in Slack: click the admin's profile &rarr; <em>More</em> &rarr; <em>Copy member ID</em>. Used for @tagging in daily report messages.</div>
                 </div>
 
                 <!-- Hidden fields -->
@@ -645,8 +872,36 @@
                 <input type="hidden" id="editUserOriginalName">
 
                 <div style="margin-top: 24px; display: flex; gap: 10px; justify-content: flex-end;">
+                    <button onclick="resetEditUserPassword()" style="padding: 10px 20px; background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4); color: #f87171; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; margin-right: auto;" onmouseover="this.style.background='rgba(239,68,68,0.25)';this.style.borderColor='#ef4444'" onmouseout="this.style.background='rgba(239,68,68,0.12)';this.style.borderColor='rgba(239,68,68,0.4)'">🔑 Reset Password</button>
                     <button onclick="closeEditUserModal()" style="padding: 10px 20px; background: transparent; border: 1px solid rgba(148,163,184,0.3); color: #cbd5e1; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(148,163,184,0.5)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(148,163,184,0.3)'">Cancel</button>
-                    <button onclick="submitEditUser()" style="padding: 10px 20px; background: linear-gradient(135deg, #3b82f6, #2563eb); border: none; color: white; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(59,130,246,0.35); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 6px 16px rgba(59,130,246,0.5)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(59,130,246,0.35)';this.style.transform='translateY(0)'">Save Changes</button>
+                    <button onclick="submitEditUser()" style="padding: 10px 20px; background: linear-gradient(135deg, #1e3a8a, #172554); border: none; color: white; font-weight: 700; border-radius: 8px; cursor: pointer; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(23,37,84,0.5); transition: all 0.2s;" onmouseover="this.style.boxShadow='0 6px 16px rgba(23,37,84,0.7)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 4px 12px rgba(23,37,84,0.5)';this.style.transform='translateY(0)'">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Breakdown Modal -->
+    <div id="breakdownModal" onclick="if(event.target===this)closeBreakdownModal()" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:11000; background:rgba(0,0,0,0.85);">
+        <div style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
+            <div style="width:75%; max-width:680px; height:80vh; background:#1e293b; border:2px solid rgba(99,102,241,0.5); border-radius:12px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 0 30px rgba(99,102,241,0.2);">
+                <!-- Header -->
+                <div style="padding:16px 24px; background:linear-gradient(135deg,#0f172a,#1e293b); border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+                    <h3 id="breakdownTitle" style="margin:0; color:#f8fafc; font-size:1.15rem;"><i class="fas fa-chart-bar" style="margin-right:8px; color:#818cf8;"></i>Breakdown</h3>
+                    <button onclick="closeBreakdownModal()" title="Close" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#f87171; cursor:pointer; width:28px; height:28px; border-radius:6px; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; justify-content:center; transition:all 0.2s; flex-shrink:0;" onmouseover="this.style.background='rgba(239,68,68,0.35)';this.style.borderColor='#ef4444'" onmouseout="this.style.background='rgba(239,68,68,0.15)';this.style.borderColor='rgba(239,68,68,0.4)'">✕</button>
+                </div>
+                <!-- Body -->
+                <div style="flex:1; overflow-y:auto; padding:0; scrollbar-width:thin; scrollbar-color:#3b5bdb #0f172a;">
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead style="position:sticky; top:0; z-index:5;">
+                            <tr style="background:#334155;">
+                                <th style="text-align:center; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600; width:45px;">#</th>
+                                <th style="text-align:left; padding:10px 12px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Client</th>
+                                <th id="breakdownValueHeader" style="text-align:left; padding:10px 14px; color:#94a3b8; font-size:0.8rem; font-weight:600;">Value</th>
+                                <th id="breakdownActionHeader" style="text-align:center; padding:10px 8px; color:#94a3b8; font-size:0.8rem; font-weight:600; width:50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="breakdownBody"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -668,7 +923,8 @@
         document.addEventListener('keydown', function(event) {
             if (event.key === "Escape") {
                 debugLog("ESC key pressed. Attempting to close modal.");
-                if (document.getElementById('editUserModal').style.display !== 'none') closeEditUserModal();
+                if (document.getElementById('breakdownModal').style.display !== 'none') closeBreakdownModal();
+                else if (document.getElementById('editUserModal').style.display !== 'none') closeEditUserModal();
                 else if (window.closeUserListModal) window.closeUserListModal();
             }
         });
@@ -757,7 +1013,7 @@
                     if (type === 'admin') {
                         if(hierarchyData.admins) {
                             Object.entries(hierarchyData.admins).forEach(([name, data]) => {
-                                rows.push({ name, email: data.email, parent: null, url: '#', type: 'admin' });
+                                rows.push({ name, email: data.email, slack_user_id: data.slack_user_id || '', parent: null, url: '#', type: 'admin' });
                             });
                         }
                     } else if (type === 'trader') {
@@ -784,6 +1040,7 @@
                                             const cName = (typeof client === 'object') ? client.name : client;
                                             const cEmail = (typeof client === 'object') ? client.email : '';
                                             const cCat = (typeof client === 'object') ? (client.category || client.profile || 'Private') : 'Private';
+                                            const cActiveStatus = (typeof client === 'object') ? (client.active_status || 'active') : 'active';
                                             rows.push({ 
                                                 name: cName || 'Unknown', 
                                                 email: cEmail, 
@@ -792,7 +1049,8 @@
                                                 type: 'client',
                                                 admin: adminName,
                                                 trader: traderName,
-                                                category: cCat
+                                                category: cCat,
+                                                active_status: cActiveStatus
                                             });
                                         });
                                     }
@@ -826,36 +1084,47 @@
                          // Common button styles
                          const delStyle = "color:#ef4444; border:1px solid #7f1d1d; background:rgba(127,29,29,0.2); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-right:5px;";
                          const editStyle = "color:#fbbf24; border:1px solid #78350f; background:rgba(120,53,15,0.2); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold;";
+                         const isSuperAdmin = USER_ROLE === 'super_admin';
 
                          if(type === 'client') {
                              btns += `<a href="${r.url}" style="color:#fbbf24; text-decoration:none; margin-right:10px; font-weight:bold;">Dash</a>`;
-                             btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
-                             btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}')" style="${editStyle}">Edit</button>`;
+                             if (isSuperAdmin) {
+                                 btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
+                                 btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}')" style="${editStyle}">Edit</button>`;
+                             }
                          } else if (type === 'trader') {
-                             btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
-                             btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
+                             if (isSuperAdmin) {
+                                 btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
+                                 btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
+                             }
                          } else {
-                             btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
-                             btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}')" style="${editStyle}">Edit</button>`;
+                             if (isSuperAdmin) {
+                                 btns += `<button onclick="deleteUser('admin', '${safeName}')" style="${delStyle}">Del</button>`;
+                                 btns += `<button onclick="openEditUserModal('admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'  )" style="${editStyle}">Edit</button>`;
+                             }
                          }
-                         // Reset Password button (all user types)
-                         const resetStyle = "color:#60a5fa; border:1px solid #1e3a5f; background:rgba(30,58,95,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:5px;";
-                         btns += `<button onclick="resetUserPassword('${safeName}')" style="${resetStyle}" title="Reset login password">🔑</button>`;
+                         if (isSuperAdmin) {
+                             // Reset Password button (all user types)
+                             const resetStyle = "color:#60a5fa; border:1px solid #1e3a5f; background:rgba(30,58,95,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:5px;";
+                             btns += `<button onclick="resetUserPassword('${safeName}', '${type}')" style="${resetStyle}" title="Reset login password">🔑</button>`;
+                             const setPwStyle = "color:#a78bfa; border:1px solid #4c1d95; background:rgba(76,29,149,0.3); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-left:3px;";
+                             btns += `<button onclick="openSetPasswordModal('${safeName}', '${type}')" style="${setPwStyle}" title="Set specific password">🔐</button>`;
+                         }
 
                          let parentCol = (type !== 'admin') ? `<td style="padding:10px; color:#cbd5e1;">${r.parent || '-'}</td>` : '';
                          
                          // Create clickable email span
                          const emailDisplay = (r.email) ? r.email : '<span style="color:#64748b; font-style:italic;">No Email</span>';
                          const editArgs = (type==='client') 
-                            ? `'client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}'` 
+                            ? `'client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}'` 
                             : (type==='trader') 
                                 ? `'trader', '${safeName}', '${safeEmail}', '${r.admin}'` 
-                                : `'admin', '${safeName}', '${safeEmail}'`;
+                                : `'admin', '${safeName}', '${safeEmail}', null, null, null, null, '${(r.slack_user_id||'').replace(/'/g, "\\'")}'`;
 
                          html += `
                             <tr style="border-bottom: 1px solid #334155;">
                                 <td style="padding:10px; color:#f1f5f9;">
-                                    <div style="font-weight:bold; font-size:1rem;">${r.name}</div>
+                                    <div style="font-weight:bold; font-size:1rem;">${type === 'client' ? '<a href="' + r.url + '" style="color:#818cf8; text-decoration:none; font-weight:bold;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.name + '</a>' : r.name}</div>
                                     <div style="font-size:0.85rem; color:#94a3b8; margin-top:2px; cursor:pointer;" 
                                          title="Click to Edit Email"
                                          onclick="openEditUserModal(${editArgs})">
@@ -887,13 +1156,16 @@
 
         // --- Edit / Delete User Logic ---
         
-        function openEditUserModal(type, name, email, parent1, parent2, extra) {
+        function openEditUserModal(type, name, email, parent1, parent2, extra, activeStatus, slackUserId) {
              if(event) event.stopPropagation();
              
              // Clean up escaped values
              const cleanName = (name || '').replace(/\\'/g, "'");
              const cleanEmail = (email && email !== 'undefined' && email !== 'null') ? email.replace(/\\'/g, "'") : '';
-             const cleanCategory = (extra && extra !== 'undefined' && extra !== 'null') ? extra : 'Private';
+             const rawCategory = (extra && extra !== 'undefined' && extra !== 'null') ? extra : 'Private';
+             const cleanCategory = rawCategory.toUpperCase() === 'BEF' ? 'BEF' : 'Private';
+             const cleanActive = (activeStatus && activeStatus !== 'undefined' && activeStatus !== 'null') ? activeStatus : 'active';
+             const cleanSlack = (slackUserId && slackUserId !== 'undefined' && slackUserId !== 'null') ? slackUserId : '';
              
              // Populate modal fields
              document.getElementById('editModalTitle').textContent = 'Edit ' + type.charAt(0).toUpperCase() + type.slice(1);
@@ -904,13 +1176,25 @@
              document.getElementById('editUserTrader').value = parent2 || '';
              document.getElementById('editUserOriginalName').value = cleanName; // Store original for rename detection
              
-             // Show category dropdown only for clients
+             // Show category and status dropdowns only for clients (category hidden for bef_admin)
              const catGroup = document.getElementById('editClientCategoryGroup');
+             const statusGroup = document.getElementById('editClientStatusGroup');
+             const slackGroup = document.getElementById('editAdminSlackGroup');
              if (type === 'client') {
-                 catGroup.style.display = 'block';
+                 catGroup.style.display = USER_ROLE === 'bef_admin' ? 'none' : 'block';
+                 statusGroup.style.display = 'block';
+                 slackGroup.style.display = 'none';
                  document.getElementById('editUserCategory').value = cleanCategory;
+                 document.getElementById('editUserActiveStatus').value = cleanActive;
+             } else if (type === 'admin') {
+                 catGroup.style.display = 'none';
+                 statusGroup.style.display = 'none';
+                 slackGroup.style.display = 'block';
+                 document.getElementById('editAdminSlackUserId').value = cleanSlack;
              } else {
                  catGroup.style.display = 'none';
+                 statusGroup.style.display = 'none';
+                 slackGroup.style.display = 'none';
              }
              
              // Show modal — must use display:flex for centering, plus .show class
@@ -949,9 +1233,13 @@
             }
             
             if (type !== 'admin') payload.admin = admin;
+            if (type === 'admin') {
+                payload.slack_user_id = document.getElementById('editAdminSlackUserId').value.trim();
+            }
             if (type === 'client') {
                 payload.trader = trader;
                 payload.category = category;
+                payload.active_status = document.getElementById('editUserActiveStatus').value;
             }
             
             let url = '';
@@ -1021,8 +1309,11 @@
 
 
         // --- Core Logic ---
+        const USER_ROLE = '{{ user_role|default("super_admin") }}';
         let hierarchyData = {};
-        let currentProfile = 'ALL';
+        let currentProfile = USER_ROLE === 'bef_admin' ? 'BEF' : 'ALL';
+        let clientsBreakdownData = [];
+        let profitSplitsData = [];  // dedicated store for profit split breakdown
         
         // Glue code for new buttons
         function setFilter(profile) {
@@ -1033,14 +1324,183 @@
             const num = parseFloat(value) || 0;
             return '$' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
+
+        // --- Breakdown Modal ---
+        const METRIC_LABELS = {
+            payouts: 'Total Payouts',
+            deposits: 'Total Deposits',
+            fees: 'Challenge Fees',
+            net_profit: 'Net Profit',
+            hedge_profit: 'Hedging Results',
+            active: 'Active Accounts',
+            passed: 'Passed Accounts',
+            failed: 'Failed Accounts',
+            profit_split_inprogress: 'Profit Split (In Progress)',
+        };
+
+        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','profit_split_inprogress'];
+
+        function escHtml(str) {
+            const d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+
+        function showBreakdown(metric) {
+            const modal = document.getElementById('breakdownModal');
+            const body = document.getElementById('breakdownBody');
+            const title = document.getElementById('breakdownTitle');
+            const valHeader = document.getElementById('breakdownValueHeader');
+
+            // Use dedicated splits data for this metric
+            const dataSource = (metric === 'profit_split_inprogress') ? profitSplitsData : clientsBreakdownData;
+
+            if (!dataSource || dataSource.length === 0) {
+                alert('Data still loading. Please wait a moment.');
+                return;
+            }
+
+            const label = METRIC_LABELS[metric] || metric;
+            title.innerHTML = '<i class="fas fa-chart-bar" style="margin-right:8px; color:#818cf8;"></i>' + label + ' — Client Breakdown';
+            valHeader.textContent = label;
+
+            const isCurrency = CURRENCY_METRICS.includes(metric);
+            const showExpand = (metric === 'payouts');
+
+            // Sort descending by absolute value for currency, or by count for status metrics
+            const sorted = [...dataSource]
+                .sort((a, b) => {
+                    const va = parseFloat(a[metric]) || 0;
+                    const vb = parseFloat(b[metric]) || 0;
+                    return vb - va;  // highest first
+                });
+
+            // Show/hide action column header
+            const actionHeader = document.getElementById('breakdownActionHeader');
+            if (actionHeader) actionHeader.style.display = showExpand ? '' : 'none';
+
+            let html = '';
+            if (sorted.length === 0) {
+                html = '<tr><td colspan="6" style="text-align:center; padding:40px; color:#64748b;">No client data available.</td></tr>';
+            } else {
+                sorted.forEach((c, i) => {
+                    const val = parseFloat(c[metric]) || 0;
+                    const valColor = isCurrency ? (val >= 0 ? '#34d399' : '#f87171') : '#e2e8f0';
+                    const displayVal = isCurrency ? formatCurrency(val) : val;
+                    const clientId = c.client_id || '-';
+                    const safeId = encodeURIComponent(clientId);
+                    const safeName = escHtml(clientId);
+                    const actionTd = showExpand ? (val > 0 ?
+                        `<td style="text-align:center; padding:10px 4px;"><button onclick="togglePayoutDetail(this,'${safeId}','detail-${i}')" title="View payout details" style="background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); color:#a5b4fc; cursor:pointer; width:28px; height:28px; border-radius:6px; font-size:0.7rem; display:inline-flex; align-items:center; justify-content:center; transition:all 0.2s;" onmouseover="this.style.background='rgba(99,102,241,0.35)';this.style.borderColor='#818cf8'" onmouseout="this.style.background='rgba(99,102,241,0.15)';this.style.borderColor='rgba(99,102,241,0.3)'">▶</button></td>` :
+                        `<td style="text-align:center; padding:10px 4px;"></td>`) : '';
+                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.15s;"
+                                 onmouseover="this.style.background='rgba(99,102,241,0.1)'"
+                                 onmouseout="this.style.background='transparent'">
+                        <td style="text-align:center; padding:10px 12px; color:#64748b; font-size:0.85rem;">${i + 1}</td>
+                        <td style="padding:10px 12px;">
+                            <a href="/dashboard/${safeId}" style="color:#818cf8; text-decoration:none; font-weight:600;" 
+                               onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${safeName}</a>
+                        </td>
+                        <td style="text-align:left; padding:10px 14px; color:${valColor}; font-weight:700; font-size:0.95rem;">${displayVal}</td>
+                        ${actionTd}
+                    </tr>
+                    <tr id="detail-${i}" style="display:none;">
+                        <td colspan="4" style="padding:0;"></td>
+                    </tr>`;
+                });
+            }
+
+            body.innerHTML = html;
+            modal.style.display = 'block';
+        }
+
+        async function togglePayoutDetail(btn, clientId, rowId) {
+            const detailRow = document.getElementById(rowId);
+            if (!detailRow) return;
+
+            // Toggle off
+            if (detailRow.style.display !== 'none') {
+                detailRow.style.display = 'none';
+                btn.innerHTML = '▶';
+                btn.style.background = 'rgba(99,102,241,0.15)';
+                return;
+            }
+
+            // Show loading
+            btn.innerHTML = '<span style="animation:spin 1s linear infinite;display:inline-block;">↻</span>';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/client_payouts/' + clientId);
+                const data = await res.json();
+                const payouts = data.payouts || [];
+
+                if (payouts.length === 0) {
+                    detailRow.querySelector('td').innerHTML = `
+                        <div style="padding:12px 20px; color:#64748b; font-style:italic;">No individual payout records found.</div>`;
+                } else {
+                    let subHtml = `
+                    <div style="margin:0 12px 12px 40px; background:#0f172a; border:1px solid #334155; border-radius:8px; overflow:hidden;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#1e293b;">
+                                    <th style="text-align:center; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600; width:30px;">#</th>
+                                    <th style="text-align:left; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Date</th>
+                                    <th style="text-align:left; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Prop Firm</th>
+                                    <th style="text-align:right; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Amount</th>
+                                    <th style="text-align:right; padding:8px 10px; color:#64748b; font-size:0.75rem; font-weight:600;">Running Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                    payouts.forEach((p, j) => {
+                        const amtColor = p.amount >= 0 ? '#34d399' : '#f87171';
+                        subHtml += `
+                                <tr style="border-top:1px solid rgba(255,255,255,0.03);">
+                                    <td style="text-align:center; padding:6px 10px; color:#475569; font-size:0.8rem;">${j + 1}</td>
+                                    <td style="padding:6px 10px; color:#94a3b8; font-size:0.85rem;">${escHtml(p.date)}</td>
+                                    <td style="padding:6px 10px; color:#94a3b8; font-size:0.85rem;">${escHtml(p.prop_firm)}</td>
+                                    <td style="text-align:right; padding:6px 10px; color:${amtColor}; font-weight:600; font-size:0.85rem;">${formatCurrency(p.amount)}</td>
+                                    <td style="text-align:right; padding:6px 10px; color:#818cf8; font-weight:600; font-size:0.85rem;">${formatCurrency(p.running_total)}</td>
+                                </tr>`;
+                    });
+                    subHtml += `
+                            </tbody>
+                        </table>
+                        <div style="padding:8px 14px; background:#1e293b; border-top:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+                            <span style="color:#64748b; font-size:0.8rem;">${payouts.length} payout${payouts.length !== 1 ? 's' : ''}</span>
+                            <span style="color:#34d399; font-weight:700; font-size:0.95rem;">Total: ${formatCurrency(payouts[payouts.length - 1].running_total)}</span>
+                        </div>
+                    </div>`;
+                    detailRow.querySelector('td').innerHTML = subHtml;
+                }
+
+                detailRow.style.display = '';
+                btn.innerHTML = '▼';
+                btn.style.background = 'rgba(99,102,241,0.35)';
+            } catch (err) {
+                console.error('Error loading payouts:', err);
+                btn.innerHTML = '⚠';
+            }
+            btn.disabled = false;
+        }
+
+        function closeBreakdownModal() {
+            document.getElementById('breakdownModal').style.display = 'none';
+        }
         
         function changeProfile(profile) {
             currentProfile = profile;
             // Update UI
             document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
-            if(profile === 'ALL') document.getElementById('btn-profile-all').classList.add('active');
-            if(profile === 'BEF') document.getElementById('btn-profile-bef').classList.add('active');
-            if(profile === 'PRIVATE') document.getElementById('btn-profile-private').classList.add('active');
+            const btnAll = document.getElementById('btn-profile-all');
+            const btnBef = document.getElementById('btn-profile-bef');
+            const btnPrv = document.getElementById('btn-profile-private');
+            if(profile === 'ALL' && btnAll) btnAll.classList.add('active');
+            if(profile === 'BEF' && btnBef) btnBef.classList.add('active');
+            if(profile === 'PRIVATE' && btnPrv) btnPrv.classList.add('active');
+            
+            // Update sidebar client directory filter
+            filterSidebarClients();
             
             // Reload Data
             loadData();
@@ -1069,6 +1529,7 @@
                     renderTree();
                     updateSelects();
                     updateStats(); // Initial stats based on hierarchy counts
+                    populateSidebarClients(); // Fill client directory
                     debugLog("Hierarchy Render Complete");
                 })
                 .catch(err => {
@@ -1093,22 +1554,25 @@
                             document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
                             document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
                             document.getElementById('grand-hedge').textContent = formatCurrency(t.total_hedge);
-                            document.getElementById('grand-farming').textContent = formatCurrency(t.total_farming);
                             document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
                             document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
                             
-                            if (document.getElementById('grand-hwm')) {
-                                document.getElementById('grand-hwm').textContent = formatCurrency(t.total_hwm);
-                                document.getElementById('grand-lwm').textContent = formatCurrency(t.total_lwm);
-                            }
+
                             
-                            document.getElementById('grand-active-accounts').textContent = t.active_accounts;
-                            document.getElementById('grand-completed-accounts').textContent = t.completed_accounts;
-                            document.getElementById('grand-failed-accounts').textContent = t.failed_accounts;
+                            const elActive = document.getElementById('grand-active-accounts');
+                            const elCompleted = document.getElementById('grand-completed-accounts');
+                            const elFailed = document.getElementById('grand-failed-accounts');
+                            if (elActive) elActive.textContent = t.active_accounts;
+                            if (elCompleted) elCompleted.textContent = t.completed_accounts;
+                            if (elFailed) elFailed.textContent = t.failed_accounts;
                             debugLog("Totals Updated");
                         } catch(e) {
                              debugLog("Error updating DOM with totals: " + e.message, 'error');
                         }
+                    }
+                    if(fData.clients) {
+                        clientsBreakdownData = fData.clients;
+                        debugLog("Clients breakdown data loaded: " + clientsBreakdownData.length + " clients");
                     }
                 })
                 .catch(err => {
@@ -1118,6 +1582,27 @@
                     document.getElementById('grand-total-payouts').textContent = 'Error';
                     document.getElementById('grand-ev').textContent = 'Error';
                 });
+
+            // 3. Load Profit Splits (slow — lazy background load)
+            const splitsUrl = currentProfile === 'ALL' ? '/api/super_admin/profit_splits' : `/api/super_admin/profit_splits?profile=${currentProfile}`;
+            fetch(splitsUrl)
+                .then(r => r.json())
+                .then(sData => {
+                    if (sData.status === 'success') {
+                        const el = document.getElementById('grand-profit-split');
+                        if (el) el.textContent = formatCurrency(sData.total);
+                        // Store in dedicated splits data (always available for breakdown)
+                        if (sData.clients) {
+                            profitSplitsData = sData.clients;
+                        }
+                        debugLog("Profit splits loaded: total=" + sData.total);
+                    }
+                })
+                .catch(err => {
+                    const el = document.getElementById('grand-profit-split');
+                    if (el) el.textContent = 'Error';
+                    debugLog("Profit Splits Load Error: " + err.message, 'error');
+                });
         }
 
 
@@ -1126,12 +1611,11 @@
             let a=0, t=0, c=0;
             a = Object.keys(hierarchyData.admins).length;
             Object.values(hierarchyData.admins).forEach(adm => {
-                const traders = adm.traders || {};
-                t += Object.keys(traders).length;
-                Object.values(traders).forEach(tr => {
+                const tradersMap = buildTraderMapForAdmin(adm);
+                t += Object.keys(tradersMap).length;
+                Object.values(tradersMap).forEach(tr => {
                     let clients = tr.clients || [];
-                    if(Array.isArray(tr)) clients = tr; // legacy
-                    
+
                     // Filter stats
                     clients = clients.filter(cl => {
                         if (currentProfile === 'ALL') return true;
@@ -1141,18 +1625,86 @@
                         }
                         return cat === currentProfile;
                     });
-                    
+
                     c += clients.length;
                 });
             });
-            document.getElementById('total-admins').textContent = a;
-            document.getElementById('total-traders').textContent = t;
-            document.getElementById('total-clients').textContent = c;
+            const elA = document.getElementById('total-admins');
+            const elT = document.getElementById('total-traders');
+            const elC = document.getElementById('total-clients');
+            if (elA) elA.textContent = a;
+            if (elT) elT.textContent = t;
+            if (elC) elC.textContent = c;
+        }
+
+        // --- Sidebar Client Directory ---
+        let sidebarAllClients = [];
+
+        function populateSidebarClients() {
+            sidebarAllClients = [];
+            if (!hierarchyData.admins) return;
+            Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
+                const tradersMap = buildTraderMapForAdmin(adminData);
+                Object.entries(tradersMap).forEach(([traderName, traderData]) => {
+                    const clients = Array.isArray(traderData.clients) ? traderData.clients : [];
+                    clients.forEach(cl => {
+                        if (!cl) return;
+                        const name = (typeof cl === 'object') ? cl.name : cl;
+                        const cat = (typeof cl === 'object') ? (cl.profile || cl.category || cl.source || 'Private') : 'Private';
+                        if (name) {
+                            sidebarAllClients.push({ name, trader: traderName, admin: adminName, category: String(cat || 'PRIVATE').toUpperCase() });
+                        }
+                    });
+                });
+            });
+            sidebarAllClients.sort((a, b) => a.name.localeCompare(b.name));
+            renderSidebarClients(sidebarAllClients);
+        }
+
+        function filterSidebarClients() {
+            const q = (document.getElementById('sidebar-client-search').value || '').toLowerCase();
+            const filtered = sidebarAllClients.filter(c => {
+                if (currentProfile !== 'ALL' && (c.category || 'PRIVATE') !== currentProfile) return false;
+                if (!q) return true;
+                return c.name.toLowerCase().includes(q) || c.trader.toLowerCase().includes(q) || c.admin.toLowerCase().includes(q);
+            });
+            renderSidebarClients(filtered);
+        }
+
+        function renderSidebarClients(clients) {
+            const container = document.getElementById('sidebar-client-list');
+            if (!container) return;
+            if (clients.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:20px; color:#475569; font-size:0.82rem;">No clients found</div>';
+                return;
+            }
+            let html = '';
+            clients.forEach(c => {
+                const safeId = encodeURIComponent(c.name);
+                const safeName = c.name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeTrader = c.trader.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                html += `<a href="/dashboard/${safeId}" style="display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-radius:8px; text-decoration:none; color:#e2e8f0; transition:all 0.15s; border:1px solid transparent;"
+                            onmouseover="this.style.background='rgba(30,58,138,0.2)';this.style.borderColor='rgba(99,102,241,0.3)'" 
+                            onmouseout="this.style.background='transparent';this.style.borderColor='transparent'">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                        <div style="width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,#1e3a8a,#172554); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.72rem; font-weight:700; color:#7baef0; border:1px solid rgba(30,58,138,0.5);">${safeName.charAt(0).toUpperCase()}</div>
+                        <div style="min-width:0;">
+                            <div style="font-size:0.85rem; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeName}</div>
+                            <div style="font-size:0.7rem; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${safeTrader}</div>
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="font-size:0.6rem; color:#334155; flex-shrink:0;"></i>
+                </a>`;
+            });
+            container.innerHTML = html;
         }
 
         function updateSelects() {
             const selA = document.getElementById('admin-select-trader');
             const selC = document.getElementById('admin-select-client');
+
+            // These elements are only rendered for super_admin, not bef_admin
+            if (!selA || !selC) return;
             
             // preserve values
             const valA = selA.value;
@@ -1172,12 +1724,14 @@
         }
 
         function updateTraderSelect() {
-            const adminName = document.getElementById('admin-select-client').value;
+            const adminName = document.getElementById('admin-select-client');
             const traderSel = document.getElementById('trader-select-client');
-            traderSel.innerHTML = '<option value="">Select Trader...</option>';
+            if (!adminName || !traderSel) return;
+            const adminVal = adminName.value;
             
-            if(adminName && hierarchyData.admins[adminName] && hierarchyData.admins[adminName].traders) {
-                Object.keys(hierarchyData.admins[adminName].traders).forEach(t => {
+            if (adminVal && hierarchyData.admins && hierarchyData.admins[adminVal]) {
+                const tradersMap = buildTraderMapForAdmin(hierarchyData.admins[adminVal]);
+                Object.keys(tradersMap).forEach(t => {
                     traderSel.add(new Option(t, t));
                 });
             }
@@ -1278,160 +1832,644 @@
             }
         }
 
+        function buildTraderMapForAdmin(adminData) {
+            const tradersMap = {};
+
+            // Legacy / current API format: { traders: { traderName: {email, clients: []} } }
+            if (adminData && adminData.traders && typeof adminData.traders === 'object') {
+                Object.entries(adminData.traders).forEach(([traderName, traderData]) => {
+                    if (!traderName) return;
+                    const clients = Array.isArray(traderData?.clients) ? traderData.clients : (Array.isArray(traderData) ? traderData : []);
+                    tradersMap[traderName] = {
+                        email: traderData?.email || '',
+                        clients: clients.map(client => (typeof client === 'object' && client)
+                            ? { ...client, assigned_trader: client.assigned_trader || traderName }
+                            : { name: client, assigned_trader: traderName }
+                        )
+                    };
+                });
+            }
+
+            // Restructured format: { clients: [{name,email,category,assigned_trader}, ...] }
+            if (adminData && Array.isArray(adminData.clients)) {
+                adminData.clients.forEach(client => {
+                    if (!client) return;
+                    const traderName = String((client.assigned_trader || 'Unassigned')).trim() || 'Unassigned';
+                    if (!tradersMap[traderName]) {
+                        tradersMap[traderName] = { email: '', clients: [] };
+                    }
+                    tradersMap[traderName].clients.push({ ...client, assigned_trader: traderName });
+                });
+            }
+
+            return tradersMap;
+        }
+
+
+        async function assignClientToTrader(clientName, adminName, newTrader, saveBtn) {
+            try {
+                const res = await fetch('/api/assign_client_trader', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_name: clientName,
+                        admin: adminName,
+                        new_trader: newTrader
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || data.status !== 'success') {
+                    alert('Assign failed: ' + (data.message || 'Unknown error'));
+                    if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+                    return;
+                }
+                if (saveBtn) {
+                    saveBtn.textContent = '✓ Saved';
+                    saveBtn.style.color = '#4ade80';
+                    saveBtn.style.borderColor = 'rgba(74,222,128,0.4)';
+                    setTimeout(() => loadData(), 1200);
+                } else {
+                    loadData();
+                }
+            } catch (e) {
+                alert('Network error: ' + (e && e.message ? e.message : String(e)));
+                if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+            }
+        }
+
 
         function renderTree() {
             const container = document.getElementById('hierarchy-tree');
+            if (!container) return;
             container.innerHTML = '';
             
             if (!hierarchyData.admins) return;
 
-            // Robust escaping for HTML attributes: 
-            const esc = (s) => (s || '').replace(/[\\']/g, '\\$&').replace(/"/g, '&quot;');
+            const escHtml = (s) => String(s ?? '')
+                .replace(/&/g,'&amp;')
+                .replace(/</g,'&lt;')
+                .replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;')
+                .replace(/'/g,'&#39;');
+
+            // Escape for inline handler attributes (drop/drag strings)
+            const escJsAttr = (s) => String(s ?? '').replace(/[\\']/g, '\\$&').replace(/"/g, '&quot;');
+
+            const board = document.createElement('div');
+            board.style.display = 'grid';
+            board.style.gap = '14px';
+            container.appendChild(board);
 
             Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                const sAdmin = esc(adminName);
-                const sAdminEmail = esc(adminData.email);
+                const sAdmin = escJsAttr(adminName);
+                const sAdminEmail = escJsAttr(adminData?.email || '');
+                const sAdminSlack = escJsAttr(adminData?.slack_user_id || '');
 
-                // Admin Card
-                const card = document.createElement('div');
-                card.className = 'admin-card';
-                card.style.marginBottom = '12px';
-                
-                // --- Drop Zone Attributes for Admin (Result: Move Trader here) ---
-                card.setAttribute('ondragover', "allowDrop(event, 'admin')");
-                card.setAttribute('ondragleave', "dragLeave(event)");
-                card.setAttribute('ondrop', `drop(event, 'admin', '${sAdmin}', null)`);
-                
-                const header = document.createElement('div');
-                header.className = 'admin-header';
-                // Clickable Header
-                header.style.cursor = 'pointer';
-                header.onclick = (e) => {
-                    if (e.target.closest('button')) return;
-                    window.location.href = '/admin/' + encodeURIComponent(adminName);
-                };
+                const tradersMap = buildTraderMapForAdmin(adminData || {});
+                const traders = Object.entries(tradersMap)
+                    .map(([name, data]) => ({
+                        name,
+                        email: data.email || '',
+                        clients: Array.isArray(data.clients) ? data.clients : []
+                    }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
 
-                // Ultra Compact Layout
-                header.style.display = 'flex';
-                header.style.justifyContent = 'space-between';
-                header.style.alignItems = 'center';
-                header.style.padding = '4px 12px';
-                header.style.minHeight = '32px';
-                
-                header.innerHTML = `
-                    <div class="admin-title-group" style="display:flex; align-items:center;">
-                        <span class="badge badge-admin" style="margin-right:8px; font-size:0.6rem; padding: 1px 5px;">ADMIN</span>
-                        <div class="admin-name" style="margin-right:8px; font-size:0.9rem; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.3); text-underline-offset: 2px;">${adminName}</div> 
-                        <div class="admin-email" style="font-size:0.75rem; color:rgba(255,255,255,0.9); font-weight:500;">${adminData.email || ''}</div>
+                const adminCard = document.createElement('section');
+                adminCard.className = 'admin-card';
+                adminCard.style.borderRadius = '16px';
+                adminCard.style.overflow = 'hidden';
+                adminCard.style.marginBottom = '0';
+
+                // --- Drop Zone Attributes for Admin (Move Trader here) ---
+                adminCard.setAttribute('ondragover', "allowDrop(event, 'admin')");
+                adminCard.setAttribute('ondragleave', "dragLeave(event)");
+                adminCard.setAttribute('ondrop', `drop(event, 'admin', '${sAdmin}', null)`);
+
+                const adminHeader = document.createElement('div');
+                adminHeader.className = 'admin-header';
+                adminHeader.style.padding = '16px 20px';
+                adminHeader.style.display = 'flex';
+                adminHeader.style.justifyContent = 'space-between';
+                adminHeader.style.alignItems = 'center';
+                adminHeader.style.cursor = 'pointer';
+                adminHeader.style.userSelect = 'none';
+
+                const allClients = traders.flatMap(t => t.clients);
+                const filteredClients = allClients.filter(c => {
+                    if (currentProfile === 'ALL') return true;
+                    const cat = (typeof c === 'object')
+                        ? String(c.profile || c.category || c.source || 'PRIVATE').toUpperCase()
+                        : 'PRIVATE';
+                    return cat === currentProfile;
+                });
+
+                // Count active/inactive for summary
+                const activeCount = filteredClients.filter(c => String(c.active_status || 'active').toLowerCase() !== 'inactive').length;
+                const inactiveCount = filteredClients.length - activeCount;
+
+                adminHeader.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+                        <div style="width:38px; height:38px; border-radius:10px; background:linear-gradient(135deg, #1e40af, #3b82f6); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(59,130,246,0.3);">
+                            <i class="fas fa-user-shield" style="color:#fff; font-size:0.85rem;"></i>
+                        </div>
+                        <div style="min-width:0;">
+                            <div style="font-size:1.08rem; font-weight:800; color:#f0f4ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:0.01em;">
+                                ${escHtml(adminName)}
+                            </div>
+                            <div style="font-size:0.75rem; color:rgba(148,163,184,0.85); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                ${escHtml(adminData?.email || '')}
+                            </div>
+                        </div>
                     </div>
-                    <div class="action-buttons" style="display:flex; gap:8px; align-items:center;">
-                        <a href="/admin/${encodeURIComponent(adminName)}" onclick="event.stopPropagation()" style="color:var(--text-secondary); text-decoration:none;" title="View Dashboard"><i class="fas fa-external-link-alt" style="font-size:0.9rem;"></i></a>
-                        <button type="button" onclick="openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}')" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; padding:0 2px;" title="Edit API/Info"><i class="fas fa-edit" style="font-size:0.9rem;"></i></button>
-                        <button type="button" onclick="deleteUser('admin', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Admin"><i class="fas fa-trash" style="font-size:0.9rem;"></i></button>
+                    <div style="display:flex; gap:14px; align-items:center; flex-shrink:0;">
+                        <div style="display:flex; gap:12px; align-items:center;">
+                            <span style="font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:#60a5fa; background:rgba(59,130,246,0.1); padding:3px 10px; border-radius:999px; border:1px solid rgba(59,130,246,0.2); font-weight:600;">${traders.length} <span style="color:rgba(148,163,184,0.7);">traders</span></span>
+                            <span style="font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:#34d399; background:rgba(16,185,129,0.08); padding:3px 10px; border-radius:999px; border:1px solid rgba(16,185,129,0.18); font-weight:600;">${activeCount} <span style="color:rgba(148,163,184,0.7);">active</span></span>
+                            ${inactiveCount > 0 ? `<span style="font-family:'IBM Plex Mono',monospace; font-size:0.68rem; color:#f87171; background:rgba(239,68,68,0.08); padding:3px 10px; border-radius:999px; border:1px solid rgba(239,68,68,0.18); font-weight:600;">${inactiveCount} <span style="color:rgba(148,163,184,0.7);">inactive</span></span>` : ''}
+                        </div>
+                        <div style="width:1px; height:20px; background:rgba(148,163,184,0.15);"></div>
+                        <div style="display:flex; gap:8px; align-items:center;" onclick="event.stopPropagation()">
+                            <a href="/admin/${encodeURIComponent(adminName)}" onclick="event.stopPropagation()" style="color:rgba(148,163,184,0.7); text-decoration:none; padding:4px; border-radius:6px; transition:color 0.2s;" onmouseover="this.style.color='#60a5fa'" onmouseout="this.style.color='rgba(148,163,184,0.7)'" title="View Dashboard">
+                                <i class="fas fa-arrow-up-right-from-square" style="font-size:0.8rem;"></i>
+                            </a>
+                            <button type="button" onclick="event.stopPropagation(); openEditUserModal('admin', '${sAdmin}', '${sAdminEmail}', null, null, null, null, '${sAdminSlack}')" class="action-btn" title="Edit Admin" style="font-size:0.8rem;">
+                                <i class="fas fa-pen-to-square"></i>
+                            </button>
+                            <button type="button" onclick="event.stopPropagation(); deleteUser('admin', '${sAdmin}')" class="action-btn danger" title="Delete Admin" style="font-size:0.8rem;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                 `;
-                card.appendChild(header);
-                
-                // Trader List
-                const tList = document.createElement('div');
-                tList.className = 'trader-list';
-                tList.style.padding = '8px'; // Reduced padding
-                
-                const traders = adminData.traders || {};
-                Object.entries(traders).forEach(([traderName, traderData]) => {
-                    const sTrader = esc(traderName);
-                    const sTraderEmail = esc(traderData.email);
 
-                    const tItem = document.createElement('div');
-                    tItem.className = 'trader-item';
-                    tItem.style.marginBottom = '8px'; // Reduced gap
-                    
-                    // --- Drag Attributes for Trader (Move this trader) ---
-                    tItem.draggable = true;
-                    tItem.setAttribute('ondragstart', `dragStart(event, 'trader', '${sTrader}', '${sAdmin}', null)`);
-                    tItem.setAttribute('ondragend', `dragEnd(event)`);
-                    
-                    // --- Drop Zone Attributes for Trader (Result: Move Client here) ---
-                    tItem.setAttribute('ondragover', "allowDrop(event, 'trader')");
-                    tItem.setAttribute('ondragleave', "dragLeave(event)");
-                    tItem.setAttribute('ondrop', `drop(event, 'trader', '${sTrader}', '${sAdmin}')`);
+                const adminBody = document.createElement('div');
+                adminBody.style.padding = '14px 14px 16px';
 
-                    
-                    // Trader Header - Clickable (Link)
-                    const safeTraderLink = '/trader/' + encodeURIComponent(traderName).replace(/'/g, '%27');
+                const lanes = document.createElement('div');
+                lanes.style.display = 'grid';
+                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))';
+                lanes.style.gap = '12px';
 
-                    tItem.innerHTML = `
-                        <div class="trader-header" onclick="if(!event.target.closest('button')) window.location.href='${safeTraderLink}'" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; padding: 4px 8px; min-height: 28px;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span class="badge badge-trader" style="font-size:0.6rem; padding: 1px 5px;">TRADER</span>
-                                <span class="trader-name" style="font-size:0.85rem; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.3); text-underline-offset: 2px;">${traderName}</span>
-                                <span class="trader-email" style="font-size:0.75rem; color:rgba(255,255,255,0.9); font-weight:500;">${traderData.email || ''}</span>
-                            </div>
-                            <div class="action-buttons" style="display:flex; gap:6px; align-items:center;">
-                                <a href="${safeTraderLink}" onclick="event.stopPropagation()" style="color:rgba(255,255,255,0.8); text-decoration:none;" title="View Dashboard"><i class="fas fa-external-link-alt" style="font-size:0.85rem;"></i></a>
-                                <button type="button" onclick="openEditUserModal('trader', '${sTrader}', '${sTraderEmail}', '${sAdmin}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer; padding:0 2px;" title="Edit Trader"><i class="fas fa-edit" style="font-size:0.85rem;"></i></button>
-                                <button type="button" onclick="deleteUser('trader', '${sTrader}', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Trader"><i class="fas fa-trash" style="font-size:0.85rem;"></i></button>
+                // Clients-first hierarchy (admin -> clients with assigned-trader dropdown)
+                lanes.innerHTML = '';
+                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(420px, 1fr))';
+
+                const clientsToShow = (filteredClients || [])
+                    .slice()
+                    .filter(cl => cl && cl.name)
+                    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+                if (!clientsToShow.length) {
+                    const empty = document.createElement('div');
+                    empty.style.padding = '18px';
+                    empty.style.border = '1px dashed rgba(148,163,184,0.25)';
+                    empty.style.borderRadius = '14px';
+                    empty.style.color = 'rgba(148,163,184,0.9)';
+                    empty.style.fontSize = '0.85rem';
+                    empty.style.textAlign = 'center';
+                    empty.textContent = traders.length ? 'No clients match your current filter.' : 'No traders for this admin.';
+                    lanes.appendChild(empty);
+                } else {
+                    const traderNames = hierarchyData.traders
+                        ? Object.keys(hierarchyData.traders).sort((a, b) => a.localeCompare(b))
+                        : traders.map(t => t.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+
+                    clientsToShow.forEach((clientObj) => {
+                        const cName = clientObj.name;
+                        const cEmail = clientObj.email || '';
+                        const assignedTrader = clientObj.assigned_trader || clientObj.trader || '';
+                        const catRaw = clientObj.category || clientObj.profile || clientObj.source || 'PRIVATE';
+                        const cCat = String(catRaw || 'PRIVATE').toUpperCase();
+                        const cActiveStatus = clientObj.active_status || 'active';
+                        const isInactive = String(cActiveStatus).toLowerCase() === 'inactive';
+
+                        const card = document.createElement('div');
+                        card.style.border = '1px solid rgba(30,58,138,0.35)';
+                        card.style.borderTop = '3px solid #3b82f6';
+                        card.style.background = 'linear-gradient(135deg, rgba(10,18,42,0.97), rgba(6,12,30,0.97))';
+                        card.style.borderRadius = '12px';
+                        card.style.padding = '18px 20px 16px';
+                        card.style.transition = 'all 0.25s ease';
+                        card.style.position = 'relative';
+                        card.addEventListener('mouseenter', () => {
+                            card.style.border = '1px solid #3b82f6';
+                            card.style.borderTop = '3px solid #3b82f6';
+                            card.style.boxShadow = '0 4px 20px rgba(59,130,246,0.15), 0 0 0 1px rgba(59,130,246,0.1)';
+                        });
+                        card.addEventListener('mouseleave', () => {
+                            card.style.border = '1px solid rgba(30,58,138,0.35)';
+                            card.style.borderTop = '3px solid #3b82f6';
+                            card.style.boxShadow = 'none';
+                        });
+
+                        // Top row: icon + name (left) | close/edit X (right)
+                        const topRow = document.createElement('div');
+                        topRow.style.display = 'flex';
+                        topRow.style.alignItems = 'center';
+                        topRow.style.justifyContent = 'space-between';
+
+                        const nameArea = document.createElement('div');
+                        nameArea.style.display = 'flex';
+                        nameArea.style.alignItems = 'center';
+                        nameArea.style.gap = '10px';
+                        nameArea.style.minWidth = '0';
+
+                        // User icon
+                        const userIcon = document.createElement('span');
+                        userIcon.style.width = '28px';
+                        userIcon.style.height = '28px';
+                        userIcon.style.borderRadius = '50%';
+                        userIcon.style.background = 'rgba(59,130,246,0.15)';
+                        userIcon.style.border = '1px solid rgba(59,130,246,0.3)';
+                        userIcon.style.display = 'flex';
+                        userIcon.style.alignItems = 'center';
+                        userIcon.style.justifyContent = 'center';
+                        userIcon.style.flexShrink = '0';
+                        userIcon.innerHTML = '<i class="fas fa-user" style="font-size:0.7rem;color:#93c5fd;"></i>';
+                        nameArea.appendChild(userIcon);
+
+                        // Client name — click to open edit modal
+                        const nameSpan = document.createElement('span');
+                        nameSpan.style.fontWeight = '700';
+                        nameSpan.style.fontSize = '1.05rem';
+                        nameSpan.style.color = '#f0f4ff';
+                        nameSpan.style.letterSpacing = '0.01em';
+                        nameSpan.style.cursor = 'pointer';
+                        nameSpan.style.transition = 'color 0.15s';
+                        nameSpan.style.whiteSpace = 'nowrap';
+                        nameSpan.style.overflow = 'hidden';
+                        nameSpan.style.textOverflow = 'ellipsis';
+                        nameSpan.textContent = cName;
+                        nameSpan.title = 'Edit client';
+                        nameSpan.addEventListener('mouseenter', () => { nameSpan.style.color = '#93c5fd'; });
+                        nameSpan.addEventListener('mouseleave', () => { nameSpan.style.color = '#f0f4ff'; });
+                        nameSpan.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openEditUserModal('client', escJsAttr(cName), escJsAttr(cEmail), escJsAttr(adminName), escJsAttr(assignedTrader), cCat, cActiveStatus, '');
+                        });
+                        nameArea.appendChild(nameSpan);
+
+                        // Small arrow link → client dashboard
+                        const clientDashLink = document.createElement('a');
+                        clientDashLink.href = '/dashboard/' + encodeURIComponent(cName);
+                        clientDashLink.style.color = 'rgba(148,163,184,0.5)';
+                        clientDashLink.style.fontSize = '0.65rem';
+                        clientDashLink.style.marginLeft = '2px';
+                        clientDashLink.style.transition = 'color 0.15s';
+                        clientDashLink.style.textDecoration = 'none';
+                        clientDashLink.style.flexShrink = '0';
+                        clientDashLink.title = 'View client dashboard';
+                        clientDashLink.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i>';
+                        clientDashLink.addEventListener('mouseenter', () => { clientDashLink.style.color = '#93c5fd'; });
+                        clientDashLink.addEventListener('mouseleave', () => { clientDashLink.style.color = 'rgba(148,163,184,0.5)'; });
+                        clientDashLink.addEventListener('click', (e) => e.stopPropagation());
+                        nameArea.appendChild(clientDashLink);
+
+                        topRow.appendChild(nameArea);
+                        card.appendChild(topRow);
+
+                        // Badges row: PRIVATE/BEF + ON/OFF
+                        const badgeRow = document.createElement('div');
+                        badgeRow.style.display = 'flex';
+                        badgeRow.style.alignItems = 'center';
+                        badgeRow.style.gap = '8px';
+                        badgeRow.style.marginTop = '10px';
+
+                        const catBadge = document.createElement('span');
+                        catBadge.style.fontFamily = "'IBM Plex Mono',monospace";
+                        catBadge.style.fontSize = '0.62rem';
+                        catBadge.style.fontWeight = '700';
+                        catBadge.style.letterSpacing = '0.08em';
+                        catBadge.style.textTransform = 'uppercase';
+                        catBadge.style.padding = '2px 10px';
+                        catBadge.style.borderRadius = '99px';
+                        if (cCat === 'BEF') {
+                            catBadge.style.background = 'rgba(234,179,8,0.15)';
+                            catBadge.style.color = '#facc15';
+                            catBadge.style.border = '1px solid rgba(234,179,8,0.25)';
+                        } else {
+                            catBadge.style.background = 'rgba(148,163,184,0.12)';
+                            catBadge.style.color = '#cbd5e1';
+                            catBadge.style.border = '1px solid rgba(148,163,184,0.22)';
+                        }
+                        catBadge.textContent = cCat === 'BEF' ? 'BEF' : 'PRIVATE';
+                        badgeRow.appendChild(catBadge);
+
+                        const statusBadge = document.createElement('span');
+                        statusBadge.style.fontFamily = "'IBM Plex Mono',monospace";
+                        statusBadge.style.fontSize = '0.62rem';
+                        statusBadge.style.fontWeight = '700';
+                        statusBadge.style.letterSpacing = '0.08em';
+                        statusBadge.style.textTransform = 'uppercase';
+                        statusBadge.style.padding = '2px 10px';
+                        statusBadge.style.borderRadius = '99px';
+                        if (isInactive) {
+                            statusBadge.style.background = 'rgba(239,68,68,0.16)';
+                            statusBadge.style.color = '#fda4af';
+                            statusBadge.style.border = '1px solid rgba(239,68,68,0.26)';
+                            statusBadge.textContent = 'OFF';
+                        } else {
+                            statusBadge.style.background = 'rgba(16,185,129,0.14)';
+                            statusBadge.style.color = '#5eead4';
+                            statusBadge.style.border = '1px solid rgba(16,185,129,0.24)';
+                            statusBadge.textContent = 'ON';
+                        }
+                        badgeRow.appendChild(statusBadge);
+                        card.appendChild(badgeRow);
+
+                        // Email row
+                        if (cEmail) {
+                            const emailDiv = document.createElement('div');
+                            emailDiv.style.marginTop = '8px';
+                            emailDiv.style.fontSize = '0.8rem';
+                            emailDiv.style.color = 'rgba(148,163,184,0.85)';
+                            emailDiv.style.wordBreak = 'break-word';
+                            emailDiv.style.cursor = 'pointer';
+                            emailDiv.style.transition = 'color 0.15s';
+                            emailDiv.title = 'Click to copy';
+                            emailDiv.textContent = cEmail;
+                            emailDiv.addEventListener('mouseenter', () => { emailDiv.style.color = '#93c5fd'; });
+                            emailDiv.addEventListener('mouseleave', () => { emailDiv.style.color = 'rgba(148,163,184,0.85)'; });
+                            emailDiv.addEventListener('click', async (e) => {
+                                e.stopPropagation();
+                                try { await navigator.clipboard.writeText(cEmail); } catch(ex) {
+                                    const ta = document.createElement('textarea');
+                                    ta.value = cEmail; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                                    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+                                }
+                                const orig = emailDiv.textContent;
+                                emailDiv.textContent = '✓ Copied!';
+                                emailDiv.style.color = '#4ade80';
+                                setTimeout(() => { emailDiv.textContent = orig; emailDiv.style.color = 'rgba(148,163,184,0.85)'; }, 1500);
+                            });
+                            card.appendChild(emailDiv);
+                        }
+
+                        // ASSIGNED TRADER label
+                        const traderLabel = document.createElement('div');
+                        traderLabel.style.fontFamily = "'IBM Plex Mono',monospace";
+                        traderLabel.style.fontSize = '0.65rem';
+                        traderLabel.style.color = 'rgba(255,255,255,0.5)';
+                        traderLabel.style.textTransform = 'uppercase';
+                        traderLabel.style.letterSpacing = '0.1em';
+                        traderLabel.style.fontWeight = '700';
+                        traderLabel.style.marginTop = '14px';
+                        traderLabel.style.marginBottom = '6px';
+                        traderLabel.textContent = 'ASSIGNED TRADER';
+                        card.appendChild(traderLabel);
+
+                        // Dropdown + Save row
+                        const traderRow = document.createElement('div');
+                        traderRow.style.display = 'flex';
+                        traderRow.style.alignItems = 'center';
+                        traderRow.style.gap = '8px';
+
+                        // Visible select dropdown
+                        const select = document.createElement('select');
+                        select.style.flex = '1';
+                        select.style.padding = '9px 12px';
+                        select.style.borderRadius = '8px';
+                        select.style.border = '1px solid rgba(115,144,255,0.35)';
+                        select.style.background = 'rgba(4,8,22,0.9)';
+                        select.style.color = '#e8eeff';
+                        select.style.fontSize = '0.88rem';
+                        select.style.outline = 'none';
+                        select.style.cursor = 'pointer';
+                        select.style.transition = 'border-color 0.15s';
+                        select.addEventListener('focus', () => { select.style.borderColor = 'rgba(115,144,255,0.65)'; });
+                        select.addEventListener('blur', () => { select.style.borderColor = 'rgba(115,144,255,0.35)'; });
+
+                        const optionNames = traderNames.slice();
+                        if (assignedTrader && !optionNames.includes(assignedTrader)) optionNames.push(assignedTrader);
+                        optionNames.sort((a, b) => a.localeCompare(b));
+                        optionNames.forEach(tn => {
+                            const opt = document.createElement('option');
+                            opt.value = tn;
+                            opt.textContent = tn;
+                            if (tn === assignedTrader) opt.selected = true;
+                            select.appendChild(opt);
+                        });
+                        traderRow.appendChild(select);
+
+                        // Saved checkmark (hidden initially, appears on change)
+                        const savedCheck = document.createElement('span');
+                        savedCheck.style.color = '#4ade80';
+                        savedCheck.style.fontSize = '0.8rem';
+                        savedCheck.style.fontWeight = '700';
+                        savedCheck.style.opacity = '0';
+                        savedCheck.style.transition = 'opacity 0.3s';
+                        savedCheck.style.whiteSpace = 'nowrap';
+                        savedCheck.style.flexShrink = '0';
+                        savedCheck.innerHTML = '<i class="fas fa-check" style="margin-right:3px;"></i>Saved';
+
+                        // Auto-save on dropdown change
+                        select.addEventListener('change', async () => {
+                            const newTrader = select.value;
+                            if (newTrader === assignedTrader) return;
+                            // Show saving spinner
+                            savedCheck.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:3px;"></i>Saving...';
+                            savedCheck.style.color = '#94a3b8';
+                            savedCheck.style.opacity = '1';
+                            try {
+                                const res = await fetch('/api/assign_client_trader', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ client_name: cName, admin: adminName, new_trader: newTrader })
+                                });
+                                const data = await res.json().catch(() => ({}));
+                                if (!res.ok || data.status !== 'success') {
+                                    savedCheck.innerHTML = '<i class="fas fa-xmark" style="margin-right:3px;"></i>Failed';
+                                    savedCheck.style.color = '#f87171';
+                                    setTimeout(() => { savedCheck.style.opacity = '0'; }, 2000);
+                                    return;
+                                }
+                                savedCheck.innerHTML = '<i class="fas fa-check" style="margin-right:3px;"></i>Saved';
+                                savedCheck.style.color = '#4ade80';
+                                setTimeout(() => { savedCheck.style.opacity = '0'; loadData(); }, 1200);
+                            } catch(err) {
+                                savedCheck.innerHTML = '<i class="fas fa-xmark" style="margin-right:3px;"></i>Error';
+                                savedCheck.style.color = '#f87171';
+                                setTimeout(() => { savedCheck.style.opacity = '0'; }, 2000);
+                            }
+                        });
+                        traderRow.appendChild(savedCheck);
+
+                        // Trader dashboard link icon
+                        if (assignedTrader) {
+                            const traderLink = document.createElement('a');
+                            traderLink.href = '/trader/' + encodeURIComponent(assignedTrader);
+                            traderLink.style.color = 'rgba(148,163,184,0.5)';
+                            traderLink.style.fontSize = '0.75rem';
+                            traderLink.style.transition = 'color 0.15s';
+                            traderLink.style.textDecoration = 'none';
+                            traderLink.style.flexShrink = '0';
+                            traderLink.title = 'View trader portfolio';
+                            traderLink.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i>';
+                            traderLink.addEventListener('mouseenter', () => { traderLink.style.color = '#fbbf24'; });
+                            traderLink.addEventListener('mouseleave', () => { traderLink.style.color = 'rgba(148,163,184,0.5)'; });
+                            traderLink.addEventListener('click', (e) => e.stopPropagation());
+                            traderRow.appendChild(traderLink);
+                        }
+
+                        card.appendChild(traderRow);
+                        lanes.appendChild(card);
+                    });
+                }
+
+                if(false){
+                traders.forEach(trader => {
+                    const sTrader = escJsAttr(trader.name);
+                    const sTraderEmail = escJsAttr(trader.email || '');
+                    const safeTraderLink = '/trader/' + encodeURIComponent(trader.name).replace(/'/g, '%27');
+
+                    const lane = document.createElement('div');
+                    lane.className = 'trader-item';
+                    lane.style.borderRadius = '14px';
+                    lane.style.marginBottom = '0';
+
+                    // --- Drag Attributes for Trader (Move trader) ---
+                    lane.draggable = true;
+                    lane.setAttribute('ondragstart', `dragStart(event, 'trader', '${sTrader}', '${sAdmin}', null)`);
+                    lane.setAttribute('ondragend', `dragEnd(event)`);
+
+                    // --- Drop Zone Attributes for Trader (Move client here) ---
+                    lane.setAttribute('ondragover', "allowDrop(event, 'trader')");
+                    lane.setAttribute('ondragleave', "dragLeave(event)");
+                    lane.setAttribute('ondrop', `drop(event, 'trader', '${sTrader}', '${sAdmin}')`);
+
+                    const clientsFiltered = (trader.clients || []).filter(c => {
+                        if (currentProfile === 'ALL') return true;
+                        const cat = (typeof c === 'object')
+                            ? String(c.profile || c.category || c.source || 'PRIVATE').toUpperCase()
+                            : 'PRIVATE';
+                        return cat === currentProfile;
+                    });
+
+                    lane.innerHTML = `
+                        <div class="trader-header" onclick="if(!event.target.closest('button') && !event.target.closest('a')) window.location.href='${safeTraderLink}'" style="cursor:pointer; padding:10px 12px;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; width:100%;">
+                                <div style="min-width:0;">
+                                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                        <span class="badge badge-trader" style="font-size:0.62rem; padding:2px 7px;">TRADER</span>
+                                        <span class="trader-name" style="font-size:0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(trader.name)}</span>
+                                    </div>
+                                    <div style="margin-top:4px; font-size:0.78rem; color:rgba(255,255,255,0.8); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(trader.email || '')}</div>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                                    <span style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:rgba(255,255,255,0.75);">${clientsFiltered.length} client${clientsFiltered.length!==1?'s':''}</span>
+                                    <a href="${safeTraderLink}" onclick="event.stopPropagation()" style="color:rgba(255,255,255,0.8); text-decoration:none;" title="View Dashboard">
+                                        <i class="fas fa-arrow-up-right-from-square"></i>
+                                    </a>
+                                    <button type="button" onclick="openEditUserModal('trader', '${sTrader}', '${sTraderEmail}', '${sAdmin}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer; padding:0 2px;" title="Edit Trader">
+                                        <i class="fas fa-pen-to-square"></i>
+                                    </button>
+                                    <button type="button" onclick="deleteUser('trader', '${sTrader}', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer; padding:0 2px;" title="Delete Trader">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `;
-                    
-                    // Client Tag List
-                    const cList = document.createElement('div');
-                    cList.className = 'client-list';
-                    cList.style.padding = '10px'; // Reduced padding inside trader box
-                    const clients = traderData.clients || [];
-                    
-                    clients.forEach(c => {
-                        // Filter logic
-                        if (currentProfile !== 'ALL') {
-                            let cat = 'PRIVATE';
-                            if (typeof c === 'object') {
-                                cat = (c.profile || c.category || c.source || 'PRIVATE').toUpperCase();
-                            }
-                            if (cat !== currentProfile) return;
-                        }
 
-                        const cName = (typeof c === 'object') ? c.name : c;
-                        const cEmail = (typeof c === 'object') ? c.email : '';
-                        const cCat = (typeof c === 'object') ? (c.category || c.profile || 'Private') : 'Private';
-                        
-                        const sClient = esc(cName);
-                        const sClientEmail = esc(cEmail);
-                        const sCat = esc(cCat);
-                        
-                        const tag = document.createElement('div'); 
-                        tag.className = 'client-tag';
-                        
-                        // --- Drag Attributes for Client ---
-                        tag.draggable = true;
-                        tag.setAttribute('ondragstart', `dragStart(event, 'client', '${sClient}', '${sAdmin}', '${sTrader}')`);
-                        tag.setAttribute('ondragend', `dragEnd(event)`);
-                        
-                        tag.style.display = 'inline-flex';
-                        tag.style.alignItems = 'center';
-                        tag.style.gap = '6px';
-                        tag.style.padding = '6px 10px'; // Reduced tag size
-                        tag.style.fontSize = '0.85rem';
-                        
-                        tag.innerHTML = `
-                            <a href="/dashboard/${cName}" style="color:inherit; text-decoration:none; display:flex; align-items:center;">
-                                <i class="fas fa-user-circle" style="margin-right:5px;"></i> ${cName}
-                            </a>
-                            <div class="mini-actions" style="margin-left:4px; border-left:1px solid rgba(255,255,255,0.2); padding-left:6px; display:flex; gap:4px;">
-                                <button type="button" onclick="openEditUserModal('client', '${sClient}', '${sClientEmail}', '${sAdmin}', '${sTrader}', '${sCat}')" style="background:none; border:none; cursor:pointer; font-size:0.75rem; opacity:0.7; color: inherit; padding:0;" title="Edit"><i class="fas fa-pencil-alt"></i></button>
-                                <button type="button" onclick="deleteUser('client', '${sClient}', '${sAdmin}', '${sTrader}')" style="background:none; border:none; cursor:pointer; font-size:0.8rem; color:#ff8888; opacity:0.7; padding:0;" title="Delete"><i class="fas fa-times"></i></button>
-                            </div>
-                        `;
-                        
-                        cList.appendChild(tag);
-                    });
-                    
-                    tItem.appendChild(cList);
-                    tList.appendChild(tItem);
+                    const clientGrid = document.createElement('div');
+                    clientGrid.style.padding = '12px';
+                    clientGrid.style.display = 'grid';
+                    clientGrid.style.gridTemplateColumns = '1fr';
+                    clientGrid.style.gap = '10px';
+
+                    if (clientsFiltered.length === 0) {
+                        const empty = document.createElement('div');
+                        empty.style.padding = '14px';
+                        empty.style.border = '1px dashed rgba(148,163,184,0.25)';
+                        empty.style.borderRadius = '12px';
+                        empty.style.color = 'rgba(148,163,184,0.9)';
+                        empty.style.fontSize = '0.82rem';
+                        empty.style.textAlign = 'center';
+                        empty.textContent = 'No clients in this lane (current filter).';
+                        clientGrid.appendChild(empty);
+                    } else {
+                        clientsFiltered.forEach(clientObj => {
+                            const cName = (typeof clientObj === 'object') ? clientObj.name : clientObj;
+                            const cEmail = (typeof clientObj === 'object') ? (clientObj.email || '') : '';
+                            const cCatRaw = (typeof clientObj === 'object') ? (clientObj.category || clientObj.profile || 'PRIVATE') : 'PRIVATE';
+                            const cCat = String(cCatRaw || 'PRIVATE').toUpperCase();
+                            const cActiveStatus = (typeof clientObj === 'object') ? (clientObj.active_status || 'active') : 'active';
+
+                            const sClient = escJsAttr(cName);
+                            const sClientEmail = escJsAttr(cEmail);
+                            const sCat = escJsAttr(cCat);
+                            const sActiveStatus = escJsAttr(cActiveStatus);
+
+                            const card = document.createElement('div');
+                            card.style.border = '1px solid rgba(30,58,138,0.25)';
+                            card.style.borderTop = '1px solid rgba(110,168,255,0.18)';
+                            card.style.background = 'linear-gradient(180deg, rgba(10,18,39,0.9), rgba(6,12,28,0.9))';
+                            card.style.borderRadius = '12px';
+                            card.style.padding = '10px 10px';
+                            card.style.display = 'grid';
+                            card.style.gap = '8px';
+
+                            // Make the client card draggable (move client)
+                            card.draggable = true;
+                            card.setAttribute('ondragstart', `dragStart(event, 'client', '${sClient}', '${sAdmin}', '${sTrader}')`);
+                            card.setAttribute('ondragend', `dragEnd(event)`);
+
+                            const isInactive = String(cActiveStatus).toLowerCase() === 'inactive';
+                            const badgeCat = cCat === 'BEF'
+                                ? `<span style="background:rgba(234,179,8,0.15);color:#facc15;border:1px solid rgba(234,179,8,0.25);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">BEF</span>`
+                                : `<span style="background:rgba(148,163,184,0.12);color:#cbd5e1;border:1px solid rgba(148,163,184,0.22);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">PRIVATE</span>`;
+                            const badgeStatus = isInactive
+                                ? `<span style="background:rgba(239,68,68,0.16);color:#fda4af;border:1px solid rgba(239,68,68,0.26);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">OFF</span>`
+                                : `<span style="background:rgba(16,185,129,0.14);color:#5eead4;border:1px solid rgba(16,185,129,0.24);border-radius:99px;font-size:0.62rem;font-family:'IBM Plex Mono',monospace;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 7px;">ON</span>`;
+
+                            card.innerHTML = `
+                                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                                    <div style="min-width:0;">
+                                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                            <a href="/dashboard/${encodeURIComponent(cName)}" style="color:#e8eeff; text-decoration:none; font-weight:700; font-size:0.92rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                                <i class="fas fa-user-circle" style="opacity:0.9; margin-right:6px;"></i>${escHtml(cName)}
+                                            </a>
+                                            ${badgeCat}
+                                            ${badgeStatus}
+                                        </div>
+                                        <div style="margin-top:6px; font-size:0.78rem; color:rgba(148,163,184,0.95); word-break:break-word;">${escHtml(cEmail || '')}</div>
+                                    </div>
+                                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+                                        <button type="button" onclick="openEditUserModal('client', '${sClient}', '${sClientEmail}', '${sAdmin}', '${sTrader}', '${sCat}', '${sActiveStatus}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer; padding:2px 4px;" title="Edit Client">
+                                            <i class="fas fa-pen"></i>
+                                        </button>
+                                        <button type="button" onclick="deleteUser('client', '${sClient}', '${sAdmin}', '${sTrader}')" style="background:none; border:none; color:#ff8888; cursor:pointer; padding:2px 4px;" title="Delete Client">
+                                            <i class="fas fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+
+                            clientGrid.appendChild(card);
+                        });
+                    }
+
+                    lane.appendChild(clientGrid);
+                    lanes.appendChild(lane);
                 });
-                
-                card.appendChild(tList);
-                container.appendChild(card);
+
+                if (traders.length === 0) {
+                    const empty = document.createElement('div');
+                    empty.style.padding = '18px';
+                    empty.style.border = '1px dashed rgba(148,163,184,0.25)';
+                    empty.style.borderRadius = '14px';
+                    empty.style.color = 'rgba(148,163,184,0.9)';
+                    empty.style.fontSize = '0.85rem';
+                    empty.style.textAlign = 'center';
+                    empty.textContent = 'No traders for this admin.';
+                    lanes.appendChild(empty);
+                }
+                }
+
+                adminBody.appendChild(lanes);
+                adminCard.appendChild(adminHeader);
+                adminCard.appendChild(adminBody);
+                board.appendChild(adminCard);
             });
         }
 
@@ -1495,24 +2533,78 @@
         // Expose to global window
         window.openUserListModal = openUserListModal;
         window.closeUserListModal = closeUserListModal;
+        window.resetUserPassword = resetUserPassword;
+        window.openSetPasswordModal = openSetPasswordModal;
+        window.submitSetPassword = submitSetPassword;
 
         // ── Reset Password ────────────────────────────────────────────────
-        async function resetUserPassword(name) {
-            if (!confirm(`Reset dashboard login password for "${name}"?\n\nA new random password will be generated.`)) return;
+        function resetEditUserPassword() {
+            const name = document.getElementById('editUserOriginalName').value;
+            const type = document.getElementById('editUserType').value;
+            resetUserPassword(name, type);
+        }
+
+        async function resetUserPassword(name, userType) {
+            if (!confirm(`Reset dashboard login password for "${name}" back to the default password?`)) return;
             try {
-                const res = await fetch('/api/admin/reset_password', {
+                const res = await fetch('/api/user/reset_password', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({username: name})
+                    body: JSON.stringify({username: name, user_type: userType || 'client'})
                 });
                 const data = await res.json();
-                if (data.new_password) {
-                    showResetPwModal(name, data.new_password);
+                if (data.temporary_password) {
+                    showResetPwModal(name, data.temporary_password);
                 } else {
-                    alert('Error: ' + (data.error || 'Failed to reset password'));
+                    alert('Error: ' + (data.message || 'Failed to reset password'));
                 }
             } catch(e) {
                 alert('Network error: ' + e.message);
+            }
+        }
+
+        // ── Set Specific Password ─────────────────────────────────────────
+        function openSetPasswordModal(name, userType) {
+            const overlay = document.createElement('div');
+            overlay.id = 'set-pw-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:20000;display:flex;align-items:center;justify-content:center;';
+            overlay.innerHTML = `
+                <div style="background:#1e293b;border:2px solid #a78bfa;border-radius:10px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+                    <h3 style="color:#f8fafc;margin:0 0 8px;">&#128274; Set Password</h3>
+                    <p style="color:#94a3b8;margin:0 0 16px;font-size:0.9rem;">Set a specific password for <strong style="color:#f1f5f9;">${name}</strong></p>
+                    <input id="set-pw-input" type="text" value="Test@123" style="width:100%;padding:10px 14px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#fbbf24;font-size:1.05rem;letter-spacing:0.05em;box-sizing:border-box;margin-bottom:6px;" />
+                    <p id="set-pw-msg" style="color:#94a3b8;font-size:0.78rem;margin:0 0 16px;min-height:18px;"></p>
+                    <div style="display:flex;gap:10px;justify-content:flex-end;">
+                        <button onclick="document.getElementById('set-pw-overlay').remove()" style="padding:9px 22px;background:#475569;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Cancel</button>
+                        <button onclick="submitSetPassword('${name}', '${userType}')" style="padding:9px 22px;background:#7c3aed;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Set Password</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            document.getElementById('set-pw-input').focus();
+            document.getElementById('set-pw-input').select();
+        }
+
+        async function submitSetPassword(name, userType) {
+            const pw = document.getElementById('set-pw-input').value;
+            const msg = document.getElementById('set-pw-msg');
+            if (!pw || pw.length < 6) { msg.style.color = '#ef4444'; msg.textContent = 'Password must be at least 6 characters'; return; }
+            try {
+                const res = await fetch('/api/admin/set_password', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username: name, user_type: userType, new_password: pw})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    msg.style.color = '#22c55e'; msg.textContent = '✓ ' + data.message;
+                    setTimeout(() => { const o = document.getElementById('set-pw-overlay'); if(o) o.remove(); }, 1500);
+                } else {
+                    msg.style.color = '#ef4444'; msg.textContent = data.message || 'Failed';
+                }
+            } catch(e) {
+                msg.style.color = '#ef4444'; msg.textContent = 'Network error: ' + e.message;
             }
         }
 
@@ -1523,12 +2615,12 @@
             overlay.innerHTML = `
                 <div style="background:#1e293b;border:2px solid #60a5fa;border-radius:10px;padding:28px 32px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.6);">
                     <h3 style="color:#f8fafc;margin:0 0 8px;">&#128273; Password Reset</h3>
-                    <p style="color:#94a3b8;margin:0 0 16px;font-size:0.9rem;"><strong style="color:#f1f5f9;">${name}</strong>'s new login password:</p>
+                    <p style="color:#94a3b8;margin:0 0 16px;font-size:0.9rem;"><strong style="color:#f1f5f9;">${name}</strong>'s password has been reset to the default.</p>
                     <div style="display:flex;align-items:center;gap:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;padding:12px 16px;">
-                        <code id="superAdminResetPw" style="flex:1;color:#fbbf24;font-size:1.15rem;letter-spacing:0.08em;word-break:break-all;">${safeDisplay}</code>
+                        <code id="superAdminResetPw" style="flex:1;color:#fbbf24;font-size:1.4rem;letter-spacing:0.12em;white-space:nowrap;">${safeDisplay}</code>
                         <button id="superAdminCopyPwBtn" onclick="(function(btn){navigator.clipboard&&navigator.clipboard.writeText('${password.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}').then(()=>{btn.textContent='✓';setTimeout(()=>btn.textContent='📋',1500)}).catch(()=>{})})(this)" style="flex-shrink:0;background:none;border:none;cursor:pointer;color:#60a5fa;font-size:1.3rem;" title="Copy to clipboard">📋</button>
                     </div>
-                    <p style="color:#ef4444;font-size:0.78rem;margin:12px 0 0;">⚠ Copy this now — it will not be shown again.</p>
+                    <p style="color:#60a5fa;font-size:0.78rem;margin:12px 0 0;">ℹ They will be asked to change it on first login.</p>
                     <div style="text-align:right;margin-top:22px;">
                         <button onclick="this.closest('div[style*=position]').remove()" style="padding:9px 22px;background:#475569;color:white;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">Close</button>
                     </div>
@@ -1537,6 +2629,141 @@
             document.body.appendChild(overlay);
             overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
         }
+
+        // ── KYC Modal ─────────────────────────────────────────────────────
+        function openKycModal() {
+            const modal = document.getElementById('kyc-modal');
+            modal.style.display = 'flex';
+            populateKycSelects();
+            loadKycLinks();
+        }
+        function closeKycModal() {
+            document.getElementById('kyc-modal').style.display = 'none';
+        }
+        // Close on backdrop click
+        document.addEventListener('click', function(e) {
+            const modal = document.getElementById('kyc-modal');
+            if (e.target === modal) closeKycModal();
+        });
+
+        // ── KYC Account Linking ───────────────────────────────────────────
+        function populateKycSelects() {
+            const primarySel = document.getElementById('kyc-primary-client');
+            const linkedSel = document.getElementById('kyc-linked-client');
+            if (!primarySel || !linkedSel) return;
+            // Reuse sidebarAllClients (already built & sorted from hierarchy)
+            // If not yet populated (e.g. slow load), try to build it first
+            if (sidebarAllClients.length === 0 && hierarchyData && hierarchyData.admins) {
+                populateSidebarClients();
+            }
+            const clientNames = sidebarAllClients.map(c => c.name);
+            const makeOpts = (sel, placeholder) => {
+                const val = sel.value;
+                sel.innerHTML = `<option value="">${placeholder}</option>` +
+                    clientNames.map(n => `<option value="${n}">${n}</option>`).join('');
+                sel.value = val;
+            };
+            makeOpts(primarySel, '— Primary Client —');
+            makeOpts(linkedSel, '— Link to (KYC) —');
+        }
+
+        async function loadKycLinks() {
+            try {
+                const res = await fetch('/api/kyc/links');
+                const data = await res.json();
+                if (data.status !== 'success') return;
+                const container = document.getElementById('kyc-links-list');
+                if (!container) return;
+                const links = data.links || [];
+                if (links.length === 0) {
+                    container.innerHTML = '<p style="color:#64748b; font-size:0.82rem; text-align:center;">No KYC links yet</p>';
+                    return;
+                }
+                // Group by primary
+                const groups = {};
+                links.forEach(l => {
+                    if (!groups[l.primary_client]) groups[l.primary_client] = [];
+                    groups[l.primary_client].push(l.linked_client);
+                });
+                let html = '';
+                for (const [primary, linkedList] of Object.entries(groups)) {
+                    html += `<div style="background:#0f172a; border:1px solid #1e3a5f; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
+                        <div style="font-weight:700; color:#fbbf24; font-size:0.88rem; margin-bottom:6px;">
+                            <i class="fas fa-user" style="margin-right:4px;"></i> ${primary}
+                        </div>`;
+                    linkedList.forEach(linked => {
+                        html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:4px 0 4px 18px;">
+                            <span style="color:#94a3b8; font-size:0.83rem;"><i class="fas fa-arrow-right" style="color:#7c3aed; margin-right:6px; font-size:0.7rem;"></i>${linked}</span>
+                            <button onclick="unlinkKyc('${primary}','${linked}')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:0.8rem; padding:2px 6px;" title="Remove link">✕</button>
+                        </div>`;
+                    });
+                    html += '</div>';
+                }
+                container.innerHTML = html;
+            } catch(e) { console.error('KYC load error:', e); }
+        }
+
+        async function linkKycAccounts() {
+            const primary = document.getElementById('kyc-primary-client').value;
+            const linked = document.getElementById('kyc-linked-client').value;
+            if (!primary || !linked) return alert('Select both a primary client and a KYC to link');
+            if (primary === linked) return alert('Cannot link a client to themselves');
+            try {
+                const res = await fetch('/api/kyc/link', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({primary_client: primary, linked_client: linked})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    document.getElementById('kyc-linked-client').value = '';
+                    loadKycLinks();
+                } else {
+                    alert(data.message || 'Failed to link');
+                }
+            } catch(e) { alert('Network error: ' + e.message); }
+        }
+
+        async function unlinkKyc(primary, linked) {
+            if (!confirm(`Remove KYC link: ${linked} from ${primary}?`)) return;
+            try {
+                const res = await fetch('/api/kyc/unlink', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({primary_client: primary, linked_client: linked})
+                });
+                const data = await res.json();
+                if (data.status === 'success') loadKycLinks();
+                else alert(data.message || 'Failed');
+            } catch(e) { alert('Network error: ' + e.message); }
+        }
+
+        window.linkKycAccounts = linkKycAccounts;
+        window.unlinkKyc = unlinkKyc;
+
+        // KYC selects are populated fresh each time modal opens
     </script>
+
+    <!-- KYC Links Modal -->
+    <div id="kyc-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#0f172a; border:1px solid #1e3a5f; border-radius:14px; padding:24px; width:420px; max-width:95vw; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <span style="font-weight:700; color:#a78bfa; font-size:1rem;"><i class="fas fa-link" style="margin-right:6px;"></i>Link KYC Accounts</span>
+                <button onclick="closeKycModal()" style="background:#ef4444; border:none; color:#fff; font-size:0.7rem; font-weight:700; cursor:pointer; line-height:1; width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; padding:0;" title="Close">✕</button>
+            </div>
+            <select id="kyc-primary-client" class="form-dark" style="margin-bottom:8px;">
+                <option value="">— Primary Client —</option>
+            </select>
+            <select id="kyc-linked-client" class="form-dark" style="margin-bottom:10px;">
+                <option value="">— Link to (KYC) —</option>
+            </select>
+            <button onclick="linkKycAccounts()" style="width:100%; padding:9px; border-radius:8px; background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; font-weight:bold; cursor:pointer; margin-bottom:16px;">
+                <i class="fas fa-link"></i> Link KYC
+            </button>
+            <div style="flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#1e3a8a transparent;">
+                <div id="kyc-links-list"></div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
