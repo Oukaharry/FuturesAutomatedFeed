@@ -43,15 +43,13 @@ def run_scheduler():
     logging.info("Starting Daily Scheduler (watermark + quality scan + Slack)...")
     while not stop_event.is_set():
         try:
-            now = datetime.now()
+            now = datetime.utcnow()
             today = now.strftime('%Y-%m-%d')
             ran = _load_ran_today()
 
-            # All times in UTC — PythonAnywhere runs UTC
-            # Kenya (EAT) is UTC+3, so we subtract 3 hours:
-            #   00:00 EAT = 21:00 UTC (previous day)
-            #   02:00 EAT = 23:00 UTC (previous day)
-            #   02:05 EAT = 23:05 UTC (previous day)
+            # All times in UTC (datetime.utcnow)
+            # PythonAnywhere runs UTC natively.
+            # Local dev machines may be in any timezone — utcnow() ensures consistency.
 
             # 21:00 UTC (00:00 EAT) — Midnight watermark snapshot
             if now.hour == 21 and now.minute == 0 and ran.get('watermark') != today:
@@ -60,16 +58,16 @@ def run_scheduler():
                 _mark_ran('watermark', today)
                 time.sleep(60)
 
-            # 22:55 UTC (01:55 EAT) — Automated quality scan
-            if now.hour == 22 and now.minute == 55 and ran.get('quality_scan') != today:
-                logging.info("Running scheduled quality scan (01:55 EAT)...")
+            # 23:27 UTC (02:27 EAT) — Automated quality scan  [TEMP TEST]
+            if now.hour == 23 and now.minute == 27 and ran.get('quality_scan') != today:
+                logging.info("Running scheduled quality scan (TEST 02:27 EAT)...")
                 run_scheduled_quality_scan()
                 _mark_ran('quality_scan', today)
                 time.sleep(60)
 
-            # 23:00 UTC (02:00 EAT) — Post daily summary to Slack
-            if now.hour == 23 and now.minute == 0 and ran.get('slack_summary') != today:
-                logging.info("Posting daily quality summary to Slack (02:00 EAT)...")
+            # 23:30 UTC (02:30 EAT) — Post daily summary to Slack  [TEMP TEST]
+            if now.hour == 23 and now.minute == 30 and ran.get('slack_summary') != today:
+                logging.info("Posting daily quality summary to Slack (TEST 02:30 EAT)...")
                 post_slack_summary()
                 _mark_ran('slack_summary', today)
                 time.sleep(60)
@@ -451,9 +449,7 @@ def start_scheduler():
             logging.info("Scheduler already running — skipping duplicate start.")
             return None
         _scheduler_started = True
-    # Stop any lingering scheduler from a previous reload cycle
-    stop_event.set()
-    time.sleep(0.1)
+    # Ensure stop_event is clear so the new thread's loop runs
     stop_event.clear()
     t = threading.Thread(target=run_scheduler, daemon=True)
     t.start()
