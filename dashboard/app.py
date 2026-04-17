@@ -2108,6 +2108,30 @@ def require_session(f):
 
 # ============ Web Routes ============
 
+@app.context_processor
+def inject_home_url():
+    """Inject home_url into every template so the logo can link to the user's home page."""
+    try:
+        session_token = request.cookies.get('session_token')
+        if session_token:
+            session_info = validate_session(session_token)
+            if session_info:
+                user_type = session_info.get('user_type', '')
+                user_id = session_info.get('user_identifier', '')
+                if user_type == 'super_admin':
+                    return {'home_url': '/super_admin'}
+                elif user_type == 'bef_admin':
+                    return {'home_url': '/bef_admin'}
+                elif user_type == 'admin':
+                    return {'home_url': f'/admin/{user_id}'}
+                elif user_type == 'trader':
+                    return {'home_url': f'/trader/{user_id}'}
+                elif user_type == 'client':
+                    return {'home_url': f'/dashboard/{user_id}'}
+    except Exception:
+        pass
+    return {'home_url': '/'}
+
 # ============ Maintenance Mode ============
 # Set to True to show maintenance page to clients only
 MAINTENANCE_MODE = False
