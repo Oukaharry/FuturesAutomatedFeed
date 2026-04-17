@@ -2108,6 +2108,30 @@ def require_session(f):
 
 # ============ Web Routes ============
 
+@app.context_processor
+def inject_home_url():
+    """Inject home_url into every template so the logo can link to the user's home page."""
+    try:
+        session_token = request.cookies.get('session_token')
+        if session_token:
+            session_info = validate_session(session_token)
+            if session_info:
+                user_type = session_info.get('user_type', '')
+                user_id = session_info.get('user_identifier', '')
+                if user_type == 'super_admin':
+                    return {'home_url': '/super_admin'}
+                elif user_type == 'bef_admin':
+                    return {'home_url': '/bef_admin'}
+                elif user_type == 'admin':
+                    return {'home_url': f'/admin/{user_id}'}
+                elif user_type == 'trader':
+                    return {'home_url': f'/trader/{user_id}'}
+                elif user_type == 'client':
+                    return {'home_url': f'/dashboard/{user_id}'}
+    except Exception:
+        pass
+    return {'home_url': '/'}
+
 # ============ Maintenance Mode ============
 # Set to True to show maintenance page to clients only
 MAINTENANCE_MODE = False
@@ -6139,6 +6163,41 @@ def api_quality_discrepancies():
     return jsonify({'status': 'success', 'clients': results})
 
 
+@app.route('/api/quality/deleted_rows', methods=['GET'])
+@require_role('super_admin')
+def api_quality_deleted_rows():
+    """Return all evaluation rows across all clients where Status P1 == 'Deleted'."""
+    from config.hierarchy import get_all_clients as _get_all_clients, get_client_profile
+    from dashboard.database import get_client_data
+
+    all_clients = _get_all_clients()
+    rows = []
+    for client_name in all_clients:
+        try:
+            data = get_client_data(client_name)
+            if not data:
+                continue
+            profile = get_client_profile(client_name)
+            trader = profile.get('trader', '') if profile else ''
+            evaluations = data.get('evaluations', [])
+            for idx, ev in enumerate(evaluations):
+                status_p1 = str(ev.get('Status P1', '') or '').strip()
+                if status_p1.lower() == 'deleted':
+                    rows.append({
+                        'client': client_name,
+                        'trader': trader,
+                        'row': idx,
+                        'account': ev.get('Account #') or ev.get('Account #.1') or '',
+                        'prop_firm': ev.get('Prop Firm', ''),
+                        'date_started': ev.get('Date Started') or ev.get('Date Purchased') or '',
+                    })
+        except Exception as e:
+            logging.warning(f'deleted_rows scan error for {client_name}: {e}')
+            continue
+
+    return jsonify({'status': 'success', 'rows': rows, 'total': len(rows)})
+
+
 @app.route('/api/quality/scan', methods=['POST'])
 @require_role('super_admin')
 def api_run_quality_scan():
@@ -7531,6 +7590,7 @@ def update_data():
                     "payment_info": data.get("payment_info", existing_data.get("payment_info", [])),
                     "payment_address": data.get("payment_address", existing_data.get("payment_address", {})),
                     "mt5_credentials": data.get("mt5_credentials", existing_data.get("mt5_credentials", {})),
+                    "firm_billing": existing_data.get("firm_billing", {}),
                     "evaluations": evaluations,
                     "statistics": merged_statistics,
                     "dropdown_options": data.get("dropdown_options", existing_data.get("dropdown_options", {})),

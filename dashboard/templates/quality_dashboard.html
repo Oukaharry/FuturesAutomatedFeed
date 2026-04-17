@@ -171,7 +171,7 @@
     <div class="toast-container" id="toast-container"></div>
     <nav class="modern-nav">
         <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
-            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;">
+            <a href="{{ home_url }}" style="display:block;line-height:0;"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;"></a>
         </div>
         <div class="nav-links">
             <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
@@ -221,6 +221,9 @@
             <button class="scan-btn" id="slack-dm-btn" onclick="sendToSlackDM()" style="background:linear-gradient(135deg,#1d4ed8,#1e40af);" title="Test: send to your DM webhook">
                 <i class="fas fa-user-secret"></i> Test DM
             </button>
+            <button class="scan-btn" id="deleted-rows-btn" onclick="showDeletedRows()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);" title="Find all evaluation rows with Status P1 = Deleted">
+                <i class="fas fa-trash-can"></i> Deleted Rows
+            </button>
         </div>
 
         <!-- Discrepancies Modal -->
@@ -245,6 +248,35 @@
                             </tr>
                         </thead>
                         <tbody id="disc-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deleted Rows Modal -->
+        <div id="deleted-rows-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(860px,94vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b;">
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-trash-can" style="color:#a78bfa; margin-right:8px;"></i>Deleted Rows <span id="deleted-rows-badge" style="font-size:0.82rem; background:rgba(167,139,250,0.15); color:#a78bfa; padding:2px 10px; border-radius:12px; margin-left:8px;"></span></h3>
+                    <button onclick="document.getElementById('deleted-rows-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                </div>
+                <div style="padding:14px 24px 8px;">
+                    <input type="text" id="deleted-rows-search" placeholder="Search client, trader, account..." oninput="filterDeletedRows()" style="width:100%; padding:8px 14px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.88rem; outline:none;">
+                </div>
+                <div style="overflow-y:auto; flex:1; padding:0 24px 18px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155; position:sticky; top:0; background:#0f172a;">
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">#</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Client</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Trader</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Account</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Prop Firm</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Row</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Go To</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deleted-rows-tbody"><tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -780,6 +812,66 @@
             const q = (document.getElementById('disc-search').value || '').toLowerCase();
             const filtered = q ? _discData.filter(c => c.name.toLowerCase().includes(q) || c.client_id.toLowerCase().includes(q)) : _discData;
             renderDiscTable(filtered);
+        }
+
+        /* ---------- Deleted Rows modal ---------- */
+        let _deletedRowsData = [];
+
+        async function showDeletedRows() {
+            const btn = document.getElementById('deleted-rows-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Scanning...';
+            const modal = document.getElementById('deleted-rows-modal');
+            modal.style.display = 'flex';
+            document.getElementById('deleted-rows-search').value = '';
+            document.getElementById('deleted-rows-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Scanning all clients...</td></tr>';
+            try {
+                const resp = await fetch('/api/quality/deleted_rows');
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    _deletedRowsData = data.rows || [];
+                    document.getElementById('deleted-rows-badge').textContent = _deletedRowsData.length + ' row' + (_deletedRowsData.length !== 1 ? 's' : '');
+                    renderDeletedRows(_deletedRowsData);
+                } else {
+                    document.getElementById('deleted-rows-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Failed: ' + (data.message || 'Unknown error') + '</td></tr>';
+                }
+            } catch (e) {
+                document.getElementById('deleted-rows-tbody').innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Error: ' + e.message + '</td></tr>';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-trash-can"></i> Deleted Rows';
+            }
+        }
+
+        function renderDeletedRows(items) {
+            const tbody = document.getElementById('deleted-rows-tbody');
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;">No deleted rows found across any client.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map((r, i) => {
+                const link = `/dashboard/${encodeURIComponent(r.client)}#eval-row-${r.row}`;
+                return `<tr style="border-bottom:1px solid #1e293b; cursor:pointer;" onmouseenter="this.style.background='#1e293b'" onmouseleave="this.style.background=''" onclick="window.open('${link}','_blank')">
+                    <td style="padding:8px; color:#64748b;">${i + 1}</td>
+                    <td style="padding:8px; color:#e2e8f0; font-weight:500;">${r.client}</td>
+                    <td style="padding:8px; color:#94a3b8;">${r.trader || '-'}</td>
+                    <td style="padding:8px; color:#94a3b8; font-family:monospace; font-size:0.8rem;">${r.account || '-'}</td>
+                    <td style="padding:8px; color:#94a3b8;">${r.prop_firm || '-'}</td>
+                    <td style="padding:8px; color:#60a5fa;">Row ${r.row + 1}</td>
+                    <td style="padding:8px;"><a href="${link}" target="_blank" class="go-link" onclick="event.stopPropagation();"><i class="fas fa-arrow-right"></i> Go</a></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function filterDeletedRows() {
+            const q = (document.getElementById('deleted-rows-search').value || '').toLowerCase();
+            const filtered = q ? _deletedRowsData.filter(r =>
+                r.client.toLowerCase().includes(q) ||
+                (r.trader || '').toLowerCase().includes(q) ||
+                (r.account || '').toLowerCase().includes(q) ||
+                (r.prop_firm || '').toLowerCase().includes(q)
+            ) : _deletedRowsData;
+            renderDeletedRows(filtered);
         }
 
         async function sendToSlack() {
