@@ -446,7 +446,73 @@ def compute_waterlog_from_db(client_id):
         if month_start > today:
             break
 
+    # Apply any manual profit_split overrides (admin edits from the UI)
+    overrides = get_profit_split_overrides(client_id)
+    if overrides:
+        for period in result:
+            key = period['from_date']
+            if key in overrides:
+                val = overrides[key]
+                period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
+                period['profit_split_override'] = True
+
     return {
         'periods': result,
         'last_split_net_profit': prev_period_net,
     }
+
+
+# ── Profit Split Override ────────────────────────────────────────────
+
+def _ensure_profit_split_overrides_table():
+    """Create the profit_split_overrides table if it doesn't exist."""
+    try:
+        with get_connection() as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS profit_split_overrides (
+                    client_id   TEXT NOT NULL,
+                    from_date   TEXT NOT NULL,
+                    amount      REAL NOT NULL,
+                    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (client_id, from_date)
+                )
+            ''')
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Error creating profit_split_overrides table: {e}")
+
+
+def get_profit_split_overrides(client_id):
+    """Return dict of from_date -> amount for all overrides for this client."""
+    _ensure_profit_split_overrides_table()
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT from_date, amount FROM profit_split_overrides WHERE client_id = ?',
+                (client_id,)
+            )
+            return {row['from_date']: float(row['amount']) for row in cursor.fetchall()}
+    except Exception as e:
+        logging.error(f"Error loading profit split overrides: {e}")
+        return {}
+
+
+def save_profit_split_override(client_id, from_date, amount):
+    """Save or update a profit split override for a specific period."""
+    _ensure_profit_split_overrides_table()
+    try:
+        with get_connection() as conn:
+            conn.execute('''
+                INSERT INTO profit_split_overrides (client_id, from_date, amount, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (client_id, from_date) DO UPDATE
+                    SET amount = EXCLUDED.amount,
+                        updated_at = CURRENT_TIMESTAMP
+            ''', (client_id, from_date, float(amount)))
+            conn.commit()
+            logging.info(f"Saved profit split override for {client_id} period {from_date}: ${amount}")
+            return True
+    except Exception as e:
+        logging.error(f"Error saving profit split override: {e}")
+        return False

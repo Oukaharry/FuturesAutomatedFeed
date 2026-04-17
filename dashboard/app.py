@@ -61,7 +61,6 @@ BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'toponefutures'}
 try:
     from dashboard.scheduler import start_scheduler
     start_scheduler()
-    logging.info("Midnight Watermark Scheduler started.")
 except ImportError:
     logging.warning("Could not start Watermark Scheduler (ImportError).")
 except Exception as e:
@@ -5860,7 +5859,7 @@ def run_quality_scan(target_client=None):
                 _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
                 _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
                 # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
-                _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day')]
+                _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day') or k.startswith('Prop Progress')]
                 if not _inactive_p1 and not _inactive_p2 and status_p1:
                     weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
                                 'mon', 'tue', 'wed', 'thu', 'fri',
@@ -8019,6 +8018,37 @@ def get_waterlog_sheet_data():
         return jsonify({"status": "error", "message": "Failed to fetch waterlog data"}), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/client/profit_split_override', methods=['POST'])
+@require_session
+def api_save_profit_split_override():
+    """Save a manual profit split override for a specific period. Admin only."""
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('admin', 'super_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
+
+    data = request.get_json(silent=True) or {}
+    client_id = data.get('client_id')
+    from_date = data.get('from_date')
+    amount = data.get('amount')
+
+    if not client_id or not from_date or amount is None:
+        return jsonify({"status": "error", "message": "client_id, from_date, and amount are required"}), 400
+
+    try:
+        amount = float(str(amount).replace('$', '').replace(',', ''))
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "Invalid amount"}), 400
+
+    try:
+        from dashboard.watermark_service import save_profit_split_override
+    except ImportError:
+        from watermark_service import save_profit_split_override
+
+    if save_profit_split_override(client_id, from_date, amount):
+        return jsonify({"status": "success", "message": "Profit split override saved"})
+    return jsonify({"status": "error", "message": "Failed to save override"}), 500
 
 # ============ Global Error Handlers ============
 

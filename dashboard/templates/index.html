@@ -2849,6 +2849,12 @@
         tr.row-fail:hover td:nth-child(1), tr.row-fail:hover td:nth-child(2) { background-color: #382424 !important; }
         ...
         */
+
+        /* Editable profit split cell – subtle inner border on hover */
+        .ps-editable-cell:hover {
+            box-shadow: inset 0 0 0 1px rgba(234,179,8,0.4);
+            border-radius: 3px;
+        }
     </style>
 
 
@@ -7182,17 +7188,87 @@
                             return;
                         }
                         let psHtml = '';
+                        const isAdmin = (USER_TYPE === 'admin' || USER_TYPE === 'super_admin');
                         rows.forEach(r => {
                             const psRaw = (r.profit_split || '').trim();
                             const psNum = parseFloat(psRaw.replace(/[^0-9.-]/g, '')) || 0;
-                            const psStyle = `text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psNum > 0 ? '#fbbf24' : '#94a3b8'};`;
-                            psHtml += `<tr>
-                                <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
-                                <td style="text-align: left; padding-left: 20px;">${r.low || '$0.00'}</td>
-                                <td style="${psStyle}">${psRaw || '$0'}</td>
-                            </tr>`;
+                            const psColor = psNum > 0 ? '#fbbf24' : '#94a3b8';
+                            const fromDate = (r.from_date || '').trim();
+                            if (isAdmin) {
+                                psHtml += `<tr>
+                                    <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
+                                    <td style="text-align: left; padding-left: 20px;">${r.low || '$0.00'}</td>
+                                    <td class="ps-editable-cell" data-from-date="${fromDate}" data-value="${psNum}"
+                                        style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psColor}; position: relative; cursor: pointer;">
+                                        <span class="ps-display">${psRaw || '$0'}</span>
+                                        <span class="ps-saved-check" style="display:none; color:#4ade80; margin-left:6px; font-size:0.85em;">&#10003;</span>
+                                    </td>
+                                </tr>`;
+                            } else {
+                                psHtml += `<tr>
+                                    <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
+                                    <td style="text-align: left; padding-left: 20px;">${r.low || '$0.00'}</td>
+                                    <td style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psColor};">${psRaw || '$0'}</td>
+                                </tr>`;
+                            }
                         });
                         if (psBody) psBody.innerHTML = psHtml;
+
+                        // --- Attach inline-edit behaviour to editable profit split cells ---
+                        if (isAdmin) {
+                            document.querySelectorAll('.ps-editable-cell').forEach(cell => {
+                                cell.addEventListener('click', function() {
+                                    if (cell.querySelector('.ps-input')) return; // already editing
+                                    const display = cell.querySelector('.ps-display');
+                                    const check = cell.querySelector('.ps-saved-check');
+                                    const curVal = cell.dataset.value || '0';
+                                    display.style.display = 'none';
+                                    check.style.display = 'none';
+                                    const input = document.createElement('input');
+                                    input.type = 'text';
+                                    input.className = 'ps-input';
+                                    input.value = curVal;
+                                    input.style.cssText = 'background:rgba(4,6,14,0.9); color:#fbbf24; border:1px solid rgba(234,179,8,0.4); border-radius:4px; padding:4px 8px; width:90px; font-size:0.95em; outline:none;';
+                                    cell.insertBefore(input, check);
+                                    input.focus();
+                                    input.select();
+
+                                    const save = () => {
+                                        const raw = input.value.replace(/[^0-9.\-]/g, '');
+                                        const num = parseFloat(raw) || 0;
+                                        input.remove();
+                                        display.textContent = num > 0 ? ('$' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})) : '$0';
+                                        display.style.color = num > 0 ? '#fbbf24' : '#94a3b8';
+                                        display.style.display = '';
+                                        cell.dataset.value = num;
+
+                                        // Update the card if this is the most recent (first) row
+                                        const firstEditableCell = document.querySelector('.ps-editable-cell');
+                                        if (cell === firstEditableCell) {
+                                            const elSplit = document.getElementById('split-profit-amount');
+                                            if (elSplit) {
+                                                elSplit.textContent = num > 0 ? ('$' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})) : '$0.00';
+                                                elSplit.style.color = num > 0 ? '#fbbf24' : '#94a3b8';
+                                            }
+                                        }
+
+                                        // POST to save
+                                        fetch('/api/client/profit_split_override', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({ client_id: clientId, from_date: cell.dataset.fromDate, amount: num })
+                                        }).then(r => r.json()).then(resp => {
+                                            if (resp.status === 'success') {
+                                                check.style.display = 'inline';
+                                                setTimeout(() => { check.style.display = 'none'; }, 2000);
+                                            }
+                                        }).catch(() => {});
+                                    };
+                                    input.addEventListener('blur', save);
+                                    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = curVal; input.blur(); } });
+                                });
+                            });
+                        }
                     } else {
                         if (psBody) psBody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
                     }
