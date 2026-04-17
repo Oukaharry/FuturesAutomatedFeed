@@ -3894,13 +3894,15 @@
                             if (ev._deleted) return;
                             
                             // 1. Check Eval Phase Status
-                            // If Eval is explicitly failed/closed/deleted, hide it.
-                            if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('delete') || statusP1.includes('closed') || statusP1.includes('sl')) return;
+                            // If Eval is explicitly failed/closed, hide it.
+                            // Note: 'deleted' status text is intentionally NOT hidden — rows marked deleted by status should
+                            // remain visible so superadmins can identify and review them before physically deleting.
+                            if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('closed') || statusP1.includes('sl')) return;
                             
                             // 2. Check Funded Phase Status
-                            // If Funded is explicitly failed/closed/deleted/completed, hide it.
-                            // Note: 'completed' often means moved to next stage or finished, but user requested to hide it from Active list.
-                            if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('delete') || statusFunded.includes('closed') || statusFunded.includes('sl') || statusFunded.includes('complete')) return;
+                            // If Funded is explicitly failed/closed/completed, hide it.
+                            // Note: 'deleted' status text is intentionally NOT hidden (see above).
+                            if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('closed') || statusFunded.includes('sl') || statusFunded.includes('complete')) return;
                             
                             // 3. Special Case: Eval Completed but Funded Not Started (or just created)
                             // If P1 is completed, we rely on Funded status.
