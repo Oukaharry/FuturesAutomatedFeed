@@ -5796,6 +5796,10 @@ def run_quality_scan(target_client=None):
 
                 status_p1 = str(ev.get('Status P1', '') or '').strip().lower()
                 status_p2 = str(ev.get('Status', '') or '').strip().lower()
+
+                # Skip rows marked as deleted via status text — superadmin review rows, not real issues
+                if 'delete' in status_p1 or 'delete' in status_p2:
+                    continue
                 is_active = status_p1 not in ('fail', 'breach', 'sl', 'completed', 'complete', '')
 
                 prop_firm = str(ev.get('Prop Firm', '') or '').strip()
