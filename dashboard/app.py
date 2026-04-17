@@ -168,12 +168,17 @@ def _log_request_start():
 # Flask's request.json parser runs.
 @app.before_request
 def _decompress_request_body():
-    if request.content_encoding == 'gzip':
+    if request.headers.get('Content-Encoding') == 'gzip':
         import gzip as _gzip
+        import io as _io
         try:
-            decompressed = _gzip.decompress(request.get_data())
-            # Replace the request data in-place and clear the encoding header
-            request.environ['wsgi.input'] = __import__('io').BytesIO(decompressed)
+            # Read directly from wsgi.input BEFORE Werkzeug wraps it into a
+            # LimitedStream or caches it — calling request.get_data() here would
+            # cache the compressed bytes and the JSON parser would see garbage.
+            raw_stream = request.environ.get('wsgi.input')
+            compressed = raw_stream.read() if raw_stream else b''
+            decompressed = _gzip.decompress(compressed)
+            request.environ['wsgi.input'] = _io.BytesIO(decompressed)
             request.environ['CONTENT_LENGTH'] = str(len(decompressed))
             request.environ.pop('HTTP_CONTENT_ENCODING', None)
         except Exception as e:
