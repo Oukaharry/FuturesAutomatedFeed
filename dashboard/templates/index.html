@@ -7216,6 +7216,18 @@
                         });
                         if (psBody) psBody.innerHTML = psHtml;
 
+                        // Sync top card to match the most recent row's Net Profit In Progress
+                        // so the card always reflects exactly what the table shows
+                        if (rows.length > 0) {
+                            const firstRowLow = (rows[0].low || '').trim();
+                            const firstRowNum = parseFloat(firstRowLow.replace(/[^0-9.\-]/g, '')) || 0;
+                            const elNet = document.getElementById('split-net-profit');
+                            if (elNet) {
+                                elNet.textContent = firstRowLow || formatMoney(0);
+                                elNet.style.color = firstRowNum >= 0 ? '#4ade80' : '#f87171';
+                            }
+                        }
+
                         // --- Attach inline-edit behaviour to editable profit split cells ---
                         if (isAdmin) {
                             document.querySelectorAll('.ps-editable-cell').forEach(cell => {
