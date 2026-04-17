@@ -1145,7 +1145,9 @@
                     // Filter Logic
                     if (showActiveOnly && !forceShow) {
                         const status = String(ev['Status'] || ev['Status P1'] || '').toLowerCase();
-                        if (status.includes('fail') || status.includes('breach') || status.includes('delete') || status.includes('closed') || status.includes('completed')) {
+                        // Note: 'deleted' status text intentionally excluded — rows marked deleted by status persist
+                        // so superadmins can identify and review them before physically deleting.
+                        if (status.includes('fail') || status.includes('breach') || status.includes('closed') || status.includes('completed')) {
                              return;
                         }
                     }
