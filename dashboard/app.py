@@ -61,7 +61,6 @@ BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'toponefutures'}
 try:
     from dashboard.scheduler import start_scheduler
     start_scheduler()
-    logging.info("Midnight Watermark Scheduler started.")
 except ImportError:
     logging.warning("Could not start Watermark Scheduler (ImportError).")
 except Exception as e:
@@ -5860,7 +5859,7 @@ def run_quality_scan(target_client=None):
                 _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
                 _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
                 # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
-                _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day')]
+                _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day') or k.startswith('Prop Progress')]
                 if not _inactive_p1 and not _inactive_p2 and status_p1:
                     weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
                                 'mon', 'tue', 'wed', 'thu', 'fri',
