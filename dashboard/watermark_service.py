@@ -332,6 +332,9 @@ def compute_waterlog_from_db(client_id):
     # CRITICAL: periods must be sorted oldest-first for correct HWM calculation
     periods_with_vals.sort(key=lambda p: p['from_date'])
 
+    # Load net profit overrides upfront so they feed into HWM / profit split calculation
+    np_overrides = get_net_profit_overrides(client_id)
+
     result = []
     hwm_low = 0.0
     last_pre_transition_net = 0.0  # net profit of the period immediately before transition
@@ -359,6 +362,13 @@ def compute_waterlog_from_db(client_id):
             in_range = [v for (d, v) in daily if from_d <= d <= to_d]
             period_low  = min(in_range) if in_range else 0.0
 
+        # Apply net profit override if admin edited this period
+        np_override_applied = False
+        np_key = _fmt_date(from_d)
+        if np_key in np_overrides:
+            period_low = np_overrides[np_key]
+            np_override_applied = True
+
         # Determine split percentage
         raw_split_pct = p.get('split_pct')
         split_pct = int(raw_split_pct) if raw_split_pct is not None else 50
@@ -385,6 +395,11 @@ def compute_waterlog_from_db(client_id):
     # Split = 50% of (transition net profit − high watermark) if above HWM
     condensed_daily = [v for (d, v) in daily if TRANSITION_START <= d <= TRANSITION_END]
     transition_net = condensed_daily[-1] if condensed_daily else 0.0
+
+    # Apply net profit override for transition period
+    transition_np_key = _fmt_date(TRANSITION_START)
+    if transition_np_key in np_overrides:
+        transition_net = np_overrides[transition_np_key]
 
     # Use high watermark from all pre-transition periods as base
     effective_base = max(hwm_low, 0.0)
@@ -421,6 +436,11 @@ def compute_waterlog_from_db(client_id):
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
         net_profit = in_range[-1][1] if in_range else prev_period_net
 
+        # Apply net profit override for this monthly period
+        monthly_np_key = _fmt_date(month_start)
+        if monthly_np_key in np_overrides:
+            net_profit = np_overrides[monthly_np_key]
+
         # Split = 50% of (this period's net profit − high watermark)
         # Only if net profit exceeds the highest historical net profit
         effective_base = max(hwm_net, 0.0)
@@ -448,17 +468,10 @@ def compute_waterlog_from_db(client_id):
         if month_start > today:
             break
 
-    # Apply any manual net_profit overrides (admin edits from the UI)
-    np_overrides = get_net_profit_overrides(client_id)
-    if np_overrides:
-        for period in result:
-            key = period['from_date']
-            if key in np_overrides:
-                val = np_overrides[key]
-                period['low'] = _fmt_currency(val)
-                period['net_profit_override'] = True
+    # Net profit overrides are now applied during HWM calculation above
+    # (no post-processing needed)
 
-    # Apply any manual profit_split overrides (admin edits from the UI)
+    # Apply any manual profit_split overrides (legacy — admin edits from the UI)
     overrides = get_profit_split_overrides(client_id)
     if overrides:
         for period in result:
