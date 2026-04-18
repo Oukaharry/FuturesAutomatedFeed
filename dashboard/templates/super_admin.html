@@ -2017,12 +2017,12 @@
 
                 const lanes = document.createElement('div');
                 lanes.style.display = 'grid';
-                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))';
-                lanes.style.gap = '12px';
+                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
+                lanes.style.gap = '8px';
 
                 // Clients-first hierarchy (admin -> clients with assigned-trader dropdown)
                 lanes.innerHTML = '';
-                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(420px, 1fr))';
+                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
 
                 const clientsToShow = (filteredClients || [])
                     .slice()
@@ -2055,76 +2055,95 @@
 
                         const card = document.createElement('div');
                         card.style.border = '1px solid rgba(30,58,138,0.35)';
-                        card.style.borderTop = '3px solid #3b82f6';
+                        card.style.borderTop = '2px solid #3b82f6';
                         card.style.background = 'linear-gradient(135deg, rgba(10,18,42,0.97), rgba(6,12,30,0.97))';
-                        card.style.borderRadius = '12px';
-                        card.style.padding = '18px 20px 16px';
-                        card.style.transition = 'all 0.25s ease';
+                        card.style.borderRadius = '8px';
+                        card.style.padding = '8px 10px';
+                        card.style.transition = 'all 0.2s ease';
                         card.style.position = 'relative';
                         card.addEventListener('mouseenter', () => {
                             card.style.border = '1px solid #3b82f6';
-                            card.style.borderTop = '3px solid #3b82f6';
-                            card.style.boxShadow = '0 4px 20px rgba(59,130,246,0.15), 0 0 0 1px rgba(59,130,246,0.1)';
+                            card.style.borderTop = '2px solid #3b82f6';
+                            card.style.boxShadow = '0 2px 12px rgba(59,130,246,0.12)';
                         });
                         card.addEventListener('mouseleave', () => {
                             card.style.border = '1px solid rgba(30,58,138,0.35)';
-                            card.style.borderTop = '3px solid #3b82f6';
+                            card.style.borderTop = '2px solid #3b82f6';
                             card.style.boxShadow = 'none';
                         });
 
-                        // Top row: icon + name (left) | close/edit X (right)
-                        const topRow = document.createElement('div');
-                        topRow.style.display = 'flex';
-                        topRow.style.alignItems = 'center';
-                        topRow.style.justifyContent = 'space-between';
+                        // Row 1: name (click=modal, right-click=email popup) + dash link
+                        const nameRow = document.createElement('div');
+                        nameRow.style.display = 'flex';
+                        nameRow.style.alignItems = 'center';
+                        nameRow.style.justifyContent = 'space-between';
+                        nameRow.style.gap = '6px';
 
-                        const nameArea = document.createElement('div');
-                        nameArea.style.display = 'flex';
-                        nameArea.style.alignItems = 'center';
-                        nameArea.style.gap = '10px';
-                        nameArea.style.minWidth = '0';
-
-                        // User icon
-                        const userIcon = document.createElement('span');
-                        userIcon.style.width = '28px';
-                        userIcon.style.height = '28px';
-                        userIcon.style.borderRadius = '50%';
-                        userIcon.style.background = 'rgba(59,130,246,0.15)';
-                        userIcon.style.border = '1px solid rgba(59,130,246,0.3)';
-                        userIcon.style.display = 'flex';
-                        userIcon.style.alignItems = 'center';
-                        userIcon.style.justifyContent = 'center';
-                        userIcon.style.flexShrink = '0';
-                        userIcon.innerHTML = '<i class="fas fa-user" style="font-size:0.7rem;color:#93c5fd;"></i>';
-                        nameArea.appendChild(userIcon);
-
-                        // Client name — click to open edit modal
                         const nameSpan = document.createElement('span');
                         nameSpan.style.fontWeight = '700';
-                        nameSpan.style.fontSize = '1.05rem';
+                        nameSpan.style.fontSize = '0.82rem';
                         nameSpan.style.color = '#f0f4ff';
-                        nameSpan.style.letterSpacing = '0.01em';
                         nameSpan.style.cursor = 'pointer';
                         nameSpan.style.transition = 'color 0.15s';
                         nameSpan.style.whiteSpace = 'nowrap';
                         nameSpan.style.overflow = 'hidden';
                         nameSpan.style.textOverflow = 'ellipsis';
+                        nameSpan.style.minWidth = '0';
+                        nameSpan.style.flex = '1';
                         nameSpan.textContent = cName;
-                        nameSpan.title = 'Edit client';
+                        nameSpan.title = 'Click: edit | Right-click: copy email';
                         nameSpan.addEventListener('mouseenter', () => { nameSpan.style.color = '#93c5fd'; });
                         nameSpan.addEventListener('mouseleave', () => { nameSpan.style.color = '#f0f4ff'; });
                         nameSpan.addEventListener('click', (e) => {
                             e.stopPropagation();
                             openEditUserModal('client', escJsAttr(cName), escJsAttr(cEmail), escJsAttr(adminName), escJsAttr(assignedTrader), cCat, cActiveStatus, '');
                         });
-                        nameArea.appendChild(nameSpan);
+                        nameSpan.addEventListener('contextmenu', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const existing = document.getElementById('__emailCopyPopup');
+                            if (existing) existing.remove();
+                            if (!cEmail) return;
+                            const popup = document.createElement('div');
+                            popup.id = '__emailCopyPopup';
+                            popup.style.position = 'fixed';
+                            popup.style.left = e.clientX + 'px';
+                            popup.style.top = e.clientY + 'px';
+                            popup.style.zIndex = '99999';
+                            popup.style.background = 'rgba(6,12,30,0.97)';
+                            popup.style.border = '1px solid rgba(59,130,246,0.4)';
+                            popup.style.borderRadius = '6px';
+                            popup.style.padding = '8px 12px';
+                            popup.style.fontSize = '0.78rem';
+                            popup.style.color = '#94a3b8';
+                            popup.style.cursor = 'pointer';
+                            popup.style.boxShadow = '0 4px 16px rgba(0,0,0,0.4)';
+                            popup.style.whiteSpace = 'nowrap';
+                            popup.textContent = cEmail;
+                            popup.title = 'Click to copy';
+                            popup.addEventListener('mouseenter', () => { popup.style.color = '#93c5fd'; });
+                            popup.addEventListener('mouseleave', () => { popup.style.color = '#94a3b8'; });
+                            popup.addEventListener('click', async (ev) => {
+                                ev.stopPropagation();
+                                try { await navigator.clipboard.writeText(cEmail); } catch(ex) {
+                                    const ta = document.createElement('textarea');
+                                    ta.value = cEmail; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                                    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+                                }
+                                popup.textContent = '✓ Copied!';
+                                popup.style.color = '#4ade80';
+                                setTimeout(() => popup.remove(), 900);
+                            });
+                            document.body.appendChild(popup);
+                            const dismiss = (ev) => { if (!popup.contains(ev.target)) { popup.remove(); document.removeEventListener('click', dismiss); } };
+                            setTimeout(() => document.addEventListener('click', dismiss), 0);
+                        });
+                        nameRow.appendChild(nameSpan);
 
-                        // Small arrow link → client dashboard
                         const clientDashLink = document.createElement('a');
                         clientDashLink.href = '/dashboard/' + encodeURIComponent(cName);
                         clientDashLink.style.color = 'rgba(148,163,184,0.5)';
-                        clientDashLink.style.fontSize = '0.65rem';
-                        clientDashLink.style.marginLeft = '2px';
+                        clientDashLink.style.fontSize = '0.6rem';
                         clientDashLink.style.transition = 'color 0.15s';
                         clientDashLink.style.textDecoration = 'none';
                         clientDashLink.style.flexShrink = '0';
@@ -2133,121 +2152,30 @@
                         clientDashLink.addEventListener('mouseenter', () => { clientDashLink.style.color = '#93c5fd'; });
                         clientDashLink.addEventListener('mouseleave', () => { clientDashLink.style.color = 'rgba(148,163,184,0.5)'; });
                         clientDashLink.addEventListener('click', (e) => e.stopPropagation());
-                        nameArea.appendChild(clientDashLink);
+                        nameRow.appendChild(clientDashLink);
 
-                        topRow.appendChild(nameArea);
-                        card.appendChild(topRow);
+                        card.appendChild(nameRow);
 
-                        // Badges row: PRIVATE/BEF + ON/OFF
-                        const badgeRow = document.createElement('div');
-                        badgeRow.style.display = 'flex';
-                        badgeRow.style.alignItems = 'center';
-                        badgeRow.style.gap = '8px';
-                        badgeRow.style.marginTop = '10px';
-
-                        const catBadge = document.createElement('span');
-                        catBadge.style.fontFamily = "'IBM Plex Mono',monospace";
-                        catBadge.style.fontSize = '0.62rem';
-                        catBadge.style.fontWeight = '700';
-                        catBadge.style.letterSpacing = '0.08em';
-                        catBadge.style.textTransform = 'uppercase';
-                        catBadge.style.padding = '2px 10px';
-                        catBadge.style.borderRadius = '99px';
-                        if (cCat === 'BEF') {
-                            catBadge.style.background = 'rgba(234,179,8,0.15)';
-                            catBadge.style.color = '#facc15';
-                            catBadge.style.border = '1px solid rgba(234,179,8,0.25)';
-                        } else {
-                            catBadge.style.background = 'rgba(148,163,184,0.12)';
-                            catBadge.style.color = '#cbd5e1';
-                            catBadge.style.border = '1px solid rgba(148,163,184,0.22)';
-                        }
-                        catBadge.textContent = cCat === 'BEF' ? 'BEF' : 'PRIVATE';
-                        badgeRow.appendChild(catBadge);
-
-                        const statusBadge = document.createElement('span');
-                        statusBadge.style.fontFamily = "'IBM Plex Mono',monospace";
-                        statusBadge.style.fontSize = '0.62rem';
-                        statusBadge.style.fontWeight = '700';
-                        statusBadge.style.letterSpacing = '0.08em';
-                        statusBadge.style.textTransform = 'uppercase';
-                        statusBadge.style.padding = '2px 10px';
-                        statusBadge.style.borderRadius = '99px';
-                        if (isInactive) {
-                            statusBadge.style.background = 'rgba(239,68,68,0.16)';
-                            statusBadge.style.color = '#fda4af';
-                            statusBadge.style.border = '1px solid rgba(239,68,68,0.26)';
-                            statusBadge.textContent = 'OFF';
-                        } else {
-                            statusBadge.style.background = 'rgba(16,185,129,0.14)';
-                            statusBadge.style.color = '#5eead4';
-                            statusBadge.style.border = '1px solid rgba(16,185,129,0.24)';
-                            statusBadge.textContent = 'ON';
-                        }
-                        badgeRow.appendChild(statusBadge);
-                        card.appendChild(badgeRow);
-
-                        // Email row
-                        if (cEmail) {
-                            const emailDiv = document.createElement('div');
-                            emailDiv.style.marginTop = '8px';
-                            emailDiv.style.fontSize = '0.8rem';
-                            emailDiv.style.color = 'rgba(148,163,184,0.85)';
-                            emailDiv.style.wordBreak = 'break-word';
-                            emailDiv.style.cursor = 'pointer';
-                            emailDiv.style.transition = 'color 0.15s';
-                            emailDiv.title = 'Click to copy';
-                            emailDiv.textContent = cEmail;
-                            emailDiv.addEventListener('mouseenter', () => { emailDiv.style.color = '#93c5fd'; });
-                            emailDiv.addEventListener('mouseleave', () => { emailDiv.style.color = 'rgba(148,163,184,0.85)'; });
-                            emailDiv.addEventListener('click', async (e) => {
-                                e.stopPropagation();
-                                try { await navigator.clipboard.writeText(cEmail); } catch(ex) {
-                                    const ta = document.createElement('textarea');
-                                    ta.value = cEmail; ta.style.position = 'fixed'; ta.style.opacity = '0';
-                                    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-                                }
-                                const orig = emailDiv.textContent;
-                                emailDiv.textContent = '✓ Copied!';
-                                emailDiv.style.color = '#4ade80';
-                                setTimeout(() => { emailDiv.textContent = orig; emailDiv.style.color = 'rgba(148,163,184,0.85)'; }, 1500);
-                            });
-                            card.appendChild(emailDiv);
-                        }
-
-                        // ASSIGNED TRADER label
-                        const traderLabel = document.createElement('div');
-                        traderLabel.style.fontFamily = "'IBM Plex Mono',monospace";
-                        traderLabel.style.fontSize = '0.65rem';
-                        traderLabel.style.color = 'rgba(255,255,255,0.5)';
-                        traderLabel.style.textTransform = 'uppercase';
-                        traderLabel.style.letterSpacing = '0.1em';
-                        traderLabel.style.fontWeight = '700';
-                        traderLabel.style.marginTop = '14px';
-                        traderLabel.style.marginBottom = '6px';
-                        traderLabel.textContent = 'ASSIGNED TRADER';
-                        card.appendChild(traderLabel);
-
-                        // Dropdown + Save row
+                        // Row 2: trader dropdown + auto-save + trader link
                         const traderRow = document.createElement('div');
                         traderRow.style.display = 'flex';
                         traderRow.style.alignItems = 'center';
-                        traderRow.style.gap = '8px';
+                        traderRow.style.gap = '6px';
+                        traderRow.style.marginTop = '5px';
 
-                        // Visible select dropdown
                         const select = document.createElement('select');
                         select.style.flex = '1';
-                        select.style.padding = '9px 12px';
-                        select.style.borderRadius = '8px';
-                        select.style.border = '1px solid rgba(115,144,255,0.35)';
+                        select.style.minWidth = '0';
+                        select.style.padding = '4px 6px';
+                        select.style.borderRadius = '5px';
+                        select.style.border = '1px solid rgba(115,144,255,0.3)';
                         select.style.background = 'rgba(4,8,22,0.9)';
                         select.style.color = '#e8eeff';
-                        select.style.fontSize = '0.88rem';
+                        select.style.fontSize = '0.75rem';
                         select.style.outline = 'none';
                         select.style.cursor = 'pointer';
-                        select.style.transition = 'border-color 0.15s';
-                        select.addEventListener('focus', () => { select.style.borderColor = 'rgba(115,144,255,0.65)'; });
-                        select.addEventListener('blur', () => { select.style.borderColor = 'rgba(115,144,255,0.35)'; });
+                        select.addEventListener('focus', () => { select.style.borderColor = 'rgba(115,144,255,0.6)'; });
+                        select.addEventListener('blur', () => { select.style.borderColor = 'rgba(115,144,255,0.3)'; });
 
                         const optionNames = traderNames.slice();
                         if (assignedTrader && !optionNames.includes(assignedTrader)) optionNames.push(assignedTrader);
@@ -2261,23 +2189,18 @@
                         });
                         traderRow.appendChild(select);
 
-                        // Saved checkmark (hidden initially, appears on change)
                         const savedCheck = document.createElement('span');
                         savedCheck.style.color = '#4ade80';
-                        savedCheck.style.fontSize = '0.8rem';
-                        savedCheck.style.fontWeight = '700';
+                        savedCheck.style.fontSize = '0.7rem';
                         savedCheck.style.opacity = '0';
                         savedCheck.style.transition = 'opacity 0.3s';
-                        savedCheck.style.whiteSpace = 'nowrap';
                         savedCheck.style.flexShrink = '0';
-                        savedCheck.innerHTML = '<i class="fas fa-check" style="margin-right:3px;"></i>Saved';
+                        savedCheck.innerHTML = '<i class="fas fa-check"></i>';
 
-                        // Auto-save on dropdown change
                         select.addEventListener('change', async () => {
                             const newTrader = select.value;
                             if (newTrader === assignedTrader) return;
-                            // Show saving spinner
-                            savedCheck.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:3px;"></i>Saving...';
+                            savedCheck.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                             savedCheck.style.color = '#94a3b8';
                             savedCheck.style.opacity = '1';
                             try {
@@ -2288,28 +2211,27 @@
                                 });
                                 const data = await res.json().catch(() => ({}));
                                 if (!res.ok || data.status !== 'success') {
-                                    savedCheck.innerHTML = '<i class="fas fa-xmark" style="margin-right:3px;"></i>Failed';
+                                    savedCheck.innerHTML = '<i class="fas fa-xmark"></i>';
                                     savedCheck.style.color = '#f87171';
                                     setTimeout(() => { savedCheck.style.opacity = '0'; }, 2000);
                                     return;
                                 }
-                                savedCheck.innerHTML = '<i class="fas fa-check" style="margin-right:3px;"></i>Saved';
+                                savedCheck.innerHTML = '<i class="fas fa-check"></i>';
                                 savedCheck.style.color = '#4ade80';
                                 setTimeout(() => { savedCheck.style.opacity = '0'; loadData(); }, 1200);
                             } catch(err) {
-                                savedCheck.innerHTML = '<i class="fas fa-xmark" style="margin-right:3px;"></i>Error';
+                                savedCheck.innerHTML = '<i class="fas fa-xmark"></i>';
                                 savedCheck.style.color = '#f87171';
                                 setTimeout(() => { savedCheck.style.opacity = '0'; }, 2000);
                             }
                         });
                         traderRow.appendChild(savedCheck);
 
-                        // Trader dashboard link icon
                         if (assignedTrader) {
                             const traderLink = document.createElement('a');
                             traderLink.href = '/trader/' + encodeURIComponent(assignedTrader);
                             traderLink.style.color = 'rgba(148,163,184,0.5)';
-                            traderLink.style.fontSize = '0.75rem';
+                            traderLink.style.fontSize = '0.6rem';
                             traderLink.style.transition = 'color 0.15s';
                             traderLink.style.textDecoration = 'none';
                             traderLink.style.flexShrink = '0';
