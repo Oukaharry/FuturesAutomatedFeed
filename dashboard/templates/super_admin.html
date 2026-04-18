@@ -2047,56 +2047,63 @@
                     clientsToShow.forEach((clientObj) => {
                         const cName = clientObj.name;
                         const cEmail = clientObj.email || '';
-                        const assignedTrader = clientObj.assigned_trader || clientObj.trader || '';
+                        const assignedTrader = String(clientObj.assigned_trader || clientObj.trader || '').trim();
                         const catRaw = clientObj.category || clientObj.profile || clientObj.source || 'PRIVATE';
                         const cCat = String(catRaw || 'PRIVATE').toUpperCase();
                         const cActiveStatus = clientObj.active_status || 'active';
                         const isInactive = String(cActiveStatus).toLowerCase() === 'inactive';
 
                         const card = document.createElement('div');
-                        card.style.border = '1px solid rgba(30,58,138,0.35)';
-                        card.style.borderTop = '2px solid #3b82f6';
-                        card.style.background = 'linear-gradient(135deg, rgba(10,18,42,0.97), rgba(6,12,30,0.97))';
+                        card.style.border = '1px solid rgba(59,130,246,0.35)';
+                        card.style.borderTop = '2px solid rgba(59,130,246,0.6)';
+                        card.style.background = 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(29,78,216,0.45) 100%)';
                         card.style.borderRadius = '8px';
                         card.style.padding = '8px 10px';
                         card.style.transition = 'all 0.2s ease';
                         card.style.position = 'relative';
+                        card.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.2)';
                         card.addEventListener('mouseenter', () => {
-                            card.style.border = '1px solid #3b82f6';
-                            card.style.borderTop = '2px solid #3b82f6';
-                            card.style.boxShadow = '0 2px 12px rgba(59,130,246,0.12)';
+                            card.style.border = '1px solid rgba(59,130,246,0.6)';
+                            card.style.borderTop = '2px solid rgba(59,130,246,0.8)';
+                            card.style.boxShadow = '0 4px 18px rgba(59,130,246,0.18)';
                         });
                         card.addEventListener('mouseleave', () => {
-                            card.style.border = '1px solid rgba(30,58,138,0.35)';
-                            card.style.borderTop = '2px solid #3b82f6';
-                            card.style.boxShadow = 'none';
+                            card.style.border = '1px solid rgba(59,130,246,0.35)';
+                            card.style.borderTop = '2px solid rgba(59,130,246,0.6)';
+                            card.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.2)';
                         });
 
-                        // Row 1: name (click=modal, right-click=email popup) + dash link
+                        // Row 1: name + pen edit
                         const nameRow = document.createElement('div');
                         nameRow.style.display = 'flex';
                         nameRow.style.alignItems = 'center';
-                        nameRow.style.justifyContent = 'space-between';
-                        nameRow.style.gap = '6px';
+                        nameRow.style.gap = '4px';
+                        nameRow.style.overflow = 'hidden';
 
-                        const nameSpan = document.createElement('span');
-                        nameSpan.style.fontWeight = '700';
-                        nameSpan.style.fontSize = '0.82rem';
-                        nameSpan.style.color = '#f0f4ff';
+                        const nameColor = '#93c5fd';
+
+                        const nameSpan = document.createElement('a');
+                        nameSpan.href = '/dashboard/' + encodeURIComponent(cName);
+                        nameSpan.style.display = 'block';
+                        nameSpan.style.fontWeight = '600';
+                        nameSpan.style.fontSize = '0.9rem';
+                        nameSpan.style.color = nameColor;
+                        nameSpan.style.textDecoration = 'none';
                         nameSpan.style.cursor = 'pointer';
                         nameSpan.style.transition = 'color 0.15s';
                         nameSpan.style.whiteSpace = 'nowrap';
                         nameSpan.style.overflow = 'hidden';
                         nameSpan.style.textOverflow = 'ellipsis';
+                        nameSpan.style.flex = '0 1 auto';
+                        nameSpan.style.maxWidth = 'calc(100% - 28px)';
                         nameSpan.style.minWidth = '0';
-                        nameSpan.style.flex = '1';
+                        nameSpan.style.marginRight = '6px';
                         nameSpan.textContent = cName;
-                        nameSpan.title = 'Click: edit | Right-click: copy email';
-                        nameSpan.addEventListener('mouseenter', () => { nameSpan.style.color = '#93c5fd'; });
-                        nameSpan.addEventListener('mouseleave', () => { nameSpan.style.color = '#f0f4ff'; });
+                        nameSpan.title = cName + ' — click: portfolio | right-click: email';
+                        nameSpan.addEventListener('mouseenter', () => { nameSpan.style.color = '#dbeafe'; });
+                        nameSpan.addEventListener('mouseleave', () => { nameSpan.style.color = nameColor; });
                         nameSpan.addEventListener('click', (e) => {
                             e.stopPropagation();
-                            openEditUserModal('client', escJsAttr(cName), escJsAttr(cEmail), escJsAttr(adminName), escJsAttr(assignedTrader), cCat, cActiveStatus, '');
                         });
                         nameSpan.addEventListener('contextmenu', (e) => {
                             e.preventDefault();
@@ -2140,19 +2147,25 @@
                         });
                         nameRow.appendChild(nameSpan);
 
-                        const clientDashLink = document.createElement('a');
-                        clientDashLink.href = '/dashboard/' + encodeURIComponent(cName);
-                        clientDashLink.style.color = 'rgba(148,163,184,0.5)';
-                        clientDashLink.style.fontSize = '0.6rem';
-                        clientDashLink.style.transition = 'color 0.15s';
-                        clientDashLink.style.textDecoration = 'none';
-                        clientDashLink.style.flexShrink = '0';
-                        clientDashLink.title = 'View client dashboard';
-                        clientDashLink.innerHTML = '<i class="fas fa-arrow-up-right-from-square"></i>';
-                        clientDashLink.addEventListener('mouseenter', () => { clientDashLink.style.color = '#93c5fd'; });
-                        clientDashLink.addEventListener('mouseleave', () => { clientDashLink.style.color = 'rgba(148,163,184,0.5)'; });
-                        clientDashLink.addEventListener('click', (e) => e.stopPropagation());
-                        nameRow.appendChild(clientDashLink);
+                        const editBtn = document.createElement('span');
+                        editBtn.style.color = 'rgba(148,163,184,0.75)';
+                        editBtn.style.fontSize = '0.82rem';
+                        editBtn.style.marginLeft = '6px';
+                        editBtn.style.cursor = 'pointer';
+                        editBtn.style.flexShrink = '0';
+                        editBtn.style.lineHeight = '1';
+                        editBtn.style.transition = 'color 0.12s, transform 0.12s';
+                        editBtn.style.padding = '2px 4px';
+                        editBtn.style.borderRadius = '4px';
+                        editBtn.title = 'Edit client';
+                        editBtn.innerHTML = '<i class="fas fa-pen"></i>';
+                        editBtn.addEventListener('mouseenter', () => { editBtn.style.color = '#93c5fd'; });
+                        editBtn.addEventListener('mouseleave', () => { editBtn.style.color = 'rgba(148,163,184,0.4)'; });
+                        editBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openEditUserModal('client', escJsAttr(cName), escJsAttr(cEmail), escJsAttr(adminName), escJsAttr(assignedTrader), cCat, cActiveStatus, '');
+                        });
+                        nameRow.appendChild(editBtn);
 
                         card.appendChild(nameRow);
 
@@ -2165,44 +2178,41 @@
 
                         const select = document.createElement('select');
                         select.style.flex = '1';
-                        select.style.minWidth = '0';
-                        select.style.padding = '4px 6px';
+                        select.style.minWidth = '120px';
+                        select.style.width = '100%';
+                        select.style.padding = '7px 26px 7px 6px';
                         select.style.borderRadius = '5px';
                         select.style.border = '1px solid rgba(115,144,255,0.3)';
                         select.style.background = 'rgba(4,8,22,0.9)';
-                        select.style.color = '#e8eeff';
-                        select.style.fontSize = '0.75rem';
+                        const traderSelectColor = '#e8eeff';
+                        select.style.color = traderSelectColor;
+                        select.style.fontWeight = '600';
+                        select.style.fontSize = '0.82rem';
+                        select.style.textAlign = 'left';
+                        select.style.textAlignLast = 'left';
+                        select.style.textIndent = '0';
+                        select.style.direction = 'ltr';
                         select.style.outline = 'none';
                         select.style.cursor = 'pointer';
                         select.addEventListener('focus', () => { select.style.borderColor = 'rgba(115,144,255,0.6)'; });
                         select.addEventListener('blur', () => { select.style.borderColor = 'rgba(115,144,255,0.3)'; });
 
-                        const optionNames = traderNames.slice();
+                        const optionNames = [...new Set(traderNames.map(tn => String(tn || '').trim()).filter(Boolean))];
                         if (assignedTrader && !optionNames.includes(assignedTrader)) optionNames.push(assignedTrader);
                         optionNames.sort((a, b) => a.localeCompare(b));
                         optionNames.forEach(tn => {
                             const opt = document.createElement('option');
                             opt.value = tn;
-                            opt.textContent = tn;
+                            opt.textContent = String(tn).trim();
                             if (tn === assignedTrader) opt.selected = true;
                             select.appendChild(opt);
                         });
                         traderRow.appendChild(select);
 
-                        const savedCheck = document.createElement('span');
-                        savedCheck.style.color = '#4ade80';
-                        savedCheck.style.fontSize = '0.7rem';
-                        savedCheck.style.opacity = '0';
-                        savedCheck.style.transition = 'opacity 0.3s';
-                        savedCheck.style.flexShrink = '0';
-                        savedCheck.innerHTML = '<i class="fas fa-check"></i>';
-
                         select.addEventListener('change', async () => {
                             const newTrader = select.value;
                             if (newTrader === assignedTrader) return;
-                            savedCheck.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                            savedCheck.style.color = '#94a3b8';
-                            savedCheck.style.opacity = '1';
+                            select.style.borderColor = '#94a3b8';
                             try {
                                 const res = await fetch('/api/assign_client_trader', {
                                     method: 'POST',
@@ -2211,21 +2221,18 @@
                                 });
                                 const data = await res.json().catch(() => ({}));
                                 if (!res.ok || data.status !== 'success') {
-                                    savedCheck.innerHTML = '<i class="fas fa-xmark"></i>';
-                                    savedCheck.style.color = '#f87171';
-                                    setTimeout(() => { savedCheck.style.opacity = '0'; }, 2000);
+                                    select.style.borderColor = '#f87171';
+                                    setTimeout(() => { select.style.borderColor = 'rgba(115,144,255,0.3)'; }, 2000);
                                     return;
                                 }
-                                savedCheck.innerHTML = '<i class="fas fa-check"></i>';
-                                savedCheck.style.color = '#4ade80';
-                                setTimeout(() => { savedCheck.style.opacity = '0'; loadData(); }, 1200);
+                                select.style.borderColor = '#4ade80';
+                                select.style.boxShadow = '0 0 12px rgba(74,222,128,0.5)';
+                                setTimeout(() => { select.style.borderColor = 'rgba(115,144,255,0.3)'; select.style.boxShadow = 'none'; loadData(); }, 1200);
                             } catch(err) {
-                                savedCheck.innerHTML = '<i class="fas fa-xmark"></i>';
-                                savedCheck.style.color = '#f87171';
-                                setTimeout(() => { savedCheck.style.opacity = '0'; }, 2000);
+                                select.style.borderColor = '#f87171';
+                                setTimeout(() => { select.style.borderColor = 'rgba(115,144,255,0.3)'; }, 2000);
                             }
                         });
-                        traderRow.appendChild(savedCheck);
 
                         if (assignedTrader) {
                             const traderLink = document.createElement('a');
