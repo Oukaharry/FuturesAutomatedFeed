@@ -382,12 +382,12 @@ def compute_waterlog_from_db(client_id):
 
     # ── Condensed transition row (2/24 → 3/20) ──────────────────────────
     # Net profit = latest daily value on or before 3/20
-    # Split = 50% of (transition net profit − previous period's net profit)
+    # Split = 50% of (transition net profit − high watermark) if above HWM
     condensed_daily = [v for (d, v) in daily if TRANSITION_START <= d <= TRANSITION_END]
     transition_net = condensed_daily[-1] if condensed_daily else 0.0
 
-    # Use max(0, ...) as base so recovery from negative doesn't inflate split
-    effective_base = max(last_pre_transition_net, 0.0)
+    # Use high watermark from all pre-transition periods as base
+    effective_base = max(hwm_low, 0.0)
     if transition_net > effective_base and transition_net > 0:
         transition_split = (transition_net - effective_base) * 0.5
     else:
@@ -401,8 +401,9 @@ def compute_waterlog_from_db(client_id):
         'split_pct':    50,
     })
 
-    # ── Monthly periods from 3/21 onwards (new split logic) ─────────────
-    # Reference = the net profit from the last period (transition or previous month)
+    # ── Monthly periods from 3/21 onwards (HWM split logic) ─────────────
+    # High watermark = highest net profit across all historical periods
+    hwm_net = max(hwm_low, transition_net, 0.0)
     prev_period_net = transition_net
     today = _dt.now().date()
     month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
@@ -420,10 +421,9 @@ def compute_waterlog_from_db(client_id):
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
         net_profit = in_range[-1][1] if in_range else prev_period_net
 
-        # Split = 50% of (this period's net profit − previous period's net profit)
-        # Only if net profit grew and is positive
-        # Use max(0, prev) as base so recovery from negative doesn't inflate split
-        effective_base = max(prev_period_net, 0.0)
+        # Split = 50% of (this period's net profit − high watermark)
+        # Only if net profit exceeds the highest historical net profit
+        effective_base = max(hwm_net, 0.0)
         if net_profit > effective_base and net_profit > 0:
             profit_split = (net_profit - effective_base) * 0.5
         else:
@@ -437,14 +437,26 @@ def compute_waterlog_from_db(client_id):
             'split_pct':    50,
         })
 
-        # For completed months, update the reference point
+        # For completed months, update the reference point and HWM
         if effective_end >= month_end:
             prev_period_net = net_profit
+            if net_profit > hwm_net:
+                hwm_net = net_profit
 
         # Advance to next month
         month_start = month_end + timedelta(days=1)
         if month_start > today:
             break
+
+    # Apply any manual net_profit overrides (admin edits from the UI)
+    np_overrides = get_net_profit_overrides(client_id)
+    if np_overrides:
+        for period in result:
+            key = period['from_date']
+            if key in np_overrides:
+                val = np_overrides[key]
+                period['low'] = _fmt_currency(val)
+                period['net_profit_override'] = True
 
     # Apply any manual profit_split overrides (admin edits from the UI)
     overrides = get_profit_split_overrides(client_id)
@@ -458,7 +470,7 @@ def compute_waterlog_from_db(client_id):
 
     return {
         'periods': result,
-        'last_split_net_profit': prev_period_net,
+        'last_split_net_profit': hwm_net,
     }
 
 
@@ -515,4 +527,60 @@ def save_profit_split_override(client_id, from_date, amount):
             return True
     except Exception as e:
         logging.error(f"Error saving profit split override: {e}")
+        return False
+
+
+# ── Net Profit Override ──────────────────────────────────────────────
+
+def _ensure_net_profit_overrides_table():
+    """Create the net_profit_overrides table if it doesn't exist."""
+    try:
+        with get_connection() as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS net_profit_overrides (
+                    client_id   TEXT NOT NULL,
+                    from_date   TEXT NOT NULL,
+                    amount      REAL NOT NULL,
+                    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (client_id, from_date)
+                )
+            ''')
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Error creating net_profit_overrides table: {e}")
+
+
+def get_net_profit_overrides(client_id):
+    """Return dict of from_date -> amount for all net profit overrides for this client."""
+    _ensure_net_profit_overrides_table()
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT from_date, amount FROM net_profit_overrides WHERE client_id = ?',
+                (client_id,)
+            )
+            return {row['from_date']: float(row['amount']) for row in cursor.fetchall()}
+    except Exception as e:
+        logging.error(f"Error loading net profit overrides: {e}")
+        return {}
+
+
+def save_net_profit_override(client_id, from_date, amount):
+    """Save or update a net profit override for a specific period."""
+    _ensure_net_profit_overrides_table()
+    try:
+        with get_connection() as conn:
+            conn.execute('''
+                INSERT INTO net_profit_overrides (client_id, from_date, amount, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (client_id, from_date) DO UPDATE
+                    SET amount = EXCLUDED.amount,
+                        updated_at = CURRENT_TIMESTAMP
+            ''', (client_id, from_date, float(amount)))
+            conn.commit()
+            logging.info(f"Saved net profit override for {client_id} period {from_date}: ${amount}")
+            return True
+    except Exception as e:
+        logging.error(f"Error saving net profit override: {e}")
         return False
