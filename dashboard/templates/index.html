@@ -3804,6 +3804,84 @@
                     if (data.dropdown_options) {
                         Object.assign(dropdownOptions, data.dropdown_options);
                     }
+
+                    // After a real page load / manual refresh, persist recalculated hedge nets + statistics once
+                    // (same persistence as super_admin batch; separate from trader POST /api/client/push).
+                    if (!silent && !_pageLoadServerStatsRecalcStarted) {
+                        _pageLoadServerStatsRecalcStarted = true;
+                        setEvaluationsRecalcIndicator(true);
+                        fetch('/api/dashboard/recalculate_statistics', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ client_id: CLIENT_ID })
+                        })
+                            .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                            .then(({ ok, j }) => {
+                                if (!ok || j.status !== 'success') {
+                                    _pageLoadServerStatsRecalcStarted = false;
+                                    if (!ok || (j && j.message)) {
+                                        console.warn('Statistics recalc on load:', (j && j.message) || 'request failed');
+                                    }
+                                    return;
+                                }
+                                return fetch(url).then(response => {
+                                    if (!response.ok && response.status === 401) {
+                                        window.location.href = '/';
+                                        throw new Error('Session expired');
+                                    }
+                                    return response.json();
+                                }).then(d2 => {
+                                    if (isEditing || isSaving || document.querySelector('.cell-input:focus')) return;
+                                    if (_lastSavedVersion && d2._version && d2._version < _lastSavedVersion) return;
+                                    if (_lastSavedVersion && d2._version && d2._version >= _lastSavedVersion) {
+                                        _lastSavedVersion = null;
+                                    }
+                                    if (d2.status === 'error') return;
+                                    currentData = d2;
+                                    if (currentData.evaluations) {
+                                        currentData.evaluations.forEach(ev => {
+                                            const pf = (ev['Prop Firm'] || '').toLowerCase().replace(/[\s_]/g, '');
+                                            if (pf === 'mffu' || pf === 'mffuflex' || pf === 'myfundedfx') {
+                                                ev['Prop Firm'] = 'My Funded Futures';
+                                            } else if (pf === 'topstep' || pf === 'topstep' || pf === 'v2') {
+                                                ev['Prop Firm'] = 'Topstep';
+                                            } else if (pf === 'fundingticks' || pf === 'fundingtick') {
+                                                ev['Prop Firm'] = 'Funding Ticks';
+                                            } else if (pf === 'fundednext') {
+                                                ev['Prop Firm'] = 'FundedNext';
+                                            } else if (pf === 'tradeday') {
+                                                ev['Prop Firm'] = 'TradeDay';
+                                            } else if (pf === 'alphafutures') {
+                                                ev['Prop Firm'] = 'Alpha Futures';
+                                            }
+                                        });
+                                    }
+                                    const lu = document.getElementById('last-updated');
+                                    if (lu) lu.textContent = d2.last_updated;
+                                    try { renderEvaluationsTable(false); } catch (e) {
+                                        console.error('renderEvaluationsTable error:', e);
+                                    }
+                                    try { renderStats(d2); } catch (e) { console.error('renderStats error:', e); }
+                                    try { renderPositions(d2); } catch (e) { console.error('renderPositions error:', e); }
+                                    try { renderHedgeAccounts(d2); } catch (e) { console.error('renderHedgeAccounts error:', e); }
+                                    try { renderPropAccounts(d2); } catch (e) { console.error('renderPropAccounts error:', e); }
+                                    try { renderMT5Credentials(d2); } catch (e) { console.error('renderMT5Credentials error:', e); }
+                                    try { renderVPSAccounts(d2); } catch (e) { console.error('renderVPSAccounts error:', e); }
+                                    try { renderPaymentInfo(d2); } catch (e) { console.error('renderPaymentInfo error:', e); }
+                                    try { renderHistory(d2); } catch (e) { console.error('renderHistory error:', e); }
+                                    try { renderActivityIndicators(d2); } catch (e) { console.error('renderActivityIndicators error:', e); }
+                                    if (d2.dropdown_options) {
+                                        Object.assign(dropdownOptions, d2.dropdown_options);
+                                    }
+                                });
+                            })
+                            .catch(err => {
+                                if (err.message !== 'Session expired') console.error('Statistics recalc on load:', err);
+                                _pageLoadServerStatsRecalcStarted = false;
+                            })
+                            .finally(() => setEvaluationsRecalcIndicator(false));
+                    }
                 })
                 .catch(error => {
                     if (error.message === 'Session expired') return;
@@ -3830,6 +3908,8 @@
         // Global variables for rendering
         let pendingEvaluations = [];
         let dataLoaded = false; // true after first successful fetch
+        /** One server-side statistics + hedge-net persist per full page load (not silent 30s poll). */
+        let _pageLoadServerStatsRecalcStarted = false;
 
         function fixSubHeaderTop() {
             const row1 = document.querySelector('#evaluations-table thead tr:first-child');

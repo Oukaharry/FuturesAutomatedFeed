@@ -5657,6 +5657,72 @@ def get_data():
         "last_updated": "Never"
     })
 
+
+@app.route('/api/dashboard/recalculate_statistics', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_dashboard_recalculate_statistics():
+    """
+    Recalculate Hedge Net / Hedge Net.1 and statistics from stored evaluations and persist.
+    Used after a full dashboard page load so DB matches formulas (separate from trader /api/client/push).
+    Uses save_client_data (no extra history snapshot) like super_admin batch recalc.
+    """
+    session_token = request.cookies.get('session_token')
+    if not session_token:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    session_info = validate_session(session_token)
+    if not session_info:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    user_type = session_info.get('user_type')
+    user_identifier = session_info.get('user_identifier')
+    payload = request.get_json() or {}
+    client_id = payload.get('client_id')
+    if not client_id:
+        return jsonify({"status": "error", "message": "client_id required"}), 400
+    if not can_access_client(user_type, user_identifier, client_id):
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({"status": "error", "message": "No data found"}), 404
+
+    try:
+        from utils.data_processor import calculate_statistics
+        evals = recalculate_hedge_nets(list(client_data.get('evaluations') or []))
+        existing_mt5 = client_data.get('account')
+        existing_hr = client_data.get('statistics', {}).get('hedging_review', {}) or {}
+        existing_hist = existing_hr.get('historical_accounts')
+        new_stats = calculate_statistics(evals, mt5_account=existing_mt5, historical_accounts=existing_hist)
+        new_hr = new_stats.setdefault('hedging_review', {})
+        new_hr['total_deposits'] = existing_hr.get('total_deposits', 0)
+        new_hr['total_withdrawals'] = existing_hr.get('total_withdrawals', 0)
+        new_hr['current_balance'] = existing_hr.get('current_balance', 0)
+        new_hr['actual_hedging_results'] = existing_hr.get('actual_hedging_results', 0)
+        if existing_hist:
+            new_hr['historical_accounts'] = existing_hist
+            new_hr['historical_deposits'] = existing_hr.get('historical_deposits', 0)
+            new_hr['historical_withdrawals'] = existing_hr.get('historical_withdrawals', 0)
+            new_hr['historical_balance'] = existing_hr.get('historical_balance', 0)
+        new_hr['discrepancy'] = round(
+            float(new_hr.get('actual_hedging_results', 0) or 0) - float(new_hr.get('sheet_hedging_results', 0) or 0), 2
+        )
+        disc = new_hr['discrepancy']
+        for sk in ["profitability_completed", "cashflow_inprogress"]:
+            sec = new_stats[sk]
+            sec["net_profit"] = round(
+                float(sec.get("payouts", 0) or 0)
+                + float(sec.get("hedging_results", 0) or 0)
+                + float(sec.get("farming_results", 0) or 0)
+                + disc
+                - float(sec.get("challenge_fees", 0) or 0),
+                2,
+            )
+        save_client_data(client_id, {'evaluations': evals, 'statistics': new_stats})
+        return jsonify({"status": "success"})
+    except Exception as e:
+        app.logger.exception("recalculate_statistics on dashboard load failed")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/client/export_csv')
 def export_client_csv():
     """Export client evaluation data as CSV download."""
