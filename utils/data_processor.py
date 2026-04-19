@@ -790,31 +790,36 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
                 stats["ev_tracking"]["total_net_ended"] += funded_hedge_net
                 stats["ev_tracking"]["count_ended"] += 1
             
-            # === CASHFLOW - IN PROGRESS (TOTALS of ALL records) ===
-            # Only count hedge/farming columns for rows with a populated status,
-            # so accounts without hedging activity don't contribute phantom values.
-            # Fees and payouts are always counted (they exist independent of hedging).
-            has_p1_status = bool(status_p1.strip())
-            has_funded_status = bool(status_funded.strip())
-            
-            row_hedging = 0.0
-            if has_p1_status:
-                row_hedging += p1_hedges
-            if has_funded_status:
-                row_hedging += funded_hedges
-            
-            row_farming = 0.0
-            if has_funded_status:
-                row_farming = hedge_days
-            
-            stats["cashflow_inprogress"]["challenge_fees"] = round(stats["cashflow_inprogress"]["challenge_fees"] + fee + activation_fee, 2)
-            stats["cashflow_inprogress"]["hedging_results"] = round(stats["cashflow_inprogress"]["hedging_results"] + row_hedging, 2)
-            stats["cashflow_inprogress"]["farming_results"] = round(stats["cashflow_inprogress"]["farming_results"] + row_farming, 2)
-            stats["cashflow_inprogress"]["payouts"] = round(stats["cashflow_inprogress"]["payouts"] + payouts, 2)
-            stats["cashflow_inprogress"]["activation_fee"] = round(stats["cashflow_inprogress"]["activation_fee"] + activation_fee, 2)
-            
+            # Normalize status lifecycle buckets (case-insensitive, tolerant of variants)
+            is_deleted = ('deleted' in status_p1_lower) or ('deleted' in status_funded_lower)
+            is_p1_fail = any(k in status_p1_lower for k in ('fail', 'breach', 'sl', 'closed'))
+            is_funded_fail = any(k in status_funded_lower for k in ('fail', 'breach', 'sl', 'closed'))
+            is_funded_completed = ('complete' in status_funded_lower)
+            is_funded_ended = is_funded_fail or is_funded_completed
+            is_in_progress = (not is_deleted) and (not is_p1_fail) and (not is_funded_ended)
+
+            # === CASHFLOW - IN PROGRESS ===
+            # Only active/in-progress rows should contribute here.
+            if is_in_progress:
+                has_p1_status = bool(status_p1.strip())
+                has_funded_status = bool(status_funded.strip())
+
+                row_hedging = 0.0
+                if has_p1_status:
+                    row_hedging += p1_hedges
+                if has_funded_status:
+                    row_hedging += funded_hedges
+
+                row_farming = hedge_days if has_funded_status else 0.0
+
+                stats["cashflow_inprogress"]["challenge_fees"] = round(stats["cashflow_inprogress"]["challenge_fees"] + fee + activation_fee, 2)
+                stats["cashflow_inprogress"]["hedging_results"] = round(stats["cashflow_inprogress"]["hedging_results"] + row_hedging, 2)
+                stats["cashflow_inprogress"]["farming_results"] = round(stats["cashflow_inprogress"]["farming_results"] + row_farming, 2)
+                stats["cashflow_inprogress"]["payouts"] = round(stats["cashflow_inprogress"]["payouts"] + payouts, 2)
+                stats["cashflow_inprogress"]["activation_fee"] = round(stats["cashflow_inprogress"]["activation_fee"] + activation_fee, 2)
+
             # Skip deleted accounts for profitability and other sections
-            if 'deleted' in status_p1_lower or 'deleted' in status_funded_lower:
+            if is_deleted:
                 continue
             
             # === PROFITABILITY - COMPLETED (exact SUMIF logic from sheet) ===
@@ -827,29 +832,23 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             # Part 3: P1 hedges (J-N) where Status = "Fail" or "Completed"
             
             # Farming Results Completed formula:
-            # Sum of Hedge Day columns (AM,AO,AQ...) where Status = "Completed" ONLY
-            
-            is_p1_fail = status_p1 == 'Fail'
-            is_funded_fail = status_funded == 'Fail'
-            is_funded_completed = status_funded == 'Completed'
-            is_funded_ended = is_funded_fail or is_funded_completed
-            
-            # Challenge Fees Completed: Fee + Activation Fee where P1=Fail OR Status=Fail OR Status=Completed
-            if is_p1_fail:
+            # Sum of Hedge Day columns when the funded row has ended (Fail or Completed).
+            # (Completed-only misses funded failures that already accumulated Hedge Day P&L.)
+
+            # Challenge Fees Completed: count ended rows exactly once
+            if is_p1_fail or is_funded_ended:
                 stats["profitability_completed"]["challenge_fees"] = round(stats["profitability_completed"]["challenge_fees"] + fee + activation_fee, 2)
-            if is_funded_fail:
-                stats["profitability_completed"]["challenge_fees"] = round(stats["profitability_completed"]["challenge_fees"] + fee + activation_fee, 2)
-            if is_funded_completed:
-                stats["profitability_completed"]["challenge_fees"] = round(stats["profitability_completed"]["challenge_fees"] + fee + activation_fee, 2)
-                
-            # Hedging Results Completed
-            if is_p1_fail:
-                stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + p1_hedges, 2)
+
+            # Hedging Results Completed: avoid double-counting when both flags are set
             if is_funded_ended:
+                # Funded ended rows include funded + phase-1 components
                 stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + funded_hedges + p1_hedges, 2)
+            elif is_p1_fail:
+                # Pure phase-1 failure (never reached funded end)
+                stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + p1_hedges, 2)
                 
-            # Farming Results Completed: Hedge Days ONLY where Status=Completed
-            if is_funded_completed:
+            # Farming Results Completed: Hedge Days when funded phase ended (fail or complete)
+            if is_funded_ended:
                 stats["profitability_completed"]["farming_results"] = round(stats["profitability_completed"]["farming_results"] + hedge_days, 2)
                 
             # Payouts Completed: where Status=Completed ONLY (sheet formula: SUMIF Status="Completed")
@@ -857,15 +856,15 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
                 stats["profitability_completed"]["payouts"] = round(stats["profitability_completed"]["payouts"] + payouts, 2)
                 
             # Activation Fee for Completed (B25 in Net Profit formula)
-            # Track activation fee for accounts that have ended
+            # Track activation fee for accounts that have ended (count once)
             if is_p1_fail or is_funded_ended:
                 stats["profitability_completed"]["activation_fee"] = round(stats["profitability_completed"]["activation_fee"] + activation_fee, 2)
         except Exception as e:
             print(f"Error processing evaluation row: {e}")
             continue
-        
+
         # Track "in progress" for evaluation data section (accounts not ended)
-        is_in_progress = not is_p1_fail and not is_funded_ended
+        is_in_progress = (not is_deleted) and (not is_p1_fail) and (not is_funded_ended)
 
         # --- 2. Evaluation Data ---
         estats = get_firm_stats(firm, "evaluation_data")
