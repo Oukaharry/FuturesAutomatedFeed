@@ -2133,7 +2133,11 @@
         </header>
 
         {% if client_id or user_type != 'client' %}
-        <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:4px 16px; background:rgba(15,23,42,0.5); border-bottom:1px solid rgba(255,255,255,0.04);">
+        <div style="display:flex; align-items:center; width:100%; padding:4px 16px; background:rgba(15,23,42,0.5); border-bottom:1px solid rgba(255,255,255,0.04); box-sizing:border-box;">
+            <div id="eval-recalc-bar" aria-live="polite" title="Saving and recalculating…" style="display:none; align-items:center; flex-shrink:0; padding:2px 10px 2px 0;">
+                <i class="fas fa-circle-notch fa-spin" style="color:#34d399; font-size:1rem;"></i>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; flex:1; min-width:0;">
             {% if user_type != 'client' %}
             <button onclick="openTab('issues')" id="issues-tab-btn" title="Issues" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#f87171;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#fca5a5'" onmouseout="this.style.color='#f87171'">
                 <i class="fas fa-exclamation-triangle" style="font-size:10px;"></i> Issues <span id="issues-count-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.65rem;min-width:16px;text-align:center;display:inline-block;"></span>
@@ -2153,6 +2157,7 @@
                 <i class="fas fa-edit" style="color:#7c3aed; margin-right:3px; font-size:9px; vertical-align:middle;"></i><span id="activity-edit-time"></span> <span id="activity-edit-by" style="color:#475569; font-size:10px;"></span>
             </span>
             {% endif %}
+            </div>
         </div>
         {% endif %}
 
@@ -3134,6 +3139,7 @@
         let isEditing = false;
         let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
         let _saveDebounceTimer = null;  // Debounce rapid edits into one save
+        let _statsRenderDebounce = null; // Debounce stats recompute while editing evals
         let _lastSavedVersion = null;   // Version from last successful save
         let _pendingSaveCallback = null; // Optional callback(bool) after saveData completes
         let isDatePickerOpen = false;
@@ -3798,6 +3804,84 @@
                     if (data.dropdown_options) {
                         Object.assign(dropdownOptions, data.dropdown_options);
                     }
+
+                    // After a real page load / manual refresh, persist recalculated hedge nets + statistics once
+                    // (same persistence as super_admin batch; separate from trader POST /api/client/push).
+                    if (!silent && !_pageLoadServerStatsRecalcStarted) {
+                        _pageLoadServerStatsRecalcStarted = true;
+                        setEvaluationsRecalcIndicator(true);
+                        fetch('/api/dashboard/recalculate_statistics', {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ client_id: CLIENT_ID })
+                        })
+                            .then(r => r.json().then(j => ({ ok: r.ok, j })))
+                            .then(({ ok, j }) => {
+                                if (!ok || j.status !== 'success') {
+                                    _pageLoadServerStatsRecalcStarted = false;
+                                    if (!ok || (j && j.message)) {
+                                        console.warn('Statistics recalc on load:', (j && j.message) || 'request failed');
+                                    }
+                                    return;
+                                }
+                                return fetch(url).then(response => {
+                                    if (!response.ok && response.status === 401) {
+                                        window.location.href = '/';
+                                        throw new Error('Session expired');
+                                    }
+                                    return response.json();
+                                }).then(d2 => {
+                                    if (isEditing || isSaving || document.querySelector('.cell-input:focus')) return;
+                                    if (_lastSavedVersion && d2._version && d2._version < _lastSavedVersion) return;
+                                    if (_lastSavedVersion && d2._version && d2._version >= _lastSavedVersion) {
+                                        _lastSavedVersion = null;
+                                    }
+                                    if (d2.status === 'error') return;
+                                    currentData = d2;
+                                    if (currentData.evaluations) {
+                                        currentData.evaluations.forEach(ev => {
+                                            const pf = (ev['Prop Firm'] || '').toLowerCase().replace(/[\s_]/g, '');
+                                            if (pf === 'mffu' || pf === 'mffuflex' || pf === 'myfundedfx') {
+                                                ev['Prop Firm'] = 'My Funded Futures';
+                                            } else if (pf === 'topstep' || pf === 'topstep' || pf === 'v2') {
+                                                ev['Prop Firm'] = 'Topstep';
+                                            } else if (pf === 'fundingticks' || pf === 'fundingtick') {
+                                                ev['Prop Firm'] = 'Funding Ticks';
+                                            } else if (pf === 'fundednext') {
+                                                ev['Prop Firm'] = 'FundedNext';
+                                            } else if (pf === 'tradeday') {
+                                                ev['Prop Firm'] = 'TradeDay';
+                                            } else if (pf === 'alphafutures') {
+                                                ev['Prop Firm'] = 'Alpha Futures';
+                                            }
+                                        });
+                                    }
+                                    const lu = document.getElementById('last-updated');
+                                    if (lu) lu.textContent = d2.last_updated;
+                                    try { renderEvaluationsTable(false); } catch (e) {
+                                        console.error('renderEvaluationsTable error:', e);
+                                    }
+                                    try { renderStats(d2); } catch (e) { console.error('renderStats error:', e); }
+                                    try { renderPositions(d2); } catch (e) { console.error('renderPositions error:', e); }
+                                    try { renderHedgeAccounts(d2); } catch (e) { console.error('renderHedgeAccounts error:', e); }
+                                    try { renderPropAccounts(d2); } catch (e) { console.error('renderPropAccounts error:', e); }
+                                    try { renderMT5Credentials(d2); } catch (e) { console.error('renderMT5Credentials error:', e); }
+                                    try { renderVPSAccounts(d2); } catch (e) { console.error('renderVPSAccounts error:', e); }
+                                    try { renderPaymentInfo(d2); } catch (e) { console.error('renderPaymentInfo error:', e); }
+                                    try { renderHistory(d2); } catch (e) { console.error('renderHistory error:', e); }
+                                    try { renderActivityIndicators(d2); } catch (e) { console.error('renderActivityIndicators error:', e); }
+                                    if (d2.dropdown_options) {
+                                        Object.assign(dropdownOptions, d2.dropdown_options);
+                                    }
+                                });
+                            })
+                            .catch(err => {
+                                if (err.message !== 'Session expired') console.error('Statistics recalc on load:', err);
+                                _pageLoadServerStatsRecalcStarted = false;
+                            })
+                            .finally(() => setEvaluationsRecalcIndicator(false));
+                    }
                 })
                 .catch(error => {
                     if (error.message === 'Session expired') return;
@@ -3824,6 +3908,8 @@
         // Global variables for rendering
         let pendingEvaluations = [];
         let dataLoaded = false; // true after first successful fetch
+        /** One server-side statistics + hedge-net persist per full page load (not silent 30s poll). */
+        let _pageLoadServerStatsRecalcStarted = false;
 
         function fixSubHeaderTop() {
             const row1 = document.querySelector('#evaluations-table thead tr:first-child');
@@ -4495,10 +4581,6 @@
                 tot.hedge = cf.hedging_results || 0;
                 tot.farming = cf.farming_results || 0;
             }
-            // Include MT5 discrepancy in totals so net profit matches Net Profit In Progress
-            const hr = (data.statistics && data.statistics.hedging_review) || {};
-            const discrepancy = (typeof liveActualHedging !== 'undefined' && typeof sheetHedgingResults !== 'undefined' && (typeof mt5Dep !== 'undefined') && (mt5Dep !== 0 || mt5Bal !== 0)) ? (liveActualHedging - sheetHedgingResults) : (hr.discrepancy || 0);
-            tot.discrepancy = discrepancy;
             return rows.map(([name,f]) => {
                 const net = f.payouts - f.fees + f.hedge + f.farming;
                 const hedgingTotal = f.hedge + f.farming;
@@ -4519,7 +4601,7 @@
                     <td style="text-align:left;padding-right:16px;font-weight:700;color:${net >= 0 ? '#34d399' : '#f87171'};">${fmt(net)}</td>
                 </tr>`;
             }).join('') + (() => {
-                const tHedgingTotal = tot.hedge + tot.farming + tot.discrepancy;
+                const tHedgingTotal = tot.hedge + tot.farming;
                 const tNet = tot.payouts - tot.fees + tHedgingTotal;
                 const tFundedPct = tot.passed + tot.failed > 0 ? Math.round(tot.passed / (tot.passed + tot.failed) * 100) : null;
                 const totActFees = Object.values(fb).reduce((s,e) => s + (e.total_fees || 0), 0);
@@ -4584,6 +4666,83 @@
                     s.evaluation_data = mergeStatKeys(s.evaluation_data);
                     s.funded_data = mergeStatKeys(s.funded_data);
 
+                    // Live cashflow + profitability — mirrors utils/data_processor.py calculate_statistics
+                    // (is_in_progress vs ended, elif hedging for completed, farming when funded ended fail|complete,
+                    // Payout 1–6 only to completed when funded completed, fee+activation in fees).
+                    function aggregateCashflowFromEvals(evals, filterHiddenFirms) {
+                        const pcN = (v) => { try { return parseFloat(String(v || '').replace(/[$,]/g, '').trim()) || 0; } catch (e) { return 0; } };
+                        const rnd2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
+                        const P1_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5'];
+                        const FD_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7'];
+                        const statusHas = (low, keys) => keys.some((k) => low.includes(k));
+
+                        let cfPay = 0, cfFees = 0, cfHedge = 0, cfFarm = 0;
+                        let pcPay = 0, pcFees = 0, pcHedge = 0, pcFarm = 0;
+
+                        (evals || []).forEach((ev) => {
+                            if (ev && ev._deleted) return;
+                            const fn = String(ev['Prop Firm'] || '').trim();
+                            if (filterHiddenFirms && isFirmHidden(fn)) return;
+
+                            const status_p1 = String(ev['Status P1'] || '').trim();
+                            const status_funded = String(ev['Status'] || ev['Status Funded'] || '').trim();
+                            const sp1L = status_p1.toLowerCase();
+                            const sfL = status_funded.toLowerCase();
+
+                            const is_deleted = sp1L.includes('deleted') || sfL.includes('deleted');
+                            const is_p1_fail = statusHas(sp1L, ['fail', 'breach', 'sl', 'closed']);
+                            const is_funded_fail = statusHas(sfL, ['fail', 'breach', 'sl', 'closed']);
+                            const is_funded_completed = sfL.includes('complete');
+                            const is_funded_ended = is_funded_fail || is_funded_completed;
+                            const is_in_progress = !is_deleted && !is_p1_fail && !is_funded_ended;
+
+                            const p1Hedges = rnd2(P1_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
+                            const fundedHedges = rnd2(FD_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
+                            let hedgeDays = 0;
+                            for (let di = 1; di <= 50; di++) hedgeDays += pcN(ev['Hedge Day ' + di]);
+                            hedgeDays = rnd2(hedgeDays);
+
+                            const fee = pcN(ev['Fee']);
+                            const activation_fee = pcN(ev['Activation Fee']);
+                            let payouts = 0;
+                            for (let pi = 1; pi <= 6; pi++) payouts = rnd2(payouts + pcN(ev['Payout ' + pi]));
+
+                            // --- Cashflow in progress (active rows only) ---
+                            if (is_in_progress) {
+                                const has_p1_status = !!status_p1.trim();
+                                const has_funded_status = !!status_funded.trim();
+                                let row_hedging = 0;
+                                if (has_p1_status) row_hedging += p1Hedges;
+                                if (has_funded_status) row_hedging += fundedHedges;
+                                const row_farming = has_funded_status ? hedgeDays : 0;
+                                cfFees = rnd2(cfFees + fee + activation_fee);
+                                cfHedge = rnd2(cfHedge + row_hedging);
+                                cfFarm = rnd2(cfFarm + row_farming);
+                                cfPay = rnd2(cfPay + payouts);
+                            }
+
+                            // --- Profitability completed (sheet SUMIF; skip status-deleted like Python) ---
+                            if (is_deleted) return;
+
+                            if (is_p1_fail || is_funded_ended) {
+                                pcFees = rnd2(pcFees + fee + activation_fee);
+                            }
+                            if (is_funded_ended) {
+                                pcHedge = rnd2(pcHedge + fundedHedges + p1Hedges);
+                                pcFarm = rnd2(pcFarm + hedgeDays);
+                            } else if (is_p1_fail) {
+                                pcHedge = rnd2(pcHedge + p1Hedges);
+                            }
+                            if (is_funded_completed) {
+                                pcPay = rnd2(pcPay + payouts);
+                            }
+                        });
+
+                        const cfNet = rnd2(cfPay + cfHedge + cfFarm - cfFees);
+                        const pcNet = rnd2(pcPay + pcHedge + pcFarm - pcFees);
+                        return { cfPay, cfFees, cfHedge, cfFarm, cfNet, pcPay, pcFees, pcHedge, pcFarm, pcNet };
+                    }
+
                     // Hide restricted firms from BEF admin stats
                     if (IS_BEF_ADMIN) {
                         for (const firm of BEF_HIDDEN_FIRMS) {
@@ -4609,38 +4768,13 @@
                         }
                         s.funded_totals = { not_started: ftNS, ongoing: ftOn, failed: ftF, completed: ftC, avg_net_failed: ftF ? ftNFv/ftF : 0, avg_net_completed: ftC ? ftNC/ftC : 0, total_funding: ftTF };
 
-                        // Recalculate cashflow_inprogress from filtered evaluations
-                        const pc = (v) => { try { return parseFloat(String(v||'').replace(/[$,]/g,'').trim()) || 0; } catch(e) { return 0; } };
-                        let cfPay=0, cfFees=0, cfHedge=0, cfFarm=0;
-                        // Also recalculate profitability_completed from filtered evaluations
-                        let pcPay=0, pcFees=0, pcHedge=0, pcFarm=0;
-                        (data.evaluations||[]).forEach(ev => {
-                            const fn = String(ev['Prop Firm']||'').trim();
-                            if (isFirmHidden(fn)) return;
-                            const fee = pc(ev['Fee']) + pc(ev['Activation Fee']);
-                            cfFees += fee;
-                            const sp1 = String(ev['Status P1']||'').trim();
-                            const sf = String(ev['Status'] || ev['Status Funded'] || '').trim();
-                            const p1Hedges = ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5'].reduce((s,c) => s + pc(ev[c]), 0);
-                            const fundedHedges = ['Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1','Hedge Result 6','Hedge Result 7'].reduce((s,c) => s + pc(ev[c]), 0);
-                            let hedgeDays = 0; for (let di=1;di<=50;di++) hedgeDays += pc(ev['Hedge Day '+di]);
-                            // Cashflow In Progress (status-gated like Python)
-                            if (sp1) cfHedge += p1Hedges;
-                            if (sf) { cfHedge += fundedHedges; cfFarm += hedgeDays; }
-                            for (let i=1;i<=9;i++) cfPay += pc(ev['Payout '+i]);
-                            // Profitability Completed (matching Python SUMIF logic)
-                            const sp1L = sp1.toLowerCase(), sfL = sf.toLowerCase();
-                            const isP1Fail = sp1L === 'fail';
-                            const isFundedFail = sfL === 'fail';
-                            const isFundedCompleted = sfL === 'completed';
-                            const isFundedEnded = isFundedFail || isFundedCompleted;
-                            if (isP1Fail || isFundedFail || isFundedCompleted) pcFees += fee;
-                            if (isP1Fail) pcHedge += p1Hedges;
-                            if (isFundedEnded) pcHedge += fundedHedges + p1Hedges;
-                            if (isFundedCompleted) { pcFarm += hedgeDays; for (let i=1;i<=9;i++) pcPay += pc(ev['Payout '+i]); }
-                        });
-                        s.cashflow_inprogress = { payouts: cfPay, challenge_fees: cfFees, hedging_results: cfHedge, farming_results: cfFarm, net_profit: cfPay + cfHedge + cfFarm - cfFees };
-                        s.profitability_completed = { payouts: pcPay, challenge_fees: pcFees, hedging_results: pcHedge, farming_results: pcFarm, net_profit: pcPay + pcHedge + pcFarm - pcFees };
+                        const ag = aggregateCashflowFromEvals(data.evaluations, true);
+                        s.cashflow_inprogress = { payouts: ag.cfPay, challenge_fees: ag.cfFees, hedging_results: ag.cfHedge, farming_results: ag.cfFarm, net_profit: ag.cfNet };
+                        s.profitability_completed = { payouts: ag.pcPay, challenge_fees: ag.pcFees, hedging_results: ag.pcHedge, farming_results: ag.pcFarm, net_profit: ag.pcNet };
+                    } else {
+                        const ag = aggregateCashflowFromEvals(data.evaluations, false);
+                        s.cashflow_inprogress = { payouts: ag.cfPay, challenge_fees: ag.cfFees, hedging_results: ag.cfHedge, farming_results: ag.cfFarm, net_profit: ag.cfNet };
+                        s.profitability_completed = { payouts: ag.pcPay, challenge_fees: ag.pcFees, hedging_results: ag.pcHedge, farming_results: ag.pcFarm, net_profit: ag.pcNet };
                     }
 
                     // Helper for safe rate formatting
@@ -4667,15 +4801,32 @@
                     totalPriorActivity = (s.hedging_review.current_mt5_prior_activity || 0);
                     histAccts.forEach(a => { totalPriorActivity += a.prior_activity_profit || 0; });
                     liveActualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity;
-                    // Compute Net Profit In Progress once — used by both Stats tab and Profit Split card
                     const _mt5HasData = (mt5Dep !== 0 || mt5Bal !== 0);
-                    // Server-stored net_profit already includes the stored discrepancy from the last push.
-                    // _discrepancy = full live discrepancy (for display in breakdown rows).
-                    const _storedDiscrepancy = s.hedging_review.discrepancy || 0;
-                    const _discrepancy = _mt5HasData ? (liveActualHedging - sheetHedgingResults) : _storedDiscrepancy;
-                    // Stats tab Net Profit: always use filtered component fields + discrepancy
-                    // (BEF admin recalculates cashflow_inprogress from filtered evals, so this works for all roles)
-                    window._statsNetProfit = (s.cashflow_inprogress.payouts || 0) + (s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0) + _discrepancy - (s.cashflow_inprogress.challenge_fees || 0);
+                    // Match /api/update_data: server keeps hedging_review.actual_hedging_results + discrepancy
+                    // in sync with the sheet. Recomputing "actual" from data.account here often disagrees with
+                    // hedging form + prior activity, so Net Profit stayed stale after eval edits.
+                    const _hrActualRaw = s.hedging_review.actual_hedging_results;
+                    const _hasServerActual = _hrActualRaw !== undefined && _hrActualRaw !== null && _hrActualRaw !== '';
+                    const _actualHedgingDisplay = _hasServerActual ? (Number(_hrActualRaw) || 0) : liveActualHedging;
+                    liveActualHedging = _actualHedgingDisplay;
+
+                    const _hrDiscRaw = s.hedging_review.discrepancy;
+                    const _hasServerDiscrepancy = _hrDiscRaw !== undefined && _hrDiscRaw !== null && _hrDiscRaw !== '';
+                    const _discrepancy = _hasServerDiscrepancy
+                        ? (Number(_hrDiscRaw) || 0)
+                        : ((_mt5HasData || _hasServerActual)
+                            ? (_actualHedgingDisplay - sheetHedgingResults)
+                            : 0);
+
+                    const cf = s.cashflow_inprogress;
+                    const pc = s.profitability_completed;
+                    // Net Profit (Stats): payouts + hedging + farming − challenge_fees — same line items as the card;
+                    // no MT5 discrepancy (hedging review still shows discrepancy for ops).
+                    const _cfHedgeTotal = (cf.hedging_results || 0) + (cf.farming_results || 0);
+                    const _pcHedgeTotal = (pc.hedging_results || 0) + (pc.farming_results || 0);
+                    window._statsNetProfit = (cf.payouts || 0) + _cfHedgeTotal - (cf.challenge_fees || 0);
+                    const pcNetProfit = (pc.payouts || 0) + _pcHedgeTotal - (pc.challenge_fees || 0);
+                    const _showHedgingActual = _mt5HasData || _hasServerActual;
                     // Preserve payouts visibility across re-renders
                     const _prevPayoutsEl = document.getElementById('stats-payouts-detail');
                     const _payoutsWasOpen = _prevPayoutsEl && _prevPayoutsEl.style.display !== 'none';
@@ -4686,18 +4837,12 @@
                                     <div class="card-header">Profitability - Completed <span style="margin-left:auto;font-size:0.8rem;font-weight:500;color:#94a3b8;">EV: <strong style="color:#94a3b8;">${formatMoney(s.expected_value)}</strong></span></div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right" style="color:#34d399;">${formatMoney(s.profitability_completed.payouts)}</td></tr>
-                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0) + _discrepancy) >= 0 ? '#34d399' : '#f87171'};">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0) + _discrepancy)}</td></tr>
+                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0)) >= 0 ? '#34d399' : '#f87171'};">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0))}</td></tr>
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.profitability_completed.hedging_results || 0) + '</td></tr>'}
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.profitability_completed.farming_results || 0) + '</td></tr>'}
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Discrepancy from Google Sheets</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(_discrepancy)}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right" style="color:#f87171;">${formatMoney(-(s.profitability_completed.challenge_fees || 0))}</td></tr>
-                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${((s.profitability_completed.payouts || 0) + (s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0) + _discrepancy - (s.profitability_completed.challenge_fees || 0)) >= 0 ? '#34d399' : '#f87171'};">${formatMoney(
-                                            (s.profitability_completed.payouts || 0) +
-                                            (s.profitability_completed.hedging_results || 0) +
-                                            (s.profitability_completed.farming_results || 0) +
-                                            _discrepancy -
-                                            (s.profitability_completed.challenge_fees || 0)
-                                        )}</strong></td></tr>
+                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${pcNetProfit >= 0 ? '#34d399' : '#f87171'};">${formatMoney(pcNetProfit)}</strong></td></tr>
                                     </table>
                                 </div>
 
@@ -4740,7 +4885,7 @@
                                                     formatMoney(s.hedging_review.current_balance)}
                                             </td>
                                         </tr>
-                                        <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${_mt5HasData ? formatMoney(liveActualHedging) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
+                                        <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${_showHedgingActual ? formatMoney(_actualHedgingDisplay) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
                                         <tr><td>Sheet Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
@@ -4764,7 +4909,7 @@
                                     <div class="card-header">Net Profit In Progress</div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right" style="color:#34d399;">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
-                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0) + _discrepancy) >= 0 ? '#34d399' : '#f87171'};">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0) + _discrepancy)}</td></tr>
+                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0)) >= 0 ? '#34d399' : '#f87171'};">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.cashflow_inprogress.hedging_results || 0) + '</td></tr>'}
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.cashflow_inprogress.farming_results || 0) + '</td></tr>'}
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Discrepancy from Google Sheets</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(_discrepancy)}</td></tr>
@@ -6407,8 +6552,8 @@
                 activeDropdownTrigger.classList.remove('active');
                 activeDropdownTrigger = null;
             }
-            // Allow auto-refresh again (unless a save is pending)
-            if (!isSaving && !_saveDebounceTimer) {
+            // Allow auto-refresh again (unless a save or stats debounce is pending)
+            if (!isSaving && !_saveDebounceTimer && !_statsRenderDebounce) {
                 setTimeout(() => { isEditing = false; }, 500);
             }
         }
@@ -6532,6 +6677,7 @@
             
             // Mark editing started (prevents auto-refresh)
             isEditing = true;
+            _pendingEvalRecalc = true;
             
             // Track this field as explicitly changed by the user
             if (!_changedFields[index]) _changedFields[index] = new Set();
@@ -6553,6 +6699,17 @@
             
             const oldValue = currentData.evaluations[index][key];
             currentData.evaluations[index][key] = value;
+
+            // Live Net Profit / Stats cards: payouts + hedging + farming − fees from current rows
+            if (_statsRenderDebounce) clearTimeout(_statsRenderDebounce);
+            _statsRenderDebounce = setTimeout(() => {
+                _statsRenderDebounce = null;
+                try {
+                    if (currentData && currentData.statistics && document.getElementById('stats-summary')) {
+                        renderStats(currentData);
+                    }
+                } catch (e) { /* ignore */ }
+            }, 150);
             
             // For payout fields, require confirmation before saving
             if (key.startsWith('Payout') && value && value !== '' && !isNaN(value)) {
@@ -6648,6 +6805,14 @@
         // Retry queue for failed saves
         let saveRetryQueue = [];
         let isSaving = false;
+        let _pendingEvalRecalc = false;
+
+        // Dashboard eval saves only — trader companion uses POST /api/client/push (separate path, no overlap).
+        function setEvaluationsRecalcIndicator(isActive) {
+            const bar = document.getElementById('eval-recalc-bar');
+            if (!bar) return;
+            bar.style.display = isActive ? 'flex' : 'none';
+        }
 
         // ── Save-time validation warnings (admin/trader only, changed rows only) ──
         function validateBeforeSave() {
@@ -6741,6 +6906,13 @@
             // Set editing flag to prevent auto-refresh during save
             isEditing = true;
             isSaving = true;
+            // Always refetch stats after a successful UPDATE: net profit / discrepancy come from
+            // the server merge and were easy to miss when _pendingEvalRecalc was false (e.g. saves
+            // not routed through handleInputChange, or a race clearing the flag).
+            const shouldRefreshStatsAfterSave = action === 'UPDATE' && !!CLIENT_ID;
+            if (shouldRefreshStatsAfterSave && _pendingEvalRecalc) {
+                setEvaluationsRecalcIndicator(true);
+            }
 
             // Show validation warnings on first save attempt (not retries)
             if (retryCount === 0 && action === 'UPDATE') {
@@ -6799,6 +6971,35 @@
                 
                 // Show brief success indicator
                 showSaveStatus('saved');
+                if (shouldRefreshStatsAfterSave) {
+                    const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}&_t=${Date.now()}`;
+                    fetch(url)
+                        .then(r => r.json())
+                        .then(freshData => {
+                            if (!freshData || freshData.status === 'error') {
+                                console.error('Stats refresh after save: bad response', freshData);
+                                return;
+                            }
+                            currentData = {
+                                ...currentData,
+                                ...freshData,
+                                identity: currentData.identity || freshData.identity || {}
+                            };
+                            try {
+                                renderStats(currentData);
+                            } catch (e) {
+                                console.error('renderStats error:', e);
+                            }
+                        })
+                        .catch(err => console.error('Stats refresh after manual edit failed:', err))
+                        .finally(() => {
+                            _pendingEvalRecalc = false;
+                            setEvaluationsRecalcIndicator(false);
+                        });
+                } else {
+                    _pendingEvalRecalc = false;
+                    setEvaluationsRecalcIndicator(false);
+                }
                 if (_pendingSaveCallback) { _pendingSaveCallback(true); _pendingSaveCallback = null; }
             })
             .catch((error) => {
@@ -6823,6 +7024,8 @@
                 
                 // All retries failed
                 isEditing = false;
+                _pendingEvalRecalc = false;
+                setEvaluationsRecalcIndicator(false);
                 showSaveStatus('failed', error.message);
                 if (_pendingSaveCallback) { _pendingSaveCallback(false); _pendingSaveCallback = null; }
             });
