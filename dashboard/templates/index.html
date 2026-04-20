@@ -5040,11 +5040,15 @@
                 data.evaluations.forEach(ev => {
                     const propFirm = (ev['Prop Firm'] || 'Unknown').trim() || 'Unknown';
                     if (isFirmHidden(propFirm)) return;
-                    const account = (ev['Account #'] || ev['Account #.1'] || '-').toString().trim();
-                    for (let i = 1; i <= 9; i++) {
+                    // Match payouts script preference: funded account first, then challenge account
+                    const account = (ev['Account #.1'] || ev['Account #'] || '-').toString().trim();
+                    // Match payouts script: Payout 1..6
+                    for (let i = 1; i <= 6; i++) {
                         const amt = parseCur(ev[`Payout ${i}`]);
-                        if (amt !== 0) {
-                            const rawDate = (ev[`Date ${i}`] || '').toString().trim();
+                        const rawDate = (ev[`Date ${i}`] || '').toString().trim();
+                        // Match payouts script inclusion rule:
+                        // include if amount != 0 OR a date is present
+                        if (amt !== 0 || (rawDate && rawDate !== '-')) {
                             const dateObj = parsePayDate(rawDate);
                             window._statsPayouts.push({ prop_firm: propFirm, account, amount: amt, date: fmtDate(dateObj), dateObj, payout_num: i });
                         }
