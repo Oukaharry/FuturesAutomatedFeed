@@ -858,6 +858,11 @@
                          <option value="inactive">Inactive</option>
                     </select>
                 </div>
+                <div style="margin-bottom: 18px; display:none;" id="editClientSplitPctGroup">
+                    <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">Profit Split %</label>
+                    <input type="number" id="editUserSplitPct" min="0" max="100" value="50" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#1e3a8a'" onblur="this.style.borderColor='rgba(30,58,138,0.5)'">
+                    <div style="font-size:0.72rem; color:#64748b; margin-top:4px;">Percentage of profit above high watermark charged to client (default 50%).</div>
+                </div>
                 <div style="margin-bottom: 18px; display:none;" id="editAdminSlackGroup">
                     <label style="color: #7baef0; display: block; margin-bottom: 6px; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em;">
                         <i class="fab fa-slack" style="margin-right:5px; color:#4A154B;"></i>Slack Member ID
@@ -1042,6 +1047,7 @@
                                             const cEmail = (typeof client === 'object') ? client.email : '';
                                             const cCat = (typeof client === 'object') ? (client.category || client.profile || 'Private') : 'Private';
                                             const cActiveStatus = (typeof client === 'object') ? (client.active_status || 'active') : 'active';
+                                            const cSplitPct = (typeof client === 'object') ? (client.split_pct != null ? client.split_pct : 50) : 50;
                                             rows.push({ 
                                                 name: cName || 'Unknown', 
                                                 email: cEmail, 
@@ -1051,7 +1057,8 @@
                                                 admin: adminName,
                                                 trader: traderName,
                                                 category: cCat,
-                                                active_status: cActiveStatus
+                                                active_status: cActiveStatus,
+                                                split_pct: cSplitPct
                                             });
                                         });
                                     }
@@ -1091,7 +1098,7 @@
                              btns += `<a href="${r.url}" style="color:#fbbf24; text-decoration:none; margin-right:10px; font-weight:bold;">Dash</a>`;
                              if (isSuperAdmin) {
                                  btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
-                                 btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}')" style="${editStyle}">Edit</button>`;
+                                 btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}', '', '${r.split_pct != null ? r.split_pct : 50}')" style="${editStyle}">Edit</button>`;
                              }
                          } else if (type === 'trader') {
                              if (isSuperAdmin) {
@@ -1157,7 +1164,7 @@
 
         // --- Edit / Delete User Logic ---
         
-        function openEditUserModal(type, name, email, parent1, parent2, extra, activeStatus, slackUserId) {
+        function openEditUserModal(type, name, email, parent1, parent2, extra, activeStatus, slackUserId, splitPct) {
              if(event) event.stopPropagation();
              
              // Clean up escaped values
@@ -1180,21 +1187,26 @@
              // Show category and status dropdowns only for clients (category hidden for bef_admin)
              const catGroup = document.getElementById('editClientCategoryGroup');
              const statusGroup = document.getElementById('editClientStatusGroup');
+             const splitPctGroup = document.getElementById('editClientSplitPctGroup');
              const slackGroup = document.getElementById('editAdminSlackGroup');
              if (type === 'client') {
                  catGroup.style.display = USER_ROLE === 'bef_admin' ? 'none' : 'block';
                  statusGroup.style.display = 'block';
+                 splitPctGroup.style.display = 'block';
                  slackGroup.style.display = 'none';
                  document.getElementById('editUserCategory').value = cleanCategory;
                  document.getElementById('editUserActiveStatus').value = cleanActive;
+                 document.getElementById('editUserSplitPct').value = (splitPct !== undefined && splitPct !== null && splitPct !== '') ? splitPct : 50;
              } else if (type === 'admin') {
                  catGroup.style.display = 'none';
                  statusGroup.style.display = 'none';
+                 splitPctGroup.style.display = 'none';
                  slackGroup.style.display = 'block';
                  document.getElementById('editAdminSlackUserId').value = cleanSlack;
              } else {
                  catGroup.style.display = 'none';
                  statusGroup.style.display = 'none';
+                 splitPctGroup.style.display = 'none';
                  slackGroup.style.display = 'none';
              }
              
@@ -1241,6 +1253,7 @@
                 payload.trader = trader;
                 payload.category = category;
                 payload.active_status = document.getElementById('editUserActiveStatus').value;
+                payload.split_pct = parseInt(document.getElementById('editUserSplitPct').value) || 50;
             }
             
             let url = '';

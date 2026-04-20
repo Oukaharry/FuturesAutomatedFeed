@@ -291,6 +291,23 @@ def get_all_daily_watermarks(client_id):
         return []
 
 
+def get_client_split_pct(client_id):
+    """Get the client's default profit split percentage from their identity blob.
+    Returns int (e.g. 50 for 50%). Defaults to 50 if not set."""
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT data FROM client_data WHERE client_id = ?', (client_id,))
+            row = cursor.fetchone()
+            if row:
+                import json
+                data = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
+                return int(data.get('identity', {}).get('split_pct', 50))
+    except Exception as e:
+        logging.warning(f"Could not read split_pct for {client_id}: {e}")
+    return 50
+
+
 def compute_waterlog_from_db(client_id):
     """
     Computes the Profit Share History table entirely from DB data.
@@ -335,6 +352,9 @@ def compute_waterlog_from_db(client_id):
     # Load net profit overrides upfront so they feed into HWM / profit split calculation
     np_overrides = get_net_profit_overrides(client_id)
 
+    # Load per-period split percentage overrides
+    spct_overrides = get_split_pct_overrides(client_id)
+
     result = []
     hwm_low = 0.0
     last_pre_transition_net = 0.0  # net profit of the period immediately before transition
@@ -369,9 +389,12 @@ def compute_waterlog_from_db(client_id):
             period_low = np_overrides[np_key]
             np_override_applied = True
 
-        # Determine split percentage
+        # Determine split percentage (per-period override takes priority)
         raw_split_pct = p.get('split_pct')
         split_pct = int(raw_split_pct) if raw_split_pct is not None else 50
+        spct_key = _fmt_date(from_d)
+        if spct_key in spct_overrides:
+            split_pct = spct_overrides[spct_key]
 
         if period_low > hwm_low:
             profit_split = (period_low - hwm_low) * split_pct / 100
@@ -392,7 +415,8 @@ def compute_waterlog_from_db(client_id):
 
     # ── Condensed transition row (2/24 → 3/20) ──────────────────────────
     # Net profit = latest daily value on or before 3/20
-    # Split = 50% of (transition net profit − high watermark) if above HWM
+    # Split uses the client's configured split percentage
+    client_split_pct = get_client_split_pct(client_id)
     condensed_daily = [v for (d, v) in daily if TRANSITION_START <= d <= TRANSITION_END]
     transition_net = condensed_daily[-1] if condensed_daily else 0.0
 
@@ -401,10 +425,15 @@ def compute_waterlog_from_db(client_id):
     if transition_np_key in np_overrides:
         transition_net = np_overrides[transition_np_key]
 
+    # Apply per-period split pct override for transition
+    transition_split_pct = client_split_pct
+    if transition_np_key in spct_overrides:
+        transition_split_pct = spct_overrides[transition_np_key]
+
     # Use high watermark from all pre-transition periods as base
     effective_base = max(hwm_low, 0.0)
     if transition_net > effective_base and transition_net > 0:
-        transition_split = (transition_net - effective_base) * 0.5
+        transition_split = (transition_net - effective_base) * transition_split_pct / 100
     else:
         transition_split = 0.0
 
@@ -413,7 +442,7 @@ def compute_waterlog_from_db(client_id):
         'to_date':      _fmt_date(TRANSITION_END),
         'low':          _fmt_currency(transition_net),
         'profit_split': f"${transition_split:,.0f}" if transition_split > 0 else '$0',
-        'split_pct':    50,
+        'split_pct':    transition_split_pct,
     })
 
     # ── Monthly periods from 3/21 onwards (HWM split logic) ─────────────
@@ -441,11 +470,16 @@ def compute_waterlog_from_db(client_id):
         if monthly_np_key in np_overrides:
             net_profit = np_overrides[monthly_np_key]
 
-        # Split = 50% of (this period's net profit − high watermark)
+        # Apply per-period split pct override
+        monthly_split_pct = client_split_pct
+        if monthly_np_key in spct_overrides:
+            monthly_split_pct = spct_overrides[monthly_np_key]
+
+        # Split uses the period's split percentage
         # Only if net profit exceeds the highest historical net profit
         effective_base = max(hwm_net, 0.0)
         if net_profit > effective_base and net_profit > 0:
-            profit_split = (net_profit - effective_base) * 0.5
+            profit_split = (net_profit - effective_base) * monthly_split_pct / 100
         else:
             profit_split = 0.0
 
@@ -454,7 +488,7 @@ def compute_waterlog_from_db(client_id):
             'to_date':      _fmt_date(month_end),  # Always show full period end
             'low':          _fmt_currency(net_profit),
             'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
-            'split_pct':    50,
+            'split_pct':    monthly_split_pct,
         })
 
         # For completed months, update the reference point and HWM
@@ -596,4 +630,64 @@ def save_net_profit_override(client_id, from_date, amount):
             return True
     except Exception as e:
         logging.error(f"Error saving net profit override: {e}")
+        return False
+
+
+# ── Split Percentage Override (per-period) ───────────────────────────
+
+def _ensure_split_pct_overrides_table():
+    """Create the split_pct_overrides table if it doesn't exist."""
+    try:
+        with get_connection() as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS split_pct_overrides (
+                    client_id   TEXT NOT NULL,
+                    from_date   TEXT NOT NULL,
+                    pct         REAL NOT NULL,
+                    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (client_id, from_date)
+                )
+            ''')
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Error creating split_pct_overrides table: {e}")
+
+
+def get_split_pct_overrides(client_id):
+    """Return dict of from_date -> pct for all split percentage overrides for this client."""
+    _ensure_split_pct_overrides_table()
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT from_date, pct FROM split_pct_overrides WHERE client_id = ?',
+                (client_id,)
+            )
+            return {row['from_date']: float(row['pct']) for row in cursor.fetchall()}
+    except Exception as e:
+        logging.error(f"Error loading split pct overrides: {e}")
+        return {}
+
+
+def save_split_pct_override(client_id, from_date, pct):
+    """Save or update a split percentage override for a specific period."""
+    _ensure_split_pct_overrides_table()
+    try:
+        pct = float(pct)
+        if pct < 0 or pct > 100:
+            logging.error(f"Invalid split_pct value {pct} — must be 0-100")
+            return False
+        with get_connection() as conn:
+            conn.execute('''
+                INSERT INTO split_pct_overrides (client_id, from_date, pct, updated_at)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (client_id, from_date) DO UPDATE
+                    SET pct = EXCLUDED.pct,
+                        updated_at = CURRENT_TIMESTAMP
+            ''', (client_id, from_date, pct))
+            conn.commit()
+            logging.info(f"Saved split pct override for {client_id} period {from_date}: {pct}%")
+            return True
+    except Exception as e:
+        logging.error(f"Error saving split pct override: {e}")
         return False

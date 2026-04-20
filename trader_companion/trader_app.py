@@ -4767,10 +4767,20 @@ class TradeOpssAIApp:
                     else:
                         broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                 elif platform == "TopStepX":
+                    # Switch to the correct account if multiple accounts under same login
+                    if hasattr(broker_account, 'switch_account') and acct_num:
+                        try:
+                            broker_account.switch_account(account_name_contains=acct_num)
+                        except Exception as _sw_err:
+                            self.log(f"⚠ TopStepX account switch to {acct_num}: {_sw_err}", "WARN")
+                    # Convert ticks to dollars for TopStepX: dollars = ticks * tick_value * quantity
+                    _tsx_tick_val = self.prop_firm_mgr.get_tick_value(trado_sym) if self.prop_firm_mgr else 0.5
+                    _tsx_tp_dollars = trado_tp * _tsx_tick_val * trado_qty
+                    _tsx_sl_dollars = trado_sl * _tsx_tick_val * trado_qty
                     if side == "buy":
-                        broker_account.place_buy_order(trado_sym, trado_qty)
+                        broker_account.place_buy_order(trado_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
                     else:
-                        broker_account.place_sell_order(trado_sym, trado_qty)
+                        broker_account.place_sell_order(trado_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
 
                 self.log(f"✅ {platform} filled {side.upper()} {trado_qty} {trado_sym} | TP:{trado_tp}t SL:{trado_sl}t | {acct_num}")
 

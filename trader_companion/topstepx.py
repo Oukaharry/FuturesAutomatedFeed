@@ -4,8 +4,8 @@ TopStepX Trading Platform Integration - MFFU Blueprint Compatible
 Handles connection and trading operations with TopStepX platform using MFFU blueprint structure
 """
 
-__version__ = "2.90"
-__build__ = "20260219"
+__version__ = "3.00"
+__build__ = "20260420"
 
 import os
 import sys
@@ -28,6 +28,9 @@ from selenium.common.exceptions import TimeoutException, WebDriverException, NoS
 from datetime import datetime
 from functools import wraps
 from dotenv import load_dotenv
+import requests
+import base64
+import json
 
 # Load .env at program start
 load_dotenv()
@@ -91,6 +94,13 @@ class TopStepXAccount:
         self._login_timestamp = None  # Track when we logged in for debugging
         self.base_url = "https://www.topstepx.com"
         self.login_url = "https://www.topstepx.com/login"
+        self.user_api_url = "https://userapi.topstepx.com"
+        self.chart_api_url = "https://chartapi.topstepx.com"
+        self._api_token = None
+        self._api_session = None
+        self._api_user_id = None
+        self._api_account_id = None
+        self._api_token_expiry = 0
         self._delay_snapshots_enabled = True  # Enable automatic snapshot capture on delays
         self.lock = threading.RLock()  # Thread safety for Selenium operations
         
@@ -338,8 +348,8 @@ class TopStepXAccount:
                             self.logged_in = True
                             self._login_timestamp = time.time()  # Track login time
                             self.logger.info(f"TopStepX login successful - redirected to: {current_url}")
-                            # Trigger stats update after successful login
                             self._first_stats_fetch = True
+                            self._extract_api_token()  # Extract JWT for REST API calls
                             return True
                         
                         # Check if we're no longer on the login page (indicates success)
@@ -347,8 +357,8 @@ class TopStepXAccount:
                             self.logged_in = True
                             self._login_timestamp = time.time()  # Track login time
                             self.logger.info(f"TopStepX login successful - left login page: {current_url}")
-                            # Trigger stats update after successful login
                             self._first_stats_fetch = True
+                            self._extract_api_token()  # Extract JWT for REST API calls
                             return True
                         
                         # Check for error messages or still on login page
@@ -399,6 +409,224 @@ class TopStepXAccount:
             return False, "Password is required"
         return True, "Credentials are valid"
 
+    # ═══════════════════════════════════════════════════════════════════
+    # REST API INFRASTRUCTURE - Direct calls to userapi.topstepx.com
+    # Uses JWT token extracted from browser localStorage after login.
+    # Much faster and more reliable than Selenium DOM scraping for reads.
+    # ═══════════════════════════════════════════════════════════════════
+
+    def _extract_api_token(self):
+        """Extract JWT token from browser localStorage after login"""
+        try:
+            if not self.driver:
+                return False
+            token = self.driver.execute_script("return localStorage.getItem('token')")
+            if not token or len(token) < 50:
+                self.logger.warning("[API] No JWT token found in localStorage")
+                return False
+            self._api_token = token
+            # Decode JWT claims to get userId and expiry
+            parts = token.split(".")
+            if len(parts) >= 2:
+                payload = parts[1] + "=" * (4 - len(parts[1]) % 4)
+                try:
+                    claims = json.loads(base64.urlsafe_b64decode(payload))
+                    self._api_user_id = claims.get(
+                        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"
+                    )
+                    self._api_token_expiry = claims.get("exp", 0)
+                    self.logger.info(f"[API] JWT extracted - userId={self._api_user_id}, "
+                                     f"expires={datetime.fromtimestamp(self._api_token_expiry).isoformat()}")
+                except Exception as e:
+                    self.logger.warning(f"[API] Could not decode JWT claims: {e}")
+            # Build requests session
+            self._api_session = requests.Session()
+            self._api_session.headers.update({
+                "Authorization": f"Bearer {self._api_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Origin": "https://www.topstepx.com",
+                "Referer": "https://www.topstepx.com/",
+            })
+            self.logger.info("[API] REST API session initialized")
+            return True
+        except Exception as e:
+            self.logger.error(f"[API] Failed to extract token: {e}")
+            return False
+
+    def _refresh_api_token(self):
+        """Re-extract token from browser if expired or missing"""
+        if self._api_token and time.time() < self._api_token_expiry - 60:
+            return True  # Token still valid
+        self.logger.info("[API] Token expired or missing, re-extracting from browser")
+        return self._extract_api_token()
+
+    def _api_get(self, path, base_url=None):
+        """Make authenticated GET request to TopStepX API. Returns parsed JSON or None."""
+        if not self._api_session:
+            if not self._extract_api_token():
+                return None
+        self._refresh_api_token()
+        url = f"{base_url or self.user_api_url}{path}"
+        try:
+            resp = self._api_session.get(url, timeout=10)
+            if resp.status_code == 200:
+                ct = resp.headers.get("content-type", "")
+                if "json" in ct or resp.text.strip().startswith(("{", "[")):
+                    return resp.json()
+                return resp.text
+            elif resp.status_code == 204:
+                return []  # No content
+            else:
+                self.logger.warning(f"[API] GET {path} returned {resp.status_code}")
+                return None
+        except Exception as e:
+            self.logger.error(f"[API] GET {path} failed: {e}")
+            return None
+
+    def _api_post(self, path, data=None, base_url=None):
+        """Make authenticated POST request to TopStepX API. Returns parsed JSON or None."""
+        if not self._api_session:
+            if not self._extract_api_token():
+                return None
+        self._refresh_api_token()
+        url = f"{base_url or self.user_api_url}{path}"
+        try:
+            resp = self._api_session.post(url, json=data, timeout=10)
+            if resp.status_code in (200, 201):
+                ct = resp.headers.get("content-type", "")
+                if "json" in ct or resp.text.strip().startswith(("{", "[")):
+                    return resp.json()
+                return resp.text
+            elif resp.status_code == 204:
+                return []
+            else:
+                self.logger.warning(f"[API] POST {path} returned {resp.status_code}")
+                return None
+        except Exception as e:
+            self.logger.error(f"[API] POST {path} failed: {e}")
+            return None
+
+    @property
+    def api_available(self):
+        """Check if REST API is available (token extracted and session ready)"""
+        return self._api_session is not None and self._api_token is not None
+
+    # ═══════════════════════════════════════════════════════════════════
+    # REST API DATA METHODS
+    # ═══════════════════════════════════════════════════════════════════
+
+    def api_get_user(self):
+        """Get user profile via REST API.
+        Returns dict with: userName, email, userId, firstName, lastName, has2FA, etc."""
+        return self._api_get("/User")
+
+    def api_get_trading_accounts(self):
+        """Get all trading accounts via REST API.
+        Returns list of account dicts with: accountId, accountName, balance,
+        startingBalance, profitAndLoss, winRate, totalTrades, status,
+        realizedDayPnl, openPnl, highestBalance, maximumLoss, etc."""
+        return self._api_get("/TradingAccount")
+
+    def api_get_positions(self, user_id=None):
+        """Get all open positions via REST API.
+        Returns list of position dicts."""
+        uid = user_id or self._api_user_id
+        if not uid:
+            self.logger.warning("[API] No user_id available for positions query")
+            return []
+        return self._api_get(f"/Position/all/user/{uid}") or []
+
+    def api_get_orders(self, account_id=None):
+        """Get pending orders via REST API.
+        Returns list of order dicts."""
+        acct_id = account_id or self._api_account_id
+        if not acct_id:
+            # Try to get from trading accounts
+            accounts = self.api_get_trading_accounts()
+            if accounts and isinstance(accounts, list) and len(accounts) > 0:
+                acct_id = accounts[0].get("accountId")
+                self._api_account_id = acct_id
+        if not acct_id:
+            return []
+        return self._api_get(f"/Order?accountId={acct_id}") or []
+
+    def api_get_trades(self, account_id=None):
+        """Get trade history via REST API.
+        Returns list of trade dicts with: id, symbolId, contractId, accountId,
+        entryPrice, exitPrice, fees, pnL, positionSize, tradeDuration, etc."""
+        acct_id = account_id or self._api_account_id
+        if not acct_id:
+            accounts = self.api_get_trading_accounts()
+            if accounts and isinstance(accounts, list) and len(accounts) > 0:
+                acct_id = accounts[0].get("accountId")
+                self._api_account_id = acct_id
+        if not acct_id:
+            return []
+        return self._api_get(f"/Trade/id/{acct_id}") or []
+
+    def api_get_contracts(self):
+        """Get all active tradeable contracts via REST API.
+        Returns list with: productId, productName, contractId, contractName,
+        tickValue, tickSize, pointValue, fees, exchange, expiration, etc."""
+        return self._api_get("/UserContract/active/nonprofesional") or []
+
+    def api_get_metadata(self):
+        """Get symbol metadata via REST API.
+        Returns list with: symbol, friendlyName, fullName, tickSize, tickValue,
+        contractCost, fees, decimalPlaces, exchange, etc."""
+        return self._api_get("/Metadata") or []
+
+    def api_get_market_status(self):
+        """Get market open/close status for all symbols via REST API.
+        Returns list with: symbolId, contractId, status, isOpen, openedAt, etc."""
+        return self._api_get("/MarketStatus/markets") or []
+
+    def api_get_trading_rules(self):
+        """Get trading rules (DAILY_LOSS, MAXIMUM_LOSS, MARGIN_SCALE) via REST API."""
+        return self._api_get("/TradingRule") or []
+
+    def api_get_template_rules(self, template_id=1):
+        """Get account template rules (loss limits, etc.) via REST API."""
+        return self._api_get(f"/AccountTemplateRule/rules/{template_id}/all") or []
+
+    def api_get_violations(self, account_id=None):
+        """Get active rule violations via REST API."""
+        acct_id = account_id or self._api_account_id
+        if not acct_id:
+            accounts = self.api_get_trading_accounts()
+            if accounts and isinstance(accounts, list) and len(accounts) > 0:
+                acct_id = accounts[0].get("accountId")
+                self._api_account_id = acct_id
+        if not acct_id:
+            return []
+        return self._api_get(f"/Violations/active/{acct_id}") or []
+
+    def api_get_linked_orders(self, account_id=None):
+        """Get linked/bracket orders via REST API."""
+        acct_id = account_id or self._api_account_id
+        if not acct_id:
+            accounts = self.api_get_trading_accounts()
+            if accounts and isinstance(accounts, list) and len(accounts) > 0:
+                acct_id = accounts[0].get("accountId")
+                self._api_account_id = acct_id
+        if not acct_id:
+            return {"linkedOrders": []}
+        return self._api_get(f"/LinkedOrder?tradingAccountId={acct_id}")
+
+    def api_get_user_settings(self):
+        """Get user settings (risk, toMake, autoCenter, etc.) via REST API."""
+        return self._api_get("/UserSettings")
+
+    def api_get_notifications(self):
+        """Get user notifications via REST API."""
+        return self._api_get("/UserNotification") or []
+
+    def api_get_chart_config(self):
+        """Get TradingView chart config (supported resolutions, etc.) via REST API."""
+        return self._api_get("/Config", base_url=self.chart_api_url)
+
     def get_blueprint_config(self, phase_key="challenge_trade1", size_key="50k"):
         """
         Get TopStepX blueprint configuration from PropFirmManager
@@ -444,6 +672,137 @@ class TopStepXAccount:
                 'topstepx_tp_ticks': DEFAULT_TP,
                 'topstepx_sl_ticks': DEFAULT_SL
             }
+
+    # ═══════════════════════════════════════════════════════════════════
+    # ACCOUNT SWITCHING
+    # ═══════════════════════════════════════════════════════════════════
+
+    def list_accounts(self):
+        """List all trading accounts available for this user.
+        Returns list of dicts with: accountId, accountName, balance, status, ineligible, etc.
+        Uses REST API if available, otherwise falls back to reading the UI dropdown."""
+        if self.api_available:
+            accounts = self.api_get_trading_accounts()
+            if accounts:
+                return accounts
+
+        # Fallback: read the MuiSelect dropdown options from UI
+        try:
+            items = self.driver.execute_script("""
+                const select = document.querySelector('[role="combobox"]');
+                if (!select) return null;
+                select.click();  // open dropdown
+                await new Promise(r => setTimeout(r, 500));
+                const options = document.querySelectorAll('[role="option"], .MuiMenuItem-root');
+                const result = Array.from(options).map(o => ({text: o.textContent.trim()}));
+                // close by pressing Escape
+                document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}));
+                return result;
+            """)
+            return items or []
+        except Exception as e:
+            self.logger.warning(f"[SWITCH] Could not list accounts from UI: {e}")
+            return []
+
+    def switch_account(self, account_id=None, account_name_contains=None):
+        """Switch to a different trading account by accountId or partial name match.
+
+        Args:
+            account_id: Numeric account ID (e.g. 11751547) to switch to.
+            account_name_contains: Partial string to match in account name (e.g. '150K' or 'funded').
+
+        Returns:
+            True if switched successfully, False otherwise.
+
+        The switch is done via the MuiSelect dropdown at the top of the trading page.
+        After switching, the API accountId is also updated so REST calls target the new account.
+        """
+        with self.lock:
+            try:
+                self._ensure_on_trading_page()
+
+                # Resolve target account text to click in the dropdown
+                target_text = None
+                if self.api_available:
+                    accounts = self.api_get_trading_accounts()
+                    if accounts and isinstance(accounts, list):
+                        for acct in accounts:
+                            if account_id and acct.get("accountId") == account_id:
+                                target_text = acct.get("accountName", "")
+                                break
+                            if account_name_contains and account_name_contains.lower() in acct.get("accountName", "").lower():
+                                target_text = acct.get("accountName", "")
+                                break
+
+                if not target_text and not account_name_contains:
+                    self.logger.error("[SWITCH] No target account specified or found via API")
+                    return False
+
+                search_text = target_text or account_name_contains
+
+                # Dismiss any backdrop/modal that might be covering the selector
+                try:
+                    self.driver.execute_script("""
+                        document.querySelectorAll('.MuiBackdrop-root').forEach(el => el.click());
+                    """)
+                    time.sleep(0.3)
+                except:
+                    pass
+
+                # Open the account MuiSelect dropdown
+                self.logger.info(f"[SWITCH] Opening account selector dropdown...")
+                select_el = self.driver.find_element(By.XPATH,
+                    "//div[contains(@class, 'MuiSelect-select') and contains(@class, 'MuiInputBase-input')]"
+                )
+                self.driver.execute_script("arguments[0].click()", select_el)
+                time.sleep(0.8)
+
+                # Find and click the target account in the dropdown
+                menu_items = self.driver.find_elements(By.XPATH,
+                    "//li[contains(@class, 'MuiMenuItem-root')]"
+                )
+                self.logger.info(f"[SWITCH] Found {len(menu_items)} accounts in dropdown")
+
+                clicked = False
+                for item in menu_items:
+                    item_text = item.text.strip()
+                    self.logger.info(f"[SWITCH]   Option: {item_text[:80]}")
+                    if search_text.lower() in item_text.lower():
+                        self.logger.info(f"[SWITCH] Clicking: {item_text[:80]}")
+                        self.driver.execute_script("arguments[0].click()", item)
+                        clicked = True
+                        break
+
+                if not clicked:
+                    self.logger.error(f"[SWITCH] Account matching '{search_text}' not found in dropdown")
+                    # Close dropdown with Escape
+                    ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+                    return False
+
+                time.sleep(2)  # Wait for account switch to load
+
+                # Update API account ID
+                if self.api_available:
+                    accounts = self.api_get_trading_accounts()
+                    if accounts and isinstance(accounts, list):
+                        for acct in accounts:
+                            acct_name = acct.get("accountName", "")
+                            if search_text.lower() in acct_name.lower():
+                                self._api_account_id = acct.get("accountId")
+                                self.logger.info(f"[SWITCH] Active account set to {acct_name} (ID: {self._api_account_id})")
+                                break
+
+                # Clear cached stats so next poll fetches fresh data
+                self._cached_stats = None
+                self._stats_last_fetch_time = 0
+                self._first_stats_fetch = True
+
+                self.logger.info(f"[SWITCH] Account switch complete")
+                return True
+
+            except Exception as e:
+                self.logger.error(f"[SWITCH] Account switch failed: {e}")
+                return False
 
     def cleanup_chrome_instance(self):
         """
@@ -734,6 +1093,17 @@ class TopStepXAccount:
                     "Direction": ""
                 }
                 
+                # FAST PATH: Use REST API if available (much faster than Selenium DOM scraping)
+                if self.api_available:
+                    try:
+                        api_stats = self._get_stats_via_api()
+                        if api_stats:
+                            self._cached_stats = api_stats
+                            self._stats_last_fetch_time = time.time()
+                            return api_stats
+                    except Exception as e:
+                        self.logger.warning(f"[API] Stats via API failed, falling back to Selenium: {e}")
+                
                 try:
                     # Check if positions data is already visible before clicking tabs
                     positions_visible = False
@@ -952,6 +1322,49 @@ class TopStepXAccount:
         except Exception as e:
             self.logger.warning(f"Could not extract account balance: {e}")
 
+    def _get_stats_via_api(self):
+        """Get account stats via REST API (fast path, no Selenium needed).
+        Returns stats dict compatible with get_account_stats() format, or None on failure."""
+        accounts = self.api_get_trading_accounts()
+        if not accounts or not isinstance(accounts, list) or len(accounts) == 0:
+            return None
+        acct = accounts[0]
+        self._api_account_id = acct.get("accountId")
+
+        # Format account number: "50KTC-V2-342449-32181797" -> "V2-...1797"
+        acct_name = acct.get("accountName", "")
+        account_number = "TopStepX"
+        if "V2-" in acct_name:
+            parts = acct_name.split("-")
+            if len(parts) >= 4 and len(parts[-1]) >= 4:
+                account_number = f"V2-...{parts[-1][-4:]}"
+
+        balance = acct.get("balance", 0)
+        realized_pnl = acct.get("realizedDayPnl", 0)
+        open_pnl = acct.get("openPnl", 0)
+        total_pnl = realized_pnl + open_pnl
+
+        # Get positions for open trades count
+        positions = self.api_get_positions()
+        open_count = len(positions) if positions else 0
+
+        symbol = ""
+        direction = ""
+        if open_count > 0 and isinstance(positions, list):
+            pos = positions[0]
+            symbol = pos.get("contractDisplayName", pos.get("symbolId", ""))
+            size = pos.get("positionSize", 0)
+            direction = "Long" if size > 0 else "Short" if size < 0 else ""
+
+        return {
+            "Account Number": account_number,
+            "Balance": f"${balance:,.2f}",
+            "Profit/Loss": f"${total_pnl:,.2f}",
+            "Open Trades": str(open_count),
+            "Symbol": symbol,
+            "Direction": direction,
+        }
+
     def place_order(self, symbol, quantity, side, order_type="market", price=None, tp_dollars=None, sl_dollars=None):
         """Generic method to place orders on TopStepX"""
         try:
@@ -1134,6 +1547,9 @@ class TopStepXAccount:
             try:
                 # TIME CHECKPOINT: Start overall timing
                 order_start_time = time.time()
+                
+                # Dismiss any MUI backdrop overlay before interacting with UI
+                self._dismiss_backdrop()
                 
                 if not self.is_connected():
                     raise Exception("Not connected to TopStepX")
@@ -1324,16 +1740,17 @@ class TopStepXAccount:
                 except Exception as verify_error:
                     self.logger.warning(f"Could not start delayed verification: {verify_error}")
             
-                    return {
-                        "success": True,
-                        "message": f"TopStepX BUY order placed: {symbol} x{quantity}",
-                        "order_id": order_id,
-                        "platform": "TopStepX",
-                        "symbol": symbol,
-                        "executed_symbol": actual_executed_symbol or symbol,  # Include actual executed symbol
-                        "quantity": quantity,
-                        "side": "BUY"
-                    }
+                result_dict = {
+                    "success": True,
+                    "message": f"TopStepX BUY order placed: {symbol} x{quantity}",
+                    "order_id": order_id,
+                    "platform": "TopStepX",
+                    "symbol": symbol,
+                    "executed_symbol": actual_executed_symbol or symbol,
+                    "quantity": quantity,
+                    "side": "BUY"
+                }
+                return result_dict
         
             except Exception as e:
                 self.logger.error(f"TopStepX BUY order failed: {e}")
@@ -1362,6 +1779,9 @@ class TopStepXAccount:
             try:
                 # TIME CHECKPOINT: Start overall timing
                 order_start_time = time.time()
+                
+                # Dismiss any MUI backdrop overlay before interacting with UI
+                self._dismiss_backdrop()
                 
                 if not self.is_connected():
                     raise Exception("Not connected to TopStepX")
@@ -1784,6 +2204,7 @@ class TopStepXAccount:
     def _navigate_to_positions_tab(self):
         """Navigate to the Positions tab using TopStepX-specific selectors"""
         try:
+            self._dismiss_backdrop()
             # Look for Positions tab using the exact HTML structure provided
             positions_tab_selectors = [
                 # Primary selector based on provided HTML - targets the clickable tab button
@@ -1805,11 +2226,11 @@ class TopStepXAccount:
                 try:
                     self.logger.debug(f"Trying selector {i}: {selector}")
                     positions_tab = WebDriverWait(self.driver, 5).until(
-                        EC.element_to_be_clickable((By.XPATH, selector))
+                        EC.presence_of_element_located((By.XPATH, selector))
                     )
                     
-                    # Click the tab
-                    positions_tab.click()
+                    # JS click to bypass any backdrop overlay
+                    self.driver.execute_script("arguments[0].click();", positions_tab)
                     time.sleep(1.5)  # Allow tab content to load
                     
                     # Verify we're on the positions tab by checking for positions content
@@ -1841,9 +2262,23 @@ class TopStepXAccount:
             self.logger.error(f"Failed to navigate to Positions tab: {e}")
             return False
 
+    def _dismiss_backdrop(self):
+        """Dismiss any MUI backdrop/modal overlay that blocks clicks on the trading page."""
+        try:
+            self.driver.execute_script("""
+                // Click all backdrop overlays to dismiss them
+                document.querySelectorAll('.MuiBackdrop-root').forEach(el => el.click());
+                // Also try pressing Escape to close any open popover/modal
+                document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            """)
+            time.sleep(0.3)
+        except Exception:
+            pass
+
     def _navigate_to_trading_tab(self):
         """Navigate to the Trading tab using TopStepX-specific selectors"""
         try:
+            self._dismiss_backdrop()
             # Look for Trading tab using similar structure to positions tab
             trading_tab_selectors = [
                 # Primary selector - targets the trading tab button
@@ -1865,11 +2300,11 @@ class TopStepXAccount:
                 try:
                     self.logger.debug(f"Trying selector {i}: {selector}")
                     trading_tab = WebDriverWait(self.driver, 5).until(
-                        EC.element_to_be_clickable((By.XPATH, selector))
+                        EC.presence_of_element_located((By.XPATH, selector))
                     )
                     
-                    # Click the tab
-                    trading_tab.click()
+                    # JS click to bypass any backdrop overlay
+                    self.driver.execute_script("arguments[0].click();", trading_tab)
                     time.sleep(1.5)  # Allow tab content to load
                     
                     # Verify we're on the trading tab by checking for trading interface elements
@@ -2014,6 +2449,7 @@ class TopStepXAccount:
             bool: True if tab switch was successful, False otherwise
         """
         try:
+            self._dismiss_backdrop()
             # Build selectors based on tab name (prioritize fastest/most reliable)
             selectors = [
                 # Strategy 1: By exact text match (fastest)
@@ -3192,6 +3628,7 @@ class TopStepXAccount:
     def _ensure_on_trading_page(self):
         """Ensure we're on the main trading page and on the Trading tab"""
         try:
+            self._dismiss_backdrop()
             # Check if we're already on the trading page
             current_url = self.driver.current_url
             if "topstepx.com" in current_url and "/login" not in current_url:
@@ -3268,7 +3705,7 @@ class TopStepXAccount:
             for selector in symbol_selectors:
                 try:
                     symbol_field = WebDriverWait(self.driver, 1).until(
-                        EC.element_to_be_clickable((By.XPATH, selector)))
+                        EC.presence_of_element_located((By.XPATH, selector)))
                     if symbol_field:
                         break
                 except:
@@ -3277,8 +3714,9 @@ class TopStepXAccount:
             if not symbol_field:
                 raise Exception("Could not find symbol input field with any selector")
             
-            # COMPLETE CLEAR: Focus, select all, delete, then JS clear to be absolutely sure
-            symbol_field.click()
+            # Dismiss any overlays, then JS-focus the field (bypasses click interception)
+            self._dismiss_backdrop()
+            self.driver.execute_script("arguments[0].focus(); arguments[0].click();", symbol_field)
             symbol_field.send_keys(Keys.CONTROL + "a")
             symbol_field.send_keys(Keys.DELETE)
             
@@ -3356,8 +3794,8 @@ class TopStepXAccount:
             # Fast fallback: If dropdown didn't work, type directly
             if not dropdown_clicked or final_value.strip().upper() != symbol.upper():
                 if symbol_field:
-                    # Clear and type full symbol
-                    symbol_field.click()
+                    # Clear and type full symbol (JS click to bypass overlays)
+                    self.driver.execute_script("arguments[0].focus(); arguments[0].click();", symbol_field)
                     symbol_field.send_keys(Keys.CONTROL + "a")
                     symbol_field.send_keys(Keys.DELETE)
                     symbol_field.send_keys(symbol.upper())
@@ -3431,11 +3869,11 @@ class TopStepXAccount:
         try:
             # Fast selector - most specific first
             quantity_field = WebDriverWait(self.driver, 2).until(
-                EC.element_to_be_clickable((By.XPATH, "//input[@type='number'][@min='1']"))
+                EC.presence_of_element_located((By.XPATH, "//input[@type='number'][@min='1']"))
             )
             
-            # Fast keyboard interaction (triggers React onChange)
-            quantity_field.click()
+            # JS focus+click to bypass any overlay, then keyboard interaction
+            self.driver.execute_script("arguments[0].focus(); arguments[0].click();", quantity_field)
             quantity_field.send_keys(Keys.CONTROL + "a")
             quantity_field.send_keys(str(quantity))
             quantity_field.send_keys(Keys.TAB)

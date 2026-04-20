@@ -2182,11 +2182,12 @@
                         <tr>
                             <th style="text-align: left; padding-left: 20px;">Date</th>
                             <th style="text-align: left; padding-left: 20px;">Net Profit in Progress</th>
+                            <th style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.12); color: #60a5fa;">Split %</th>
                             <th style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.18); color: #fbbf24;">Profit Split</th>
                         </tr>
                     </thead>
                     <tbody id="profitshare-body">
-                        <tr><td colspan="3" style="text-align: center;">Loading profit share history...</td></tr>
+                        <tr><td colspan="4" style="text-align: center;">Loading profit share history...</td></tr>
                     </tbody>
                 </table>
 
@@ -5001,23 +5002,16 @@
                 if (statsContainer) statsContainer.innerHTML = `<div style="padding:20px;text-align:center;color:#ef4444;">Error loading stats: ${e.message}</div>`;
             }
 
-            // Update Profit Split tab cards — read directly from Stats tab computed value
+            // Update Profit Split tab cards — temporary values until waterlog table loads
+            // The definitive values come from the table data (after waterlog fetch)
             try {
                 const netProfit = window._statsNetProfit || 0;
                 const elNet = document.getElementById('split-net-profit');
-                const elSplit = document.getElementById('split-profit-amount');
                 if (elNet) {
                     elNet.textContent = formatMoney(netProfit);
                     elNet.style.color = netProfit >= 0 ? '#4ade80' : '#f87171';
                 }
-                if (elSplit) {
-                    // Use last_split_net_profit from waterlog if available
-                    // Use max(0, lsnp) so recovery from negative doesn't inflate split
-                    const lsnp = Math.max(window._lastSplitNetProfit || 0, 0);
-                    const splitAmt = (netProfit > lsnp && netProfit > 0) ? (netProfit - lsnp) * 0.5 : 0;
-                    elSplit.textContent = formatMoney(splitAmt);
-                    elSplit.style.color = splitAmt > 0 ? '#fbbf24' : '#94a3b8';
-                }
+                // Don't set profit split here — let the table data be the source of truth
             } catch (e2) {
                 console.error('Profit Split card update error:', e2);
             }
@@ -7408,15 +7402,7 @@
                         const allPeriods = Array.isArray(rawData) ? rawData : (rawData.periods || []);
                         if (rawData && rawData.last_split_net_profit !== undefined) {
                             window._lastSplitNetProfit = rawData.last_split_net_profit;
-                            // Re-update the split card using the live net profit (includes MT5 discrepancy)
-                            const np = window._statsNetProfit || 0;
-                            const lsnp = Math.max(rawData.last_split_net_profit, 0);
-                            const elSplit = document.getElementById('split-profit-amount');
-                            if (elSplit) {
-                                const splitAmt = (np > lsnp && np > 0) ? (np - lsnp) * 0.5 : 0;
-                                elSplit.textContent = formatMoney(splitAmt);
-                                elSplit.style.color = splitAmt > 0 ? '#fbbf24' : '#94a3b8';
-                            }
+                            // Card values are set below after table rows are built, using table data as source of truth
                         }
 
                         let rows = allPeriods.filter(r => {
@@ -7427,7 +7413,7 @@
                         // Sort newest first
                         rows.sort((a, b) => { const da = parseDate(a.from_date.trim()), db = parseDate(b.from_date.trim()); return db - da; });
                         if (!rows.length) {
-                            if (psBody) psBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
+                            if (psBody) psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
                             return;
                         }
                         let psHtml = '';
@@ -7444,6 +7430,7 @@
                             const npRaw = (r.low || '$0.00').trim();
                             const npNum = parseFloat(npRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const npColor = npNum >= 0 ? '#e2e8f0' : '#f87171';
+                            const spRaw = r.split_pct != null ? r.split_pct : 50;
                             if (isAdmin) {
                                 psHtml += `<tr>
                                     <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
@@ -7452,23 +7439,49 @@
                                         <span class="np-display">${npRaw}</span>
                                         <span class="np-saved-check" style="display:none; color:#4ade80; margin-left:6px; font-size:0.85em;">&#10003;</span>
                                     </td>
-                                    <td style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psColor};">
-                                        ${psRaw || '$0'}
+                                    <td class="sp-editable-cell" data-from-date="${fromDate}" data-value="${spRaw}"
+                                        style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.08); color: #60a5fa; position: relative; cursor: pointer;">
+                                        <span class="sp-display">${spRaw}%</span>
+                                        <span class="sp-saved-check" style="display:none; color:#4ade80; margin-left:6px; font-size:0.85em;">&#10003;</span>
+                                    </td>
+                                    <td class="ps-editable-cell" data-from-date="${fromDate}" data-value="${psNum}"
+                                        style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psColor}; position: relative; cursor: pointer;">
+                                        <span class="ps-display">${psRaw || '$0'}</span>
+                                        <span class="ps-saved-check" style="display:none; color:#4ade80; margin-left:6px; font-size:0.85em;">&#10003;</span>
                                     </td>
                                 </tr>`;
                             } else {
                                 psHtml += `<tr>
                                     <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
                                     <td style="text-align: left; padding-left: 20px; color: ${npColor};">${npRaw}</td>
+                                    <td style="text-align: left; padding-left: 20px; background: rgba(96,165,250,0.08); color: #60a5fa;">${spRaw}%</td>
                                     <td style="text-align: left; padding-left: 20px; background: rgba(234,179,8,0.15); color: ${psColor};">${psRaw || '$0'}</td>
                                 </tr>`;
                             }
                         });
                         if (psBody) psBody.innerHTML = psHtml;
 
-                        // Sync top card to match the most recent row's Net Profit In Progress
-                        // only if no live stats are available (stats updateDashboard sets it with MT5 discrepancy)
-                        // Skip override — the card is already set by updateDashboard with the live formula
+                        // Sync header cards to match the most recent row from the table data
+                        // This ensures cards always reflect table values (including manual edits)
+                        if (rows.length) {
+                            const latestRow = rows[0];
+                            // Net Profit card — use the table's latest net profit value
+                            const latestNpRaw = (latestRow.low || '$0.00').trim();
+                            const latestNpNum = parseFloat(latestNpRaw.replace(/[^0-9.-]/g, '')) || 0;
+                            const elNet = document.getElementById('split-net-profit');
+                            if (elNet) {
+                                elNet.textContent = latestNpRaw;
+                                elNet.style.color = latestNpNum >= 0 ? '#4ade80' : '#f87171';
+                            }
+                            // Profit Split card — use the table's latest profit_split value
+                            const latestPsRaw = (latestRow.profit_split || '').trim();
+                            const latestPsNum = parseFloat(latestPsRaw.replace(/[^0-9.-]/g, '')) || 0;
+                            const elSplit = document.getElementById('split-profit-amount');
+                            if (elSplit) {
+                                elSplit.textContent = latestPsRaw || '$0';
+                                elSplit.style.color = latestPsNum > 0 ? '#fbbf24' : '#94a3b8';
+                            }
+                        }
 
                         // --- Attach inline-edit behaviour to editable net profit cells ---
                         // Profit split is auto-calculated from net profit; only net profit is editable
@@ -7519,13 +7532,108 @@
                                     input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = curVal; input.blur(); } });
                                 });
                             });
+
+                            // --- Attach inline-edit behaviour to editable profit split cells ---
+                            document.querySelectorAll('.ps-editable-cell').forEach(cell => {
+                                cell.addEventListener('click', function() {
+                                    if (cell.querySelector('.ps-input')) return;
+                                    const display = cell.querySelector('.ps-display');
+                                    const check = cell.querySelector('.ps-saved-check');
+                                    const curVal = cell.dataset.value || '0';
+                                    display.style.display = 'none';
+                                    check.style.display = 'none';
+                                    const input = document.createElement('input');
+                                    input.type = 'text';
+                                    input.className = 'ps-input';
+                                    input.value = curVal;
+                                    input.style.cssText = 'background:rgba(4,6,14,0.9); color:#fbbf24; border:1px solid rgba(234,179,8,0.4); border-radius:4px; padding:4px 8px; width:110px; font-size:0.95em; outline:none;';
+                                    cell.insertBefore(input, check);
+                                    input.focus();
+                                    input.select();
+
+                                    const save = () => {
+                                        const raw = input.value.replace(/[^0-9.\-]/g, '');
+                                        const num = parseFloat(raw) || 0;
+                                        input.remove();
+                                        const fmtVal = (num < 0 ? '-' : '') + '$' + Math.abs(num).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                                        display.textContent = fmtVal;
+                                        display.style.color = num > 0 ? '#fbbf24' : '#94a3b8';
+                                        display.style.display = '';
+                                        cell.dataset.value = num;
+
+                                        fetch('/api/client/profit_split_override', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({ client_id: clientId, from_date: cell.dataset.fromDate, amount: num })
+                                        }).then(r => r.json()).then(resp => {
+                                            if (resp.status === 'success') {
+                                                check.style.display = 'inline';
+                                                setTimeout(() => { check.style.display = 'none'; }, 2000);
+                                                // Reload waterlog data to refresh header cards
+                                                waterlogLoaded = false;
+                                                loadWaterlogData();
+                                            }
+                                        }).catch(() => {});
+                                    };
+                                    input.addEventListener('blur', save);
+                                    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = curVal; input.blur(); } });
+                                });
+                            });
+
+                            // --- Attach inline-edit behaviour to editable split % cells ---
+                            document.querySelectorAll('.sp-editable-cell').forEach(cell => {
+                                cell.addEventListener('click', function() {
+                                    if (cell.querySelector('.sp-input')) return;
+                                    const display = cell.querySelector('.sp-display');
+                                    const check = cell.querySelector('.sp-saved-check');
+                                    const curVal = cell.dataset.value || '50';
+                                    display.style.display = 'none';
+                                    check.style.display = 'none';
+                                    const input = document.createElement('input');
+                                    input.type = 'number';
+                                    input.className = 'sp-input';
+                                    input.value = curVal;
+                                    input.min = '0';
+                                    input.max = '100';
+                                    input.style.cssText = 'background:rgba(4,6,14,0.9); color:#60a5fa; border:1px solid rgba(96,165,250,0.4); border-radius:4px; padding:4px 8px; width:70px; font-size:0.95em; outline:none;';
+                                    cell.insertBefore(input, check);
+                                    input.focus();
+                                    input.select();
+
+                                    const save = () => {
+                                        let num = parseFloat(input.value) || 0;
+                                        if (num < 0) num = 0;
+                                        if (num > 100) num = 100;
+                                        input.remove();
+                                        display.textContent = num + '%';
+                                        display.style.display = '';
+                                        cell.dataset.value = num;
+
+                                        fetch('/api/client/split_pct_override', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({ client_id: clientId, from_date: cell.dataset.fromDate, pct: num })
+                                        }).then(r => r.json()).then(resp => {
+                                            if (resp.status === 'success') {
+                                                check.style.display = 'inline';
+                                                setTimeout(() => { check.style.display = 'none'; }, 2000);
+                                                // Reload waterlog data so profit splits recalculate with new %
+                                                waterlogLoaded = false;
+                                                loadWaterlogData();
+                                            }
+                                        }).catch(() => {});
+                                    };
+                                    input.addEventListener('blur', save);
+                                    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = curVal; input.blur(); } });
+                                });
+                            });
                         }
                     } else {
-                        if (psBody) psBody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
+                        if (psBody) psBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
                     }
                 })
                 .catch(() => {
-                    if (psBody) psBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
+                    if (psBody) psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
                 });
         }
         

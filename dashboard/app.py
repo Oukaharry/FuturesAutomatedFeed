@@ -2578,6 +2578,7 @@ def get_hierarchy():
                 cname = client.get('name', '')
                 identity = all_identities.get(cname, {})
                 client['active_status'] = identity.get('active_status', 'active')
+                client['split_pct'] = identity.get('split_pct', 50)
                 # Hierarchy email is the source of truth (preserves original case).
                 # Only fall back to DB identity email if hierarchy has none.
                 if not client.get('email'):
@@ -2676,7 +2677,7 @@ def get_profit_splits():
     if session_user.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
 
-    from dashboard.watermark_service import compute_waterlog_from_db
+    from dashboard.watermark_service import compute_waterlog_from_db, get_client_split_pct
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
     from concurrent.futures import ThreadPoolExecutor
 
@@ -2696,11 +2697,14 @@ def get_profit_splits():
             # Get waterlog reference point
             wl = compute_waterlog_from_db(real_name)
             lsnp = max(float(wl['last_split_net_profit']), 0.0) if wl else 0.0
-            split_amt = (net_profit - lsnp) * 0.5 if (net_profit > lsnp and net_profit > 0) else 0.0
+            split_pct = get_client_split_pct(real_name)
+            split_rate = split_pct / 100.0
+            split_amt = (net_profit - lsnp) * split_rate if (net_profit > lsnp and net_profit > 0) else 0.0
             return {
                 'client_id': real_name,
                 'net_profit': round(net_profit, 2),
                 'profit_split_inprogress': round(split_amt, 2),
+                'split_pct': split_pct,
             }
         except Exception:
             return None
@@ -4828,6 +4832,20 @@ def api_update_client():
                 update_client_field(name, 'identity', identity)
         except Exception as e:
             print(f"Error updating active_status: {e}")
+
+    # Save split_pct (profit split percentage) if provided
+    split_pct = request.json.get('split_pct')
+    if split_pct is not None:
+        try:
+            split_pct_val = int(split_pct)
+            if 0 <= split_pct_val <= 100:
+                cd = get_client_data(name)
+                if cd:
+                    identity = cd.get('identity', {})
+                    identity['split_pct'] = split_pct_val
+                    update_client_field(name, 'identity', identity)
+        except (ValueError, TypeError) as e:
+            print(f"Error updating split_pct: {e}")
         
     if update_client_details(admin, trader, name, email):
         update_user_email(name, 'client', email)
@@ -8342,6 +8360,40 @@ def api_save_profit_split_override():
 
     if save_profit_split_override(client_id, from_date, amount):
         return jsonify({"status": "success", "message": "Profit split override saved"})
+    return jsonify({"status": "error", "message": "Failed to save override"}), 500
+
+
+@app.route('/api/client/split_pct_override', methods=['POST'])
+@require_session
+def api_save_split_pct_override():
+    """Save a per-period split percentage override. Admin only."""
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('admin', 'super_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
+
+    data = request.get_json(silent=True) or {}
+    client_id = data.get('client_id')
+    from_date = data.get('from_date')
+    pct = data.get('pct')
+
+    if not client_id or not from_date or pct is None:
+        return jsonify({"status": "error", "message": "client_id, from_date, and pct are required"}), 400
+
+    try:
+        pct = float(str(pct).replace('%', '').strip())
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "Invalid percentage"}), 400
+
+    if pct < 0 or pct > 100:
+        return jsonify({"status": "error", "message": "Percentage must be between 0 and 100"}), 400
+
+    try:
+        from dashboard.watermark_service import save_split_pct_override
+    except ImportError:
+        from watermark_service import save_split_pct_override
+
+    if save_split_pct_override(client_id, from_date, pct):
+        return jsonify({"status": "success", "message": "Split percentage override saved"})
     return jsonify({"status": "error", "message": "Failed to save override"}), 500
 
 
