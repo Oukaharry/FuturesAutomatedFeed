@@ -7418,11 +7418,22 @@
                         }
                         let psHtml = '';
                         const isAdmin = (USER_TYPE === 'admin' || USER_TYPE === 'super_admin');
-                        // Override the most recent row's net profit with live value
+                        // Override the most recent row's net profit with live value.
+                        // When doing this, also recompute latest profit split so the row stays internally consistent.
                         if (rows.length && window._statsNetProfit !== undefined) {
-                            rows[0].low = formatMoney(window._statsNetProfit);
+                            const latestNet = Number(window._statsNetProfit) || 0;
+                            rows[0].low = formatMoney(latestNet);
+
+                            const latestPctRaw = rows[0].split_pct != null ? rows[0].split_pct : 50;
+                            const latestPct = Math.max(0, Math.min(100, Number(latestPctRaw) || 0));
+                            const prevLowRaw = rows.length > 1 ? (rows[1].low || '$0') : '$0';
+                            const prevLow = parseFloat(String(prevLowRaw).replace(/[^0-9.-]/g, '')) || 0;
+                            const latestSplit = latestNet > prevLow ? ((latestNet - prevLow) * latestPct / 100) : 0;
+                            rows[0].profit_split = latestSplit > 0
+                                ? ('$' + Math.round(latestSplit).toLocaleString('en-US'))
+                                : '$0';
                         }
-                        rows.forEach(r => {
+                        rows.forEach((r, idx) => {
                             const psRaw = (r.profit_split || '').trim();
                             const psNum = parseFloat(psRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const psColor = psNum > 0 ? '#fbbf24' : '#94a3b8';
@@ -7432,10 +7443,11 @@
                             const npColor = npNum >= 0 ? '#e2e8f0' : '#f87171';
                             const spRaw = r.split_pct != null ? r.split_pct : 50;
                             if (isAdmin) {
+                                const isLatestRow = idx === 0;
                                 psHtml += `<tr>
                                     <td style="text-align: left; padding-left: 20px;">${r.to_date}</td>
-                                    <td class="np-editable-cell" data-from-date="${fromDate}" data-value="${npNum}"
-                                        style="text-align: left; padding-left: 20px; color: ${npColor}; position: relative; cursor: pointer;">
+                                    <td class="${isLatestRow ? '' : 'np-editable-cell'}" data-from-date="${fromDate}" data-value="${npNum}"
+                                        style="text-align: left; padding-left: 20px; color: ${npColor}; position: relative; ${isLatestRow ? '' : 'cursor: pointer;'}">
                                         <span class="np-display">${npRaw}</span>
                                         <span class="np-saved-check" style="display:none; color:#4ade80; margin-left:6px; font-size:0.85em;">&#10003;</span>
                                     </td>
@@ -7498,12 +7510,15 @@
                                     input.type = 'text';
                                     input.className = 'np-input';
                                     input.value = curVal;
-                                    input.style.cssText = 'background:rgba(4,6,14,0.9); color:#60a5fa; border:1px solid rgba(96,165,250,0.4); border-radius:4px; padding:4px 8px; width:110px; font-size:0.95em; outline:none;';
+                                    input.style.cssText = 'background:#0f172a; color:#60a5fa; border:2px solid rgba(96,165,250,0.7); border-radius:6px; padding:6px 10px; width:120px; font-size:1.05em; outline:none; font-weight:600; box-shadow:0 0 8px rgba(96,165,250,0.25);';
                                     cell.insertBefore(input, check);
                                     input.focus();
                                     input.select();
 
+                                    let saved = false;
                                     const save = () => {
+                                        if (saved) return;
+                                        saved = true;
                                         const raw = input.value.replace(/[^0-9.\-]/g, '');
                                         const num = parseFloat(raw) || 0;
                                         input.remove();
@@ -7521,15 +7536,22 @@
                                         }).then(r => r.json()).then(resp => {
                                             if (resp.status === 'success') {
                                                 check.style.display = 'inline';
-                                                setTimeout(() => { check.style.display = 'none'; }, 2000);
-                                                // Reload waterlog data so profit splits auto-recalculate from backend
-                                                waterlogLoaded = false;
-                                                loadWaterlogData();
+                                                setTimeout(() => { check.style.display = 'none'; }, 3000);
+                                                setTimeout(() => { waterlogLoaded = false; loadWaterlogData(); }, 2000);
                                             }
                                         }).catch(() => {});
                                     };
-                                    input.addEventListener('blur', save);
-                                    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = curVal; input.blur(); } });
+                                    const cancel = () => {
+                                        if (saved) return;
+                                        saved = true;
+                                        input.remove();
+                                        display.style.display = '';
+                                    };
+                                    input.addEventListener('keydown', e => {
+                                        if (e.key === 'Enter') { e.preventDefault(); save(); }
+                                        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+                                    });
+                                    input.addEventListener('blur', () => { setTimeout(save, 200); });
                                 });
                             });
 
@@ -7595,12 +7617,15 @@
                                     input.value = curVal;
                                     input.min = '0';
                                     input.max = '100';
-                                    input.style.cssText = 'background:rgba(4,6,14,0.9); color:#60a5fa; border:1px solid rgba(96,165,250,0.4); border-radius:4px; padding:4px 8px; width:70px; font-size:0.95em; outline:none;';
+                                    input.style.cssText = 'background:#0f172a; color:#60a5fa; border:2px solid rgba(96,165,250,0.7); border-radius:6px; padding:6px 10px; width:80px; font-size:1.05em; outline:none; font-weight:600; box-shadow:0 0 8px rgba(96,165,250,0.25);';
                                     cell.insertBefore(input, check);
                                     input.focus();
                                     input.select();
 
+                                    let saved = false;
                                     const save = () => {
+                                        if (saved) return;
+                                        saved = true;
                                         let num = parseFloat(input.value) || 0;
                                         if (num < 0) num = 0;
                                         if (num > 100) num = 100;
@@ -7616,15 +7641,23 @@
                                         }).then(r => r.json()).then(resp => {
                                             if (resp.status === 'success') {
                                                 check.style.display = 'inline';
-                                                setTimeout(() => { check.style.display = 'none'; }, 2000);
-                                                // Reload waterlog data so profit splits recalculate with new %
-                                                waterlogLoaded = false;
-                                                loadWaterlogData();
+                                                setTimeout(() => { check.style.display = 'none'; }, 3000);
+                                                // Delay reload so profit split recalculates with new %
+                                                setTimeout(() => { waterlogLoaded = false; loadWaterlogData(); }, 2000);
                                             }
                                         }).catch(() => {});
                                     };
-                                    input.addEventListener('blur', save);
-                                    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = curVal; input.blur(); } });
+                                    const cancel = () => {
+                                        if (saved) return;
+                                        saved = true;
+                                        input.remove();
+                                        display.style.display = '';
+                                    };
+                                    input.addEventListener('keydown', e => {
+                                        if (e.key === 'Enter') { e.preventDefault(); save(); }
+                                        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+                                    });
+                                    input.addEventListener('blur', () => { setTimeout(save, 200); });
                                 });
                             });
                         }
