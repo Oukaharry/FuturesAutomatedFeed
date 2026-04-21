@@ -4670,7 +4670,28 @@
                     // Live cashflow + profitability — mirrors utils/data_processor.py calculate_statistics
                     // Cashflow: all non-deleted rows (full client). Completed: ended rows only; payouts only when funded completed.
                     function aggregateCashflowFromEvals(evals, filterHiddenFirms) {
-                        const pcN = (v) => { try { return parseFloat(String(v || '').replace(/[$,]/g, '').trim()) || 0; } catch (e) { return 0; } };
+                        // Robust numeric parse (matches server-side parse_currency intent, but tolerates NBSP/spacing and (123.45) negatives)
+                        const pcN = (v) => {
+                            if (v === null || v === undefined) return 0;
+                            try {
+                                let s = String(v).trim();
+                                if (!s || s === '-') return 0;
+                                // Normalize spaces + currency symbols
+                                s = s
+                                    .replace(/\u00a0/g, '')   // NBSP
+                                    .replace(/\u202f/g, '')   // NNBSP
+                                    .replace(/[$€£]/g, '')
+                                    .replace(/,/g, '')
+                                    .replace(/\s+/g, '');
+                                // Accounting negative
+                                const m = s.match(/^\(([-+]?\d+(?:\.\d+)?)\)$/);
+                                if (m) s = '-' + m[1];
+                                const n = parseFloat(s);
+                                return isNaN(n) ? 0 : n;
+                            } catch (e) {
+                                return 0;
+                            }
+                        };
                         const rnd2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
                         const P1_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5'];
                         const FD_CORE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1'];
@@ -4716,14 +4737,10 @@
 
                             // --- Cashflow in progress (API key name): every non-deleted account, active or ended ---
                             if (!is_deleted) {
-                                const has_p1_status = !!status_p1.trim();
-                                const has_funded_status = !!status_funded.trim();
-                                let row_hedging = 0;
-                                if (has_p1_status) row_hedging += p1Hedges;
-                                if (has_funded_status) row_hedging += fundedCore;
-                                const row_farming = has_funded_status
-                                    ? (farmingNetCellSet(ev) ? rnd2(pcN(ev['Farming Net'])) : rnd2(farmingHr + hedgeDays))
-                                    : 0;
+                                // In Progress = whole client view: include ALL raw hedge/farming values present on the row,
+                                // regardless of whether Status cells are filled (status blanks were causing dropped values).
+                                const row_hedging = rnd2(p1Hedges + fundedCore);
+                                const row_farming = farmingNetCellSet(ev) ? rnd2(pcN(ev['Farming Net'])) : rnd2(farmingHr + hedgeDays);
                                 cfFees = rnd2(cfFees + fee + activation_fee);
                                 cfHedge = rnd2(cfHedge + row_hedging);
                                 cfFarm = rnd2(cfFarm + row_farming);
@@ -5040,11 +5057,15 @@
                 data.evaluations.forEach(ev => {
                     const propFirm = (ev['Prop Firm'] || 'Unknown').trim() || 'Unknown';
                     if (isFirmHidden(propFirm)) return;
-                    const account = (ev['Account #'] || ev['Account #.1'] || '-').toString().trim();
-                    for (let i = 1; i <= 9; i++) {
+                    // Match payouts script preference: funded account first, then challenge account
+                    const account = (ev['Account #.1'] || ev['Account #'] || '-').toString().trim();
+                    // Match payouts script: Payout 1..6
+                    for (let i = 1; i <= 6; i++) {
                         const amt = parseCur(ev[`Payout ${i}`]);
-                        if (amt !== 0) {
-                            const rawDate = (ev[`Date ${i}`] || '').toString().trim();
+                        const rawDate = (ev[`Date ${i}`] || '').toString().trim();
+                        // Match payouts script inclusion rule:
+                        // include if amount != 0 OR a date is present
+                        if (amt !== 0 || (rawDate && rawDate !== '-')) {
                             const dateObj = parsePayDate(rawDate);
                             window._statsPayouts.push({ prop_firm: propFirm, account, amount: amt, date: fmtDate(dateObj), dateObj, payout_num: i });
                         }
@@ -7418,14 +7439,21 @@
                         }
                         let psHtml = '';
                         const isAdmin = (USER_TYPE === 'admin' || USER_TYPE === 'super_admin');
+                        // Split %: fallback to 50% only if the value is missing or non-numeric.
+                        // Otherwise use the exact server value (per-period overrides are honored).
+                        const _normSplitPct = (v) => {
+                            if (v === null || v === undefined || String(v).trim() === '') return 50;
+                            const n = Number(v);
+                            if (!isFinite(n)) return 50;
+                            return Math.max(0, Math.min(100, n));
+                        };
                         // Override the most recent row's net profit with live value.
                         // When doing this, also recompute latest profit split so the row stays internally consistent.
                         if (rows.length && window._statsNetProfit !== undefined) {
                             const latestNet = Number(window._statsNetProfit) || 0;
                             rows[0].low = formatMoney(latestNet);
 
-                            const latestPctRaw = rows[0].split_pct != null ? rows[0].split_pct : 50;
-                            const latestPct = Math.max(0, Math.min(100, Number(latestPctRaw) || 0));
+                            const latestPct = _normSplitPct(rows[0].split_pct);
                             const prevLowRaw = rows.length > 1 ? (rows[1].low || '$0') : '$0';
                             const prevLow = parseFloat(String(prevLowRaw).replace(/[^0-9.-]/g, '')) || 0;
                             const latestSplit = latestNet > prevLow ? ((latestNet - prevLow) * latestPct / 100) : 0;
@@ -7441,7 +7469,9 @@
                             const npRaw = (r.low || '$0.00').trim();
                             const npNum = parseFloat(npRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const npColor = npNum >= 0 ? '#e2e8f0' : '#f87171';
-                            const spRaw = r.split_pct != null ? r.split_pct : 50;
+                            // Normalize split % (default/fallback is 50%).
+                            // Per-period overrides in split_pct_overrides are honored; otherwise 50%.
+                            const spRaw = _normSplitPct(r.split_pct);
                             if (isAdmin) {
                                 const isLatestRow = idx === 0;
                                 psHtml += `<tr>
