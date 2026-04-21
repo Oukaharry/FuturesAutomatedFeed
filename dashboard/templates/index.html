@@ -7439,14 +7439,21 @@
                         }
                         let psHtml = '';
                         const isAdmin = (USER_TYPE === 'admin' || USER_TYPE === 'super_admin');
+                        // Split %: fallback to 50% only if the value is missing or non-numeric.
+                        // Otherwise use the exact server value (per-period overrides are honored).
+                        const _normSplitPct = (v) => {
+                            if (v === null || v === undefined || String(v).trim() === '') return 50;
+                            const n = Number(v);
+                            if (!isFinite(n)) return 50;
+                            return Math.max(0, Math.min(100, n));
+                        };
                         // Override the most recent row's net profit with live value.
                         // When doing this, also recompute latest profit split so the row stays internally consistent.
                         if (rows.length && window._statsNetProfit !== undefined) {
                             const latestNet = Number(window._statsNetProfit) || 0;
                             rows[0].low = formatMoney(latestNet);
 
-                            const latestPctRaw = rows[0].split_pct != null ? rows[0].split_pct : 50;
-                            const latestPct = Math.max(0, Math.min(100, Number(latestPctRaw) || 0));
+                            const latestPct = _normSplitPct(rows[0].split_pct);
                             const prevLowRaw = rows.length > 1 ? (rows[1].low || '$0') : '$0';
                             const prevLow = parseFloat(String(prevLowRaw).replace(/[^0-9.-]/g, '')) || 0;
                             const latestSplit = latestNet > prevLow ? ((latestNet - prevLow) * latestPct / 100) : 0;
@@ -7462,7 +7469,9 @@
                             const npRaw = (r.low || '$0.00').trim();
                             const npNum = parseFloat(npRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const npColor = npNum >= 0 ? '#e2e8f0' : '#f87171';
-                            const spRaw = r.split_pct != null ? r.split_pct : 50;
+                            // Normalize split % (default/fallback is 50%).
+                            // Per-period overrides in split_pct_overrides are honored; otherwise 50%.
+                            const spRaw = _normSplitPct(r.split_pct);
                             if (isAdmin) {
                                 const isLatestRow = idx === 0;
                                 psHtml += `<tr>

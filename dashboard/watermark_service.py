@@ -292,19 +292,12 @@ def get_all_daily_watermarks(client_id):
 
 
 def get_client_split_pct(client_id):
-    """Get the client's default profit split percentage from their identity blob.
-    Returns int (e.g. 50 for 50%). Defaults to 50 if not set."""
-    try:
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT data FROM client_data WHERE client_id = ?', (client_id,))
-            row = cursor.fetchone()
-            if row:
-                import json
-                data = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
-                return int(data.get('identity', {}).get('split_pct', 50))
-    except Exception as e:
-        logging.warning(f"Could not read split_pct for {client_id}: {e}")
+    """Get the client's default profit split percentage.
+    Policy: always 50% unless a per-period override exists in split_pct_overrides.
+    Legacy values that may sit in identity.split_pct or waterlog_periods.split_pct
+    (imported from sheets) are intentionally ignored — only explicit admin edits
+    via /api/client/split_pct_override may deviate from the default.
+    Returns int (50)."""
     return 50
 
 
@@ -389,9 +382,10 @@ def compute_waterlog_from_db(client_id):
             period_low = np_overrides[np_key]
             np_override_applied = True
 
-        # Determine split percentage (per-period override takes priority)
-        raw_split_pct = p.get('split_pct')
-        split_pct = int(raw_split_pct) if raw_split_pct is not None else 50
+        # Determine split percentage:
+        # Default is always 50%. Only an explicit per-period override (admin edit) changes it.
+        # Ignore any split_pct that may have been imported into waterlog_periods from the sheet.
+        split_pct = 50
         spct_key = _fmt_date(from_d)
         if spct_key in spct_overrides:
             split_pct = spct_overrides[spct_key]

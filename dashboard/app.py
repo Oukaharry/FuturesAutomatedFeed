@@ -2578,7 +2578,9 @@ def get_hierarchy():
                 cname = client.get('name', '')
                 identity = all_identities.get(cname, {})
                 client['active_status'] = identity.get('active_status', 'active')
-                client['split_pct'] = identity.get('split_pct', 50)
+                # Default split % is always 50; per-period overrides live in split_pct_overrides.
+                # Ignore any legacy identity.split_pct that may have been populated from sheet imports.
+                client['split_pct'] = 50
                 # Hierarchy email is the source of truth (preserves original case).
                 # Only fall back to DB identity email if hierarchy has none.
                 if not client.get('email'):
