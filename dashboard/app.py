@@ -2681,10 +2681,51 @@ def get_profit_splits():
 
     from dashboard.watermark_service import compute_waterlog_from_db, get_client_split_pct
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
+    from utils.data_processor import parse_currency
     from concurrent.futures import ThreadPoolExecutor
 
     clients_data = _get_cached_clients()
     results = []
+
+    # Mirror the client dashboard's `aggregateCashflowFromEvals` (index.html
+    # ~line 4672) exactly, so the super admin breakdown never disagrees with the
+    # per-client Profit Split card (#split-profit-amount).  The stored
+    # `statistics.cashflow_inprogress` on disk is sometimes stale, so we
+    # recompute from raw evaluations here.
+    _P1_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
+    _FD_CORE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1']
+    _FARM_HR_COLS = ['Hedge Result 6', 'Hedge Result 7']
+    _HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
+
+    def _farm_net_set(ev):
+        raw = ev.get('Farming Net')
+        if raw is None:
+            return False
+        return str(raw).strip() not in ('', '-')
+
+    def _live_in_progress_net(evaluations):
+        cf_pay = cf_fees = cf_hedge = cf_farm = 0.0
+        for ev in (evaluations or []):
+            if not ev or ev.get('_deleted'):
+                continue
+            sp1 = str(ev.get('Status P1', '') or '').lower()
+            sf = str(ev.get('Status') or ev.get('Status Funded', '') or '').lower()
+            if 'deleted' in sp1 or 'deleted' in sf:
+                continue
+            p1 = round(sum(parse_currency(ev.get(c)) for c in _P1_COLS), 2)
+            fd = round(sum(parse_currency(ev.get(c)) for c in _FD_CORE_COLS), 2)
+            farm_hr = round(sum(parse_currency(ev.get(c)) for c in _FARM_HR_COLS), 2)
+            h_days = round(sum(parse_currency(ev.get(c)) for c in _HEDGE_DAY_COLS), 2)
+            fee = parse_currency(ev.get('Fee'))
+            act = parse_currency(ev.get('Activation Fee'))
+            payouts = round(sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 7)), 2)
+            row_hedge = round(p1 + fd, 2)
+            row_farm = round(parse_currency(ev.get('Farming Net')), 2) if _farm_net_set(ev) else round(farm_hr + h_days, 2)
+            cf_pay = round(cf_pay + payouts, 2)
+            cf_fees = round(cf_fees + fee + act, 2)
+            cf_hedge = round(cf_hedge + row_hedge, 2)
+            cf_farm = round(cf_farm + row_farm, 2)
+        return round(cf_pay + cf_hedge + cf_farm - cf_fees, 2)
 
     def _compute_one(client_id, data):
         try:
@@ -2694,21 +2735,48 @@ def get_profit_splits():
             source = get_client_profile(client_id, identity)
             if profile_filter != 'ALL' and source != profile_filter:
                 return None
-            stored_cf = data.get('statistics', {}).get('cashflow_inprogress', {})
-            net_profit = float(stored_cf.get('net_profit') or 0)
-            # Get waterlog reference point
+
+            # Mirror the client dashboard's Profit Split card EXACTLY so the super
+            # admin "Client Breakdown" matches #split-profit-amount per client.
+            #
+            # Client dashboard formula (index.html):
+            #   latestNet = live aggregate from evaluations (aggregateCashflowFromEvals):
+            #               payouts + hedging + farming - (fees + activation_fee)
+            #   prevLow   = periods[-2].low from compute_waterlog_from_db (0 if none)
+            #   split_pct = periods[-1].split_pct (default 50)
+            #   split_amt = max(0, (latestNet - prevLow) * split_pct / 100)
+            latest_net = _live_in_progress_net(data.get('evaluations') or [])
+
             wl = compute_waterlog_from_db(real_name)
-            lsnp = max(float(wl['last_split_net_profit']), 0.0) if wl else 0.0
-            split_pct = get_client_split_pct(real_name)
-            split_rate = split_pct / 100.0
-            split_amt = (net_profit - lsnp) * split_rate if (net_profit > lsnp and net_profit > 0) else 0.0
+            prev_low = 0.0
+            split_pct = 50
+            if wl and wl.get('periods'):
+                periods = wl['periods']
+                try:
+                    split_pct = int(periods[-1].get('split_pct', 50) or 50)
+                except (TypeError, ValueError):
+                    split_pct = 50
+                if len(periods) >= 2:
+                    prev_raw = str(periods[-2].get('low', '$0')).replace('$', '').replace(',', '').strip()
+                    try:
+                        prev_low = float(prev_raw)
+                    except ValueError:
+                        prev_low = 0.0
+
+            split_amt = (
+                (latest_net - prev_low) * split_pct / 100.0
+                if latest_net > prev_low else 0.0
+            )
+
             return {
                 'client_id': real_name,
-                'net_profit': round(net_profit, 2),
+                'net_profit': round(latest_net, 2),
                 'profit_split_inprogress': round(split_amt, 2),
                 'split_pct': split_pct,
             }
-        except Exception:
+        except Exception as _exc:
+            import traceback
+            print(f"[profit_splits] error for {client_id}: {_exc}\n{traceback.format_exc()}")
             return None
 
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -3530,7 +3598,7 @@ def api_migrate_sheet():
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             future_eval = executor.submit(fetch_evaluations, sheet_url)
             future_wl_hist = executor.submit(fetch_waterlog_history, sheet_url)
-            future_wl_data = executor.submit(fetch_waterlog_data, sheet_url) if fetch_waterlog_data else None
+            future_wl_data = executor.submit(fetch_waterlog_data, sheet_url, client_id) if fetch_waterlog_data else None
 
             eval_result = future_eval.result()
             waterlog_history = future_wl_hist.result()
@@ -8326,7 +8394,7 @@ def get_waterlog_sheet_data():
             if client_data:
                 sheet_url = client_data.get('sheet_url') or sheet_url
 
-        data = fetch_waterlog_data(sheet_url=sheet_url)
+        data = fetch_waterlog_data(sheet_url=sheet_url, client_id=client_id_param)
         if data:
             return jsonify({"status": "success", "data": data})
         return jsonify({"status": "error", "message": "Failed to fetch waterlog data"}), 500

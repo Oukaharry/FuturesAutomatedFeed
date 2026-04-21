@@ -49,7 +49,7 @@ def _discover_waterlog_gid(sheet_id):
         logging.error(f"Error discovering waterlog GID: {e}")
         return None
 
-def fetch_waterlog_data(sheet_url=None):
+def fetch_waterlog_data(sheet_url=None, client_id=None):
     """
     Fetches the Profitability Waterlog table directly from the sheet.
 
@@ -64,7 +64,20 @@ def fetch_waterlog_data(sheet_url=None):
 
     Low and High are read directly from columns F/G.  Profit Split is
     recomputed using the HWM/4 formula that matches the reference sheet.
+    
+    If client_id is provided, loads and applies any split_pct_overrides 
+    from the database, preventing the ratio-based detection from overwriting 
+    admin-set split percentages.
     """
+    # Load split percentage overrides if client_id provided
+    spct_overrides = {}
+    if client_id:
+        try:
+            from dashboard.watermark_service import get_split_pct_overrides
+            spct_overrides = get_split_pct_overrides(client_id)
+        except Exception as e:
+            logging.debug(f"Could not load split_pct_overrides for {client_id}: {e}")
+    
     # Resolve sheet-ID and GID
     sid = _extract_sheet_id(sheet_url) if sheet_url else None
     if sid:
@@ -133,19 +146,26 @@ def fetch_waterlog_data(sheet_url=None):
         for (from_date, to_date, period_low, period_high, sheet_ps) in parsed_rows:
             gain = period_low - hwm_low if period_low > hwm_low else 0.0
 
-            # Detect split % by comparing sheet value to the period gain.
-            # Ratio ≈ 0.25 → 25% (/4),  ratio ≈ 0.50 → 50% (/2).
-            # Default to 25 for historical rows; new (unset) periods use 50.
-            if gain > 0 and sheet_ps > 0:
+            # Determine split percentage:
+            # 1. If there's an explicit override for this period, use it (admin-set)
+            # 2. Otherwise, detect from the sheet's profit split value using ratio logic
+            # 3. Default to 50% for all new/unspecified periods (only legacy 25% for detected historical ratios)
+            fmt_from_date = _fmt_date(from_date)
+            if fmt_from_date in spct_overrides:
+                # Admin-set override takes priority
+                split_pct = spct_overrides[fmt_from_date]
+            elif gain > 0 and sheet_ps > 0:
+                # Detect split % by comparing sheet value to the period gain.
+                # Ratio ≈ 0.25 → 25% (/4),  ratio ≈ 0.50 → 50% (/2).
                 ratio = sheet_ps / gain
                 if 0.40 <= ratio <= 0.60:
                     split_pct = 50
                 elif 0.15 <= ratio <= 0.35:
                     split_pct = 25
                 else:
-                    split_pct = 25  # safe historical default
+                    split_pct = 50  # default to 50% if ratio is ambiguous
             else:
-                split_pct = 25  # no gain to detect from — keep historical default
+                split_pct = 50  # no gain or no sheet data — default to 50%
 
             if gain > 0:
                 profit_split = gain * split_pct / 100
@@ -154,7 +174,7 @@ def fetch_waterlog_data(sheet_url=None):
                 profit_split = 0.0
 
             result.append({
-                'from_date':    _fmt_date(from_date),
+                'from_date':    fmt_from_date,
                 'to_date':      _fmt_date(to_date),
                 'low':          _fmt_currency(period_low),
                 'high':         _fmt_currency(period_high),
