@@ -7003,11 +7003,16 @@
                                 console.error('Stats refresh after save: bad response', freshData);
                                 return;
                             }
-                            currentData = {
-                                ...currentData,
-                                ...freshData,
-                                identity: currentData.identity || freshData.identity || {}
-                            };
+                            // IMPORTANT: Only merge server-computed stats metadata here.
+                            // Do NOT replace evaluations / deals / account / accounts /
+                            // payment info — those may already contain newer user edits
+                            // (typed while this save + refetch was in flight). Replacing
+                            // them with the server snapshot silently drops those edits and
+                            // the next debounced save would then persist the stale copy.
+                            if (freshData.statistics) currentData.statistics = freshData.statistics;
+                            if (freshData.last_updated) currentData.last_updated = freshData.last_updated;
+                            if (freshData._version != null) currentData._version = freshData._version;
+                            if (freshData._activity) currentData._activity = freshData._activity;
                             try {
                                 renderStats(currentData);
                             } catch (e) {

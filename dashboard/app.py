@@ -5804,7 +5804,14 @@ def api_dashboard_recalculate_statistics():
                 - float(sec.get("challenge_fees", 0) or 0),
                 2,
             )
-        save_client_data(client_id, {'evaluations': evals, 'statistics': new_stats})
+        # NOTE: Only persist statistics here — not evaluations.
+        # Writing evaluations back would race with any in-flight /api/update_data
+        # call from the user (page-load recalc reads DB state S0, user's save
+        # then commits S1, this recalc then overwrites evaluations back to S0
+        # and silently drops the user's edit). Hedge Net / Hedge Net.1 will be
+        # recomputed again on the next save (update_data also calls
+        # recalculate_hedge_nets), so they don't need to be written here.
+        save_client_data(client_id, {'statistics': new_stats})
         return jsonify({"status": "success"})
     except Exception as e:
         app.logger.exception("recalculate_statistics on dashboard load failed")
