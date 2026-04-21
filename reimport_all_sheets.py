@@ -95,7 +95,7 @@ def reimport_client(client_id, existing_data, dry_run=True):
     wl_values = {}
     try:
         if fetch_waterlog_data:
-            wl_full = fetch_waterlog_data(sheet_url)
+            wl_full = fetch_waterlog_data(sheet_url, client_id)
             if wl_full:
                 for row in wl_full:
                     fd = _to_iso(row.get('from_date', ''))
@@ -108,7 +108,7 @@ def reimport_client(client_id, existing_data, dry_run=True):
                             wl_values[fd] = {
                                 'low': low,
                                 'high': high,
-                                'split_pct': row.get('split_pct', 25),
+                                'split_pct': row.get('split_pct', 50),
                             }
         elif fetch_waterlog_periods_from_sheet:
             wl_periods = fetch_waterlog_periods_from_sheet(sheet_url) or []
