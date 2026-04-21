@@ -6713,6 +6713,177 @@ def api_summary_status():
     })
 
 
+def _resolve_trader_for_session(session_user, requested):
+    """Resolve which trader a request is asking about and whether the session is allowed.
+
+    Returns (trader_name, error_response_or_None). If the second element is not None,
+    the caller should return it directly.
+    """
+    user_type = session_user.get('user_type')
+    user_id = (session_user.get('user_identifier') or '').strip()
+    requested = (requested or '').strip()
+
+    if user_type == 'trader':
+        # Traders can only query their own data
+        if requested and requested != user_id:
+            return None, (jsonify({'status': 'error', 'message': 'Access denied'}), 403)
+        return user_id, None
+
+    trader_name = requested or user_id
+    if not trader_name:
+        return None, (jsonify({'status': 'error', 'message': 'Trader required'}), 400)
+
+    if user_type == 'admin':
+        admin_data = hierarchy.get('admins', {}).get(user_id, {}) or {}
+        if trader_name not in (admin_data.get('traders') or {}):
+            return None, (jsonify({'status': 'error', 'message': 'Access denied'}), 403)
+
+    # super_admin / bef_admin: allow any trader
+    return trader_name, None
+
+
+def _clients_for_trader(trader_name):
+    """Return the list of client names managed by the given trader across all admins."""
+    names = []
+    seen = set()
+    for admin_data in hierarchy.get('admins', {}).values():
+        tdata = (admin_data.get('traders') or {}).get(trader_name)
+        if not tdata:
+            continue
+        for c in tdata.get('clients', []) or []:
+            nm = c.get('name') if isinstance(c, dict) else c
+            if nm and nm not in seen:
+                seen.add(nm)
+                names.append(nm)
+    return names
+
+
+@app.route('/api/quality/trader_issues')
+@require_role('trader', 'admin', 'super_admin', 'bef_admin')
+def api_trader_issues():
+    """Latest quality scan issues filtered to a single trader's clients.
+
+    Traders see only themselves; admins see their own traders; super_admin /
+    bef_admin can pass ?trader=<name>. Clients with no scan record are
+    returned with total_issues=0 so the UI can show "all clear" rows too.
+    """
+    try:
+        from dashboard.database import get_quality_scan_results
+        trader_name, err = _resolve_trader_for_session(request.session_user, request.args.get('trader'))
+        if err is not None:
+            return err
+
+        trader_clients = set(_clients_for_trader(trader_name))
+        results = get_quality_scan_results() or []
+        filtered = [r for r in results if r.get('client_id') in trader_clients]
+
+        severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+        for r in filtered:
+            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
+            r['total_issues'] = len(r['issues'])
+            deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
+            r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+
+        scanned_ids = {r['client_id'] for r in filtered}
+        for nm in sorted(trader_clients - scanned_ids):
+            filtered.append({
+                'client_id': nm, 'trader': trader_name,
+                'issues': [], 'total_issues': 0, 'health_score': 100.0,
+                'scan_date': None,
+            })
+
+        filtered.sort(key=lambda r: (-r.get('total_issues', 0), r.get('client_id') or ''))
+        total_issues = sum(r.get('total_issues', 0) for r in filtered)
+        clients_with_issues = sum(1 for r in filtered if r.get('total_issues', 0) > 0)
+
+        return jsonify({
+            'status': 'success',
+            'trader': trader_name,
+            'total_clients': len(filtered),
+            'clients_with_issues': clients_with_issues,
+            'total_issues': total_issues,
+            'results': filtered,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Failed to load trader issues: {str(e)}'}), 500
+
+
+@app.route('/api/quality/trader_summary_status')
+@require_role('trader', 'admin', 'super_admin', 'bef_admin')
+def api_trader_summary_status():
+    """Daily summary submission status filtered to a single trader's clients."""
+    try:
+        from dashboard.database import get_summary_status_for_date, get_setting, get_client_data
+        import json as _json
+        from datetime import timezone, timedelta as _td
+
+        trader_name, err = _resolve_trader_for_session(request.session_user, request.args.get('trader'))
+        if err is not None:
+            return err
+
+        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        submissions = get_summary_status_for_date(date) or []
+
+        _kenyan_tz = timezone(_td(hours=3))
+        for s in submissions:
+            ts = s.get('submitted_at', '')
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    s['submitted_at'] = dt.astimezone(_kenyan_tz).isoformat()
+                except Exception:
+                    pass
+
+        sent_map = {s['client_id']: s for s in submissions}
+
+        excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+        excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+
+        clients_payload = []
+        for nm in _clients_for_trader(trader_name):
+            if nm in excluded_clients:
+                continue
+            try:
+                cdata = get_client_data(nm)
+                if cdata and isinstance(cdata.get('identity'), dict):
+                    if cdata['identity'].get('active_status') == 'inactive':
+                        continue
+            except Exception:
+                pass
+            if nm in sent_map:
+                s = sent_map[nm]
+                clients_payload.append({
+                    'client_id': nm,
+                    'sent': True,
+                    'submitted_by': s.get('submitted_by'),
+                    'submitted_at': s.get('submitted_at'),
+                })
+            else:
+                clients_payload.append({'client_id': nm, 'sent': False})
+
+        clients_payload.sort(key=lambda c: (c['sent'], c['client_id'].lower()))
+
+        total_sent = sum(1 for c in clients_payload if c['sent'])
+        return jsonify({
+            'status': 'success',
+            'trader': trader_name,
+            'date': date,
+            'total_clients': len(clients_payload),
+            'total_sent': total_sent,
+            'total_not_sent': len(clients_payload) - total_sent,
+            'trader_excluded': trader_name in excluded_traders,
+            'clients': clients_payload,
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Failed to load trader summaries: {str(e)}'}), 500
+
+
 @app.route('/api/quality/summary_tracker_exclude', methods=['POST'])
 @require_role('super_admin')
 def api_summary_tracker_exclude():
