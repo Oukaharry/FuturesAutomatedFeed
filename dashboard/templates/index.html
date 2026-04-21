@@ -7520,7 +7520,7 @@
                                 elNet.textContent = latestNpRaw;
                                 elNet.style.color = latestNpNum >= 0 ? '#4ade80' : '#f87171';
                             }
-                            // Profit Split card — use the table's latest profit_split value
+                            // Profit Split card — mirror the latest row value exactly
                             const latestPsRaw = (latestRow.profit_split || '').trim();
                             const latestPsNum = parseFloat(latestPsRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const elSplit = document.getElementById('split-profit-amount');

@@ -18,7 +18,12 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.2"
+RELEASE_DISABLE_HEDGE_GUARD = True
+RELEASE_DISABLE_STATUS_POLL = True
+RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
+RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
+RELEASE_DISABLE_PUSH_BILLING = True
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -651,7 +656,8 @@ class MT5DataPusher:
         _days_since_23rd = (_now - _from_date).days + 1
         deals = self.get_deals(days=_days_since_23rd)
         
-        # Merge in full-history farming deals for correct hedge day calculation
+        # Merge in deep-history farming deals for correct hedge day calculation.
+        # 365 days can undercount long-lived farming accounts and push to wrong Hedge Day slot.
         all_deals_full = self.get_deals(days=365) or []
         if deals is None:
             deals = []
@@ -904,12 +910,37 @@ class MT5DataPusher:
         #         (acts as our "3-month history scan").  That count IS the hedge day number
         #         for the latest trade — no sheet-slot scanning needed.
         # Step 3: Only push the LATEST date per account; earlier dates are already in the sheet.
-        _fa_by_key = {}   # (account_number, date_str) -> merged dict
+        def _normalize_fa_day(_agg):
+            """Return canonical YYYY-MM-DD farming day key using timestamps first, then fallback date text."""
+            for _k in ("close_time", "open_time"):
+                _tv = _agg.get(_k)
+                if _tv:
+                    _s = str(_tv).replace('T', ' ')
+                    if len(_s) >= 10:
+                        return _s[:10]
+            _fd = str(_agg.get('farming_date') or '').strip()
+            if not _fd:
+                return ''
+            # Supports DD/MM from comments, and ISO-like values from parser output.
+            try:
+                if '/' in _fd:
+                    _d, _m = _fd.split('/')[:2]
+                    _d = int(_d)
+                    _m = int(_m)
+                    _y = datetime.now().year
+                    return f"{_y:04d}-{_m:02d}-{_d:02d}"
+                if '-' in _fd and len(_fd) >= 10:
+                    return _fd[:10]
+            except Exception:
+                pass
+            return _fd
+
+        _fa_by_key = {}   # (account_number, normalized_day_key) -> merged dict
         _non_fa = []
         for _agg in aggregated:
             if _agg.get('phase_code') == 'FA':
-                _date_str = str(_agg.get('farming_date') or '')
-                _key = (_agg.get('account_number', ''), _date_str)
+                _date_key = _normalize_fa_day(_agg)
+                _key = (_agg.get('account_number', ''), _date_key)
                 if _key not in _fa_by_key:
                     _fa_by_key[_key] = dict(_agg)
                 else:
@@ -930,21 +961,21 @@ class MT5DataPusher:
         # Group merged FA entries by account, sort chronologically.
         # The hedge day number for the latest trade = total distinct trading days in history.
         # Only keep the latest entry per account for the actual push.
-        _fa_per_account = {}   # account_number -> sorted list of (date_str, entry)
-        for (acct, date_str), entry in _fa_by_key.items():
-            _fa_per_account.setdefault(acct, []).append((date_str, entry))
+        _fa_per_account = {}   # account_number -> sorted list of (normalized_day_key, entry)
+        for (acct, day_key), entry in _fa_by_key.items():
+            _fa_per_account.setdefault(acct, []).append((day_key, entry))
 
         _fa_to_push = []   # only latest per account, tagged with _fa_slot
         for acct, date_entries in _fa_per_account.items():
-            date_entries.sort(key=lambda x: x[0])          # chronological order
+            date_entries.sort(key=lambda x: x[0])          # chronological order by normalized day
             total_days = len(date_entries)                  # count = hedge day slot
-            latest_date_str, latest_entry = date_entries[-1]
+            latest_day_key, latest_entry = date_entries[-1]
             tagged = dict(latest_entry)
             tagged['_fa_slot'] = total_days                 # pre-computed slot number
             _fa_to_push.append(tagged)
             match_log.append(
                 f"   📅 {acct}: {total_days} FA day(s) in MT5 history "
-                f"→ will push as Hedge Day {total_days} ({latest_date_str})"
+                f"→ will push as Hedge Day {total_days} ({latest_day_key})"
             )
 
         # Rebuild aggregated: non-FA entries + one FA entry per account (latest day only)
@@ -1015,8 +1046,8 @@ class MT5DataPusher:
                         skip_farming = True
 
                 if not skip_farming:
-                    # Slot number was pre-computed from MT5 history count (distinct FA trading days).
-                    # _fa_slot = total distinct FA dates for this account in the history window.
+                    # Slot number is pre-computed from MT5 history count (distinct FA trading days).
+                    # Re-pushes on the same day should keep writing to the same Hedge Day slot.
                     fa_slot = agg.get('_fa_slot')
                     if fa_slot:
                         forced_day_num = fa_slot
@@ -1415,6 +1446,7 @@ class TradeOpssAIApp:
         self._direction_locks = {}
         self._active_trade_rows = []
         self._firm_billing_summary = {}   # {firm_name: {total_fees, total_payouts, records: [...]}}
+        self.push_billing_btn = None
         self._hedge_protector = None
         self._status_poll_active = False   # real-time status polling flag
         self._last_known_statuses = {}     # {acct_display: last_computed_status} for change detection
@@ -1719,13 +1751,14 @@ class TradeOpssAIApp:
 
         self.auto_trade_firms_var = tk.StringVar(value="")
 
-        # Separator before Push Billing
-        ctk.CTkFrame(toolbar, width=1, fg_color=self.C_BORDER).pack(side="left", fill="y", pady=6)
+        if not RELEASE_DISABLE_PUSH_BILLING:
+            # Separator before Push Billing
+            ctk.CTkFrame(toolbar, width=1, fg_color=self.C_BORDER).pack(side="left", fill="y", pady=6)
 
-        self.push_billing_btn = self._ctk_button(toolbar, text="💰 Push Billing",
-                                                  command=self._push_billing_data,
-                                                  fg="#f59e0b", hover="#d97706", width=110)
-        self.push_billing_btn.pack(side="left", padx=(8, 4), pady=5)
+            self.push_billing_btn = self._ctk_button(toolbar, text="💰 Push Billing",
+                                                      command=self._push_billing_data,
+                                                      fg="#f59e0b", hover="#d97706", width=110)
+            self.push_billing_btn.pack(side="left", padx=(8, 4), pady=5)
 
         self._ctk_button(toolbar, text="Save Config", command=self.save_config,
                          fg=self.C_BG_THIRD, hover=self.C_BORDER, width=90).pack(side="right", padx=(0, 8), pady=5)
@@ -2241,6 +2274,10 @@ class TradeOpssAIApp:
             
     def _push_billing_data(self):
         """Push only firm billing (actual fees & payouts) to the dashboard."""
+        if RELEASE_DISABLE_PUSH_BILLING:
+            self.log("ℹ Push Billing is disabled in this release", "WARN")
+            return
+
         if not self._firm_billing_summary:
             self.log("⚠ No billing data collected yet — connect to prop firm dashboards first", "WARN")
             return
@@ -2254,7 +2291,8 @@ class TradeOpssAIApp:
 
         def _do_push():
             try:
-                self.root.after(0, lambda: self.push_billing_btn.configure(state="disabled"))
+                if self.push_billing_btn:
+                    self.root.after(0, lambda: self.push_billing_btn.configure(state="disabled"))
                 self.log("💰 Pushing billing data to dashboard...")
 
                 # Match billing records to individual evaluations so
@@ -2347,7 +2385,8 @@ class TradeOpssAIApp:
             except Exception as e:
                 self.root.after(0, lambda err=str(e): self.log(f"❌ Billing push error: {err}", "ERROR"))
             finally:
-                self.root.after(0, lambda: self.push_billing_btn.configure(state="normal"))
+                if self.push_billing_btn:
+                    self.root.after(0, lambda: self.push_billing_btn.configure(state="normal"))
 
         threading.Thread(target=_do_push, daemon=True).start()
 
@@ -4281,13 +4320,15 @@ class TradeOpssAIApp:
                 # Auto-launch browsers for prop firms that need dashboard monitoring
                 active_firms = list(dict.fromkeys(
                     ev.get("Prop Firm", "") for ev in active_evals if ev.get("Prop Firm")))
-                self.root.after(2000, lambda af=active_firms: self._auto_launch_propfirm_browsers(af))
+                if not RELEASE_DISABLE_PROP_DASHBOARD_ACCESS:
+                    self.root.after(2000, lambda af=active_firms: self._auto_launch_propfirm_browsers(af))
 
                 # Trigger a status poll immediately after scan
-                try:
-                    self._poll_tradovate_balances()
-                except Exception:
-                    pass
+                if not RELEASE_DISABLE_STATUS_POLL:
+                    try:
+                        self._poll_tradovate_balances()
+                    except Exception:
+                        pass
 
                 # Auto-fill MT5 credentials from dashboard if available
                 mt5_creds = data.get("mt5_credentials") or {}
@@ -4887,6 +4928,9 @@ class TradeOpssAIApp:
 
     def _start_hedge_protector(self):
         """Start (or restart) the Hedge Protector engine. Called automatically on broker connect."""
+        if RELEASE_DISABLE_HEDGE_GUARD:
+            return
+
         if not HEDGE_PROTECTOR_AVAILABLE:
             return
 
@@ -4954,6 +4998,9 @@ class TradeOpssAIApp:
             close_reason: "tp_detected" or "sl_detected"
             phase_key: Blueprint stage key from MT5 comment (e.g. "challenge_trade2", "funded_trade1")
         """
+        if RELEASE_DISABLE_AUTO_STATUS_UPDATES:
+            return
+
         import re
 
         # 1. Find the matching eval from active trade rows
@@ -5375,7 +5422,7 @@ class TradeOpssAIApp:
         # ── PRE-VALIDATE: check which accounts actually exist on each Tradovate ──
         skipped_rows = []
         not_connected_firms = []
-        if platform == "Tradovate":
+        if default_platform == "Tradovate":
             self.log("🔍 Pre-validating accounts against Tradovate dropdowns...")
             validated_by_firm = {}
             for firm_name, firm_rows in list(rows_by_firm.items()):
@@ -5710,16 +5757,17 @@ class TradeOpssAIApp:
                         counters["success"] += 1
 
                     # ── Auto-status: set "In Progress" when trades go out ──
-                    _ev = row_data.get("eval")
-                    if _ev:
-                        _has_funded = bool((row_data.get("eval", {}).get("Account #.1") or "").strip())
-                        _sf = "Status" if _has_funded else "Status P1"
-                        _cur = (_ev.get(_sf) or "").strip().lower()
-                        # Only set In Progress if status is empty, Not Started, or already In Progress
-                        if not _cur or _cur in ("not started", "in progress", ""):
-                            _ev[_sf] = "In Progress"
-                            self.root.after(0, lambda an=acct_num, sf=_sf:
-                                self.log(f"🔄 Auto-status: {an} → {sf}='In Progress'"))
+                    if not RELEASE_DISABLE_AUTO_STATUS_UPDATES:
+                        _ev = row_data.get("eval")
+                        if _ev:
+                            _has_funded = bool((row_data.get("eval", {}).get("Account #.1") or "").strip())
+                            _sf = "Status" if _has_funded else "Status P1"
+                            _cur = (_ev.get(_sf) or "").strip().lower()
+                            # Only set In Progress if status is empty, Not Started, or already In Progress
+                            if not _cur or _cur in ("not started", "in progress", ""):
+                                _ev[_sf] = "In Progress"
+                                self.root.after(0, lambda an=acct_num, sf=_sf:
+                                    self.log(f"🔄 Auto-status: {an} → {_sf}='In Progress'"))
 
                     # Remove row from UI
                     def _remove(rd=row_data):
@@ -5927,7 +5975,7 @@ class TradeOpssAIApp:
                         if _bk.lower() == firm.lower():
                             _dash_cfg = _bv
                             break
-                if _dash_cfg:
+                if _dash_cfg and not RELEASE_DISABLE_PROP_DASHBOARD_ACCESS:
                     dash_btn = ctk.CTkButton(row, text="🌐 Dashboard", width=90, height=24,
                                              fg_color="#1A1A3E", hover_color="#2A2A5E",
                                              border_width=1, border_color="#3B3B6E",
@@ -6042,10 +6090,11 @@ class TradeOpssAIApp:
                     self.broker_status_var.set(f"{connected}/{total} connected")
                 self.root.after(0, _update_ui)
                 self.log(f"✅ {firm_name} connected to {platform} ({mode})")
-                # Start real-time status polling now that a broker is connected
-                self.root.after(0, self._start_status_polling)
-                # Auto-start hedge protector to monitor TP/SL
-                self.root.after(500, self._start_hedge_protector)
+                # Release build: no status polling / hedge guard side-effects
+                if not RELEASE_DISABLE_STATUS_POLL:
+                    self.root.after(0, self._start_status_polling)
+                if not RELEASE_DISABLE_HEDGE_GUARD:
+                    self.root.after(500, self._start_hedge_protector)
 
             except Exception as e:
                 def _fail():
@@ -6379,6 +6428,9 @@ class TradeOpssAIApp:
         browsers — the user clicks the "Dashboard" button in the broker row.
         Tradovate/TopStepX auto-connect with credentials as before.
         """
+        if RELEASE_DISABLE_PROP_DASHBOARD_ACCESS:
+            return
+
         for firm in active_firms:
             cfg = self._BROWSER_MONITORED_FIRMS.get(firm)
             if not cfg:
@@ -6393,6 +6445,10 @@ class TradeOpssAIApp:
         Called when user clicks the 'Dashboard' button in a broker row.
         For CDP-based scrapers, attaches to an existing Chrome tab instead of launching new Chrome.
         """
+        if RELEASE_DISABLE_PROP_DASHBOARD_ACCESS:
+            self.log("ℹ Prop firm dashboard access is disabled in this release", "WARN")
+            return
+
         cfg = self._BROWSER_MONITORED_FIRMS.get(firm_name)
         if not cfg:
             # Case-insensitive fallback
@@ -6957,6 +7013,10 @@ class TradeOpssAIApp:
     def _start_status_polling(self):
         """Start the 10-second real-time status polling loop.
         Uses Tradovate broker API to fetch live balances for all accounts."""
+        if RELEASE_DISABLE_STATUS_POLL:
+            self._status_poll_active = False
+            return
+
         if self._status_poll_active:
             return  # already running
         self._status_poll_active = True
@@ -6973,6 +7033,9 @@ class TradeOpssAIApp:
 
     def _poll_account_status(self):
         """Self-rescheduling timer — fetches Tradovate balances and updates P1 status."""
+        if RELEASE_DISABLE_STATUS_POLL:
+            return
+
         if not self._status_poll_active:
             return
 
@@ -6988,6 +7051,9 @@ class TradeOpssAIApp:
 
     def _poll_tradovate_balances(self):
         """Fetch live balances from Tradovate broker API and update P1/Status on evaluations."""
+        if RELEASE_DISABLE_STATUS_POLL:
+            return
+
         # ── 1. Gather all Tradovate account balances from broker connections ──
         tv_balances = {}  # {account_name: netLiq}
         for firm_name, conn in list(self._broker_connections.items()):
