@@ -654,9 +654,22 @@ def parse_currency(val):
     if val is None:
         return 0.0
     try:
-        s = str(val).replace('$', '').replace('\u20ac', '').replace('\u00a3', '').strip()
+        s = str(val)
+        # Normalize common currency/spacing variants seen in Sheets exports / HTML
+        s = (
+            s.replace('$', '')
+             .replace('\u20ac', '')
+             .replace('\u00a3', '')
+             .replace('\u00a0', '')   # NBSP
+             .replace('\u202f', '')   # NNBSP (thin no-break space)
+             .strip()
+        )
         if not s or s.lower() == 'nan':
             return 0.0
+
+        # Accounting negative: "(123.45)" → -123.45
+        if len(s) >= 2 and s[0] == '(' and s[-1] == ')':
+            s = '-' + s[1:-1].strip()
         if ',' in s:
             if '.' not in s:
                 # No period: could be thousands ("1,234") or European decimal ("-573,79").
@@ -813,23 +826,15 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             # Sum payouts, fees, hedging, and farming across every non-deleted row — not lifecycle-active only.
             # Profitability – Completed remains the ended / inactive slice only.
             if not is_deleted:
-                has_p1_status = bool(status_p1.strip())
-                has_funded_status = bool(status_funded.strip())
-
-                row_hedging = 0.0
-                if has_p1_status:
-                    row_hedging += p1_hedges
-                if has_funded_status:
-                    # Hedging = P1 + funded core (1.1–5.1). HR 6–7 + Hedge Days = farming (unless Farming Net overrides).
-                    row_hedging += funded_core
-
-                if has_funded_status:
-                    if _farming_net_cell_set(ev):
-                        row_farming = round(parse_currency(ev.get('Farming Net')), 2)
-                    else:
-                        row_farming = round(farming_hr + hedge_days, 2)
+                # In Progress = whole client view: include ALL raw hedge/farming values present on the row,
+                # regardless of whether Status cells are filled in (status blanks were causing dropped values).
+                # Hedging = P1 (HR 1–5) + funded core (HR 1.1–5.1). Farming = HR 6–7 + Hedge Day sum,
+                # unless Farming Net is explicitly set (override).
+                row_hedging = round(p1_hedges + funded_core, 2)
+                if _farming_net_cell_set(ev):
+                    row_farming = round(parse_currency(ev.get('Farming Net')), 2)
                 else:
-                    row_farming = 0.0
+                    row_farming = round(farming_hr + hedge_days, 2)
 
                 stats["cashflow_inprogress"]["challenge_fees"] = round(stats["cashflow_inprogress"]["challenge_fees"] + fee + activation_fee, 2)
                 stats["cashflow_inprogress"]["hedging_results"] = round(stats["cashflow_inprogress"]["hedging_results"] + row_hedging, 2)
