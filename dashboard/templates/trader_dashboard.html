@@ -34,6 +34,121 @@
             transition: color 0.15s ease, background 0.15s ease;
         }
         .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .tab-btn.active { color: #fbbf24; border-bottom: 2px solid #fbbf24; }
+        .tab-btn[data-panel] {
+            background: transparent;
+            border: 1px solid transparent;
+            cursor: pointer;
+            line-height: 1;
+            position: relative;
+        }
+        .tab-btn[data-panel]:hover { border-color: rgba(30,48,96,0.5); }
+        .nav-badge {
+            display: none;
+            position: absolute;
+            top: -2px;
+            right: -4px;
+            background: #ef4444;
+            color: #fff;
+            font-size: 0.55rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 99px;
+            line-height: 1.4;
+            min-width: 18px;
+            text-align: center;
+        }
+        .tab-panel {
+            display: none;
+            margin-bottom: 24px;
+            background: #090f1e;
+            border: 1px solid #1e3060;
+            border-top: 2px solid #3b63c4;
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.9), 0 1px 0 rgba(59,99,196,0.25);
+        }
+        .tab-panel-header {
+            background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
+            border-bottom: 1px solid #1e3060;
+            padding: 14px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .tab-panel-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            color: #e8eeff;
+        }
+        .tab-panel-close {
+            background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.38);
+            border-radius: 7px;
+            color: #f87171;
+            padding: 5px 12px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 600;
+            transition: background 0.15s, color 0.15s;
+        }
+        .tab-panel-close:hover { background: rgba(239,68,68,0.24); color: #fca5a5; }
+        .count-pill {
+            background: rgba(59,99,196,0.18);
+            color: #93c5fd;
+            border: 1px solid rgba(59,99,196,0.4);
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700;
+            padding: 2px 10px;
+        }
+        .summary-row, .issues-row {
+            display: grid;
+            grid-template-columns: 28px 1fr auto;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            border-top: 1px solid #162040;
+            font-size: 0.85rem;
+        }
+        .summary-row:hover, .issues-row:hover { background: rgba(30,58,138,0.1); }
+        .summary-row .client-link, .issues-row .client-link {
+            color: #e2e8f0;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .summary-row .client-link:hover, .issues-row .client-link:hover { color: #93c5fd; text-decoration: underline; }
+        .summary-row .meta { font-size: 0.74rem; color: #64748b; font-family: 'IBM Plex Mono', monospace; }
+        .status-icon-sent {
+            color: #4ade80;
+            font-size: 1.05rem;
+            filter: drop-shadow(0 0 6px rgba(74,222,128,0.45));
+        }
+        .status-icon-missing {
+            color: #475569;
+            font-size: 1.05rem;
+        }
+        .issue-count-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 99px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+        .issue-count-badge.none { background: rgba(74,222,128,0.12); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); }
+        .issue-count-badge.few  { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+        .issue-count-badge.many { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.4); }
         .nav-btn-key {
             display: flex; align-items: center; justify-content: center;
             padding: 8px 11px; border-radius: 8px;
@@ -240,10 +355,72 @@
             </a>
         </div>
         <div style="position:absolute;right:24px;top:50%;transform:translateY(-50%);display:flex;gap:8px;align-items:center;">
+            <button class="tab-btn" data-panel="issues-panel" id="issues-tab-btn" onclick="toggleTraderPanel('issues')" title="Data quality issues across your clients">
+                <i class="fas fa-circle-exclamation"></i> Issues
+                <span class="nav-badge" id="issues-nav-badge"></span>
+            </button>
+            <button class="tab-btn" data-panel="summaries-panel" id="summaries-tab-btn" onclick="toggleTraderPanel('summaries')" title="Today's daily summary submissions">
+                <i class="fas fa-clipboard-check"></i> Summaries
+                <span class="nav-badge" id="summaries-nav-badge"></span>
+            </button>
             <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
             <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
         </div>
     </nav>
+
+    <!-- ISSUES PANEL -->
+    <div id="issues-panel" class="tab-panel">
+        <div class="tab-panel-header">
+            <div class="tab-panel-title">
+                <i class="fas fa-circle-exclamation" style="color:#f87171;"></i>
+                <span>Issues — My Clients</span>
+                <span id="issues-count-pill" class="count-pill"></span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <button onclick="loadTraderIssues()" title="Refresh"
+                    style="background:rgba(59,99,196,0.18);border:1px solid rgba(59,99,196,0.4);color:#93c5fd;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:0.75rem;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;">
+                    <i class="fas fa-rotate-right"></i>
+                </button>
+                <button class="tab-panel-close" onclick="toggleTraderPanel('issues', true)">
+                    <i class="fas fa-xmark"></i> Close
+                </button>
+            </div>
+        </div>
+        <div id="issues-panel-body" style="max-height:520px;overflow-y:auto;">
+            <div style="text-align:center;padding:50px;color:#64748b;">
+                <i class="fas fa-circle-notch fa-spin" style="font-size:1.4rem;color:#f97316;display:block;margin-bottom:10px;"></i>
+                Loading issues…
+            </div>
+        </div>
+    </div>
+
+    <!-- SUMMARIES PANEL -->
+    <div id="summaries-panel" class="tab-panel">
+        <div class="tab-panel-header">
+            <div class="tab-panel-title">
+                <i class="fas fa-clipboard-check" style="color:#4ade80;"></i>
+                <span>Daily Summaries — My Clients</span>
+                <span id="summaries-count-pill" class="count-pill"></span>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <input type="date" id="summaries-date-input" onchange="loadTraderSummaries()"
+                    style="background:rgba(1,3,10,0.7);border:1px solid #1e3060;color:#e8eeff;padding:5px 8px;border-radius:7px;font-size:0.75rem;font-family:'IBM Plex Mono',monospace;outline:none;" />
+                <button onclick="loadTraderSummaries()" title="Refresh"
+                    style="background:rgba(59,99,196,0.18);border:1px solid rgba(59,99,196,0.4);color:#93c5fd;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:0.75rem;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;">
+                    <i class="fas fa-rotate-right"></i>
+                </button>
+                <button class="tab-panel-close" onclick="toggleTraderPanel('summaries', true)">
+                    <i class="fas fa-xmark"></i> Close
+                </button>
+            </div>
+        </div>
+        <div id="summaries-panel-body" style="max-height:520px;overflow-y:auto;">
+            <div style="text-align:center;padding:50px;color:#64748b;">
+                <i class="fas fa-circle-notch fa-spin" style="font-size:1.4rem;color:#4ade80;display:block;margin-bottom:10px;"></i>
+                Loading summary status…
+            </div>
+        </div>
+    </div>
 
     <!-- PAGE HEADER -->
     <div style="margin-bottom:24px;">
@@ -385,6 +562,219 @@
                     <p style="color:var(--text-secondary);font-size:0.9rem;">Failed to load client list. Please refresh the page.</p>
                 </div>`;
         });
+
+    // ── Tab panels: Issues / Summaries ─────────────────────────────────
+    const _traderTabState = { issues: { loaded: false }, summaries: { loaded: false } };
+
+    function toggleTraderPanel(which, forceClose) {
+        const otherKey = which === 'issues' ? 'summaries' : 'issues';
+        const panel = document.getElementById(`${which}-panel`);
+        const btn = document.getElementById(`${which}-tab-btn`);
+        const otherPanel = document.getElementById(`${otherKey}-panel`);
+        const otherBtn = document.getElementById(`${otherKey}-tab-btn`);
+        const shouldOpen = !forceClose && panel.style.display !== 'block';
+
+        // Close the other panel so only one is visible at a time
+        otherPanel.style.display = 'none';
+        otherBtn.classList.remove('active');
+
+        panel.style.display = shouldOpen ? 'block' : 'none';
+        btn.classList.toggle('active', shouldOpen);
+
+        if (shouldOpen) {
+            if (which === 'issues') {
+                if (!_traderTabState.issues.loaded) loadTraderIssues();
+            } else {
+                if (!_traderTabState.summaries.loaded) {
+                    const input = document.getElementById('summaries-date-input');
+                    if (input && !input.value) {
+                        const d = new Date();
+                        input.value = d.toISOString().slice(0, 10);
+                    }
+                    loadTraderSummaries();
+                }
+            }
+        }
+    }
+
+    function _issueBadgeClass(count) {
+        if (!count) return 'none';
+        if (count <= 3) return 'few';
+        return 'many';
+    }
+
+    async function loadTraderIssues() {
+        const body = document.getElementById('issues-panel-body');
+        body.innerHTML = `<div style="text-align:center;padding:50px;color:#64748b;">
+            <i class="fas fa-circle-notch fa-spin" style="font-size:1.4rem;color:#f97316;display:block;margin-bottom:10px;"></i>
+            Loading issues…
+        </div>`;
+        try {
+            const url = `/api/quality/trader_issues?trader=${encodeURIComponent(traderName)}`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.status !== 'success') {
+                body.innerHTML = `<div style="text-align:center;padding:40px;color:#f87171;">${data.message || 'Failed to load issues'}</div>`;
+                return;
+            }
+            _traderTabState.issues.loaded = true;
+
+            // Update navbar badge (total issue count)
+            const navBadge = document.getElementById('issues-nav-badge');
+            if (data.total_issues > 0) {
+                navBadge.textContent = data.total_issues;
+                navBadge.style.display = 'inline-block';
+            } else {
+                navBadge.style.display = 'none';
+            }
+
+            // Update pill in header
+            const pill = document.getElementById('issues-count-pill');
+            pill.textContent = `${data.clients_with_issues} of ${data.total_clients} with issues`;
+            pill.style.background = data.clients_with_issues > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(74,222,128,0.15)';
+            pill.style.color = data.clients_with_issues > 0 ? '#fca5a5' : '#4ade80';
+            pill.style.borderColor = data.clients_with_issues > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(74,222,128,0.35)';
+
+            const rows = (data.results || []).map(r => {
+                const count = r.total_issues || 0;
+                const badgeClass = _issueBadgeClass(count);
+                const icon = count === 0
+                    ? `<i class="fas fa-circle-check status-icon-sent" title="No issues"></i>`
+                    : `<i class="fas fa-circle-xmark" style="color:#f87171;font-size:1.05rem;" title="${count} issue${count !== 1 ? 's' : ''}"></i>`;
+                const link = `/dashboard/${encodeURIComponent(r.client_id)}`;
+                return `<div class="issues-row">
+                    <div>${icon}</div>
+                    <div>
+                        <a href="${link}" class="client-link">${r.client_id}</a>
+                        ${r.scan_date ? `<div class="meta" style="font-size:0.7rem;color:#64748b;margin-top:2px;">last scan: ${r.scan_date}</div>` : ''}
+                    </div>
+                    <div>
+                        <span class="issue-count-badge ${badgeClass}">
+                            <i class="fas ${count === 0 ? 'fa-check' : 'fa-triangle-exclamation'}"></i>
+                            ${count} ${count === 1 ? 'issue' : 'issues'}
+                        </span>
+                    </div>
+                </div>`;
+            }).join('');
+
+            body.innerHTML = rows || `<div style="text-align:center;padding:40px;color:#64748b;">
+                No clients found under ${traderName}.
+            </div>`;
+        } catch (e) {
+            body.innerHTML = `<div style="text-align:center;padding:40px;color:#f87171;">Connection error: ${e.message}</div>`;
+        }
+    }
+
+    async function loadTraderSummaries() {
+        const body = document.getElementById('summaries-panel-body');
+        const dateInput = document.getElementById('summaries-date-input');
+        const date = dateInput && dateInput.value ? dateInput.value : new Date().toISOString().slice(0, 10);
+        body.innerHTML = `<div style="text-align:center;padding:50px;color:#64748b;">
+            <i class="fas fa-circle-notch fa-spin" style="font-size:1.4rem;color:#4ade80;display:block;margin-bottom:10px;"></i>
+            Loading summary status…
+        </div>`;
+        try {
+            const url = `/api/quality/trader_summary_status?trader=${encodeURIComponent(traderName)}&date=${encodeURIComponent(date)}`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.status !== 'success') {
+                body.innerHTML = `<div style="text-align:center;padding:40px;color:#f87171;">${data.message || 'Failed to load summaries'}</div>`;
+                return;
+            }
+            _traderTabState.summaries.loaded = true;
+
+            // Navbar badge shows number not sent yet
+            const navBadge = document.getElementById('summaries-nav-badge');
+            const missing = data.total_not_sent || 0;
+            if (missing > 0) {
+                navBadge.textContent = missing;
+                navBadge.style.background = '#f97316';
+                navBadge.style.display = 'inline-block';
+            } else if (data.total_clients > 0) {
+                navBadge.textContent = '✓';
+                navBadge.style.background = '#16a34a';
+                navBadge.style.display = 'inline-block';
+            } else {
+                navBadge.style.display = 'none';
+            }
+
+            // Pill
+            const pill = document.getElementById('summaries-count-pill');
+            pill.textContent = `${data.total_sent} of ${data.total_clients} sent`;
+            const allSent = data.total_clients > 0 && data.total_not_sent === 0;
+            pill.style.background = allSent ? 'rgba(74,222,128,0.15)' : 'rgba(249,115,22,0.15)';
+            pill.style.color = allSent ? '#4ade80' : '#fb923c';
+            pill.style.borderColor = allSent ? 'rgba(74,222,128,0.35)' : 'rgba(249,115,22,0.35)';
+
+            if (data.trader_excluded) {
+                body.innerHTML = `<div style="padding:30px 20px;text-align:center;color:#fbbf24;font-size:0.88rem;">
+                    <i class="fas fa-circle-info" style="margin-right:6px;"></i>
+                    This trader is excluded from the daily summary tracker.
+                </div>`;
+                return;
+            }
+
+            const rows = (data.clients || []).map(c => {
+                const icon = c.sent
+                    ? `<i class="fas fa-circle-check status-icon-sent" title="Sent"></i>`
+                    : `<i class="far fa-circle status-icon-missing" title="Not sent yet"></i>`;
+                const link = `/dashboard/${encodeURIComponent(c.client_id)}`;
+                let metaHtml = '';
+                if (c.sent) {
+                    const ts = c.submitted_at ? new Date(c.submitted_at).toLocaleString() : '';
+                    metaHtml = `<div class="meta" style="margin-top:2px;">sent${c.submitted_by ? ' by ' + c.submitted_by : ''}${ts ? ' • ' + ts : ''}</div>`;
+                }
+                const statusBadge = c.sent
+                    ? `<span class="issue-count-badge none"><i class="fas fa-check"></i> Sent</span>`
+                    : `<span class="issue-count-badge few" style="background:rgba(148,163,184,0.12);color:#94a3b8;border-color:rgba(148,163,184,0.3);"><i class="far fa-circle"></i> Pending</span>`;
+                return `<div class="summary-row">
+                    <div>${icon}</div>
+                    <div>
+                        <a href="${link}" class="client-link">${c.client_id}</a>
+                        ${metaHtml}
+                    </div>
+                    <div>${statusBadge}</div>
+                </div>`;
+            }).join('');
+
+            body.innerHTML = rows || `<div style="text-align:center;padding:40px;color:#64748b;">
+                No active clients under ${traderName} to track.
+            </div>`;
+        } catch (e) {
+            body.innerHTML = `<div style="text-align:center;padding:40px;color:#f87171;">Connection error: ${e.message}</div>`;
+        }
+    }
+
+    // Pre-load the navbar badges so the trader sees counts without opening the panels
+    (function prewarmTraderBadges() {
+        fetch(`/api/quality/trader_issues?trader=${encodeURIComponent(traderName)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status !== 'success') return;
+                const navBadge = document.getElementById('issues-nav-badge');
+                if (data.total_issues > 0) {
+                    navBadge.textContent = data.total_issues;
+                    navBadge.style.display = 'inline-block';
+                }
+            }).catch(() => {});
+        const today = new Date().toISOString().slice(0, 10);
+        fetch(`/api/quality/trader_summary_status?trader=${encodeURIComponent(traderName)}&date=${today}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.status !== 'success') return;
+                const navBadge = document.getElementById('summaries-nav-badge');
+                const missing = data.total_not_sent || 0;
+                if (missing > 0) {
+                    navBadge.textContent = missing;
+                    navBadge.style.background = '#f97316';
+                    navBadge.style.display = 'inline-block';
+                } else if (data.total_clients > 0) {
+                    navBadge.textContent = '\u2713';
+                    navBadge.style.background = '#16a34a';
+                    navBadge.style.display = 'inline-block';
+                }
+            }).catch(() => {});
+    })();
 
     async function copyClientEmail(event, el, email) {
         event.preventDefault();
