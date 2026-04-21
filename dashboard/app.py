@@ -6165,10 +6165,20 @@ def run_quality_scan(target_client=None):
                     weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
                                 'mon', 'tue', 'wed', 'thu', 'fri',
                                 'tues', 'weds', 'thurs'}
+                    # A day cell counts as valid if it either contains a weekday
+                    # name OR has a note attached (note is treated as an explicit
+                    # explanation / override for that cell).
+                    _cell_notes = ev.get('_notes') or {}
+                    if not isinstance(_cell_notes, dict):
+                        _cell_notes = {}
                     has_weekday = False
                     for col in _day_columns:
                         s = str(ev.get(col) or '').strip().lower()
                         if any(wd in s for wd in weekdays):
+                            has_weekday = True
+                            break
+                        note_val = _cell_notes.get(col)
+                        if note_val and str(note_val).strip():
                             has_weekday = True
                             break
                     if not has_weekday:
