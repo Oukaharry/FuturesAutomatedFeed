@@ -200,6 +200,11 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
+# In-memory cache for Google Sheet Stats-tab fetches.
+# Avoids a blocking external HTTP call on every push (TTL = 5 minutes per sheet URL).
+_stats_tab_cache = {}   # {sheet_url: (fetched_at_epoch, push_xlsx_notes)}
+_STATS_TAB_TTL = 300    # seconds
+
 # Initialize Hierarchy from Config
 hierarchy = SYSTEM_HIERARCHY
 
@@ -3408,17 +3413,26 @@ def api_client_push():
             
             # Fetch Stats tab values from Google Sheet so the SUMIF stats
             # use formula-precision values instead of CSV-rounded values.
+            # Cached per sheet_url with a 5-minute TTL to avoid blocking on every push.
             push_xlsx_notes = None
             if push_sheet_url:
-                try:
-                    from utils.data_processor import fetch_evaluations as _fe
-                    _result = _fe(push_sheet_url)
-                    if isinstance(_result, tuple) and len(_result) == 2:
-                        _, push_xlsx_notes = _result
-                        if push_xlsx_notes and '__stats_tab__' in push_xlsx_notes:
-                            app.logger.info(f"📊 Stats tab override loaded from sheet")
-                except Exception as _e:
-                    app.logger.warning(f"Stats tab fetch failed (non-critical): {_e}")
+                import time as _time
+                _now = _time.time()
+                _cached = _stats_tab_cache.get(push_sheet_url)
+                if _cached and (_now - _cached[0]) < _STATS_TAB_TTL:
+                    push_xlsx_notes = _cached[1]
+                    app.logger.info(f"📊 Stats tab served from cache (age {int(_now - _cached[0])}s)")
+                else:
+                    try:
+                        from utils.data_processor import fetch_evaluations as _fe
+                        _result = _fe(push_sheet_url)
+                        if isinstance(_result, tuple) and len(_result) == 2:
+                            _, push_xlsx_notes = _result
+                            _stats_tab_cache[push_sheet_url] = (_now, push_xlsx_notes)
+                            if push_xlsx_notes and '__stats_tab__' in push_xlsx_notes:
+                                app.logger.info(f"📊 Stats tab fetched from sheet and cached")
+                    except Exception as _e:
+                        app.logger.warning(f"Stats tab fetch failed (non-critical): {_e}")
             
             statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param, xlsx_notes=push_xlsx_notes,
                                               historical_accounts=existing_data.get('statistics', {}).get('hedging_review', {}).get('historical_accounts'))

@@ -2406,47 +2406,89 @@ class TradeOpssAIApp:
             messagebox.showerror("Error", "Client lookup failed - no client name found")
             return
         
+        # Guard checks passed — disable the button and run everything in a background thread
+        # so the UI stays responsive during MT5 calls and the HTTP round-trip.
+        if hasattr(self, 'push_btn_live') and self.push_btn_live:
+            try:
+                self.push_btn_live.configure(state="disabled")
+            except Exception:
+                pass
         self.log(f"📤 Pushing {client_name}...")
         self.status_var.set("Pushing data...")
-        
-        # Get MT5 data — only last trading day for deals
+
+        def _do_push():
+            self._push_data_worker(dashboard_url, email, client_name)
+            if hasattr(self, 'push_btn_live') and self.push_btn_live:
+                try:
+                    self.root.after(0, lambda: self.push_btn_live.configure(state="normal"))
+                except Exception:
+                    pass
+
+        threading.Thread(target=_do_push, daemon=True).start()
+
+    # Per-login cache for the 365-day farming history:
+    #   { login_key: (fetched_at_epoch, [deals]) }
+    # TTL is 5 minutes — auto-push fires frequently so we avoid re-scanning MT5 history
+    # on every tick.  Only the last-24h slice is always fetched fresh.
+    _FA_HISTORY_CACHE_TTL = 300  # seconds
+
+    def _push_data_worker(self, dashboard_url, email, client_name):
+        """Heavy push work — runs on a background thread."""
+        def _log(msg, level="INFO"):
+            self.root.after(0, lambda m=msg, lv=level: self.log(m, lv))
+        def _status(msg):
+            self.root.after(0, lambda m=msg: self.status_var.set(m))
+
         account = self.pusher.get_account_info()
         if not account:
-            self.log("⚠️ MT5 account info returned empty — pushing with no account data", "ERROR")
+            _log("⚠️ MT5 account info returned empty — pushing with no account data", "ERROR")
             account = {}
         positions = self.pusher.get_positions()
         if positions is None:
-            self.log("⚠️ MT5 positions returned None — sending empty list")
+            _log("⚠️ MT5 positions returned None — sending empty list")
             positions = []
 
-        # Deals for stats/payload stay on the last trading day.
-        self.log(f"📅 Fetching deals for last trading day only")
-        raw_deals = self.pusher.get_deals(days=1)
-        if raw_deals is None:
-            self.log(f"⚠️ MT5 deals returned None — MT5 may be disconnected")
-            raw_deals = []
-        aggregation_raw_deals = list(raw_deals)
+        # Always fetch the last 24 h fresh (fast — small result set).
+        _today_cutoff = time.time() - 86400
+        raw_deals = self.pusher.get_deals(days=1) or []
 
-        # Farming needs historical FA days to determine the correct Hedge Day number.
-        # Merge those into the local aggregation input only, not the main payload.
-        try:
-            full_history_deals = self.pusher.get_deals(days=365) or []
-            existing_ids = {d.get('ticket') or d.get('order') for d in aggregation_raw_deals}
-            merged_fa = 0
-            for deal in full_history_deals:
-                comment_upper = str(deal.get('comment', '')).upper()
-                if '_FA' not in comment_upper:
-                    continue
-                deal_id = deal.get('ticket') or deal.get('order')
-                if deal_id in existing_ids:
-                    continue
-                aggregation_raw_deals.append(deal)
-                existing_ids.add(deal_id)
-                merged_fa += 1
-            if merged_fa:
-                self.log(f"🌾 Added {merged_fa} farming history deal(s) to local aggregation")
-        except Exception as merge_err:
-            self.log(f"⚠️ Could not merge farming history: {merge_err}", "WARN")
+        # For farming aggregation we need 365-day history.
+        # Cache it per MT5 login with a 5-minute TTL so repeated auto-push calls are fast.
+        _login_key = str(account.get('login', 'unknown'))
+        if not hasattr(self, '_fa_history_cache'):
+            self._fa_history_cache = {}
+
+        _cached = self._fa_history_cache.get(_login_key)
+        _now = time.time()
+
+        if _cached and (_now - _cached[0]) < self._FA_HISTORY_CACHE_TTL:
+            _log(f"📦 Using cached FA history ({int(_now - _cached[0])}s old)")
+            _cached_deals = _cached[1]
+        else:
+            _log(f"📅 Fetching 90-day FA history (cache miss or expired)")
+            _full = self.pusher.get_deals(days=90) or []
+            # Store only the deals older than today's cutoff to keep cache lean.
+            _cached_deals = [d for d in _full if d.get('time_raw', 0) < _today_cutoff]
+            self._fa_history_cache[_login_key] = (_now, _cached_deals)
+
+        # Merge: fresh last-24h + cached history gives the full aggregation input.
+        _raw_deal_ids = {d.get('ticket') for d in raw_deals}
+        all_history_deals = list(raw_deals) + [d for d in _cached_deals if d.get('ticket') not in _raw_deal_ids]
+
+        # Derive last-trading-day deals — already fetched above as raw_deals.
+        # Fall back to the most-recent day if there were no deals in the last 24 h.
+        if not raw_deals and all_history_deals:
+            _max_ts = max(d.get('time_raw', 0) for d in all_history_deals)
+            _day_start = _max_ts - 86400
+            raw_deals = [d for d in all_history_deals if d.get('time_raw', 0) >= _day_start]
+
+        # Mark history-only FA deals so the filter can skip re-parsing them.
+        aggregation_raw_deals = list(all_history_deals)
+        for _d in aggregation_raw_deals:
+            if _d.get('ticket') not in _raw_deal_ids:
+                c_up = str(_d.get('comment', '')).upper()
+                if '_FA' in c_up:
+                    _d['_fa_history_only'] = True
 
         # FNFT challenge filter: challenge accounts reuse the same account numbers
         # across resets, so only keep last 24h of deals with _CH in the comment.
@@ -2460,44 +2502,36 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
-        if is_fnft and raw_deals:
+        if is_fnft:
             _24h_ago = time.time() - 86400
-            before_count = len(raw_deals)
-            filtered = []
-            for d in raw_deals:
-                comment_upper = str(d.get('comment', '')).upper()
-                # Challenge deals: only keep last 24h
-                if '_CH' in comment_upper:
-                    deal_ts = d.get('time_raw', 0)
-                    if deal_ts and deal_ts >= _24h_ago:
-                        filtered.append(d)
-                    # else: skip old challenge deal
-                else:
-                    filtered.append(d)
-            dropped = before_count - len(filtered)
-            if dropped:
-                self.log(f"🔻 Filtered {dropped} old FNFT challenge deal(s) (>24h)")
-            raw_deals = filtered
-
-        if is_fnft and aggregation_raw_deals:
-            _24h_ago = time.time() - 86400
-            filtered = []
-            for d in aggregation_raw_deals:
-                comment_upper = str(d.get('comment', '')).upper()
-                if '_CH' in comment_upper:
-                    deal_ts = d.get('time_raw', 0)
-                    if deal_ts and deal_ts >= _24h_ago:
-                        filtered.append(d)
-                else:
-                    filtered.append(d)
-            aggregation_raw_deals = filtered
+            if raw_deals:
+                before_count = len(raw_deals)
+                raw_deals = [
+                    d for d in raw_deals
+                    if '_CH' not in str(d.get('comment', '')).upper()
+                    or d.get('time_raw', 0) >= _24h_ago
+                ]
+                dropped = before_count - len(raw_deals)
+                if dropped:
+                    _log(f"🔻 Filtered {dropped} old FNFT challenge deal(s) (>24h)")
+            if aggregation_raw_deals:
+                aggregation_raw_deals = [
+                    d for d in aggregation_raw_deals
+                    if '_CH' not in str(d.get('comment', '')).upper()
+                    or d.get('time_raw', 0) >= _24h_ago
+                ]
         
-        # Filter deals: keep balance operations and trades with valid comments.
-        def _filter_valid_push_deals(source_deals):
+        # Filter deals: keep balance ops and trades with valid comments.
+        # FA-history-only deals are pre-validated (added because comment has _FA) — skip re-parse.
+        def _filter_valid_push_deals(source_deals, skip_fa_reparse=False):
             filtered = []
             for deal in source_deals or []:
                 d_type = str(deal.get('type', '')).upper()
                 if d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']:
+                    filtered.append(deal)
+                    continue
+
+                if skip_fa_reparse and deal.get('_fa_history_only'):
                     filtered.append(deal)
                     continue
 
@@ -2516,10 +2550,10 @@ class TradeOpssAIApp:
             return filtered
 
         deals = _filter_valid_push_deals(raw_deals)
-        aggregation_deals = _filter_valid_push_deals(aggregation_raw_deals)
+        aggregation_deals = _filter_valid_push_deals(aggregation_raw_deals, skip_fa_reparse=True)
 
         if len(deals) < len(raw_deals):
-            self.log(f"Filtered {len(raw_deals) - len(deals)} deals with invalid comments")
+            _log(f"Filtered {len(raw_deals) - len(deals)} deals with invalid comments")
 
         statistics = self.pusher.calculate_statistics(deals)
         
@@ -2575,7 +2609,7 @@ class TradeOpssAIApp:
                 latest_agg['_fa_slot'] = slot
                 latest_agg['field_name'] = f"Hedge Day {slot}"
                 latest_fa_aggregates.append(latest_agg)
-                self.log(f"📅 {account_key}: {slot} FA day(s) locally → Hedge Day {slot} ({latest_day_key})")
+                _log(f"📅 {account_key}: {slot} FA day(s) locally → Hedge Day {slot} ({latest_day_key})")
 
             aggregated_by_comment = non_fa_aggregates + latest_fa_aggregates
             by_phase = {}
@@ -2598,16 +2632,16 @@ class TradeOpssAIApp:
                 if mnq_data:
                     tradovate_farming_days.extend(mnq_data)
                     total_days = sum(len(a['mnq_daily_pnl']) for a in mnq_data)
-                    self.log(f"🌾 {firm_name}: {total_days} MNQ farming day(s) found")
+                    _log(f"🌾 {firm_name}: {total_days} MNQ farming day(s) found")
             except Exception as e:
-                self.log(f"⚠ {firm_name}: Could not fetch MNQ daily P&L: {e}", "WARN")
+                _log(f"⚠ {firm_name}: Could not fetch MNQ daily P&L: {e}", "WARN")
 
         # Pre-push diagnostic: log what we're about to send
         pos_count = len(positions) if positions else 0
         deal_count = len(deals) if deals else 0
         agg_count = len(aggregated_by_comment) if aggregated_by_comment else 0
         bal = account.get('balance', 0)
-        self.log(f"📦 Payload: Bal=${bal:,.0f} | {deal_count} deals | {pos_count} pos | {agg_count} hedge groups")
+        _log(f"📦 Payload: Bal=${bal:,.0f} | {deal_count} deals | {pos_count} pos | {agg_count} hedge groups")
         
         payload = {
             "email": email,
@@ -2636,66 +2670,59 @@ class TradeOpssAIApp:
                 try:
                     data = response.json()
                 except ValueError:
-                    self.log("❌ Server returned invalid JSON (not JSON response)", "ERROR")
-                    self.status_var.set("Push failed - bad response")
+                    _log("❌ Server returned invalid JSON (not JSON response)", "ERROR")
+                    _status("Push failed - bad response")
                     return
                 if data.get("status") == "success":
-                    # Compact push summary
                     bal = account.get('balance', 0)
                     dep = account.get('total_deposits', 0)
-                    pos_count = len(positions) if positions else 0
-                    deal_count = len(deals) if deals else 0
-                    agg_count = len(aggregated_by_comment) if aggregated_by_comment else 0
-                    self.log(f"✅ Push OK → Bal: ${bal:,.0f} | Dep: ${dep:,.0f} | {deal_count} deals | {pos_count} pos | {agg_count} hedge groups")
-
-                    # Surface server cell-level hedge updates
                     hedge_log = data.get("hedge_match_log", [])
                     hedge_updates = data.get("hedge_updates", 0)
-                    if hedge_log:
-                        for entry in hedge_log:
-                            if entry.startswith("✅"):
-                                self.log(f"  {entry}", "INFO")
-                            elif entry.startswith("⚠") or entry.startswith("🌾"):
-                                self.log(f"  {entry}", "INFO")
-                        if hedge_updates:
-                            self.log(f"📊 {hedge_updates} hedge cell(s) updated on dashboard")
-
-                    self.status_var.set("Ready - Data pushed!")
+                    _log(f"✅ Push OK → Bal: ${bal:,.0f} | Dep: ${dep:,.0f} | {len(deals)} deals | {pos_count} pos | {agg_count} hedge groups")
+                    for entry in hedge_log:
+                        if entry.startswith("✅") or entry.startswith("⚠") or entry.startswith("🌾"):
+                            _log(f"  {entry}", "INFO")
+                    if hedge_updates:
+                        _log(f"📊 {hedge_updates} hedge cell(s) updated on dashboard")
+                    _status("Ready - Data pushed!")
                     try:
-                        self._stat_push_var.set(f"Push: ✔ {hedge_updates}")
+                        self.root.after(0, lambda hu=hedge_updates: self._stat_push_var.set(f"Push: ✔ {hu}"))
                     except Exception:
                         pass
-                    # Hedging review moved to always run (after try/except)
                 else:
-                    self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
-                    self.status_var.set("Push failed")
+                    _log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
+                    _status("Push failed")
             else:
                 error_msg = f"HTTP {response.status_code}"
                 try:
                     error_msg = response.json().get("message", error_msg)
-                except:
+                except Exception:
                     pass
-                self.log(f"❌ Push failed: {error_msg}", "ERROR")
-                self.status_var.set("Push failed")
-                
+                _log(f"❌ Push failed: {error_msg}", "ERROR")
+                _status("Push failed")
+
         except requests.exceptions.Timeout:
-            self.log("❌ Push timeout — server did not respond within 120s", "ERROR")
-            self.status_var.set("Push failed - timeout")
+            _log("❌ Push timeout — server did not respond within 120s", "ERROR")
+            _status("Push failed - timeout")
         except requests.exceptions.ConnectionError:
-            self.log("❌ Push failed — cannot connect to server", "ERROR")
-            self.status_var.set("Push failed - no connection")
+            _log("❌ Push failed — cannot connect to server", "ERROR")
+            _status("Push failed - no connection")
         except Exception as e:
-            self.log(f"❌ Push error: {e}", "ERROR")
-            self.status_var.set("Push failed")
-        
-        # Always push hedging review data (deposits/withdrawals/balance) regardless of push outcome
+            _log(f"❌ Push error: {e}", "ERROR")
+            _status("Push failed")
+
+        # Run hedging review in the background — uses account data already in hand, no second MT5 call.
         try:
-            self.push_hedging_review()
+            threading.Thread(
+                target=self._push_hedging_review_worker,
+                args=(dashboard_url, email, account),
+                daemon=True
+            ).start()
         except Exception as hr_err:
-            self.log(f"⚠️ Hedging review failed: {hr_err}", "ERROR")
+            _log(f"⚠️ Hedging review thread failed to start: {hr_err}", "ERROR")
 
     def push_hedging_review(self):
-        """Push ONLY Live Hedging Review data (deposits, withdrawals, balance) from MT5."""
+        """Push hedging review data — called from toolbar button (fetches own account info)."""
         dashboard_url = self.url_entry.get().strip().rstrip('/')
         email = self.client_email_entry.get().strip()
 
@@ -2707,20 +2734,31 @@ class TradeOpssAIApp:
             messagebox.showerror("Error", "Please connect to MT5 first")
             return
 
-        client_name = self.client_info.get('client', '')
         self.status_var.set("Pushing hedging review...")
-
         account = self.pusher.get_account_info()
         if not account:
             self.log("⚠️ Hedging review skipped — MT5 account info is empty", "ERROR")
             self.status_var.set("Hedging review skipped")
             return
 
+        threading.Thread(
+            target=self._push_hedging_review_worker,
+            args=(dashboard_url, email, account),
+            daemon=True
+        ).start()
+
+    def _push_hedging_review_worker(self, dashboard_url, email, account):
+        """Send hedging review payload — runs on a background thread, reuses supplied account dict."""
+        def _log(msg, level="INFO"):
+            self.root.after(0, lambda m=msg, lv=level: self.log(m, lv))
+        def _status(msg):
+            self.root.after(0, lambda m=msg: self.status_var.set(m))
+
         deposits = float(account.get('total_deposits', 0) or 0)
         withdrawals = float(account.get('total_withdrawals', 0) or 0)
         balance = float(account.get('balance', 0) or 0)
 
-        self.log(f"📊 HR payload: Dep=${deposits:,.0f} | Wth=${withdrawals:,.0f} | Bal=${balance:,.0f}")
+        _log(f"📊 HR payload: Dep=${deposits:,.0f} | Wth=${withdrawals:,.0f} | Bal=${balance:,.0f}")
 
         payload = {
             "email": email,
@@ -2741,36 +2779,36 @@ class TradeOpssAIApp:
                 try:
                     data = response.json()
                 except ValueError:
-                    self.log("❌ Hedging review: server returned invalid JSON", "ERROR")
-                    self.status_var.set("HR failed - bad response")
+                    _log("❌ Hedging review: server returned invalid JSON", "ERROR")
+                    _status("HR failed - bad response")
                     return
                 if data.get("status") == "success":
                     hr = data.get("hedging_review") or {}
                     actual = hr.get('actual_hedging_results', 0)
                     disc = hr.get('discrepancy', 0)
-                    self.log(f"📊 Hedging Review → Actual: ${actual:,.2f} | Disc: ${disc:,.2f} | Bal: ${balance:,.0f}")
-                    self.status_var.set("Ready - Hedging review pushed!")
+                    _log(f"📊 Hedging Review → Actual: ${actual:,.2f} | Disc: ${disc:,.2f} | Bal: ${balance:,.0f}")
+                    _status("Ready - Hedging review pushed!")
                 else:
-                    self.log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
-                    self.status_var.set("Push failed")
+                    _log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
+                    _status("Push failed")
             else:
                 error_msg = f"HTTP {response.status_code}"
                 try:
                     error_msg = response.json().get("message", error_msg)
-                except:
+                except Exception:
                     pass
-                self.log(f"❌ Push failed: {error_msg}", "ERROR")
-                self.status_var.set("Push failed")
+                _log(f"❌ Push failed: {error_msg}", "ERROR")
+                _status("Push failed")
 
         except requests.exceptions.Timeout:
-            self.log("❌ Hedging review timeout", "ERROR")
-            self.status_var.set("HR timeout")
+            _log("❌ Hedging review timeout", "ERROR")
+            _status("HR timeout")
         except requests.exceptions.ConnectionError:
-            self.log("❌ Hedging review — cannot connect", "ERROR")
-            self.status_var.set("HR connection failed")
+            _log("❌ Hedging review — cannot connect", "ERROR")
+            _status("HR connection failed")
         except Exception as e:
-            self.log(f"❌ Hedging review error: {e}", "ERROR")
-            self.status_var.set("Push failed")
+            _log(f"❌ Hedging review error: {e}", "ERROR")
+            _status("Push failed")
 
     def push_mt5_only(self):
         """Push ONLY MT5 data (deals, positions, account) to recalculate hedging review."""
