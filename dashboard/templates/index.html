@@ -4693,15 +4693,16 @@
                             }
                         };
                         const rnd2 = (x) => Math.round((Number(x) || 0) * 100) / 100;
+                        // Sheet (Evaluations tab) formulas being mirrored:
+                        //   Hedging Results  = SUM(J:N) + SUM(U:AA)
+                        //                    = P1 hedges (HR 1..5) + ALL funded hedges (HR 1.1..5.1 + HR 6..7)
+                        //   Farming Results  = SUM(AM:AM, AO:AO, AQ:AQ, ... DA:DA)
+                        //                    = Hedge Day 1..N only (no Hedge Result 6/7, no Farming Net override)
                         const P1_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5'];
-                        const FD_CORE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1'];
-                        const FARM_HR_COLS = ['Hedge Result 6', 'Hedge Result 7'];
-                        const farmingNetCellSet = (ev) => {
-                            const raw = ev['Farming Net'];
-                            if (raw === undefined || raw === null) return false;
-                            const s = String(raw).trim();
-                            return s !== '' && s !== '-';
-                        };
+                        const FUNDED_COLS = [
+                            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
+                            'Hedge Result 6', 'Hedge Result 7'
+                        ];
                         const statusHas = (low, keys) => keys.some((k) => low.includes(k));
 
                         let cfPay = 0, cfFees = 0, cfHedge = 0, cfFarm = 0;
@@ -4724,8 +4725,7 @@
                             const is_funded_ended = is_funded_fail || is_funded_completed;
 
                             const p1Hedges = rnd2(P1_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
-                            const fundedCore = rnd2(FD_CORE_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
-                            const farmingHr = rnd2(FARM_HR_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
+                            const fundedHedges = rnd2(FUNDED_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
                             let hedgeDays = 0;
                             for (let di = 1; di <= 50; di++) hedgeDays += pcN(ev['Hedge Day ' + di]);
                             hedgeDays = rnd2(hedgeDays);
@@ -4737,10 +4737,8 @@
 
                             // --- Cashflow in progress (API key name): every non-deleted account, active or ended ---
                             if (!is_deleted) {
-                                // In Progress = whole client view: include ALL raw hedge/farming values present on the row,
-                                // regardless of whether Status cells are filled (status blanks were causing dropped values).
-                                const row_hedging = rnd2(p1Hedges + fundedCore);
-                                const row_farming = farmingNetCellSet(ev) ? rnd2(pcN(ev['Farming Net'])) : rnd2(farmingHr + hedgeDays);
+                                const row_hedging = rnd2(p1Hedges + fundedHedges);
+                                const row_farming = hedgeDays; // pure sum of Hedge Day cols — matches sheet
                                 cfFees = rnd2(cfFees + fee + activation_fee);
                                 cfHedge = rnd2(cfHedge + row_hedging);
                                 cfFarm = rnd2(cfFarm + row_farming);
@@ -4754,12 +4752,14 @@
                                 pcFees = rnd2(pcFees + fee + activation_fee);
                             }
                             if (is_funded_ended) {
-                                pcHedge = rnd2(pcHedge + fundedCore + p1Hedges);
-                                pcFarm = rnd2(pcFarm + (farmingNetCellSet(ev) ? rnd2(pcN(ev['Farming Net'])) : rnd2(farmingHr + hedgeDays)));
+                                pcHedge = rnd2(pcHedge + fundedHedges + p1Hedges);
                             } else if (is_p1_fail) {
                                 pcHedge = rnd2(pcHedge + p1Hedges);
                             }
+                            // Farming Results Completed = SUMIFS(AM:DA, T:T, "Completed") — hedge days
+                            // only where Status = "Completed".
                             if (is_funded_completed) {
+                                pcFarm = rnd2(pcFarm + hedgeDays);
                                 pcPay = rnd2(pcPay + payouts);
                             }
                         });

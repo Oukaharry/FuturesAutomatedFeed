@@ -62,7 +62,9 @@ Sum of fees for accounts that have ended (Phase 1 failed OR Funded ended).
     Sum Fee where `Status P1 == "Fail"` OR `Status == "Fail"` OR `Status == "Completed"` (using OR logic, no double-counting)
 
 #### Hedging Results Completed
-Sum of all hedge results for ended accounts.
+Sum of all hedge results for ended accounts. Includes **all** of `U:AA`
+(i.e. `Hedge Result 1.1..5.1` **and** `Hedge Result 6..7`). `Hedge Result 6/7`
+belong to Hedging Results, never to Farming Results.
 
 *   **Excel Formula:**
     ```excel
@@ -70,15 +72,36 @@ Sum of all hedge results for ended accounts.
     ```
 *   **Parts:**
     - Part 1: P1 hedges (J-N) where Status P1 = "Fail"
-    - Part 2: Funded hedges (U-AA) where Status = "Fail" or "Completed"
+    - Part 2: Funded hedges (U-AA, incl. HR 6/7) where Status = "Fail" or "Completed"
     - Part 3: P1 hedges (J-N) where Status = "Fail" or "Completed"
+*   **Python Implementation (`utils/data_processor.py`):**
+    ```python
+    FUNDED_HEDGE_COLS = [
+        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+        'Hedge Result 4.1', 'Hedge Result 5.1',
+        'Hedge Result 6', 'Hedge Result 7',
+    ]
+    if is_funded_ended:
+        hedging_results += funded_hedges + p1_hedges  # all of U:AA + J:N
+    elif is_p1_fail:
+        hedging_results += p1_hedges
+    ```
 
 #### Farming Results Completed
-Sum of Hedge Day columns ONLY where Status = "Completed".
+Sum of Hedge Day columns ONLY where Status = "Completed". Does **not**
+include `Hedge Result 6/7` (those sit in Hedging Results) and ignores the
+`Farming Net` override column.
 
 *   **Excel Formula:**
     ```excel
     =SUMIFS(AM:DA, T:T, "Completed")  (alternating columns AM, AO, AQ... DA)
+    ```
+*   **Python Implementation (`utils/data_processor.py`):**
+    ```python
+    HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
+    hedge_days = sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS)
+    if is_funded_completed:
+        farming_results += hedge_days
     ```
 
 #### Payouts Completed
@@ -110,18 +133,35 @@ These sum ALL records without status filtering.
     Negative sum of ALL fees in the Fee column.
 
 #### Hedging Results In Progress
+Includes **all** of `U:AA` — i.e. `Hedge Result 1.1..5.1` plus `Hedge Result 6..7`.
+`Hedge Result 6/7` are part of Hedging Results, never Farming Results.
+
 *   **Excel Formula:**
     ```excel
     =SUM(Evaluations!J:N) + SUM(Evaluations!U:AA)
     ```
-    Sum of ALL hedge result columns (Phase 1 + Funded).
+    Sum of ALL hedge result columns (Phase 1 + Funded, incl. HR 6/7).
+*   **Python Implementation:**
+    ```python
+    hedging_results = p1_hedges + funded_hedges  # funded_hedges covers HR 1.1..5.1 + HR 6..7
+    ```
 
 #### Farming Results In Progress
+Pure sum of every `Hedge Day N` column. No `Hedge Result 6/7` added, no
+`Farming Net` override — exactly matches the Google Sheet formula.
+
 *   **Excel Formula:**
     ```excel
-    =SUM(Evaluations!AM:AM, AO:AO, AQ:AQ, ... DA:DA)
+    =SUM(Evaluations!AM:AM, AO:AO, AQ:AQ, AS:AS, AU:AU, AW:AW, AY:AY, BA:BA, BC:BC, BE:BE,
+         BG:BG, BI:BI, BK:BK, BM:BM, BO:BO, BQ:BQ, BS:BS, BU:BU, BW:BW, BY:BY, CA:CA, CC:CC,
+         CE:CE, CG:CG, CI:CI, CK:CK, CM:CM, CO:CO, CQ:CQ, CS:CS, CU:CU, CW:CW, CY:CY, DA:DA)
     ```
-    Sum of ALL Hedge Day columns (34 columns).
+    Sum of ALL Hedge Day columns (34 in the sheet today, code sums up to 50).
+*   **Python Implementation (`utils/data_processor.py`):**
+    ```python
+    HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
+    farming_results = sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS)
+    ```
 
 #### Payouts In Progress
 *   **Excel Formula:**
