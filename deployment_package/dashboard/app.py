@@ -3235,6 +3235,24 @@ def run_quality_scan(target_client=None):
                                'detail': f'{row_label}: Funded but no activation fee',
                                'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
+            # Alpha Futures always charges an activation fee when an account
+            # reaches funded stage, so any funded Alpha Futures row without
+            # one is almost certainly a data-entry miss (not an exempt firm).
+            # Funded stage = passed P1, OR any funded-phase field populated
+            # (Account #.1 / Date Started.1 / Date Ended.1 / Status).
+            if prop_firm.lower().replace(' ', '') in ('alphafutures',) and not activation:
+                _funded_marker = bool(
+                    status_p1 == 'pass'
+                    or acct_num2
+                    or str(ev.get('Date Started.1', '') or '').strip()
+                    or str(ev.get('Date Ended.1', '') or '').strip()
+                    or status_p2
+                )
+                if _funded_marker:
+                    issues.append({'check': 'Alpha Futures: missing Activation Fee', 'severity': 'high', 'row': idx,
+                                   'detail': f'{row_label}: Alpha Futures funded account has no Activation Fee',
+                                   'estimated_date': _estimate_issue_date(ev, 'Alpha Futures: missing Activation Fee', scan_date_str)})
+
             _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
             _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
             # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
@@ -3278,6 +3296,38 @@ def run_quality_scan(target_client=None):
                     issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
                                    'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
                                    'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
+
+            # Comma used as a decimal separator in Hedge Result / Hedge Day cells.
+            # We only care about European-style "1000,67" or "1,000,00" where
+            # a comma stands in for the decimal point — those silently break
+            # currency parsing (",67" gets stripped as a thousands separator
+            # and the .67 is lost).  Normal US thousand separators like
+            # "1,000.67" are LEGIT and must not be flagged, so a cell that
+            # contains a '.' is always accepted.
+            import re as _re
+            _comma_cols = []
+            for _col in ev.keys():
+                if not isinstance(_col, str):
+                    continue
+                if not (_col.startswith('Hedge Result') or _col.startswith('Hedge Day')):
+                    continue
+                _val = str(ev.get(_col) or '').strip()
+                if not _val or ',' not in _val:
+                    continue
+                _probe = _val.replace('$', '').strip()
+                if '.' in _probe:
+                    # '.' present → commas are thousand separators (US style). Legit.
+                    continue
+                # Flag only when the cell ends with exactly ",NN" (two digits) —
+                # i.e. the comma is acting as the decimal point.
+                if _re.search(r',\d{2}\s*$', _probe):
+                    _comma_cols.append(f'{_col}="{_val}"')
+            if _comma_cols:
+                _preview = '; '.join(_comma_cols[:3])
+                _suffix = '' if len(_comma_cols) <= 3 else f' (+{len(_comma_cols) - 3} more)'
+                issues.append({'check': 'Comma in hedge value', 'severity': 'low', 'row': idx,
+                               'detail': f'{row_label}: {_preview}{_suffix}',
+                               'estimated_date': _estimate_issue_date(ev, 'Comma in hedge value', scan_date_str)})
 
         hedge_accounts = data.get('hedge_accounts') or []
         prop_accounts = data.get('prop_accounts') or []
