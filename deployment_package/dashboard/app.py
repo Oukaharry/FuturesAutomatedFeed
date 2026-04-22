@@ -3235,6 +3235,24 @@ def run_quality_scan(target_client=None):
                                'detail': f'{row_label}: Funded but no activation fee',
                                'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
+            # Alpha Futures always charges an activation fee when an account
+            # reaches funded stage, so any funded Alpha Futures row without
+            # one is almost certainly a data-entry miss (not an exempt firm).
+            # Funded stage = passed P1, OR any funded-phase field populated
+            # (Account #.1 / Date Started.1 / Date Ended.1 / Status).
+            if prop_firm.lower().replace(' ', '') in ('alphafutures',) and not activation:
+                _funded_marker = bool(
+                    status_p1 == 'pass'
+                    or acct_num2
+                    or str(ev.get('Date Started.1', '') or '').strip()
+                    or str(ev.get('Date Ended.1', '') or '').strip()
+                    or status_p2
+                )
+                if _funded_marker:
+                    issues.append({'check': 'Alpha Futures: missing Activation Fee', 'severity': 'high', 'row': idx,
+                                   'detail': f'{row_label}: Alpha Futures funded account has no Activation Fee',
+                                   'estimated_date': _estimate_issue_date(ev, 'Alpha Futures: missing Activation Fee', scan_date_str)})
+
             _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
             _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
             # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
