@@ -1882,11 +1882,18 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         field_name = None
         
         if phase_code == 'FA':
-            # Special handling for Farming: Always overwrite sequentially from Day 1
-            # Get next slot for this evaluation
-            current_slot = fa_slot_tracker.get(eval_idx, 1)
-            field_name = f"Hedge Day {current_slot}"
-            fa_slot_tracker[eval_idx] = current_slot + 1
+            client_field_name = str(agg.get('field_name') or '').strip()
+            client_slot = agg.get('_fa_slot')
+
+            if client_field_name.startswith('Hedge Day '):
+                field_name = client_field_name
+            elif isinstance(client_slot, (int, float)) and client_slot > 0:
+                field_name = f"Hedge Day {int(client_slot)}"
+            else:
+                # Fallback for older clients that do not send a pre-computed Hedge Day.
+                current_slot = fa_slot_tracker.get(eval_idx, 1)
+                field_name = f"Hedge Day {current_slot}"
+                fa_slot_tracker[eval_idx] = current_slot + 1
         else:
             field_name = get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number)
         
@@ -3338,12 +3345,15 @@ def api_client_push():
     
     # Check for aggregated comment data (from Push by Comment feature) OR raw deals
     aggregated_by_comment = data.get("aggregated_by_comment", [])
+    prefer_client_aggregation = bool(data.get("prefer_client_aggregation"))
     comment_summary = data.get("comment_summary", {})
     tradovate_farming_days = data.get("tradovate_farming_days", [])
     hedge_match_log = []
     
     if aggregated_by_comment or mt5_deals:
         app.logger.info(f"📋 Received {len(aggregated_by_comment)} aggregated groups, {len(mt5_deals)} raw deals")
+        if prefer_client_aggregation:
+            app.logger.info("⚡ Preferring client-side aggregation for hedge matching")
         if tradovate_farming_days:
             app.logger.info(f"🌾 Received Tradovate farming data for {len(tradovate_farming_days)} account(s)")
         
@@ -3351,7 +3361,8 @@ def api_client_push():
         if evaluations:
             app.logger.info(f"🔄 Matching hedge results to evaluations...")
             evaluations, hedge_match_log, generated_sessions = update_evaluations_from_aggregated_data(
-                evaluations, aggregated_data=aggregated_by_comment, raw_deals=mt5_deals,
+                evaluations, aggregated_data=aggregated_by_comment,
+                raw_deals=None if prefer_client_aggregation else mt5_deals,
                 tradovate_farming_days=tradovate_farming_days)
             
             # If server-side aggregation occurred, use THAT instead of the client's.

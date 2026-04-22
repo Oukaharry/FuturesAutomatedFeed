@@ -2419,12 +2419,34 @@ class TradeOpssAIApp:
             self.log("⚠️ MT5 positions returned None — sending empty list")
             positions = []
 
-        # Deals: only last trading day (1 day)
+        # Deals for stats/payload stay on the last trading day.
         self.log(f"📅 Fetching deals for last trading day only")
         raw_deals = self.pusher.get_deals(days=1)
         if raw_deals is None:
             self.log(f"⚠️ MT5 deals returned None — MT5 may be disconnected")
             raw_deals = []
+        aggregation_raw_deals = list(raw_deals)
+
+        # Farming needs historical FA days to determine the correct Hedge Day number.
+        # Merge those into the local aggregation input only, not the main payload.
+        try:
+            full_history_deals = self.pusher.get_deals(days=365) or []
+            existing_ids = {d.get('ticket') or d.get('order') for d in aggregation_raw_deals}
+            merged_fa = 0
+            for deal in full_history_deals:
+                comment_upper = str(deal.get('comment', '')).upper()
+                if '_FA' not in comment_upper:
+                    continue
+                deal_id = deal.get('ticket') or deal.get('order')
+                if deal_id in existing_ids:
+                    continue
+                aggregation_raw_deals.append(deal)
+                existing_ids.add(deal_id)
+                merged_fa += 1
+            if merged_fa:
+                self.log(f"🌾 Added {merged_fa} farming history deal(s) to local aggregation")
+        except Exception as merge_err:
+            self.log(f"⚠️ Could not merge farming history: {merge_err}", "WARN")
 
         # FNFT challenge filter: challenge accounts reuse the same account numbers
         # across resets, so only keep last 24h of deals with _CH in the comment.
@@ -2456,42 +2478,106 @@ class TradeOpssAIApp:
             if dropped:
                 self.log(f"🔻 Filtered {dropped} old FNFT challenge deal(s) (>24h)")
             raw_deals = filtered
+
+        if is_fnft and aggregation_raw_deals:
+            _24h_ago = time.time() - 86400
+            filtered = []
+            for d in aggregation_raw_deals:
+                comment_upper = str(d.get('comment', '')).upper()
+                if '_CH' in comment_upper:
+                    deal_ts = d.get('time_raw', 0)
+                    if deal_ts and deal_ts >= _24h_ago:
+                        filtered.append(d)
+                else:
+                    filtered.append(d)
+            aggregation_raw_deals = filtered
         
-        # Filter deals: Only keep Balance operations and Trades with valid comments
-        deals = []
-        if raw_deals:
-            for deal in raw_deals:
-                # Always keep balance/credit operations
+        # Filter deals: keep balance operations and trades with valid comments.
+        def _filter_valid_push_deals(source_deals):
+            filtered = []
+            for deal in source_deals or []:
                 d_type = str(deal.get('type', '')).upper()
                 if d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']:
-                    deals.append(deal)
+                    filtered.append(deal)
                     continue
-                
-                # Check comment validity for trades
+
                 comment = deal.get('comment', '')
                 parsed = self.pusher.parse_deal_comment_v2(comment)
-                
+
                 is_valid = False
                 if parsed:
-                    # Check for .is_valid attribute (new parser) or non-None dict (fallback parser)
                     if hasattr(parsed, 'is_valid'):
                         is_valid = parsed.is_valid
                     else:
-                        is_valid = True # Fallback parser returned a dict, so it found a match
-                
+                        is_valid = True
+
                 if is_valid:
-                    deals.append(deal)
-            
-            if len(deals) < len(raw_deals):
-                self.log(f"Filtered {len(raw_deals) - len(deals)} deals with invalid comments")
+                    filtered.append(deal)
+            return filtered
+
+        deals = _filter_valid_push_deals(raw_deals)
+        aggregation_deals = _filter_valid_push_deals(aggregation_raw_deals)
+
+        if len(deals) < len(raw_deals):
+            self.log(f"Filtered {len(raw_deals) - len(deals)} deals with invalid comments")
 
         statistics = self.pusher.calculate_statistics(deals)
         
-        # Aggregate hedge results from last trading day only (same as deals)
+        # Aggregate hedge results locally, including farming history for correct FA sloting.
         aggregated_by_comment = []
         comment_summary = {}
-        if COMMENT_PARSER_AVAILABLE and deals:
-            aggregated_by_comment, _unmatched, _log = aggregate_deals_by_position(deals)
+        if COMMENT_PARSER_AVAILABLE and aggregation_deals:
+            aggregated_by_comment, _unmatched, _log = aggregate_deals_by_position(aggregation_deals)
+
+            def _normalize_fa_day(agg):
+                timestamp = agg.get('timestamp')
+                if isinstance(timestamp, (int, float)) and timestamp > 0:
+                    try:
+                        return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
+                    except Exception:
+                        pass
+                farming_date = str(agg.get('farming_date') or '').strip()
+                if len(farming_date) >= 10:
+                    return farming_date[:10]
+                return farming_date
+
+            fa_by_account_day = {}
+            non_fa_aggregates = []
+            for agg in aggregated_by_comment:
+                if agg.get('phase_code') != 'FA':
+                    non_fa_aggregates.append(agg)
+                    continue
+
+                day_key = _normalize_fa_day(agg)
+                account_key = str(agg.get('account_number') or '')
+                merge_key = (account_key, day_key)
+                existing = fa_by_account_day.get(merge_key)
+                if not existing:
+                    fa_by_account_day[merge_key] = dict(agg)
+                    continue
+
+                existing['net_profit'] = round(existing.get('net_profit', 0) + agg.get('net_profit', 0), 2)
+                existing['deal_count'] = existing.get('deal_count', 0) + agg.get('deal_count', 0)
+                if agg.get('timestamp', 0) > existing.get('timestamp', 0):
+                    existing['timestamp'] = agg.get('timestamp', 0)
+                    existing['farming_date'] = agg.get('farming_date')
+
+            latest_fa_aggregates = []
+            fa_accounts = {}
+            for (account_key, day_key), agg in fa_by_account_day.items():
+                fa_accounts.setdefault(account_key, []).append((day_key, agg))
+
+            for account_key, entries in fa_accounts.items():
+                entries.sort(key=lambda item: item[0])
+                slot = len(entries)
+                latest_day_key, latest_agg = entries[-1]
+                latest_agg['trade_number'] = slot
+                latest_agg['_fa_slot'] = slot
+                latest_agg['field_name'] = f"Hedge Day {slot}"
+                latest_fa_aggregates.append(latest_agg)
+                self.log(f"📅 {account_key}: {slot} FA day(s) locally → Hedge Day {slot} ({latest_day_key})")
+
+            aggregated_by_comment = non_fa_aggregates + latest_fa_aggregates
             by_phase = {}
             for agg in aggregated_by_comment:
                 phase_name = agg.get('phase_name', 'UNKNOWN')
@@ -2531,6 +2617,7 @@ class TradeOpssAIApp:
             "statistics": statistics,
             "evaluations": [],
             "aggregated_by_comment": aggregated_by_comment,
+            "prefer_client_aggregation": True,
             "comment_summary": comment_summary,
             "tradovate_farming_days": tradovate_farming_days,
             "dropdown_options": {},
@@ -2606,6 +2693,8 @@ class TradeOpssAIApp:
             self.push_hedging_review()
         except Exception as hr_err:
             self.log(f"⚠️ Hedging review failed: {hr_err}", "ERROR")
+
+    def push_hedging_review(self):
         """Push ONLY Live Hedging Review data (deposits, withdrawals, balance) from MT5."""
         dashboard_url = self.url_entry.get().strip().rstrip('/')
         email = self.client_email_entry.get().strip()
