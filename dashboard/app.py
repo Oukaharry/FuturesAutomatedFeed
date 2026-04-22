@@ -6182,11 +6182,22 @@ def run_quality_scan(target_client=None):
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
                 # Alpha Futures always charges an activation fee when an account
-                # reaches funded stage, so any funded Alpha Futures row without
-                # one is almost certainly a data-entry miss (not an exempt firm).
-                # Funded stage = passed P1, OR any funded-phase field populated
-                # (Account #.1 / Date Started.1 / Date Ended.1 / Status).
+                # actually starts trading the funded account — so only flag a
+                # missing Activation Fee when the row has BOTH reached funded
+                # stage AND logged at least one non-zero hedge result in the
+                # funded phase. Accounts that got a funded account # but never
+                # traded (or were abandoned before any HR) are excluded so we
+                # don't drown the dashboard in false positives.
                 if prop_firm.lower().replace(' ', '') in ('alphafutures',) and not activation:
+                    _funded_hr_cols = (
+                        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+                        'Hedge Result 4.1', 'Hedge Result 5.1',
+                        'Hedge Result 6', 'Hedge Result 7',
+                    )
+                    _has_funded_hr = any(
+                        re.search(r'[1-9]', str(ev.get(_c, '') or ''))
+                        for _c in _funded_hr_cols
+                    )
                     _funded_marker = bool(
                         status_p1 == 'pass'
                         or acct_num2
@@ -6194,7 +6205,7 @@ def run_quality_scan(target_client=None):
                         or str(ev.get('Date Ended.1', '') or '').strip()
                         or status_p2
                     )
-                    if _funded_marker:
+                    if _funded_marker and _has_funded_hr:
                         issues.append({'check': 'Alpha Futures: missing Activation Fee', 'severity': 'high', 'row': idx,
                                        'detail': f'{row_label}: Alpha Futures funded account has no Activation Fee',
                                        'estimated_date': _estimate_issue_date(ev, 'Alpha Futures: missing Activation Fee', scan_date_str)})

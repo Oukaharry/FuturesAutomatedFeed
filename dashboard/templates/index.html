@@ -878,6 +878,44 @@
             background-color: #1e293b !important;
         }
 
+        /* --------------------------------------------------------- */
+        /* STICKY COLUMN 4: FUNDED PHASE "Account #" (Account #.1)   */
+        /* Pinned right after Prop Firm (90px + 200px = 290px).      */
+        /* --------------------------------------------------------- */
+
+        /* Sub-header (Row 2) — "Account #" under the orange group */
+        #evaluations-table thead tr:nth-child(2) th.sticky-funded-acct-header {
+            position: sticky !important;
+            left: 290px !important; /* After # (50) + Trash (40) + Prop Firm (200) */
+            top: 36px !important;   /* Below Row 1 (36px) */
+            z-index: 1050 !important; /* Above data cells, like Prop Firm sub-header */
+            background: linear-gradient(135deg, #9f1239, #881337) !important; /* Match orange group */
+            width: 200px;
+            min-width: 200px;
+            border-right: 1px solid rgba(45,74,130,0.55);
+            box-shadow: inset 0 1px 0 rgba(251,191,36,0.08), 0 1px 0 rgba(255,255,255,0.06);
+        }
+
+        /* Data cells — compensate for 0.75 tbody zoom: 290 / 0.75 = 386.67 */
+        #evaluations-table tbody td.sticky-col-4 {
+            position: sticky !important;
+            left: 386.67px !important;
+            z-index: 100 !important; /* Lower than headers, same tier as sticky-col-3 */
+            background-color: #1e293b !important;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        #evaluations-table tbody tr:hover td.sticky-col-4 {
+            background-color: #1e293b !important;
+        }
+
+        /* Client view: no trash column, so every sticky pivot shifts left by 40px */
+        .client-view #evaluations-table thead tr:nth-child(2) th.sticky-funded-acct-header {
+            left: 250px !important; /* 290 - 40 */
+        }
+        .client-view #evaluations-table tbody td.sticky-col-4 {
+            left: 333.33px !important; /* 250 / 0.75 */
+        }
+
         /* Client view: hide delete column entirely */
         .client-view #evaluations-table thead tr:first-child th:nth-child(2),
         .client-view #evaluations-table tbody td.sticky-col-2 {
@@ -2258,7 +2296,7 @@
                             <th class="sub-header-green">Hedge Net</th>
 
                             <!-- FUNDED PHASE (14-34) -->
-                            <th class="sub-header-orange" style="min-width: 200px;">Account #</th>
+                            <th class="sub-header-orange sticky-funded-acct-header" style="min-width: 200px;">Account #</th>
                             <th class="sub-header-orange">Activation Fee</th>
                             <th class="sub-header-orange">Date Started</th>
                             <th class="sub-header-orange">Date Ended</th>
@@ -4100,6 +4138,9 @@
                         let stickyClass = '';
                         if (key === 'Prop Firm') {
                             stickyClass = 'sticky-col-3';
+                        } else if (key === 'Account #.1') {
+                            // Funded-phase Account # — freeze next to Prop Firm.
+                            stickyClass = 'sticky-col-4';
                         }
 
                         const classes = [hasNoteClass, highlightClass, stickyClass].filter(Boolean).join(' ');
