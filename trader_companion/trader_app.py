@@ -2561,7 +2561,7 @@ class TradeOpssAIApp:
         aggregated_by_comment = []
         comment_summary = {}
         if COMMENT_PARSER_AVAILABLE and aggregation_deals:
-            aggregated_by_comment, _unmatched, _log = aggregate_deals_by_position(aggregation_deals)
+            aggregated_by_comment, _unmatched, _agg_log = aggregate_deals_by_position(aggregation_deals)
 
             def _normalize_fa_day(agg):
                 timestamp = agg.get('timestamp')
