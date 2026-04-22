@@ -2692,16 +2692,17 @@ def get_profit_splits():
     # per-client Profit Split card (#split-profit-amount).  The stored
     # `statistics.cashflow_inprogress` on disk is sometimes stale, so we
     # recompute from raw evaluations here.
+    # Mirror the sheet (Evaluations tab) formulas exactly:
+    #   Hedging Results = SUM(J:N) + SUM(U:AA)
+    #                   = P1 hedges (HR 1..5) + ALL funded hedges (HR 1.1..5.1 + HR 6..7)
+    #   Farming Results = SUM(AM:AM, AO:AO, AQ:AQ, ... DA:DA)
+    #                   = Hedge Day 1..N only (no HR 6/7, no Farming Net override)
     _P1_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-    _FD_CORE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1']
-    _FARM_HR_COLS = ['Hedge Result 6', 'Hedge Result 7']
+    _FUNDED_COLS = [
+        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
+        'Hedge Result 6', 'Hedge Result 7',
+    ]
     _HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
-
-    def _farm_net_set(ev):
-        raw = ev.get('Farming Net')
-        if raw is None:
-            return False
-        return str(raw).strip() not in ('', '-')
 
     def _live_in_progress_net(evaluations):
         cf_pay = cf_fees = cf_hedge = cf_farm = 0.0
@@ -2713,14 +2714,13 @@ def get_profit_splits():
             if 'deleted' in sp1 or 'deleted' in sf:
                 continue
             p1 = round(sum(parse_currency(ev.get(c)) for c in _P1_COLS), 2)
-            fd = round(sum(parse_currency(ev.get(c)) for c in _FD_CORE_COLS), 2)
-            farm_hr = round(sum(parse_currency(ev.get(c)) for c in _FARM_HR_COLS), 2)
+            fd = round(sum(parse_currency(ev.get(c)) for c in _FUNDED_COLS), 2)
             h_days = round(sum(parse_currency(ev.get(c)) for c in _HEDGE_DAY_COLS), 2)
             fee = parse_currency(ev.get('Fee'))
             act = parse_currency(ev.get('Activation Fee'))
             payouts = round(sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 7)), 2)
             row_hedge = round(p1 + fd, 2)
-            row_farm = round(parse_currency(ev.get('Farming Net')), 2) if _farm_net_set(ev) else round(farm_hr + h_days, 2)
+            row_farm = h_days  # pure sum of Hedge Day cols — matches sheet
             cf_pay = round(cf_pay + payouts, 2)
             cf_fees = round(cf_fees + fee + act, 2)
             cf_hedge = round(cf_hedge + row_hedge, 2)

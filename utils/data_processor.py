@@ -755,20 +755,19 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     
     # Phase 1 hedge columns (J-N in sheet = Hedge Result 1-5)
     P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-    # Funded evaluation / main funded account hedges (U-X): 1.1–5.1 — not farming-phase hedge cols
-    FUNDED_CORE_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1']
-    # Additional funded / farming-phase hedge result cells (Y-Z)
-    FARMING_HEDGE_COLS = ['Hedge Result 6', 'Hedge Result 7']
-    # All funded hedge columns (core + farming HR) — totals / EV where full funded P&L is needed
-    FUNDED_HEDGE_COLS = FUNDED_CORE_HEDGE_COLS + FARMING_HEDGE_COLS
-    # Hedge Day columns for farming (daily FA / consistency P&L)
+    # Funded hedge columns — ALL of U:AA per the sheet formula
+    # =SUM(Evaluations!U:AA) spans Hedge Result 1.1 .. 5.1 + Hedge Result 6 .. 7.
+    # The sheet treats every value in U:AA as part of "Hedging Results" and NEVER
+    # as part of "Farming Results" (farming = Hedge Day columns only).
+    FUNDED_HEDGE_COLS = [
+        'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
+        'Hedge Result 6', 'Hedge Result 7',
+    ]
+    # Hedge Day columns for farming (daily FA / consistency P&L).
+    # This matches the Google Sheets formula the Evaluations tab uses for Farming
+    # Results: =SUM(Evaluations!AM:AM, AO:AO, AQ:AQ, ... DA:DA) — i.e. every
+    # "Hedge Day N" column only (no Hedge Result 6/7, no Farming Net override).
     HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
-
-    def _farming_net_cell_set(ev):
-        raw = ev.get('Farming Net')
-        if raw is None:
-            return False
-        return str(raw).strip() not in ('', '-')
 
     for ev in evaluations:
         try:
@@ -784,11 +783,14 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             # === CALCULATE VALUES USING EXACT SHEET SUMIF LOGIC ===
             
             # Get individual hedge results (NOT the calculated Hedge Net columns)
-            # Round each row-level sum to 2dp to match Google Sheets cell precision
+            # Round each row-level sum to 2dp to match Google Sheets cell precision.
+            # funded_hedges = ALL of U:AA (HR 1.1..5.1 + HR 6..7) — the sheet's
+            # Hedging Results formula sums this whole range.
+            # hedge_days = Hedge Day 1..50 — the sheet's Farming Results formula
+            # sums exactly these columns (AM, AO, AQ, ... DA = 34 cols today,
+            # extended to 50 here for future-proofing).
             p1_hedges = round(sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS), 2)
-            funded_core = round(sum(parse_currency(ev.get(col)) for col in FUNDED_CORE_HEDGE_COLS), 2)
-            farming_hr = round(sum(parse_currency(ev.get(col)) for col in FARMING_HEDGE_COLS), 2)
-            funded_hedges = round(funded_core + farming_hr, 2)
+            funded_hedges = round(sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS), 2)
             hedge_days = round(sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS), 2)
             
             fee = parse_currency(ev.get('Fee'))
@@ -825,16 +827,15 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             # === CASHFLOW - IN PROGRESS (stored key name; meaning = whole client / all accounts) ===
             # Sum payouts, fees, hedging, and farming across every non-deleted row — not lifecycle-active only.
             # Profitability – Completed remains the ended / inactive slice only.
+            #
+            # Sheet formulas being mirrored (Evaluations tab):
+            #   Hedging Results  = SUM(J:N) + SUM(U:AA)
+            #                    = P1 hedges (HR 1..5) + ALL funded hedges (HR 1.1..5.1 + HR 6..7)
+            #   Farming Results  = SUM(AM:AM, AO:AO, AQ:AQ, ... DA:DA)
+            #                    = Hedge Day 1..N only (no Hedge Result 6/7, no Farming Net override)
             if not is_deleted:
-                # In Progress = whole client view: include ALL raw hedge/farming values present on the row,
-                # regardless of whether Status cells are filled in (status blanks were causing dropped values).
-                # Hedging = P1 (HR 1–5) + funded core (HR 1.1–5.1). Farming = HR 6–7 + Hedge Day sum,
-                # unless Farming Net is explicitly set (override).
-                row_hedging = round(p1_hedges + funded_core, 2)
-                if _farming_net_cell_set(ev):
-                    row_farming = round(parse_currency(ev.get('Farming Net')), 2)
-                else:
-                    row_farming = round(farming_hr + hedge_days, 2)
+                row_hedging = round(p1_hedges + funded_hedges, 2)
+                row_farming = round(hedge_days, 2)
 
                 stats["cashflow_inprogress"]["challenge_fees"] = round(stats["cashflow_inprogress"]["challenge_fees"] + fee + activation_fee, 2)
                 stats["cashflow_inprogress"]["hedging_results"] = round(stats["cashflow_inprogress"]["hedging_results"] + row_hedging, 2)
@@ -850,8 +851,13 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             # Challenge Fees formula: (SUMIF(Fee,P1="Fail") + SUMIF(Fee,Status="Completed") + SUMIF(Fee,Status="Fail")) * -1
             # We store as positive, the display will show as negative
             
-            # Hedging Results Completed: P1 fails + funded-ended rows (P1 hedges + funded core 1.1–5.1 only).
-            # Farming Results Completed: funded-ended rows — HR 6–7 + Hedge Day sum, or explicit Farming Net if set.
+            # Sheet formulas being mirrored (Evaluations tab):
+            #   Hedging Results Completed
+            #     = SUMIF(J:N, H="Fail")                      # P1 hedges when P1 failed
+            #     + SUMIF(U:AA, T="Fail") + SUMIF(U:AA, T="Completed")  # funded hedges when funded ended
+            #     + SUMIF(J:N, T="Fail") + SUMIF(J:N, T="Completed")    # P1 hedges when funded ended
+            #   Farming Results Completed
+            #     = SUMIFS(AM:DA, T:T, "Completed")           # Hedge Days ONLY where Status=Completed
 
             # Challenge Fees Completed: count ended rows exactly once
             if is_p1_fail or is_funded_ended:
@@ -859,19 +865,16 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
 
             # Hedging Results Completed: avoid double-counting when both flags are set
             if is_funded_ended:
-                # Funded core (1.1–5.1) + P1; farming-phase HR 6–7 + Hedge Days go to farming (or Farming Net).
-                stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + funded_core + p1_hedges, 2)
+                # ALL funded hedges (HR 1.1..5.1 + HR 6..7) + P1 hedges
+                stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + funded_hedges + p1_hedges, 2)
             elif is_p1_fail:
                 # Pure phase-1 failure (never reached funded end)
                 stats["profitability_completed"]["hedging_results"] = round(stats["profitability_completed"]["hedging_results"] + p1_hedges, 2)
-                
-            # Farming Results Completed: HR 6–7 + Hedge Days when funded ended, or explicit Farming Net
-            if is_funded_ended:
-                if _farming_net_cell_set(ev):
-                    farm_completed = round(parse_currency(ev.get('Farming Net')), 2)
-                else:
-                    farm_completed = round(farming_hr + hedge_days, 2)
-                stats["profitability_completed"]["farming_results"] = round(stats["profitability_completed"]["farming_results"] + farm_completed, 2)
+
+            # Farming Results Completed: pure Hedge Day sum, only on Status="Completed"
+            # (matches =SUMIFS(AM:DA, T:T, "Completed") exactly).
+            if is_funded_completed:
+                stats["profitability_completed"]["farming_results"] = round(stats["profitability_completed"]["farming_results"] + hedge_days, 2)
                 
             # Payouts Completed: where Status=Completed ONLY (sheet formula: SUMIF Status="Completed")
             if is_funded_completed:
