@@ -2705,10 +2705,14 @@ class TradeOpssAIApp:
             "aggregated_by_comment": aggregated_by_comment,
             "prefer_client_aggregation": True,
             "comment_summary": comment_summary,
-            "tradovate_farming_days": tradovate_farming_days,
             "dropdown_options": {},
             "firm_billing": self._firm_billing_summary if self._firm_billing_summary else None,
         }
+
+        # Only include Tradovate prop day data if we actually have it.
+        # Omitting the key entirely means the server will never touch existing Prop Day values.
+        if tradovate_farming_days:
+            payload["tradovate_farming_days"] = tradovate_farming_days
         
         try:
             # Use public endpoint - no API key needed
