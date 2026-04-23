@@ -2628,55 +2628,65 @@ class TradeOpssAIApp:
             comment_summary = {'by_phase': by_phase}
 
         # Collect Tradovate MNQ daily P&L for Prop Day values.
-        # Always runs when any Tradovate account is connected; cached per firm with a TTL
-        # so the expensive fill/balance-log API calls aren't repeated on every auto-push.
+        # ONLY runs if at least one Tradovate account is actively connected.
+        # Cache-miss fetches are done in a background thread so they never add
+        # to push wall-time — the result is available for the NEXT push.
         tradovate_farming_days = []
         if not hasattr(self, '_tradovate_farming_cache'):
             self._tradovate_farming_cache = {}
         _tv_now = time.time()
 
-        for firm_name, conn in self._broker_connections.items():
-            tv_account = conn.get("account")
-            if not tv_account or not hasattr(tv_account, 'get_mnq_daily_pnl'):
-                continue
+        # Find all connected Tradovate accounts (account object must be present).
+        _connected_tv = [
+            (firm_name, conn.get("account"))
+            for firm_name, conn in self._broker_connections.items()
+            if conn.get("account") and hasattr(conn.get("account"), 'get_mnq_daily_pnl')
+        ]
 
-            _tv_cached = self._tradovate_farming_cache.get(firm_name)
-            if _tv_cached and (_tv_now - _tv_cached[0]) < self._TRADOVATE_FARMING_CACHE_TTL:
-                mnq_data = _tv_cached[1]
-                if mnq_data:
-                    total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in mnq_data)
-                    _log(f"🌾 {firm_name}: {total_days} Prop Day(s) from cache ({int(_tv_now - _tv_cached[0])}s old)")
-            else:
-                try:
-                    mnq_data = tv_account.get_mnq_daily_pnl() or []
-                    self._tradovate_farming_cache[firm_name] = (_tv_now, mnq_data)
+        if not _connected_tv:
+            if latest_fa_aggregates:
+                _log("⚠️ Tradovate not connected — Prop Day values will not be updated", "WARN")
+        else:
+            for firm_name, tv_account in _connected_tv:
+                _tv_cached = self._tradovate_farming_cache.get(firm_name)
+                if _tv_cached and (_tv_now - _tv_cached[0]) < self._TRADOVATE_FARMING_CACHE_TTL:
+                    # Cache hit — instant, no API call.
+                    mnq_data = _tv_cached[1]
                     if mnq_data:
                         total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in mnq_data)
-                        _log(f"🌾 {firm_name}: {total_days} Prop Day(s) fetched from Tradovate")
+                        _log(f"🌾 {firm_name}: {total_days} Prop Day(s) ready (cached)")
+                    tradovate_farming_days.extend(mnq_data)
+                else:
+                    # Cache miss — use whatever we have now (empty on first push),
+                    # and refresh asynchronously so the NEXT push benefits.
+                    existing = (_tv_cached[1] if _tv_cached else []) or []
+                    if existing:
+                        total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in existing)
+                        _log(f"🌾 {firm_name}: {total_days} Prop Day(s) from stale cache (refreshing in background)")
+                        tradovate_farming_days.extend(existing)
                     else:
-                        _log(f"🌾 {firm_name}: no MNQ activity found in Tradovate history")
-                except Exception as e:
-                    mnq_data = []
-                    _log(f"⚠ {firm_name}: Tradovate Prop Day fetch failed — {e}", "WARN")
+                        _log(f"🌾 {firm_name}: fetching Tradovate history in background (available next push)")
 
-            if mnq_data:
-                tradovate_farming_days.extend(mnq_data)
+                    def _refresh_tv_cache(fn=firm_name, acc=tv_account):
+                        try:
+                            data = acc.get_mnq_daily_pnl() or []
+                            self._tradovate_farming_cache[fn] = (time.time(), data)
+                        except Exception as _e:
+                            pass  # silently swallow; no-op on next push miss
+                    threading.Thread(target=_refresh_tv_cache, daemon=True).start()
 
-        # Cross-check: log Prop Day coverage vs Hedge Day coverage for visibility.
-        if latest_fa_aggregates and tradovate_farming_days:
-            for fa_agg in latest_fa_aggregates:
-                acc_key = str(fa_agg.get('account_number') or '')
-                hedge_slot = fa_agg.get('_fa_slot', '?')
-                # Count how many MNQ days match this account
-                for tv_data in tradovate_farming_days:
-                    tv_name = (tv_data.get('account_name') or '').upper()
+            # Cross-check: log Prop Day coverage vs Hedge Day coverage.
+            if latest_fa_aggregates and tradovate_farming_days:
+                for fa_agg in latest_fa_aggregates:
+                    acc_key = str(fa_agg.get('account_number') or '')
+                    hedge_slot = fa_agg.get('_fa_slot', '?')
                     acc_digits = [d for d in re.findall(r'\d+', acc_key.upper()) if len(d) >= 4]
-                    if acc_key.upper() in tv_name or any(d in tv_name for d in acc_digits):
-                        prop_count = len(tv_data.get('mnq_daily_pnl', []))
-                        _log(f"📊 {acc_key}: Hedge Day {hedge_slot} ↔ {prop_count} Prop Day(s) matched")
-                        break
-        elif latest_fa_aggregates and not tradovate_farming_days:
-            _log(f"⚠️ No Tradovate connection — Prop Day values will not be updated", "WARN")
+                    for tv_data in tradovate_farming_days:
+                        tv_name = (tv_data.get('account_name') or '').upper()
+                        if acc_key.upper() in tv_name or any(d in tv_name for d in acc_digits):
+                            prop_count = len(tv_data.get('mnq_daily_pnl', []))
+                            _log(f"📊 {acc_key}: Hedge Day {hedge_slot} ↔ {prop_count} Prop Day(s)")
+                            break
 
         # Pre-push diagnostic: log what we're about to send
         pos_count = len(positions) if positions else 0
