@@ -2740,6 +2740,8 @@ class TradeOpssAIApp:
                             _log(f"  {entry}", "INFO")
                     if hedge_updates:
                         _log(f"📊 {hedge_updates} hedge cell(s) updated on dashboard")
+                    elif agg_count:
+                        _log("⚠️ Server acknowledged push but returned 0 hedge updates. Check account-number matching and active dashboard row filters.", "WARN")
                     _status("Ready - Data pushed!")
                     try:
                         self.root.after(0, lambda hu=hedge_updates: self._stat_push_var.set(f"Push: ✔ {hu}"))
@@ -4513,11 +4515,38 @@ class TradeOpssAIApp:
                     except Exception:
                         pass
 
-                # Auto-fill MT5 credentials from dashboard if available
-                mt5_creds = data.get("mt5_credentials") or {}
-                mt5_login = (mt5_creds.get("login") or "").strip()
-                mt5_pass = (mt5_creds.get("password") or "").strip()
-                mt5_server = (mt5_creds.get("server") or "").strip()
+                # Auto-fill MT5 credentials from TradeOps dashboard.
+                # Prefer Hedge Accounts Configuration rows (what users actually edit in the UI),
+                # then fall back to legacy mt5_credentials if present.
+                mt5_login = ""
+                mt5_pass = ""
+                mt5_server = ""
+
+                hedge_accounts = data.get("hedge_accounts") or []
+                client_name = ((data.get("identity") or {}).get("client") or "").strip().lower()
+                chosen_hedge = None
+                for hedge in hedge_accounts:
+                    if str(hedge.get("platform") or "").strip().upper() != "MT5":
+                        continue
+                    if not ((hedge.get("login") or "").strip() and (hedge.get("password") or "").strip() and (hedge.get("server") or "").strip()):
+                        continue
+                    hedge_name = str(hedge.get("name") or "").strip().lower()
+                    if client_name and hedge_name == client_name:
+                        chosen_hedge = hedge
+                        break
+                    if chosen_hedge is None:
+                        chosen_hedge = hedge
+
+                if chosen_hedge:
+                    mt5_login = (chosen_hedge.get("login") or "").strip()
+                    mt5_pass = (chosen_hedge.get("password") or "").strip()
+                    mt5_server = (chosen_hedge.get("server") or "").strip()
+                else:
+                    mt5_creds = data.get("mt5_credentials") or {}
+                    mt5_login = (mt5_creds.get("login") or "").strip()
+                    mt5_pass = (mt5_creds.get("password") or "").strip()
+                    mt5_server = (mt5_creds.get("server") or "").strip()
+
                 if mt5_login and mt5_pass and mt5_server:
                     def _fill_mt5(login=mt5_login, pwd=mt5_pass, srv=mt5_server):
                         # Only fill if fields are currently empty
@@ -4530,7 +4559,7 @@ class TradeOpssAIApp:
                         if not self.mt5_server.get().strip():
                             self.mt5_server.delete(0, tk.END)
                             self.mt5_server.insert(0, srv)
-                        self.log("🔗 MT5 credentials auto-filled from dashboard")
+                        self.log("🔗 MT5 credentials auto-filled from TradeOps dashboard")
                     self.root.after(0, _fill_mt5)
 
             except Exception as e:
@@ -5365,7 +5394,8 @@ class TradeOpssAIApp:
 
             # 2. Close all MT5 positions
             try:
-                import MetaTrader5 as mt5
+                if not MT5_AVAILABLE:
+                    raise RuntimeError("MetaTrader5 module is not available")
                 positions = mt5.positions_get()
                 if positions:
                     mt5_api = self._get_mt5_trading_api() if hasattr(self, '_get_mt5_trading_api') else None
@@ -7940,7 +7970,10 @@ class TradeOpssAIApp:
         MT5 symbol, and uses majority vote to decide buy vs sell.
         Falls back to random if no indicators produce a signal.
         """
-        import MetaTrader5 as mt5_mod
+        if not MT5_AVAILABLE:
+            self.root.after(0, lambda: self.log("⚠ MetaTrader5 import unavailable — using random direction", "WARN"))
+            return random.choice(["buy", "sell"])
+        mt5_mod = mt5
         if timeframe is None:
             timeframe = mt5_mod.TIMEFRAME_M5
 

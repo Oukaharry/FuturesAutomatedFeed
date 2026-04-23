@@ -3255,6 +3255,7 @@ def api_client_data():
             "status": "success",
             "evaluations": evaluations,
             "prop_accounts": client_data.get("prop_accounts", []),
+            "hedge_accounts": client_data.get("hedge_accounts", []),
             "mt5_credentials": client_data.get("mt5_credentials", {}),
             "identity": {
                 "client": client_info['client'],
@@ -3381,6 +3382,67 @@ def api_client_push():
     # Debug logging
     acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
     app.logger.info(f"📥 Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
+    
+    # Log detailed MT5 account info
+    if mt5_account:
+        app.logger.info(f"💰 MT5 Account Details:")
+        app.logger.info(f"   - balance: ${mt5_account.get('balance', 0):.2f}")
+        app.logger.info(f"   - total_deposits: ${mt5_account.get('total_deposits', 0):.2f}")
+        app.logger.info(f"   - total_withdrawals: ${mt5_account.get('total_withdrawals', 0):.2f}")
+        app.logger.info(f"   - equity: ${mt5_account.get('equity', 0):.2f}")
+        app.logger.info(f"   - account_number: {mt5_account.get('account_number', 'N/A')}")
+    
+    # Log deal types and counts to debug
+    if mt5_deals:
+        deal_types = {}
+        for d in mt5_deals:
+            dtype = str(d.get('type', 'unknown'))
+            deal_types[dtype] = deal_types.get(dtype, 0) + 1
+        app.logger.info(f"🔄 Deal types: {deal_types}")
+    
+    # Log evaluation hedging/payout data summary
+    app.logger.info(f"📋 Evaluation Rows Summary:")
+    for i, ev in enumerate(evaluations):
+        prop_firm = ev.get('Prop Firm', 'Unknown')
+        status_p1 = ev.get('Status P1', '')
+        status_fd = ev.get('Status') or ev.get('Status Funded', '')
+        
+        # Collect hedge results
+        hedge_results = []
+        for j in range(1, 8):
+            key = f'Hedge Result {j}' if j < 6 else f'Hedge Result {j-5}.1' if j == 6 else f'Hedge Result {j-5}.1'
+            val = ev.get(key, '')
+            if val and str(val).strip() not in ('', '-', '$0'):
+                hedge_results.append(f"{key}={val}")
+        
+        # Collect payouts
+        payouts = []
+        for j in range(1, 10):
+            key = f'Payout {j}'
+            val = ev.get(key, '')
+            if val and str(val).strip() not in ('', '-', '$0'):
+                payouts.append(f"{key}={val}")
+        
+        hedge_net = ev.get('Hedge Net', '')
+        hedge_net_1 = ev.get('Hedge Net.1', '')
+        fee = ev.get('Fee', '')
+        act_fee = ev.get('Activation Fee', '')
+        
+        row_info = f"   [{i}] {prop_firm} | P1:{status_p1} FD:{status_fd}"
+        if hedge_results:
+            row_info += f" | Hedges: {', '.join(hedge_results)}"
+        if payouts:
+            row_info += f" | Payouts: {', '.join(payouts)}"
+        if hedge_net and str(hedge_net).strip() not in ('', '-'):
+            row_info += f" | Hedge Net={hedge_net}"
+        if hedge_net_1 and str(hedge_net_1).strip() not in ('', '-'):
+            row_info += f" | Hedge Net.1={hedge_net_1}"
+        if fee and str(fee).strip() not in ('', '-', '$0'):
+            row_info += f" | Fee={fee}"
+        if act_fee and str(act_fee).strip() not in ('', '-', '$0'):
+            row_info += f" | Activation={act_fee}"
+        
+        app.logger.info(row_info)
     
     # Log deal types to debug
     if mt5_deals:
@@ -3520,13 +3582,32 @@ def api_client_push():
 
     # Final verification before save
     hr_final = statistics.get('hedging_review', {})
-    app.logger.info(f"FINAL DATA TO SAVE for {client_id}:")
+    app.logger.info(f"✅ SAVING DATA for {client_id} (v{version}):")
+    app.logger.info(f"📊 Statistics Section:")
     app.logger.info(f"   - hedging_review.total_deposits: ${hr_final.get('total_deposits', 0):.2f}")
     app.logger.info(f"   - hedging_review.total_withdrawals: ${hr_final.get('total_withdrawals', 0):.2f}")
     app.logger.info(f"   - hedging_review.current_balance: ${hr_final.get('current_balance', 0):.2f}")
+    app.logger.info(f"   - hedging_review.actual_hedging_results: ${hr_final.get('actual_hedging_results', 0):.2f}")
+    app.logger.info(f"   - hedging_review.sheet_hedging_results: ${hr_final.get('sheet_hedging_results', 0):.2f}")
+    app.logger.info(f"   - hedging_review.discrepancy: ${hr_final.get('discrepancy', 0):.2f}")
     app.logger.info(f"   - account.total_deposits: ${mt5_account.get('total_deposits', 0) if mt5_account else 0:.2f}")
+    app.logger.info(f"   - account.balance: ${mt5_account.get('balance', 0) if mt5_account else 0:.2f}")
+    
+    # Log final evaluation state
+    app.logger.info(f"📋 Final Evaluation Rows Being Saved:")
+    for i, ev in enumerate(evaluations[:5]):  # Show first 5
+        prop_firm = ev.get('Prop Firm', 'Unknown')
+        hedges = sum(1 for j in range(1, 8) if ev.get(f'Hedge Result {j}', '') and str(ev.get(f'Hedge Result {j}', '')).strip() not in ('', '-'))
+        payouts = sum(1 for j in range(1, 10) if ev.get(f'Payout {j}', '') and str(ev.get(f'Payout {j}', '')).strip() not in ('', '-', '$0'))
+        app.logger.info(f"   [{i}] {prop_firm}: {hedges} hedge cells, {payouts} payout cells")
+    
+    if len(evaluations) > 5:
+        app.logger.info(f"   ... and {len(evaluations) - 5} more rows")
+    
     if aggregated_by_comment:
         app.logger.info(f"   - aggregated_by_comment: {len(aggregated_by_comment)} groups")
+    
+    app.logger.info(f"💾 Saving to database...")
     
     # Determine change source for history tracking
     change_source = 'trader_app'
@@ -3546,6 +3627,14 @@ def api_client_push():
         change_source=change_source,
         change_description=f"Data push from trader app with {len(evaluations)} evaluations"
     )
+    
+    app.logger.info(f"✅ SAVED to database successfully (v{version})")
+    app.logger.info(f"🔄 Updated Statistics:")
+    stats_complete = statistics.get('profitability_completed', {})
+    stats_inprogress = statistics.get('cashflow_inprogress', {})
+    app.logger.info(f"   - Profitability Completed: P/L=${stats_complete.get('net_profit', 0):.2f}")
+    app.logger.info(f"   - Cashflow In Progress: P/L=${stats_inprogress.get('net_profit', 0):.2f}")
+    app.logger.info(f"   - Evaluations saved: {len(evaluations)} rows")
     
     # Update Hierarchy (in case new)
     add_admin(admin_id)
@@ -5560,6 +5649,14 @@ def api_push_hedging_review():
 
     save_client_data(client_id, client_data)
 
+    app.logger.info(f"✅ SAVED Hedging Review for {client_id}:")
+    app.logger.info(f"   - total_deposits: ${hr['total_deposits']:.2f}")
+    app.logger.info(f"   - total_withdrawals: ${hr['total_withdrawals']:.2f}")
+    app.logger.info(f"   - current_balance: ${hr['current_balance']:.2f}")
+    app.logger.info(f"   - actual_hedging_results: ${hr['actual_hedging_results']:.2f}")
+    app.logger.info(f"   - sheet_hedging_results: ${hr.get('sheet_hedging_results', 0):.2f}")
+    app.logger.info(f"   - discrepancy: ${hr['discrepancy']:.2f}")
+
     log_action('PUSH_HEDGING_REVIEW', 'companion', email, get_remote_address(),
                f"Hedging review for {client_id}: deposits={hr['total_deposits']}, withdrawals={hr['total_withdrawals']}, balance={hr['current_balance']}, actual={hr['actual_hedging_results']}")
 
@@ -5568,6 +5665,72 @@ def api_push_hedging_review():
         "message": f"Hedging review updated for {client_id}",
         "hedging_review": hr
     })
+
+@app.route('/api/client/check_mt5_auto_populate/<client_id>', methods=['GET'])
+@require_session
+def check_mt5_auto_populate(client_id):
+    """
+    On dashboard load, check if MT5 values need auto-population.
+    Returns status and suggestion for initialization.
+    """
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+    
+    # Only allow client to check their own data or authorized users
+    if user_type == 'client' and client_id != user_identifier:
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+    
+    # Check if user can access this client
+    if user_type in ['trader', 'admin', 'bef_admin']:
+        if not can_access_client(user_type, user_identifier, client_id):
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+    
+    client_data = get_client_data(client_id)
+    if not client_data:
+        return jsonify({
+            "status": "needs_init",
+            "message": "Client data not initialized",
+            "needs_mt5": True
+        })
+    
+    # Check if hedging_review MT5 values are empty/zero
+    hr = client_data.get('statistics', {}).get('hedging_review', {})
+    account = client_data.get('account', {})
+    
+    deposits = float(hr.get('total_deposits', 0))
+    withdrawals = float(hr.get('total_withdrawals', 0))
+    balance = float(hr.get('current_balance', 0))
+    equity = float(account.get('equity', 0))
+    
+    # Check if values are truly empty (all zero or missing)
+    has_mt5_values = (deposits != 0) or (withdrawals != 0) or (balance != 0) or (equity != 0)
+    
+    if not has_mt5_values:
+        app.logger.info(f"⚠️  MT5 auto-populate: {client_id} has zero MT5 values")
+        return jsonify({
+            "status": "needs_init",
+            "message": "MT5 values need initialization",
+            "needs_mt5": True,
+            "current_values": {
+                "deposits": deposits,
+                "withdrawals": withdrawals,
+                "balance": balance
+            }
+        })
+    else:
+        app.logger.info(f"✅ MT5 auto-populate: {client_id} already has MT5 values")
+        return jsonify({
+            "status": "ok",
+            "message": "MT5 values already initialized",
+            "needs_mt5": False,
+            "current_values": {
+                "deposits": deposits,
+                "withdrawals": withdrawals,
+                "balance": balance,
+                "equity": equity
+            }
+        })
 
 @app.route('/api/historical_mt5/<client_id>', methods=['POST'])
 @require_session

@@ -3734,6 +3734,67 @@
             return '';
         }
 
+        function checkMT5AutoPopulate() {
+            /**
+             * On dashboard load, check if MT5 values need auto-population.
+             * If they do, display a banner suggesting to initialize them.
+             */
+            if (!CLIENT_ID) return;
+            
+            fetch(`/api/client/check_mt5_auto_populate/${encodeURIComponent(CLIENT_ID)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.needs_mt5) {
+                        // Create or update the banner
+                        let banner = document.getElementById('mt5-auto-populate-banner');
+                        if (!banner) {
+                            banner = document.createElement('div');
+                            banner.id = 'mt5-auto-populate-banner';
+                            banner.style.cssText = `
+                                background: linear-gradient(135deg, #fbbf24, #f59e0b);
+                                color: white;
+                                padding: 16px;
+                                margin: 16px;
+                                border-radius: 8px;
+                                border-left: 4px solid #dc2626;
+                                font-size: 14px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: space-between;
+                                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                                position: relative;
+                                z-index: 100;
+                            `;
+                            banner.innerHTML = `
+                                <span>
+                                    <strong>⚠️ MT5 Values Missing:</strong> 
+                                    Deposits, withdrawals, and balance are not set. 
+                                    Please push data from MT5 or Trader Companion to auto-populate these values.
+                                </span>
+                                <button onclick="this.parentElement.style.display='none';" style="
+                                    background: rgba(255,255,255,0.3);
+                                    border: 1px solid white;
+                                    color: white;
+                                    padding: 6px 12px;
+                                    border-radius: 4px;
+                                    cursor: pointer;
+                                    margin-left: 12px;
+                                    font-size: 13px;
+                                ">Dismiss</button>
+                            `;
+                            // Insert after the header
+                            const header = document.querySelector('header');
+                            if (header && header.nextSibling) {
+                                header.parentNode.insertBefore(banner, header.nextSibling);
+                            } else if (document.body.firstChild) {
+                                document.body.insertBefore(banner, document.body.firstChild);
+                            }
+                        }
+                    }
+                })
+                .catch(e => console.error('MT5 auto-populate check error:', e));
+        }
+
         function updateDashboard(silent = false) {
             // Prevent update if user is interacting
             if (document.querySelector('.cell-input:focus')) return;
@@ -3852,6 +3913,13 @@
                     // Update Dropdown Options if available
                     if (data.dropdown_options) {
                         Object.assign(dropdownOptions, data.dropdown_options);
+                    }
+
+                    // On initial load, check if MT5 values need auto-population
+                    if (!silent) {
+                        setTimeout(() => {
+                            checkMT5AutoPopulate();
+                        }, 500);
                     }
 
                     // After a real page load / manual refresh, persist recalculated hedge nets + statistics once
