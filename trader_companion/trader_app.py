@@ -2603,13 +2603,15 @@ class TradeOpssAIApp:
 
             for account_key, entries in fa_accounts.items():
                 entries.sort(key=lambda item: item[0])
-                slot = len(entries)
-                latest_day_key, latest_agg = entries[-1]
-                latest_agg['trade_number'] = slot
-                latest_agg['_fa_slot'] = slot
-                latest_agg['field_name'] = f"Hedge Day {slot}"
-                latest_fa_aggregates.append(latest_agg)
-                _log(f"📅 {account_key}: {slot} FA day(s) locally → Hedge Day {slot} ({latest_day_key})")
+                total_slots = len(entries)
+                # Push ALL farming slots so the server can fill/correct the full history,
+                # not just the most-recent one. Server routes each entry via field_name.
+                for slot_num, (day_key, agg) in enumerate(entries, 1):
+                    agg['trade_number'] = slot_num
+                    agg['_fa_slot'] = slot_num
+                    agg['field_name'] = f"Hedge Day {slot_num}"
+                    latest_fa_aggregates.append(agg)
+                _log(f"📅 {account_key}: pushing Hedge Day 1–{total_slots} (all farming history)")
 
             aggregated_by_comment = non_fa_aggregates + latest_fa_aggregates
             by_phase = {}
@@ -2786,7 +2788,7 @@ class TradeOpssAIApp:
                     hr = data.get("hedging_review") or {}
                     actual = hr.get('actual_hedging_results', 0)
                     disc = hr.get('discrepancy', 0)
-                    _log(f"📊 Hedging Review → Actual: ${actual:,.2f} | Disc: ${disc:,.2f} | Bal: ${balance:,.0f}")
+                    _log(f"✅ Hedging Review → Dep: ${deposits:,.0f} | Wth: ${withdrawals:,.0f} | Actual: ${actual:,.2f} | Disc: ${disc:,.2f}")
                     _status("Ready - Hedging review pushed!")
                 else:
                     _log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
