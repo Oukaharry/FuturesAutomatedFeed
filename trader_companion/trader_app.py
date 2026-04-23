@@ -2447,6 +2447,21 @@ class TradeOpssAIApp:
         if not account:
             _log("⚠️ MT5 account info returned empty — pushing with no account data", "ERROR")
             account = {}
+        
+        # Log detailed MT5 account information
+        if account:
+            login = account.get('login', 'N/A')
+            company = account.get('company', 'Unknown')
+            server = account.get('server', 'Unknown')
+            balance = account.get('balance', 0)
+            equity = account.get('equity', 0)
+            deposits = account.get('total_deposits', 0)
+            withdrawals = account.get('total_withdrawals', 0)
+            _log(f"💼 MT5 ACCOUNT INFO:")
+            _log(f"   Login: {login} | Company: {company} | Server: {server}")
+            _log(f"   Balance: ${balance:,.2f} | Equity: ${equity:,.2f}")
+            _log(f"   Deposits: ${deposits:,.2f} | Withdrawals: ${withdrawals:,.2f}")
+        
         positions = self.pusher.get_positions()
         if positions is None:
             _log("⚠️ MT5 positions returned None — sending empty list")
@@ -2695,6 +2710,64 @@ class TradeOpssAIApp:
         bal = account.get('balance', 0)
         _log(f"📦 Payload: Bal=${bal:,.0f} | {deal_count} deals | {pos_count} pos | {agg_count} hedge groups")
         
+        # Detailed per-row logging of what's being pushed
+        if aggregated_by_comment:
+            _log(f"\n📋 INDIVIDUAL ROWS BEING PUSHED:")
+            _log(f"{'='*80}")
+            
+            # Group by account for summary
+            by_account = {}
+            by_phase = {}
+            
+            for i, agg in enumerate(aggregated_by_comment):
+                account_num = agg.get('account_number', 'Unknown')
+                phase_code = agg.get('phase_code', 'UNKNOWN')
+                phase_name = agg.get('phase_name', 'Unknown')
+                trade_num = agg.get('trade_number', 0)
+                net_profit = agg.get('net_profit', 0)
+                deal_cnt = agg.get('deal_count', 1)
+                field_name = agg.get('field_name', '?')
+                
+                # Track per account
+                if account_num not in by_account:
+                    by_account[account_num] = {'rows': [], 'total_profit': 0, 'total_deals': 0}
+                by_account[account_num]['rows'].append({
+                    'phase': f"{phase_code}{trade_num}",
+                    'profit': net_profit,
+                    'deals': deal_cnt,
+                    'field': field_name
+                })
+                by_account[account_num]['total_profit'] += net_profit
+                by_account[account_num]['total_deals'] += deal_cnt
+                
+                # Track per phase
+                if phase_code not in by_phase:
+                    by_phase[phase_code] = {'count': 0, 'total_profit': 0}
+                by_phase[phase_code]['count'] += 1
+                by_phase[phase_code]['total_profit'] += net_profit
+                
+                # Log individual row
+                farming_date = agg.get('farming_date', '')
+                date_str = f" ({farming_date})" if farming_date else ""
+                _log(f"   [{i+1:2d}] {account_num}_{phase_code}{trade_num} → {field_name:20s} = ${net_profit:>10.2f}  ({deal_cnt} deal{'s' if deal_cnt != 1 else ''}){date_str}")
+            
+            _log(f"{'='*80}")
+            _log(f"\n📊 SUMMARY BY ACCOUNT:")
+            for account_num in sorted(by_account.keys()):
+                data = by_account[account_num]
+                row_count = len(data['rows'])
+                total_p = data['total_profit']
+                total_d = data['total_deals']
+                phases = ', '.join(r['phase'] for r in data['rows'])
+                _log(f"   {account_num:20s} | {row_count:2d} row(s) | Phases: {phases:30s} | Total: ${total_p:>10.2f} ({total_d} deals)")
+            
+            _log(f"\n📈 SUMMARY BY PHASE:")
+            for phase_code in sorted(by_phase.keys()):
+                data = by_phase[phase_code]
+                phase_names = {'CH': 'Challenge', 'FD': 'Funded', 'DD': 'DoubleDip', 'FA': 'Farming'}
+                phase_name = phase_names.get(phase_code, phase_code)
+                _log(f"   {phase_name:15s} ({phase_code}) | {data['count']:2d} group(s) | Total: ${data['total_profit']:>10.2f}")
+        
         payload = {
             "email": email,
             "account": account,
@@ -2734,14 +2807,30 @@ class TradeOpssAIApp:
                     dep = account.get('total_deposits', 0)
                     hedge_log = data.get("hedge_match_log", [])
                     hedge_updates = data.get("hedge_updates", 0)
-                    _log(f"✅ Push OK → Bal: ${bal:,.0f} | Dep: ${dep:,.0f} | {len(deals)} deals | {pos_count} pos | {agg_count} hedge groups")
-                    for entry in hedge_log:
-                        if entry.startswith("✅") or entry.startswith("⚠") or entry.startswith("🌾"):
-                            _log(f"  {entry}", "INFO")
+                    _log(f"\n✅ PUSH SUCCESSFUL → Bal: ${bal:,.0f} | Dep: ${dep:,.0f} | {len(deals)} deals | {pos_count} pos | {agg_count} hedge groups")
+                    
+                    # Log detailed response from server showing what was processed
+                    _log(f"\n📥 SERVER PROCESSING LOG ({len(hedge_log)} entries):")
+                    _log(f"{'='*80}")
+                    for i, entry in enumerate(hedge_log, 1):
+                        # Highlight different types of entries
+                        if entry.startswith("✅"):
+                            _log(f"   {entry}", "INFO")
+                        elif entry.startswith("⚠️") or entry.startswith("❌"):
+                            _log(f"   {entry}", "WARN")
+                        elif entry.startswith("📊") or entry.startswith("📅") or entry.startswith("🌾"):
+                            _log(f"   {entry}", "INFO")
+                        else:
+                            _log(f"   {entry}", "INFO")
+                    _log(f"{'='*80}")
+                    
                     if hedge_updates:
-                        _log(f"📊 {hedge_updates} hedge cell(s) updated on dashboard")
+                        _log(f"\n✨ CONFIRMED: {hedge_updates} hedge cell(s) updated and saved on dashboard")
                     elif agg_count:
-                        _log("⚠️ Server acknowledged push but returned 0 hedge updates. Check account-number matching and active dashboard row filters.", "WARN")
+                        _log("\n⚠️ Server acknowledged push but returned 0 hedge updates. Check account-number matching and active dashboard row filters.", "WARN")
+                    else:
+                        _log("\n📭 No hedge aggregates in this push (MT5 data only)")
+                    
                     _status("Ready - Data pushed!")
                     try:
                         self.root.after(0, lambda hu=hedge_updates: self._stat_push_var.set(f"Push: ✔ {hu}"))
