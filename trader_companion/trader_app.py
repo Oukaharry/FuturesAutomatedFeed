@@ -2197,6 +2197,38 @@ class TradeOpssAIApp:
                             else:
                                 self.hierarchy_label.configure(foreground='#16a34a')
                             self.log(f"✅ Client found: {client} → {trader} → {admin}")
+                            
+                            # Auto-fetch hedge accounts to populate MT5 credentials
+                            def _fetch_hedge_creds(cl=client, url=dashboard_url):
+                                try:
+                                    r2 = requests.get(
+                                        f"{url}/api/data?client_id={cl}",
+                                        timeout=15
+                                    )
+                                    if r2.status_code == 200:
+                                        d2 = r2.json()
+                                        hedge_accounts = d2.get('hedge_accounts') or []
+                                        if hedge_accounts:
+                                            ha = hedge_accounts[0]
+                                            ha_login = str(ha.get('login', '')).strip()
+                                            ha_pass = str(ha.get('password', '')).strip()
+                                            ha_server = str(ha.get('server', '')).strip()
+                                            def _fill_creds(l=ha_login, p=ha_pass, s=ha_server):
+                                                if l:
+                                                    self.mt5_login.delete(0, 'end')
+                                                    self.mt5_login.insert(0, l)
+                                                if p:
+                                                    self.mt5_password.delete(0, 'end')
+                                                    self.mt5_password.insert(0, p)
+                                                if s:
+                                                    self.mt5_server.delete(0, 'end')
+                                                    self.mt5_server.insert(0, s)
+                                                if l or s:
+                                                    self.log(f"🔑 MT5 credentials auto-filled from hedge accounts (Login: {l}, Server: {s})")
+                                            self.root.after(0, _fill_creds)
+                                except Exception:
+                                    pass
+                            threading.Thread(target=_fetch_hedge_creds, daemon=True).start()
                         self.root.after(0, _on_success)
                     else:
                         error_msg = data.get("message", "Client not found")
@@ -2502,12 +2534,33 @@ class TradeOpssAIApp:
             raw_deals = [d for d in all_history_deals if d.get('time_raw', 0) >= _day_start]
 
         # Mark history-only FA deals so the filter can skip re-parsing them.
-        aggregation_raw_deals = list(all_history_deals)
-        for _d in aggregation_raw_deals:
-            if _d.get('ticket') not in _raw_deal_ids:
-                c_up = str(_d.get('comment', '')).upper()
-                if '_FA' in c_up:
+        # Non-FA deals (CH, FD, DD) should only use last-trading-day data.
+        # FA deals need the full 90-day history to correctly compute hedge day slots.
+        _last_trading_day_ids = {d.get('ticket') for d in raw_deals}
+        aggregation_raw_deals = []
+        for _d in all_history_deals:
+            c_up = str(_d.get('comment', '')).upper()
+            is_fa = '_FA' in c_up
+            is_history_only = _d.get('ticket') not in _raw_deal_ids
+            d_type = str(_d.get('type', '')).upper()
+            is_balance_op = d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']
+            
+            if is_balance_op:
+                # Always include balance ops
+                aggregation_raw_deals.append(_d)
+            elif is_fa:
+                # FA: include full 90-day history for correct hedge day slot counting
+                if is_history_only:
                     _d['_fa_history_only'] = True
+                aggregation_raw_deals.append(_d)
+            else:
+                # CH / FD / DD: only last trading day — avoids stale/replaced deals from old resets
+                if _d.get('ticket') in _last_trading_day_ids:
+                    aggregation_raw_deals.append(_d)
+        
+        _fa_count = sum(1 for d in aggregation_raw_deals if '_FA' in str(d.get('comment', '')).upper())
+        _other_count = len(aggregation_raw_deals) - _fa_count
+        _log(f"📂 Deal scope: {_other_count} CH/FD/DD (last trading day) + {_fa_count} FA (90-day history)")
 
         # FNFT challenge filter: challenge accounts reuse the same account numbers
         # across resets, so only keep last 24h of deals with _CH in the comment.
