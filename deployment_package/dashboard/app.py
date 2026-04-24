@@ -358,6 +358,93 @@ def normalize_evaluations(evaluations):
     return evaluations
 
 
+DASHBOARD_OWNED_EVAL_KEYS = frozenset({
+    'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
+    'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+    'Fee', 'Activation Fee',
+    'Status', 'Status Funded', 'Status P1',
+    'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
+    'Date Purchased',
+    'Account Number', 'Prop Firm', 'Account Size',
+    'Account #', 'Account #.1',
+})
+
+
+def _evaluation_row_merge_key(ev):
+    if not isinstance(ev, dict):
+        return None
+    firm = (ev.get('Prop Firm') or '').strip().lower().replace(' ', '').replace('_', '')
+    a0 = (ev.get('Account #') or '').strip().lower()
+    a1 = (ev.get('Account #.1') or '').strip().lower()
+    sz = (ev.get('Account Size') or '').strip().lower()
+    accts = tuple(sorted(a for a in (a0, a1) if a))
+    if not firm and not accts:
+        return None
+    return (firm, accts, sz)
+
+
+def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
+    for key in DASHBOARD_OWNED_EVAL_KEYS:
+        if key in force_fields:
+            if key in incoming_row:
+                merged[key] = incoming_row[key]
+            continue
+        existing_val = base_row.get(key)
+        if existing_val and str(existing_val).strip() not in ('', '-'):
+            if key in ('Fee', 'Activation Fee'):
+                try:
+                    numeric = float(str(existing_val).replace('$', '').replace(',', '').strip())
+                    if numeric == 0:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            merged[key] = existing_val
+
+
+def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fields=None):
+    if not incoming_evals:
+        return list(existing_evals) if existing_evals else []
+
+    force_fields = set(force_fields or [])
+    existing_evals = existing_evals or []
+    incoming_evals = incoming_evals or []
+
+    key_to_idx = {}
+    for i, ex in enumerate(existing_evals):
+        if not isinstance(ex, dict):
+            continue
+        mk = _evaluation_row_merge_key(ex)
+        if mk and mk not in key_to_idx:
+            key_to_idx[mk] = i
+
+    out = []
+    for ex in existing_evals:
+        out.append(dict(ex) if isinstance(ex, dict) else ex)
+
+    appended = []
+
+    for i, ev_in in enumerate(incoming_evals):
+        if not isinstance(ev_in, dict):
+            continue
+        mk = _evaluation_row_merge_key(ev_in)
+        idx = key_to_idx.get(mk) if mk else None
+        if idx is None and mk is None and i < len(out):
+            idx = i
+        if idx is not None and idx < len(out):
+            base_snapshot = existing_evals[idx] if isinstance(existing_evals[idx], dict) else {}
+            merged = dict(out[idx])
+            merged.update(ev_in)
+            _apply_dashboard_owned_merge(merged, base_snapshot, ev_in, force_fields)
+            out[idx] = merged
+        else:
+            merged = dict(ev_in)
+            _apply_dashboard_owned_merge(merged, {}, ev_in, force_fields)
+            appended.append(merged)
+
+    out.extend(appended)
+    return out
+
+
 def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations, eval_idx, account_number=None):
     """
     Determine the correct field name to update based on phase.
@@ -1201,8 +1288,14 @@ def api_client_push():
     # Only use new evaluations if explicitly provided and not empty
     # If "evaluations" key is missing or None, preserve existing data
     if "evaluations" in data and data["evaluations"]:
-        evaluations = data["evaluations"]
-        app.logger.info(f"   Using {len(evaluations)} NEW evaluations from push")
+        incoming_evals = data["evaluations"]
+        existing_evals_push = existing_data.get('evaluations', [])
+        force_fields = set(data.get('force_fields', []))
+        evaluations = merge_evaluation_push_with_existing(
+            existing_evals_push, incoming_evals, force_fields)
+        app.logger.info(
+            f"   Merged {len(incoming_evals)} incoming evaluation row(s) "
+            f"into {len(evaluations)} total (was {len(existing_evals_push)} in DB)")
     else:
         evaluations = existing_data.get("evaluations", [])
         app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
@@ -2850,10 +2943,13 @@ def push_deals():
 @limiter.limit("30 per minute")
 def push_evaluations():
     """Endpoint for traders to push evaluation data."""
-    data = request.json
+    data = request.json or {}
     client_id = data.get('client_id') or request.api_user.get('client', 'Client1')
-    
-    update_client_field(client_id, 'evaluations', data.get('evaluations', []))
+    new_evals = data.get('evaluations', [])
+    existing_evals = (get_client_data(client_id) or {}).get('evaluations', [])
+    force_fields = set(data.get('force_fields') or [])
+    merged = merge_evaluation_push_with_existing(existing_evals, new_evals, force_fields)
+    update_client_field(client_id, 'evaluations', merged)
     log_action('PUSH_EVALUATIONS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
     
     return jsonify({"status": "success", "message": "Evaluations updated"})

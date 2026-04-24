@@ -635,6 +635,109 @@ def normalize_evaluations(evaluations):
     return evaluations
 
 
+# Fields edited on the dashboard (or filled by billing) that sheet/trader pushes
+# must not blindly overwrite — except when the caller sets force_fields.
+DASHBOARD_OWNED_EVAL_KEYS = frozenset({
+    'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
+    'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+    'Fee', 'Activation Fee',
+    'Status', 'Status Funded', 'Status P1',
+    'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
+    'Date Purchased',
+    'Account Number', 'Prop Firm', 'Account Size',
+    'Account #', 'Account #.1',
+})
+
+
+def _evaluation_row_merge_key(ev):
+    """Stable identity for matching a pushed row to the same row in the DB.
+
+    Index-based merge breaks when row order changes, when only a subset of rows
+    is pushed (active trades / billing), or when new rows are inserted — which
+    caused Activation Fee and other dashboard-owned fields to attach to the
+    wrong evaluation or appear to "not persist".
+    """
+    if not isinstance(ev, dict):
+        return None
+    firm = (ev.get('Prop Firm') or '').strip().lower().replace(' ', '').replace('_', '')
+    a0 = (ev.get('Account #') or '').strip().lower()
+    a1 = (ev.get('Account #.1') or '').strip().lower()
+    sz = (ev.get('Account Size') or '').strip().lower()
+    accts = tuple(sorted(a for a in (a0, a1) if a))
+    if not firm and not accts:
+        return None
+    return (firm, accts, sz)
+
+
+def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
+    """Preserve dashboard-owned fields from base_row onto merged (mutates merged)."""
+    for key in DASHBOARD_OWNED_EVAL_KEYS:
+        if key in force_fields:
+            if key in incoming_row:
+                merged[key] = incoming_row[key]
+            continue
+        existing_val = base_row.get(key)
+        if existing_val and str(existing_val).strip() not in ('', '-'):
+            if key in ('Fee', 'Activation Fee'):
+                try:
+                    numeric = float(str(existing_val).replace('$', '').replace(',', '').strip())
+                    if numeric == 0:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+            merged[key] = existing_val
+
+
+def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fields=None):
+    """Merge incoming evaluation rows into the full stored list by row identity.
+
+    - Patches rows that match (firm + account numbers + size); never drops
+      existing rows when the push only contains a subset (e.g. active trades).
+    - Appends rows that have no match (new accounts from the sheet/trader).
+    """
+    if not incoming_evals:
+        return list(existing_evals) if existing_evals else []
+
+    force_fields = set(force_fields or [])
+    existing_evals = existing_evals or []
+    incoming_evals = incoming_evals or []
+
+    key_to_idx = {}
+    for i, ex in enumerate(existing_evals):
+        if not isinstance(ex, dict):
+            continue
+        mk = _evaluation_row_merge_key(ex)
+        if mk and mk not in key_to_idx:
+            key_to_idx[mk] = i
+
+    out = []
+    for ex in existing_evals:
+        out.append(dict(ex) if isinstance(ex, dict) else ex)
+
+    appended = []
+
+    for i, ev_in in enumerate(incoming_evals):
+        if not isinstance(ev_in, dict):
+            continue
+        mk = _evaluation_row_merge_key(ev_in)
+        idx = key_to_idx.get(mk) if mk else None
+        if idx is None and mk is None and i < len(out):
+            idx = i
+        if idx is not None and idx < len(out):
+            base_snapshot = existing_evals[idx] if isinstance(existing_evals[idx], dict) else {}
+            merged = dict(out[idx])
+            merged.update(ev_in)
+            _apply_dashboard_owned_merge(merged, base_snapshot, ev_in, force_fields)
+            out[idx] = merged
+        else:
+            merged = dict(ev_in)
+            _apply_dashboard_owned_merge(merged, {}, ev_in, force_fields)
+            appended.append(merged)
+
+    out.extend(appended)
+    return out
+
+
 def recalculate_hedge_nets(evaluations):
     """Recalculate Hedge Net and Hedge Net.1 for every evaluation row.
 
@@ -3422,45 +3525,14 @@ def api_client_push():
     # Only use new evaluations if explicitly provided and not empty
     # If "evaluations" key is missing or None, preserve existing data
     if "evaluations" in data and data["evaluations"]:
-        evaluations = data["evaluations"]
-        app.logger.info(f"   Using {len(evaluations)} NEW evaluations from push")
-
-        # Preserve dashboard-edited fields that the push should NOT overwrite.
-        # The push carries evaluations from the Google Sheet / trader app, but
-        # payouts, dates, fees, and statuses may have been edited on the dashboard
-        # after the last sheet sync.  Keep those DB values intact.
-        DASHBOARD_OWNED_KEYS = {
-            'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
-            'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
-            'Fee', 'Activation Fee',
-            'Status', 'Status Funded', 'Status P1',
-            'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
-            'Date Purchased',
-            'Account Number', 'Prop Firm', 'Account Size',
-            'Account #', 'Account #.1',
-        }
+        incoming_evals = data["evaluations"]
         existing_evals_push = existing_data.get('evaluations', [])
-        # Allow callers to force-overwrite specific dashboard-owned fields
-        # (e.g. auto-status updates pushing "Status P1" / "Status" changes)
         force_fields = set(data.get('force_fields', []))
-        for i, ev in enumerate(evaluations):
-            if i < len(existing_evals_push):
-                ex = existing_evals_push[i]
-                for key in DASHBOARD_OWNED_KEYS:
-                    if key in force_fields:
-                        continue  # caller explicitly wants to overwrite this field
-                    existing_val = ex.get(key)
-                    if existing_val and str(existing_val).strip() not in ('', '-'):
-                        # For monetary fields, treat zero values as empty/placeholder
-                        # so that autofill from billing can overwrite them
-                        if key in ('Fee', 'Activation Fee'):
-                            try:
-                                numeric = float(str(existing_val).replace('$', '').replace(',', '').strip())
-                                if numeric == 0:
-                                    continue  # don't preserve $0.00 — let pushed value win
-                            except (ValueError, TypeError):
-                                pass
-                        ev[key] = existing_val
+        evaluations = merge_evaluation_push_with_existing(
+            existing_evals_push, incoming_evals, force_fields)
+        app.logger.info(
+            f"   Merged {len(incoming_evals)} incoming evaluation row(s) "
+            f"into {len(evaluations)} total (was {len(existing_evals_push)} in DB)")
     else:
         evaluations = existing_data.get("evaluations", [])
         app.logger.info(f"   Preserving {len(evaluations)} EXISTING evaluations")
@@ -8695,35 +8767,11 @@ def push_evaluations():
                 if acct and (acct, firm, size) in deleted_fingerprints:
                     ev['_deleted'] = True
 
-    # Preserve dashboard-owned fields that the push should NOT overwrite
-    DASHBOARD_OWNED_KEYS = {
-        'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
-        'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
-        'Fee', 'Activation Fee',
-        'Status', 'Status Funded', 'Status P1',
-        'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
-        'Date Purchased',
-        'Account Number', 'Prop Firm', 'Account Size',
-        'Account #', 'Account #.1',
-    }
-    for i, ev in enumerate(new_evals):
-        if i < len(existing_evals) and isinstance(ev, dict):
-            ex = existing_evals[i]
-            for key in DASHBOARD_OWNED_KEYS:
-                existing_val = ex.get(key)
-                if existing_val and str(existing_val).strip() not in ('', '-'):
-                    # For monetary fields, treat zero values as empty/placeholder
-                    # so that autofill from billing can overwrite them
-                    if key in ('Fee', 'Activation Fee'):
-                        try:
-                            numeric = float(str(existing_val).replace('$', '').replace(',', '').strip())
-                            if numeric == 0:
-                                continue  # don't preserve $0.00 — let pushed value win
-                        except (ValueError, TypeError):
-                            pass
-                    ev[key] = existing_val
+    force_fields = set((data.get('force_fields') or []) if isinstance(data, dict) else [])
+    merged_evals = merge_evaluation_push_with_existing(
+        existing_evals, new_evals, force_fields)
 
-    update_client_field(client_id, 'evaluations', new_evals)
+    update_client_field(client_id, 'evaluations', merged_evals)
     log_action('PUSH_EVALUATIONS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
     
     return jsonify({"status": "success", "message": "Evaluations updated"})
