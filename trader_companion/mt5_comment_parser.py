@@ -604,10 +604,21 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
         else:
             d = deal
         
+        # Skip balance / credit / internal-transfer operations regardless of
+        # whether the broker assigned a position_id to them. Some brokers tag
+        # "internal transfer" balance ops with a real position_id which would
+        # otherwise leak their amount into a hedge aggregate.
+        d_type_str = str(d.get('type', '')).upper()
+        if d_type_str in ('BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS'):
+            continue
+        d_comment_str = str(d.get('comment', '') or '').strip().lower()
+        if 'internal transfer' in d_comment_str:
+            continue
+
         pid = d.get('position_id', 0)
         if pid == 0:
             continue  # Skip balance/credit operations
-            
+
         if pid not in positions:
             positions[pid] = []
         positions[pid].append(d)
@@ -619,9 +630,11 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
     unmatched = []
     
     for pid, deal_list in positions.items():
-        # Find entry deal (entry=0 is DEAL_ENTRY_IN) with valid comment
+        # Find entry deal (entry=0/IN) with valid comment, and detect exit deals.
+        # 'entry' can be integer (0=IN, 1=OUT, 2=INOUT, 3=OUT_BY) or string ("IN"/"OUT"/"INOUT"/"OUT_BY")
         entry_deal = None
-        exit_time = 0 
+        has_exit_deal = False
+        exit_time = 0
         
         total_profit = 0.0
         total_commission = 0.0
@@ -629,9 +642,16 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
         total_fee = 0.0
         
         for d in deal_list:
-            # entry: 0=IN, 1=OUT, 2=INOUT, 3=OUT_BY
-            if d.get('entry', 1) == 0:  # Entry deal
+            entry_val = d.get('entry', '')
+            # Normalise to string for comparison
+            entry_str = str(entry_val).upper() if entry_val != '' else ''
+            is_entry = entry_val == 0 or entry_str == 'IN'
+            is_exit  = entry_val in (1, 2, 3) or entry_str in ('OUT', 'INOUT', 'OUT_BY')
+
+            if is_entry and entry_deal is None:
                 entry_deal = d
+            if is_exit:
+                has_exit_deal = True
             
             # Track latest time (exit time)
             t = d.get('time_raw', d.get('time', 0))
@@ -648,6 +668,11 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
             total_commission += d.get('commission', 0) or 0
             total_swap += d.get('swap', 0) or 0
             total_fee += d.get('fee', 0) or 0
+
+        # Keep open positions in aggregation. Caller-side push logic decides whether
+        # zero-value FA rows should be sent (e.g., only when active positions exist).
+        if not has_exit_deal:
+            log_messages.append(f"ℹ️ Open position {pid} (no exit deal yet)")
         
         # If no entry deal found, try to find any deal with a valid comment
         if not entry_deal:
@@ -694,6 +719,7 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
             'total_fee': round(total_fee, 2),
             'net_profit': round(total_profit + total_commission + total_swap + total_fee, 2),
             'deal_count': len(deal_list),
+            'has_open_position': not has_exit_deal,
             'account_signature': get_account_signature(parsed.account_number),
             'raw_comment': comment
         })
@@ -733,6 +759,7 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
                 'net_profit': 0.0,
                 'deal_count': 0,
                 'position_count': 0,
+                'has_open_position': False,
                 'account_signature': pos['account_signature'],
                 'key': key,
                 'timestamp': pos['timestamp'] # Keep one timestamp
@@ -746,6 +773,7 @@ def aggregate_deals_by_position(deals: List[Any]) -> Tuple[List[Dict], List[Dict
         agg['net_profit'] += pos['net_profit']
         agg['deal_count'] += pos['deal_count']
         agg['position_count'] += 1
+        agg['has_open_position'] = agg['has_open_position'] or bool(pos.get('has_open_position'))
         
         # Update timestamp to latest in group (usually irrelevant for same day)
         if pos['timestamp'] > agg['timestamp']:

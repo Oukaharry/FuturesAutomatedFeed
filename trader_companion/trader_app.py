@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.5.3"
 RELEASE_DISABLE_HEDGE_GUARD = True
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
@@ -235,6 +235,34 @@ def _gzip_post(url, payload, timeout=120, **kwargs):
         return requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=timeout, **kwargs)
 
 
+def _to_topstepx_symbol(sym):
+    """Convert Tradovate-style futures symbol to TopStepX-style.
+
+    Tradovate uses a single-digit year (e.g. NQM6 = NQ June 2026).
+    TopStepX expects a two-digit year (e.g. NQM26).
+
+    Recognized month codes: F G H J K M N Q U V X Z
+    Returns the input unchanged if it doesn't look like a futures symbol.
+    """
+    if not sym:
+        return sym
+    s = str(sym).strip().upper()
+    m = re.match(r"^([A-Z]+)([FGHJKMNQUVXZ])(\d{1,2})$", s)
+    if not m:
+        return s
+    root, month, year = m.group(1), m.group(2), m.group(3)
+    if len(year) == 2:
+        return s  # Already in TSX format
+    # Expand single-digit year using current decade, rolling forward if needed
+    from datetime import datetime as _dt
+    cur_year = _dt.now().year
+    decade = (cur_year // 10) * 10
+    candidate = decade + int(year)
+    if candidate < cur_year - 1:
+        candidate += 10
+    return f"{root}{month}{str(candidate % 100).zfill(2)}"
+
+
 class MT5DataPusher:
     """Handles MT5 data extraction and API pushing."""
     
@@ -290,8 +318,8 @@ class MT5DataPusher:
         self.connected = False
         return True, "Disconnected from MT5"
     
-    def get_account_info(self):
-        """Get account information including calculated deposits/withdrawals."""
+    def get_account_info(self, include_balance_history=False):
+        """Get account information, optionally including full-history deposits/withdrawals."""
         if not self.connected:
             return None
         
@@ -299,22 +327,22 @@ class MT5DataPusher:
         if not account:
             return None
         
-        # Calculate deposits/withdrawals from deal history (BALANCE type = 2)
         total_deposits = 0.0
         total_withdrawals = 0.0
-        try:
-            from_timestamp = 0  # From the beginning
-            to_timestamp = time.time() + 86400
-            deals = mt5.history_deals_get(from_timestamp, to_timestamp)
-            if deals:
-                for deal in deals:
-                    if deal.type == 2:  # DEAL_TYPE_BALANCE
-                        if deal.profit > 0:
-                            total_deposits += deal.profit
-                        else:
-                            total_withdrawals += deal.profit
-        except Exception as e:
-            print(f"Error calculating deposits/withdrawals: {e}")
+        if include_balance_history:
+            try:
+                from_timestamp = 0  # From the beginning
+                to_timestamp = time.time() + 86400
+                deals = mt5.history_deals_get(from_timestamp, to_timestamp)
+                if deals:
+                    for deal in deals:
+                        if deal.type == 2:  # DEAL_TYPE_BALANCE
+                            if deal.profit > 0:
+                                total_deposits += deal.profit
+                            else:
+                                total_withdrawals += deal.profit
+            except Exception as e:
+                print(f"Error calculating deposits/withdrawals: {e}")
             
         return {
             "login": account.login,
@@ -1426,6 +1454,9 @@ class TradeOpssAIApp:
         self.pusher = MT5DataPusher()
         self.auto_push_enabled = False
         self.auto_push_thread = None
+        self._push_lock = threading.Lock()
+        self._push_in_progress = False
+        self._push_pending = False
         self.client_info = None
 
         # Auto-trade scheduler state
@@ -2437,6 +2468,16 @@ class TradeOpssAIApp:
         if not client_name:
             messagebox.showerror("Error", "Client lookup failed - no client name found")
             return
+
+        # Prevent overlapping push workers. If a push is already running,
+        # queue exactly one follow-up run so the latest state still gets sent.
+        with self._push_lock:
+            if self._push_in_progress:
+                if not self._push_pending:
+                    self._push_pending = True
+                    self.log("⏳ Push already running — queued one follow-up push")
+                return
+            self._push_in_progress = True
         
         # Guard checks passed — disable the button and run everything in a background thread
         # so the UI stays responsive during MT5 calls and the HTTP round-trip.
@@ -2449,12 +2490,26 @@ class TradeOpssAIApp:
         self.status_var.set("Pushing data...")
 
         def _do_push():
-            self._push_data_worker(dashboard_url, email, client_name)
-            if hasattr(self, 'push_btn_live') and self.push_btn_live:
-                try:
-                    self.root.after(0, lambda: self.push_btn_live.configure(state="normal"))
-                except Exception:
-                    pass
+            should_run_follow_up = False
+            try:
+                self._push_data_worker(dashboard_url, email, client_name)
+            finally:
+                with self._push_lock:
+                    self._push_in_progress = False
+                    should_run_follow_up = self._push_pending
+                    self._push_pending = False
+
+                if should_run_follow_up:
+                    try:
+                        self.root.after(0, lambda: self.log("🔁 Running queued push"))
+                        self.root.after(0, self.push_data)
+                    except Exception:
+                        pass
+                elif hasattr(self, 'push_btn_live') and self.push_btn_live:
+                    try:
+                        self.root.after(0, lambda: self.push_btn_live.configure(state="normal"))
+                    except Exception:
+                        pass
 
         threading.Thread(target=_do_push, daemon=True).start()
 
@@ -2475,7 +2530,7 @@ class TradeOpssAIApp:
         def _status(msg):
             self.root.after(0, lambda m=msg: self.status_var.set(m))
 
-        account = self.pusher.get_account_info()
+        account = self.pusher.get_account_info(include_balance_history=False)
         if not account:
             _log("⚠️ MT5 account info returned empty — pushing with no account data", "ERROR")
             account = {}
@@ -2503,8 +2558,9 @@ class TradeOpssAIApp:
         _today_cutoff = time.time() - 86400
         raw_deals = self.pusher.get_deals(days=1) or []
 
-        # For farming aggregation we need 365-day history.
+        # For farming aggregation we need long-range history for accurate Hedge Day slots.
         # Cache it per MT5 login with a 5-minute TTL so repeated auto-push calls are fast.
+        _fa_history_days = 365
         _login_key = str(account.get('login', 'unknown'))
         if not hasattr(self, '_fa_history_cache'):
             self._fa_history_cache = {}
@@ -2516,10 +2572,22 @@ class TradeOpssAIApp:
             _log(f"📦 Using cached FA history ({int(_now - _cached[0])}s old)")
             _cached_deals = _cached[1]
         else:
-            _log(f"📅 Fetching 90-day FA history (cache miss or expired)")
-            _full = self.pusher.get_deals(days=90) or []
+            _log(f"📅 Fetching {_fa_history_days}-day FA history (cache miss or expired)")
+            _full = self.pusher.get_deals(days=_fa_history_days) or []
             # Store only the deals older than today's cutoff to keep cache lean.
-            _cached_deals = [d for d in _full if d.get('time_raw', 0) < _today_cutoff]
+            # Strip internal transfers up-front so they can NEVER resurface from
+            # the cache — guarantees the latest live MT5 state always wins and
+            # no stale balance op leaks into hedge aggregates on subsequent pushes.
+            _cached_deals = []
+            for _d in _full:
+                if _d.get('time_raw', 0) >= _today_cutoff:
+                    continue
+                _dt = str(_d.get('type', '')).upper()
+                if _dt in ('BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS'):
+                    _cl = str(_d.get('comment', '') or '').strip().lower()
+                    if ('internal transfer' in _cl) or (not _cl):
+                        continue
+                _cached_deals.append(_d)
             self._fa_history_cache[_login_key] = (_now, _cached_deals)
 
         # Merge: fresh last-24h + cached history gives the full aggregation input.
@@ -2544,15 +2612,25 @@ class TradeOpssAIApp:
             is_history_only = _d.get('ticket') not in _raw_deal_ids
             d_type = str(_d.get('type', '')).upper()
             is_balance_op = d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']
-            
+            _comment_lower = str(_d.get('comment', '') or '').strip().lower()
+            is_internal_transfer = (
+                'internal transfer' in _comment_lower
+                or (is_balance_op and not _comment_lower)
+            )
+
+            if is_internal_transfer:
+                # Internal transfers / unattributed balance ops never contribute to
+                # hedge results; drop them so they cannot inflate eval values.
+                continue
+
             if is_balance_op:
-                # Always include balance ops
+                # Keep other balance ops (deposits with comments, charges, bonuses, etc.)
                 aggregation_raw_deals.append(_d)
             elif is_fa:
-                # FA: include full 90-day history for correct hedge day slot counting
-                if is_history_only:
-                    _d['_fa_history_only'] = True
-                aggregation_raw_deals.append(_d)
+                # FA: only push last-trading-day deals (what to push).
+                # Full history is used separately for day COUNT only (fa_day_keys_by_account below).
+                if _d.get('ticket') in _last_trading_day_ids:
+                    aggregation_raw_deals.append(_d)
             else:
                 # CH / FD / DD: only last trading day — avoids stale/replaced deals from old resets
                 if _d.get('ticket') in _last_trading_day_ids:
@@ -2560,7 +2638,59 @@ class TradeOpssAIApp:
         
         _fa_count = sum(1 for d in aggregation_raw_deals if '_FA' in str(d.get('comment', '')).upper())
         _other_count = len(aggregation_raw_deals) - _fa_count
-        _log(f"📂 Deal scope: {_other_count} CH/FD/DD (last trading day) + {_fa_count} FA (90-day history)")
+        _log(f"📂 Deal scope: {_other_count} CH/FD/DD (last trading day) + {_fa_count} FA (last trading day only; slot# from {_fa_history_days}-day history)")
+
+        # Pre-compute full FA trading-day counts per account from full history,
+        # then use this count as the authoritative Hedge Day slot index.
+        fa_day_keys_by_account = {}
+        for _d in all_history_deals:
+            _comment = str(_d.get('comment', '') or '')
+            if '_FA' not in _comment.upper():
+                continue
+
+            _parsed = self.pusher.parse_deal_comment_v2(_comment)
+            if not _parsed:
+                continue
+            # parse_deal_comment_v2 may return either a ParsedComment-like object
+            # or a plain dict (parse_mt5_comment convenience path).
+            _parsed_is_dict = isinstance(_parsed, dict)
+            _is_valid = (_parsed.get('is_valid') if _parsed_is_dict else getattr(_parsed, 'is_valid', True))
+            if _is_valid is False:
+                continue
+
+            _account_key = str(
+                (_parsed.get('account_number') if _parsed_is_dict else getattr(_parsed, 'account_number', '')) or ''
+            ).strip()
+            if not _account_key:
+                continue
+
+            _day_key = ''
+            _parsed_date = (_parsed.get('farming_date') if _parsed_is_dict else getattr(_parsed, 'farming_date', None))
+            if _parsed_date:
+                try:
+                    if hasattr(_parsed_date, 'strftime'):
+                        _day_key = _parsed_date.strftime('%Y-%m-%d')
+                    else:
+                        _day_key = str(_parsed_date)[:10]
+                except Exception:
+                    _day_key = str(_parsed_date)[:10]
+
+            if not _day_key:
+                _ts = _d.get('time_raw', 0)
+                if isinstance(_ts, (int, float)) and _ts > 0:
+                    try:
+                        _day_key = datetime.fromtimestamp(_ts).strftime('%Y-%m-%d')
+                    except Exception:
+                        _day_key = ''
+
+            if _day_key:
+                fa_day_keys_by_account.setdefault(_account_key, set()).add(_day_key)
+
+        fa_day_count_by_account = {
+            acc: len(days)
+            for acc, days in fa_day_keys_by_account.items()
+            if days
+        }
 
         # FNFT challenge filter: challenge accounts reuse the same account numbers
         # across resets, so only keep last 24h of deals with _CH in the comment.
@@ -2594,16 +2724,29 @@ class TradeOpssAIApp:
                 ]
         
         # Filter deals: keep balance ops and trades with valid comments.
-        # FA-history-only deals are pre-validated (added because comment has _FA) — skip re-parse.
+        # FA-history-only deals are pre-validated (added because comment has _FA) - skip re-parse.
         def _filter_valid_push_deals(source_deals, skip_fa_reparse=False):
             filtered = []
             for deal in source_deals or []:
                 d_type = str(deal.get('type', '')).upper()
                 if d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']:
+                    # Drop internal transfers — they are NOT real P&L and must
+                    # never reach statistics or the dashboard. Catches both:
+                    #   - explicit "internal transfer" comment (any sign)
+                    #   - empty-comment balance ops (legacy untagged transfers)
+                    _bal_comment_l = str(deal.get('comment', '') or '').strip().lower()
+                    if ('internal transfer' in _bal_comment_l) or (not _bal_comment_l):
+                        continue
                     filtered.append(deal)
                     continue
 
                 if skip_fa_reparse and deal.get('_fa_history_only'):
+                    filtered.append(deal)
+                    continue
+
+                # Also skip re-parsing for any FA-tagged deal when skip_fa_reparse=True.
+                # All FA deals were pre-validated by the _FA comment check in the build loop.
+                if skip_fa_reparse and '_FA' in str(deal.get('comment', '')).upper():
                     filtered.append(deal)
                     continue
 
@@ -2620,7 +2763,6 @@ class TradeOpssAIApp:
                 if is_valid:
                     filtered.append(deal)
             return filtered
-
         deals = _filter_valid_push_deals(raw_deals)
         aggregation_deals = _filter_valid_push_deals(aggregation_raw_deals, skip_fa_reparse=True)
 
@@ -2632,8 +2774,45 @@ class TradeOpssAIApp:
         # Aggregate hedge results locally, including farming history for correct FA sloting.
         aggregated_by_comment = []
         comment_summary = {}
+        latest_fa_aggregates = []
         if COMMENT_PARSER_AVAILABLE and aggregation_deals:
             aggregated_by_comment, _unmatched, _agg_log = aggregate_deals_by_position(aggregation_deals)
+
+            # Keep open-position aggregates strictly on the current trading day.
+            # This prevents stale multi-day open entries from re-triggering FA pushes.
+            _today_local = datetime.now().date()
+
+            def _is_current_trading_day_open(agg):
+                ts = agg.get('timestamp')
+                if isinstance(ts, (int, float)) and ts > 0:
+                    try:
+                        return datetime.fromtimestamp(ts).date() == _today_local
+                    except Exception:
+                        pass
+
+                farming_date = str(agg.get('farming_date') or '').strip()
+                if len(farming_date) >= 10:
+                    try:
+                        return datetime.fromisoformat(farming_date.replace('Z', '+00:00')).date() == _today_local
+                    except Exception:
+                        try:
+                            return datetime.strptime(farming_date[:10], '%Y-%m-%d').date() == _today_local
+                        except Exception:
+                            pass
+                return False
+
+            if aggregated_by_comment:
+                _fresh_open_aggregates = []
+                _dropped_stale_open = 0
+                for agg in aggregated_by_comment:
+                    if bool(agg.get('has_open_position')) and not _is_current_trading_day_open(agg):
+                        _dropped_stale_open += 1
+                        continue
+                    _fresh_open_aggregates.append(agg)
+
+                if _dropped_stale_open:
+                    _log(f"🧹 Suppressed {_dropped_stale_open} stale open trade group(s) from prior trading days")
+                aggregated_by_comment = _fresh_open_aggregates
 
             def _normalize_fa_day(agg):
                 timestamp = agg.get('timestamp')
@@ -2675,17 +2854,39 @@ class TradeOpssAIApp:
 
             for account_key, entries in fa_accounts.items():
                 entries.sort(key=lambda item: item[0])
-                total_slots = len(entries)
-                # Push ALL farming slots so the server can fill/correct the full history,
-                # not just the most-recent one. Server routes each entry via field_name.
-                for slot_num, (day_key, agg) in enumerate(entries, 1):
-                    agg['trade_number'] = slot_num
-                    agg['_fa_slot'] = slot_num
-                    agg['field_name'] = f"Hedge Day {slot_num}"
-                    latest_fa_aggregates.append(agg)
-                _log(f"📅 {account_key}: pushing Hedge Day 1–{total_slots} (all farming history)")
+                total_slots = fa_day_count_by_account.get(account_key, len(entries))
+                # Push only the LATEST farming day, labelled as Hedge Day <total_slots>.
+                # total_slots is derived from the full 90-day history so the slot number
+                # is always correct even though we only send one entry per account.
+                latest_day_key, latest_agg = entries[-1]
+                tagged = dict(latest_agg)
+                tagged['trade_number'] = total_slots
+                tagged['_fa_slot'] = total_slots
+                tagged['field_name'] = f"Hedge Day {total_slots}"
+                latest_fa_aggregates.append(tagged)
+                _log(f"📅 {account_key}: {total_slots} FA day(s) → pushing as Hedge Day {total_slots}")
 
             aggregated_by_comment = non_fa_aggregates + latest_fa_aggregates
+
+            # Guard against false FA zero pushes when there are no active positions.
+            # We still keep zero FA rows when positions are active (user-visible signal that a trade is running).
+            has_active_positions = bool(positions)
+            if not has_active_positions and aggregated_by_comment:
+                filtered_aggregates = []
+                dropped_fa_zeros = 0
+                for agg in aggregated_by_comment:
+                    is_fa = agg.get('phase_code') == 'FA'
+                    net_profit = float(agg.get('net_profit', 0) or 0)
+                    deal_count = int(agg.get('deal_count', 0) or 0)
+                    has_open_position = bool(agg.get('has_open_position'))
+                    if is_fa and abs(net_profit) < 1e-9 and deal_count <= 1 and not has_open_position:
+                        dropped_fa_zeros += 1
+                        continue
+                    filtered_aggregates.append(agg)
+                if dropped_fa_zeros:
+                    _log(f"🧹 Suppressed {dropped_fa_zeros} stale FA zero row(s) (no open FA trade)")
+                aggregated_by_comment = filtered_aggregates
+
             by_phase = {}
             for agg in aggregated_by_comment:
                 phase_name = agg.get('phase_name', 'UNKNOWN')
@@ -2935,7 +3136,7 @@ class TradeOpssAIApp:
             return
 
         self.status_var.set("Pushing hedging review...")
-        account = self.pusher.get_account_info()
+        account = self.pusher.get_account_info(include_balance_history=True)
         if not account:
             self.log("⚠️ Hedging review skipped — MT5 account info is empty", "ERROR")
             self.status_var.set("Hedging review skipped")
@@ -2948,11 +3149,17 @@ class TradeOpssAIApp:
         ).start()
 
     def _push_hedging_review_worker(self, dashboard_url, email, account):
-        """Send hedging review payload — runs on a background thread, reuses supplied account dict."""
+        """Send hedging review payload — refreshes account totals in the background if needed."""
         def _log(msg, level="INFO"):
             self.root.after(0, lambda m=msg, lv=level: self.log(m, lv))
         def _status(msg):
             self.root.after(0, lambda m=msg: self.status_var.set(m))
+
+        if self.pusher.connected:
+            try:
+                account = self.pusher.get_account_info(include_balance_history=True) or account
+            except Exception:
+                pass
 
         deposits = float(account.get('total_deposits', 0) or 0)
         withdrawals = float(account.get('total_withdrawals', 0) or 0)
@@ -4155,6 +4362,61 @@ class TradeOpssAIApp:
     # Keywords for substring matching (catches "Fail", "Failed", "Breached", etc.)
     _INACTIVE_KEYWORDS = ("fail", "breach", "delete", "closed", "sl", "ended", "lost")
 
+    # ── Funded-phase starting balance map ─────────────────────────────
+    # Some prop firms reset the funded balance to a value that differs from
+    # the challenge "Account Size".  Without this, current-profit math is wrong
+    # by tens of thousands of dollars and TP/SL adjustment goes haywire
+    # (e.g. MFFU funded balance starts at $0 — using $50K as start makes the
+    # adjuster think we are -$50K down and inflates TP ~15× to "recover").
+    #
+    # Convention:
+    #   - "ZERO"      → funded balance literally starts at $0
+    #   - "ACCOUNT_SIZE" (default) → starts at the challenge size (e.g. $50K)
+    _FUNDED_START_BALANCE_MODE: Dict[str, str] = {
+        "MFFU":             "ZERO",
+        "MFFU_Flex":        "ZERO",
+        "TopStep":          "ZERO",  # TopStep funded accounts also start at $0
+        "Funded Next":      "ACCOUNT_SIZE",
+        "FundingTicks":     "ACCOUNT_SIZE",
+        "TradeDay":         "ACCOUNT_SIZE",
+        "Tradeify":         "ACCOUNT_SIZE",
+        "AlphaFutures":     "ACCOUNT_SIZE",
+        "Apex":             "ACCOUNT_SIZE",
+        "Lucid":            "ACCOUNT_SIZE",
+        "Top One Futures":  "ACCOUNT_SIZE",
+    }
+
+    def _resolve_starting_balance(self, ev, current_phase, acct_size):
+        """Return the firm-correct starting balance for profit math.
+
+        For Funded / Payout phases on firms whose funded balance starts at $0
+        (MFFU family), this returns 0 instead of the challenge size.  All other
+        firms / phases fall back to the challenge size parsed from acct_size.
+        """
+        # Parse acct_size as the default
+        start_str = str(acct_size or '').replace("$", "").replace(",", "").strip().lower()
+        if start_str.endswith("k"):
+            try:
+                default_start = float(start_str[:-1]) * 1000
+            except ValueError:
+                default_start = 50000.0
+        elif start_str.replace(".", "").isdigit():
+            default_start = float(start_str)
+        else:
+            default_start = 50000.0
+
+        # Only Funded / Payout / Double Dip phases differ from challenge size
+        funded_phases = ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4", "Double Dip")
+        if current_phase not in funded_phases:
+            return default_start
+
+        firm_raw = (ev or {}).get("Prop Firm", "") if isinstance(ev, dict) else ""
+        canonical = self._FIRM_MAP.get(firm_raw, firm_raw)
+        mode = self._FUNDED_START_BALANCE_MODE.get(canonical, "ACCOUNT_SIZE")
+        if mode == "ZERO":
+            return 0.0
+        return default_start
+
     def _detect_eval_phase(self, ev):
         """Determine current phase display name and blueprint key for an evaluation."""
         challenge_status = (ev.get("Status P1", "") or "").strip().lower()
@@ -4442,14 +4704,10 @@ class TradeOpssAIApp:
                 if balance_str and balance_str != "N/A":
                     cleaned = balance_str.replace("$", "").replace(",", "").strip()
                     equity = float(cleaned)
-                    # Parse starting balance from acct_size (e.g. "$50,000" or "50k" → 50000)
-                    start_str = str(acct_size).replace("$", "").replace(",", "").strip().lower()
-                    if start_str.endswith("k"):
-                        starting = float(start_str[:-1]) * 1000
-                    elif start_str.replace(".", "").isdigit():
-                        starting = float(start_str)
-                    else:
-                        starting = 50000.0
+                    # Firm-aware starting balance.  Critical for MFFU funded
+                    # accounts which start at $0 — using $50K here would make
+                    # the TP adjuster think we are -$50K down and inflate TP.
+                    starting = self._resolve_starting_balance(ev, current_phase, acct_size)
                     live_profit = equity - starting
                     if abs(live_profit) > 0.01:
                         return live_profit
@@ -5158,24 +5416,30 @@ class TradeOpssAIApp:
                 # 1. Broker order
                 if platform == "Tradovate":
                     if side == "buy":
-                        broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                        order_result = broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                     else:
-                        broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                        order_result = broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                 elif platform == "TopStepX":
                     # Switch to the correct account if multiple accounts under same login
                     if hasattr(broker_account, 'switch_account') and acct_num:
-                        try:
-                            broker_account.switch_account(account_name_contains=acct_num)
-                        except Exception as _sw_err:
-                            self.log(f"⚠ TopStepX account switch to {acct_num}: {_sw_err}", "WARN")
+                        switched = broker_account.switch_account(account_name_contains=acct_num)
+                        if not switched:
+                            raise Exception(f"TopStepX could not switch to account {acct_num}")
+                    # TopStepX uses two-digit year futures codes (NQM26, MNQM26)
+                    _tsx_sym = _to_topstepx_symbol(trado_sym)
                     # Convert ticks to dollars for TopStepX: dollars = ticks * tick_value * quantity
-                    _tsx_tick_val = self.prop_firm_mgr.get_tick_value(trado_sym) if self.prop_firm_mgr else 0.5
+                    _tsx_tick_val = self.prop_firm_mgr.get_tick_value(_tsx_sym) if self.prop_firm_mgr else 0.5
                     _tsx_tp_dollars = trado_tp * _tsx_tick_val * trado_qty
                     _tsx_sl_dollars = trado_sl * _tsx_tick_val * trado_qty
                     if side == "buy":
-                        broker_account.place_buy_order(trado_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
+                        order_result = broker_account.place_buy_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
                     else:
-                        broker_account.place_sell_order(trado_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
+                        order_result = broker_account.place_sell_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
+
+                # Some broker implementations return a status dict instead of raising.
+                # Normalize failures so UI/logs don't report false fills.
+                if isinstance(order_result, dict) and order_result.get("success") is False:
+                    raise Exception(order_result.get("message") or "Broker reported unsuccessful order")
 
                 self.log(f"✅ {platform} filled {side.upper()} {trado_qty} {trado_sym} | TP:{trado_tp}t SL:{trado_sl}t | {acct_num}")
 
@@ -5753,6 +6017,14 @@ class TradeOpssAIApp:
         hedging = self.hedge_mode_var.get() == "Hedging"
         default_platform = self.broker_var.get()
         mt5_api = self._get_mt5_trading_api() if hedging else None
+        if hedging and not mt5_api:
+            messagebox.showerror(
+                "MT5 Not Connected",
+                "Connect MT5 first, or switch to 'Broker Only' mode to skip MT5 hedging."
+            )
+            self.log("❌ Auto-trade aborted — MT5 not connected (Hedging mode requires MT5)")
+            self._stop_auto_trade()
+            return
 
         # Group rows by firm so each firm's Chrome runs in its own thread
         rows_by_firm = defaultdict(list)
@@ -6085,14 +6357,40 @@ class TradeOpssAIApp:
                     # 1. Broker order — uses this firm's own Chrome instance
                     if platform == "Tradovate":
                         if side == "buy":
-                            broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                            order_result = broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                         else:
-                            broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                            order_result = broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                     elif platform == "TopStepX":
+                        # Ensure we are on the intended sub-account before placing the order.
+                        if hasattr(broker_account, 'switch_account') and acct_num:
+                            switched = broker_account.switch_account(account_name_contains=acct_num)
+                            if not switched:
+                                raise Exception(f"TopStepX could not switch to account {acct_num}")
+
+                        # TopStepX uses two-digit year futures codes (NQM26, MNQM26)
+                        _tsx_sym = _to_topstepx_symbol(trado_sym)
+                        _tsx_tick_val = self.prop_firm_mgr.get_tick_value(_tsx_sym) if self.prop_firm_mgr else 0.5
+                        _tsx_tp_dollars = trado_tp * _tsx_tick_val * trado_qty
+                        _tsx_sl_dollars = trado_sl * _tsx_tick_val * trado_qty
                         if side == "buy":
-                            broker_account.place_buy_order(trado_sym, trado_qty)
+                            order_result = broker_account.place_buy_order(
+                                _tsx_sym,
+                                trado_qty,
+                                tp_dollars=_tsx_tp_dollars,
+                                sl_dollars=_tsx_sl_dollars,
+                            )
                         else:
-                            broker_account.place_sell_order(trado_sym, trado_qty)
+                            order_result = broker_account.place_sell_order(
+                                _tsx_sym,
+                                trado_qty,
+                                tp_dollars=_tsx_tp_dollars,
+                                sl_dollars=_tsx_sl_dollars,
+                            )
+
+                    # TopStepX returns status dicts on both success and failure.
+                    # Convert broker-declared failures to exceptions so counters/logs are accurate.
+                    if isinstance(order_result, dict) and order_result.get("success") is False:
+                        raise Exception(order_result.get("message") or "Broker reported unsuccessful order")
 
                     self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side, sym=trado_sym, qty=trado_qty:
                         self.log(f"✅ {platform} {sd.upper()} {qty} {sym} → {an} ({fc})"))

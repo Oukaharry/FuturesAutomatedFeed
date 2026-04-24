@@ -1210,64 +1210,42 @@ class PropFirmManager:
                 }
             },
             "Top One Futures": {
-                "name": "Top One Futures",
+                "name": "Top One Futures Elite Access",
                 "account_sizes": ["$50,000"],
-                "trading_phases": ["Challenge Phase", "Funded Phase", "Double Dip Phase"],
+                "trading_phases": ["Challenge Phase", "Payout 1", "Payout 2", "Double Dip Payout 1", "Double Dip Payout 2", "Farming Phase"],
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 101,
-                            "tradovate_sl_ticks": 200,
-                            "mt5_volume": 2.6,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 30
-                        }
-                    },
-                    "challenge_trade2": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 101,
-                            "tradovate_sl_ticks": 200,
-                            "mt5_volume": 4.8,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 30
-                        }
-                    },
-                    "challenge_trade3": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 101,
+                            "tradovate_tp_ticks": 301,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 30
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
                         }
                     },
                     "funded_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 1,
-                            "tradovate_tp_ticks": 600,
+                            "tradovate_tp_ticks": 240,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 79,
-                            "profit_target": 3000
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
                         }
                     },
                     "funded_trade2": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 100,
-                            "tradovate_sl_ticks": 100,
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 102,
+                            "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
                             "profit_target": 1000
                         }
                     },
@@ -1275,24 +1253,35 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 1,
-                            "tradovate_tp_ticks": 600,
+                            "tradovate_tp_ticks": 240,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 79,
-                            "profit_target": 3000
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
                         }
                     },
                     "funded_trade_doubledip_2": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 100,
-                            "tradovate_sl_ticks": 100,
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 102,
+                            "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 29,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
                             "profit_target": 1000
+                        }
+                    },
+                    "farming": {
+                        "50k": {
+                            "tradovate_symbol": "MNQM6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 254,
+                            "tradovate_sl_ticks": 600,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
                         }
                     }
                 }
@@ -1509,14 +1498,11 @@ class PropFirmManager:
                 else:
                     phase_key = "funded_trade4"
             elif self.current_firm_code == "Top One Futures":
-                if balance_performance < 2.0:
-                    phase_key = "funded_trade1"
-                elif balance_performance < 4.0:
-                    phase_key = "funded_trade2"
-                elif balance_performance < 6.0:
-                    phase_key = "funded_trade3"
-                else:
-                    phase_key = "funded_trade4"
+                # Top One Futures uses Payout 1 / Payout 2 selection instead of
+                # a single "Funded Phase". This branch only runs as a safety
+                # fallback if "Funded Phase" is somehow still selected; default
+                # to funded_trade1 so behavior matches Payout 1.
+                phase_key = "funded_trade1"
             elif self.current_firm_code == "FundingTicks":
                 phase_key = "funded_trade1" # Default to trade 1
             elif self.current_firm_code == "Tradeify":
@@ -1537,7 +1523,7 @@ class PropFirmManager:
                 else:
                     phase_key = "funded_trade_doubledip_4"
             elif self.current_firm_code == "Top One Futures":
-                # Top One Futures Double Dip Phase Logic
+                # Top One Futures Double Dip Phase Logic (same structure as funded)
                 if balance_performance < 2.0:
                     phase_key = "funded_trade_doubledip_1"
                 elif balance_performance < 4.0:
@@ -1548,6 +1534,14 @@ class PropFirmManager:
                     phase_key = "funded_trade_doubledip_4"
             else:
                 phase_key = "funded" # Fallback
+
+        elif trading_phase == "Double Dip Payout 1":
+            # Top One Futures Double Dip uses the same structure as Payout 1
+            phase_key = "funded_trade_doubledip_1"
+
+        elif trading_phase == "Double Dip Payout 2":
+            # Top One Futures Double Dip uses the same structure as Payout 2
+            phase_key = "funded_trade_doubledip_2"
 
         elif trading_phase == "Payout 1":
             phase_key = "funded_trade1"

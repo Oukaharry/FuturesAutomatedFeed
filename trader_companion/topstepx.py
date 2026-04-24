@@ -705,99 +705,126 @@ class TopStepXAccount:
             return []
 
     def switch_account(self, account_id=None, account_name_contains=None):
-        """Switch to a different trading account by accountId or partial name match.
+        """Switch to a sub-account via the MuiSelect dropdown.
 
-        Args:
-            account_id: Numeric account ID (e.g. 11751547) to switch to.
-            account_name_contains: Partial string to match in account name (e.g. '150K' or 'funded').
+        Minimal/fast path:
+          1. Per-session cache hit → instant return.
+          2. Read selector text → if already shows target, cache + return.
+          3. Click selector → click matching <li> → done.
 
-        Returns:
-            True if switched successfully, False otherwise.
-
-        The switch is done via the MuiSelect dropdown at the top of the trading page.
-        After switching, the API accountId is also updated so REST calls target the new account.
+        No API calls, no _ensure_on_trading_page, no extra DOM scans.
         """
         with self.lock:
             try:
-                self._ensure_on_trading_page()
-
-                # Resolve target account text to click in the dropdown
-                target_text = None
-                if self.api_available:
-                    accounts = self.api_get_trading_accounts()
-                    if accounts and isinstance(accounts, list):
-                        for acct in accounts:
-                            if account_id and acct.get("accountId") == account_id:
-                                target_text = acct.get("accountName", "")
-                                break
-                            if account_name_contains and account_name_contains.lower() in acct.get("accountName", "").lower():
-                                target_text = acct.get("accountName", "")
-                                break
-
-                if not target_text and not account_name_contains:
-                    self.logger.error("[SWITCH] No target account specified or found via API")
+                search = (account_name_contains or "").strip()
+                cache_key = str(account_id) if account_id else search.lower()
+                if not search and not account_id:
                     return False
 
-                search_text = target_text or account_name_contains
+                # 1) Cache hit
+                if cache_key and getattr(self, "_last_switched_key", None) == cache_key:
+                    return True
 
-                # Dismiss any backdrop/modal that might be covering the selector
-                try:
-                    self.driver.execute_script("""
-                        document.querySelectorAll('.MuiBackdrop-root').forEach(el => el.click());
-                    """)
-                    time.sleep(0.3)
-                except:
-                    pass
-
-                # Open the account MuiSelect dropdown
-                self.logger.info(f"[SWITCH] Opening account selector dropdown...")
+                # 2) Locate the selector and check if already active
                 select_el = self.driver.find_element(By.XPATH,
                     "//div[contains(@class, 'MuiSelect-select') and contains(@class, 'MuiInputBase-input')]"
                 )
-                self.driver.execute_script("arguments[0].click()", select_el)
-                time.sleep(0.8)
+                try:
+                    current = (select_el.text or "").strip()
+                except Exception:
+                    current = ""
+                if search and current and search.lower() in current.lower():
+                    self._last_switched_key = cache_key
+                    return True
 
-                # Find and click the target account in the dropdown
-                menu_items = self.driver.find_elements(By.XPATH,
-                    "//li[contains(@class, 'MuiMenuItem-root')]"
+                # 3) Open dropdown and click the matching option
+                # Dismiss any backdrop first (a leftover from a previous interaction
+                # can intercept the click and silently swallow it).
+                try:
+                    self.driver.execute_script(
+                        "document.querySelectorAll('.MuiBackdrop-root').forEach(el => el.click());"
+                    )
+                except Exception:
+                    pass
+
+                # MUI Select needs a real pointer event to open. JS-click sometimes works,
+                # but a native Selenium .click() is much more reliable. Try native first,
+                # fall back to JS if intercepted.
+                opened = False
+                try:
+                    select_el.click()
+                    opened = True
+                except Exception:
+                    try:
+                        self.driver.execute_script("arguments[0].click()", select_el)
+                        opened = True
+                    except Exception as click_e:
+                        self.logger.error(f"[SWITCH] Could not click selector: {click_e}")
+                        return False
+
+                # Poll for menu items (up to 3s — first dropdown open after page load can be slow)
+                items = []
+                deadline = time.time() + 3.0
+                option_xpath = (
+                    "//li[contains(@class, 'MuiMenuItem-root')] | "
+                    "//*[@role='option'] | "
+                    "//div[contains(@class, 'MuiPopover-root')]//li"
                 )
-                self.logger.info(f"[SWITCH] Found {len(menu_items)} accounts in dropdown")
+                while time.time() < deadline:
+                    items = self.driver.find_elements(By.XPATH, option_xpath)
+                    if items:
+                        break
+                    time.sleep(0.05)
+
+                if not items:
+                    # Diagnostic dump so we can see what actually rendered
+                    try:
+                        popover_html = self.driver.execute_script("""
+                            const pop = document.querySelector('.MuiPopover-root, .MuiMenu-root, [role="presentation"]');
+                            return pop ? pop.outerHTML.substring(0, 2000) : '(no popover element found)';
+                        """)
+                        self.logger.error(f"[SWITCH] Dropdown opened but no options found. HTML: {popover_html}")
+                    except Exception:
+                        pass
 
                 clicked = False
-                for item in menu_items:
-                    item_text = item.text.strip()
-                    self.logger.info(f"[SWITCH]   Option: {item_text[:80]}")
-                    if search_text.lower() in item_text.lower():
-                        self.logger.info(f"[SWITCH] Clicking: {item_text[:80]}")
-                        self.driver.execute_script("arguments[0].click()", item)
+                needle = search.lower() if search else None
+                for item in items:
+                    try:
+                        text = (item.text or "").strip()
+                    except Exception:
+                        continue
+                    if not text:
+                        continue
+                    if needle and needle in text.lower():
+                        # Native click first, then JS fallback
+                        try:
+                            item.click()
+                        except Exception:
+                            try:
+                                self.driver.execute_script("arguments[0].click()", item)
+                            except Exception:
+                                continue
                         clicked = True
+                        self.logger.info(f"[SWITCH] Clicked: {text[:80]}")
                         break
 
                 if not clicked:
-                    self.logger.error(f"[SWITCH] Account matching '{search_text}' not found in dropdown")
-                    # Close dropdown with Escape
-                    ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+                    self.logger.error(f"[SWITCH] '{search}' not found among {len(items)} dropdown options")
+                    try:
+                        ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+                    except Exception:
+                        pass
                     return False
 
-                time.sleep(2)  # Wait for account switch to load
-
-                # Update API account ID
-                if self.api_available:
-                    accounts = self.api_get_trading_accounts()
-                    if accounts and isinstance(accounts, list):
-                        for acct in accounts:
-                            acct_name = acct.get("accountName", "")
-                            if search_text.lower() in acct_name.lower():
-                                self._api_account_id = acct.get("accountId")
-                                self.logger.info(f"[SWITCH] Active account set to {acct_name} (ID: {self._api_account_id})")
-                                break
-
-                # Clear cached stats so next poll fetches fresh data
+                # Invalidate cached stats so next poll fetches fresh data
                 self._cached_stats = None
                 self._stats_last_fetch_time = 0
                 self._first_stats_fetch = True
+                self._last_switched_key = cache_key
 
-                self.logger.info(f"[SWITCH] Account switch complete")
+                # Brief settle so the selector text + downstream UI catch up
+                time.sleep(0.4)
                 return True
 
             except Exception as e:
@@ -1619,24 +1646,30 @@ class TopStepXAccount:
                 # OPTIMIZED: In FAST mode, TP/SL already skipped above
                 if not skip_post_trade_setup:
                     # NORMAL MODE: Set TP/SL on order form before placing trade
+                    _orderform_tp_ok = False
+                    _orderform_sl_ok = False
                     if tp_dollars and tp_dollars > 0:
                         self.logger.info(f"[STEP 4] Setting Take Profit: ${tp_dollars}")
                         if not self._set_take_profit_price(tp_dollars):
                             self.logger.warning(f"⚠️ [STEP 4] Failed to set Take Profit on order form")
                         else:
                             self.logger.info(f"✅ [STEP 4] Take Profit set: ${tp_dollars}")
+                            _orderform_tp_ok = True
                     else:
                         self.logger.info(f"[STEP 4] Skipping Take Profit (tp_dollars={tp_dollars})")
-                    
+                        _orderform_tp_ok = True  # Nothing to do counts as success
+
                     if sl_dollars and sl_dollars > 0:
                         self.logger.info(f"[STEP 5] Setting Stop Loss: ${sl_dollars}")
                         if not self._set_stop_loss_price(sl_dollars):
                             self.logger.warning(f"⚠️ [STEP 5] Failed to set Stop Loss on order form")
                         else:
                             self.logger.info(f"✅ [STEP 5] Stop Loss set: ${sl_dollars}")
+                            _orderform_sl_ok = True
                     else:
                         self.logger.info(f"[STEP 5] Skipping Stop Loss (sl_dollars={sl_dollars})")
-                
+                        _orderform_sl_ok = True
+
                 # Click BUY button with detailed loggingging
                 self.logger.info(f"[STEP 6] Clicking BUY button")
                 buy_result = self._click_buy_button(skip_post_trade_setup=skip_post_trade_setup)
@@ -1681,23 +1714,28 @@ class TopStepXAccount:
                 
                 # NORMAL MODE: Continue with TP/SL setup as before
                 self.logger.info(f"[POST-TRADE] Verifying TP/SL setup")
-                
-                # Switch to positions tab to verify trade and setup TP/SL if needed
-                if tp_dollars or sl_dollars:
+
+                # SPEED: If both TP and SL were already set on the order form, the broker
+                # attached them to the working order — skip the redundant Positions-tab pass
+                # entirely (saves ~15-25s of grid wait + field edits per trade).
+                _need_positions_setup = (
+                    ((tp_dollars and tp_dollars > 0) and not _orderform_tp_ok) or
+                    ((sl_dollars and sl_dollars > 0) and not _orderform_sl_ok)
+                )
+
+                if _need_positions_setup:
+                    # Switch to positions tab to verify trade and setup TP/SL
                     if self.switch_to_positions_tab():
-                        self.logger.info("✅ Switched to Positions tab for TP/SL verification")
+                        self.logger.info("✅ Switched to Positions tab for TP/SL fallback")
                     else:
                         self.logger.warning("⚠ Could not switch to Positions tab")
-                
-                # Only setup in positions if we couldn't set on order form
-                if (tp_dollars and tp_dollars > 0) or (sl_dollars and sl_dollars > 0):
                     setup_result = self.setup_post_trade_tp_sl_positions(tp_dollars, sl_dollars)
                     if not setup_result:
                         self.logger.warning("⚠️ TP/SL setup in positions failed - trade placed but risk not managed")
                     else:
                         self.logger.info("✅ TP/SL setup completed in positions")
                 else:
-                    self.logger.info("ℹ️ No TP/SL values to set")
+                    self.logger.info("⚡ Skipping Positions-tab TP/SL setup (already set on order form)")
                 
                 order_id = f"TSX_BUY_{int(time.time())}"
                 self.logger.info(f"TopStepX BUY order submitted: {symbol} x{quantity}")
@@ -1832,6 +1870,8 @@ class TopStepXAccount:
                             self.logger.warning(f"Failed to set order type to {order_type}, using market order")
                 
                 # OPTIMIZED: In FAST mode, TP/SL already skipped above
+                _orderform_tp_ok = False
+                _orderform_sl_ok = False
                 if not skip_post_trade_setup:
                     # NORMAL MODE: Set TP/SL on order form before placing trade
                     if tp_dollars and tp_dollars > 0:
@@ -1840,14 +1880,20 @@ class TopStepXAccount:
                             self.logger.warning(f"Failed to set Take Profit on order form")
                         else:
                             self.logger.info(f"Take Profit set: ${tp_dollars}")
-                    
+                            _orderform_tp_ok = True
+                    else:
+                        _orderform_tp_ok = True
+
                     if sl_dollars and sl_dollars > 0:
                         self.logger.info(f"Setting Stop Loss: ${sl_dollars}")
                         if not self._set_stop_loss_price(sl_dollars):
                             self.logger.warning(f"Failed to set Stop Loss on order form")
                         else:
                             self.logger.info(f"Stop Loss set: ${sl_dollars}")
-                
+                            _orderform_sl_ok = True
+                    else:
+                        _orderform_sl_ok = True
+
                 # Click SELL button
                 if not self._click_sell_button(skip_post_trade_setup=skip_post_trade_setup):
                     raise Exception("Failed to click SELL button")
@@ -1886,21 +1932,25 @@ class TopStepXAccount:
                 
                 # NORMAL MODE: Continue with TP/SL setup as before
                 self.logger.info(f"[POST-TRADE] Verifying TP/SL setup")
-                
-                # Switch to positions tab to verify trade and setup TP/SL if needed
-                if tp_dollars or sl_dollars:
+
+                # SPEED: skip the redundant Positions-tab pass when order form already attached TP/SL
+                _need_positions_setup = (
+                    ((tp_dollars and tp_dollars > 0) and not _orderform_tp_ok) or
+                    ((sl_dollars and sl_dollars > 0) and not _orderform_sl_ok)
+                )
+
+                if _need_positions_setup:
                     if self.switch_to_positions_tab():
-                        self.logger.info("✅ Switched to Positions tab for TP/SL verification")
+                        self.logger.info("✅ Switched to Positions tab for TP/SL fallback")
                     else:
                         self.logger.warning("⚠ Could not switch to Positions tab")
-                
-                # Only setup in positions if we couldn't set on order form
-                if (tp_dollars and tp_dollars > 0) or (sl_dollars and sl_dollars > 0):
                     setup_result = self.setup_post_trade_tp_sl_positions(tp_dollars, sl_dollars)
                     if not setup_result:
                         self.logger.warning("TP/SL setup in positions failed - trade placed but risk not managed")
                     else:
                         self.logger.info("TP/SL setup completed in positions")
+                else:
+                    self.logger.info("⚡ Skipping Positions-tab TP/SL setup (already set on order form)")
                 
                 order_id = f"TSX_SELL_{int(time.time())}"
                 self.logger.info(f"TopStepX SELL order submitted: {symbol} x{quantity}")
@@ -3689,7 +3739,7 @@ class TopStepXAccount:
         """
         try:
             start_time = time.time()
-            
+
             # Find the contract symbol field (no logging for speed)
             # Try multiple selectors for the symbol field
             symbol_selectors = [
@@ -3700,7 +3750,7 @@ class TopStepXAccount:
                 "//input[@aria-label='Symbol']",
                 "//input[@type='text' and contains(@class, 'MuiInputBase-input')]"
             ]
-            
+
             symbol_field = None
             for selector in symbol_selectors:
                 try:
@@ -3710,10 +3760,20 @@ class TopStepXAccount:
                         break
                 except:
                     continue
-            
+
             if not symbol_field:
                 raise Exception("Could not find symbol input field with any selector")
-            
+
+            # SPEED: short-circuit if the field already shows the requested symbol
+            try:
+                existing_value = (symbol_field.get_attribute('value') or '').strip().upper()
+            except Exception:
+                existing_value = ''
+            if existing_value and existing_value == symbol.upper():
+                elapsed_ms = (time.time() - start_time) * 1000
+                self.logger.info(f"✅ Symbol already set: {existing_value} ({elapsed_ms:.0f}ms, no-op)")
+                return True
+
             # Dismiss any overlays, then JS-focus the field (bypasses click interception)
             self._dismiss_backdrop()
             self.driver.execute_script("arguments[0].focus(); arguments[0].click();", symbol_field)

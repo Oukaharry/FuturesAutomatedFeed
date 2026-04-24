@@ -1136,6 +1136,8 @@ def api_client_data():
             "status": "success",
             "evaluations": client_data.get("evaluations", []),
             "prop_accounts": client_data.get("prop_accounts", []),
+            "hedge_accounts": client_data.get("hedge_accounts", []),
+            "mt5_credentials": client_data.get("mt5_credentials", {}),
             "identity": {
                 "client": client_info['client'],
                 "trader": client_info['trader'],
@@ -1319,9 +1321,23 @@ def api_client_push():
             "client": client_id,
             "email": client_info.get('email', email)
         },
-        # Store aggregated comment data if provided (from Push by Comment feature)
-        "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
-        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {}),
+        # Store aggregated comment data if provided (from Push by Comment feature).
+        # IMPORTANT: a fresh MT5 push (signaled by mt5_deals OR mt5_account being
+        # present in the payload, OR an explicit aggregated_by_comment key in the
+        # request body) ALWAYS overwrites the persisted aggregates — even if the
+        # new value is an empty list.  This prevents stale rows (e.g. old internal
+        # transfers, deleted positions) from resurrecting from cache when the
+        # latest live MT5 state no longer contains them.
+        "aggregated_by_comment": (
+            aggregated_by_comment
+            if (aggregated_by_comment or mt5_deals or mt5_account or ("aggregated_by_comment" in data))
+            else existing_data.get("aggregated_by_comment", [])
+        ),
+        "comment_summary": (
+            comment_summary
+            if (comment_summary or mt5_deals or mt5_account or ("comment_summary" in data))
+            else existing_data.get("comment_summary", {})
+        ),
         "firm_billing": existing_data.get("firm_billing", {}),
     }
     

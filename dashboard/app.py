@@ -73,16 +73,45 @@ class UnbufferedFileHandler(logging.FileHandler):
     def emit(self, record):
         super().emit(record)
         self.stream.flush()
-        # Force OS to write to disk
-        if hasattr(self.stream, 'fileno'):
-            try:
-                os.fsync(self.stream.fileno())
-            except:
-                pass
 
 # Path for the rolling 1-hour recent log
 _RECENT_LOG_PATH = 'dashboard/server_recent.log'
-_RECENT_LOG_RE = re.compile(r'^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+)\]')
+_RECENT_LOG_RE = re.compile(r'^\[((?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}:\d{2}(?:,\d+)?)\]')
+
+
+def _parse_recent_log_timestamp(ts_text):
+    """Parse either full datetime or time-only log stamps."""
+    # Full timestamp variants.
+    for fmt in ('%Y-%m-%d %H:%M:%S,%f', '%Y-%m-%d %H:%M:%S'):
+        try:
+            return datetime.strptime(ts_text, fmt)
+        except ValueError:
+            pass
+
+    # Time-only variants (new concise format): assume today, with a safe
+    # midnight rollover fallback when a future time appears.
+    for fmt in ('%H:%M:%S,%f', '%H:%M:%S'):
+        try:
+            t = datetime.strptime(ts_text, fmt).time()
+            now = datetime.now()
+            parsed = datetime.combine(now.date(), t)
+            if parsed - now > timedelta(minutes=5):
+                parsed -= timedelta(days=1)
+            return parsed
+        except ValueError:
+            pass
+    return None
+
+
+class TraderStyleFormatter(logging.Formatter):
+    """Compact log format to match Trader Companion readability."""
+
+    def format(self, record):
+        stamp = datetime.fromtimestamp(record.created).strftime('%H:%M:%S')
+        msg = record.getMessage()
+        if record.levelno >= logging.WARNING:
+            msg = f"[{record.levelname}] {msg}"
+        return f"[{stamp}] {msg}"
 
 def _purge_recent_log(log_path=_RECENT_LOG_PATH, hours=1):
     """Trim log_path in-place, keeping only entries from the last `hours` hours."""
@@ -94,13 +123,12 @@ def _purge_recent_log(log_path=_RECENT_LOG_PATH, hours=1):
         for line in lines:
             m = _RECENT_LOG_RE.match(line)
             if m:
-                try:
-                    ts = datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S,%f')
-                    if ts >= cutoff:
-                        kept.append(line)
-                    # else: drop — older than the window
-                except ValueError:
+                ts = _parse_recent_log_timestamp(m.group(1))
+                if ts is None:
                     kept.append(line)  # unparseable timestamp → keep
+                elif ts >= cutoff:
+                    kept.append(line)
+                # else: drop — older than the window
             else:
                 # Continuation / blank lines: keep only if we have recent content
                 if kept:
@@ -119,9 +147,12 @@ def _start_recent_log_purger(log_path=_RECENT_LOG_PATH, interval_minutes=5):
     t = threading.Thread(target=_worker, daemon=True, name='recent-log-purger')
     t.start()
 
+_LOG_LEVEL_NAME = str(os.getenv('DASHBOARD_LOG_LEVEL', 'INFO')).upper()
+_LOG_LEVEL = getattr(logging, _LOG_LEVEL_NAME, logging.INFO)
+
+
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    level=_LOG_LEVEL,
     force=True,  # Py3.8+ Override previous configs
     handlers=[
         logging.StreamHandler(),
@@ -132,6 +163,11 @@ logging.basicConfig(
         UnbufferedFileHandler(_RECENT_LOG_PATH, mode='w', encoding='utf-8'),
     ]
 )
+
+# Use concise, trader-app-like log lines across console and files.
+_trader_style_formatter = TraderStyleFormatter()
+for _h in logging.getLogger().handlers:
+    _h.setFormatter(_trader_style_formatter)
 
 # Start the background thread that prunes server_recent.log every 5 minutes
 _start_recent_log_purger()
@@ -176,7 +212,16 @@ def _decompress_request_body():
             # LimitedStream or caches it — calling request.get_data() here would
             # cache the compressed bytes and the JSON parser would see garbage.
             raw_stream = request.environ.get('wsgi.input')
-            compressed = raw_stream.read() if raw_stream else b''
+            content_length = request.environ.get('CONTENT_LENGTH')
+            try:
+                compressed_size = int(content_length) if content_length else 0
+            except (TypeError, ValueError):
+                compressed_size = 0
+
+            if raw_stream and compressed_size > 0:
+                compressed = raw_stream.read(compressed_size)
+            else:
+                compressed = raw_stream.read() if raw_stream else b''
             decompressed = _gzip.decompress(compressed)
             request.environ['wsgi.input'] = _io.BytesIO(decompressed)
             request.environ['CONTENT_LENGTH'] = str(len(decompressed))
@@ -187,7 +232,7 @@ def _decompress_request_body():
 @app.after_request
 def _log_request_end(response):
     duration_ms = (time.monotonic() - getattr(g, '_request_start', time.monotonic())) * 1000
-    logging.info('[REQUEST] %s %s -> %s (%.1fms)', request.method, request.path, response.status_code, duration_ms)
+    logging.info('[REQ] %s %s -> %s (%.1fms)', request.method, request.path, response.status_code, duration_ms)
     return response
 
 # ============ Rate Limiting ============
@@ -204,6 +249,7 @@ limiter = Limiter(
 # Avoids a blocking external HTTP call on every push (TTL = 5 minutes per sheet URL).
 _stats_tab_cache = {}   # {sheet_url: (fetched_at_epoch, push_xlsx_notes)}
 _STATS_TAB_TTL = 300    # seconds
+_stats_tab_cache_refreshing = set()
 
 # Initialize Hierarchy from Config
 hierarchy = SYSTEM_HIERARCHY
@@ -270,7 +316,8 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
     Find ALL matching evaluations for an account number based on phase.
     
     For Challenge (CH): Match against 'Account #' column
-    For Funded/DoubleDip/Farming (FD, DD, FA): Match against 'Account #.1' column
+    For Funded/DoubleDip (FD, DD): Match against 'Account #.1' column
+    For Farming (FA): Match against 'Account #.1' (funded); if blank, fall back to 'Account #' (challenge)
     
     Returns: List of (eval_index, matched_account)
     """
@@ -301,16 +348,37 @@ def match_account_to_evaluation(account_number, evaluations, phase_code):
 
     target_prefix = get_prefix(account_number)
 
-    # Combine funded and evaluation accounts for matching
+    # Combine funded and evaluation accounts for matching.
+    # For FA (farming) phase: prefer Account #.1 (funded account number), but if that
+    # column is blank for a row, fall back to Account # (challenge account number) so
+    # that accounts with no separate funded account number can still be matched.
+    #
+    # Treat dash/placeholder strings as EMPTY so the matcher cannot write hedge
+    # results into rows whose user blanked out the account column to "—" / "-" / "–".
+    _PLACEHOLDER_ACCOUNTS = {'', 'none', '-', '—', '–', 'n/a', 'na', 'tbd', 'pending'}
+
+    def _is_real_account(s):
+        return bool(s) and s.strip().lower() not in _PLACEHOLDER_ACCOUNTS
+
     combined_accounts = []
     for idx, ev in enumerate(evaluations):
         funded_account = str(ev.get('account') or '').strip()
-        if funded_account and funded_account.lower() != 'none':
+        if _is_real_account(funded_account):
             combined_accounts.append({'idx': idx, 'account': funded_account, 'source': 'funded'})
-        for col_name in ['Account #.1', 'Account #']:
-            eval_account = str(ev.get(col_name) or '').strip()
-            if eval_account and eval_account.lower() != 'none':
-                combined_accounts.append({'idx': idx, 'account': eval_account, 'source': col_name})
+
+        if phase_code == 'FA':
+            # Prefer funded account number; fall back to challenge account number if blank
+            funded_acct = str(ev.get('Account #.1') or '').strip()
+            challenge_acct = str(ev.get('Account #') or '').strip()
+            if _is_real_account(funded_acct):
+                combined_accounts.append({'idx': idx, 'account': funded_acct, 'source': 'Account #.1'})
+            elif _is_real_account(challenge_acct):
+                combined_accounts.append({'idx': idx, 'account': challenge_acct, 'source': 'Account # (FA fallback)'})
+        else:
+            for col_name in ['Account #.1', 'Account #']:
+                eval_account = str(ev.get(col_name) or '').strip()
+                if _is_real_account(eval_account):
+                    combined_accounts.append({'idx': idx, 'account': eval_account, 'source': col_name})
 
     is_topstep = str(account_number).upper().startswith('V2')
     seen_row_indices = set()
@@ -883,10 +951,16 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         for _npd in non_position_deals:
             _npd_type = str(_npd.get('type', '')).upper()
             _npd_comment = str(_npd.get('comment', '')).strip()
+            _npd_comment_l = _npd_comment.lower()
             _npd_profit = float(_npd.get('profit', 0))
-            if _npd_type in ('BALANCE', '2') and not _npd_comment and _npd_profit <= 0:
-                # Internal transfer — no comment, negative balance. Skip.
-                continue
+            # Internal transfers can be tagged either way:
+            #   - no comment + non-positive profit (legacy heuristic), OR
+            #   - explicit 'internal transfer' comment regardless of sign.
+            if _npd_type in ('BALANCE', '2'):
+                if 'internal transfer' in _npd_comment_l:
+                    continue
+                if not _npd_comment and _npd_profit <= 0:
+                    continue
             synthesized_deals.append(_npd)
         
         for pos_id, p_deals in position_map.items():
@@ -1129,7 +1203,11 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             def _is_internal_transfer(d):
                 dt = str(d.get('type', '')).upper()
                 comment = str(d.get('comment', '')).strip()
-                return dt in ('BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS') and not comment
+                comment_l = comment.lower()
+                if dt not in ('BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS'):
+                    return False
+                # Either no comment (legacy) or an explicit "internal transfer" tag.
+                return (not comment) or ('internal transfer' in comment_l)
             trade_deals_only = [d for d in session['deals'] if not _is_internal_transfer(d)]
             session_profit = sum(float(d.get('profit', 0)) + float(d.get('commission', 0)) + float(d.get('swap', 0)) for d in trade_deals_only)
             
@@ -1882,6 +1960,32 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
         eval_idx, matched_account = match
         logging.info(f"MATCHED: MT5 Account {account_number} -> Dashboard Account {matched_account}")
+
+        # Defense-in-depth: refuse to write into a row whose target account
+        # column is blank or a placeholder ("—", "-", "n/a", etc.).  Catches
+        # cases where a stale lookup or fuzzy match returns a row the user
+        # has since wiped clean.
+        _placeholders = {'', 'none', '-', '—', '–', 'n/a', 'na', 'tbd', 'pending'}
+        _matched_norm = str(matched_account or '').strip().lower()
+        if _matched_norm in _placeholders:
+            match_log.append(
+                f"🛑 Skipped write to row #{eval_idx}: target account is placeholder "
+                f"'{matched_account}' (deal {account_number} _{phase_code}{trade_number or ''} = ${net_profit:.2f})"
+            )
+            continue
+        # Also verify the actual eval row still has a real value in BOTH the
+        # challenge and funded account columns being placeholders would mean
+        # a wiped row that should never receive writes.
+        _ev_check = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
+        if _ev_check is not None:
+            _ch = str(_ev_check.get('Account #') or '').strip().lower()
+            _fd = str(_ev_check.get('Account #.1') or '').strip().lower()
+            if (_ch in _placeholders) and (_fd in _placeholders):
+                match_log.append(
+                    f"🛑 Skipped wiped row #{eval_idx}: both Account # cols are blank/placeholder "
+                    f"(deal {account_number} _{phase_code}{trade_number or ''} = ${net_profit:.2f})"
+                )
+                continue
         
         # Determine field to update
         field_name = None
@@ -1917,7 +2021,22 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         # This is correct behavior for "Current Day Only" payload.
         
         should_accumulate = phase_code in ['CH', 'FD', 'DD']
-        
+
+        # ── Honor manual user clears ──
+        # If the user explicitly blanked this field on the dashboard, refuse to
+        # repopulate it from re-aggregated MT5 history.  The clear is lifted
+        # automatically when the user types a new value back into the cell
+        # (see /api/update_data handler).
+        _ev_for_clear = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
+        if _ev_for_clear is not None:
+            _cleared_set = set(_ev_for_clear.get('_cleared_fields') or [])
+            if field_name in _cleared_set:
+                match_log.append(
+                    f"🚫 Skipped manually-cleared cell: Eval #{eval_idx} [{field_name}] "
+                    f"(would have been ${net_profit:.2f} from {account_number})"
+                )
+                continue
+
         if should_accumulate:
             # Add to accumulator (sums up multiple entries in SAME payload)
             key = (eval_idx, field_name)
@@ -3375,9 +3494,12 @@ def api_client_push():
             if generated_sessions:
                 aggregated_by_comment = generated_sessions
                 app.logger.info(f"✅ Replaced client aggregation with {len(generated_sessions)} server-side sessions")
-            
-            for log_line in hedge_match_log:
-                app.logger.info(f"   {log_line}")
+
+            if hedge_match_log:
+                app.logger.info(f"📌 Hedge matching produced {len(hedge_match_log)} log entries")
+                if app.logger.isEnabledFor(logging.DEBUG):
+                    for log_line in hedge_match_log:
+                        app.logger.debug(f"   {log_line}")
     
     # Debug logging
     acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
@@ -3485,16 +3607,32 @@ def api_client_push():
                     push_xlsx_notes = _cached[1]
                     app.logger.info(f"📊 Stats tab served from cache (age {int(_now - _cached[0])}s)")
                 else:
-                    try:
-                        from utils.data_processor import fetch_evaluations as _fe
-                        _result = _fe(push_sheet_url)
-                        if isinstance(_result, tuple) and len(_result) == 2:
-                            _, push_xlsx_notes = _result
-                            _stats_tab_cache[push_sheet_url] = (_now, push_xlsx_notes)
-                            if push_xlsx_notes and '__stats_tab__' in push_xlsx_notes:
-                                app.logger.info(f"📊 Stats tab fetched from sheet and cached")
-                    except Exception as _e:
-                        app.logger.warning(f"Stats tab fetch failed (non-critical): {_e}")
+                    # Never block the push on a live sheet fetch. Use cache if present,
+                    # and refresh in the background for the next request.
+                    if _cached:
+                        push_xlsx_notes = _cached[1]
+                        app.logger.info("📊 Stats tab using stale cache while refreshing in background")
+                    else:
+                        app.logger.info("📊 Stats tab cache miss - skipping live fetch for this push")
+
+                    if push_sheet_url not in _stats_tab_cache_refreshing:
+                        _stats_tab_cache_refreshing.add(push_sheet_url)
+
+                        def _refresh_stats_tab_cache(sheet_url=push_sheet_url):
+                            try:
+                                from utils.data_processor import fetch_evaluations as _fe
+                                _result = _fe(sheet_url)
+                                if isinstance(_result, tuple) and len(_result) == 2:
+                                    _, _notes = _result
+                                    _stats_tab_cache[sheet_url] = (_time.time(), _notes)
+                                    if _notes and '__stats_tab__' in _notes:
+                                        app.logger.info("📊 Stats tab fetched in background and cached")
+                            except Exception as _e:
+                                app.logger.warning(f"Stats tab background fetch failed (non-critical): {_e}")
+                            finally:
+                                _stats_tab_cache_refreshing.discard(sheet_url)
+
+                        threading.Thread(target=_refresh_stats_tab_cache, daemon=True).start()
             
             statistics = calculate_statistics(evaluations, mt5_deals_param, mt5_acc_param, xlsx_notes=push_xlsx_notes,
                                               historical_accounts=existing_data.get('statistics', {}).get('hedging_review', {}).get('historical_accounts'))
@@ -3564,9 +3702,23 @@ def api_client_push():
             "email": client_info.get('email', email),
             "sheet_url": push_sheet_url
         },
-        # Store aggregated comment data if provided (from Push by Comment feature)
-        "aggregated_by_comment": aggregated_by_comment if aggregated_by_comment else existing_data.get("aggregated_by_comment", []),
-        "comment_summary": comment_summary if comment_summary else existing_data.get("comment_summary", {}),
+        # Store aggregated comment data if provided (from Push by Comment feature).
+        # IMPORTANT: a fresh MT5 push (signaled by mt5_deals OR mt5_account being
+        # present in the payload, OR an explicit aggregated_by_comment key in the
+        # request body) ALWAYS overwrites the persisted aggregates — even if the
+        # new value is an empty list.  This prevents stale rows (e.g. old internal
+        # transfers, deleted positions) from resurrecting from cache when the
+        # latest live MT5 state no longer contains them.
+        "aggregated_by_comment": (
+            aggregated_by_comment
+            if (aggregated_by_comment or mt5_deals or mt5_account or ("aggregated_by_comment" in data))
+            else existing_data.get("aggregated_by_comment", [])
+        ),
+        "comment_summary": (
+            comment_summary
+            if (comment_summary or mt5_deals or mt5_account or ("comment_summary" in data))
+            else existing_data.get("comment_summary", {})
+        ),
     }
     
     # Merge firm_billing: new push data wins per-firm, but preserve firms not in this push
@@ -3582,7 +3734,7 @@ def api_client_push():
 
     # Final verification before save
     hr_final = statistics.get('hedging_review', {})
-    app.logger.info(f"✅ SAVING DATA for {client_id} (v{version}):")
+    app.logger.info(f"✅ SAVING DATA for {client_id}:")
     app.logger.info(f"📊 Statistics Section:")
     app.logger.info(f"   - hedging_review.total_deposits: ${hr_final.get('total_deposits', 0):.2f}")
     app.logger.info(f"   - hedging_review.total_withdrawals: ${hr_final.get('total_withdrawals', 0):.2f}")
@@ -8144,6 +8296,14 @@ def update_data():
                     except (ValueError, TypeError):
                         pass
 
+                def _has_non_blank_value(v):
+                    """Treat numeric 0 as a real value so protected fields are not blanked."""
+                    if v is None:
+                        return False
+                    if isinstance(v, str):
+                        return v.strip() not in ('', '-')
+                    return True
+
                 for i, ev in enumerate(evaluations):
                     explicitly_changed = user_changed.get(i, set())
 
@@ -8162,8 +8322,26 @@ def update_data():
                             existing_val = existing_ev.get(key)
                             incoming_val = ev.get(key)
                             # Keep the existing (push-sourced) value when the frontend sends empty/missing
-                            if existing_val and (not incoming_val or str(incoming_val).strip() == ''):
+                            if _has_non_blank_value(existing_val) and not _has_non_blank_value(incoming_val):
                                 ev[key] = existing_val
+
+                    # ── Track manual clears so MT5 push aggregator cannot resurrect them ──
+                    # When the user explicitly blanks a push-sourced field, record it in
+                    # `_cleared_fields`.  When they later type a real value back in,
+                    # remove the entry so push writes resume.
+                    cleared = set(ev.get('_cleared_fields') or [])
+                    for key in explicitly_changed:
+                        if key not in PUSH_SOURCED_KEYS:
+                            continue
+                        if _has_non_blank_value(ev.get(key)):
+                            cleared.discard(key)   # user typed a value back → resume push writes
+                        else:
+                            cleared.add(key)       # user blanked the cell → freeze it
+                    if cleared:
+                        ev['_cleared_fields'] = sorted(cleared)
+                    elif '_cleared_fields' in ev:
+                        # remove empty list to keep payload lean
+                        ev.pop('_cleared_fields', None)
 
                 # Recalculate Hedge Net / Hedge Net.1 from current hedge results & statuses
                 evaluations = recalculate_hedge_nets(evaluations)

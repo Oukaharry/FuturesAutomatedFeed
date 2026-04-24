@@ -4158,7 +4158,10 @@
                   try {
                     const row = document.createElement('tr');
                     row.id = 'eval-row-' + index;
-                    const getVal = (key) => ev[key] || '';
+                    const getVal = (key) => {
+                        const v = ev[key];
+                        return (v === null || v === undefined) ? '' : v;
+                    };
                     
                     // --- Status Row Styling ---
                     const s1 = (getVal('Status P1') || '').toString().toLowerCase();
@@ -4586,7 +4589,8 @@
                 // Render Prop Day
                 // Note: We're passing the propDayKey which cell() uses to lookup note.
                 // Since we deleted it, no note indicator will appear.
-                html += cell(getInputHtml(ev[propDayKey] || '', 'text', index, propDayKey, readOnly), propDayKey);
+                const propDayVal = (ev[propDayKey] === null || ev[propDayKey] === undefined) ? '' : ev[propDayKey];
+                html += cell(getInputHtml(propDayVal, 'text', index, propDayKey, readOnly), propDayKey);
                 
                 // Restore note immediately after rendering the cell so data is consistent
                 if (hasNote && ev._notes) ev._notes[propDayKey] = originalNote;
@@ -4610,7 +4614,8 @@
                             </td>`;
 
                 // 4. Render Hedge Day Cell
-                html += cell(getInputHtml(ev[hedgeDayKey] || '', 'text', index, hedgeDayKey, readOnly), hedgeDayKey);
+                const hedgeDayVal = (ev[hedgeDayKey] === null || ev[hedgeDayKey] === undefined) ? '' : ev[hedgeDayKey];
+                html += cell(getInputHtml(hedgeDayVal, 'text', index, hedgeDayKey, readOnly), hedgeDayKey);
             }
             return html;
         }
@@ -7923,9 +7928,9 @@
         // Initialize Dashboard
         updateDashboard();
         
-        // Auto-refresh every 30s (silent mode: no spinner, preserves scroll/page)
-        // This ensures pushed data from the trader app appears on the dashboard
-        setInterval(() => updateDashboard(true), 30000);
+        // Auto-refresh every 5s (silent mode: no spinner, preserves scroll/page)
+        // This keeps dashboard values near real-time after trader app pushes.
+        setInterval(() => updateDashboard(true), 5000);
 
 
         // ══════════════════════════════════════════════════════════
