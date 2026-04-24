@@ -1,6 +1,8 @@
 # sync_prod_to_local.ps1
 # Syncs production PostgreSQL (PythonAnywhere) to local PostgreSQL
-# Usage: .\sync_prod_to_local.ps1
+# Usage (Windows PowerShell):  .\sync_prod_to_local.ps1
+# Do NOT run with Python (python3 this_file.ps1) — that causes SyntaxError.
+# On macOS/Linux use:  ./sync_prod_to_local.sh  (see that file for env vars).
 
 $PROD_HOST = "127.0.0.1"
 $PROD_PORT = "5433"   # SSH tunnel port — run: ssh -L 5433:ballerquotes-5185.postgres.pythonanywhere-services.com:15185 ballerquotes@ssh.pythonanywhere.com -N
@@ -41,7 +43,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[2/3] Dumping production to temp file..." -ForegroundColor Yellow
 $tempFile = "$env:TEMP\prod_dump_$(Get-Date -Format 'yyyyMMdd_HHmmss').sql"
 $env:PGPASSWORD = $prodPass
-pg_dump -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB -f $tempFile
+pg_dump -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB --no-owner --no-acl -f $tempFile
 
 if ($LASTEXITCODE -ne 0 -or !(Test-Path $tempFile)) {
     Write-Host "ERROR: pg_dump failed." -ForegroundColor Red
