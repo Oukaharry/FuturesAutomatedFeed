@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% if user_role|default('super_admin') == 'bef_admin' %}BEF Admin{% else %}Super Admin{% endif %} - TradeOpss</title>
+    <title>{% if user_role|default('super_admin') == 'bef_admin' %}BEF Admin{% elif user_role|default('super_admin') == 'kwok_admin' %}Kwok Admin{% else %}Super Admin{% endif %} - TradeOpss</title>
     <link rel="icon" href="{{ url_for('static', filename='images/logo.png') }}" type="image/png">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -571,12 +571,12 @@
             </div>
             
             <div class="nav-links">
-                <a href="{% if user_role|default('super_admin') == 'bef_admin' %}/bef_admin{% else %}/super_admin{% endif %}" class="tab-btn active"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="{% if user_role|default('super_admin') == 'bef_admin' %}/bef_admin{% elif user_role|default('super_admin') == 'kwok_admin' %}/kwok_admin{% else %}/super_admin{% endif %}" class="tab-btn active"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
-                <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
-                {% if user_role != 'bef_admin' %}<a href="/trader_performance" class="tab-btn"><i class="fas fa-chart-line"></i> Traders</a>{% endif %}
-                {% if not is_bef_admin %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
+                {% if not is_kwok_admin %}<a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>{% endif %}
+                {% if not is_bef_admin and not is_kwok_admin %}<a href="/trader_performance" class="tab-btn"><i class="fas fa-chart-line"></i> Traders</a>{% endif %}
+                {% if not is_bef_admin and not is_kwok_admin %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
             </div>
 
             <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
@@ -602,7 +602,7 @@
             <div class="client-card" style="height: fit-content; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0; overflow: hidden;">
                 <div class="admin-header">
                     <h3 style="margin: 0; color: #fff; display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; letter-spacing: -0.01em;">
-                        <i class="fas fa-users-cog"></i> {% if user_role|default('super_admin') == 'bef_admin' %}Client Directory{% else %}User Management{% endif %}
+                        <i class="fas fa-users-cog"></i> {% if user_role|default('super_admin') == 'super_admin' %}User Management{% else %}Client Directory{% endif %}
                     </h3>
                 </div>
                 <div style="padding: 20px;">
@@ -682,8 +682,8 @@
 
                 {% endif %}
 
-                <!-- Client Directory (bef_admin only) -->
-                {% if user_role|default('super_admin') == 'bef_admin' %}
+                <!-- Client Directory (BEF + Kwok admin: flat list, no hierarchy editor) -->
+                {% if is_bef_admin or is_kwok_admin %}
                 <div style="height:1px; background:var(--border-color); margin:20px 0;"></div>
                 <div style="margin-bottom:12px;">
                     <label style="font-size:0.75rem; color:#94a3b8; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; display:flex; align-items:center; gap:6px; margin-bottom:10px;">

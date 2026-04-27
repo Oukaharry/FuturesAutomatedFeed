@@ -33,7 +33,7 @@ from config.hierarchy import (
 from dashboard.database import (
     init_database, check_and_repair_database,
     validate_api_key, generate_api_key, list_api_keys, revoke_api_key,
-    verify_admin_password, set_admin_password, admin_password_exists,
+    verify_admin_password, set_admin_password, admin_password_exists, copy_admin_password_row,
     save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field, delete_client_data,
     log_action, get_audit_log,
     create_session, validate_session, delete_session,
@@ -2180,6 +2180,15 @@ def init_admin_password():
         bef_password = os.getenv('BEF_ADMIN_PASSWORD', 'BEFAdmin@123')
         set_admin_password('bef_admin', bef_password)
         print("bef_admin password initialized")
+    if not admin_password_exists('kwok_admin'):
+        # Legacy DB username was showcase_admin; copy hash so existing installs keep the same password.
+        if not copy_admin_password_row('showcase_admin', 'kwok_admin'):
+            kwok_password = os.getenv(
+                'KWOK_ADMIN_PASSWORD',
+                os.getenv('SHOWCASE_ADMIN_PASSWORD', 'KwokAdmin@123'),
+            )
+            set_admin_password('kwok_admin', kwok_password)
+        print("kwok_admin password initialized or migrated from legacy showcase_admin row")
 
 # Run initialization
 init_database()
@@ -2356,6 +2365,8 @@ def inject_home_url():
                     return {'home_url': '/super_admin'}
                 elif user_type == 'bef_admin':
                     return {'home_url': '/bef_admin'}
+                elif user_type == 'kwok_admin':
+                    return {'home_url': '/kwok_admin'}
                 elif user_type == 'admin':
                     return {'home_url': f'/admin/{user_id}'}
                 elif user_type == 'trader':
@@ -2369,7 +2380,7 @@ def inject_home_url():
 # ============ Maintenance Mode ============
 # Set to True to show maintenance page to clients only
 MAINTENANCE_MODE = False
-MAINTENANCE_EXEMPT = {'super_admin', 'bef_admin', 'admin', 'trader'}
+MAINTENANCE_EXEMPT = {'super_admin', 'bef_admin', 'kwok_admin', 'admin', 'trader'}
 
 @app.route('/maintenance')
 def maintenance_page():
@@ -2384,6 +2395,8 @@ def maintenance_page():
                     return redirect('/super_admin')
                 elif user_type == 'bef_admin':
                     return redirect('/bef_admin')
+                elif user_type == 'kwok_admin':
+                    return redirect('/kwok_admin')
                 elif user_type == 'admin':
                     return redirect(f'/admin/{user_id}')
                 elif user_type == 'trader':
@@ -2406,6 +2419,8 @@ def index():
                 return redirect('/super_admin')
             elif user_type == 'bef_admin':
                 return redirect('/bef_admin')
+            elif user_type == 'kwok_admin':
+                return redirect('/kwok_admin')
             elif user_type == 'admin':
                 return redirect(f'/admin/{user_id}')
             elif user_type == 'trader':
@@ -2421,14 +2436,29 @@ def index():
 def super_admin():
     if request.session_user.get('user_type') != 'super_admin':
         return redirect('/')
-    return render_template('super_admin.html')
+    return render_template('super_admin.html', is_bef_admin=False, is_kwok_admin=False)
 
 @app.route('/bef_admin')
 @require_session
 def bef_admin():
     if request.session_user.get('user_type') != 'bef_admin':
         return redirect('/')
-    return render_template('super_admin.html', user_role='bef_admin', is_bef_admin=True)
+    return render_template(
+        'super_admin.html', user_role='bef_admin', is_bef_admin=True, is_kwok_admin=False)
+
+@app.route('/showcase_admin')
+def showcase_admin_legacy_redirect():
+    """Old URL/bookmarks from the previous role name."""
+    return redirect('/kwok_admin', code=308)
+
+
+@app.route('/kwok_admin')
+@require_session
+def kwok_admin():
+    if request.session_user.get('user_type') != 'kwok_admin':
+        return redirect('/')
+    return render_template(
+        'super_admin.html', user_role='kwok_admin', is_bef_admin=False, is_kwok_admin=True)
 
 @app.route('/quality_dashboard')
 @require_session
@@ -2441,10 +2471,12 @@ def quality_dashboard():
 @require_session
 def admin_dashboard(admin_name):
     session_user = request.session_user
-    # Allow super_admin and bef_admin to access admin dashboards
-    if session_user.get('user_type') in ('super_admin', 'bef_admin'):
+    # Allow super_admin, bef_admin, and kwok_admin to access admin dashboards
+    if session_user.get('user_type') in ('super_admin', 'bef_admin', 'kwok_admin'):
+        ut = session_user.get('user_type')
         return render_template('admin_dashboard.html', admin_name=admin_name,
-                               is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
+                               is_bef_admin=(ut == 'bef_admin'),
+                               is_kwok_admin=(ut == 'kwok_admin'))
     # Check if user is the correct admin
     if session_user.get('user_type') != 'admin' or session_user.get('user_identifier') != admin_name:
         return redirect('/')
@@ -2454,13 +2486,16 @@ def admin_dashboard(admin_name):
 @require_session
 def financial_overview():
     session_user = request.session_user
-    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
          return redirect('/')
     
     profile_filter = request.args.get('profile', 'ALL')
     # BEF admin always sees only BEF profile
     if session_user.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
+    # Kwok admin: consolidated view only (no BEF / Private slice in UI or via ?profile=)
+    if session_user.get('user_type') == 'kwok_admin':
+        profile_filter = 'ALL'
     
     # Date filtering
     start_date_str = request.args.get('start_date')
@@ -2503,7 +2538,7 @@ def financial_overview():
     card_totals['ev'] = round(card_totals['net_profit'] / t_ended, 2) if t_ended > 0 else 0.0
     card_totals['ev_day'] = round(card_totals['net_profit'] / t_duration, 2) if t_duration > 0 else 0.0
 
-    # Hide restricted firms from BEF admin
+    # Hide restricted firms from BEF admin only (Kwok admin sees full firm set for demos)
     if session_user.get('user_type') == 'bef_admin':
         overview_data = {k: v for k, v in overview_data.items()
                          if k.lower().replace(' ', '') not in BEF_HIDDEN_FIRMS}
@@ -2524,6 +2559,7 @@ def financial_overview():
                            start_date=start_date_str,
                            end_date=end_date_str,
                            is_bef_admin=(session_user.get('user_type') == 'bef_admin'),
+                           is_kwok_admin=(session_user.get('user_type') == 'kwok_admin'),
                            growth_dates=growth_dates,
                            growth_values=growth_values,
                            payouts_dates=payouts_dates,
@@ -2543,7 +2579,7 @@ def financial_overview():
 @require_session
 def payout_history():
     session_user = request.session_user
-    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
          return redirect('/')
 
     # Filter dates
@@ -2570,6 +2606,8 @@ def payout_history():
     # BEF admin always sees only BEF profile
     if session_user.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
+    if session_user.get('user_type') == 'kwok_admin':
+        profile_filter = 'ALL'
     # We need overview data just to get the list of prop firms for the dropdown
     overview_data = calculate_propfirm_overview()
     sorted_prop_firms = sorted(overview_data.keys())
@@ -2591,20 +2629,27 @@ def payout_history():
                            selected_prop_firm=prop_firm_filter,
                            selected_profile=profile_filter,
                            is_bef_admin=(session_user.get('user_type') == 'bef_admin'),
+                           is_kwok_admin=(session_user.get('user_type') == 'kwok_admin'),
                            prop_firms=sorted_prop_firms)
 
 @app.route('/client_performance')
 @require_session
 def client_performance():
     session_user = request.session_user
+    if session_user.get('user_type') == 'kwok_admin':
+        return redirect('/kwok_admin')
     if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
          return redirect('/')
-    return render_template('client_performance.html', is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
+    ut = session_user.get('user_type')
+    return render_template('client_performance.html', is_bef_admin=(ut == 'bef_admin'),
+                           is_kwok_admin=False)
 
 @app.route('/trader_performance')
 @require_session
 def trader_performance():
     session_user = request.session_user
+    if session_user.get('user_type') == 'kwok_admin':
+        return redirect('/kwok_admin')
     if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
          return redirect('/')
          
@@ -2613,17 +2658,21 @@ def trader_performance():
     if session_user.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
     traders_data = calculate_trader_stats(profile_filter=profile_filter)
-    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter, is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
+    ut = session_user.get('user_type')
+    return render_template('trader_performance.html', traders=traders_data, selected_profile=profile_filter,
+                           is_bef_admin=(ut == 'bef_admin'), is_kwok_admin=(ut == 'kwok_admin'))
 
 
 @app.route('/trader/<trader_name>')
 @require_session
 def trader_dashboard(trader_name):
     session_user = request.session_user
-    # Allow super_admin and bef_admin to access trader dashboards
-    if session_user.get('user_type') in ('super_admin', 'bef_admin'):
+    # Allow super_admin, bef_admin, and kwok_admin to access trader dashboards
+    if session_user.get('user_type') in ('super_admin', 'bef_admin', 'kwok_admin'):
+        ut = session_user.get('user_type')
         return render_template('trader_dashboard.html', trader_name=trader_name,
-                               is_bef_admin=(session_user.get('user_type') == 'bef_admin'))
+                               is_bef_admin=(ut == 'bef_admin'),
+                               is_kwok_admin=(ut == 'kwok_admin'))
     # Allow admin to access traders under them
     if session_user.get('user_type') == 'admin':
         return render_template('trader_dashboard.html', trader_name=trader_name)
@@ -2654,13 +2703,14 @@ def client_dashboard(client_id):
     _admin_data = SYSTEM_HIERARCHY.get('admins', {}).get(client_admin_name, {})
     client_admin_slack_id = _admin_data.get('slack_user_id', '')
 
-    # Allow super_admin, bef_admin, admin, and trader to access client dashboards
-    if user_type in ['super_admin', 'bef_admin', 'admin', 'trader']:
+    # Allow super_admin, bef_admin, kwok_admin, admin, and trader to access client dashboards
+    if user_type in ['super_admin', 'bef_admin', 'kwok_admin', 'admin', 'trader']:
         # BEF admin can only access BEF-category clients
         if user_type == 'bef_admin' and not can_access_client('bef_admin', None, client_id):
             return redirect('/bef_admin')
+        can_edit = user_type != 'kwok_admin'
         return render_template('index.html', client_id=client_id, user_type=user_type, 
-                               can_edit_hedging=True, client_email=client_email, is_active=is_active,
+                               can_edit_hedging=can_edit, client_email=client_email, is_active=is_active,
                                client_trader_name=client_trader_name, client_admin_name=client_admin_name,
                                client_admin_slack_id=client_admin_slack_id)
     # Client access: allow own dashboard OR primary KYC can view linked accounts
@@ -2692,6 +2742,10 @@ def get_filtered_hierarchy(user_type, user_identifier):
     full_hierarchy = hierarchy
     
     if user_type == 'super_admin':
+        return full_hierarchy
+
+    if user_type == 'kwok_admin':
+        # Full client list for demos, without exposing super-admin hierarchy editing UI
         return full_hierarchy
     
     if user_type == 'bef_admin':
@@ -2854,7 +2908,7 @@ def get_super_admin_totals():
     # The snippet below replaces the body.
     
     session_info = validate_session(session_token)
-    if not session_info or session_info.get('user_type') not in ('super_admin', 'bef_admin'):
+    if not session_info or session_info.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
         return jsonify({"status": "error", "message": "Admin access required"}), 403
     
     profile_filter = request.args.get('profile', 'ALL').upper()
@@ -2862,6 +2916,8 @@ def get_super_admin_totals():
     # BEF admin always sees only BEF profile data
     if session_info.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
+    if session_info.get('user_type') == 'kwok_admin':
+        profile_filter = 'ALL'
 
     # Derive ALL totals from per-client stats (fast — uses precomputed cashflow_inprogress)
     clients = get_client_performance_stats(profile_filter)
@@ -2906,12 +2962,14 @@ def get_super_admin_totals():
 def get_profit_splits():
     """Return per-client current profit split (in progress) for the super admin dashboard."""
     session_user = request.session_user
-    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
         return jsonify({"status": "error", "message": "Admin access required"}), 403
 
     profile_filter = request.args.get('profile', 'ALL').upper()
     if session_user.get('user_type') == 'bef_admin':
         profile_filter = 'BEF'
+    if session_user.get('user_type') == 'kwok_admin':
+        profile_filter = 'ALL'
 
     from dashboard.watermark_service import compute_waterlog_from_db, get_client_split_pct
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
@@ -3030,7 +3088,7 @@ def get_profit_splits():
 def get_client_payouts_detail(client_id):
     """Return individual payout records for a client (used by breakdown modal expand)."""
     session_user = request.session_user
-    if session_user.get('user_type') not in ('super_admin', 'bef_admin'):
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
         return jsonify({"status": "error"}), 403
 
     from dashboard.financial_overview import parse_currency, parse_date
@@ -4126,7 +4184,7 @@ def api_get_watermark_history(client_id):
     # Handle URL encoding spaces if necessary (Flask usually decodes)
     # Check authorization
     is_authorized = False
-    if user_type in ['super_admin', 'admin', 'trader']:
+    if user_type in ['super_admin', 'admin', 'trader', 'kwok_admin']:
         is_authorized = True
     elif user_type == 'bef_admin':
         is_authorized = can_access_client('bef_admin', None, client_id)
@@ -4347,6 +4405,30 @@ def unified_login():
         
         record_login_attempt('bef_admin', 'bef_admin', client_ip, False)
         log_action('LOGIN_FAILED', 'bef_admin', 'bef_admin', client_ip, 'Invalid password', False)
+        return jsonify({"status": "error", "message": "Invalid password"}), 403
+
+    # Kwok admin — separate password, full read-only client access
+    if user_type == 'kwok_admin':
+        if not password:
+            return jsonify({"status": "error", "message": "Password is required for Kwok Admin"}), 400
+
+        if verify_admin_password('kwok_admin', password):
+            session_token = create_session('kwok_admin', 'kwok_admin', client_ip)
+            record_login_attempt('kwok_admin', 'kwok_admin', client_ip, True)
+            log_action('LOGIN_SUCCESS', 'kwok_admin', 'kwok_admin', client_ip)
+
+            max_age = 30 * 24 * 60 * 60 if remember else 86400
+            response = jsonify({
+                "status": "success",
+                "user_type": "kwok_admin",
+                "redirect": "/kwok_admin",
+                "must_change_password": False
+            })
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            return response
+
+        record_login_attempt('kwok_admin', 'kwok_admin', client_ip, False)
+        log_action('LOGIN_FAILED', 'kwok_admin', 'kwok_admin', client_ip, 'Invalid password', False)
         return jsonify({"status": "error", "message": "Invalid password"}), 403
     
     # Handle Admin/Trader/Client login - PASSWORD REQUIRED
@@ -4652,7 +4734,7 @@ def change_password_page():
     user_type = session_user.get('user_type')
     username = session_user.get('user_identifier')
     must_change = False
-    if user_type not in ('super_admin', 'bef_admin'):
+    if user_type not in ('super_admin', 'bef_admin', 'kwok_admin'):
         user_record = find_user_by_identifier(username)
         must_change = bool(user_record and user_record.get('must_change_password'))
     return render_template('change_password.html', must_change_password=must_change)
@@ -4681,7 +4763,7 @@ def api_change_password():
     username = session_user.get('user_identifier')
     
     # If skip_current requested, verify user actually has must_change_password set
-    if skip_current and user_type not in ('super_admin', 'bef_admin'):
+    if skip_current and user_type not in ('super_admin', 'bef_admin', 'kwok_admin'):
         user_record = find_user_by_identifier(username)
         if not user_record or not user_record.get('must_change_password'):
             return jsonify({"status": "error", "message": "Current password is required"}), 400
@@ -4698,6 +4780,12 @@ def api_change_password():
             return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
         if set_admin_password('bef_admin', new_password):
             log_action('CHANGE_PASSWORD', 'bef_admin', 'bef_admin', get_remote_address())
+            return jsonify({"status": "success", "message": "Password changed successfully"})
+    elif user_type == 'kwok_admin':
+        if not skip_current and not verify_admin_password('kwok_admin', current_password):
+            return jsonify({"status": "error", "message": "Current password is incorrect"}), 403
+        if set_admin_password('kwok_admin', new_password):
+            log_action('CHANGE_PASSWORD', 'kwok_admin', 'kwok_admin', get_remote_address())
             return jsonify({"status": "success", "message": "Password changed successfully"})
     else:
         if not skip_current:
@@ -4747,7 +4835,7 @@ def api_kyc_unlink():
     return jsonify({"status": "error", "message": "Link not found"}), 404
 
 @app.route('/api/kyc/links', methods=['GET'])
-@require_role('super_admin', 'bef_admin')
+@require_role('super_admin', 'bef_admin', 'kwok_admin')
 def api_kyc_list_all():
     """List all KYC links (super admin view)."""
     return jsonify({"status": "success", "links": get_all_kyc_links()})
@@ -4809,7 +4897,7 @@ def api_kyc_portfolio():
     is_bef = user_type == 'bef_admin'
 
     # Determine which client to query
-    if user_type in ('super_admin', 'bef_admin', 'admin', 'trader'):
+    if user_type in ('super_admin', 'bef_admin', 'kwok_admin', 'admin', 'trader'):
         if not client_id:
             return jsonify({"status": "error", "message": "client_id required"}), 400
     elif user_type == 'client':
@@ -5676,6 +5764,9 @@ def can_access_client(user_type, user_identifier, target_client):
     """Check if user has permission to access a client's data."""
     if user_type == 'super_admin':
         return True
+
+    if user_type == 'kwok_admin':
+        return True
     
     if user_type == 'bef_admin':
         # BEF admin can only access clients with category == 'BEF'
@@ -5722,6 +5813,9 @@ def get_accessible_clients(user_type, user_identifier):
                 for client in trader_data.get('clients', []):
                     clients.append(client.get('name'))
         return clients
+
+    if user_type == 'kwok_admin':
+        return get_accessible_clients('super_admin', user_identifier)
     
     if user_type == 'bef_admin':
         # BEF admin can access only BEF-category clients
@@ -5906,7 +6000,7 @@ def check_mt5_auto_populate(client_id):
         return jsonify({"status": "error", "message": "Access denied"}), 403
     
     # Check if user can access this client
-    if user_type in ['trader', 'admin', 'bef_admin']:
+    if user_type in ['trader', 'admin', 'bef_admin', 'super_admin', 'kwok_admin']:
         if not can_access_client(user_type, user_identifier, client_id):
             return jsonify({"status": "error", "message": "Access denied"}), 403
     
@@ -7231,7 +7325,7 @@ def _clients_for_trader(trader_name):
 
 
 @app.route('/api/quality/trader_issues')
-@require_role('trader', 'admin', 'super_admin', 'bef_admin')
+@require_role('trader', 'admin', 'super_admin', 'bef_admin', 'kwok_admin')
 def api_trader_issues():
     """Latest quality scan issues filtered to a single trader's clients.
 
@@ -7283,7 +7377,7 @@ def api_trader_issues():
 
 
 @app.route('/api/quality/trader_summary_status')
-@require_role('trader', 'admin', 'super_admin', 'bef_admin')
+@require_role('trader', 'admin', 'super_admin', 'bef_admin', 'kwok_admin')
 def api_trader_summary_status():
     """Daily summary submission status filtered to a single trader's clients."""
     try:
@@ -8227,6 +8321,9 @@ def update_note():
             log_action('ACCESS_DENIED', user_type, user_identifier, get_remote_address(), f"Note access denied: {client_id}", False)
             return jsonify({"status": "error", "message": "Access denied"}), 403
 
+        if user_type == 'kwok_admin':
+            return jsonify({"status": "error", "message": "View-only account"}), 403
+
         if content:
             save_client_note(client_id, row_index, column_key, content, user_identifier)
             action = 'UPDATE_NOTE'
@@ -8284,6 +8381,9 @@ def update_data():
                     log_action('UPDATE_DENIED', user_type, user_identifier, get_remote_address(), 
                               f"Tried to update: {client_id}", False)
                     return jsonify({"status": "error", "message": "Access denied"}), 403
+
+                if user_type == 'kwok_admin':
+                    return jsonify({"status": "error", "message": "View-only account"}), 403
                 
                 # Get existing data to preserve fields not being updated
                 existing_data = get_client_data(client_id) or {}
