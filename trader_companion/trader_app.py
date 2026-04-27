@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.5.4"
+APP_VERSION = "1.5.5"
 RELEASE_DISABLE_HEDGE_GUARD = True
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
@@ -38,6 +38,7 @@ from datetime import datetime
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
+from typing import Dict
 import re
 import random
 

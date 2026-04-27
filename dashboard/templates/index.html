@@ -6102,7 +6102,13 @@
                 const data = await response.json();
                 if (data.status === 'success') {
                     showSaveStatus('saved');
+                    // Refresh full dashboard to recalculate stats with new hedging data
                     updateDashboard();  // Refresh data
+                    // Additionally, if we have fresh stats in response, render them immediately
+                    if (data.statistics && currentData) {
+                        currentData.statistics = data.statistics;
+                        try { renderStats(currentData); } catch (e) { /* ignore */ }
+                    }
                 } else {
                     throw new Error(data.message || 'Failed to save');
                 }
