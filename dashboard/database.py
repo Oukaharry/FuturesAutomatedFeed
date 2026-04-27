@@ -189,6 +189,35 @@ def admin_password_exists(username: str) -> bool:
         )
         return cursor.fetchone() is not None
 
+
+def copy_admin_password_row(from_username: str, to_username: str) -> bool:
+    """
+    If to_username has no row, copy password_hash/salt from from_username.
+    Returns True if a row was copied.
+    """
+    if admin_password_exists(to_username):
+        return False
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT password_hash, salt FROM admin_passwords WHERE username = ?',
+            (from_username,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+        now = datetime.now().isoformat()
+        cursor.execute(
+            '''
+            INSERT INTO admin_passwords (username, password_hash, salt, created_at)
+            VALUES (?, ?, ?, ?)
+            ''',
+            (to_username, row['password_hash'], row['salt'], now),
+        )
+        conn.commit()
+        return True
+
+
 def verify_admin_password(username: str, password: str) -> bool:
     """Verify admin password."""
     with get_connection() as conn:
@@ -402,6 +431,14 @@ def find_user_by_identifier(identifier: str) -> dict:
     # Check if it's bef_admin
     if identifier.lower() in ['bef_admin', 'befadmin', 'bef']:
         return {'user_type': 'bef_admin', 'username': 'bef_admin'}
+
+    # Kwok (investor-style) dashboard — full read access, no writes (enforced in app)
+    if identifier.lower() in [
+        'kwok_admin', 'kwokadmin', 'kwok',
+        'showcase_admin', 'showcaseadmin', 'showcase', 'investor_demo',
+        'investor', 'demo_investor',
+    ]:
+        return {'user_type': 'kwok_admin', 'username': 'kwok_admin'}
     
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -425,7 +462,7 @@ def verify_user_by_identifier(identifier: str, password: str) -> dict:
         return None
     
     # Super admin and BEF admin have special handling
-    if user.get('user_type') in ('super_admin', 'bef_admin'):
+    if user.get('user_type') in ('super_admin', 'bef_admin', 'kwok_admin'):
         return user  # Password check happens separately
     
     # Verify password for regular users

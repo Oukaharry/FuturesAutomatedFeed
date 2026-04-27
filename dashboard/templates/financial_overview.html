@@ -364,11 +364,11 @@
             </div>
             
             <div class="nav-links">
-                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="{{ home_url|default('/') }}" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn active"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
-                <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
-                {% if not is_bef_admin %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
+                {% if not is_kwok_admin|default(false) %}<a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>{% endif %}
+                {% if not is_bef_admin and not is_kwok_admin|default(false) %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
             </div>
 
             <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
@@ -382,7 +382,7 @@
                 <h1 style="font-size: 1.5rem; margin: 0 0 4px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; letter-spacing: -0.02em;">Financial Overview</h1>
                 <p style="color: var(--text-secondary); margin: 0; font-size: 0.9rem;">Consolidated report across all clients and prop firms</p>
             </div>
-            {% if not is_bef_admin %}
+            {% if not is_bef_admin and not is_kwok_admin|default(false) %}
             <div class="profile-toggle">
                 <button class="filter-btn active" onclick="setFilter('All')" id="filter-all">All</button>
                 <button class="filter-btn" onclick="setFilter('BEF')" id="filter-bef">BEF</button>
@@ -466,7 +466,7 @@
                 
                 <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                     <!-- Profile Toggle -->
-                    {% if not is_bef_admin %}
+                    {% if not is_bef_admin and not is_kwok_admin|default(false) %}
                     <div class="profile-toggle">
                         <span style="color:#7898be; font-family:'Plus Jakarta Sans',sans-serif; font-size:0.68rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding: 5px 8px; align-self:center;">PROFILE</span>
                         <a href="?profile=ALL" class="toggle-btn {% if selected_profile|upper == 'ALL' %}active{% endif %}">ALL</a>

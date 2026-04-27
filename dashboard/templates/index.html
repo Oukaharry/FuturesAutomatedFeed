@@ -1458,6 +1458,34 @@
             align-items: center;
         }
 
+        /* Kwok admin header: logo+home left, Evaluations/Stats centered, client right */
+        .header-combined-bar.header-kwok-tabs-centered {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+        }
+        .header-kwok-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+        .header-kwok-tabs {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-width: 0;
+        }
+        .header-kwok-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            justify-self: end;
+        }
+
         /* Tabs: shrink but scroll internally (you already have this, confirm it's applied) */
         header .tab-btn {
             border: none !important;
@@ -1510,6 +1538,16 @@
             border-bottom: 2px solid #fbbf24 !important;
             font-weight: 600 !important;
             box-shadow: 0 3px 12px rgba(1,3,10,0.5), inset 0 1px 0 rgba(100,140,220,0.15) !important;
+        }
+
+        /* Narrower Evaluations / Stats when those are the only main tabs (Kwok admin) */
+        header .tabs.tabs-compact-main .tab-btn[onclick^="openTab"] {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            padding: 5px 8px !important;
+            font-size: 0.72rem !important;
         }
 
         /* Tables & Content */
@@ -2119,7 +2157,48 @@
 
     <div class="container">
         <header>
-            <div class="header-combined-bar">
+            <div class="header-combined-bar{% if user_type == 'kwok_admin' %} header-kwok-tabs-centered{% endif %}">
+                {% if user_type == 'kwok_admin' %}
+                <div class="header-kwok-left">
+                    <a href="/" style="flex-shrink:0; position:relative; z-index:10; line-height:0;">
+                        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
+                             style="width: 40px; height: auto; object-fit: contain; cursor: pointer;">
+                    </a>
+                    <a href="/kwok_admin" class="tab-btn" title="Kwok Admin Home" style="flex-shrink:0; padding:6px 10px;"><i class="fas fa-home"></i></a>
+                    <span style="color:rgba(255,255,255,0.25); padding:0 4px; user-select:none; flex-shrink:0;">|</span>
+                </div>
+                <div class="header-kwok-tabs">
+                    <div class="tabs tabs-compact-main" style="margin-bottom:0; display:flex; align-items:center; justify-content:center; gap:2px; min-width:0; overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; flex-wrap:nowrap;">
+                        <button class="tab-btn active" onclick="openTab('evaluations')">Evaluations</button>
+                        <button class="tab-btn" onclick="openTab('stats')">Stats</button>
+                    </div>
+                </div>
+                <div class="header-kwok-right">
+                    {% if client_id %}
+                    {% if not is_active %}
+                    <span style="background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; padding:4px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; letter-spacing:0.5px; flex-shrink:0;">INACTIVE</span>
+                    {% endif %}
+                    <span class="header-before-client-sep" style="color:rgba(255,255,255,0.25); padding:0 6px 0 2px; user-select:none; flex-shrink:0;">|</span>
+                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                        <div id="kyc-switcher-wrap" style="display:none; position:relative;">
+                            <button id="kyc-switcher-btn" onclick="toggleKycDropdown(event)" style="cursor:pointer; border:1px solid rgba(96,165,250,0.3); background:rgba(96,165,250,0.1); padding:6px 12px; border-radius:8px; display:flex; align-items:center; gap:5px; color:#60a5fa; font-size:0.78rem; font-weight:500; white-space:nowrap; box-shadow:none; transform:none;">
+                                <i class="fas fa-exchange-alt" style="font-size:0.7rem;"></i>
+                                <span id="kyc-current-name">{{ client_id }}</span>
+                                <i class="fas fa-chevron-down" style="font-size:0.6rem; opacity:0.7;"></i>
+                            </button>
+                            <div id="kyc-dropdown" style="display:none; position:fixed; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:20000; overflow:hidden;">
+                                <div id="kyc-dropdown-list" style="max-height:300px; overflow-y:auto;"></div>
+                            </div>
+                        </div>
+                        <span style="display:flex; align-items:center; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.3); border-radius:8px; overflow:hidden; white-space:nowrap;">
+                            <span style="display:flex; align-items:center; gap:6px; color:#60a5fa; padding:6px 12px; font-size:0.82rem; font-weight:600;">
+                                <i class="fas fa-user-circle"></i> {{ client_id }}
+                            </span>
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                {% else %}
                 {% if user_type != 'super_admin' %}
                 <a href="/" style="flex-shrink:0; position:relative; z-index:10; line-height:0;">
                     <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"
@@ -2177,6 +2256,7 @@
                     </span>
                 </div>
                 {% endif %}
+                {% endif %}
             </div>
         </header>
 
@@ -2186,12 +2266,12 @@
                 <i class="fas fa-circle-notch fa-spin" style="color:#34d399; font-size:1rem;"></i>
             </div>
             <div style="display:flex; align-items:center; justify-content:flex-end; gap:12px; flex:1; min-width:0;">
-            {% if user_type != 'client' %}
+            {% if user_type != 'client' and user_type != 'kwok_admin' %}
             <button onclick="openTab('issues')" id="issues-tab-btn" title="Issues" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#f87171;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#fca5a5'" onmouseout="this.style.color='#f87171'">
                 <i class="fas fa-exclamation-triangle" style="font-size:10px;"></i> Issues <span id="issues-count-badge" style="display:none;background:#ef4444;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.65rem;min-width:16px;text-align:center;display:inline-block;"></span>
             </button>
             {% endif %}
-            {% if client_id %}
+            {% if client_id and user_type != 'kwok_admin' %}
             <button onclick="downloadCSV()" title="Download CSV" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#4ade80;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#86efac'" onmouseout="this.style.color='#4ade80'">
                 <i class="fas fa-download" style="font-size:10px;"></i> CSV
             </button>
@@ -2271,7 +2351,7 @@
                             <input type="checkbox" id="activeFilter" checked onchange="renderEvaluationsTable()">
                             Active Only
                         </label>
-                        {% if user_type != 'client' %}<button class="scroll-btn" onclick="addAccount()" style="background: rgba(217,119,6,0.25); border-color: rgba(217,119,6,0.5); color: #fbbf24; font-weight: 600;">+ Add</button>{% endif %}
+                        {% if user_type not in ('client', 'kwok_admin') %}<button class="scroll-btn" onclick="addAccount()" style="background: rgba(217,119,6,0.25); border-color: rgba(217,119,6,0.5); color: #fbbf24; font-weight: 600;">+ Add</button>{% endif %}
                     </div>
                 </div>
                 <div class="table-container" id="eval-table-container">
@@ -2279,7 +2359,7 @@
                     <thead>
                         <tr>
                             <th rowspan="2">#</th>
-                            <th rowspan="2" style="width: 30px;">{% if user_type != 'client' %}🗑️{% endif %}</th>
+                            <th rowspan="2" style="width: 30px;">{% if user_type not in ('client', 'kwok_admin') %}🗑️{% endif %}</th>
                             <!-- Scrolling Group Headers -->
                             <th colspan="4" class="group-header group-header-blue">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
@@ -2919,6 +2999,9 @@
         const USER_TYPE = "{{ user_type }}";
         const IS_CLIENT = USER_TYPE === 'client';
         const IS_BEF_ADMIN = USER_TYPE === 'bef_admin';
+        const IS_KWOK_ADMIN = USER_TYPE === 'kwok_admin';
+        /** Treat like client sheet cells: no inline edits (Kwok admin is read-only on the server). */
+        const SHEET_EDIT_LOCKED = IS_CLIENT || IS_KWOK_ADMIN;
         // Firms hidden from BEF admin view
         // Precomputed normalized keys for O(1) Set lookup instead of O(n) array scan
         const BEF_HIDDEN_FIRMS_SET = new Set(['lucid', 'apex', 'tradeday', 'toponefutures']);
@@ -3739,6 +3822,7 @@
              * On dashboard load, check if MT5 values need auto-population.
              * If they do, display a banner suggesting to initialize them.
              */
+            if (IS_KWOK_ADMIN) return;
             if (!CLIENT_ID) return;
             
             fetch(`/api/client/check_mt5_auto_populate/${encodeURIComponent(CLIENT_ID)}`)
@@ -4235,7 +4319,7 @@
 
                     // Date Purchased Logic
                     const datePurchased = getVal('Date Purchased');
-                    const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased');
+                    const datePurchasedContent = getInputHtml(formatDateForInput(datePurchased), 'date', index, 'Date Purchased', SHEET_EDIT_LOCKED);
 
                     row.innerHTML = `
                         <td class="sticky-col-1">${displayNum}</td>
@@ -4244,52 +4328,52 @@
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
                                      title="Delete this row (super admin only)">🗑️</button>` : ''}
                         </td>
-                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', IS_CLIENT), 'Prop Firm')}
-                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', IS_CLIENT), 'Account Size')}
+                        ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', SHEET_EDIT_LOCKED), 'Prop Firm')}
+                        ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', SHEET_EDIT_LOCKED), 'Account Size')}
                         ${cell(datePurchasedContent, 'Date Purchased')}
-                        ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee', IS_CLIENT), 'Fee')}
+                        ${cell(getInputHtml(getVal('Fee'), 'text', index, 'Fee', SHEET_EDIT_LOCKED), 'Fee')}
                         
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started'), 'Date Started')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended'), 'Date Ended')}
-                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1', IS_CLIENT), 'Status P1')}
-                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #', IS_CLIENT), 'Account #')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started')), 'date', index, 'Date Started', SHEET_EDIT_LOCKED), 'Date Started')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended')), 'date', index, 'Date Ended', SHEET_EDIT_LOCKED), 'Date Ended')}
+                        ${cell(getDropdownHtml(getVal('Status P1'), 'Status P1', index, 'Status P1', SHEET_EDIT_LOCKED), 'Status P1')}
+                        ${cell(getInputHtml(getVal('Account #'), 'text', index, 'Account #', SHEET_EDIT_LOCKED), 'Account #')}
                         
-                        ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1', IS_CLIENT), 'Hedge Result 1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2', IS_CLIENT), 'Hedge Result 2')}
-                        ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3', IS_CLIENT), 'Hedge Result 3')}
-                        ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4', IS_CLIENT), 'Hedge Result 4')}
-                        ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5', IS_CLIENT), 'Hedge Result 5')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1'), 'text', index, 'Hedge Result 1', SHEET_EDIT_LOCKED), 'Hedge Result 1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2'), 'text', index, 'Hedge Result 2', SHEET_EDIT_LOCKED), 'Hedge Result 2')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3'), 'text', index, 'Hedge Result 3', SHEET_EDIT_LOCKED), 'Hedge Result 3')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4'), 'text', index, 'Hedge Result 4', SHEET_EDIT_LOCKED), 'Hedge Result 4')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5'), 'text', index, 'Hedge Result 5', SHEET_EDIT_LOCKED), 'Hedge Result 5')}
                         ${cell(computeHedgeNet(ev), 'Hedge Net')}
                         
-                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1', IS_CLIENT), 'Account #.1')}
-                        ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee', IS_CLIENT), 'Activation Fee')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1'), 'Date Started.1')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1'), 'Date Ended.1')}
-                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', IS_CLIENT), 'Status')}
+                        ${cell(getInputHtml(getVal('Account #.1'), 'text', index, 'Account #.1', SHEET_EDIT_LOCKED), 'Account #.1')}
+                        ${cell(getInputHtml(getVal('Activation Fee'), 'text', index, 'Activation Fee', SHEET_EDIT_LOCKED), 'Activation Fee')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Started.1')), 'date', index, 'Date Started.1', SHEET_EDIT_LOCKED), 'Date Started.1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date Ended.1')), 'date', index, 'Date Ended.1', SHEET_EDIT_LOCKED), 'Date Ended.1')}
+                        ${cell(getDropdownHtml(getVal('Status'), 'Status', index, 'Status', SHEET_EDIT_LOCKED), 'Status')}
                         
-                        ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1', IS_CLIENT), 'Hedge Result 1.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1', IS_CLIENT), 'Hedge Result 2.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1', IS_CLIENT), 'Hedge Result 3.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 4.1'), 'text', index, 'Hedge Result 4.1', IS_CLIENT), 'Hedge Result 4.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1', IS_CLIENT), 'Hedge Result 5.1')}
-                        ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6', IS_CLIENT), 'Hedge Result 6')}
-                        ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7', IS_CLIENT), 'Hedge Result 7')}
+                        ${cell(getInputHtml(getVal('Hedge Result 1.1'), 'text', index, 'Hedge Result 1.1', SHEET_EDIT_LOCKED), 'Hedge Result 1.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 2.1'), 'text', index, 'Hedge Result 2.1', SHEET_EDIT_LOCKED), 'Hedge Result 2.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 3.1'), 'text', index, 'Hedge Result 3.1', SHEET_EDIT_LOCKED), 'Hedge Result 3.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 4.1'), 'text', index, 'Hedge Result 4.1', SHEET_EDIT_LOCKED), 'Hedge Result 4.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 5.1'), 'text', index, 'Hedge Result 5.1', SHEET_EDIT_LOCKED), 'Hedge Result 5.1')}
+                        ${cell(getInputHtml(getVal('Hedge Result 6'), 'text', index, 'Hedge Result 6', SHEET_EDIT_LOCKED), 'Hedge Result 6')}
+                        ${cell(getInputHtml(getVal('Hedge Result 7'), 'text', index, 'Hedge Result 7', SHEET_EDIT_LOCKED), 'Hedge Result 7')}
                         ${cell(computeHedgeNet1(ev), 'Hedge Net.1')}
                         
-                        ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1', IS_CLIENT), 'Payout 1')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1'), 'Date 1')}
-                        ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2', IS_CLIENT), 'Payout 2')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2'), 'Date 2')}
-                        ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3', IS_CLIENT), 'Payout 3')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3'), 'Date 3')}
-                        ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4', IS_CLIENT), 'Payout 4')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4'), 'Date 4')}
-                        ${cell(getInputHtml(getVal('Payout 5'), 'text', index, 'Payout 5', IS_CLIENT), 'Payout 5')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 5')), 'date', index, 'Date 5'), 'Date 5')}
-                        ${cell(getInputHtml(getVal('Payout 6'), 'text', index, 'Payout 6', IS_CLIENT), 'Payout 6')}
-                        ${cell(getInputHtml(formatDateForInput(getVal('Date 6')), 'date', index, 'Date 6'), 'Date 6')}
+                        ${cell(getInputHtml(getVal('Payout 1'), 'text', index, 'Payout 1', SHEET_EDIT_LOCKED), 'Payout 1')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 1')), 'date', index, 'Date 1', SHEET_EDIT_LOCKED), 'Date 1')}
+                        ${cell(getInputHtml(getVal('Payout 2'), 'text', index, 'Payout 2', SHEET_EDIT_LOCKED), 'Payout 2')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 2')), 'date', index, 'Date 2', SHEET_EDIT_LOCKED), 'Date 2')}
+                        ${cell(getInputHtml(getVal('Payout 3'), 'text', index, 'Payout 3', SHEET_EDIT_LOCKED), 'Payout 3')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 3')), 'date', index, 'Date 3', SHEET_EDIT_LOCKED), 'Date 3')}
+                        ${cell(getInputHtml(getVal('Payout 4'), 'text', index, 'Payout 4', SHEET_EDIT_LOCKED), 'Payout 4')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 4')), 'date', index, 'Date 4', SHEET_EDIT_LOCKED), 'Date 4')}
+                        ${cell(getInputHtml(getVal('Payout 5'), 'text', index, 'Payout 5', SHEET_EDIT_LOCKED), 'Payout 5')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 5')), 'date', index, 'Date 5', SHEET_EDIT_LOCKED), 'Date 5')}
+                        ${cell(getInputHtml(getVal('Payout 6'), 'text', index, 'Payout 6', SHEET_EDIT_LOCKED), 'Payout 6')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 6')), 'date', index, 'Date 6', SHEET_EDIT_LOCKED), 'Date 6')}
 
-                        ${generateDayColumns(ev, cell, index, currentRowNum, IS_CLIENT)}
+                        ${generateDayColumns(ev, cell, index, currentRowNum, SHEET_EDIT_LOCKED)}
                     `;
                     fragment.appendChild(row);
                     rowsBuilt++;
@@ -4409,7 +4493,7 @@
         // --- Issues Tab Logic ---
         let _clientIssues = [];
         function loadClientIssues() {
-            if (IS_CLIENT) return;
+            if (SHEET_EDIT_LOCKED) return;
             const clientId = '{{ client_id }}';
             if (!clientId) return;
             const loading = document.getElementById('issues-loading');
@@ -4503,7 +4587,7 @@
             }, 100);
         }
         // Auto-load issues when page loads (non-client)
-        if (!IS_CLIENT) { setTimeout(loadClientIssues, 500); }
+        if (!SHEET_EDIT_LOCKED) { setTimeout(loadClientIssues, 500); }
 
         fixSubHeaderTop();
 
@@ -4751,6 +4835,12 @@
 
             try {
                 if (data.statistics) {
+                    // Persist Live Hedging expand state across auto-refresh re-renders.
+                    // Keep it open for at least 15s after opening.
+                    if (window._hedgingOpenUntil === undefined) window._hedgingOpenUntil = 0;
+                    const _prevHedgingWrap = document.getElementById('hedging-details-wrap');
+                    const _prevHedgingWasOpen = (_prevHedgingWrap && _prevHedgingWrap.style.display !== 'none') || (Date.now() < (window._hedgingOpenUntil || 0));
+
                     const s = data.statistics;
                     // --- Safety Checks ---
                     s.hedging_review = s.hedging_review || {};
@@ -5000,7 +5090,7 @@
 
                                 <!-- Hedging section toggle -->
                                 <div style="order:3; grid-column: 1 / -1; display:flex; justify-content:center; margin: -8px 0 -12px;">
-                                    <button onclick="const w=document.getElementById('hedging-details-wrap'); const a=this.querySelector('.hd-arrow'); w.style.display=w.style.display==='none'?'grid':'none'; a.textContent=w.style.display==='none'?'▸':'▾';" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
+                                    <button onclick="toggleHedgingDetails(15000)" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
                                         <span class="hd-arrow">▸</span> Live Hedging Review & MT5 Accounts Overview
                                     </button>
                                 </div>
@@ -5135,6 +5225,12 @@
                         if (_newPayoutsEl) _newPayoutsEl.style.display = '';
                         if (_newBtn) _newBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Payouts';
                     }
+
+                    // Restore Live Hedging expanded state if it was open (or still within the auto-close window).
+                    if (_prevHedgingWasOpen && !(window._hedgingOpenUntil > Date.now())) {
+                        window._hedgingOpenUntil = Date.now() + 15000;
+                    }
+                    syncHedgingDetailsFromState();
                 }
 
 
@@ -5277,6 +5373,48 @@
                 body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b;">No payouts found.</td></tr>';
                 if (summary) summary.textContent = '';
             }
+        }
+
+        // --- Live Hedging Review expanded state (auto-close) ---
+        window._hedgingAutoCloseTimer = window._hedgingAutoCloseTimer || null;
+        if (window._hedgingOpenUntil === undefined) window._hedgingOpenUntil = 0;
+
+        function syncHedgingDetailsFromState() {
+            const wrap = document.getElementById('hedging-details-wrap');
+            if (!wrap) return;
+            const btn = wrap.previousElementSibling?.querySelector('button');
+            const arrow = btn ? btn.querySelector('.hd-arrow') : null;
+            if (!arrow) return;
+
+            const now = Date.now();
+            const open = now < (window._hedgingOpenUntil || 0);
+            wrap.style.display = open ? 'grid' : 'none';
+            arrow.textContent = open ? '▾' : '▸';
+
+            if (window._hedgingAutoCloseTimer) {
+                clearTimeout(window._hedgingAutoCloseTimer);
+                window._hedgingAutoCloseTimer = null;
+            }
+            if (open) {
+                const ms = Math.max(0, (window._hedgingOpenUntil || 0) - now);
+                window._hedgingAutoCloseTimer = setTimeout(() => {
+                    window._hedgingOpenUntil = 0;
+                    syncHedgingDetailsFromState();
+                }, ms);
+            }
+        }
+
+        function toggleHedgingDetails(autoCloseMs) {
+            const wrap = document.getElementById('hedging-details-wrap');
+            if (!wrap) return;
+            const isOpen = wrap.style.display !== 'none';
+            if (isOpen) {
+                window._hedgingOpenUntil = 0;
+            } else {
+                const ms = Number(autoCloseMs) || 15000;
+                window._hedgingOpenUntil = Date.now() + ms;
+            }
+            syncHedgingDetailsFromState();
         }
 
         function renderPositions(data) {
@@ -6153,9 +6291,9 @@
             const adjustedTotalProfit = totalProfit - sumPrior;
             
             const thStyle = 'text-align:left;padding:8px 10px;color:#94a3b8;font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;';
-            const colCount = IS_CLIENT ? 5 : 6;
-            const delCol = IS_CLIENT ? '' : '<col style="width:7%">';
-            const delTh = IS_CLIENT ? '' : '<th></th>';
+            const colCount = SHEET_EDIT_LOCKED ? 5 : 6;
+            const delCol = SHEET_EDIT_LOCKED ? '' : '<col style="width:7%">';
+            const delTh = SHEET_EDIT_LOCKED ? '' : '<th></th>';
             const subTdStyle = 'padding:3px 10px 3px 24px;font-size:11px;color:#94a3b8;';
             const subValStyle = 'text-align:left;padding:3px 10px;font-size:11px;';
             
@@ -6177,10 +6315,10 @@
                 <td style="text-align:left;padding:8px 10px;color:#f1f5f9;">${formatMoney(curWith)}</td>
                 <td style="text-align:left;padding:8px 10px;color:#f1f5f9;">${formatMoney(curBal)}</td>
                 <td style="text-align:left;padding:8px 10px;color:${curProfit >= 0 ? '#4ade80' : '#f87171'};font-weight:600;">${formatMoney(curProfit)}</td>
-                ${IS_CLIENT ? '' : '<td></td>'}
+                ${SHEET_EDIT_LOCKED ? '' : '<td></td>'}
             </tr>`;
             // Current MT5 prior activity sub-row
-            if (!IS_CLIENT) {
+            if (!SHEET_EDIT_LOCKED) {
                 html += `<tr style="border-bottom:1px solid #334155;background:#0c2d48;">
                     <td style="${subTdStyle}">↳ Prior Activity</td>
                     <td colspan="3"></td>
@@ -6203,16 +6341,16 @@
                     const b = acc.final_balance || 0;
                     const p = b - (d + w);
                     const accPrior = acc.prior_activity_profit || 0;
-                    html += `<tr style="border-bottom:${accPrior || !IS_CLIENT ? 'none' : '1px solid #1e293b'};">
+                    html += `<tr style="border-bottom:${accPrior || !SHEET_EDIT_LOCKED ? 'none' : '1px solid #1e293b'};">
                         <td style="padding:8px 10px;color:#cbd5e1;">${acc.name || 'MT5 #' + (idx+1)}</td>
                         <td style="text-align:left;padding:8px 10px;color:#f1f5f9;">${formatMoney(d)}</td>
                         <td style="text-align:left;padding:8px 10px;color:#f1f5f9;">${formatMoney(w)}</td>
                         <td style="text-align:left;padding:8px 10px;color:#f1f5f9;">${formatMoney(b)}</td>
                         <td style="text-align:left;padding:8px 10px;color:${p >= 0 ? '#4ade80' : '#f87171'};font-weight:600;">${formatMoney(p)}</td>
-                        ${IS_CLIENT ? '' : `<td style="text-align:center;padding:8px 4px;"><button onclick="deleteHistoricalMT5(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;">✕</button></td>`}
+                        ${SHEET_EDIT_LOCKED ? '' : `<td style="text-align:center;padding:8px 4px;"><button onclick="deleteHistoricalMT5(${idx})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:13px;">✕</button></td>`}
                     </tr>`;
                     // Historical account prior activity sub-row
-                    if (!IS_CLIENT) {
+                    if (!SHEET_EDIT_LOCKED) {
                         html += `<tr style="border-bottom:1px solid #1e293b;">
                             <td style="${subTdStyle}">↳ Prior Activity</td>
                             <td colspan="3"></td>
@@ -6235,7 +6373,7 @@
                     <td style="padding:6px 10px;color:#fbbf24;font-size:11px;">PRIOR ACTIVITY TOTAL</td>
                     <td colspan="3"></td>
                     <td style="text-align:left;padding:6px 10px;color:#fbbf24;font-weight:600;font-size:11px;">${formatMoney(-sumPrior)}</td>
-                    ${IS_CLIENT ? '' : '<td></td>'}
+                    ${SHEET_EDIT_LOCKED ? '' : '<td></td>'}
                 </tr>`;
             }
             
@@ -6246,7 +6384,7 @@
                 <td style="text-align:left;padding:8px 10px;color:#f8fafc;">${formatMoney(totalWith)}</td>
                 <td style="text-align:left;padding:8px 10px;color:#f8fafc;">${formatMoney(totalBal)}</td>
                 <td style="text-align:left;padding:8px 10px;color:${adjustedTotalProfit >= 0 ? '#4ade80' : '#f87171'};font-weight:700;">${formatMoney(adjustedTotalProfit)}</td>
-                ${IS_CLIENT ? '' : '<td></td>'}
+                ${SHEET_EDIT_LOCKED ? '' : '<td></td>'}
             </tr>`;
             html += '</table></div>';
             
@@ -6538,7 +6676,7 @@
         }
 
         function getInputHtml(value, type, index, key, readOnly = false) {
-            const readOnlyAttr = (readOnly && type !== 'date') ? 'readonly' : '';
+            const readOnlyAttr = readOnly ? 'readonly' : '';
             let style = readOnly ? 'background-color: rgba(255, 255, 255, 0.05); cursor: not-allowed; color: var(--text-secondary);' : '';
             
             if (key.includes('Account #')) {
@@ -6970,7 +7108,7 @@
         // ── Save-time validation warnings (admin/trader only, changed rows only) ──
         function validateBeforeSave() {
             // Never show to clients
-            if (IS_CLIENT) return [];
+            if (SHEET_EDIT_LOCKED) return [];
 
             // Only validate rows that were edited in this session
             const changedRows = new Set(Object.keys(_changedFields).map(Number));
@@ -7016,7 +7154,7 @@
         function showValidationWarnings(warnings) {
             const existing = document.getElementById('validation-warning-banner');
             if (existing) existing.remove();
-            if (!warnings.length || IS_CLIENT) return;
+            if (!warnings.length || SHEET_EDIT_LOCKED) return;
 
             const banner = document.createElement('div');
             banner.id = 'validation-warning-banner';
@@ -7047,6 +7185,12 @@
                 retryCount = action;
                 action = 'UPDATE';
                 description = null;
+            }
+
+            if (IS_KWOK_ADMIN) {
+                isEditing = false;
+                isSaving = false;
+                return;
             }
 
             if (!currentData.identity) {
