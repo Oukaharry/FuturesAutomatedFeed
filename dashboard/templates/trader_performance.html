@@ -182,11 +182,11 @@
                 <a href="{{ home_url }}" style="display:block;line-height:0;"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;"></a>
             </div>
             <div class="nav-links">
-                <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+                <a href="{{ home_url|default('/') }}" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
                 <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
                 <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
                 <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
-                {% if not is_bef_admin %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
+                {% if not is_bef_admin and not is_kwok_admin|default(false) %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
             </div>
             <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
                 <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
