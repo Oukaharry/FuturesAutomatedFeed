@@ -839,22 +839,12 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
             return f"Hedge Result {trade_number}"
     
     elif phase_code == 'FD':
-        # Determine if this is an MFFU account (uses FD0)
-        # MFFU accounts: FD0→HR1.1, FD1→HR2.1, FD2→HR3.1, etc.
-        # Other accounts: FD0→HR1.1 (rare), FD1→HR1.1, FD2→HR2.1, etc.
-        is_mffu = account_number and account_number.upper().startswith('MFFU')
-        
+        # Funded: FD1→HR1.1, FD2→HR2.1, etc.
+        # Some sources send FD0; treat FD0 the same as FD1 (map to HR1.1).
         if trade_number is not None:
-            if is_mffu:
-                # MFFU: FD0→Hedge Result 1.1, FD1→Hedge Result 2.1, etc.
-                return f"Hedge Result {trade_number + 1}.1"
-            else:
-                # Other firms: FD0→HR1.1, FD1→HR1.1, FD2→HR2.1, etc.
-                # FD0 is rare for non-MFFU, treat same as FD1
-                if trade_number == 0:
-                    return "Hedge Result 1.1"
-                else:
-                    return f"Hedge Result {trade_number}.1"
+            if trade_number == 0:
+                return "Hedge Result 1.1"
+            return f"Hedge Result {trade_number}.1"
     
     elif phase_code == 'DD':
         # Double Dip: DD1 maps to Hedge Result 1.1, DD2->2.1 etc
