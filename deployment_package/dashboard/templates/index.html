@@ -1681,7 +1681,19 @@
             if (data.deals && data.deals.length > 0) {
                 // Only show closed (OUT) trade entries; hide IN/BALANCE/etc.
                 const outEntries = new Set(['OUT', 'INOUT', 'OUT_BY']);
-                const outDeals = data.deals.filter(d => outEntries.has((d.entry || '').toUpperCase()));
+                const outDeals = data.deals
+                    .filter(d => {
+                        const t = String(d?.type ?? '').trim().toUpperCase();
+                        const e = String(d?.entry ?? '').trim().toUpperCase();
+                        return !(
+                            t === 'BALANCE' || t === '2' || t === '2.0' ||
+                            t === 'CREDIT'  || t === '3' || t === '3.0' ||
+                            e === 'BALANCE' || e === '2' || e === '2.0' ||
+                            e === 'CREDIT'  || e === '3' || e === '3.0' ||
+                            t.includes('BALANCE') || t.includes('CREDIT')
+                        );
+                    })
+                    .filter(d => outEntries.has((d.entry || '').toUpperCase()));
 
                 if (outDeals.length > 0) {
                     noHistMsg.style.display = 'none';

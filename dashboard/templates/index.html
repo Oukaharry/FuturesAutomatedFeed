@@ -6122,7 +6122,19 @@
             const noHistMsg = document.getElementById('no-history-msg');
             const histTable = document.getElementById('history-table');
             const countEl = document.getElementById('trade-history-count');
-            const deals = (currentData && currentData.deals) ? currentData.deals : [];
+            const dealsRaw = (currentData && currentData.deals) ? currentData.deals : [];
+            // Never show internal transfers (BALANCE/CREDIT) in history
+            const deals = dealsRaw.filter(d => {
+                const t = String(d?.type ?? '').trim().toUpperCase();
+                const e = String(d?.entry ?? '').trim().toUpperCase();
+                return !(
+                    t === 'BALANCE' || t === '2' || t === '2.0' ||
+                    t === 'CREDIT'  || t === '3' || t === '3.0' ||
+                    e === 'BALANCE' || e === '2' || e === '2.0' ||
+                    e === 'CREDIT'  || e === '3' || e === '3.0' ||
+                    t.includes('BALANCE') || t.includes('CREDIT')
+                );
+            });
 
             if (countEl) countEl.textContent = deals.length > 0 ? `(${deals.length} TRADES)` : '';
 
