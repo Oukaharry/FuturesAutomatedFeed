@@ -8078,9 +8078,10 @@
         // Initialize Dashboard
         updateDashboard();
         
-        // Auto-refresh every 5s (silent mode: no spinner, preserves scroll/page)
-        // This keeps dashboard values near real-time after trader app pushes.
-        setInterval(() => updateDashboard(true), 5000);
+        // Auto-refresh every 30s (silent mode: no spinner, preserves scroll/page)
+        // Balances real-time updates with rate limiting (2000/hour default, 30s = 120/hour per tab).
+        // Changed from 5s to reduce 429 rate limit errors on shared/internal IPs.
+        setInterval(() => updateDashboard(true), 30000);
 
 
         // ══════════════════════════════════════════════════════════

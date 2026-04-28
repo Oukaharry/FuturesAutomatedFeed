@@ -2903,8 +2903,10 @@
         // Initialize Dashboard
         updateDashboard();
         
-        // Refresh every 30 seconds
-        setInterval(updateDashboard, 30000);
+        // Auto-refresh every 30s (silent mode: no spinner, preserves scroll/page)
+        // Balances real-time updates with rate limiting (10,800/hour limit on /api/data).
+        // 30s polling = 120 calls/hour per tab, safe for 80+ concurrent clients.
+        setInterval(() => updateDashboard(true), 30000);
     </script>
 </body>
 </html>

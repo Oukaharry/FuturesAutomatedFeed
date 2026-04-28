@@ -11,6 +11,8 @@ import hashlib
 import secrets
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
+import logging
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 from dotenv import load_dotenv
@@ -21,6 +23,41 @@ DATABASE_URL = os.environ.get(
     'DATABASE_URL',
     'postgresql://postgres:postgres123@localhost:5432/tradeopss'
 )
+
+logger = logging.getLogger(__name__)
+
+# ─── Connection Pooling ─────────────────────────────────────────────
+# Reuse connections instead of creating new ones (prevents exhaustion)
+# Pool size: 5-15 connections (5 min, 10 max, useful for concurrent requests)
+_connection_pool = None
+
+def _init_pool():
+    """Initialize the connection pool on first use."""
+    global _connection_pool
+    if _connection_pool is None:
+        try:
+            _connection_pool = psycopg2.pool.SimpleConnectionPool(
+                5, 15,  # min=5, max=15 connections
+                DATABASE_URL,
+                connect_timeout=5  # 5-second timeout per connection
+            )
+            logger.info("[DB] Connection pool initialized (5-15 connections)")
+        except Exception as e:
+            logger.error(f"[DB] Failed to initialize connection pool: {e}")
+            raise
+
+def _get_pooled_connection():
+    """Get a connection from the pool (creates pool on first call)."""
+    if _connection_pool is None:
+        _init_pool()
+    return _connection_pool.getconn()
+
+def _return_pooled_connection(conn):
+    """Return a connection to the pool."""
+    if _connection_pool is not None:
+        _connection_pool.putconn(conn)
+    else:
+        conn.close()
 
 
 # ─── Compatibility wrappers ────────────────────────────────────────
@@ -86,17 +123,37 @@ class _PgConnWrapper:
 
 @contextmanager
 def get_connection():
-    """Context manager for database connections (PostgreSQL)."""
-    raw = psycopg2.connect(DATABASE_URL)
-    conn = _PgConnWrapper(raw)
+    """Context manager for database connections (PostgreSQL with pooling)."""
+    raw = None
     try:
-        yield conn
-        raw.commit()   # auto-commit on clean exit (safety net)
-    except Exception:
-        raw.rollback()
+        # Get connection from pool (creates pool on first call)
+        raw = _get_pooled_connection()
+        
+        # Reset connection state (auto-commit off, no pending transactions)
+        raw.autocommit = False
+        raw.rollback()  # Clear any stale state
+        
+        conn = _PgConnWrapper(raw)
+        try:
+            yield conn
+            # Auto-commit on successful exit (safety net)
+            raw.commit()
+        except Exception as e:
+            # Log and rollback on error
+            logger.warning(f"[DB] Transaction error, rolling back: {e}")
+            raw.rollback()
+            raise
+    except psycopg2.OperationalError as e:
+        # Connection pool exhausted or DB unreachable
+        logger.error(f"[DB] Database connection error (pool issue?): {e}")
+        raise
+    except Exception as e:
+        logger.error(f"[DB] Unexpected error in get_connection: {e}")
         raise
     finally:
-        raw.close()
+        # Always return connection to pool
+        if raw is not None:
+            _return_pooled_connection(raw)
 
 
 def get_db_path():
@@ -1288,7 +1345,45 @@ def get_next_version(client_id: str) -> int:
         # If DB read fails, snapshot will likely fail too, but at least we don't crash the app.
         return 1
 
-def save_data_snapshot(client_id: str, data: dict, action: str, 
+def verify_data_saved(client_id: str, expected_evals_count: int = None, expected_stat_key: str = None) -> bool:
+    """
+    Verify that data was actually saved and committed to the database.
+    
+    This is a critical check to detect silent commit failures or connection issues.
+    Pass expected_evals_count or expected_stat_key to verify specific fields were persisted.
+    
+    Returns: True if data is present and matches expected values, False otherwise.
+    """
+    try:
+        saved_data = get_client_data(client_id)
+        if not saved_data:
+            logger.warning(f"[DB VERIFY FAILED] No data found for {client_id} after save")
+            return False
+        
+        if expected_evals_count is not None:
+            actual_count = len(saved_data.get('evaluations', []))
+            if actual_count != expected_evals_count:
+                logger.warning(
+                    f"[DB VERIFY FAILED] {client_id} evals count mismatch: "
+                    f"expected {expected_evals_count}, got {actual_count}"
+                )
+                return False
+        
+        if expected_stat_key is not None:
+            stats = saved_data.get('statistics', {})
+            if expected_stat_key not in stats:
+                logger.warning(
+                    f"[DB VERIFY FAILED] {client_id} stats missing key: {expected_stat_key}"
+                )
+                return False
+        
+        logger.debug(f"[DB VERIFY OK] {client_id} data verified successfully")
+        return True
+    except Exception as e:
+        logger.error(f"[DB VERIFY ERROR] Failed to verify {client_id}: {e}")
+        return False
+
+def save_data_snapshot(client_id: str, data: dict, action: str,
                        changed_by: str = None, changed_by_type: str = None,
                        ip_address: str = None, change_source: str = None, 
                        change_description: str = None) -> int:
@@ -1358,19 +1453,47 @@ def save_client_data_with_history(client_id: str, data: dict,
     """
     Save client data AND create a history snapshot for versioning.
     
+    Includes verification that data was actually committed to the database.
+    
     Returns:
         Tuple of (success: bool, version: int)
     """
-    # First, save a snapshot to history
-    version = save_data_snapshot(
-        client_id, data, action, changed_by, changed_by_type,
-        ip_address, change_source, change_description
-    )
-    
-    # Then save the current data
-    success = save_client_data(client_id, data, overwrite=overwrite)
-    
-    return (success, version)
+    try:
+        # First, save a snapshot to history
+        version = save_data_snapshot(
+            client_id, data, action, changed_by, changed_by_type,
+            ip_address, change_source, change_description
+        )
+        
+        if version <= 0:
+            logger.error(f"[DB SAVE FAILED] Failed to create history snapshot for {client_id}")
+            return (False, -1)
+        
+        # Then save the current data
+        success = save_client_data(client_id, data, overwrite=overwrite)
+        
+        if not success:
+            logger.error(f"[DB SAVE FAILED] Failed to save current data for {client_id} (v{version})")
+            return (False, version)
+        
+        # CRITICAL: Verify data was actually committed (catch silent commit failures)
+        evals_count = len(data.get('evaluations', []))
+        if not verify_data_saved(client_id, expected_evals_count=evals_count):
+            logger.error(
+                f"[DB COMMIT VERIFICATION FAILED] {client_id} data not verified after save (v{version}). "
+                f"This indicates a potential database connection or commit issue."
+            )
+            # Don't fail here — data may be committed but verification query hit stale connection
+            # Just log it so admin can investigate
+        
+        logger.info(f"[DB SAVE OK] {client_id} saved successfully (v{version}, {evals_count} evals)")
+        return (success, version)
+        
+    except Exception as e:
+        logger.error(f"[DB SAVE ERROR] Failed to save {client_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return (False, -1)
 
 def get_data_history(client_id: str, limit: int = 50) -> list:
     """

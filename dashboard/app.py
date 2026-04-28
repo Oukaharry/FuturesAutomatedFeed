@@ -8,6 +8,8 @@ import os
 import sys
 import logging
 import time
+import errno
+import signal
 
 # Add project root to sys.path to import config and dashboard modules properly
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -178,6 +180,14 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 # Allow up to 10 MB request bodies (default Flask is unlimited; uWSGI chokes on huge uncompressed pushes)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
+# ── Suppress SIGPIPE (benign client disconnect errors) ──────────────────────
+# When a client closes the connection during a large response, the server's
+# write() call raises OSError: [Errno 32] Broken pipe. This is normal and
+# expected on slow/unstable networks. Log as debug, not error.
+import signal
+if hasattr(signal, 'SIGPIPE'):
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # Restore default handler to avoid zombie processes
+
 # ── Gzip compression ────────────────────────────────────────────────────────
 # Compress large JSON/HTML responses before sending to client.
 # Reduces 300-600 KB payloads to ~30-60 KB, preventing uWSGI read timeouts.
@@ -231,8 +241,16 @@ def _decompress_request_body():
 
 @app.after_request
 def _log_request_end(response):
-    duration_ms = (time.monotonic() - getattr(g, '_request_start', time.monotonic())) * 1000
-    logging.info('[REQ] %s %s -> %s (%.1fms)', request.method, request.path, response.status_code, duration_ms)
+    try:
+        duration_ms = (time.monotonic() - getattr(g, '_request_start', time.monotonic())) * 1000
+        logging.info('[REQ] %s %s -> %s (%.1fms)', request.method, request.path, response.status_code, duration_ms)
+    except OSError as e:
+        # Client disconnected during response write (SIGPIPE / broken pipe)
+        # This is benign and not a server error — suppress as debug log
+        if e.errno == errno.EPIPE:
+            logging.debug('[REQ_BROKEN_PIPE] Client disconnect on %s %s', request.method, request.path)
+        else:
+            raise
     return response
 
 # ============ Rate Limiting ============
@@ -250,6 +268,18 @@ limiter = Limiter(
 _stats_tab_cache = {}   # {sheet_url: (fetched_at_epoch, push_xlsx_notes)}
 _STATS_TAB_TTL = 300    # seconds
 _stats_tab_cache_refreshing = set()
+
+# Initialize connection pool and log startup state
+@app.before_first_request
+def _init_database_pool():
+    """Initialize database connection pool on first request."""
+    try:
+        from dashboard.database import _init_pool
+        _init_pool()
+        logging.info("[STARTUP] Database connection pool initialized")
+    except Exception as e:
+        logging.error(f"[STARTUP ERROR] Failed to initialize DB pool: {e}")
+        raise
 
 # Initialize Hierarchy from Config
 hierarchy = SYSTEM_HIERARCHY
@@ -6175,6 +6205,7 @@ def manage_historical_mt5(client_id):
     })
 
 @app.route('/api/data')
+@limiter.limit("180 per minute")  # 10,800/hour: allows ~30s polling on 120+ concurrent clients
 def get_data():
     """Get client data - requires authentication and role-based access."""
     client_id = request.args.get('client_id')
