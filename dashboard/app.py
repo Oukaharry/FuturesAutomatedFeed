@@ -3550,6 +3550,56 @@ def api_client_data():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+_INTERNAL_DEAL_TYPES_INT = {2, 3}  # BALANCE=2, CREDIT=3
+_INTERNAL_DEAL_TYPES_STR = {
+    'BALANCE', '2', '2.0',
+    'CREDIT',  '3', '3.0',
+    'DEAL_TYPE_BALANCE', 'DEAL_TYPE_CREDIT',
+}
+
+
+def _drop_balance_deals(deals):
+    """
+    Remove internal-transfer style MT5 deals (BALANCE/CREDIT) from a pushed deal list.
+
+    Requirement: these internal transfers should "not exist" for the dashboard:
+    they should not be stored, displayed, or used in server-side calculations.
+    """
+    if not deals:
+        return [], 0
+    if not isinstance(deals, list):
+        return deals, 0
+
+    def _is_internal(d):
+        if not isinstance(d, dict):
+            return False
+
+        raw_type = d.get('type', '')
+        raw_entry = d.get('entry', '')
+
+        # Numeric check (raw MT5 / DataFrame): catches 2, 2.0, 3, 3.0, etc.
+        try:
+            if int(float(raw_type)) in _INTERNAL_DEAL_TYPES_INT:
+                return True
+        except (ValueError, TypeError):
+            pass
+
+        # String check (JSON payloads / serialized exports)
+        str_type = str(raw_type).strip().upper()
+        str_entry = str(raw_entry).strip().upper()
+
+        return (
+            str_type in _INTERNAL_DEAL_TYPES_STR
+            or str_entry in _INTERNAL_DEAL_TYPES_STR
+            or ('BALANCE' in str_type)
+            or ('CREDIT' in str_type)
+        )
+
+    filtered = [d for d in deals if not _is_internal(d)]
+    dropped = len(deals) - len(filtered)
+    return filtered, dropped
+
+
 @app.route('/api/client/push', methods=['POST'])
 @limiter.limit("60 per minute")
 def api_client_push():
@@ -3574,7 +3624,10 @@ def api_client_push():
     client_id = client_info['client']
     
     # Get MT5 data from push
-    mt5_deals = data.get("deals", [])
+    mt5_deals_raw = data.get("deals", [])
+    mt5_deals, dropped_internal = _drop_balance_deals(mt5_deals_raw)
+    if dropped_internal:
+        app.logger.info(f"🚫 Dropped {dropped_internal} internal transfer deal(s) (BALANCE/CREDIT) from push payload")
     mt5_account = data.get("account", {})
     
     # Get existing data to merge evaluations if needed
@@ -8574,7 +8627,7 @@ def update_data():
                     merged_statistics['hedging_review'] = merged_hr
 
                 client_data = {
-                    "deals": data.get("deals", existing_data.get("deals", [])),
+                    "deals": _drop_balance_deals(data.get("deals", existing_data.get("deals", [])))[0],
                     "positions": data.get("positions", existing_data.get("positions", [])),
                     "account": data.get("account", existing_data.get("account", {})),
                     "hedge_accounts": data.get("hedge_accounts", existing_data.get("hedge_accounts", [])),
@@ -8701,7 +8754,7 @@ def update_data_with_api_key(data, identity, user_info):
 
     # Prepare client data
     client_data = {
-        "deals": data.get("deals", []),
+        "deals": _drop_balance_deals(data.get("deals", []))[0],
         "positions": data.get("positions", []),
         "account": data.get("account", {}),
         "evaluations": evaluations,
@@ -8831,7 +8884,11 @@ def push_deals():
     data = request.json
     client_id = data.get('client_id') or request.api_user.get('client', 'Client1')
     
-    update_client_field(client_id, 'deals', data.get('deals', []))
+    deals_raw = data.get('deals', [])
+    deals, dropped_internal = _drop_balance_deals(deals_raw)
+    if dropped_internal:
+        app.logger.info(f"🚫 Dropped {dropped_internal} internal transfer deal(s) (BALANCE/CREDIT) from /api/trader/push_deals")
+    update_client_field(client_id, 'deals', deals)
     log_action('PUSH_DEALS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
     
     return jsonify({"status": "success", "message": "Deals updated"})

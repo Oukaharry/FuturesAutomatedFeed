@@ -1,0 +1,5 @@
+# Reports are generated locally by scripts.
+# Do not track output files in git.
+*
+!.gitignore
+
