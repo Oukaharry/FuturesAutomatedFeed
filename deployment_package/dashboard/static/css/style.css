@@ -668,6 +668,22 @@ button:hover {
     filter: brightness(1.1);
 }
 
+/* Compact, right-aligned header button (avoid global button{width:100%}) */
+.mt5-add-btn{
+    width: auto !important;
+    flex: 0 0 auto;
+    padding: 0 12px !important;
+    height: 28px;
+    line-height: 28px;
+    font-size: 11px !important;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
 .login-card {
     background: rgba(255, 255, 255, 0.9);
     padding: 40px;

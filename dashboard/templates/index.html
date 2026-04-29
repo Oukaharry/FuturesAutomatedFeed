@@ -5013,49 +5013,11 @@
                                         <span class="hd-arrow">▸</span> Live Hedging Review & MT5 Accounts Overview
                                     </button>
                                 </div>
-                                <div id="hedging-details-wrap" style="order:4; grid-column: 1 / -1; display:none; grid-template-columns: repeat(2, 1fr); gap:20px;">
-                                <!-- Live Hedging Review -->
-                                <div class="card">
-                                    <div class="card-header">Live Hedging Review
-                                        ${canEditHedging ? '<button class="btn-small" onclick="saveHedgingReview()" style="float:right;padding:2px 8px;font-size:11px;">💾 Save</button>' : ''}
-                                    </div>
-                                    <table class="summary-table">
-                                        <tr>
-                                            <td>Total Deposits</td>
-                                            <td class="text-right">
-                                                ${canEditHedging ? 
-                                                    '<input type="number" step="0.01" id="hedging-deposits" value="' + (s.hedging_review.total_deposits || 0) + '" style="width:120px;text-align:right;" onchange="updateHedgingCalc()">' : 
-                                                    formatMoney(s.hedging_review.total_deposits)}
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td>Total Withdrawals</td>
-                                            <td class="text-right">
-                                                ${canEditHedging ? 
-                                                    '<input type="number" step="0.01" id="hedging-withdrawals" value="' + (s.hedging_review.total_withdrawals || 0) + '" style="width:120px;text-align:right;" onchange="updateHedgingCalc()">' : 
-                                                    formatMoney(s.hedging_review.total_withdrawals)}
-                                            </td>
-                                        </tr>
-                                        <tr>
-                                            <td>Current Balance</td>
-                                            <td class="text-right">
-                                                ${canEditHedging ? 
-                                                    '<input type="number" step="0.01" id="hedging-balance" value="' + (s.hedging_review.current_balance || 0) + '" style="width:120px;text-align:right;" onchange="updateHedgingCalc()">' : 
-                                                    formatMoney(s.hedging_review.current_balance)}
-                                            </td>
-                                        </tr>
-                                        <tr><td>Actual Hedging Results</td><td class="text-right" id="hedging-actual">${_showHedgingActual ? formatMoney(_actualHedgingDisplay) : '<span style="color:#888">Push MT5 data</span>'}</td></tr>
-                                        <tr><td>Sheet Hedging Results <span onclick="this.parentElement.parentElement.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display==='none'?'':'none'; this.parentElement.parentElement.nextElementSibling.nextElementSibling.style.display=this.parentElement.parentElement.nextElementSibling.style.display" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span></td><td class="text-right">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
-                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.hedging_results || 0)}</td></tr>
-                                        <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(s.cashflow_inprogress.farming_results || 0)}</td></tr>
-                                        <tr><td>Discrepancy from Google Sheets</td><td class="text-right" id="hedging-discrepancy">${formatMoney(_discrepancy)}</td></tr>
-                                    </table>
-                                </div>
-
+                                <div id="hedging-details-wrap" style="order:4; grid-column: 1 / -1; display:none; grid-template-columns: 1fr; gap:20px;">
                                 <!-- MT5 Accounts Overview -->
                                 <div class="card">
                                     <div class="card-header">📜 MT5 Accounts Overview
-                                        ${canEditHedging ? '<button class="btn-small" onclick="showAddHistoricalMT5Modal()" style="float:right;padding:4px 12px;font-size:11px;">+ Add Previous MT5</button>' : ''}
+                                        ${canEditHedging ? '<button class="btn-small mt5-add-btn" onclick="showAddHistoricalMT5Modal()">+ Add Previous MT5</button>' : ''}
                                     </div>
                                     <div id="historical-mt5-list" style="padding:0 14px 14px;">
                                         ${renderHistoricalMT5List(s.hedging_review.historical_accounts || [], data.account || {}, s.hedging_review.current_mt5_prior_activity || 0)}
