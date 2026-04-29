@@ -6853,7 +6853,17 @@ def run_quality_scan(target_client=None):
                             'detail': f'{row_label}: New row missing Date Purchased',
                             'estimated_date': _estimate_issue_date(ev, 'Missing Date Purchased', scan_date_str),
                         })
-                    if fee_present and status_p1 and status_p1 != 'not started':
+                    # Special case: some clients do not hedge.
+                    # They may put a weekday into Hedge Result 1 to indicate the prop account should be traded,
+                    # while Status P1 is "hit tp1/2/3". Treat this as valid and suppress the "not started" flag.
+                    _hr1 = str(ev.get('Hedge Result 1', '') or '').strip().lower()
+                    _weekday_tokens = ('mon', 'monday', 'tue', 'tues', 'tuesday', 'wed', 'weds', 'wednesday',
+                                       'thu', 'thurs', 'thursday', 'fri', 'friday')
+                    _has_weekday_marker = any(tok in _hr1 for tok in _weekday_tokens)
+                    _is_hit_tp = status_p1.startswith('hit tp') or status_p1.replace(' ', '').startswith('hittp')
+                    _nonhedge_ok = _is_hit_tp and _has_weekday_marker
+
+                    if fee_present and status_p1 and status_p1 != 'not started' and not _nonhedge_ok:
                         issues.append({
                             'check': 'New row: Status P1 not started',
                             'severity': 'medium',
