@@ -4980,10 +4980,9 @@
 
                     const cf = s.cashflow_inprogress;
                     const pc = s.profitability_completed;
-                    // Net Profit (Stats): payouts + hedging + farming − challenge_fees — same line items as the card;
-                    // no MT5 discrepancy (hedging review still shows discrepancy for ops).
-                    const _cfHedgeTotal = (cf.hedging_results || 0) + (cf.farming_results || 0);
-                    const _pcHedgeTotal = (pc.hedging_results || 0) + (pc.farming_results || 0);
+                    // Hedging total = hedging + farming + discrepancy (matches the 3-line breakdown shown in UI)
+                    const _cfHedgeTotal = (cf.hedging_results || 0) + (cf.farming_results || 0) + (_discrepancy || 0);
+                    const _pcHedgeTotal = (pc.hedging_results || 0) + (pc.farming_results || 0) + (_discrepancy || 0);
                     window._statsNetProfit = (cf.payouts || 0) + _cfHedgeTotal - (cf.challenge_fees || 0);
                     const pcNetProfit = (pc.payouts || 0) + _pcHedgeTotal - (pc.challenge_fees || 0);
                     const _showHedgingActual = _mt5HasData || _hasServerActual;
@@ -4997,7 +4996,7 @@
                                     <div class="card-header">Profitability - Completed <span style="margin-left:auto;font-size:0.8rem;font-weight:500;color:#94a3b8;">EV: <strong style="color:#94a3b8;">${formatMoney(s.expected_value)}</strong></span></div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right" style="color:#34d399;">${formatMoney(s.profitability_completed.payouts)}</td></tr>
-                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0)) >= 0 ? '#34d399' : '#f87171'};">${formatMoney((s.profitability_completed.hedging_results || 0) + (s.profitability_completed.farming_results || 0))}</td></tr>
+                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${_pcHedgeTotal >= 0 ? '#34d399' : '#f87171'};">${formatMoney(_pcHedgeTotal)}</td></tr>
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.profitability_completed.hedging_results || 0) + '</td></tr>'}
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.profitability_completed.farming_results || 0) + '</td></tr>'}
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Discrepancy from Google Sheets</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(_discrepancy)}</td></tr>
@@ -5069,7 +5068,7 @@
                                     <div class="card-header">Net Profit In Progress</div>
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right" style="color:#34d399;">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
-                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0)) >= 0 ? '#34d399' : '#f87171'};">${formatMoney((s.cashflow_inprogress.hedging_results || 0) + (s.cashflow_inprogress.farming_results || 0))}</td></tr>
+                                        <tr><td>Hedging Results ${IS_CLIENT ? '' : '<span onclick="var p=this.parentElement.parentElement,n=p.nextElementSibling,d=n.style.display===\'none\'?\'\':\'none\';n.style.display=d;n.nextElementSibling.style.display=d;n.nextElementSibling.nextElementSibling.style.display=d;" style="cursor:pointer;font-size:10px;color:#60a5fa;margin-left:4px" title="Show breakdown">▶ breakdown</span>'}</td><td class="text-right" style="color:${_cfHedgeTotal >= 0 ? '#34d399' : '#f87171'};">${formatMoney(_cfHedgeTotal)}</td></tr>
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Hedging</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.cashflow_inprogress.hedging_results || 0) + '</td></tr>'}
                                         ${IS_CLIENT ? '' : '<tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Farming</td><td class="text-right" style="font-size:12px;color:#94a3b8;">' + formatMoney(s.cashflow_inprogress.farming_results || 0) + '</td></tr>'}
                                         <tr style="display:none"><td style="padding-left:24px;font-size:12px;color:#94a3b8;">↳ Discrepancy from Google Sheets</td><td class="text-right" style="font-size:12px;color:#94a3b8;">${formatMoney(_discrepancy)}</td></tr>
