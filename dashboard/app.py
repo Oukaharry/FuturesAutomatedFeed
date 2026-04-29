@@ -6884,8 +6884,13 @@ def run_quality_scan(target_client=None):
                 acct_num = str(ev.get('Account #', '') or '').strip()
                 acct_num2 = str(ev.get('Account #.1', '') or '').strip()
                 if not new_row_strict_mode and is_active and not acct_num and not acct_num2:
+                    # Treat as "new/uninitialized" and suppress the flag when:
+                    # - Status is "not started", and
+                    # - there are no numeric hedge results yet (blank or text markers like weekdays).
+                    if status_p1 == 'not started' and not has_hedge_value_local:
+                        pass
                     # For double dips, only the funded-phase account # matters
-                    if not is_double_dip or not acct_num2:
+                    elif not is_double_dip or not acct_num2:
                         issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
                                        'detail': f'{row_label}: Active but no account number',
                                        'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
