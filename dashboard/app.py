@@ -6736,7 +6736,11 @@ def run_quality_scan(target_client=None):
                 # Skip rows marked as deleted via status text — superadmin review rows, not real issues
                 if 'delete' in status_p1 or 'delete' in status_p2:
                     continue
-                is_active = status_p1 not in ('fail', 'breach', 'sl', 'completed', 'complete', '')
+                # Match the dashboard's "Active Only" filter semantics:
+                # treat rows as inactive if either phase status indicates a terminal/closed state.
+                _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
+                _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
+                is_active = (not any(t in status_p1 for t in _inactive_tokens_p1)) and (not any(t in status_p2 for t in _inactive_tokens_p2))
 
                 prop_firm = str(ev.get('Prop Firm', '') or '').strip()
                 acct_size = str(ev.get('Account Size', '') or '').strip()
@@ -6757,7 +6761,9 @@ def run_quality_scan(target_client=None):
                 # - We still flag missing `Fee` and any Status P1 value that is not
                 #   exactly "not started".
                 # - If a hedge value exists, we allow the normal flagging flow.
-                is_new_row = bool(ev.get('_row_added_at'))
+                # Only treat "new row" gating/flags as relevant for active rows.
+                # Inactive rows (failed/closed/completed) should never be flagged as "new".
+                is_new_row = bool(ev.get('_row_added_at')) and is_active
                 fee_raw = str(ev.get('Fee', '') or '').strip()
                 acct_num_local = str(ev.get('Account #', '') or '').strip()
                 acct_num2_local = str(ev.get('Account #.1', '') or '').strip()
@@ -6878,8 +6884,13 @@ def run_quality_scan(target_client=None):
                 acct_num = str(ev.get('Account #', '') or '').strip()
                 acct_num2 = str(ev.get('Account #.1', '') or '').strip()
                 if not new_row_strict_mode and is_active and not acct_num and not acct_num2:
+                    # Treat as "new/uninitialized" and suppress the flag when:
+                    # - Status is "not started", and
+                    # - there are no numeric hedge results yet (blank or text markers like weekdays).
+                    if status_p1 == 'not started' and not has_hedge_value_local:
+                        pass
                     # For double dips, only the funded-phase account # matters
-                    if not is_double_dip or not acct_num2:
+                    elif not is_double_dip or not acct_num2:
                         issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
                                        'detail': f'{row_label}: Active but no account number',
                                        'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
