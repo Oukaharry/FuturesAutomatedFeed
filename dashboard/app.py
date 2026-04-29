@@ -6096,6 +6096,7 @@ def check_mt5_auto_populate(client_id):
     hr = client_data.get('statistics', {}).get('hedging_review', {})
     account = client_data.get('account', {})
     hedge_accounts = client_data.get('hedge_accounts') or []
+    prop_accounts = client_data.get('prop_accounts') or []
     
     deposits = float(hr.get('total_deposits', 0))
     withdrawals = float(hr.get('total_withdrawals', 0))
@@ -6105,26 +6106,33 @@ def check_mt5_auto_populate(client_id):
     # Check if values are truly empty (all zero or missing)
     has_mt5_values = (deposits != 0) or (withdrawals != 0) or (balance != 0) or (equity != 0)
 
-    # Hedge accounts are required for MT5-based workflows. Previously, clients with
-    # only prop accounts could appear "set up" even when hedge accounts were missing.
-    # Treat missing hedge credentials as needing MT5 setup so the dashboard can
-    # prompt (or future automation can act) accordingly.
+    # Setup credentials:
+    # - The legacy banner logic was: if hedge creds missing, check prop creds;
+    #   if prop creds exist, do NOT prompt; otherwise prompt to set up MT5.
     has_hedge_creds = any(
         isinstance(h, dict)
         and (str(h.get('login', '') or '').strip() or str(h.get('password', '') or '').strip())
         for h in hedge_accounts
     )
+    has_prop_creds = any(
+        isinstance(p, dict)
+        and (str(p.get('login', '') or '').strip() or str(p.get('password', '') or '').strip())
+        for p in prop_accounts
+    )
     
-    needs_mt5 = (not has_mt5_values) or (not has_hedge_creds)
+    # Need MT5 setup only when MT5 values are missing AND there are no usable
+    # hedge creds AND no usable prop creds. If prop creds exist, bypass prompt.
+    needs_mt5 = (not has_mt5_values) and (not has_hedge_creds) and (not has_prop_creds)
 
     if needs_mt5:
         if not has_mt5_values:
             app.logger.info(f"⚠️  MT5 auto-populate: {client_id} has zero MT5 values")
-        if not has_hedge_creds:
-            app.logger.info(f"⚠️  MT5 auto-populate: {client_id} missing hedge account credentials")
+        app.logger.info(
+            f"⚠️  MT5 auto-populate: {client_id} missing hedge + prop account credentials (setup required)"
+        )
         return jsonify({
             "status": "needs_init",
-            "message": "MT5 values need initialization" if not has_mt5_values else "Hedge account credentials missing",
+            "message": "MT5 values need initialization",
             "needs_mt5": True,
             "current_values": {
                 "deposits": deposits,
@@ -6132,6 +6140,7 @@ def check_mt5_auto_populate(client_id):
                 "balance": balance
             },
             "needs_hedge_creds": (not has_hedge_creds),
+            "needs_prop_creds": (not has_prop_creds),
         })
     else:
         app.logger.info(f"✅ MT5 auto-populate: {client_id} already has MT5 values")
