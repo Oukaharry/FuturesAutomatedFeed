@@ -163,7 +163,7 @@ def send_slack_to_webhook(webhook_url, text):
 def _build_daily_summary_text():
     """Build the daily quality summary text (same logic as the API endpoint)."""
     from dashboard.database import get_quality_scan_results, get_daily_checklists
-    from config.hierarchy import get_all_clients as hierarchy_get_all_clients
+    from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
 
     # UTC date — server runs UTC so at 23:05 UTC (2:05 AM Kenyan) the date
     # is still the day we want.  It flips at midnight UTC = 3 AM Kenyan.
@@ -173,7 +173,37 @@ def _build_daily_summary_text():
 
     scan_results = get_quality_scan_results(date)
     checklists = get_daily_checklists(date)
-    total_clients = len(hierarchy_get_all_clients())
+    # Apply the Daily Summary Tracker exclusions to the Slack report as well.
+    # This keeps the bot report consistent with the tracker UI exclusions.
+    try:
+        from dashboard.database import get_setting
+        excluded_traders = set(json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+        excluded_clients = set(json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+    except Exception:
+        excluded_traders = set()
+        excluded_clients = set()
+
+    # Filter portfolio client list using the same exclusions
+    all_clients = hierarchy_get_all_clients()
+    filtered_clients = []
+    for client_name in all_clients:
+        if client_name in excluded_clients:
+            continue
+        prof = get_client_profile(client_name) or {}
+        trader = (prof.get('trader') or '') or 'Unassigned'
+        if trader in excluded_traders:
+            continue
+        filtered_clients.append(client_name)
+
+    total_clients = len(filtered_clients)
+
+    # Filter scan results to excluded traders/clients so leaderboard + top issues match the tracker.
+    if excluded_traders or excluded_clients:
+        scan_results = [
+            r for r in (scan_results or [])
+            if (r.get('client_id') not in excluded_clients)
+            and ((r.get('trader') or 'Unassigned') not in excluded_traders)
+        ]
 
     # Filter out infrastructure scan errors and recalculate scores
     severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}

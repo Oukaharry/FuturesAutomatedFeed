@@ -398,6 +398,9 @@
             <button onclick="generateSummary()" style="margin-left:12px; background:linear-gradient(135deg,#0891b2,#0e7490); border:none; color:#fff; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
                 <i class="fas fa-file-alt"></i> Generate
             </button>
+            <button onclick="openTrackerExclusionsFromSummary()" style="margin-left:8px; background:rgba(100,116,139,0.2); border:1px solid rgba(100,116,139,0.3); color:#94a3b8; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
+                <i class="fas fa-eye-slash"></i> Manage Exclusions
+            </button>
             <button onclick="copySummary()" id="copy-summary-btn" style="margin-left:6px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#e2e8f0; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem; display:none;">
                 <i class="fas fa-copy"></i> Copy
             </button>
@@ -1092,6 +1095,15 @@
         function toggleTrackerExclusions() {
             const panel = document.getElementById('tracker-exclusion-panel');
             panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Open the same exclusion controls from the Daily Summary section
+        // (so exclusions affect both tracking AND generated summaries).
+        function openTrackerExclusionsFromSummary() {
+            const panel = document.getElementById('tracker-exclusion-panel');
+            if (!panel) return;
+            panel.style.display = 'block';
+            try { panel.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
         }
 
         function renderExclusionPanel() {

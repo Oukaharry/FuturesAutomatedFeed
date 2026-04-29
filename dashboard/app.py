@@ -7946,6 +7946,17 @@ def api_daily_summary():
     scan_results = get_quality_scan_results(date)
     checklists = get_daily_checklists(date)
 
+    # Apply Daily Summary Tracker exclusions to the generated report as well
+    # (so preview matches what the Slack bot posts).
+    try:
+        from dashboard.database import get_setting
+        import json as _json_ex
+        excluded_traders = set(_json_ex.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+        excluded_clients = set(_json_ex.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+    except Exception:
+        excluded_traders = set()
+        excluded_clients = set()
+
     # Filter out infrastructure scan errors and recalculate scores
     severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
     for r in scan_results:
@@ -7955,7 +7966,25 @@ def api_daily_summary():
         r['health_score'] = max(0.0, round(100.0 - deduction, 1))
 
     all_clients = get_all_clients()
-    total_clients = len(all_clients)
+    # Filter portfolio list to excluded traders/clients for the report header.
+    filtered_clients = []
+    for client_name in all_clients:
+        if client_name in excluded_clients:
+            continue
+        prof = get_client_profile(client_name) or {}
+        trader = (prof.get('trader') or '') or 'Unassigned'
+        if trader in excluded_traders:
+            continue
+        filtered_clients.append(client_name)
+    total_clients = len(filtered_clients)
+
+    # Filter scan_results so top issues + leaderboard align with exclusions
+    if excluded_traders or excluded_clients:
+        scan_results = [
+            r for r in (scan_results or [])
+            if (r.get('client_id') not in excluded_clients)
+            and ((r.get('trader') or 'Unassigned') not in excluded_traders)
+        ]
 
     # Count active vs issues from scan
     clients_healthy = sum(1 for r in scan_results if r['health_score'] >= 90)
