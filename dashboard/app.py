@@ -2694,19 +2694,43 @@ def trader_performance():
 @require_session
 def trader_dashboard(trader_name):
     session_user = request.session_user
+    # Resolve trader email + parent admin for admin actions (reset/delete)
+    try:
+        reload_hierarchy()
+    except Exception:
+        pass
+    trader_email = ''
+    trader_admin = ''
+    try:
+        trader_email = (SYSTEM_HIERARCHY.get('traders', {}) or {}).get(trader_name, {}).get('email', '') or ''
+        for admin_name, admin_data in (SYSTEM_HIERARCHY.get('admins', {}) or {}).items():
+            traders = (admin_data or {}).get('traders', {}) or {}
+            if trader_name in traders:
+                trader_admin = admin_name
+                trader_email = trader_email or (traders.get(trader_name, {}) or {}).get('email', '') or ''
+                break
+    except Exception:
+        trader_email = trader_email or ''
+        trader_admin = trader_admin or ''
     # Allow super_admin, bef_admin, and kwok_admin to access trader dashboards
     if session_user.get('user_type') in ('super_admin', 'bef_admin', 'kwok_admin'):
         ut = session_user.get('user_type')
         return render_template('trader_dashboard.html', trader_name=trader_name,
+                               trader_email=trader_email, trader_admin=trader_admin,
+                               is_super_admin=(ut == 'super_admin'),
                                is_bef_admin=(ut == 'bef_admin'),
                                is_kwok_admin=(ut == 'kwok_admin'))
     # Allow admin to access traders under them
     if session_user.get('user_type') == 'admin':
-        return render_template('trader_dashboard.html', trader_name=trader_name)
+        return render_template('trader_dashboard.html', trader_name=trader_name,
+                               trader_email=trader_email, trader_admin=trader_admin,
+                               is_super_admin=False)
     # Check if user is the correct trader
     if session_user.get('user_type') != 'trader' or session_user.get('user_identifier') != trader_name:
         return redirect('/')
-    return render_template('trader_dashboard.html', trader_name=trader_name)
+    return render_template('trader_dashboard.html', trader_name=trader_name,
+                           trader_email=trader_email, trader_admin=trader_admin,
+                           is_super_admin=False)
 
 @app.route('/dashboard/<client_id>')
 @require_session
@@ -4692,8 +4716,6 @@ def api_list_users():
 @require_role('super_admin', 'admin', 'trader')
 def api_reset_password_rbac():
     """Reset a user's password with role-based access control."""
-    from dashboard.email_service import send_password_reset_with_temp
-    
     session_user = request.session_user
     manager_type = session_user.get('user_type')
     manager_id = session_user.get('user_identifier')
@@ -4718,7 +4740,13 @@ def api_reset_password_rbac():
         
         email_sent = False
         if email:
-            email_sent = send_password_reset_with_temp(email, username, temp_password)
+            # Import email sender lazily so we don't touch stdlib email modules
+            # unless we actually need to send an email (avoids Windows watchdog reload loops).
+            try:
+                from dashboard.email_service import send_password_reset_with_temp
+                email_sent = send_password_reset_with_temp(email, username, temp_password)
+            except Exception as e:
+                app.logger.warning(f"[RESET_PASSWORD] Email send failed for {username}: {e}")
         
         return jsonify({
             "status": "success", 
@@ -4733,8 +4761,6 @@ def api_reset_password_rbac():
 @require_admin_password
 def api_reset_password():
     """Reset a user's password (legacy - uses password header)."""
-    from dashboard.email_service import send_password_reset_with_temp
-    
     data = request.json
     username = data.get('username')
     user_type = data.get('user_type')
@@ -4750,7 +4776,11 @@ def api_reset_password():
         # Send email notification if email provided
         email_sent = False
         if email:
-            email_sent = send_password_reset_with_temp(email, username, temp_password)
+            try:
+                from dashboard.email_service import send_password_reset_with_temp
+                email_sent = send_password_reset_with_temp(email, username, temp_password)
+            except Exception as e:
+                app.logger.warning(f"[RESET_PASSWORD] Email send failed for {username}: {e}")
         
         return jsonify({
             "status": "success", 

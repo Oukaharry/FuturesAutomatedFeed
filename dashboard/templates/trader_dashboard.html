@@ -363,7 +363,13 @@
                 <i class="fas fa-clipboard-check"></i> Summaries
                 <span class="nav-badge" id="summaries-nav-badge"></span>
             </button>
-            <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+            {% if is_super_admin %}
+                <a href="javascript:void(0)" class="nav-btn-key" onclick="openTraderAdminKeyModal()" title="Reset trader password">
+                    <i class="fas fa-key"></i>
+                </a>
+            {% else %}
+                <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+            {% endif %}
             <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
         </div>
     </nav>
@@ -425,7 +431,11 @@
     <!-- PAGE HEADER -->
     <div style="margin-bottom:24px;">
         <h1 style="font-size:1.5rem;margin-bottom:4px;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;letter-spacing:-0.02em;">Trader Portal</h1>
-        <p style="color:var(--text-secondary);margin:0;font-size:0.9rem;">Welcome back, <strong style="color:var(--text-primary);">{{ trader_name }}</strong> — your active client portfolio.</p>
+        <p style="color:var(--text-secondary);margin:0;font-size:0.9rem;">
+            Welcome back, <strong style="color:var(--text-primary);">{{ trader_name }}</strong>
+            {% if trader_email %}<span style="color:#94a3b8;">({{ trader_email }})</span>{% endif %}
+            — your active client portfolio.
+        </p>
     </div>
 
     <!-- STAT ROW -->
@@ -452,10 +462,177 @@
         </div>
     </div>
 
+    {% if is_super_admin %}
+    <!-- Super Admin: Trader Key Modal (Reset / Delete / Cancel) -->
+    <div id="trader-admin-key-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:25000;">
+        <div style="max-width:520px; margin:8vh auto 0; background:#0b1224; border:1px solid #1e3060; border-top:2px solid #fbbf24; border-radius:14px; box-shadow:0 30px 70px rgba(0,0,0,0.75); overflow:hidden;">
+            <div style="padding:18px 20px; background:linear-gradient(135deg, rgba(251,191,36,0.16), rgba(180,83,9,0.10)); border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <div>
+                    <div style="font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; font-size:1.05rem; color:#fff;">
+                        <i class="fas fa-key" style="color:#fbbf24; margin-right:8px;"></i>
+                        {{ trader_name }}
+                    </div>
+                    <div style="margin-top:3px; font-size:0.85rem; color:#94a3b8; font-family:'IBM Plex Mono',monospace;">
+                        {{ trader_email or '—' }}
+                    </div>
+                </div>
+                <button onclick="closeTraderAdminKeyModal()" title="Close"
+                        style="background:rgba(255,255,255,0.06); border:1px solid rgba(148,163,184,0.25); color:#cbd5e1; width:34px; height:34px; border-radius:10px; cursor:pointer;">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
+
+            <div style="padding:18px 20px;">
+                <div id="trader-admin-key-status" style="display:none; padding:10px 12px; border-radius:10px; border:1px solid rgba(148,163,184,0.2); background:rgba(15,23,42,0.65); color:#cbd5e1; font-size:0.9rem;"></div>
+                <div id="trader-admin-temp-password" style="display:none; margin-top:12px; padding:12px; border-radius:12px; border:1px solid rgba(74,222,128,0.35); background:rgba(74,222,128,0.08);">
+                    <div style="font-size:0.75rem; color:#86efac; font-family:'IBM Plex Mono',monospace; font-weight:800; letter-spacing:0.08em; text-transform:uppercase;">Temporary Password</div>
+                    <div style="margin-top:10px; display:flex; gap:10px; align-items:stretch;">
+                        <div id="trader-admin-temp-password-code"
+                             onclick="copyTempTraderPassword()"
+                             title="Click to copy"
+                             style="flex:1 1 auto; min-width:0; font-size:1.25rem; line-height:1.25; color:#e8eeff; background:rgba(1,3,10,0.55); border:1px solid rgba(22,32,64,0.9); padding:12px 14px; border-radius:12px; font-family:'IBM Plex Mono',monospace; font-weight:700; word-break:break-all; white-space:normal; user-select:text;">
+                        </div>
+                        <button onclick="copyTempTraderPassword()"
+                                title="Copy"
+                                style="width:38px; height:38px; display:inline-flex; align-items:center; justify-content:center; background:rgba(59,99,196,0.14); border:1px solid rgba(59,99,196,0.35); color:#93c5fd; padding:0; border-radius:12px; cursor:pointer;">
+                            <i class="fas fa-copy" style="font-size:0.85rem;"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="padding:16px 20px; border-top:1px solid rgba(255,255,255,0.06); display:flex; gap:10px; justify-content:flex-end; background:rgba(2,6,23,0.6);">
+                <button onclick="resetTraderPasswordAsSuperAdmin()" style="padding:10px 14px; background:rgba(251,191,36,0.12); border:1px solid rgba(251,191,36,0.35); color:#fbbf24; border-radius:10px; cursor:pointer; font-weight:800;">
+                    🔑 Reset Password
+                </button>
+                <button onclick="deleteTraderAsSuperAdmin()" style="padding:10px 14px; background:rgba(239,68,68,0.10); border:1px solid rgba(239,68,68,0.35); color:#f87171; border-radius:10px; cursor:pointer; font-weight:800;">
+                    🗑 Delete Trader
+                </button>
+                <button onclick="cancelTraderAdminKeyModal()" style="padding:10px 14px; background:transparent; border:1px solid rgba(148,163,184,0.25); color:#cbd5e1; border-radius:10px; cursor:pointer; font-weight:800;">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
 </div>
 
 <script>
-    const traderName = "{{ trader_name }}";
+    const traderName = {{ (trader_name or '')|tojson }};
+    const traderEmail = {{ (trader_email or '')|tojson }};
+    const traderAdmin = {{ (trader_admin or '')|tojson }};
+    const isSuperAdminViewingTrader = {{ 'true' if is_super_admin else 'false' }};
+
+    function openTraderAdminKeyModal() {
+        if (!isSuperAdminViewingTrader) return;
+        const modal = document.getElementById('trader-admin-key-modal');
+        if (!modal) return;
+        // reset UI state
+        const status = document.getElementById('trader-admin-key-status');
+        const tpBox = document.getElementById('trader-admin-temp-password');
+        if (status) { status.style.display = 'none'; status.textContent = ''; status.style.borderColor = 'rgba(148,163,184,0.2)'; }
+        if (tpBox) { tpBox.style.display = 'none'; }
+        modal.style.display = 'block';
+    }
+    function closeTraderAdminKeyModal() {
+        const modal = document.getElementById('trader-admin-key-modal');
+        if (modal) modal.style.display = 'none';
+    }
+    function cancelTraderAdminKeyModal() {
+        // Exit portfolio view and return to traders list
+        window.location.href = '/super_admin';
+    }
+
+    async function resetTraderPasswordAsSuperAdmin() {
+        const status = document.getElementById('trader-admin-key-status');
+        const tpBox = document.getElementById('trader-admin-temp-password');
+        const tpCode = document.getElementById('trader-admin-temp-password-code');
+        if (status) {
+            status.style.display = 'block';
+            status.textContent = 'Resetting password…';
+            status.style.borderColor = 'rgba(251,191,36,0.25)';
+        }
+        if (tpBox) tpBox.style.display = 'none';
+        try {
+            const resp = await fetch('/api/user/reset_password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ username: traderName, user_type: 'trader', email: traderEmail })
+            });
+            const raw = await resp.text();
+            let data = null;
+            try { data = JSON.parse(raw); } catch (_) {}
+            if (!resp.ok || !data || data.status !== 'success') throw new Error((data && data.message) ? data.message : (raw || `HTTP ${resp.status}`));
+            if (status) {
+                status.textContent = data.email_sent ? 'Password reset. Email sent to trader.' : 'Password reset. Copy the temporary password below.';
+                status.style.borderColor = 'rgba(74,222,128,0.35)';
+            }
+            if (tpCode) tpCode.textContent = (data.temporary_password || '').trim();
+            if (tpBox) tpBox.style.display = 'block';
+        } catch (e) {
+            if (status) {
+                status.textContent = `Error: ${e.message}`;
+                status.style.borderColor = 'rgba(239,68,68,0.35)';
+            }
+        }
+    }
+
+    async function deleteTraderAsSuperAdmin() {
+        if (!confirm(`Delete trader '${traderName}'? This will remove login + hierarchy assignment.`)) return;
+        const status = document.getElementById('trader-admin-key-status');
+        if (status) {
+            status.style.display = 'block';
+            status.textContent = 'Deleting trader…';
+            status.style.borderColor = 'rgba(239,68,68,0.35)';
+        }
+        try {
+            const resp = await fetch('/api/delete_user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ type: 'trader', name: traderName, admin: traderAdmin })
+            });
+            const raw = await resp.text();
+            let data = null;
+            try { data = JSON.parse(raw); } catch (_) {}
+            if (!resp.ok || !data || data.status !== 'success') throw new Error((data && data.message) ? data.message : (raw || `HTTP ${resp.status}`));
+            if (status) {
+                status.textContent = 'Trader deleted. Returning to Super Admin…';
+                status.style.borderColor = 'rgba(74,222,128,0.35)';
+            }
+            setTimeout(() => { window.location.href = '/super_admin'; }, 700);
+        } catch (e) {
+            if (status) {
+                status.textContent = `Error: ${e.message}`;
+                status.style.borderColor = 'rgba(239,68,68,0.35)';
+            }
+        }
+    }
+
+    async function copyTempTraderPassword() {
+        const tpCode = document.getElementById('trader-admin-temp-password-code');
+        if (!tpCode) return;
+        const text = tpCode.textContent || '';
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (ex) {
+            const ta = document.createElement('textarea');
+            ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        }
+        // Visual feedback
+        const status = document.getElementById('trader-admin-key-status');
+        if (status) {
+            const prev = status.textContent;
+            status.style.display = 'block';
+            status.textContent = 'Copied temporary password to clipboard.';
+            status.style.borderColor = 'rgba(74,222,128,0.35)';
+            setTimeout(() => { status.textContent = prev; }, 1200);
+        }
+    }
 
     fetch('/api/hierarchy')
         .then(res => res.json())
