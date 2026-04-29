@@ -6734,6 +6734,18 @@ def run_quality_scan(target_client=None):
 
                 new_row_strict_mode = is_new_row and not has_hedge_value_local
 
+                # If the row is explicitly "not started" but hedge values already exist,
+                # flag immediately. This applies regardless of "new row" suppression rules.
+                is_not_started = ('not started' in status_p1) or ('not started' in status_p2)
+                if is_not_started and has_hedge_value_local:
+                    issues.append({
+                        'check': 'Not Started but hedge values present',
+                        'severity': 'high',
+                        'row': idx,
+                        'detail': f'{row_label}: Status is \"not started\" but hedge results contain non-zero values',
+                        'estimated_date': _estimate_issue_date(ev, 'Not Started but hedge values present', scan_date_str),
+                    })
+
                 # Detect "double dip" — MFF/TopStep accounts with an activation fee
                 # These are reset at funded stage so eval-phase fields are intentionally blank
                 _dd_firms = ('my funded futures', 'mff', 'topstep', 'top step', 'topstepx')
