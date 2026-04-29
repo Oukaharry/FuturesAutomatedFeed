@@ -270,7 +270,6 @@ _STATS_TAB_TTL = 300    # seconds
 _stats_tab_cache_refreshing = set()
 
 # Initialize connection pool and log startup state
-@app.before_first_request
 def _init_database_pool():
     """Initialize database connection pool on first request."""
     try:
@@ -280,6 +279,14 @@ def _init_database_pool():
     except Exception as e:
         logging.error(f"[STARTUP ERROR] Failed to initialize DB pool: {e}")
         raise
+
+
+# Flask 1.x/2.x: keep lazy first-request initialization.
+# Flask 3.x: before_first_request was removed, so initialize at startup.
+if hasattr(app, "before_first_request"):
+    app.before_first_request(_init_database_pool)
+else:
+    _init_database_pool()
 
 # Initialize Hierarchy from Config
 hierarchy = SYSTEM_HIERARCHY
