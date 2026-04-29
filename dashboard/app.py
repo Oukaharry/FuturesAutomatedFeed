@@ -6782,6 +6782,10 @@ def run_quality_scan(target_client=None):
                     k for k in ev.keys()
                     if isinstance(k, str) and k.startswith('Hedge Result') and not k.startswith('_')
                 ]
+                # Funded-phase hedge result columns use a ".1" suffix in the sheet export
+                # (e.g. "Hedge Result 1.1"). Keep these separate so we can reason about
+                # "Funded = not started" without being confused by eval-phase hedge values.
+                _funded_hedge_result_cols = [k for k in _hedge_result_cols if k.endswith('.1')]
 
                 fee_num = _parse_nonzero(ev.get('Fee', ''))
                 fee_present = fee_num > 0.0
@@ -6789,13 +6793,21 @@ def run_quality_scan(target_client=None):
                 has_hedge_value_local = any(
                     abs(_parse_nonzero(ev.get(c))) > 1e-9 for c in _hedge_result_cols
                 )
+                has_funded_hedge_value_local = any(
+                    abs(_parse_nonzero(ev.get(c))) > 1e-9 for c in _funded_hedge_result_cols
+                )
 
                 new_row_strict_mode = is_new_row and not has_hedge_value_local
 
-                # If the row is explicitly "not started" but hedge values already exist,
-                # flag immediately. This applies regardless of "new row" suppression rules.
-                is_not_started = ('not started' in status_p1) or ('not started' in status_p2)
-                if is_not_started and has_hedge_value_local:
+                # If the row is explicitly "not started" but hedge values already exist, flag.
+                #
+                # Important nuance:
+                # - If Funded status is "not started", only flag when *funded-phase* hedge
+                #   cells contain numeric values. If funded never began, those cells remain
+                #   blank or text-only and should not be flagged.
+                is_not_started_p1 = ('not started' in status_p1)
+                is_not_started_p2 = ('not started' in status_p2)
+                if (is_not_started_p1 and has_hedge_value_local) or (is_not_started_p2 and has_funded_hedge_value_local):
                     issues.append({
                         'check': 'Not Started but hedge values present',
                         'severity': 'high',
