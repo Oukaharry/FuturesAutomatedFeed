@@ -6821,7 +6821,16 @@ def run_quality_scan(target_client=None):
                 fee_raw = str(ev.get('Fee', '') or '').strip()
                 fee_num = _parse_nonzero(ev.get('Fee', ''))
                 # Treat "0", "0.00", etc. as missing fee — challenge fees must be > 0.00
-                if (not fee_raw or fee_num <= 0.0) and has_data and not is_double_dip:
+                _notes = ev.get('_notes') or {}
+                _fee_note = ''
+                if isinstance(_notes, dict):
+                    for _k, _v in _notes.items():
+                        if str(_k or '').strip().lower() == 'fee' and str(_v or '').strip():
+                            _fee_note = str(_v).strip()
+                            break
+                # If the Fee cell has a note, treat it as an explicit override/explanation
+                # and do not flag "Empty Fee" even when Fee is 0.00.
+                if (not fee_raw or fee_num <= 0.0) and has_data and not is_double_dip and not _fee_note:
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Fee not filled in',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})

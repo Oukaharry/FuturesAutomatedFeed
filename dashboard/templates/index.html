@@ -340,31 +340,7 @@
             pointer-events: none;
         }
 
-        /* Hover tooltip hint on note cells */
-        td.has-note::before {
-            content: 'Right-click to view note';
-            position: absolute;
-            bottom: calc(100% + 6px);
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(10, 17, 34, 0.95);
-            color: #fbbf24;
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.02em;
-            white-space: nowrap;
-            padding: 4px 10px;
-            border-radius: 6px;
-            border: 1px solid rgba(251, 191, 36, 0.25);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.15s ease;
-            z-index: 9999;
-        }
-        td.has-note:hover::before {
-            opacity: 1;
-        }
+        /* Note cells keep the corner marker (no hover tooltip) */
 
         /* Note Modal */
         #note-modal {
