@@ -474,6 +474,18 @@
             loadSummaryStatus();
             loadSlackStatus();
             loadDailySlackStatus();
+
+            // If the user picks dates, apply immediately (no full page reload).
+            // This ensures the custom date range actually affects the issues table.
+            const ds = document.getElementById('date-start');
+            const de = document.getElementById('date-end');
+            const onCustomDateChange = () => {
+                // Only apply when both inputs have values.
+                if (!ds.value || !de.value) return;
+                applyCustomDateFilter();
+            };
+            if (ds) ds.addEventListener('change', onCustomDateChange);
+            if (de) de.addEventListener('change', onCustomDateChange);
         });
 
         // ── Slack Settings ──
@@ -645,6 +657,9 @@
         }
 
         function applyCustomDateFilter() {
+            // Ensure filtering uses the custom mode even if the user didn't click
+            // the "Custom" button first.
+            setDateFilter('custom');
             const s = document.getElementById('date-start').value;
             const e = document.getElementById('date-end').value;
             if (!s || !e) { alert('Please select both start and end dates'); return; }

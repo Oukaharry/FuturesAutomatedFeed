@@ -3275,6 +3275,7 @@
         let _lastSavedVersion = null;   // Version from last successful save
         let _pendingSaveCallback = null; // Optional callback(bool) after saveData completes
         let isDatePickerOpen = false;
+        let _dateCellRerenderTimer = null; // Keep date input display in sync without reloads
         let currentNoteTarget = null; // { index, key }
         let sheetHedgingResults = 0; // Store for recalculation
         let liveActualHedging = 0; // Computed from MT5 Accounts Overview total profit
@@ -3820,63 +3821,11 @@
         function checkMT5AutoPopulate() {
             /**
              * On dashboard load, check if MT5 values need auto-population.
-             * If they do, display a banner suggesting to initialize them.
+             * Legacy behavior displayed a banner suggesting initialization.
+             * The banner UI has been removed (it was noisy and often redundant).
              */
-            if (IS_KWOK_ADMIN) return;
-            if (!CLIENT_ID) return;
-            
-            fetch(`/api/client/check_mt5_auto_populate/${encodeURIComponent(CLIENT_ID)}`)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.needs_mt5) {
-                        // Create or update the banner
-                        let banner = document.getElementById('mt5-auto-populate-banner');
-                        if (!banner) {
-                            banner = document.createElement('div');
-                            banner.id = 'mt5-auto-populate-banner';
-                            banner.style.cssText = `
-                                background: linear-gradient(135deg, #fbbf24, #f59e0b);
-                                color: white;
-                                padding: 16px;
-                                margin: 16px;
-                                border-radius: 8px;
-                                border-left: 4px solid #dc2626;
-                                font-size: 14px;
-                                display: flex;
-                                align-items: center;
-                                justify-content: space-between;
-                                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                                position: relative;
-                                z-index: 100;
-                            `;
-                            banner.innerHTML = `
-                                <span>
-                                    <strong>⚠️ MT5 Values Missing:</strong> 
-                                    Deposits, withdrawals, and balance are not set. 
-                                    Please push data from MT5 or Trader Companion to auto-populate these values.
-                                </span>
-                                <button onclick="this.parentElement.style.display='none';" style="
-                                    background: rgba(255,255,255,0.3);
-                                    border: 1px solid white;
-                                    color: white;
-                                    padding: 6px 12px;
-                                    border-radius: 4px;
-                                    cursor: pointer;
-                                    margin-left: 12px;
-                                    font-size: 13px;
-                                ">Dismiss</button>
-                            `;
-                            // Insert after the header
-                            const header = document.querySelector('header');
-                            if (header && header.nextSibling) {
-                                header.parentNode.insertBefore(banner, header.nextSibling);
-                            } else if (document.body.firstChild) {
-                                document.body.insertBefore(banner, document.body.firstChild);
-                            }
-                        }
-                    }
-                })
-                .catch(e => console.error('MT5 auto-populate check error:', e));
+            // Keep the server endpoint for debugging/health checks, but do not show UI.
+            return;
         }
 
         function updateDashboard(silent = false) {
@@ -3999,12 +3948,7 @@
                         Object.assign(dropdownOptions, data.dropdown_options);
                     }
 
-                    // On initial load, check if MT5 values need auto-population
-                    if (!silent) {
-                        setTimeout(() => {
-                            checkMT5AutoPopulate();
-                        }, 500);
-                    }
+                    // MT5 auto-populate banner removed (no UI check).
 
                     // After a real page load / manual refresh, persist recalculated hedge nets + statistics once
                     // (same persistence as super_admin batch; separate from trader POST /api/client/push).
@@ -6989,6 +6933,13 @@
             // Normalize date values to consistent format
             if (key.toLowerCase().includes('date') && value) {
                 value = formatDateForInput(value);
+                // Force a quick re-render after date edits so the <input type="date">
+                // shows the selected value immediately (without needing a page reload).
+                // This avoids cases where a table refresh happens while the save is in-flight.
+                if (_dateCellRerenderTimer) clearTimeout(_dateCellRerenderTimer);
+                _dateCellRerenderTimer = setTimeout(() => {
+                    try { renderEvaluationsTable(false); } catch (e) { console.error('Date rerender error:', e); }
+                }, 50);
             }
             
             // Strip $ and commas from money fields so we store clean numeric values

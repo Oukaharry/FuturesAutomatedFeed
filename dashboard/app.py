@@ -6095,6 +6095,7 @@ def check_mt5_auto_populate(client_id):
     # Check if hedging_review MT5 values are empty/zero
     hr = client_data.get('statistics', {}).get('hedging_review', {})
     account = client_data.get('account', {})
+    hedge_accounts = client_data.get('hedge_accounts') or []
     
     deposits = float(hr.get('total_deposits', 0))
     withdrawals = float(hr.get('total_withdrawals', 0))
@@ -6103,18 +6104,34 @@ def check_mt5_auto_populate(client_id):
     
     # Check if values are truly empty (all zero or missing)
     has_mt5_values = (deposits != 0) or (withdrawals != 0) or (balance != 0) or (equity != 0)
+
+    # Hedge accounts are required for MT5-based workflows. Previously, clients with
+    # only prop accounts could appear "set up" even when hedge accounts were missing.
+    # Treat missing hedge credentials as needing MT5 setup so the dashboard can
+    # prompt (or future automation can act) accordingly.
+    has_hedge_creds = any(
+        isinstance(h, dict)
+        and (str(h.get('login', '') or '').strip() or str(h.get('password', '') or '').strip())
+        for h in hedge_accounts
+    )
     
-    if not has_mt5_values:
-        app.logger.info(f"⚠️  MT5 auto-populate: {client_id} has zero MT5 values")
+    needs_mt5 = (not has_mt5_values) or (not has_hedge_creds)
+
+    if needs_mt5:
+        if not has_mt5_values:
+            app.logger.info(f"⚠️  MT5 auto-populate: {client_id} has zero MT5 values")
+        if not has_hedge_creds:
+            app.logger.info(f"⚠️  MT5 auto-populate: {client_id} missing hedge account credentials")
         return jsonify({
             "status": "needs_init",
-            "message": "MT5 values need initialization",
+            "message": "MT5 values need initialization" if not has_mt5_values else "Hedge account credentials missing",
             "needs_mt5": True,
             "current_values": {
                 "deposits": deposits,
                 "withdrawals": withdrawals,
                 "balance": balance
-            }
+            },
+            "needs_hedge_creds": (not has_hedge_creds),
         })
     else:
         app.logger.info(f"✅ MT5 auto-populate: {client_id} already has MT5 values")
