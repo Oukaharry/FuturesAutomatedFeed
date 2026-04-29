@@ -6580,7 +6580,7 @@ def _estimate_issue_date(ev, issue_check, fallback):
     dp = _parse_date_str(ev.get('Date Purchased', ''))
     ds = _parse_date_str(ev.get('Date Started', ''))
     # Setup/entry issues → earliest date (purchase/start)
-    if issue_check in ('Status blank', 'Empty Fee', 'Empty Account Size', 'Missing Date Started'):
+    if issue_check in ('Status blank', 'Empty Fee', 'Empty Account Size', 'Missing Date Started', 'Missing Date Purchased'):
         return dp or ds or dates[0]
     # End-of-life issues → latest known date
     if issue_check == 'Missing Date Ended':
@@ -6698,6 +6698,42 @@ def run_quality_scan(target_client=None):
                 if prop_firm.lower() in ('funding ticks', 'fundingticks'):
                     continue
 
+                # Quality scan gating for newly added rows:
+                # - If a new row has no hedge values yet, we suppress "early" flags
+                #   (ex: empty account number / missing weekday) so it isn't flagged
+                #   while the user is still populating fees + initial status.
+                # - We still flag missing `Fee` and any Status P1 value that is not
+                #   exactly "not started".
+                # - If a hedge value exists, we allow the normal flagging flow.
+                is_new_row = bool(ev.get('_row_added_at'))
+                fee_raw = str(ev.get('Fee', '') or '').strip()
+                acct_num_local = str(ev.get('Account #', '') or '').strip()
+                acct_num2_local = str(ev.get('Account #.1', '') or '').strip()
+                has_account_num_local = bool(acct_num_local or acct_num2_local)
+
+                def _parse_nonzero(v):
+                    try:
+                        s = str(v).replace('$', '').replace(',', '').strip()
+                        if s in ('', '-', None):
+                            return 0.0
+                        return float(s)
+                    except (ValueError, TypeError):
+                        return 0.0
+
+                _hedge_result_cols = [
+                    k for k in ev.keys()
+                    if isinstance(k, str) and k.startswith('Hedge Result') and not k.startswith('_')
+                ]
+
+                fee_num = _parse_nonzero(ev.get('Fee', ''))
+                fee_present = fee_num > 0.0
+
+                has_hedge_value_local = any(
+                    abs(_parse_nonzero(ev.get(c))) > 1e-9 for c in _hedge_result_cols
+                )
+
+                new_row_strict_mode = is_new_row and not has_hedge_value_local
+
                 # Detect "double dip" — MFF/TopStep accounts with an activation fee
                 # These are reset at funded stage so eval-phase fields are intentionally blank
                 _dd_firms = ('my funded futures', 'mff', 'topstep', 'top step', 'topstepx')
@@ -6714,14 +6750,43 @@ def run_quality_scan(target_client=None):
                                    'estimated_date': _estimate_issue_date(ev, 'Status blank', scan_date_str)})
 
                 # Empty Fee
-                fee = str(ev.get('Fee', '') or '').strip()
-                if not fee and has_data and not is_double_dip:
+                fee_raw = str(ev.get('Fee', '') or '').strip()
+                fee_num = _parse_nonzero(ev.get('Fee', ''))
+                # Treat "0", "0.00", etc. as missing fee — challenge fees must be > 0.00
+                if (not fee_raw or fee_num <= 0.0) and has_data and not is_double_dip:
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Fee not filled in',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
 
+                # New-row strict rule:
+                # If it's a brand new row and there's NO hedge value yet, we only
+                # allow the scan to flag:
+                #   1) missing/zero Fee (handled above),
+                #   2) missing Date Purchased, or
+                #   3) Status P1 not being exactly "not started".
+                # Everything else (empty account #, missing weekday, etc.) is suppressed
+                # until hedge values arrive.
+                if new_row_strict_mode:
+                    dp_raw = str(ev.get('Date Purchased', '') or '').strip()
+                    if not dp_raw:
+                        issues.append({
+                            'check': 'Missing Date Purchased',
+                            'severity': 'medium',
+                            'row': idx,
+                            'detail': f'{row_label}: New row missing Date Purchased',
+                            'estimated_date': _estimate_issue_date(ev, 'Missing Date Purchased', scan_date_str),
+                        })
+                    if fee_present and status_p1 and status_p1 != 'not started':
+                        issues.append({
+                            'check': 'New row: Status P1 not started',
+                            'severity': 'medium',
+                            'row': idx,
+                            'detail': f'{row_label}: New row fee present but Status P1 is \"{status_p1}\" (expected \"not started\")',
+                            'estimated_date': _estimate_issue_date(ev, 'New row: Status P1 not started', scan_date_str),
+                        })
+
                 # Empty Account Size
-                if not acct_size and prop_firm and not is_double_dip:
+                if not new_row_strict_mode and not acct_size and prop_firm and not is_double_dip:
                     issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Account Size blank',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Account Size', scan_date_str)})
@@ -6729,7 +6794,7 @@ def run_quality_scan(target_client=None):
                 # Empty Account #
                 acct_num = str(ev.get('Account #', '') or '').strip()
                 acct_num2 = str(ev.get('Account #.1', '') or '').strip()
-                if is_active and not acct_num and not acct_num2:
+                if not new_row_strict_mode and is_active and not acct_num and not acct_num2:
                     # For double dips, only the funded-phase account # matters
                     if not is_double_dip or not acct_num2:
                         issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
@@ -6738,7 +6803,7 @@ def run_quality_scan(target_client=None):
 
                 # Empty Activation Fee on funded rows
                 activation = str(ev.get('Activation Fee', '') or '').strip()
-                if status_p2 in ('funded', 'live', 'payout') and not activation:
+                if not new_row_strict_mode and status_p2 in ('funded', 'live', 'payout') and not activation:
                     issues.append({'check': 'Empty Activation Fee', 'severity': 'medium', 'row': idx,
                                    'detail': f'{row_label}: Funded but no activation fee',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
@@ -6750,7 +6815,7 @@ def run_quality_scan(target_client=None):
                 # funded phase. Accounts that got a funded account # but never
                 # traded (or were abandoned before any HR) are excluded so we
                 # don't drown the dashboard in false positives.
-                if prop_firm.lower().replace(' ', '') in ('alphafutures',) and not activation:
+                if (not new_row_strict_mode) and prop_firm.lower().replace(' ', '') in ('alphafutures',) and not activation:
                     _funded_hr_cols = (
                         'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
                         'Hedge Result 4.1', 'Hedge Result 5.1',
@@ -6777,7 +6842,7 @@ def run_quality_scan(target_client=None):
                 _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
                 # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
                 _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day') or k.startswith('Prop Progress')]
-                if not _inactive_p1 and not _inactive_p2 and status_p1:
+                if (not new_row_strict_mode or has_account_num_local) and not _inactive_p1 and not _inactive_p2 and status_p1:
                     weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
                                 'mon', 'tue', 'wed', 'thu', 'fri',
                                 'tues', 'weds', 'thurs'}
@@ -6808,7 +6873,7 @@ def run_quality_scan(target_client=None):
                     except (ValueError, TypeError): return None
 
                 hedge_net = _parse_num(ev.get('Hedge Net', ''))
-                if hedge_net is not None and hedge_net < 0:
+                if not new_row_strict_mode and hedge_net is not None and hedge_net < 0:
                     cell_notes = ev.get('_notes', {}) or {}
                     has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
                     notes_col = str(ev.get('Notes', '') or '').strip()
@@ -6845,9 +6910,10 @@ def run_quality_scan(target_client=None):
                 if _comma_cols:
                     _preview = '; '.join(_comma_cols[:3])
                     _suffix = '' if len(_comma_cols) <= 3 else f' (+{len(_comma_cols) - 3} more)'
-                    issues.append({'check': 'Comma in hedge value', 'severity': 'low', 'row': idx,
-                                   'detail': f'{row_label}: {_preview}{_suffix}',
-                                   'estimated_date': _estimate_issue_date(ev, 'Comma in hedge value', scan_date_str)})
+                    if not new_row_strict_mode:
+                        issues.append({'check': 'Comma in hedge value', 'severity': 'low', 'row': idx,
+                                       'detail': f'{row_label}: {_preview}{_suffix}',
+                                       'estimated_date': _estimate_issue_date(ev, 'Comma in hedge value', scan_date_str)})
 
             # ── Hedge account or Prop Firm account: at least one must be filled ──
             # If the client has evaluations with data, they need either hedge account
@@ -8491,18 +8557,26 @@ def update_data():
                     # and only append genuinely new rows. This prevents a stale
                     # frontend copy from overwriting push-sourced data.
                     if len(evaluations) > len(existing_evals):
+                        now_iso = datetime.utcnow().isoformat()
                         new_rows = evaluations[len(existing_evals):]
+                        # Mark appended rows so the quality dashboard can treat
+                        # them as "new / not populated yet" for initial validations.
+                        for _r in new_rows:
+                            if isinstance(_r, dict) and '_row_added_at' not in _r:
+                                _r['_row_added_at'] = now_iso
                         evaluations = normalize_evaluations(existing_evals) + new_rows
                     else:
                         # Frontend has fewer or equal evals — it's stale.
                         # Append a default new evaluation to the DB version.
                         evaluations = normalize_evaluations(existing_evals)
-                        evaluations.append({
+                        new_row = {
                             "Prop Firm": "My Funded Futures",
                             "Account Size": "$100,000",
                             "Date Purchased": "",
                             "Fee": "0"
-                        })
+                        }
+                        new_row['_row_added_at'] = datetime.utcnow().isoformat()
+                        evaluations.append(new_row)
                     existing_evals = existing_data.get("evaluations", [])
                 elif action_type not in ('DELETE', 'ROLLBACK'):
                     # General safety check: block saves that would drop eval count
