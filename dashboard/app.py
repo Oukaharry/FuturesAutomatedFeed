@@ -6941,7 +6941,13 @@ def run_quality_scan(target_client=None):
                     combined_dep = mt5_dep + hist_dep
                     combined_wd = mt5_wd + hist_wd
                     combined_bal = mt5_bal + hist_bal
-                    mt5_profit_display = round(combined_bal - (combined_dep + combined_wd) - prior_activity, 2)
+                    mt5_profit_combined = round(combined_bal - (combined_dep + combined_wd) - prior_activity, 2)
+
+                    # Also compute Current MT5-only profit (yellow row in UI), excluding historical accounts.
+                    # This avoids false positives when historical MT5 totals are present but the current MT5
+                    # profit matches the sheet hedging results shown in Stats.
+                    current_prior = _to_float(hr.get('current_mt5_prior_activity'))
+                    mt5_profit_current = round(mt5_bal - (mt5_dep + mt5_wd) - current_prior, 2)
 
                     # Compute the SAME Hedging Results number shown in the Stats panel.
                     hedge_total_display = round(
@@ -6952,13 +6958,19 @@ def run_quality_scan(target_client=None):
                     # Only evaluate this check when there's meaningful MT5 context or a recent push.
                     has_mt5_context = bool(last_push) or (abs(mt5_dep) > 1e-9) or (abs(mt5_wd) > 1e-9) or (abs(mt5_bal) > 1e-9) or (abs(hist_dep) > 1e-9) or (abs(hist_wd) > 1e-9) or (abs(hist_bal) > 1e-9)
                     if has_mt5_context:
-                        diff = round(mt5_profit_display - hedge_total_display, 2)
+                        # Prefer current-only profit if it matches within tolerance, otherwise fall back to combined.
+                        chosen_profit = mt5_profit_combined
+                        if (abs(hist_dep) > 1e-9) or (abs(hist_wd) > 1e-9) or (abs(hist_bal) > 1e-9):
+                            if abs(mt5_profit_current - hedge_total_display) < 1.0:
+                                chosen_profit = mt5_profit_current
+
+                        diff = round(chosen_profit - hedge_total_display, 2)
                         # Tolerance to avoid noise from rounding / tiny differences.
                         if abs(diff) >= 1.0:
                             issues.append({
                                 'check': 'Hedging Results mismatch',
                                 'severity': 'high',
-                                'detail': f"Mismatch between sheet hedging results and actual hedging results (HR={hedge_total_display:.2f}, Profit={mt5_profit_display:.2f})",
+                                'detail': f"Mismatch between sheet hedging results and actual hedging results (HR={hedge_total_display:.2f}, Profit={chosen_profit:.2f})",
                                 'estimated_date': scan_date_str
                             })
             except Exception:
