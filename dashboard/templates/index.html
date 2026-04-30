@@ -4478,8 +4478,8 @@
 
         function goToHedgingMismatch() {
             openTab('stats');
-            // Keep the hedging section open long enough to review.
-            window._hedgingOpenUntil = Date.now() + 60000;
+            // Ensure the hedging section is open for review.
+            window._hedgingIsOpen = true;
             syncHedgingDetailsFromState();
             setTimeout(() => {
                 const el = document.getElementById('mt5-accounts-overview-card');
@@ -4775,10 +4775,9 @@
             try {
                 if (data.statistics) {
                     // Persist Live Hedging expand state across auto-refresh re-renders.
-                    // Keep it open for at least 15s after opening.
-                    if (window._hedgingOpenUntil === undefined) window._hedgingOpenUntil = 0;
+                    if (window._hedgingIsOpen === undefined) window._hedgingIsOpen = false;
                     const _prevHedgingWrap = document.getElementById('hedging-details-wrap');
-                    const _prevHedgingWasOpen = (_prevHedgingWrap && _prevHedgingWrap.style.display !== 'none') || (Date.now() < (window._hedgingOpenUntil || 0));
+                    const _prevHedgingWasOpen = (window._hedgingIsOpen === true) || (_prevHedgingWrap && _prevHedgingWrap.style.display !== 'none');
 
                     const s = data.statistics;
                     // --- Safety Checks ---
@@ -4951,9 +4950,10 @@
                         s.cashflow_inprogress = { payouts: ag.cfPay, challenge_fees: ag.cfFees, hedging_results: ag.cfHedge, farming_results: ag.cfFarm, net_profit: ag.cfNet };
                         s.profitability_completed = { payouts: ag.pcPay, challenge_fees: ag.pcFees, hedging_results: ag.pcHedge, farming_results: ag.pcFarm, net_profit: ag.pcNet };
                     } else {
-                        const ag = aggregateCashflowFromEvals(data.evaluations, false);
-                        s.cashflow_inprogress = { payouts: ag.cfPay, challenge_fees: ag.cfFees, hedging_results: ag.cfHedge, farming_results: ag.cfFarm, net_profit: ag.cfNet };
-                        s.profitability_completed = { payouts: ag.pcPay, challenge_fees: ag.pcFees, hedging_results: ag.pcHedge, farming_results: ag.pcFarm, net_profit: ag.pcNet };
+                        // Keep statistics.cashflow_inprogress / profitability_completed from the API.
+                        // Client-side aggregateCashflowFromEvals can drift from utils/data_processor by ~rounding
+                        // (per-row rnd2 vs server totals). Adding server discrepancy to that drift made
+                        // "Net Profit In Progress -> Hedging Results" disagree with MT5 Profit by that gap.
                     }
 
                     // Helper for safe rate formatting
@@ -5025,7 +5025,7 @@
 
                                 <!-- Hedging section toggle -->
                                 <div style="order:3; grid-column: 1 / -1; display:flex; justify-content:center; margin: -8px 0 -12px;">
-                                    <button onclick="toggleHedgingDetails(15000)" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
+                                    <button onclick="toggleHedgingDetails()" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
                                         <span class="hd-arrow">▸</span> Live Hedging Review & MT5 Accounts Overview
                                     </button>
                                 </div>
@@ -5120,10 +5120,8 @@
                         if (_newBtn) _newBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Payouts';
                     }
 
-                    // Restore Live Hedging expanded state if it was open (or still within the auto-close window).
-                    if (_prevHedgingWasOpen && !(window._hedgingOpenUntil > Date.now())) {
-                        window._hedgingOpenUntil = Date.now() + 15000;
-                    }
+                    // Restore Live Hedging expanded state (no auto-close).
+                    window._hedgingIsOpen = !!_prevHedgingWasOpen;
                     syncHedgingDetailsFromState();
                 }
 
@@ -5269,9 +5267,8 @@
             }
         }
 
-        // --- Live Hedging Review expanded state (auto-close) ---
-        window._hedgingAutoCloseTimer = window._hedgingAutoCloseTimer || null;
-        if (window._hedgingOpenUntil === undefined) window._hedgingOpenUntil = 0;
+        // --- Live Hedging Review expanded state (manual toggle only) ---
+        if (window._hedgingIsOpen === undefined) window._hedgingIsOpen = false;
 
         function syncHedgingDetailsFromState() {
             const wrap = document.getElementById('hedging-details-wrap');
@@ -5280,34 +5277,16 @@
             const arrow = btn ? btn.querySelector('.hd-arrow') : null;
             if (!arrow) return;
 
-            const now = Date.now();
-            const open = now < (window._hedgingOpenUntil || 0);
+            const open = !!window._hedgingIsOpen;
             wrap.style.display = open ? 'grid' : 'none';
             arrow.textContent = open ? '▾' : '▸';
-
-            if (window._hedgingAutoCloseTimer) {
-                clearTimeout(window._hedgingAutoCloseTimer);
-                window._hedgingAutoCloseTimer = null;
-            }
-            if (open) {
-                const ms = Math.max(0, (window._hedgingOpenUntil || 0) - now);
-                window._hedgingAutoCloseTimer = setTimeout(() => {
-                    window._hedgingOpenUntil = 0;
-                    syncHedgingDetailsFromState();
-                }, ms);
-            }
         }
 
-        function toggleHedgingDetails(autoCloseMs) {
+        function toggleHedgingDetails() {
             const wrap = document.getElementById('hedging-details-wrap');
             if (!wrap) return;
             const isOpen = wrap.style.display !== 'none';
-            if (isOpen) {
-                window._hedgingOpenUntil = 0;
-            } else {
-                const ms = Number(autoCloseMs) || 15000;
-                window._hedgingOpenUntil = Date.now() + ms;
-            }
+            window._hedgingIsOpen = !isOpen;
             syncHedgingDetailsFromState();
         }
 
@@ -6603,7 +6582,13 @@
             }
             
             const emptyPlaceholder = type !== 'date' ? ' placeholder="\u2014"' : '';
-            return `<input type="${type}" class="cell-input" value="${displayVal}" onchange="handleInputChange(${index}, '${key}', this.value)" ${readOnlyAttr}${emptyPlaceholder} style="${style}">`;
+            // Hedge cells: sync model on every keystroke. Saves are debounced — without this,
+            // currentData still held the old number until blur/onchange, so a pending save could
+            // persist stale values (-90.30) while the input visually showed (-121).
+            const hedgeLiveSync = (!readOnly && (key.startsWith('Hedge Result') || key.startsWith('Hedge Day')))
+                ? ` oninput="syncEvalMoneyInput(${index}, '${key}', this.value)"`
+                : '';
+            return `<input type="${type}" class="cell-input" value="${displayVal}" onchange="handleInputChange(${index}, '${key}', this.value)"${hedgeLiveSync} ${readOnlyAttr}${emptyPlaceholder} style="${style}">`;
         }
 
         // Global state for portal dropdowns
@@ -6869,6 +6854,42 @@
             saveData();
         }
 
+        /** Keeps currentData in sync while typing hedge cells (pairs with debounced save). */
+        function syncEvalMoneyInput(index, key, rawValue) {
+            if (!currentData.evaluations[index]) return;
+
+            isEditing = true;
+            _pendingEvalRecalc = true;
+            if (!_changedFields[index]) _changedFields[index] = new Set();
+            _changedFields[index].add(key);
+
+            let value = rawValue;
+            const moneyPrefixes = ['Payout', 'Fee', 'Activation Fee', 'Hedge Result', 'Hedge Day', 'Prop Day'];
+            if (moneyPrefixes.some(p => key.startsWith(p)) && value) {
+                const stripped = String(value).replace(/[$,]/g, '').trim();
+                if (stripped !== '' && !isNaN(stripped)) {
+                    value = stripped;
+                }
+            }
+            currentData.evaluations[index][key] = value;
+
+            if (_statsRenderDebounce) clearTimeout(_statsRenderDebounce);
+            _statsRenderDebounce = setTimeout(() => {
+                _statsRenderDebounce = null;
+                try {
+                    if (currentData && currentData.statistics && document.getElementById('stats-summary')) {
+                        renderStats(currentData);
+                    }
+                } catch (e) { /* ignore */ }
+            }, 150);
+
+            if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
+            _saveDebounceTimer = setTimeout(() => {
+                _saveDebounceTimer = null;
+                saveData();
+            }, 400);
+        }
+
         function handleInputChange(index, key, value) {
             if (!currentData.evaluations[index]) return;
             
@@ -6923,13 +6944,23 @@
                 showPayoutConfirm(index, key, value, oldValue);
                 return;
             }
-            
-            // Debounce: batch rapid edits into a single save (400ms window)
-            if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
-            _saveDebounceTimer = setTimeout(() => {
-                _saveDebounceTimer = null;
+
+            const hedgeMoneyKey = key.startsWith('Hedge Result') || key.startsWith('Hedge Day');
+            if (hedgeMoneyKey) {
+                // Typing debounce is handled by syncEvalMoneyInput; on blur flush timer and save once.
+                if (_saveDebounceTimer) {
+                    clearTimeout(_saveDebounceTimer);
+                    _saveDebounceTimer = null;
+                }
                 saveData();
-            }, 400);
+            } else {
+                // Debounce: batch rapid edits into a single save (400ms window)
+                if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
+                _saveDebounceTimer = setTimeout(() => {
+                    _saveDebounceTimer = null;
+                    saveData();
+                }, 400);
+            }
             
             // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
             const showActiveOnly = document.getElementById('activeFilter').checked;
@@ -7171,17 +7202,49 @@
             })
             .then(data => {
                 isSaving = false;
-                // Remember the version we saved — auto-refresh will skip
-                // data older than this to prevent stale overwrites.
-                if (data.version) _lastSavedVersion = data.version;
-                
-                // Keep isEditing true for 2s so the next auto-refresh
-                // has time to see the saved version in the DB.
+                if (data.version != null) _lastSavedVersion = data.version;
+                if (data._version != null) _lastSavedVersion = data._version;
+
+                // Apply server recomputation immediately (Hedge Net, sheet totals, discrepancy).
+                if (data.statistics) currentData.statistics = data.statistics;
+                if (data.evaluations && Array.isArray(data.evaluations)) {
+                    currentData.evaluations = data.evaluations;
+                    try {
+                        renderEvaluationsTable(false);
+                    } catch (e) {
+                        console.error('renderEvaluationsTable after save:', e);
+                    }
+                }
+                if (data.last_updated) currentData.last_updated = data.last_updated;
+                if (data._version != null) currentData._version = data._version;
+
+                try {
+                    renderStats(currentData);
+                } catch (e) {
+                    console.error('renderStats after save:', e);
+                }
+
+                const hr = data.statistics && data.statistics.hedging_review;
+                if (hr) {
+                    console.info('[HEDGE_SAVE] applied server stats', {
+                        sheet_hedging_results: hr.sheet_hedging_results,
+                        discrepancy: hr.discrepancy,
+                        cf_net: data.statistics.cashflow_inprogress && data.statistics.cashflow_inprogress.net_profit,
+                    });
+                }
+
                 setTimeout(() => { isEditing = false; }, 2000);
-                
-                // Show brief success indicator
+
                 showSaveStatus('saved');
-                if (shouldRefreshStatsAfterSave) {
+
+                const finalizeRecalcUi = () => {
+                    _pendingEvalRecalc = false;
+                    setEvaluationsRecalcIndicator(false);
+                };
+
+                if (shouldRefreshStatsAfterSave && data.statistics) {
+                    finalizeRecalcUi();
+                } else if (shouldRefreshStatsAfterSave) {
                     const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}&_t=${Date.now()}`;
                     fetch(url)
                         .then(r => r.json())
@@ -7190,12 +7253,6 @@
                                 console.error('Stats refresh after save: bad response', freshData);
                                 return;
                             }
-                            // IMPORTANT: Only merge server-computed stats metadata here.
-                            // Do NOT replace evaluations / deals / account / accounts /
-                            // payment info — those may already contain newer user edits
-                            // (typed while this save + refetch was in flight). Replacing
-                            // them with the server snapshot silently drops those edits and
-                            // the next debounced save would then persist the stale copy.
                             if (freshData.statistics) currentData.statistics = freshData.statistics;
                             if (freshData.last_updated) currentData.last_updated = freshData.last_updated;
                             if (freshData._version != null) currentData._version = freshData._version;
@@ -7207,13 +7264,9 @@
                             }
                         })
                         .catch(err => console.error('Stats refresh after manual edit failed:', err))
-                        .finally(() => {
-                            _pendingEvalRecalc = false;
-                            setEvaluationsRecalcIndicator(false);
-                        });
+                        .finally(finalizeRecalcUi);
                 } else {
-                    _pendingEvalRecalc = false;
-                    setEvaluationsRecalcIndicator(false);
+                    finalizeRecalcUi();
                 }
                 if (_pendingSaveCallback) { _pendingSaveCallback(true); _pendingSaveCallback = null; }
             })

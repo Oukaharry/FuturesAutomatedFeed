@@ -157,6 +157,99 @@ def clear_financial_cache():
     """Invalidate the financial overview cache."""
     _overview_cache.clear()
 
+
+def _portfolio_hedge_mt5_adjustment_vs_sheet_columns(
+    clients_data, profile_filter=None, start_date=None, end_date=None
+):
+    """Sum of (live MT5 hedging P&L − sheet hedging+farming) per client.
+
+    Mirrors get_client_performance_stats: for clients with MT5 deposits/balance and
+    stored cashflow_inprogress hedge/farming totals, hedge displayed on cards uses
+    live account math (including historical_accounts and prior_activity). Cumulative
+    hedge/net charts are built from evaluation columns only; this delta aligns their
+    endpoint with those statistics.
+
+    Skips date-filtered and BEF-profile runs (same branches as perf stats).
+    """
+    if start_date or end_date:
+        return 0.0
+    if profile_filter and profile_filter.upper() == "BEF":
+        return 0.0
+
+    total_adj = 0.0
+    for client_id, data in clients_data.items():
+        if not data:
+            continue
+        if profile_filter and profile_filter.upper() != "ALL":
+            identity = data.get("identity", {})
+            if get_client_profile(client_id, identity) != profile_filter.upper():
+                continue
+
+        stored_cf = (data.get("statistics") or {}).get("cashflow_inprogress") or {}
+        if not stored_cf:
+            continue
+        h_r = stored_cf.get("hedging_results", 0) or 0
+        f_r = stored_cf.get("farming_results", 0) or 0
+        if h_r == 0 and f_r == 0:
+            continue
+
+        try:
+            sheet_hedge = float(h_r) + float(f_r)
+        except (TypeError, ValueError):
+            sheet_hedge = 0.0
+
+        acct = data.get("account") or {}
+        hr = (data.get("statistics") or {}).get("hedging_review") or {}
+
+        try:
+            mt5_dep = float(acct.get("total_deposits") or 0)
+        except (TypeError, ValueError):
+            mt5_dep = 0.0
+        try:
+            mt5_bal = float(acct.get("balance") or 0)
+        except (TypeError, ValueError):
+            mt5_bal = 0.0
+        try:
+            mt5_with = float(acct.get("total_withdrawals") or 0)
+        except (TypeError, ValueError):
+            mt5_with = 0.0
+
+        if mt5_dep == 0 and mt5_bal == 0:
+            continue
+
+        hist_dep_h = hist_with_h = hist_bal_h = 0.0
+        prior_activity = 0.0
+        try:
+            prior_activity = float(hr.get("current_mt5_prior_activity") or 0)
+        except (TypeError, ValueError):
+            pass
+        for ha in hr.get("historical_accounts") or []:
+            try:
+                hist_dep_h += float(ha.get("deposits", 0))
+            except (TypeError, ValueError):
+                pass
+            try:
+                hist_with_h += float(ha.get("withdrawals", 0))
+            except (TypeError, ValueError):
+                pass
+            try:
+                hist_bal_h += float(ha.get("final_balance", 0))
+            except (TypeError, ValueError):
+                pass
+            try:
+                prior_activity += float(ha.get("prior_activity_profit", 0))
+            except (TypeError, ValueError):
+                pass
+
+        combined_dep = mt5_dep + hist_dep_h
+        combined_with = mt5_with + hist_with_h
+        combined_bal = mt5_bal + hist_bal_h
+        live_actual = combined_bal - (combined_dep + combined_with) - prior_activity
+        total_adj += live_actual - sheet_hedge
+
+    return round(total_adj, 2)
+
+
 @cache_result(ttl=30)
 def calculate_all_financials(profile_filter=None, start_date=None, end_date=None):
     """
@@ -397,6 +490,15 @@ def calculate_all_financials(profile_filter=None, start_date=None, end_date=None
                 is_balance = str(d_type) == '2' or str(d_type).upper() == 'BALANCE'
                 if is_balance and profit > 0:
                      deposits_daily[date_str] += profit
+
+    # Match statistics cards: MT5 Live Hedging Review vs sheet hedge+farming totals.
+    hedge_mt5_adj = _portfolio_hedge_mt5_adjustment_vs_sheet_columns(
+        clients_data, profile_filter=profile_filter, start_date=start_date, end_date=end_date
+    )
+    if abs(hedge_mt5_adj) >= 0.005:
+        _adj_dt = datetime.now()
+        ts_hedge.append((_adj_dt, hedge_mt5_adj))
+        ts_net_profit.append((_adj_dt, hedge_mt5_adj))
 
     # --- Finalize Overview Data ---
     global_stats = {
@@ -1273,7 +1375,13 @@ def get_cumulative_hedge_data(profile_filter=None):
             fd_profit = sum(parse_currency(ev.get(c)) for c in FUNDED_HEDGE_COLS)
             if fd_profit != 0:
                 events.append((date_ended_funded or date_started_funded or base_date, fd_profit))
-                
+
+    hedge_mt5_adj = _portfolio_hedge_mt5_adjustment_vs_sheet_columns(
+        clients_data, profile_filter=profile_filter, start_date=None, end_date=None
+    )
+    if abs(hedge_mt5_adj) >= 0.005:
+        events.append((datetime.now(), hedge_mt5_adj))
+
     return _aggregate_events_cumulative(events)
 
 def get_cumulative_farming_data(profile_filter=None):
