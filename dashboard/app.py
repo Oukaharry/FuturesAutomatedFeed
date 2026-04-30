@@ -7119,7 +7119,26 @@ def run_quality_scan(target_client=None):
                     _is_hit_tp = status_p1.startswith('hit tp') or status_p1.replace(' ', '').startswith('hittp')
                     _nonhedge_ok = _is_hit_tp and _has_weekday_marker
 
-                    if fee_present and status_p1 and status_p1 != 'not started' and not _nonhedge_ok:
+                    # Additional special case:
+                    # Some rows are marked "pass" (or other non-"not started") even though no numeric hedge values exist yet,
+                    # but a weekday marker is placed in funded/farming hedge columns as a workflow cue.
+                    # If any funded hedge result or farming hedge day cell contains a weekday token, suppress the flag.
+                    _weekday_ok = False
+                    try:
+                        _funded_cols = (
+                            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+                            'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
+                        )
+                        _farming_cols = tuple(f'Hedge Day {i}' for i in range(1, 51))
+                        for _c in (_funded_cols + _farming_cols):
+                            _v = str(ev.get(_c, '') or '').strip().lower()
+                            if _v and any(tok in _v for tok in _weekday_tokens):
+                                _weekday_ok = True
+                                break
+                    except Exception:
+                        _weekday_ok = False
+
+                    if fee_present and status_p1 and status_p1 != 'not started' and not _nonhedge_ok and not _weekday_ok:
                         issues.append({
                             'check': 'New row: Status P1 not started',
                             'severity': 'medium',
