@@ -59,6 +59,49 @@ from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 # Firms hidden from BEF admin (normalised: lowercase, no spaces)
 BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
 
+# Admin tracker: max simultaneous active evaluation rows per normalized prop firm key.
+ADMIN_PROP_MAX_ACTIVE_ACCOUNTS = {
+    'mffu': 3,
+    'tradeday': 3,
+    'alphafutures': 3,
+    'apex': 10,
+}
+ADMIN_PROP_MAX_ACTIVE_DEFAULT = 5
+ADMIN_PROP_DISPLAY_NAME = {
+    'mffu': 'My Funded Futures',
+    'tradeday': 'TradeDay',
+    'alphafutures': 'Alpha Futures',
+    'apex': 'Apex Trader Funding',
+    'toponefutures': 'Top One Futures',
+}
+
+
+def _norm_prop_firm_max_out_key(raw):
+    """Normalize Prop Firm strings for admin max-out / prop slot counts."""
+    s = str(raw or '').strip().lower().replace(' ', '').replace('_', '')
+    if not s:
+        return ''
+    if 'myfunded' in s or s.startswith('mffu') or 'mffu' in s:
+        return 'mffu'
+    if s in ('toponefutures', 'topone', 'tpo'):
+        return 'toponefutures'
+    if s in ('tradeday', 'trade-day'):
+        return 'tradeday'
+    if 'apex' in s:
+        return 'apex'
+    if s == 'alphafutures' or ('alpha' in s and 'future' in s):
+        return 'alphafutures'
+    return s
+
+
+def _admin_prop_max_active_expected(pf_key):
+    return ADMIN_PROP_MAX_ACTIVE_ACCOUNTS.get(pf_key, ADMIN_PROP_MAX_ACTIVE_DEFAULT)
+
+
+def _admin_prop_display_name(pf_key):
+    return ADMIN_PROP_DISPLAY_NAME.get(pf_key, pf_key)
+
+
 # Start Midnight Watermark Scheduler
 try:
     from dashboard.scheduler import start_scheduler
@@ -7730,19 +7773,6 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
             rec.update(extra)
         admin_issues.append(rec)
 
-    # Helper: normalize prop firm names to a stable key
-    def _norm_pf(raw):
-        s = str(raw or '').strip().lower().replace(' ', '').replace('_', '')
-        if not s:
-            return ''
-        if 'myfunded' in s or s.startswith('mffu') or 'mffu' in s:
-            return 'mffu'
-        if s in ('toponefutures', 'topone', 'tpo'):
-            return 'toponefutures'
-        if s in ('tradeday', 'trade-day'):
-            return 'tradeday'
-        return s
-
     _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
     _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
     def _is_row_active(ev):
@@ -7805,7 +7835,7 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
             for idx, ev in enumerate(evals):
                 if not _is_row_active(ev):
                     continue
-                pf_key = _norm_pf(ev.get('Prop Firm'))
+                pf_key = _norm_prop_firm_max_out_key(ev.get('Prop Firm'))
                 if not pf_key:
                     continue
                 # Excess-account suppression requires a note STRICTLY on the Status P1 cell.
@@ -7819,11 +7849,11 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
 
             for pf_key, rows in sorted(pf_rows.items()):
                 count = len(rows)
-                expected = 3 if pf_key == 'mffu' else 5
+                expected = _admin_prop_max_active_expected(pf_key)
                 if count == 0:
                     continue
                 if count != expected:
-                    human = 'My Funded Futures' if pf_key == 'mffu' else pf_key
+                    human = _admin_prop_display_name(pf_key)
                     if count < expected:
                         _add_issue(
                             'max_out',
@@ -7975,19 +8005,6 @@ def api_admin_tracker():
                     rec.update(extra)
                 admin_issues.append(rec)
 
-            # Helper: normalize prop firm names to a stable key
-            def _norm_pf(raw):
-                s = str(raw or '').strip().lower().replace(' ', '').replace('_', '')
-                if not s:
-                    return ''
-                if 'myfunded' in s or s.startswith('mffu') or 'mffu' in s:
-                    return 'mffu'
-                if s in ('toponefutures', 'topone', 'tpo'):
-                    return 'toponefutures'
-                if s in ('tradeday', 'trade-day'):
-                    return 'tradeday'
-                return s
-
             _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
             _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
             def _is_row_active(ev):
@@ -8051,7 +8068,7 @@ def api_admin_tracker():
                     for idx, ev in enumerate(evals):
                         if not _is_row_active(ev):
                             continue
-                        pf_key = _norm_pf(ev.get('Prop Firm'))
+                        pf_key = _norm_prop_firm_max_out_key(ev.get('Prop Firm'))
                         if not pf_key:
                             continue
                         # Excess-account suppression requires a note STRICTLY on the Status P1 cell.
@@ -8066,11 +8083,11 @@ def api_admin_tracker():
 
                     for pf_key, rows in sorted(pf_rows.items()):
                         count = len(rows)
-                        expected = 3 if pf_key == 'mffu' else 5
+                        expected = _admin_prop_max_active_expected(pf_key)
                         if count == 0:
                             continue
                         if count != expected:
-                            human = 'My Funded Futures' if pf_key == 'mffu' else pf_key
+                            human = _admin_prop_display_name(pf_key)
                             if count < expected:
                                 _add_issue(
                                     'max_out',
