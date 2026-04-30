@@ -8717,7 +8717,7 @@ def api_checklist_status():
 @require_role('admin', 'super_admin', 'bef_admin', 'kwok_admin')
 def api_admin_summary_signoff():
     """Admin sign-off: confirm trader summary reviewed + sent to client (persisted like trader tracking)."""
-    from dashboard.database import save_daily_checklist
+    from dashboard.database import save_daily_checklist, get_daily_checklists
     session_user = request.session_user
     user_type = session_user.get('user_type')
     session_id = (session_user.get('user_identifier') or '').strip()
@@ -8726,6 +8726,7 @@ def api_admin_summary_signoff():
     client_id = (data.get('client_id') or '').strip()
     admin_name = (data.get('admin') or '').strip()
     checked = bool(data.get('checked', False))
+    date = (data.get('date') or '').strip()
 
     if not client_id:
         return jsonify({'status': 'error', 'message': 'client_id required'}), 400
@@ -8738,18 +8739,46 @@ def api_admin_summary_signoff():
         effective_admin = admin_name
     if not effective_admin:
         return jsonify({'status': 'error', 'message': 'Admin name required'}), 400
+    if not date:
+        date = datetime.now().strftime('%Y-%m-%d')
+    else:
+        # Defensive: if invalid format, fall back to server date
+        try:
+            datetime.strptime(date, '%Y-%m-%d')
+        except Exception:
+            date = datetime.now().strftime('%Y-%m-%d')
 
-    today = datetime.now().strftime('%Y-%m-%d')
+    # Once an admin signs off "checked", keep it locked and read-only (cannot be unticked).
+    already_signed = False
+    try:
+        existing = get_daily_checklists(date, effective_admin) or []
+        for row in existing:
+            if row.get('checklist_type') != 'admin_daily_summary':
+                continue
+            if (row.get('client_id') or '').strip() != client_id:
+                continue
+            items0 = row.get('items') or []
+            if isinstance(items0, list):
+                for it in items0:
+                    if isinstance(it, dict) and it.get('id') == 'sent_to_client' and bool(it.get('checked')):
+                        already_signed = True
+                        break
+            if already_signed:
+                break
+    except Exception:
+        already_signed = False
+
+    effective_checked = True if already_signed else checked
     items = [{
         'id': 'sent_to_client',
         'title': 'Sent summary to client (approved)',
-        'checked': checked,
-        'status': 'ok' if checked else 'pending',
+        'checked': bool(effective_checked),
+        'status': 'ok' if effective_checked else 'pending',
         'notes': ''
     }]
 
     # Persist under the effective admin identity so the tracker reads it back correctly.
-    save_daily_checklist(today, effective_admin, 'admin', 'admin_daily_summary', items,
+    save_daily_checklist(date, effective_admin, 'admin', 'admin_daily_summary', items,
                          get_remote_address(), client_id=client_id)
 
     try:
@@ -8758,7 +8787,7 @@ def api_admin_summary_signoff():
     except Exception:
         pass
 
-    return jsonify({'status': 'success'})
+    return jsonify({'status': 'success', 'checked': bool(effective_checked), 'locked': bool(already_signed or effective_checked)})
 
 @app.route('/api/quality/scorecard')
 @require_role('super_admin', 'bef_admin')
@@ -9184,6 +9213,8 @@ def api_daily_summary():
                     'health': float(payload.get('health_score') or 0.0),
                     'clients': int(payload.get('total_clients') or 0),
                     'issues': len(issues),
+                    'sign_required': required,
+                    'sign_signed': signed,
                     'pending_signoffs': pending,
                     'pending_clients': (sign.get('pending_clients') or []),
                 })
@@ -9215,9 +9246,81 @@ def api_daily_summary():
                 bar_filled = round(r['health'] / 10)
                 bar_empty = 10 - bar_filled
                 bar = '🟩' * bar_filled + '⬛' * bar_empty
+                sign_extra = ""
+                if int(r.get('sign_required') or 0) > 0:
+                    sign_extra = f" · sign-offs {int(r.get('sign_signed') or 0)}/{int(r.get('sign_required') or 0)}"
                 extra = f" · {r['pending_signoffs']} pending sign-offs" if r['pending_signoffs'] else ""
                 lines.append(f"{medal} **{r['admin']}**")
-                lines.append(f"   {bar} **{r['health']}%** · {r['clients']} clients · {r['issues']} issues{extra}")
+                lines.append(f"   {bar} **{r['health']}%** · {r['clients']} clients · {r['issues']} issues{sign_extra}{extra}")
+
+            # Admin completion leaderboard (only admins who signed off ALL required clients)
+            try:
+                from datetime import timezone as _tz_admin, timedelta as _td_admin
+                _kenyan_tz_admin = _tz_admin(_td_admin(hours=3))
+                admin_complete = []
+                for r in admin_rows:
+                    req = int(r.get('sign_required') or 0)
+                    sgn = int(r.get('sign_signed') or 0)
+                    if req <= 0 or sgn != req:
+                        continue
+                    # Build client_id -> submitted_at for checked sign-offs
+                    ts_by_client = {}
+                    try:
+                        cls = get_daily_checklists(date, r.get('admin')) or []
+                        for row in cls:
+                            if row.get('checklist_type') != 'admin_daily_summary':
+                                continue
+                            cid = (row.get('client_id') or '').strip()
+                            if not cid:
+                                continue
+                            items = row.get('items') or []
+                            ok = False
+                            if isinstance(items, list):
+                                for it in items:
+                                    if isinstance(it, dict) and it.get('id') == 'sent_to_client' and bool(it.get('checked')):
+                                        ok = True
+                                        break
+                            if not ok:
+                                continue
+                            ts_by_client[cid] = row.get('submitted_at') or ''
+                    except Exception:
+                        ts_by_client = {}
+
+                    minutes_list = []
+                    for cid, ts in ts_by_client.items():
+                        if not ts:
+                            continue
+                        try:
+                            dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=_tz_admin.utc)
+                            dt = dt.astimezone(_kenyan_tz_admin)
+                            minutes_list.append(dt.hour * 60 + dt.minute)
+                        except Exception:
+                            pass
+                    avg_minutes = round(sum(minutes_list) / len(minutes_list)) if minutes_list else 1440
+                    avg_hh = avg_minutes // 60
+                    avg_mm = avg_minutes % 60
+                    avg_time_str = f"{avg_hh:02d}:{avg_mm:02d}"
+                    admin_complete.append((r.get('admin') or '', sgn, req, avg_minutes, avg_time_str))
+
+                admin_complete.sort(key=lambda x: x[3])
+                if admin_complete:
+                    lines.append("")
+                    lines.append("🏆 **Complete — ranked by earliest avg sign-off time:**")
+                    lines.append("_All required client summaries must be signed off to qualify. The earlier you finish, the higher you rank. 🥇 goes to the fastest!_")
+                    for rank, (a, sgn, req, _avg_m, avg_t) in enumerate(admin_complete, 1):
+                        if rank == 1:
+                            medal = '🥇'
+                        elif rank == 2:
+                            medal = '🥈'
+                        elif rank == 3:
+                            medal = '🥉'
+                        else:
+                            medal = f'`#{rank}`'
+                        lines.append(f"{medal} **{a}** — {sgn}/{req} ✅ · avg {avg_t}")
+            except Exception:
+                pass
 
             incomplete = [r for r in admin_rows if r['pending_signoffs'] > 0]
             if incomplete:
@@ -9225,7 +9328,10 @@ def api_daily_summary():
                 lines.append("📬 **ADMIN DAILY SUMMARY SIGN-OFF (after trader submits)**")
                 lines.append("❌ **Incomplete — pending client sign-offs:**")
                 for r in sorted(incomplete, key=lambda x: (-x['pending_signoffs'], x['admin'])):
-                    lines.append(f"⚠️ **{r['admin']}** — {r['pending_signoffs']} pending")
+                    req = int(r.get('sign_required') or 0)
+                    sgn = int(r.get('sign_signed') or 0)
+                    badge = f"{sgn}/{req}" if req else "0/0"
+                    lines.append(f"⚠️ **{r['admin']}** — {badge} · {r['pending_signoffs']} pending")
                     missing = r.get('pending_clients') or []
                     if len(missing) > 25:
                         shown = ", ".join(missing[:25]) + f", +{len(missing) - 25} more"
