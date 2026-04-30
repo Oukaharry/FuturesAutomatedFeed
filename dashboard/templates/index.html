@@ -4478,8 +4478,8 @@
 
         function goToHedgingMismatch() {
             openTab('stats');
-            // Keep the hedging section open long enough to review.
-            window._hedgingOpenUntil = Date.now() + 60000;
+            // Ensure the hedging section is open for review.
+            window._hedgingIsOpen = true;
             syncHedgingDetailsFromState();
             setTimeout(() => {
                 const el = document.getElementById('mt5-accounts-overview-card');
@@ -4775,10 +4775,9 @@
             try {
                 if (data.statistics) {
                     // Persist Live Hedging expand state across auto-refresh re-renders.
-                    // Keep it open for at least 15s after opening.
-                    if (window._hedgingOpenUntil === undefined) window._hedgingOpenUntil = 0;
+                    if (window._hedgingIsOpen === undefined) window._hedgingIsOpen = false;
                     const _prevHedgingWrap = document.getElementById('hedging-details-wrap');
-                    const _prevHedgingWasOpen = (_prevHedgingWrap && _prevHedgingWrap.style.display !== 'none') || (Date.now() < (window._hedgingOpenUntil || 0));
+                    const _prevHedgingWasOpen = (window._hedgingIsOpen === true) || (_prevHedgingWrap && _prevHedgingWrap.style.display !== 'none');
 
                     const s = data.statistics;
                     // --- Safety Checks ---
@@ -5025,7 +5024,7 @@
 
                                 <!-- Hedging section toggle -->
                                 <div style="order:3; grid-column: 1 / -1; display:flex; justify-content:center; margin: -8px 0 -12px;">
-                                    <button onclick="toggleHedgingDetails(15000)" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
+                                    <button onclick="toggleHedgingDetails()" style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); color:#94a3b8; padding:5px 18px; border-radius:8px; font-size:0.78rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:all 0.15s;">
                                         <span class="hd-arrow">▸</span> Live Hedging Review & MT5 Accounts Overview
                                     </button>
                                 </div>
@@ -5120,10 +5119,8 @@
                         if (_newBtn) _newBtn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Payouts';
                     }
 
-                    // Restore Live Hedging expanded state if it was open (or still within the auto-close window).
-                    if (_prevHedgingWasOpen && !(window._hedgingOpenUntil > Date.now())) {
-                        window._hedgingOpenUntil = Date.now() + 15000;
-                    }
+                    // Restore Live Hedging expanded state (no auto-close).
+                    window._hedgingIsOpen = !!_prevHedgingWasOpen;
                     syncHedgingDetailsFromState();
                 }
 
@@ -5269,9 +5266,8 @@
             }
         }
 
-        // --- Live Hedging Review expanded state (auto-close) ---
-        window._hedgingAutoCloseTimer = window._hedgingAutoCloseTimer || null;
-        if (window._hedgingOpenUntil === undefined) window._hedgingOpenUntil = 0;
+        // --- Live Hedging Review expanded state (manual toggle only) ---
+        if (window._hedgingIsOpen === undefined) window._hedgingIsOpen = false;
 
         function syncHedgingDetailsFromState() {
             const wrap = document.getElementById('hedging-details-wrap');
@@ -5280,34 +5276,16 @@
             const arrow = btn ? btn.querySelector('.hd-arrow') : null;
             if (!arrow) return;
 
-            const now = Date.now();
-            const open = now < (window._hedgingOpenUntil || 0);
+            const open = !!window._hedgingIsOpen;
             wrap.style.display = open ? 'grid' : 'none';
             arrow.textContent = open ? '▾' : '▸';
-
-            if (window._hedgingAutoCloseTimer) {
-                clearTimeout(window._hedgingAutoCloseTimer);
-                window._hedgingAutoCloseTimer = null;
-            }
-            if (open) {
-                const ms = Math.max(0, (window._hedgingOpenUntil || 0) - now);
-                window._hedgingAutoCloseTimer = setTimeout(() => {
-                    window._hedgingOpenUntil = 0;
-                    syncHedgingDetailsFromState();
-                }, ms);
-            }
         }
 
-        function toggleHedgingDetails(autoCloseMs) {
+        function toggleHedgingDetails() {
             const wrap = document.getElementById('hedging-details-wrap');
             if (!wrap) return;
             const isOpen = wrap.style.display !== 'none';
-            if (isOpen) {
-                window._hedgingOpenUntil = 0;
-            } else {
-                const ms = Number(autoCloseMs) || 15000;
-                window._hedgingOpenUntil = Date.now() + ms;
-            }
+            window._hedgingIsOpen = !isOpen;
             syncHedgingDetailsFromState();
         }
 
