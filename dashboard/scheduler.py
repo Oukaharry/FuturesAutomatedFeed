@@ -164,6 +164,7 @@ def _build_daily_summary_text():
     """Build the daily quality summary text (same logic as the API endpoint)."""
     from dashboard.database import get_quality_scan_results, get_daily_checklists
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
+    from config.hierarchy import SYSTEM_HIERARCHY
 
     # UTC date — server runs UTC so at 23:05 UTC (2:05 AM Kenyan) the date
     # is still the day we want.  It flips at midnight UTC = 3 AM Kenyan.
@@ -408,6 +409,123 @@ def _build_daily_summary_text():
             lines.append("👁️ _We track everything — every submission, every miss, every second._")
             lines.append("")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+    # ── Admin Tracker Summary (issues + sign-offs) ──
+    try:
+        from dashboard.app import compute_admin_tracker_payload
+
+        admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
+        admin_names = sorted([a for a in admins_map.keys() if str(a).strip()])
+
+        if admin_names:
+            lines.append("—")
+            lines.append("")
+            lines.append("🛡️ *ADMIN HEALTH LEADERBOARD*")
+            lines.append("_Ranked by admin health score (highest first). Admin score is derived from admin-owned issues: fees, prop-firm max-out, downtime, and missing client sign-offs._")
+            lines.append("")
+
+            severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+            admin_rows = []
+            total_admin_issues = 0
+            total_required_signoffs = 0
+            total_signed_signoffs = 0
+
+            for a in admin_names:
+                payload = compute_admin_tracker_payload(a, date) or {}
+                issues = payload.get('admin_issues') or []
+                # Add implicit "signoff pending" as an admin issue driver (already captured as pending_total)
+                sign = payload.get('summary_signoff') or {}
+                required = int(sign.get('required_total') or 0)
+                signed = int(sign.get('signed_total') or 0)
+                pending = int(sign.get('pending_total') or 0)
+
+                deduction = 0
+                for iss in issues:
+                    deduction += severity_weight.get((iss.get('severity') or 'low'), 2)
+                # Mild penalty for missing sign-offs so leaderboard reflects it even if no other issues.
+                deduction += pending * 5
+                health = max(0.0, round(100.0 - deduction, 1))
+
+                total_admin_issues += len(issues)
+                total_required_signoffs += required
+                total_signed_signoffs += signed
+
+                # Determine admin client count (active only, excluded already applied inside payload)
+                active_clients = payload.get('total_clients')
+                if active_clients is None:
+                    active_clients = len([c for c in (payload.get('clients') or []) if (c.get('active_status') == 'active')])
+
+                admin_rows.append({
+                    'admin': a,
+                    'health': health,
+                    'clients': int(active_clients or 0),
+                    'issues': len(issues),
+                    'pending_signoffs': pending,
+                    'pending_clients': (sign.get('pending_clients') or []),
+                })
+
+            admin_rows.sort(key=lambda r: (r['health'], -r['clients']), reverse=True)
+
+            # Quick portfolio-level admin stats
+            avg_admin_health = round(sum(r['health'] for r in admin_rows) / len(admin_rows), 1) if admin_rows else 0
+            lines.append(f"🏢 *Admins tracked:* {len(admin_rows)}")
+            lines.append(f"📈 Avg Admin Health: *{avg_admin_health}%*  |  Total Admin Issues: *{total_admin_issues}*")
+            if total_required_signoffs:
+                pct = round((total_signed_signoffs / total_required_signoffs) * 100)
+                lines.append(f"✅ Admin sign-offs: *{total_signed_signoffs}/{total_required_signoffs}* ({pct}%)")
+            else:
+                lines.append("✅ Admin sign-offs: *0/0* (no trader submissions yet)")
+            lines.append("")
+
+            # Leaderboard
+            for rank, r in enumerate(admin_rows, 1):
+                if rank == 1:
+                    medal = '🥇'
+                elif rank == 2:
+                    medal = '🥈'
+                elif rank == 3:
+                    medal = '🥉'
+                else:
+                    medal = f'#{rank}'
+                avg = r['health']
+                if avg >= 95:
+                    title = '👑 Legendary'
+                elif avg >= 90:
+                    title = '⭐ Elite'
+                elif avg >= 80:
+                    title = '💪 Solid'
+                elif avg >= 70:
+                    title = '⚡ Warming Up'
+                elif avg >= 50:
+                    title = '🔧 Needs Work'
+                else:
+                    title = '🚨 SOS'
+                bar_filled = round(avg / 10)
+                bar_empty = 10 - bar_filled
+                bar = '🟩' * bar_filled + '⬛' * bar_empty
+                extra = f" · {r['pending_signoffs']} pending sign-offs" if r['pending_signoffs'] else ""
+                lines.append(f"{medal} *{r['admin']}* — {title}")
+                lines.append(f"   {bar} *{avg}%* · {r['clients']} clients · {r['issues']} issues{extra}")
+            lines.append("")
+
+            # Admin sign-off missing list (only show admins with pending sign-offs)
+            incomplete = [r for r in admin_rows if r['pending_signoffs'] > 0]
+            if incomplete:
+                lines.append("📬 *ADMIN DAILY SUMMARY SIGN-OFF (after trader submits)*")
+                lines.append(f"❌ *Incomplete — pending client sign-offs:*")
+                for r in sorted(incomplete, key=lambda x: (-x['pending_signoffs'], x['admin'])):
+                    lines.append(f"⚠️ *{r['admin']}* — {r['pending_signoffs']} pending")
+                    # Keep Slack message readable; cap long client lists.
+                    missing = r.get('pending_clients') or []
+                    if len(missing) > 25:
+                        shown = ", ".join(missing[:25]) + f", +{len(missing) - 25} more"
+                    else:
+                        shown = ", ".join(missing)
+                    lines.append(f"   ⛔ {shown}")
+                lines.append("")
+    except Exception:
         import traceback
         traceback.print_exc()
 

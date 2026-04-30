@@ -4433,6 +4433,14 @@ def unified_login():
     password = data.get('password', '')
     remember = data.get('remember', False)
     client_ip = get_remote_address()
+
+    # Session durations:
+    # - Default: 24h
+    # - Remember: 7 days (requested)
+    DEFAULT_SESSION_HOURS = 24
+    REMEMBER_SESSION_DAYS = 7
+    session_hours_valid = (REMEMBER_SESSION_DAYS * 24) if remember else DEFAULT_SESSION_HOURS
+    cookie_max_age = (REMEMBER_SESSION_DAYS * 24 * 60 * 60) if remember else (DEFAULT_SESSION_HOURS * 60 * 60)
     
     if not identifier:
         return jsonify({"status": "error", "message": "Email is required"}), 400
@@ -4465,18 +4473,17 @@ def unified_login():
             return jsonify({"status": "error", "message": "Password is required for Super Admin"}), 400
         
         if verify_admin_password('super_admin', password):
-            session_token = create_session('super_admin', 'super_admin', client_ip)
+            session_token = create_session('super_admin', 'super_admin', client_ip, hours_valid=session_hours_valid)
             record_login_attempt('super_admin', 'super_admin', client_ip, True)
             log_action('LOGIN_SUCCESS', 'super_admin', 'super_admin', client_ip)
-            
-            max_age = 30 * 24 * 60 * 60 if remember else 86400  # 30 days or 24 hours
+
             response = jsonify({
                 "status": "success",
                 "user_type": "super_admin",
                 "redirect": "/super_admin",
                 "must_change_password": False
             })
-            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
             return response
         
         record_login_attempt('super_admin', 'super_admin', client_ip, False)
@@ -4489,18 +4496,17 @@ def unified_login():
             return jsonify({"status": "error", "message": "Password is required for BEF Admin"}), 400
         
         if verify_admin_password('bef_admin', password):
-            session_token = create_session('bef_admin', 'bef_admin', client_ip)
+            session_token = create_session('bef_admin', 'bef_admin', client_ip, hours_valid=session_hours_valid)
             record_login_attempt('bef_admin', 'bef_admin', client_ip, True)
             log_action('LOGIN_SUCCESS', 'bef_admin', 'bef_admin', client_ip)
-            
-            max_age = 30 * 24 * 60 * 60 if remember else 86400
+
             response = jsonify({
                 "status": "success",
                 "user_type": "bef_admin",
                 "redirect": "/bef_admin",
                 "must_change_password": False
             })
-            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
             return response
         
         record_login_attempt('bef_admin', 'bef_admin', client_ip, False)
@@ -4513,18 +4519,16 @@ def unified_login():
             return jsonify({"status": "error", "message": "Password is required for Kwok Admin"}), 400
 
         if verify_admin_password('kwok_admin', password):
-            session_token = create_session('kwok_admin', 'kwok_admin', client_ip)
+            session_token = create_session('kwok_admin', 'kwok_admin', client_ip, hours_valid=session_hours_valid)
             record_login_attempt('kwok_admin', 'kwok_admin', client_ip, True)
             log_action('LOGIN_SUCCESS', 'kwok_admin', 'kwok_admin', client_ip)
-
-            max_age = 30 * 24 * 60 * 60 if remember else 86400
             response = jsonify({
                 "status": "success",
                 "user_type": "kwok_admin",
                 "redirect": "/kwok_admin",
                 "must_change_password": False
             })
-            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
             return response
 
         record_login_attempt('kwok_admin', 'kwok_admin', client_ip, False)
@@ -4561,15 +4565,14 @@ def unified_login():
     
     must_change = verified.get('must_change_password', False)
     
-    max_age = 30 * 24 * 60 * 60 if remember else 86400
-    session_token = create_session(user_type, username, client_ip)
+    session_token = create_session(user_type, username, client_ip, hours_valid=session_hours_valid)
     response = jsonify({
         "status": "success",
         "user_type": user_type,
         "redirect": redirect_url,
         "must_change_password": must_change
     })
-    response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+    response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
     return response
 
 # ============ User Management Endpoints (Admin only) ============
@@ -6644,7 +6647,7 @@ def _estimate_issue_date(ev, issue_check, fallback):
     if issue_check == 'Empty Activation Fee':
         return dates[-1]
     # Current/ongoing issues → latest date
-    if issue_check in ('No current day value', 'Negative Hedge Net, no note'):
+    if issue_check in ('No current day value', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
         return dates[-1]
     return dates[-1]
 
@@ -6721,6 +6724,70 @@ def run_quality_scan(target_client=None):
                                        'estimated_date': push_dt.strftime('%Y-%m-%d')})
                 except (ValueError, TypeError):
                     pass
+
+            # MT5 Profit vs Hedging Results (as displayed in the Stats UI)
+            #
+            # IMPORTANT: this check must compare the same numbers users see on the dashboard:
+            # - MT5 table "Profit" uses current+historical MT5 combined, minus prior activity.
+            # - Stats "Hedging Results" uses (hedging_results + farming_results + discrepancy).
+            try:
+                stats = data.get('statistics', {}) if isinstance(data, dict) else {}
+                hr = stats.get('hedging_review', {}) if isinstance(stats, dict) else {}
+                cf = stats.get('cashflow_inprogress', {}) if isinstance(stats, dict) else {}
+                acct = data.get('account', {}) if isinstance(data, dict) else {}
+                if isinstance(hr, dict) and isinstance(cf, dict) and isinstance(acct, dict):
+                    def _to_float(v):
+                        try:
+                            if v is None:
+                                return 0.0
+                            s = str(v).replace('$', '').replace(',', '').strip()
+                            if s == '':
+                                return 0.0
+                            return float(s)
+                        except (ValueError, TypeError):
+                            return 0.0
+
+                    # Compute the SAME MT5 Profit value shown in the MT5 Accounts Overview table.
+                    # UI source of truth for "Current MT5" is data.account.*
+                    mt5_dep = _to_float(acct.get('total_deposits', hr.get('total_deposits')))
+                    mt5_wd = _to_float(acct.get('total_withdrawals', hr.get('total_withdrawals')))
+                    mt5_bal = _to_float(acct.get('balance', hr.get('current_balance')))
+                    hist = hr.get('historical_accounts') or []
+                    hist_dep = hist_wd = hist_bal = 0.0
+                    prior_activity = _to_float(hr.get('current_mt5_prior_activity'))
+                    if isinstance(hist, list):
+                        for a in hist:
+                            if not isinstance(a, dict):
+                                continue
+                            hist_dep += _to_float(a.get('deposits'))
+                            hist_wd += _to_float(a.get('withdrawals'))
+                            hist_bal += _to_float(a.get('final_balance'))
+                            prior_activity += _to_float(a.get('prior_activity_profit'))
+                    combined_dep = mt5_dep + hist_dep
+                    combined_wd = mt5_wd + hist_wd
+                    combined_bal = mt5_bal + hist_bal
+                    mt5_profit_display = round(combined_bal - (combined_dep + combined_wd) - prior_activity, 2)
+
+                    # Compute the SAME Hedging Results number shown in the Stats panel.
+                    hedge_total_display = round(
+                        _to_float(cf.get('hedging_results')) + _to_float(cf.get('farming_results')) + _to_float(hr.get('discrepancy')),
+                        2
+                    )
+
+                    # Only evaluate this check when there's meaningful MT5 context or a recent push.
+                    has_mt5_context = bool(last_push) or (abs(mt5_dep) > 1e-9) or (abs(mt5_wd) > 1e-9) or (abs(mt5_bal) > 1e-9) or (abs(hist_dep) > 1e-9) or (abs(hist_wd) > 1e-9) or (abs(hist_bal) > 1e-9)
+                    if has_mt5_context:
+                        diff = round(mt5_profit_display - hedge_total_display, 2)
+                        # Tolerance to avoid noise from rounding / tiny differences.
+                        if abs(diff) >= 1.0:
+                            issues.append({
+                                'check': 'Hedging Results mismatch',
+                                'severity': 'high',
+                                'detail': f"Mismatch between sheet hedging results and actual hedging results (HR={hedge_total_display:.2f}, Profit={mt5_profit_display:.2f})",
+                                'estimated_date': scan_date_str
+                            })
+            except Exception:
+                pass
 
             # Check each evaluation row
             total_checks = 0
@@ -6980,14 +7047,38 @@ def run_quality_scan(target_client=None):
 
                 hedge_net = _parse_num(ev.get('Hedge Net', ''))
                 if not new_row_strict_mode and hedge_net is not None and hedge_net < 0:
-                    cell_notes = ev.get('_notes', {}) or {}
-                    has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
-                    notes_col = str(ev.get('Notes', '') or '').strip()
-                    has_note = has_any_note or bool(notes_col)
-                    if not has_note:
-                        issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
-                                       'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
-                                       'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
+                    dp_str = _parse_date_str(ev.get('Date Purchased', '') or '')
+                    is_post_cutoff = bool(dp_str and dp_str >= '2026-04-29')
+                    if is_post_cutoff:
+                        # QA-gated negative hedge net: notes do NOT clear this. Only super_admin can resolve.
+                        try:
+                            from dashboard.database import is_qa_resolved
+                            if not is_qa_resolved('Negative Hedge Net-QA', client_name, idx):
+                                issues.append({
+                                    'check': 'Negative Hedge Net-QA',
+                                    'severity': 'high',
+                                    'row': idx,
+                                    'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                    'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)
+                                })
+                        except Exception:
+                            issues.append({
+                                'check': 'Negative Hedge Net-QA',
+                                'severity': 'high',
+                                'row': idx,
+                                'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)
+                            })
+                    else:
+                        # Legacy behavior (pre-cutoff): notes clear the issue.
+                        cell_notes = ev.get('_notes', {}) or {}
+                        has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
+                        notes_col = str(ev.get('Notes', '') or '').strip()
+                        has_note = has_any_note or bool(notes_col)
+                        if not has_note:
+                            issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
+                                           'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
+                                           'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
                 # Comma used as a decimal separator in Hedge Result / Hedge Day cells.
                 # We only care about European-style "1000,67" or "1,000,00" where
@@ -7197,6 +7288,72 @@ def api_quality_deleted_rows():
     return jsonify({'status': 'success', 'rows': rows, 'total': len(rows)})
 
 
+@app.route('/api/quality/negative_hedge_net_qa', methods=['GET'])
+@require_role('super_admin', 'bef_admin')
+def api_quality_negative_hedge_net_qa():
+    """List unresolved Negative Hedge Net-QA issues across the portfolio."""
+    from dashboard.database import get_quality_scan_results, get_qa_resolved_set
+    date = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
+    scan = get_quality_scan_results(date) or []
+    resolved = get_qa_resolved_set('Negative Hedge Net-QA')
+
+    items = []
+    for r in scan:
+        cid = r.get('client_id')
+        trader = r.get('trader', '')
+        admin = r.get('admin', '')
+        for iss in (r.get('issues') or []):
+            if iss.get('check') != 'Negative Hedge Net-QA':
+                continue
+            row = iss.get('row')
+            if row is None:
+                continue
+            try:
+                row_i = int(row)
+            except Exception:
+                continue
+            if (cid, row_i) in resolved:
+                continue
+            items.append({
+                'client_id': cid,
+                'trader': trader,
+                'admin': admin,
+                'row': row_i,
+                'detail': iss.get('detail', ''),
+                'estimated_date': iss.get('estimated_date', ''),
+                'severity': iss.get('severity', 'high'),
+            })
+
+    items.sort(key=lambda x: (str(x.get('estimated_date') or ''), str(x.get('client_id') or '')), reverse=True)
+    return jsonify({'status': 'success', 'date': date, 'items': items, 'total': len(items)})
+
+
+@app.route('/api/quality/qa_resolve', methods=['POST'])
+@require_role('super_admin', 'bef_admin')
+def api_quality_qa_resolve():
+    """Resolve a QA-gated issue (super admin only)."""
+    from dashboard.database import mark_qa_resolved
+    data = request.get_json(force=True) or {}
+    check_name = (data.get('check') or '').strip()
+    client_id = (data.get('client_id') or '').strip()
+    row = data.get('row')
+    notes = (data.get('notes') or '').strip()
+    if not check_name or not client_id or row is None:
+        return jsonify({'status': 'error', 'message': 'check, client_id, row required'}), 400
+    try:
+        row_i = int(row)
+    except Exception:
+        return jsonify({'status': 'error', 'message': 'row must be an integer'}), 400
+    user = request.session_user.get('user_identifier', '')
+    mark_qa_resolved(check_name, client_id, row_i, user, notes=notes)
+    try:
+        log_action('QA_RESOLVE', request.session_user.get('user_type'), user, get_remote_address(),
+                   f'{check_name} resolved for {client_id} row {row_i}')
+    except Exception:
+        pass
+    return jsonify({'status': 'success'})
+
+
 @app.route('/api/quality/scan', methods=['POST'])
 @require_role('super_admin')
 def api_run_quality_scan():
@@ -7388,6 +7545,559 @@ def api_quality_results():
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': f'Failed to load results: {str(e)}'}), 500
 
+
+def compute_admin_tracker_payload(admin_name: str, date: str):
+    """Compute admin-tracker payload (shared by UI + Slack summaries)."""
+    from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
+    from dashboard.database import (
+        get_quality_scan_results,
+        get_client_data,
+        get_daily_checklists,
+        get_summary_status_for_date,
+        get_setting,
+    )
+    from dashboard.notes_service import get_client_notes
+    import json as _json
+
+    # Exclusions mirror the Daily Summary Tracker rules
+    excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+    excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+
+    # Build admin client roster from hierarchy profiles
+    clients = []
+    for client_id in hierarchy_get_all_clients():
+        p = get_client_profile(client_id) or {}
+        if str(p.get('admin') or '').strip().lower() != str(admin_name or '').strip().lower():
+            continue
+        trader = str(p.get('trader') or '').strip()
+        category = str(p.get('category') or p.get('profile') or '').strip() or 'PRIVATE'
+        active_status = str(p.get('active_status') or 'active').strip().lower()
+        clients.append({
+            'client_id': client_id,
+            'trader': trader,
+            'category': category,
+            'active_status': active_status,
+        })
+    clients.sort(key=lambda c: (c.get('active_status') != 'active', (c.get('trader') or ''), c['client_id']))
+
+    # Load latest quality scan issues (used for fee/downtime derivations)
+    scan_results = get_quality_scan_results() or []
+    scan_by_client = {r.get('client_id'): r for r in scan_results if r.get('client_id')}
+
+    admin_issues = []
+
+    def _add_issue(issue_type, client_id, trader, severity, detail, extra=None):
+        rec = {
+            'type': issue_type,
+            'client_id': client_id,
+            'trader': trader or '',
+            'severity': severity or 'medium',
+            'detail': detail or '',
+        }
+        if extra and isinstance(extra, dict):
+            rec.update(extra)
+        admin_issues.append(rec)
+
+    # Helper: normalize prop firm names to a stable key
+    def _norm_pf(raw):
+        s = str(raw or '').strip().lower().replace(' ', '').replace('_', '')
+        if not s:
+            return ''
+        if 'myfunded' in s or s.startswith('mffu') or 'mffu' in s:
+            return 'mffu'
+        if s in ('toponefutures', 'topone', 'tpo'):
+            return 'toponefutures'
+        if s in ('tradeday', 'trade-day'):
+            return 'tradeday'
+        return s
+
+    _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
+    _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
+    def _is_row_active(ev):
+        sp1 = str(ev.get('Status P1', '') or '').strip().lower()
+        sp2 = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip().lower()
+        if 'delete' in sp1 or 'delete' in sp2:
+            return False
+        return (not any(t in sp1 for t in _inactive_tokens_p1)) and (not any(t in sp2 for t in _inactive_tokens_p2))
+
+    fee_issue_checks = {'Empty Fee', 'Empty Activation Fee', 'Alpha Futures: missing Activation Fee'}
+    for c in clients:
+        cid = c['client_id']
+        trader = c.get('trader') or ''
+        active_status = c.get('active_status', 'active')
+        if active_status == 'inactive':
+            continue
+        if cid in excluded_clients or (trader and trader in excluded_traders):
+            continue
+
+        r = scan_by_client.get(cid) or {}
+        for iss in (r.get('issues') or []):
+            if iss.get('check') in fee_issue_checks:
+                _add_issue(
+                    'challenge_fees',
+                    cid,
+                    trader,
+                    iss.get('severity') or 'medium',
+                    f"{iss.get('check')}: {iss.get('detail') or ''}",
+                    extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
+                )
+        for iss in (r.get('issues') or []):
+            if iss.get('check') == 'Downtime detected':
+                _add_issue(
+                    'downtime',
+                    cid,
+                    trader,
+                    iss.get('severity') or 'high',
+                    iss.get('detail') or 'Downtime detected',
+                    extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
+                )
+
+        # Prop firm max-out counts
+        try:
+            cdata = get_client_data(cid) or {}
+            identity = cdata.get('identity', {}) if isinstance(cdata, dict) else {}
+            if isinstance(identity, dict) and str(identity.get('active_status') or '').lower() == 'inactive':
+                continue
+            evals = [ev for ev in (cdata.get('evaluations') or []) if isinstance(ev, dict) and not ev.get('_deleted')]
+
+            # Inject cell notes so we can suppress "excess accounts" when the extra rows are explained via notes.
+            try:
+                notes_by_row = get_client_notes(cid) or {}
+                for _i, _ev in enumerate(evals):
+                    if _i in notes_by_row:
+                        _ev['_notes'] = notes_by_row[_i]
+            except Exception:
+                pass
+
+            pf_rows = {}  # pf_key -> list[{idx, has_note}]
+            for idx, ev in enumerate(evals):
+                if not _is_row_active(ev):
+                    continue
+                pf_key = _norm_pf(ev.get('Prop Firm'))
+                if not pf_key:
+                    continue
+                # Excess-account suppression requires a note STRICTLY on the Status P1 cell.
+                has_note = False
+                cell_notes = ev.get('_notes') or {}
+                if isinstance(cell_notes, dict):
+                    sp1_note = cell_notes.get('Status P1')
+                    if sp1_note is not None and str(sp1_note).strip():
+                        has_note = True
+                pf_rows.setdefault(pf_key, []).append({'idx': idx, 'has_note': has_note})
+
+            for pf_key, rows in sorted(pf_rows.items()):
+                count = len(rows)
+                expected = 3 if pf_key == 'mffu' else 5
+                if count == 0:
+                    continue
+                if count != expected:
+                    human = 'My Funded Futures' if pf_key == 'mffu' else pf_key
+                    if count < expected:
+                        _add_issue(
+                            'max_out',
+                            cid,
+                            trader,
+                            'medium',
+                            f"{human}: {expected - count} needed (expected {expected}, has {count})",
+                            extra={'prop_firm': human, 'expected': expected, 'count': count}
+                        )
+                    else:
+                        excess = count - expected
+                        noted = sum(1 for r in rows if r.get('has_note'))
+                        if noted < excess:
+                            missing_notes = excess - noted
+                            _add_issue(
+                                'max_out',
+                                cid,
+                                trader,
+                                'medium',
+                                f"{human}: too many accounts (expected {expected}, has {count}) — {missing_notes} excess row(s) missing note",
+                                extra={'prop_firm': human, 'expected': expected, 'count': count, 'excess': excess, 'excess_missing_notes': missing_notes}
+                            )
+        except Exception:
+            pass
+
+    # Admin summary sign-off (only required after trader submitted)
+    trader_submissions = get_summary_status_for_date(date) or []
+    trader_sent_map = {}
+    for s in trader_submissions:
+        cid = s.get('client_id')
+        if not cid:
+            continue
+        if cid not in trader_sent_map:
+            trader_sent_map[cid] = {
+                'submitted_at': s.get('submitted_at'),
+                'user_identifier': s.get('user_identifier'),
+            }
+    trader_submitted_clients = set(trader_sent_map.keys())
+
+    admin_checklists = get_daily_checklists(date, admin_name) or []
+    def _is_admin_signed(checklist_row):
+        try:
+            if checklist_row.get('checklist_type') != 'admin_daily_summary':
+                return False
+            items = checklist_row.get('items') or []
+            if not isinstance(items, list):
+                return False
+            for it in items:
+                if isinstance(it, dict) and it.get('id') == 'sent_to_client' and bool(it.get('checked')):
+                    return True
+            return False
+        except Exception:
+            return False
+
+    admin_signed_clients = {
+        c.get('client_id')
+        for c in admin_checklists
+        if c.get('client_id') and _is_admin_signed(c)
+    }
+
+    required_clients = sorted([
+        c['client_id']
+        for c in clients
+        if c.get('active_status') == 'active'
+        and c['client_id'] in trader_submitted_clients
+        and (c['client_id'] not in excluded_clients)
+        and ((c.get('trader') or '') not in excluded_traders)
+    ])
+    pending_clients = sorted([cid for cid in required_clients if cid not in admin_signed_clients])
+
+    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in admin_issues)
+    health_score = max(0.0, round(100.0 - deduction, 1))
+
+    # Backward/forward compatibility: different UIs may read `issues` or `admin_issues`.
+    # Keep `issues` as canonical, but include both keys.
+    return {
+        'admin': admin_name,
+        'date': date,
+        'clients': clients,
+        'issues': admin_issues,
+        'admin_issues': admin_issues,
+        'total_clients': len([c for c in clients if c.get('active_status') == 'active']),
+        'total_issues': len(admin_issues),
+        'health_score': health_score,
+        'summary_signoff': {
+            'required_total': len(required_clients),
+            'signed_total': sum(1 for cid in required_clients if cid in admin_signed_clients),
+            'pending_total': len(pending_clients),
+            'pending_clients': pending_clients,
+            'signed_clients': sorted([cid for cid in required_clients if cid in admin_signed_clients]),
+            'trader_sent': trader_sent_map,
+        }
+    }
+
+
+@app.route('/api/admin/tracker')
+@require_role('admin', 'super_admin', 'bef_admin', 'kwok_admin')
+def api_admin_tracker():
+    """Admin tracking dashboard: aggregate admin-owned issues derived from client state and quality scan."""
+    try:
+        from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
+        from dashboard.database import (
+            get_quality_scan_results,
+            get_client_data,
+            get_daily_checklists,
+            get_summary_status_for_date,
+            get_setting,
+        )
+        import json as _json
+
+        def _compute_admin_tracker_payload(admin_name: str, date: str):
+            # Exclusions mirror the Daily Summary Tracker rules
+            excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+            excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+
+            # Build admin client roster from hierarchy profiles
+            clients = []
+            for client_id in hierarchy_get_all_clients():
+                p = get_client_profile(client_id) or {}
+                if str(p.get('admin') or '').strip().lower() != admin_name.lower():
+                    continue
+                trader = str(p.get('trader') or '').strip()
+                category = str(p.get('category') or p.get('profile') or '').strip() or 'PRIVATE'
+                active_status = str(p.get('active_status') or 'active').strip().lower()
+                clients.append({
+                    'client_id': client_id,
+                    'trader': trader,
+                    'category': category,
+                    'active_status': active_status,
+                })
+            clients.sort(key=lambda c: (c.get('active_status') != 'active', (c.get('trader') or ''), c['client_id']))
+
+            # Load latest quality scan issues (used for fee/downtime derivations)
+            scan_results = get_quality_scan_results() or []
+            scan_by_client = {r.get('client_id'): r for r in scan_results if r.get('client_id')}
+
+            admin_issues = []
+
+            def _add_issue(issue_type, client_id, trader, severity, detail, extra=None):
+                rec = {
+                    'type': issue_type,
+                    'client_id': client_id,
+                    'trader': trader or '',
+                    'severity': severity or 'medium',
+                    'detail': detail or '',
+                }
+                if extra and isinstance(extra, dict):
+                    rec.update(extra)
+                admin_issues.append(rec)
+
+            # Helper: normalize prop firm names to a stable key
+            def _norm_pf(raw):
+                s = str(raw or '').strip().lower().replace(' ', '').replace('_', '')
+                if not s:
+                    return ''
+                if 'myfunded' in s or s.startswith('mffu') or 'mffu' in s:
+                    return 'mffu'
+                if s in ('toponefutures', 'topone', 'tpo'):
+                    return 'toponefutures'
+                if s in ('tradeday', 'trade-day'):
+                    return 'tradeday'
+                return s
+
+            _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
+            _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
+            def _is_row_active(ev):
+                sp1 = str(ev.get('Status P1', '') or '').strip().lower()
+                sp2 = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip().lower()
+                if 'delete' in sp1 or 'delete' in sp2:
+                    return False
+                return (not any(t in sp1 for t in _inactive_tokens_p1)) and (not any(t in sp2 for t in _inactive_tokens_p2))
+
+            fee_issue_checks = {'Empty Fee', 'Empty Activation Fee', 'Alpha Futures: missing Activation Fee'}
+            for c in clients:
+                cid = c['client_id']
+                trader = c.get('trader') or ''
+                active_status = c.get('active_status', 'active')
+                if active_status == 'inactive':
+                    continue
+                if cid in excluded_clients or (trader and trader in excluded_traders):
+                    continue
+
+                r = scan_by_client.get(cid) or {}
+                for iss in (r.get('issues') or []):
+                    if iss.get('check') in fee_issue_checks:
+                        _add_issue(
+                            'challenge_fees',
+                            cid,
+                            trader,
+                            iss.get('severity') or 'medium',
+                            f"{iss.get('check')}: {iss.get('detail') or ''}",
+                            extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
+                        )
+                for iss in (r.get('issues') or []):
+                    if iss.get('check') == 'Downtime detected':
+                        _add_issue(
+                            'downtime',
+                            cid,
+                            trader,
+                            iss.get('severity') or 'high',
+                            iss.get('detail') or 'Downtime detected',
+                            extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
+                        )
+
+                # Prop firm max-out counts
+                try:
+                    cdata = get_client_data(cid) or {}
+                    identity = cdata.get('identity', {}) if isinstance(cdata, dict) else {}
+                    if isinstance(identity, dict) and str(identity.get('active_status') or '').lower() == 'inactive':
+                        continue
+                    evals = [ev for ev in (cdata.get('evaluations') or []) if isinstance(ev, dict) and not ev.get('_deleted')]
+
+                    # Inject cell notes so we can suppress "excess accounts" when the extra rows are explained via notes.
+                    # (Matches how run_quality_scan injects notes.)
+                    try:
+                        notes_by_row = get_client_notes(cid) or {}
+                        for _i, _ev in enumerate(evals):
+                            if _i in notes_by_row:
+                                _ev['_notes'] = notes_by_row[_i]
+                    except Exception:
+                        pass
+
+                    pf_rows = {}  # pf_key -> list[{idx, has_note}]
+                    for idx, ev in enumerate(evals):
+                        if not _is_row_active(ev):
+                            continue
+                        pf_key = _norm_pf(ev.get('Prop Firm'))
+                        if not pf_key:
+                            continue
+                        # Excess-account suppression requires a note STRICTLY on the Status P1 cell.
+                        # Notes on other cells are not accepted for this purpose.
+                        has_note = False
+                        cell_notes = ev.get('_notes') or {}
+                        if isinstance(cell_notes, dict):
+                            sp1_note = cell_notes.get('Status P1')
+                            if sp1_note is not None and str(sp1_note).strip():
+                                has_note = True
+                        pf_rows.setdefault(pf_key, []).append({'idx': idx, 'has_note': has_note})
+
+                    for pf_key, rows in sorted(pf_rows.items()):
+                        count = len(rows)
+                        expected = 3 if pf_key == 'mffu' else 5
+                        if count == 0:
+                            continue
+                        if count != expected:
+                            human = 'My Funded Futures' if pf_key == 'mffu' else pf_key
+                            if count < expected:
+                                _add_issue(
+                                    'max_out',
+                                    cid,
+                                    trader,
+                                    'medium',
+                                    f"{human}: {expected - count} needed (expected {expected}, has {count})",
+                                    extra={'prop_firm': human, 'expected': expected, 'count': count}
+                                )
+                            else:
+                                # Excess accounts are allowed ONLY when the extra rows have notes.
+                                # If N accounts exceed the required count, we require at least N rows
+                                # to have a note (cell note or Notes column). Otherwise, flag.
+                                excess = count - expected
+                                noted = sum(1 for r in rows if r.get('has_note'))
+                                if noted < excess:
+                                    missing_notes = excess - noted
+                                    _add_issue(
+                                        'max_out',
+                                        cid,
+                                        trader,
+                                        'medium',
+                                        f"{human}: too many accounts (expected {expected}, has {count}) — {missing_notes} excess row(s) missing note",
+                                        extra={'prop_firm': human, 'expected': expected, 'count': count, 'excess': excess, 'excess_missing_notes': missing_notes}
+                                    )
+                except Exception:
+                    pass
+
+            # Admin summary sign-off (only required after a summary has been sent "upstream")
+            # In your workflow: trader sends summary → admin reviews → admin confirms accurate & sent to client.
+            trader_submissions = get_summary_status_for_date(date) or []
+            trader_sent_map = {}
+            for s in trader_submissions:
+                cid = s.get('client_id')
+                if not cid:
+                    continue
+                # Keep the most recent submission per client (get_summary_status_for_date is newest-first already)
+                if cid not in trader_sent_map:
+                    trader_sent_map[cid] = {
+                        'submitted_at': s.get('submitted_at'),
+                        'user_identifier': s.get('user_identifier'),
+                    }
+            trader_submitted_clients = set(trader_sent_map.keys())
+
+            admin_checklists = get_daily_checklists(date, admin_name) or []
+            def _is_admin_signed(checklist_row):
+                try:
+                    if checklist_row.get('checklist_type') != 'admin_daily_summary':
+                        return False
+                    items = checklist_row.get('items') or []
+                    if not isinstance(items, list):
+                        return False
+                    for it in items:
+                        if isinstance(it, dict) and it.get('id') == 'sent_to_client' and bool(it.get('checked')):
+                            return True
+                    return False
+                except Exception:
+                    return False
+
+            admin_signed_clients = {
+                c.get('client_id')
+                for c in admin_checklists
+                if c.get('client_id') and _is_admin_signed(c)
+            }
+
+            required_clients = []
+            pending_clients = []
+            for c in clients:
+                cid = c['client_id']
+                trader = c.get('trader') or ''
+                if c.get('active_status') == 'inactive':
+                    continue
+                if cid in excluded_clients or (trader and trader in excluded_traders):
+                    continue
+                if cid not in trader_submitted_clients:
+                    continue
+                required_clients.append(cid)
+                if cid not in admin_signed_clients:
+                    pending_clients.append(cid)
+                    _add_issue(
+                        'summary_signoff',
+                        cid,
+                        trader,
+                        'medium',
+                        'Daily summary not signed off (confirm sent to client)',
+                        extra={'date': date}
+                    )
+
+            sev_rank = {'critical': 0, 'high': 1, 'medium': 2, 'warning': 3, 'low': 4, 'info': 5}
+            admin_issues.sort(key=lambda i: (sev_rank.get(i.get('severity', 'medium'), 9), i.get('type', ''), i.get('client_id', '')))
+
+            return {
+                'admin': admin_name,
+                'date': date,
+                'clients': clients,
+                'admin_issues': admin_issues,
+                'summary_signoff': {
+                    'required_total': len(required_clients),
+                    'signed_total': sum(1 for cid in required_clients if cid in admin_signed_clients),
+                    'pending_total': len(pending_clients),
+                    'pending_clients': pending_clients,
+                    'signed_clients': sorted([cid for cid in required_clients if cid in admin_signed_clients]),
+                    'trader_sent': trader_sent_map,
+                }
+            }
+
+        session_user = request.session_user
+        if session_user.get('user_type') in ('super_admin', 'bef_admin', 'kwok_admin'):
+            admin_name = (request.args.get('admin') or '').strip()
+        else:
+            admin_name = (session_user.get('user_identifier') or '').strip()
+        if not admin_name:
+            return jsonify({'status': 'error', 'message': 'Admin name required'}), 400
+        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+        payload = compute_admin_tracker_payload(admin_name, date)
+        return jsonify({'status': 'success', **payload})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Failed to load admin tracker: {str(e)}'}), 500
+
+
+@app.route('/api/quality/admin_tracker')
+@require_role('super_admin', 'bef_admin')
+def api_quality_admin_tracker():
+    """Super-admin view of admin tracker issues across admins (quality dashboard source of truth)."""
+    try:
+        from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
+        admins = set()
+        for cid in hierarchy_get_all_clients():
+            p = get_client_profile(cid) or {}
+            a = str(p.get('admin') or '').strip()
+            if a:
+                admins.add(a)
+        admin = (request.args.get('admin') or '').strip()
+        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+        # Reuse the existing admin tracker endpoint logic by calling the local view function's helper through a request-style call:
+        # We simply invoke /api/admin/tracker-style computation by issuing internal HTTP is overkill; instead, we call api_admin_tracker
+        # is not possible cleanly. So we request per-admin via the public function by recreating minimal request args is not safe.
+        # Pragmatic: call /api/admin/tracker endpoint from frontend for a single admin; for all admins, loop here with the same logic
+        # by delegating to the endpoint itself is avoided. Instead, we reuse the DB-backed quality + client data directly by
+        # calling the /api/admin/tracker route through WSGI is out of scope.
+
+        # Implementation: make N calls by recomputing via querystring by temporarily setting request args is unsafe.
+        # Therefore, we implement a small loop by calling the public endpoint over HTTP is also not allowed here.
+        # So: return the list of admins + let the quality dashboard fetch each admin in parallel.
+        # This keeps server logic correct and avoids duplicating the computation again.
+        result_admins = sorted(admins)
+        if admin:
+            if admin not in admins:
+                return jsonify({'status': 'error', 'message': 'Unknown admin'}), 404
+            return jsonify({'status': 'success', 'admins': result_admins, 'admin': admin, 'date': date})
+        return jsonify({'status': 'success', 'admins': result_admins, 'date': date})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'status': 'error', 'message': f'Failed to load admin tracker index: {str(e)}'}), 500
 
 @app.route('/api/quality/admin_issues')
 @require_role('admin', 'super_admin')
@@ -7853,6 +8563,54 @@ def api_checklist_status():
 
     return jsonify({'status': 'success', 'date': date, 'checklists': checklists})
 
+
+@app.route('/api/admin/summary_signoff', methods=['POST'])
+@require_role('admin', 'super_admin', 'bef_admin', 'kwok_admin')
+def api_admin_summary_signoff():
+    """Admin sign-off: confirm trader summary reviewed + sent to client (persisted like trader tracking)."""
+    from dashboard.database import save_daily_checklist
+    session_user = request.session_user
+    user_type = session_user.get('user_type')
+    session_id = (session_user.get('user_identifier') or '').strip()
+
+    data = request.get_json(silent=True) or {}
+    client_id = (data.get('client_id') or '').strip()
+    admin_name = (data.get('admin') or '').strip()
+    checked = bool(data.get('checked', False))
+
+    if not client_id:
+        return jsonify({'status': 'error', 'message': 'client_id required'}), 400
+
+    # Admin users can only sign off as themselves.
+    # Super admin / BEF / kwok can sign off on behalf of a specific admin dashboard.
+    if user_type == 'admin':
+        effective_admin = session_id
+    else:
+        effective_admin = admin_name
+    if not effective_admin:
+        return jsonify({'status': 'error', 'message': 'Admin name required'}), 400
+
+    today = datetime.now().strftime('%Y-%m-%d')
+    items = [{
+        'id': 'sent_to_client',
+        'title': 'Sent summary to client (approved)',
+        'checked': checked,
+        'status': 'ok' if checked else 'pending',
+        'notes': ''
+    }]
+
+    # Persist under the effective admin identity so the tracker reads it back correctly.
+    save_daily_checklist(today, effective_admin, 'admin', 'admin_daily_summary', items,
+                         get_remote_address(), client_id=client_id)
+
+    try:
+        log_action('ADMIN_SUMMARY_SIGNOFF', 'admin', effective_admin, get_remote_address(),
+                   f'{("checked" if checked else "unchecked")} {client_id}')
+    except Exception:
+        pass
+
+    return jsonify({'status': 'success'})
+
 @app.route('/api/quality/scorecard')
 @require_role('super_admin', 'bef_admin')
 def api_weekly_scorecard():
@@ -7958,6 +8716,7 @@ def api_daily_summary():
     """Generate a text summary of today's dashboard state for Discord/team sharing."""
     from dashboard.database import get_quality_scan_results, get_daily_checklists
     from config.hierarchy import get_all_clients, get_client_profile
+    from config.hierarchy import SYSTEM_HIERARCHY
 
     # UTC date — server runs UTC; midnight UTC = 3 AM Kenyan, so the day
     # flips after the automated 2:05 AM Kenyan Slack send.
@@ -8243,6 +9002,91 @@ def api_daily_summary():
         lines.append("")
 
     lines.append("—")
+
+    # ── Admin Tracker Summary (issues + sign-offs) ──
+    try:
+        admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
+        admin_names = sorted([a for a in admins_map.keys() if str(a).strip()])
+        if admin_names:
+            lines.append("")
+            lines.append("🏢 **ADMIN TRACKER (issues + sign-offs)**")
+            lines.append("_Based on admin-owned checks: fees, prop-firm max-out, downtime, and missing client sign-offs after trader submits._")
+            lines.append("")
+
+            admin_rows = []
+            total_admin_issues = 0
+            total_required_signoffs = 0
+            total_signed_signoffs = 0
+
+            for a in admin_names:
+                payload = compute_admin_tracker_payload(a, date) or {}
+                issues = payload.get('issues') or payload.get('admin_issues') or []
+                sign = payload.get('summary_signoff') or {}
+                required = int(sign.get('required_total') or 0)
+                signed = int(sign.get('signed_total') or 0)
+                pending = int(sign.get('pending_total') or 0)
+
+                total_admin_issues += len(issues)
+                total_required_signoffs += required
+                total_signed_signoffs += signed
+
+                admin_rows.append({
+                    'admin': a,
+                    'health': float(payload.get('health_score') or 0.0),
+                    'clients': int(payload.get('total_clients') or 0),
+                    'issues': len(issues),
+                    'pending_signoffs': pending,
+                    'pending_clients': (sign.get('pending_clients') or []),
+                })
+
+            admin_rows.sort(key=lambda r: (r['health'], r['clients']), reverse=True)
+            avg_admin_health = round(sum(r['health'] for r in admin_rows) / len(admin_rows), 1) if admin_rows else 0.0
+
+            lines.append(f"🏢 **Admins tracked:** {len(admin_rows)}")
+            lines.append(f"📈 Avg Admin Health Score: **{avg_admin_health}%**  |  Total Admin Issues: **{total_admin_issues}**")
+            if total_required_signoffs:
+                pct = round((total_signed_signoffs / total_required_signoffs) * 100)
+                lines.append(f"✅ Admin sign-offs: **{total_signed_signoffs}/{total_required_signoffs}** ({pct}%)")
+            else:
+                lines.append("✅ Admin sign-offs: **0/0** (no trader submissions yet)")
+            lines.append("")
+
+            lines.append("🏆 **ADMIN HEALTH LEADERBOARD**")
+            lines.append("_Ranked by admin health score (highest first)._")
+            lines.append("")
+            for rank, r in enumerate(admin_rows, 1):
+                if rank == 1:
+                    medal = '🥇'
+                elif rank == 2:
+                    medal = '🥈'
+                elif rank == 3:
+                    medal = '🥉'
+                else:
+                    medal = f'`#{rank}`'
+                bar_filled = round(r['health'] / 10)
+                bar_empty = 10 - bar_filled
+                bar = '🟩' * bar_filled + '⬛' * bar_empty
+                extra = f" · {r['pending_signoffs']} pending sign-offs" if r['pending_signoffs'] else ""
+                lines.append(f"{medal} **{r['admin']}**")
+                lines.append(f"   {bar} **{r['health']}%** · {r['clients']} clients · {r['issues']} issues{extra}")
+
+            incomplete = [r for r in admin_rows if r['pending_signoffs'] > 0]
+            if incomplete:
+                lines.append("")
+                lines.append("📬 **ADMIN DAILY SUMMARY SIGN-OFF (after trader submits)**")
+                lines.append("❌ **Incomplete — pending client sign-offs:**")
+                for r in sorted(incomplete, key=lambda x: (-x['pending_signoffs'], x['admin'])):
+                    lines.append(f"⚠️ **{r['admin']}** — {r['pending_signoffs']} pending")
+                    missing = r.get('pending_clients') or []
+                    if len(missing) > 25:
+                        shown = ", ".join(missing[:25]) + f", +{len(missing) - 25} more"
+                    else:
+                        shown = ", ".join(missing)
+                    lines.append(f"   ⛔ {shown}")
+                lines.append("")
+    except Exception:
+        import traceback
+        traceback.print_exc()
 
     summary_text = "\n".join(lines)
 

@@ -215,9 +215,46 @@
             <button class="scan-btn" id="disc-btn" onclick="showDiscrepancies()" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" title="View clients by discrepancy">
                 <i class="fas fa-scale-unbalanced"></i> Discrepancies
             </button>
+            <button class="scan-btn" id="neg-hedge-qa-btn" onclick="showNegativeHedgeNetQA()" style="background:linear-gradient(135deg,#7c2d12,#ea580c);" title="Super-admin QA queue for negative hedge net">
+                <i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA
+            </button>
             <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);" title="Post daily summary to Slack">
                 <i class="fab fa-slack"></i> Send to Slack
             </button>
+        </div>
+
+        <!-- Negative Hedge Net-QA Modal -->
+        <div id="neg-hedge-qa-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(980px,96vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b;">
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-triangle-exclamation" style="color:#fb923c; margin-right:8px;"></i>Negative Hedge Net-QA
+                        <span id="neg-hedge-qa-badge" style="font-size:0.82rem; background:rgba(251,146,60,0.14); color:#fb923c; padding:2px 10px; border-radius:12px; margin-left:8px;"></span>
+                    </h3>
+                    <button onclick="document.getElementById('neg-hedge-qa-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                </div>
+                <div style="padding:14px 24px 8px; display:flex; gap:10px; align-items:center;">
+                    <input type="text" id="neg-hedge-qa-search" placeholder="Search client/trader..." oninput="filterNegativeHedgeNetQA()" style="flex:1; padding:8px 14px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.88rem; outline:none;">
+                    <button id="neg-hedge-qa-refresh" onclick="showNegativeHedgeNetQA(true)" style="background:rgba(255,255,255,0.06); border:1px solid #334155; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; font-size:0.85rem;">
+                        <i class="fas fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="overflow-y:auto; flex:1; padding:0 24px 18px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155; position:sticky; top:0; background:#0f172a;">
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">#</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Client</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Trader</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Row</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Detail</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Est. Date</th>
+                                <th style="text-align:center; padding:10px 8px; color:#94a3b8; font-weight:600;">Resolve</th>
+                            </tr>
+                        </thead>
+                        <tbody id="neg-hedge-qa-tbody"><tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Discrepancies Modal -->
@@ -276,8 +313,59 @@
             </div>
         </div>
 
+        <!-- Admin Tracker (source of truth) -->
+        <div class="section-title" style="margin-top:32px;">
+            <i class="fas fa-shield-halved" style="color:#fbbf24;"></i> Admin Tracker
+            <span id="admin-tracker-count-badge" style="margin-left:8px; font-size:0.78rem; background:rgba(251,191,36,0.12); color:#fbbf24; padding:2px 10px; border-radius:12px; font-weight:600; border:1px solid rgba(251,191,36,0.25);"></span>
+            <button onclick="loadAdminTracker()" style="margin-left:12px; background:linear-gradient(135deg,#f59e0b,#d97706); border:none; color:#0b1225; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem; font-weight:800;">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+            <input type="text" id="admin-tracker-search" class="issue-search" placeholder="Search client, trader, issue..." oninput="renderAdminTrackerTable()">
+            <select id="admin-tracker-severity-filter" class="issue-type-filter" onchange="renderAdminTrackerTable()">
+                <option value="all">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="warning">Warning</option>
+                <option value="info">Info</option>
+            </select>
+            <select id="admin-tracker-type-filter" class="issue-type-filter" onchange="renderAdminTrackerTable()">
+                <option value="all">All Issue Types</option>
+            </select>
+            <select id="admin-tracker-admin-filter" class="issue-type-filter" onchange="renderAdminTrackerTable()">
+                <option value="all">All Admins</option>
+            </select>
+        </div>
+        <div class="issues-scroll" style="overflow-x:auto; border-radius:12px; max-height:520px; overflow-y:auto;">
+            <table class="issues-detail-table" id="admin-tracker-table">
+                <thead>
+                    <tr>
+                        <th>Admin</th>
+                        <th>Client</th>
+                        <th>Trader</th>
+                        <th>Severity</th>
+                        <th>Type</th>
+                        <th>Detail</th>
+                        <th>Go To</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-tracker-body">
+                    <tr><td colspan="7" class="empty-state">
+                        <i class="fas fa-shield-halved"></i>
+                        <div>Click “Refresh” to load admin-tracking issues.</div>
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Spacer between the two tables -->
+        <div style="height:22px;"></div>
+
         <!-- All Issues Table (flat, one row per issue) -->
-        <div class="section-title"><i class="fas fa-list-check" style="color:#fbbf24;"></i> All Issues
+        <div class="section-title" style="margin-top:10px;"><i class="fas fa-list-check" style="color:#fbbf24;"></i> All Issues
             <span id="issues-count-badge" style="margin-left:8px; font-size:0.78rem; background:rgba(239,68,68,0.15); color:#f87171; padding:2px 10px; border-radius:12px; font-weight:600;"></span>
         </div>
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
@@ -298,6 +386,7 @@
                 <option value="all">All Traders</option>
             </select>
         </div>
+
         <div class="issues-scroll" style="overflow-x:auto; border-radius:12px; max-height:600px; overflow-y:auto;">
             <table class="issues-detail-table" id="issues-detail-table">
                 <thead>
@@ -475,6 +564,7 @@
             loadResults();
             loadChecklists();
             loadSummaryStatus();
+            loadAdminTracker();
             loadSlackStatus();
             loadDailySlackStatus();
 
@@ -490,6 +580,135 @@
             if (ds) ds.addEventListener('change', onCustomDateChange);
             if (de) de.addEventListener('change', onCustomDateChange);
         });
+
+        // ── Admin Tracker (Super Admin source-of-truth) ───────────────────────
+        function renderAdminTrackerTable() {
+            const body = document.getElementById('admin-tracker-body');
+            const badge = document.getElementById('admin-tracker-count-badge');
+            const search = (document.getElementById('admin-tracker-search')?.value || '').toLowerCase();
+            const sevFilter = document.getElementById('admin-tracker-severity-filter')?.value || 'all';
+            const typeFilter = document.getElementById('admin-tracker-type-filter')?.value || 'all';
+            const selectedAdmin = document.getElementById('admin-tracker-admin-filter')?.value || 'all';
+            const all = Array.isArray(window._adminTrackerFlat) ? window._adminTrackerFlat : [];
+            const loaded = !!window._adminTrackerLoaded;
+
+            const filtered = all.filter(i => {
+                if (selectedAdmin !== 'all' && i.admin !== selectedAdmin) return false;
+                if (sevFilter !== 'all' && (i.severity || '').toLowerCase() !== sevFilter) return false;
+                if (typeFilter !== 'all' && (i.type || '') !== typeFilter) return false;
+                if (search) {
+                    const hay = `${i.admin} ${i.client} ${i.trader} ${i.severity} ${i.type} ${i.detail}`.toLowerCase();
+                    if (!hay.includes(search)) return false;
+                }
+                return true;
+            });
+            badge.textContent = filtered.length ? `${filtered.length} issue${filtered.length !== 1 ? 's' : ''}` : '0 issues';
+
+            if (all.length === 0) {
+                body.innerHTML = loaded
+                    ? `<tr><td colspan="7" style="text-align:center; padding:24px; color:#4ade80;"><i class="fas fa-circle-check"></i> No admin tracker issues</td></tr>`
+                    : `<tr><td colspan="7" style="text-align:center; padding:24px; color:#94a3b8;">Click “Refresh” to load admin-tracking issues.</td></tr>`;
+                return;
+            }
+            if (filtered.length === 0) {
+                body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#4ade80;"><i class="fas fa-circle-check"></i> No issues for this admin</td></tr>`;
+                return;
+            }
+
+            const sevOrder = {critical:0, high:1, medium:2, warning:3, low:4, info:5};
+            filtered.sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9) || a.admin.localeCompare(b.admin) || a.client.localeCompare(b.client));
+
+            const badgeClass = (sev) => {
+                if (sev === 'critical') return 'badge-critical';
+                if (sev === 'high') return 'badge-high';
+                if (sev === 'medium') return 'badge-medium';
+                if (sev === 'low') return 'badge-low';
+                if (sev === 'warning') return 'badge-yellow';
+                return 'badge-info';
+            };
+
+            body.innerHTML = filtered.map(i => {
+                const link = i.row !== null ? `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}` : `/dashboard/${encodeURIComponent(i.client)}`;
+                return `<tr>
+                    <td style="color:#e2e8f0; font-weight:600;">${i.admin}</td>
+                    <td style="color:#e2e8f0; font-weight:500;">${i.client}</td>
+                    <td style="color:#94a3b8;">${i.trader}</td>
+                    <td><span class="badge ${badgeClass(i.severity)}">${i.severity}</span></td>
+                    <td style="color:#e2e8f0;">${i.type.replace(/_/g,' ')}</td>
+                    <td style="color:#94a3b8; font-size:0.78rem; max-width:320px;">${i.detail}</td>
+                    <td><a href="${link}" target="_blank" class="go-link"><i class="fas fa-arrow-right"></i> Go</a></td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function loadAdminTracker() {
+            const body = document.getElementById('admin-tracker-body');
+            const badge = document.getElementById('admin-tracker-count-badge');
+            body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading admin tracker…</td></tr>`;
+            badge.textContent = '';
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const idxResp = await fetch('/api/quality/admin_tracker?date=' + encodeURIComponent(today) + '&_t=' + Date.now());
+                const idx = await idxResp.json();
+                if (!idxResp.ok || idx.status !== 'success') {
+                    body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">${idx.message || 'Failed to load admin list'}</td></tr>`;
+                    return;
+                }
+                const admins = idx.admins || [];
+                if (admins.length === 0) {
+                    body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#94a3b8;">No admins found in hierarchy.</td></tr>`;
+                    return;
+                }
+
+                // Fetch each admin's tracker in parallel (super_admin session can query any admin)
+                const tasks = admins.map(a =>
+                    fetch('/api/admin/tracker?admin=' + encodeURIComponent(a) + '&date=' + encodeURIComponent(today))
+                        .then(r => r.json().then(j => ({ ok: r.ok, data: j, admin: a })))
+                        .catch(e => ({ ok: false, data: { status: 'error', message: e.message }, admin: a }))
+                );
+                const results = await Promise.all(tasks);
+
+                const flat = [];
+                results.forEach(r => {
+                    if (!r.ok || !r.data || r.data.status !== 'success') return;
+                    const issues = r.data.admin_issues || [];
+                    issues.forEach(i => {
+                        flat.push({
+                            admin: r.admin,
+                            client: i.client_id,
+                            trader: i.trader || '-',
+                            severity: i.severity || 'medium',
+                            type: i.type || '',
+                            detail: i.detail || '',
+                            row: (i.row !== undefined && i.row !== null) ? i.row : null,
+                        });
+                    });
+                });
+
+                window._adminTrackerFlat = flat;
+                window._adminTrackerLoaded = true;
+
+                const adminFilter = document.getElementById('admin-tracker-admin-filter');
+                if (adminFilter) {
+                    const prev = adminFilter.value || 'all';
+                    const uniqueAdmins = [...new Set(flat.map(x => x.admin))].sort((a,b) => a.localeCompare(b));
+                    adminFilter.innerHTML = `<option value="all">All Admins</option>` + uniqueAdmins.map(a => `<option value="${a.replace(/"/g,'&quot;')}">${a}</option>`).join('');
+                    adminFilter.value = uniqueAdmins.includes(prev) ? prev : 'all';
+                }
+
+                const typeSel = document.getElementById('admin-tracker-type-filter');
+                if (typeSel) {
+                    const prev = typeSel.value || 'all';
+                    const uniqueTypes = [...new Set(flat.map(x => x.type).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+                    typeSel.innerHTML = `<option value="all">All Issue Types</option>` + uniqueTypes.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t.replace(/_/g,' ')}</option>`).join('');
+                    typeSel.value = uniqueTypes.includes(prev) ? prev : 'all';
+                }
+
+                renderAdminTrackerTable();
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Failed: ${e.message}</td></tr>`;
+            }
+        }
 
         // ── Slack Settings ──
         async function loadSlackStatus() {
@@ -873,6 +1092,135 @@
                     <td style="padding:8px;"><a href="${link}" target="_blank" class="go-link" onclick="event.stopPropagation();"><i class="fas fa-arrow-right"></i> Go</a></td>
                 </tr>`;
             }).join('');
+        }
+
+        /* ---------- Negative Hedge Net-QA modal ---------- */
+        let _negHedgeQaData = [];
+
+        async function showNegativeHedgeNetQA(keepOpen = false) {
+            const btn = document.getElementById('neg-hedge-qa-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            }
+            const modal = document.getElementById('neg-hedge-qa-modal');
+            if (!keepOpen && modal) {
+                modal.style.display = 'flex';
+                const search = document.getElementById('neg-hedge-qa-search');
+                if (search) search.value = '';
+            } else if (modal) {
+                modal.style.display = 'flex';
+            }
+            const tbody = document.getElementById('neg-hedge-qa-tbody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+            try {
+                const today = (window._selectedScanDate || '').trim() || new Date().toISOString().slice(0, 10);
+                const resp = await fetch('/api/quality/negative_hedge_net_qa?date=' + encodeURIComponent(today) + '&_t=' + Date.now());
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    _negHedgeQaData = data.items || [];
+                    const badge = document.getElementById('neg-hedge-qa-badge');
+                    if (badge) badge.textContent = `${_negHedgeQaData.length} item${_negHedgeQaData.length !== 1 ? 's' : ''}`;
+                    filterNegativeHedgeNetQA();
+                } else {
+                    showToast('error', 'Failed', data.message || 'Could not load QA queue');
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Failed: ' + (data.message || 'Unknown error') + '</td></tr>';
+                }
+            } catch (e) {
+                showToast('error', 'Error', e.message || 'Network error');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Error: ' + (e.message || e) + '</td></tr>';
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA';
+                }
+            }
+        }
+
+        function filterNegativeHedgeNetQA() {
+            const q = (document.getElementById('neg-hedge-qa-search')?.value || '').toLowerCase();
+            const filtered = q
+                ? _negHedgeQaData.filter(x =>
+                    String(x.client_id || '').toLowerCase().includes(q) ||
+                    String(x.trader || '').toLowerCase().includes(q) ||
+                    String(x.detail || '').toLowerCase().includes(q)
+                  )
+                : _negHedgeQaData;
+            renderNegativeHedgeNetQA(filtered);
+        }
+
+        function renderNegativeHedgeNetQA(items) {
+            const tbody = document.getElementById('neg-hedge-qa-tbody');
+            if (!tbody) return;
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;">No unresolved Negative Hedge Net-QA items 🎉</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map((r, i) => {
+                const link = `/dashboard/${encodeURIComponent(r.client_id)}#eval-row-${r.row}`;
+                return `<tr style="border-bottom:1px solid #1e293b;">
+                    <td style="padding:8px; color:#64748b;">${i + 1}</td>
+                    <td style="padding:8px;"><a href="/dashboard/${encodeURIComponent(r.client_id)}" target="_blank" style="color:#60a5fa; text-decoration:none; font-weight:600;">${r.client_id}</a></td>
+                    <td style="padding:8px; color:#94a3b8;">${r.trader || ''}</td>
+                    <td style="padding:8px;"><a href="${link}" target="_blank" style="color:#a78bfa; text-decoration:none;">Row ${Number(r.row) + 1}</a></td>
+                    <td style="padding:8px; color:#94a3b8;">${(r.detail || '').replace(/</g,'&lt;')}</td>
+                    <td style="padding:8px; color:#64748b;">${r.estimated_date || ''}</td>
+                    <td style="padding:8px; text-align:center;">
+                        <button data-qa-resolve="1" data-client-id="${String(r.client_id).replace(/"/g,'&quot;')}" data-row="${Number(r.row)}"
+                            style="background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.32); color:#4ade80; padding:6px 12px; border-radius:10px; cursor:pointer; font-weight:800; font-size:0.8rem;">
+                            Resolve
+                        </button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Reliable click handling for dynamically-rendered Resolve buttons.
+        document.addEventListener('click', (ev) => {
+            const btn = ev.target && ev.target.closest ? ev.target.closest('button[data-qa-resolve="1"]') : null;
+            if (!btn) return;
+            ev.preventDefault();
+            const clientId = btn.getAttribute('data-client-id') || '';
+            const rowIndex = Number(btn.getAttribute('data-row'));
+            // UI feedback immediately so it never feels "dead"
+            btn.disabled = true;
+            const old = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resolving...';
+            resolveQaIssue(clientId, rowIndex).finally(() => {
+                // If resolveQaIssue succeeded, it will re-render and this button will disappear anyway.
+                btn.disabled = false;
+                btn.innerHTML = old;
+            });
+        }, true);
+
+        async function resolveQaIssue(clientId, rowIndex) {
+            try {
+                const resp = await fetch('/api/quality/qa_resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        check: 'Negative Hedge Net-QA',
+                        client_id: String(clientId || ''),
+                        row: Number(rowIndex)
+                    })
+                });
+                const data = await resp.json();
+                if (!resp.ok || data.status !== 'success') {
+                    showToast('error', 'Resolve failed', data.message || 'Could not resolve');
+                    return;
+                }
+                showToast('success', 'Resolved', `${clientId} · Row ${Number(rowIndex) + 1}`);
+                // Remove locally then re-render quickly
+                _negHedgeQaData = (_negHedgeQaData || []).filter(x => !(x.client_id === clientId && Number(x.row) === Number(rowIndex)));
+                const badge = document.getElementById('neg-hedge-qa-badge');
+                if (badge) badge.textContent = `${_negHedgeQaData.length} item${_negHedgeQaData.length !== 1 ? 's' : ''}`;
+                filterNegativeHedgeNetQA();
+                // Refresh main results so the issue disappears from All Issues table as well.
+                loadResults();
+            } catch (e) {
+                showToast('error', 'Resolve failed', e.message || 'Network error');
+            }
         }
 
         function filterDeletedRows() {
