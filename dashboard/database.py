@@ -1299,6 +1299,88 @@ def _get_weekly_scan_results_inner(end_date: str = None, days: int = 7) -> list:
         return results
 
 
+# ============ QA Resolutions (super-admin gated) ============
+
+def _ensure_qa_resolutions_table():
+    """Ensure QA resolution table exists (small operational table)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS qa_resolutions (
+                check_name TEXT NOT NULL,
+                client_id TEXT NOT NULL,
+                row_index INTEGER NOT NULL,
+                resolved BOOLEAN NOT NULL DEFAULT TRUE,
+                resolved_by TEXT NOT NULL DEFAULT '',
+                resolved_at TEXT NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (check_name, client_id, row_index)
+            )
+        ''')
+        conn.commit()
+
+
+def get_qa_resolved_set(check_name: str) -> set:
+    """Return a set of (client_id, row_index) resolved for a given QA check."""
+    if not check_name:
+        return set()
+    try:
+        _ensure_qa_resolutions_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT client_id, row_index FROM qa_resolutions WHERE check_name = ? AND resolved = TRUE',
+                (check_name,)
+            )
+            rows = cursor.fetchall() or []
+            out = set()
+            for r in rows:
+                try:
+                    out.add((r['client_id'], int(r['row_index'])))
+                except Exception:
+                    continue
+            return out
+    except Exception:
+        return set()
+
+
+def is_qa_resolved(check_name: str, client_id: str, row_index: int) -> bool:
+    """Check whether a specific QA issue has been resolved."""
+    if not check_name or not client_id:
+        return False
+    try:
+        _ensure_qa_resolutions_table()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT resolved FROM qa_resolutions WHERE check_name = ? AND client_id = ? AND row_index = ?',
+                (check_name, client_id, int(row_index))
+            )
+            row = cursor.fetchone()
+            return bool(row and row.get('resolved'))
+    except Exception:
+        return False
+
+
+def mark_qa_resolved(check_name: str, client_id: str, row_index: int, resolved_by: str, notes: str = ''):
+    """Mark a QA issue resolved (idempotent)."""
+    if not check_name or not client_id:
+        return
+    _ensure_qa_resolutions_table()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO qa_resolutions (check_name, client_id, row_index, resolved, resolved_by, resolved_at, notes)
+            VALUES (?, ?, ?, TRUE, ?, ?, ?)
+            ON CONFLICT(check_name, client_id, row_index) DO UPDATE SET
+                resolved = TRUE,
+                resolved_by = excluded.resolved_by,
+                resolved_at = excluded.resolved_at,
+                notes = excluded.notes
+        ''', (check_name, client_id, int(row_index), resolved_by or '', datetime.now().isoformat(), notes or ''))
+        conn.commit()
+
+
 # ============ Data History Management ============
 
 def get_client_activity(client_id: str) -> dict:

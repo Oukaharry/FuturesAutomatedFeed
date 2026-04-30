@@ -215,9 +215,46 @@
             <button class="scan-btn" id="disc-btn" onclick="showDiscrepancies()" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" title="View clients by discrepancy">
                 <i class="fas fa-scale-unbalanced"></i> Discrepancies
             </button>
+            <button class="scan-btn" id="neg-hedge-qa-btn" onclick="showNegativeHedgeNetQA()" style="background:linear-gradient(135deg,#7c2d12,#ea580c);" title="Super-admin QA queue for negative hedge net">
+                <i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA
+            </button>
             <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);" title="Post daily summary to Slack">
                 <i class="fab fa-slack"></i> Send to Slack
             </button>
+        </div>
+
+        <!-- Negative Hedge Net-QA Modal -->
+        <div id="neg-hedge-qa-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(980px,96vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b;">
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-triangle-exclamation" style="color:#fb923c; margin-right:8px;"></i>Negative Hedge Net-QA
+                        <span id="neg-hedge-qa-badge" style="font-size:0.82rem; background:rgba(251,146,60,0.14); color:#fb923c; padding:2px 10px; border-radius:12px; margin-left:8px;"></span>
+                    </h3>
+                    <button onclick="document.getElementById('neg-hedge-qa-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                </div>
+                <div style="padding:14px 24px 8px; display:flex; gap:10px; align-items:center;">
+                    <input type="text" id="neg-hedge-qa-search" placeholder="Search client/trader..." oninput="filterNegativeHedgeNetQA()" style="flex:1; padding:8px 14px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.88rem; outline:none;">
+                    <button id="neg-hedge-qa-refresh" onclick="showNegativeHedgeNetQA(true)" style="background:rgba(255,255,255,0.06); border:1px solid #334155; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; font-size:0.85rem;">
+                        <i class="fas fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="overflow-y:auto; flex:1; padding:0 24px 18px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155; position:sticky; top:0; background:#0f172a;">
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">#</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Client</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Trader</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Row</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Detail</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Est. Date</th>
+                                <th style="text-align:center; padding:10px 8px; color:#94a3b8; font-weight:600;">Resolve</th>
+                            </tr>
+                        </thead>
+                        <tbody id="neg-hedge-qa-tbody"><tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Discrepancies Modal -->
@@ -985,6 +1022,135 @@
                     <td style="padding:8px;"><a href="${link}" target="_blank" class="go-link" onclick="event.stopPropagation();"><i class="fas fa-arrow-right"></i> Go</a></td>
                 </tr>`;
             }).join('');
+        }
+
+        /* ---------- Negative Hedge Net-QA modal ---------- */
+        let _negHedgeQaData = [];
+
+        async function showNegativeHedgeNetQA(keepOpen = false) {
+            const btn = document.getElementById('neg-hedge-qa-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            }
+            const modal = document.getElementById('neg-hedge-qa-modal');
+            if (!keepOpen && modal) {
+                modal.style.display = 'flex';
+                const search = document.getElementById('neg-hedge-qa-search');
+                if (search) search.value = '';
+            } else if (modal) {
+                modal.style.display = 'flex';
+            }
+            const tbody = document.getElementById('neg-hedge-qa-tbody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+            try {
+                const today = (window._selectedScanDate || '').trim() || new Date().toISOString().slice(0, 10);
+                const resp = await fetch('/api/quality/negative_hedge_net_qa?date=' + encodeURIComponent(today) + '&_t=' + Date.now());
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    _negHedgeQaData = data.items || [];
+                    const badge = document.getElementById('neg-hedge-qa-badge');
+                    if (badge) badge.textContent = `${_negHedgeQaData.length} item${_negHedgeQaData.length !== 1 ? 's' : ''}`;
+                    filterNegativeHedgeNetQA();
+                } else {
+                    showToast('error', 'Failed', data.message || 'Could not load QA queue');
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Failed: ' + (data.message || 'Unknown error') + '</td></tr>';
+                }
+            } catch (e) {
+                showToast('error', 'Error', e.message || 'Network error');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Error: ' + (e.message || e) + '</td></tr>';
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA';
+                }
+            }
+        }
+
+        function filterNegativeHedgeNetQA() {
+            const q = (document.getElementById('neg-hedge-qa-search')?.value || '').toLowerCase();
+            const filtered = q
+                ? _negHedgeQaData.filter(x =>
+                    String(x.client_id || '').toLowerCase().includes(q) ||
+                    String(x.trader || '').toLowerCase().includes(q) ||
+                    String(x.detail || '').toLowerCase().includes(q)
+                  )
+                : _negHedgeQaData;
+            renderNegativeHedgeNetQA(filtered);
+        }
+
+        function renderNegativeHedgeNetQA(items) {
+            const tbody = document.getElementById('neg-hedge-qa-tbody');
+            if (!tbody) return;
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;">No unresolved Negative Hedge Net-QA items 🎉</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map((r, i) => {
+                const link = `/dashboard/${encodeURIComponent(r.client_id)}#eval-row-${r.row}`;
+                return `<tr style="border-bottom:1px solid #1e293b;">
+                    <td style="padding:8px; color:#64748b;">${i + 1}</td>
+                    <td style="padding:8px;"><a href="/dashboard/${encodeURIComponent(r.client_id)}" target="_blank" style="color:#60a5fa; text-decoration:none; font-weight:600;">${r.client_id}</a></td>
+                    <td style="padding:8px; color:#94a3b8;">${r.trader || ''}</td>
+                    <td style="padding:8px;"><a href="${link}" target="_blank" style="color:#a78bfa; text-decoration:none;">Row ${Number(r.row) + 1}</a></td>
+                    <td style="padding:8px; color:#94a3b8;">${(r.detail || '').replace(/</g,'&lt;')}</td>
+                    <td style="padding:8px; color:#64748b;">${r.estimated_date || ''}</td>
+                    <td style="padding:8px; text-align:center;">
+                        <button data-qa-resolve="1" data-client-id="${String(r.client_id).replace(/"/g,'&quot;')}" data-row="${Number(r.row)}"
+                            style="background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.32); color:#4ade80; padding:6px 12px; border-radius:10px; cursor:pointer; font-weight:800; font-size:0.8rem;">
+                            Resolve
+                        </button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Reliable click handling for dynamically-rendered Resolve buttons.
+        document.addEventListener('click', (ev) => {
+            const btn = ev.target && ev.target.closest ? ev.target.closest('button[data-qa-resolve="1"]') : null;
+            if (!btn) return;
+            ev.preventDefault();
+            const clientId = btn.getAttribute('data-client-id') || '';
+            const rowIndex = Number(btn.getAttribute('data-row'));
+            // UI feedback immediately so it never feels "dead"
+            btn.disabled = true;
+            const old = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resolving...';
+            resolveQaIssue(clientId, rowIndex).finally(() => {
+                // If resolveQaIssue succeeded, it will re-render and this button will disappear anyway.
+                btn.disabled = false;
+                btn.innerHTML = old;
+            });
+        }, true);
+
+        async function resolveQaIssue(clientId, rowIndex) {
+            try {
+                const resp = await fetch('/api/quality/qa_resolve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        check: 'Negative Hedge Net-QA',
+                        client_id: String(clientId || ''),
+                        row: Number(rowIndex)
+                    })
+                });
+                const data = await resp.json();
+                if (!resp.ok || data.status !== 'success') {
+                    showToast('error', 'Resolve failed', data.message || 'Could not resolve');
+                    return;
+                }
+                showToast('success', 'Resolved', `${clientId} · Row ${Number(rowIndex) + 1}`);
+                // Remove locally then re-render quickly
+                _negHedgeQaData = (_negHedgeQaData || []).filter(x => !(x.client_id === clientId && Number(x.row) === Number(rowIndex)));
+                const badge = document.getElementById('neg-hedge-qa-badge');
+                if (badge) badge.textContent = `${_negHedgeQaData.length} item${_negHedgeQaData.length !== 1 ? 's' : ''}`;
+                filterNegativeHedgeNetQA();
+                // Refresh main results so the issue disappears from All Issues table as well.
+                loadResults();
+            } catch (e) {
+                showToast('error', 'Resolve failed', e.message || 'Network error');
+            }
         }
 
         function filterDeletedRows() {

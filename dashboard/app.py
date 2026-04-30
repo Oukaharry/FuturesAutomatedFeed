@@ -6647,7 +6647,7 @@ def _estimate_issue_date(ev, issue_check, fallback):
     if issue_check == 'Empty Activation Fee':
         return dates[-1]
     # Current/ongoing issues → latest date
-    if issue_check in ('No current day value', 'Negative Hedge Net, no note'):
+    if issue_check in ('No current day value', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
         return dates[-1]
     return dates[-1]
 
@@ -7047,14 +7047,38 @@ def run_quality_scan(target_client=None):
 
                 hedge_net = _parse_num(ev.get('Hedge Net', ''))
                 if not new_row_strict_mode and hedge_net is not None and hedge_net < 0:
-                    cell_notes = ev.get('_notes', {}) or {}
-                    has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
-                    notes_col = str(ev.get('Notes', '') or '').strip()
-                    has_note = has_any_note or bool(notes_col)
-                    if not has_note:
-                        issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
-                                       'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
-                                       'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
+                    dp_str = _parse_date_str(ev.get('Date Purchased', '') or '')
+                    is_post_cutoff = bool(dp_str and dp_str >= '2026-04-29')
+                    if is_post_cutoff:
+                        # QA-gated negative hedge net: notes do NOT clear this. Only super_admin can resolve.
+                        try:
+                            from dashboard.database import is_qa_resolved
+                            if not is_qa_resolved('Negative Hedge Net-QA', client_name, idx):
+                                issues.append({
+                                    'check': 'Negative Hedge Net-QA',
+                                    'severity': 'high',
+                                    'row': idx,
+                                    'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                    'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)
+                                })
+                        except Exception:
+                            issues.append({
+                                'check': 'Negative Hedge Net-QA',
+                                'severity': 'high',
+                                'row': idx,
+                                'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)
+                            })
+                    else:
+                        # Legacy behavior (pre-cutoff): notes clear the issue.
+                        cell_notes = ev.get('_notes', {}) or {}
+                        has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
+                        notes_col = str(ev.get('Notes', '') or '').strip()
+                        has_note = has_any_note or bool(notes_col)
+                        if not has_note:
+                            issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
+                                           'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
+                                           'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
                 # Comma used as a decimal separator in Hedge Result / Hedge Day cells.
                 # We only care about European-style "1000,67" or "1,000,00" where
@@ -7262,6 +7286,72 @@ def api_quality_deleted_rows():
             continue
 
     return jsonify({'status': 'success', 'rows': rows, 'total': len(rows)})
+
+
+@app.route('/api/quality/negative_hedge_net_qa', methods=['GET'])
+@require_role('super_admin', 'bef_admin')
+def api_quality_negative_hedge_net_qa():
+    """List unresolved Negative Hedge Net-QA issues across the portfolio."""
+    from dashboard.database import get_quality_scan_results, get_qa_resolved_set
+    date = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
+    scan = get_quality_scan_results(date) or []
+    resolved = get_qa_resolved_set('Negative Hedge Net-QA')
+
+    items = []
+    for r in scan:
+        cid = r.get('client_id')
+        trader = r.get('trader', '')
+        admin = r.get('admin', '')
+        for iss in (r.get('issues') or []):
+            if iss.get('check') != 'Negative Hedge Net-QA':
+                continue
+            row = iss.get('row')
+            if row is None:
+                continue
+            try:
+                row_i = int(row)
+            except Exception:
+                continue
+            if (cid, row_i) in resolved:
+                continue
+            items.append({
+                'client_id': cid,
+                'trader': trader,
+                'admin': admin,
+                'row': row_i,
+                'detail': iss.get('detail', ''),
+                'estimated_date': iss.get('estimated_date', ''),
+                'severity': iss.get('severity', 'high'),
+            })
+
+    items.sort(key=lambda x: (str(x.get('estimated_date') or ''), str(x.get('client_id') or '')), reverse=True)
+    return jsonify({'status': 'success', 'date': date, 'items': items, 'total': len(items)})
+
+
+@app.route('/api/quality/qa_resolve', methods=['POST'])
+@require_role('super_admin', 'bef_admin')
+def api_quality_qa_resolve():
+    """Resolve a QA-gated issue (super admin only)."""
+    from dashboard.database import mark_qa_resolved
+    data = request.get_json(force=True) or {}
+    check_name = (data.get('check') or '').strip()
+    client_id = (data.get('client_id') or '').strip()
+    row = data.get('row')
+    notes = (data.get('notes') or '').strip()
+    if not check_name or not client_id or row is None:
+        return jsonify({'status': 'error', 'message': 'check, client_id, row required'}), 400
+    try:
+        row_i = int(row)
+    except Exception:
+        return jsonify({'status': 'error', 'message': 'row must be an integer'}), 400
+    user = request.session_user.get('user_identifier', '')
+    mark_qa_resolved(check_name, client_id, row_i, user, notes=notes)
+    try:
+        log_action('QA_RESOLVE', request.session_user.get('user_type'), user, get_remote_address(),
+                   f'{check_name} resolved for {client_id} row {row_i}')
+    except Exception:
+        pass
+    return jsonify({'status': 'success'})
 
 
 @app.route('/api/quality/scan', methods=['POST'])

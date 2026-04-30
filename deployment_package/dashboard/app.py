@@ -3203,7 +3203,7 @@ def _estimate_issue_date(ev, issue_check, scan_date_str):
         return ds or dp or dates[0]
     if issue_check == 'Empty Activation Fee':
         return dates[-1]
-    if issue_check in ('No current day value', 'Negative Hedge Net, no note'):
+    if issue_check in ('No current day value', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
         return dates[-1]
     return dates[-1]
 
@@ -3467,14 +3467,30 @@ def run_quality_scan(target_client=None):
 
             hedge_net = _parse_num(ev.get('Hedge Net', ''))
             if hedge_net is not None and hedge_net < 0:
-                cell_notes = ev.get('_notes', {}) or {}
-                has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
-                notes_col = str(ev.get('Notes', '') or '').strip()
-                has_note = has_any_note or bool(notes_col)
-                if not has_note:
-                    issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
-                                   'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
-                                   'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
+                dp_str = _parse_date_str(ev.get('Date Purchased', '') or '')
+                is_post_cutoff = bool(dp_str and dp_str >= '2026-04-29')
+                if is_post_cutoff:
+                    # QA-gated negative hedge net: notes do NOT clear this. Only super_admin can resolve.
+                    try:
+                        from dashboard.database import is_qa_resolved
+                        if not is_qa_resolved('Negative Hedge Net-QA', client_name, idx):
+                            issues.append({'check': 'Negative Hedge Net-QA', 'severity': 'high', 'row': idx,
+                                           'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                           'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)})
+                    except Exception:
+                        issues.append({'check': 'Negative Hedge Net-QA', 'severity': 'high', 'row': idx,
+                                       'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                       'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)})
+                else:
+                    # Legacy behavior (pre-cutoff): notes clear the issue.
+                    cell_notes = ev.get('_notes', {}) or {}
+                    has_any_note = isinstance(cell_notes, dict) and any(v for v in cell_notes.values() if v and str(v).strip())
+                    notes_col = str(ev.get('Notes', '') or '').strip()
+                    has_note = has_any_note or bool(notes_col)
+                    if not has_note:
+                        issues.append({'check': 'Negative Hedge Net, no note', 'severity': 'high', 'row': idx,
+                                       'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} with no explanation',
+                                       'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net, no note', scan_date_str)})
 
             # Comma used as a decimal separator in Hedge Result / Hedge Day cells.
             # We only care about European-style "1000,67" or "1,000,00" where
