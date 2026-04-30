@@ -3916,12 +3916,26 @@ def api_client_push():
             import traceback
             app.logger.error(traceback.format_exc())
             # Keep the provided statistics if recalc fails
-    
+
+    # Merge incoming account onto existing instead of replacing.
+    # The lightweight push sends total_deposits/total_withdrawals as 0 (deal-history
+    # walk is skipped for speed); the follow-up /api/client/push_hedging_review call
+    # fills them in. If we let the zeros overwrite, any push where the HR follow-up
+    # fails (MT5 disconnect, history_deals_get timeout, network error) leaves the
+    # panel showing $0 until the next successful HR push.
+    incoming_acct = mt5_account or {}
+    existing_acct = existing_data.get("account") or {}
+    merged_acct = dict(existing_acct)
+    merged_acct.update(incoming_acct)
+    for _preserve_key in ("total_deposits", "total_withdrawals"):
+        if not incoming_acct.get(_preserve_key):
+            merged_acct[_preserve_key] = existing_acct.get(_preserve_key, 0)
+
     # Prepare client data
     client_data = {
         "deals": mt5_deals,
         "positions": data.get("positions", []),
-        "account": mt5_account,
+        "account": merged_acct,
         "evaluations": evaluations,
         "statistics": statistics,
         "dropdown_options": data.get("dropdown_options", {}),
@@ -9833,11 +9847,21 @@ def update_data_with_api_key(data, identity, user_info):
     else:
         dropdown_options = incoming_options
 
+    # Merge account onto existing — never wipe MT5 totals when the API caller
+    # omits the field or sends zeros. Same rationale as /api/client/push.
+    incoming_acct = data.get("account") or {}
+    existing_acct = existing_data.get("account") or {}
+    merged_acct = dict(existing_acct)
+    merged_acct.update(incoming_acct)
+    for _preserve_key in ("total_deposits", "total_withdrawals"):
+        if not incoming_acct.get(_preserve_key):
+            merged_acct[_preserve_key] = existing_acct.get(_preserve_key, 0)
+
     # Prepare client data
     client_data = {
         "deals": _drop_balance_deals(data.get("deals", []))[0],
         "positions": data.get("positions", []),
-        "account": data.get("account", {}),
+        "account": merged_acct,
         "evaluations": evaluations,
         "statistics": statistics,
         "dropdown_options": dropdown_options,
