@@ -7737,6 +7737,7 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
     # Exclusions mirror the Daily Summary Tracker rules
     excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
     excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+    _mffu_skip_admins = {'joy ndua', 'marion nyika'}
 
     # Build admin client roster from hierarchy profiles
     clients = []
@@ -7837,6 +7838,9 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
                     continue
                 pf_key = _norm_prop_firm_max_out_key(ev.get('Prop Firm'))
                 if not pf_key:
+                    continue
+                # Exception: for these two admins, do not flag any MFFU max-out / excess-account issues.
+                if pf_key == 'mffu' and str(admin_name or '').strip().lower() in _mffu_skip_admins:
                     continue
                 # Excess-account suppression requires a note STRICTLY on the Status P1 cell.
                 has_note = False
