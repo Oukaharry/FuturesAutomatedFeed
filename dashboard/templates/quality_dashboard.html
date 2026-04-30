@@ -466,9 +466,15 @@
             </div>
         </div>
 
-        <!-- Daily Checklists -->
-        <div class="section-title" style="margin-top:32px;"><i class="fas fa-tasks" style="color:#a78bfa;"></i> Today's Checklists</div>
-        <div class="checklist-status-grid" id="checklist-grid">
+        <!-- Daily Checklists (collapsed by default — click header to expand) -->
+        <div class="section-title" id="checklists-section-toggle" style="margin-top:32px; cursor:pointer; user-select:none; display:flex; align-items:center; gap:10px;"
+             onclick="toggleChecklistsSection()"
+             title="Click to expand or collapse">
+            <i class="fas fa-chevron-right" id="checklists-chevron" style="color:#a78bfa; font-size:0.75rem; transition:transform 0.15s;"></i>
+            <span><i class="fas fa-tasks" style="color:#a78bfa;"></i> Today's Checklists</span>
+            <span id="checklists-expand-hint" style="font-size:0.72rem; color:#64748b; font-weight:500;">(click to expand)</span>
+        </div>
+        <div class="checklist-status-grid" id="checklist-grid" style="display:none;">
             <div class="empty-state" style="grid-column:1/-1;"><div>Loading checklists...</div></div>
         </div>
 
@@ -1410,6 +1416,17 @@
         }
 
 
+
+        let checklistsSectionExpanded = false;
+        function toggleChecklistsSection() {
+            checklistsSectionExpanded = !checklistsSectionExpanded;
+            const grid = document.getElementById('checklist-grid');
+            const chev = document.getElementById('checklists-chevron');
+            const hint = document.getElementById('checklists-expand-hint');
+            if (grid) grid.style.display = checklistsSectionExpanded ? 'grid' : 'none';
+            if (chev) chev.style.transform = checklistsSectionExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
+            if (hint) hint.textContent = checklistsSectionExpanded ? '(click to collapse)' : '(click to expand)';
+        }
 
         async function loadChecklists() {
             try {
