@@ -298,6 +298,36 @@
                 <option value="all">All Traders</option>
             </select>
         </div>
+
+        <!-- Admin Tracker (source of truth) -->
+        <div class="section-title" style="margin-top:32px;">
+            <i class="fas fa-shield-halved" style="color:#fbbf24;"></i> Admin Tracker
+            <span id="admin-tracker-count-badge" style="margin-left:8px; font-size:0.78rem; background:rgba(251,191,36,0.12); color:#fbbf24; padding:2px 10px; border-radius:12px; font-weight:600; border:1px solid rgba(251,191,36,0.25);"></span>
+            <button onclick="loadAdminTracker()" style="margin-left:12px; background:linear-gradient(135deg,#f59e0b,#d97706); border:none; color:#0b1225; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem; font-weight:800;">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+        <div class="issues-scroll" style="overflow-x:auto; border-radius:12px; max-height:520px; overflow-y:auto;">
+            <table class="issues-detail-table" id="admin-tracker-table">
+                <thead>
+                    <tr>
+                        <th>Admin</th>
+                        <th>Client</th>
+                        <th>Trader</th>
+                        <th>Severity</th>
+                        <th>Type</th>
+                        <th>Detail</th>
+                        <th>Go To</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-tracker-body">
+                    <tr><td colspan="7" class="empty-state">
+                        <i class="fas fa-shield-halved"></i>
+                        <div>Click “Refresh” to load admin-tracking issues.</div>
+                    </td></tr>
+                </tbody>
+            </table>
+        </div>
         <div class="issues-scroll" style="overflow-x:auto; border-radius:12px; max-height:600px; overflow-y:auto;">
             <table class="issues-detail-table" id="issues-detail-table">
                 <thead>
@@ -475,6 +505,7 @@
             loadResults();
             loadChecklists();
             loadSummaryStatus();
+            loadAdminTracker();
             loadSlackStatus();
             loadDailySlackStatus();
 
@@ -490,6 +521,87 @@
             if (ds) ds.addEventListener('change', onCustomDateChange);
             if (de) de.addEventListener('change', onCustomDateChange);
         });
+
+        // ── Admin Tracker (Super Admin source-of-truth) ───────────────────────
+        async function loadAdminTracker() {
+            const body = document.getElementById('admin-tracker-body');
+            const badge = document.getElementById('admin-tracker-count-badge');
+            body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading admin tracker…</td></tr>`;
+            badge.textContent = '';
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const idxResp = await fetch('/api/quality/admin_tracker?date=' + encodeURIComponent(today) + '&_t=' + Date.now());
+                const idx = await idxResp.json();
+                if (!idxResp.ok || idx.status !== 'success') {
+                    body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">${idx.message || 'Failed to load admin list'}</td></tr>`;
+                    return;
+                }
+                const admins = idx.admins || [];
+                if (admins.length === 0) {
+                    body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#94a3b8;">No admins found in hierarchy.</td></tr>`;
+                    return;
+                }
+
+                // Fetch each admin's tracker in parallel (super_admin session can query any admin)
+                const tasks = admins.map(a =>
+                    fetch('/api/admin/tracker?admin=' + encodeURIComponent(a) + '&date=' + encodeURIComponent(today))
+                        .then(r => r.json().then(j => ({ ok: r.ok, data: j, admin: a })))
+                        .catch(e => ({ ok: false, data: { status: 'error', message: e.message }, admin: a }))
+                );
+                const results = await Promise.all(tasks);
+
+                const flat = [];
+                results.forEach(r => {
+                    if (!r.ok || !r.data || r.data.status !== 'success') return;
+                    const issues = r.data.admin_issues || [];
+                    issues.forEach(i => {
+                        flat.push({
+                            admin: r.admin,
+                            client: i.client_id,
+                            trader: i.trader || '-',
+                            severity: i.severity || 'medium',
+                            type: i.type || '',
+                            detail: i.detail || '',
+                            row: (i.row !== undefined && i.row !== null) ? i.row : null,
+                        });
+                    });
+                });
+
+                badge.textContent = flat.length ? `${flat.length} issue${flat.length !== 1 ? 's' : ''}` : '0 issues';
+
+                if (flat.length === 0) {
+                    body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#4ade80;"><i class="fas fa-circle-check"></i> No admin tracker issues</td></tr>`;
+                    return;
+                }
+
+                const sevOrder = {critical:0, high:1, medium:2, warning:3, low:4, info:5};
+                flat.sort((a, b) => (sevOrder[a.severity] ?? 9) - (sevOrder[b.severity] ?? 9) || a.admin.localeCompare(b.admin) || a.client.localeCompare(b.client));
+
+                const badgeClass = (sev) => {
+                    if (sev === 'critical') return 'badge-critical';
+                    if (sev === 'high') return 'badge-high';
+                    if (sev === 'medium') return 'badge-medium';
+                    if (sev === 'low') return 'badge-low';
+                    if (sev === 'warning') return 'badge-yellow';
+                    return 'badge-info';
+                };
+
+                body.innerHTML = flat.map(i => {
+                    const link = i.row !== null ? `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}` : `/dashboard/${encodeURIComponent(i.client)}`;
+                    return `<tr>
+                        <td style="color:#e2e8f0; font-weight:600;">${i.admin}</td>
+                        <td style="color:#e2e8f0; font-weight:500;">${i.client}</td>
+                        <td style="color:#94a3b8;">${i.trader}</td>
+                        <td><span class="badge ${badgeClass(i.severity)}">${i.severity}</span></td>
+                        <td style="color:#e2e8f0;">${i.type.replace(/_/g,' ')}</td>
+                        <td style="color:#94a3b8; font-size:0.78rem; max-width:320px;">${i.detail}</td>
+                        <td><a href="${link}" target="_blank" class="go-link"><i class="fas fa-arrow-right"></i> Go</a></td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#f87171;">Failed: ${e.message}</td></tr>`;
+            }
+        }
 
         // ── Slack Settings ──
         async function loadSlackStatus() {
