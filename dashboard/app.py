@@ -4433,6 +4433,14 @@ def unified_login():
     password = data.get('password', '')
     remember = data.get('remember', False)
     client_ip = get_remote_address()
+
+    # Session durations:
+    # - Default: 24h
+    # - Remember: 7 days (requested)
+    DEFAULT_SESSION_HOURS = 24
+    REMEMBER_SESSION_DAYS = 7
+    session_hours_valid = (REMEMBER_SESSION_DAYS * 24) if remember else DEFAULT_SESSION_HOURS
+    cookie_max_age = (REMEMBER_SESSION_DAYS * 24 * 60 * 60) if remember else (DEFAULT_SESSION_HOURS * 60 * 60)
     
     if not identifier:
         return jsonify({"status": "error", "message": "Email is required"}), 400
@@ -4465,18 +4473,17 @@ def unified_login():
             return jsonify({"status": "error", "message": "Password is required for Super Admin"}), 400
         
         if verify_admin_password('super_admin', password):
-            session_token = create_session('super_admin', 'super_admin', client_ip)
+            session_token = create_session('super_admin', 'super_admin', client_ip, hours_valid=session_hours_valid)
             record_login_attempt('super_admin', 'super_admin', client_ip, True)
             log_action('LOGIN_SUCCESS', 'super_admin', 'super_admin', client_ip)
-            
-            max_age = 30 * 24 * 60 * 60 if remember else 86400  # 30 days or 24 hours
+
             response = jsonify({
                 "status": "success",
                 "user_type": "super_admin",
                 "redirect": "/super_admin",
                 "must_change_password": False
             })
-            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
             return response
         
         record_login_attempt('super_admin', 'super_admin', client_ip, False)
@@ -4489,18 +4496,17 @@ def unified_login():
             return jsonify({"status": "error", "message": "Password is required for BEF Admin"}), 400
         
         if verify_admin_password('bef_admin', password):
-            session_token = create_session('bef_admin', 'bef_admin', client_ip)
+            session_token = create_session('bef_admin', 'bef_admin', client_ip, hours_valid=session_hours_valid)
             record_login_attempt('bef_admin', 'bef_admin', client_ip, True)
             log_action('LOGIN_SUCCESS', 'bef_admin', 'bef_admin', client_ip)
-            
-            max_age = 30 * 24 * 60 * 60 if remember else 86400
+
             response = jsonify({
                 "status": "success",
                 "user_type": "bef_admin",
                 "redirect": "/bef_admin",
                 "must_change_password": False
             })
-            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
             return response
         
         record_login_attempt('bef_admin', 'bef_admin', client_ip, False)
@@ -4513,18 +4519,16 @@ def unified_login():
             return jsonify({"status": "error", "message": "Password is required for Kwok Admin"}), 400
 
         if verify_admin_password('kwok_admin', password):
-            session_token = create_session('kwok_admin', 'kwok_admin', client_ip)
+            session_token = create_session('kwok_admin', 'kwok_admin', client_ip, hours_valid=session_hours_valid)
             record_login_attempt('kwok_admin', 'kwok_admin', client_ip, True)
             log_action('LOGIN_SUCCESS', 'kwok_admin', 'kwok_admin', client_ip)
-
-            max_age = 30 * 24 * 60 * 60 if remember else 86400
             response = jsonify({
                 "status": "success",
                 "user_type": "kwok_admin",
                 "redirect": "/kwok_admin",
                 "must_change_password": False
             })
-            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+            response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
             return response
 
         record_login_attempt('kwok_admin', 'kwok_admin', client_ip, False)
@@ -4561,15 +4565,14 @@ def unified_login():
     
     must_change = verified.get('must_change_password', False)
     
-    max_age = 30 * 24 * 60 * 60 if remember else 86400
-    session_token = create_session(user_type, username, client_ip)
+    session_token = create_session(user_type, username, client_ip, hours_valid=session_hours_valid)
     response = jsonify({
         "status": "success",
         "user_type": user_type,
         "redirect": redirect_url,
         "must_change_password": must_change
     })
-    response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=max_age)
+    response.set_cookie('session_token', session_token, httponly=True, secure=not app.debug, samesite='Lax', max_age=cookie_max_age)
     return response
 
 # ============ User Management Endpoints (Admin only) ============
