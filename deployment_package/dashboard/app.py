@@ -3285,6 +3285,61 @@ def run_quality_scan(target_client=None):
             except (ValueError, TypeError):
                 pass
 
+        # MT5 Profit vs Hedging Results (as displayed in the Stats UI)
+        try:
+            stats = data.get('statistics', {}) if isinstance(data, dict) else {}
+            hr = stats.get('hedging_review', {}) if isinstance(stats, dict) else {}
+            cf = stats.get('cashflow_inprogress', {}) if isinstance(stats, dict) else {}
+            acct = data.get('account', {}) if isinstance(data, dict) else {}
+            if isinstance(hr, dict) and isinstance(cf, dict) and isinstance(acct, dict):
+                def _to_float(v):
+                    try:
+                        if v is None:
+                            return 0.0
+                        s = str(v).replace('$', '').replace(',', '').strip()
+                        if s == '':
+                            return 0.0
+                        return float(s)
+                    except (ValueError, TypeError):
+                        return 0.0
+
+                mt5_dep = _to_float(acct.get('total_deposits', hr.get('total_deposits')))
+                mt5_wd = _to_float(acct.get('total_withdrawals', hr.get('total_withdrawals')))
+                mt5_bal = _to_float(acct.get('balance', hr.get('current_balance')))
+                hist = hr.get('historical_accounts') or []
+                hist_dep = hist_wd = hist_bal = 0.0
+                prior_activity = _to_float(hr.get('current_mt5_prior_activity'))
+                if isinstance(hist, list):
+                    for a in hist:
+                        if not isinstance(a, dict):
+                            continue
+                        hist_dep += _to_float(a.get('deposits'))
+                        hist_wd += _to_float(a.get('withdrawals'))
+                        hist_bal += _to_float(a.get('final_balance'))
+                        prior_activity += _to_float(a.get('prior_activity_profit'))
+                combined_dep = mt5_dep + hist_dep
+                combined_wd = mt5_wd + hist_wd
+                combined_bal = mt5_bal + hist_bal
+                mt5_profit_display = round(combined_bal - (combined_dep + combined_wd) - prior_activity, 2)
+
+                hedge_total_display = round(
+                    _to_float(cf.get('hedging_results')) + _to_float(cf.get('farming_results')) + _to_float(hr.get('discrepancy')),
+                    2
+                )
+
+                has_mt5_context = bool(last_push) or (abs(mt5_dep) > 1e-9) or (abs(mt5_wd) > 1e-9) or (abs(mt5_bal) > 1e-9) or (abs(hist_dep) > 1e-9) or (abs(hist_wd) > 1e-9) or (abs(hist_bal) > 1e-9)
+                if has_mt5_context:
+                    diff = round(mt5_profit_display - hedge_total_display, 2)
+                    if abs(diff) >= 1.0:
+                        issues.append({
+                            'check': 'Hedging Results mismatch',
+                            'severity': 'high',
+                            'detail': f"Mismatch between sheet hedging results and actual hedging results (HR={hedge_total_display:.2f}, Profit={mt5_profit_display:.2f})",
+                            'estimated_date': scan_date_str
+                        })
+        except Exception:
+            pass
+
         total_checks = 0
         for idx, ev in enumerate(evaluations):
             row_label = f'Row {idx + 1}'

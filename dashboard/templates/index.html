@@ -4459,18 +4459,37 @@
             tbody.innerHTML = filtered.map(i => {
                 const rowNum = i.row !== null && i.row !== undefined ? `Row ${i.row + 1}` : '-';
                 const color = sevColors[i.severity] || '#94a3b8';
-                const goBtn = i.row !== null && i.row !== undefined
-                    ? `<button onclick="goToIssueRow(${i.row})" style="background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:500;"><i class="fas fa-arrow-right" style="margin-right:4px;"></i>Go</button>`
-                    : '';
+                const isHedgeMismatch = (String(i.check || '').trim() === 'Hedging Results mismatch');
+                const goBtn = isHedgeMismatch
+                    ? `<button onclick="goToHedgingMismatch()" title="Go to Stats → MT5 Profit" style="white-space:nowrap;min-width:56px;background:rgba(96,165,250,0.16);border:1px solid rgba(96,165,250,0.38);color:#60a5fa;padding:4px 10px;border-radius:999px;cursor:pointer;font-size:0.82rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;"><span>Go</span><span style="font-weight:900;">→</span></button>`
+                    : (i.row !== null && i.row !== undefined
+                        ? `<button onclick="goToIssueRow(${i.row})" style="background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:500;"><i class="fas fa-arrow-right" style="margin-right:4px;"></i>Go</button>`
+                        : '');
                 return `<tr style="border-bottom:1px solid #1e293b;">
                     <td style="padding:10px 12px;"><span style="background:${color}22;color:${color};border:1px solid ${color}44;padding:2px 10px;border-radius:10px;font-size:0.75rem;font-weight:600;">${i.severity}</span></td>
                     <td style="padding:10px 12px;color:#e2e8f0;font-size:0.9rem;">${i.check || ''}</td>
                     <td style="padding:10px 12px;color:#94a3b8;font-size:0.85rem;">${i.detail || ''}</td>
                     <td style="padding:10px 12px;"><span style="color:#60a5fa;font-weight:500;">${rowNum}</span></td>
                     <td style="padding:10px 12px;color:#94a3b8;font-size:0.85rem;">${i.estimated_date || ''}</td>
-                    <td style="padding:10px 12px;text-align:center;">${goBtn}</td>
+                    <td style="padding:10px 12px;text-align:center;white-space:nowrap;min-width:70px;">${goBtn}</td>
                 </tr>`;
             }).join('');
+        }
+
+        function goToHedgingMismatch() {
+            openTab('stats');
+            // Keep the hedging section open long enough to review.
+            window._hedgingOpenUntil = Date.now() + 60000;
+            syncHedgingDetailsFromState();
+            setTimeout(() => {
+                const el = document.getElementById('mt5-accounts-overview-card');
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    el.style.outline = '2px solid #60a5fa';
+                    el.style.outlineOffset = '2px';
+                    setTimeout(() => { el.style.outline = ''; el.style.outlineOffset = ''; }, 4000);
+                }
+            }, 250);
         }
         function goToIssueRow(rowIndex) {
             const activeFilterCb = document.getElementById('activeFilter');
@@ -5012,7 +5031,7 @@
                                 </div>
                                 <div id="hedging-details-wrap" style="order:4; grid-column: 1 / -1; display:none; grid-template-columns: 1fr; gap:20px;">
                                 <!-- MT5 Accounts Overview -->
-                                <div class="card">
+                                <div class="card" id="mt5-accounts-overview-card">
                                     <div class="card-header">📜 MT5 Accounts Overview
                                         ${canEditHedging ? '<button class="btn-small mt5-add-btn" onclick="showAddHistoricalMT5Modal()">+ Add Previous MT5</button>' : ''}
                                     </div>
