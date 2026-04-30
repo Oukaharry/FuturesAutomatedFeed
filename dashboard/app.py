@@ -7105,7 +7105,11 @@ def run_quality_scan(target_client=None):
                     abs(_parse_nonzero(ev.get(c))) > 1e-9 for c in _funded_hedge_result_cols
                 )
 
-                new_row_strict_mode = is_new_row and not has_hedge_value_local
+                # Live funded broker rows (digits-only Account #.1 / funded id): traders are not in eval workflow;
+                # skip sheet SOP flags except weekday-of-day tracking (and any client/global issues like downtime).
+                is_live_funded_numeric_row = _max_out_row_is_live_numeric_account(ev)
+
+                new_row_strict_mode = is_new_row and not has_hedge_value_local and not is_live_funded_numeric_row
 
                 # If the row is explicitly "not started" but hedge values already exist, flag.
                 #
@@ -7115,7 +7119,27 @@ def run_quality_scan(target_client=None):
                 #   blank or text-only and should not be flagged.
                 is_not_started_p1 = ('not started' in status_p1)
                 is_not_started_p2 = ('not started' in status_p2)
-                if (is_not_started_p1 and has_hedge_value_local) or (is_not_started_p2 and has_funded_hedge_value_local):
+
+                def _suppress_not_started_hedge_mismatch():
+                    for c in _hedge_result_cols:
+                        raw = str(ev.get(c) or '').strip()
+                        if raw and 'see note' in raw.lower():
+                            return True
+                    _cn = ev.get('_notes') or {}
+                    if isinstance(_cn, dict) and any(str(v or '').strip() for v in _cn.values()):
+                        return True
+                    if str(ev.get('Notes', '') or '').strip():
+                        return True
+                    return False
+
+                if (
+                    not is_live_funded_numeric_row
+                    and (
+                        (is_not_started_p1 and has_hedge_value_local)
+                        or (is_not_started_p2 and has_funded_hedge_value_local)
+                    )
+                    and not _suppress_not_started_hedge_mismatch()
+                ):
                     issues.append({
                         'check': 'Not Started but hedge values present',
                         'severity': 'high',
@@ -7134,7 +7158,7 @@ def run_quality_scan(target_client=None):
                 )
 
                 # Status blank on non-empty row
-                if not status_p1 and has_data and not is_double_dip:
+                if not is_live_funded_numeric_row and not status_p1 and has_data and not is_double_dip:
                     issues.append({'check': 'Status blank', 'severity': 'medium', 'row': idx,
                                    'detail': f'{row_label}: Has data but no Status P1',
                                    'estimated_date': _estimate_issue_date(ev, 'Status blank', scan_date_str)})
@@ -7152,7 +7176,13 @@ def run_quality_scan(target_client=None):
                             break
                 # If the Fee cell has a note, treat it as an explicit override/explanation
                 # and do not flag "Empty Fee" even when Fee is 0.00.
-                if (not fee_raw or fee_num <= 0.0) and has_data and not is_double_dip and not _fee_note:
+                if (
+                    not is_live_funded_numeric_row
+                    and (not fee_raw or fee_num <= 0.0)
+                    and has_data
+                    and not is_double_dip
+                    and not _fee_note
+                ):
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Fee not filled in',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
@@ -7165,7 +7195,7 @@ def run_quality_scan(target_client=None):
                 #   3) Status P1 not being exactly "not started".
                 # Everything else (empty account #, missing weekday, etc.) is suppressed
                 # until hedge values arrive.
-                if new_row_strict_mode:
+                if new_row_strict_mode and not is_live_funded_numeric_row:
                     dp_raw = str(ev.get('Date Purchased', '') or '').strip()
                     if not dp_raw:
                         issues.append({
@@ -7214,7 +7244,7 @@ def run_quality_scan(target_client=None):
                         })
 
                 # Empty Account Size
-                if not new_row_strict_mode and not acct_size and prop_firm and not is_double_dip:
+                if not is_live_funded_numeric_row and not new_row_strict_mode and not acct_size and prop_firm and not is_double_dip:
                     issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Account Size blank',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Account Size', scan_date_str)})
@@ -7222,7 +7252,7 @@ def run_quality_scan(target_client=None):
                 # Empty Account #
                 acct_num = str(ev.get('Account #', '') or '').strip()
                 acct_num2 = str(ev.get('Account #.1', '') or '').strip()
-                if not new_row_strict_mode and is_active and not acct_num and not acct_num2:
+                if not is_live_funded_numeric_row and not new_row_strict_mode and is_active and not acct_num and not acct_num2:
                     # Treat as "new/uninitialized" and suppress the flag when:
                     # - Status is "not started", and
                     # - there are no numeric hedge results yet (blank or text markers like weekdays).
@@ -7236,7 +7266,7 @@ def run_quality_scan(target_client=None):
 
                 # Empty Activation Fee on funded rows
                 activation = str(ev.get('Activation Fee', '') or '').strip()
-                if not new_row_strict_mode and status_p2 in ('funded', 'live', 'payout') and not activation:
+                if not is_live_funded_numeric_row and not new_row_strict_mode and status_p2 in ('funded', 'live', 'payout') and not activation:
                     issues.append({'check': 'Empty Activation Fee', 'severity': 'medium', 'row': idx,
                                    'detail': f'{row_label}: Funded but no activation fee',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
@@ -7248,7 +7278,12 @@ def run_quality_scan(target_client=None):
                 # funded phase. Accounts that got a funded account # but never
                 # traded (or were abandoned before any HR) are excluded so we
                 # don't drown the dashboard in false positives.
-                if (not new_row_strict_mode) and prop_firm.lower().replace(' ', '') in ('alphafutures',) and not activation:
+                if (
+                    not is_live_funded_numeric_row
+                    and (not new_row_strict_mode)
+                    and prop_firm.lower().replace(' ', '') in ('alphafutures',)
+                    and not activation
+                ):
                     _funded_hr_cols = (
                         'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
                         'Hedge Result 4.1', 'Hedge Result 5.1',
@@ -7306,7 +7341,12 @@ def run_quality_scan(target_client=None):
                     except (ValueError, TypeError): return None
 
                 hedge_net = _parse_num(ev.get('Hedge Net', ''))
-                if not new_row_strict_mode and hedge_net is not None and hedge_net < 0:
+                if (
+                    not is_live_funded_numeric_row
+                    and not new_row_strict_mode
+                    and hedge_net is not None
+                    and hedge_net < 0
+                ):
                     dp_str = _parse_date_str(ev.get('Date Purchased', '') or '')
                     is_post_cutoff = bool(dp_str and dp_str >= '2026-04-29')
                     if is_post_cutoff:
@@ -7367,7 +7407,7 @@ def run_quality_scan(target_client=None):
                 if _comma_cols:
                     _preview = '; '.join(_comma_cols[:3])
                     _suffix = '' if len(_comma_cols) <= 3 else f' (+{len(_comma_cols) - 3} more)'
-                    if not new_row_strict_mode:
+                    if not new_row_strict_mode and not is_live_funded_numeric_row:
                         issues.append({'check': 'Comma in hedge value', 'severity': 'low', 'row': idx,
                                        'detail': f'{row_label}: {_preview}{_suffix}',
                                        'estimated_date': _estimate_issue_date(ev, 'Comma in hedge value', scan_date_str)})
