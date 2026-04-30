@@ -102,6 +102,60 @@ def _admin_prop_display_name(pf_key):
     return ADMIN_PROP_DISPLAY_NAME.get(pf_key, pf_key)
 
 
+def _max_out_row_is_live_numeric_account(ev):
+    """True if this row's account id looks like funded/live (digits-only), not eval (prefix + suffix).
+
+    Eval rows typically store firm-prefixed ids (e.g. MFFU80594). Live funded broker accounts are numeric only.
+    When a trader is live on one account they are not running multiple eval slots; skip underfilled max-out in that case.
+
+    Handles JSON numeric types (e.g. 1838060 stored as float) and comma-formatted strings.
+    Funded-phase Account # in the UI is stored as Account #.1; eval Account # may be empty for live rows.
+    """
+    if not isinstance(ev, dict):
+        return False
+    _PLACEHOLDER_ACCOUNTS = {'', 'none', '-', '—', '–', 'n/a', 'na', 'tbd', 'pending'}
+
+    def _clean_raw(val):
+        s = str(val or '').strip()
+        return '' if not s or s.lower() in _PLACEHOLDER_ACCOUNTS else s
+
+    def _is_numeric_live_id(val):
+        """True when value is a whole-number broker id (not prefix+suffix eval text)."""
+        if val is None or val == '':
+            return False
+        if isinstance(val, bool):
+            return False
+        if isinstance(val, int):
+            return val > 0
+        if isinstance(val, float):
+            return val.is_integer() and val > 0
+        s = _clean_raw(val).replace(',', '').replace(' ', '')
+        if not s:
+            return False
+        if s.isdigit():
+            return True
+        try:
+            f = float(s)
+            return f.is_integer() and f > 0
+        except (ValueError, TypeError):
+            return False
+
+    a0_raw = ev.get('Account #')
+    a1_raw = ev.get('Account #.1')
+    an_raw = ev.get('Account Number')
+
+    a0 = _clean_raw(a0_raw)
+    a1 = _clean_raw(a1_raw)
+
+    if _is_numeric_live_id(a1_raw):
+        return True
+    if _is_numeric_live_id(a0_raw) and not a1:
+        return True
+    if _is_numeric_live_id(an_raw) and not a1:
+        return True
+    return False
+
+
 # Start Midnight Watermark Scheduler
 try:
     from dashboard.scheduler import start_scheduler
@@ -7890,14 +7944,19 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
                 if count != expected:
                     human = _admin_prop_display_name(pf_key)
                     if count < expected:
-                        _add_issue(
-                            'max_out',
-                            cid,
-                            trader,
-                            'medium',
-                            f"{human}: {expected - count} needed (expected {expected}, has {count})",
-                            extra={'prop_firm': human, 'expected': expected, 'count': count}
+                        skip_underfilled = (
+                            count == 1
+                            and _max_out_row_is_live_numeric_account(evals[rows[0]['idx']])
                         )
+                        if not skip_underfilled:
+                            _add_issue(
+                                'max_out',
+                                cid,
+                                trader,
+                                'medium',
+                                f"{human}: {expected - count} needed (expected {expected}, has {count})",
+                                extra={'prop_firm': human, 'expected': expected, 'count': count}
+                            )
                     else:
                         excess = count - expected
                         noted = sum(1 for r in rows if r.get('has_note'))
@@ -8124,14 +8183,19 @@ def api_admin_tracker():
                         if count != expected:
                             human = _admin_prop_display_name(pf_key)
                             if count < expected:
-                                _add_issue(
-                                    'max_out',
-                                    cid,
-                                    trader,
-                                    'medium',
-                                    f"{human}: {expected - count} needed (expected {expected}, has {count})",
-                                    extra={'prop_firm': human, 'expected': expected, 'count': count}
+                                skip_underfilled = (
+                                    count == 1
+                                    and _max_out_row_is_live_numeric_account(evals[rows[0]['idx']])
                                 )
+                                if not skip_underfilled:
+                                    _add_issue(
+                                        'max_out',
+                                        cid,
+                                        trader,
+                                        'medium',
+                                        f"{human}: {expected - count} needed (expected {expected}, has {count})",
+                                        extra={'prop_firm': human, 'expected': expected, 'count': count}
+                                    )
                             else:
                                 # Excess accounts are allowed ONLY when the extra rows have notes.
                                 # If N accounts exceed the required count, we require at least N rows
