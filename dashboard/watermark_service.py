@@ -390,11 +390,17 @@ def compute_waterlog_from_db(client_id):
         if spct_key in spct_overrides:
             split_pct = spct_overrides[spct_key]
 
-        if period_low > hwm_low:
-            profit_split = (period_low - hwm_low) * split_pct / 100
-            hwm_low = period_low
+        # Split only on profit above zero; baseline for gains is max(HWM, 0) so recoveries
+        # from negative territory do not multiply split on (current - large_negative).
+        effective_hwm = max(hwm_low, 0.0)
+        if period_low <= 0:
+            profit_split = 0.0
+        elif period_low > effective_hwm:
+            profit_split = (period_low - effective_hwm) * split_pct / 100
         else:
             profit_split = 0.0
+        if period_low > hwm_low:
+            hwm_low = period_low
 
         # Track the net profit of the last pre-transition period
         last_pre_transition_net = period_low
