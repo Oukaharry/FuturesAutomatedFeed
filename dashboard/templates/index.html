@@ -7584,38 +7584,21 @@
         }
         
         // --- Waterlog / Profit Split Tab Functions ---
-        let waterlogLoaded = false;
-        function loadWaterlogData() {
-            if (waterlogLoaded) return;
-            
+        let waterlogDailyInitialized = false;
+        let waterlogPollTimer = null;
+
+        function loadWatermarkData() {
             const tbody = document.getElementById('waterlog-body');
-
-            if (!CLIENT_ID) {
-                if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No client selected.</td></tr>';
-                return;
-            }
-
-            if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading daily profit records...</td></tr>';
-            
-            function loadWatermarkData() {
-                fetch(`/api/client/watermark_history/${encodeURIComponent(CLIENT_ID)}`)
+            if (!CLIENT_ID || !tbody) return;
+            fetch(`/api/client/watermark_history/${encodeURIComponent(CLIENT_ID)}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
                         const history = data.history || [];
-                        const lowWm = data.low_watermark;
-                        const todayEntry = data.today;
-
-                        // High/Low watermark cards are driven by the sheet's bi-weekly
-                        // period data (loaded below). Skip updating them here.
-
                         if (history.length === 0) {
                             tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No daily profit records found yet. Records are saved automatically at midnight each day.</td></tr>';
-                            waterlogLoaded = true;
                             return;
                         }
-
-                        // Render rows newest first
                         const rows = [...history].reverse();
                         let html = '';
                         rows.forEach((item, idx) => {
@@ -7636,9 +7619,7 @@
                                 </tr>
                             `;
                         });
-
                         tbody.innerHTML = html;
-                        waterlogLoaded = true;
                     } else {
                         tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Error: ${data.message}</td></tr>`;
                     }
@@ -7647,16 +7628,21 @@
                     tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #ef4444;">Failed to load waterlog data.</td></tr>`;
                     console.error(err);
                 });
-            } // end loadWatermarkData
+        }
 
-            // Initial load + poll every 60s to keep Low Watermark live
-            loadWatermarkData();
-            setInterval(loadWatermarkData, 60000);
-
-            // --- Load profit share history ---
+        function loadProfitShareHistory() {
             const psBody = document.getElementById('profitshare-body');
+            if (!CLIENT_ID) return;
             const sheetUrl = (currentData && currentData.identity && currentData.identity.sheet_url) ? currentData.identity.sheet_url : ((currentData && currentData.sheet_url) ? currentData.sheet_url : '');
-            fetch(`/api/sheet/waterlog?client_id=${encodeURIComponent(clientId)}&sheet_url=${encodeURIComponent(sheetUrl)}`)
+            if (psBody) {
+                psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Loading profit share history...</td></tr>';
+            }
+            const elSplitCard = document.getElementById('split-profit-amount');
+            if (elSplitCard) {
+                elSplitCard.textContent = 'Loading...';
+                elSplitCard.style.color = '#fbbf24';
+            }
+            fetch(`/api/sheet/waterlog?client_id=${encodeURIComponent(CLIENT_ID)}&sheet_url=${encodeURIComponent(sheetUrl)}`)
                 .then(res => res.json())
                 .then(psData => {
                     if (psData.status === 'success') {
@@ -7680,6 +7666,8 @@
                         rows.sort((a, b) => { const da = parseDate(a.from_date.trim()), db = parseDate(b.from_date.trim()); return db - da; });
                         if (!rows.length) {
                             if (psBody) psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
+                            const elNone = document.getElementById('split-profit-amount');
+                            if (elNone) { elNone.textContent = '$0'; elNone.style.color = '#94a3b8'; }
                             return;
                         }
                         let psHtml = '';
@@ -7824,7 +7812,7 @@
                                             if (resp.status === 'success') {
                                                 check.style.display = 'inline';
                                                 setTimeout(() => { check.style.display = 'none'; }, 3000);
-                                                setTimeout(() => { waterlogLoaded = false; loadWaterlogData(); }, 2000);
+                                                setTimeout(() => { loadWaterlogData(); }, 2000);
                                             }
                                         }).catch(() => {});
                                     };
@@ -7879,7 +7867,6 @@
                                                 check.style.display = 'inline';
                                                 setTimeout(() => { check.style.display = 'none'; }, 2000);
                                                 // Reload waterlog data to refresh header cards
-                                                waterlogLoaded = false;
                                                 loadWaterlogData();
                                             }
                                         }).catch(() => {});
@@ -7930,7 +7917,7 @@
                                                 check.style.display = 'inline';
                                                 setTimeout(() => { check.style.display = 'none'; }, 3000);
                                                 // Delay reload so profit split recalculates with new %
-                                                setTimeout(() => { waterlogLoaded = false; loadWaterlogData(); }, 2000);
+                                                setTimeout(() => { loadWaterlogData(); }, 2000);
                                             }
                                         }).catch(() => {});
                                     };
@@ -7950,11 +7937,32 @@
                         }
                     } else {
                         if (psBody) psBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
+                        const elErr = document.getElementById('split-profit-amount');
+                        if (elErr) { elErr.textContent = '—'; elErr.style.color = '#94a3b8'; }
                     }
                 })
                 .catch(() => {
                     if (psBody) psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
+                    const elErr = document.getElementById('split-profit-amount');
+                    if (elErr) { elErr.textContent = '—'; elErr.style.color = '#94a3b8'; }
                 });
+        }
+
+        function loadWaterlogData() {
+            const tbody = document.getElementById('waterlog-body');
+            if (!CLIENT_ID) {
+                if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No client selected.</td></tr>';
+                return;
+            }
+            if (!waterlogDailyInitialized) {
+                if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading daily profit records...</td></tr>';
+                loadWatermarkData();
+                if (!waterlogPollTimer) {
+                    waterlogPollTimer = setInterval(loadWatermarkData, 60000);
+                }
+                waterlogDailyInitialized = true;
+            }
+            loadProfitShareHistory();
         }
         
         // Hook into openTab to load data when tab is opened

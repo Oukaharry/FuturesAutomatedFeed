@@ -3214,7 +3214,7 @@ def get_profit_splits():
     if session_user.get('user_type') == 'kwok_admin':
         profile_filter = 'ALL'
 
-    from dashboard.watermark_service import compute_waterlog_from_db
+    from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
     from utils.data_processor import parse_currency
     from concurrent.futures import ThreadPoolExecutor
@@ -3308,7 +3308,7 @@ def get_profit_splits():
                 latest_net = _live_in_progress_net(data.get('evaluations') or [])
 
             # Watermark DB rows are keyed by dashboard client_id, not display name.
-            wl = compute_waterlog_from_db(client_id)
+            wl = compute_waterlog_from_db(client_id) or compute_waterlog_daily_fallback(client_id)
             baseline = 0.0
             split_pct = 50
             if wl and wl.get('periods'):
@@ -3327,6 +3327,13 @@ def get_profit_splits():
                     if v > 0:
                         baseline = v
                         break
+                if baseline == 0.0 and not completed:
+                    lsn = wl.get('last_split_net_profit')
+                    if lsn is not None:
+                        try:
+                            baseline = float(lsn)
+                        except (TypeError, ValueError):
+                            baseline = 0.0
 
             if latest_net <= 0:
                 split_amt = 0.0
@@ -10699,31 +10706,36 @@ def get_waterlog_sheet_data():
     """Returns the Profit Share History table.
 
     Priority:
-      1. Compute from DB (daily_watermarks + waterlog_periods) — fully offline,
-         updates automatically as daily data is snapshotted.
-      2. Fall back to live Google Sheet fetch only if no period schedule is
-         stored yet (i.e. before the first import).
+      1. Compute from DB (waterlog_periods + daily_watermarks) — offline.
+      2. If no period schedule exists, derive a minimal row from daily_watermarks only
+         (avoids Google when sheet export fails).
+      3. Last resort: live Google Sheet CSV export.
 
     Query params:
       ?client_id=<id>   — required to identify whose schedule/daily data to use
       ?sheet_url=<url>  — fallback sheet URL for pre-import clients
     """
     try:
-        from dashboard.watermark_service import compute_waterlog_from_db
+        from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
     except ImportError:
-        from watermark_service import compute_waterlog_from_db
+        from watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
 
     try:
         client_id_param = request.args.get('client_id')
         sheet_url = request.args.get('sheet_url') or None
 
+        db_waterlog = None
         # ── 1. Try fully-offline DB computation ──────────────────────────────
         if client_id_param:
-            data = compute_waterlog_from_db(client_id_param)
-            if data is not None:  # None means no periods stored yet
-                return jsonify({"status": "success", "data": data})
+            db_waterlog = compute_waterlog_from_db(client_id_param)
+            if db_waterlog is not None:
+                return jsonify({"status": "success", "data": db_waterlog})
 
-        # ── 2. First-time / pre-import fall-back: read live from the sheet ──
+            daily_fb = compute_waterlog_daily_fallback(client_id_param)
+            if daily_fb is not None:
+                return jsonify({"status": "success", "data": daily_fb})
+
+        # ── 3. Live Google Sheet CSV (pre-import clients or missing daily rows) ──
         if client_id_param:
             client_data = get_client_data(client_id_param)
             if client_data:
@@ -10732,7 +10744,21 @@ def get_waterlog_sheet_data():
         data = fetch_waterlog_data(sheet_url=sheet_url, client_id=client_id_param)
         if data:
             return jsonify({"status": "success", "data": data})
-        return jsonify({"status": "error", "message": "Failed to fetch waterlog data"}), 500
+
+        msg = "Failed to fetch waterlog data"
+        if client_id_param and db_waterlog is None:
+            if not sheet_url:
+                msg = (
+                    "No profit-share schedule or daily snapshots in the database for this client "
+                    "and no Google Sheet URL is on file. Re-import from Sheets or add a sheet URL."
+                )
+            else:
+                msg = (
+                    "Could not load the Profitability Waterlog from Google (timeout, rate limit, or "
+                    "sheet access) and there are no daily snapshots to fall back on. "
+                    "Try again later or re-import the client."
+                )
+        return jsonify({"status": "error", "message": msg}), 500
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
