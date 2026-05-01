@@ -212,8 +212,8 @@
             <button class="scan-btn" id="run-scan-btn" onclick="runScan()">
                 <i class="fas fa-radar" id="scan-icon"></i> Run Quality Scan
             </button>
-            <button class="scan-btn" id="disc-btn" onclick="showDiscrepancies()" style="background:linear-gradient(135deg,#dc2626,#b91c1c);" title="View clients by discrepancy">
-                <i class="fas fa-scale-unbalanced"></i> Discrepancies
+            <button class="scan-btn" id="sa-exclude-btn" onclick="showSuperAdminClientExclusion()" style="background:linear-gradient(135deg,#475569,#334155);" title="Exclude clients from Super Admin financial totals only">
+                <i class="fas fa-user-slash"></i> Client exclusion
             </button>
             <button class="scan-btn" id="neg-hedge-qa-btn" onclick="showNegativeHedgeNetQA()" style="background:linear-gradient(135deg,#7c2d12,#ea580c);" title="Super-admin QA queue for negative hedge net">
                 <i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA
@@ -257,28 +257,31 @@
             </div>
         </div>
 
-        <!-- Discrepancies Modal -->
-        <div id="disc-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
-            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(820px,94vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+        <!-- Super Admin: client exclusion from aggregate totals (not the Daily Summary tracker) -->
+        <div id="sa-exclude-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(860px,96vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
                 <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b;">
-                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-scale-unbalanced" style="color:#f87171; margin-right:8px;"></i>Client Discrepancies</h3>
-                    <button onclick="document.getElementById('disc-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-user-slash" style="color:#94a3b8; margin-right:8px;"></i>Client exclusion</h3>
+                    <button type="button" onclick="document.getElementById('sa-exclude-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
                 </div>
-                <div style="padding:14px 24px 8px;">
-                    <input type="text" id="disc-search" placeholder="Search client..." oninput="filterDiscTable()" style="width:100%; padding:8px 14px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.88rem; outline:none;">
+                <p style="margin:12px 24px 0; font-size:0.78rem; color:#64748b; line-height:1.45;">Checked clients are omitted from Super Admin dashboard totals (financial cards, client breakdown, profit split aggregates). This does not change the Daily Summary tracker or its Manage Exclusions lists.</p>
+                <div style="padding:14px 24px 8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="sa-exclude-search" placeholder="Search client, trader, or admin..." oninput="filterSaExcludeTable()" style="flex:1; min-width:200px; padding:8px 14px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.88rem; outline:none;">
+                    <button type="button" onclick="saveSuperAdminStatsExclusions()" id="sa-exclude-save-btn" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:none; color:#fff; padding:8px 18px; border-radius:10px; cursor:pointer; font-size:0.85rem; font-weight:600;">
+                        <i class="fas fa-floppy-disk"></i> Save
+                    </button>
                 </div>
                 <div style="overflow-y:auto; flex:1; padding:0 24px 18px;">
                     <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
                         <thead>
                             <tr style="border-bottom:2px solid #334155; position:sticky; top:0; background:#0f172a;">
-                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">#</th>
+                                <th style="text-align:center; padding:10px 8px; color:#94a3b8; font-weight:600; width:48px;">Exclude</th>
                                 <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Client</th>
-                                <th style="text-align:right; padding:10px 8px; color:#94a3b8; font-weight:600;">Sheet</th>
-                                <th style="text-align:right; padding:10px 8px; color:#94a3b8; font-weight:600;">Actual (MT5)</th>
-                                <th style="text-align:right; padding:10px 8px; color:#94a3b8; font-weight:600;">Discrepancy</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Trader</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Admin</th>
                             </tr>
                         </thead>
-                        <tbody id="disc-tbody"></tbody>
+                        <tbody id="sa-exclude-tbody"><tr><td colspan="4" style="text-align:center; padding:24px; color:#64748b;">Open this dialog to load clients.</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -423,8 +426,8 @@
         </div>
         <div id="tracker-exclusion-panel" style="display:none; background:#090f1e; border:1px solid #162040; border-radius:12px; padding:16px; margin-bottom:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <span style="font-weight:700; color:#e2e8f0; font-size:0.88rem;"><i class="fas fa-eye-slash" style="color:#f87171; margin-right:6px;"></i>Excluded from Tracking</span>
-                <span style="font-size:0.72rem; color:#4a6080;">Inactive clients are always excluded</span>
+                <span style="font-weight:700; color:#e2e8f0; font-size:0.88rem;"><i class="fas fa-eye-slash" style="color:#f87171; margin-right:6px;"></i>Excluded from daily summary tracking</span>
+                <span style="font-size:0.72rem; color:#4a6080;">Applies to the Daily Summary tracker, sign-off views, and related quality lists. Super Admin financial totals use the separate Client exclusion control in the action bar. Inactive clients stay excluded from the tracker.</span>
             </div>
             <div style="display:flex; gap:24px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:200px;">
@@ -587,7 +590,7 @@
             if (de) de.addEventListener('change', onCustomDateChange);
         });
 
-        // ── Admin Tracker (Super Admin source-of-truth) ───────────────────────
+        // ── Admin Tracker (daily summary / quality) ───────────────────────────
         function renderAdminTrackerTable() {
             const body = document.getElementById('admin-tracker-body');
             const badge = document.getElementById('admin-tracker-count-badge');
@@ -1000,55 +1003,85 @@
             setTimeout(() => { toast.classList.add('hiding'); setTimeout(() => toast.remove(), 300); }, type === 'error' ? 6000 : 4000);
         }
 
-        /* ---------- Discrepancies modal ---------- */
-        let _discData = [];
-        async function showDiscrepancies() {
-            const btn = document.getElementById('disc-btn');
+        /* ---------- Super Admin client exclusion (aggregate totals only) ---------- */
+        function _saExclEsc(s) {
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        }
+
+        async function showSuperAdminClientExclusion() {
+            const btn = document.getElementById('sa-exclude-btn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
             try {
-                const resp = await fetch('/api/quality/discrepancies');
+                const resp = await fetch('/api/super_admin/stats_exclusions');
                 const data = await resp.json();
-                if (data.status === 'success') {
-                    _discData = data.clients || [];
-                    renderDiscTable(_discData);
-                    const modal = document.getElementById('disc-modal');
-                    modal.style.display = 'flex';
-                    document.getElementById('disc-search').value = '';
-                } else {
-                    showToast('error', 'Failed', data.message || 'Could not load discrepancies');
+                if (data.status !== 'success') {
+                    showToast('error', 'Failed', data.message || 'Could not load clients');
+                    return;
                 }
+                const excluded = new Set((data.excluded || []).map(x => String(x).trim()).filter(Boolean));
+                const items = data.clients || [];
+                const tbody = document.getElementById('sa-exclude-tbody');
+                if (!items.length) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:24px; color:#64748b;">No clients found</td></tr>';
+                } else {
+                    tbody.innerHTML = items.map((row) => {
+                        const cid = row.client_id;
+                        const chk = excluded.has(cid) ? ' checked' : '';
+                        const e = _saExclEsc;
+                        return `<tr data-client-id="${e(cid)}" style="border-bottom:1px solid #1e293b;">
+                            <td style="text-align:center; padding:8px;"><input type="checkbox" class="sa-excl-cb" data-client-id="${e(cid)}"${chk} aria-label="Exclude from Super Admin totals"></td>
+                            <td style="padding:8px; color:#e2e8f0; font-weight:500;">${e(cid)}</td>
+                            <td class="sa-excl-trader" style="padding:8px; color:#94a3b8;">${e(row.trader)}</td>
+                            <td class="sa-excl-admin" style="padding:8px; color:#94a3b8;">${e(row.admin)}</td>
+                        </tr>`;
+                    }).join('');
+                }
+                document.getElementById('sa-exclude-search').value = '';
+                filterSaExcludeTable();
+                document.getElementById('sa-exclude-modal').style.display = 'flex';
             } catch (e) {
                 showToast('error', 'Error', e.message || 'Network error');
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-scale-unbalanced"></i> Discrepancies';
+                btn.innerHTML = '<i class="fas fa-user-slash"></i> Client exclusion';
             }
         }
 
-        function renderDiscTable(items) {
-            const tbody = document.getElementById('disc-tbody');
-            if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:24px; color:#64748b;">No discrepancy data found</td></tr>'; return; }
-            tbody.innerHTML = items.map((c, i) => {
-                const d = parseFloat(c.discrepancy) || 0;
-                const color = d > 0 ? '#4ade80' : d < 0 ? '#f87171' : '#94a3b8';
-                const dFmt = d.toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
-                const sFmt = (parseFloat(c.sheet)||0).toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
-                const aFmt = (parseFloat(c.actual)||0).toLocaleString('en-US', {style:'currency', currency:'USD', minimumFractionDigits:2});
-                return `<tr style="border-bottom:1px solid #1e293b; cursor:pointer;" onmouseenter="this.style.background='#1e293b'" onmouseleave="this.style.background=''" onclick="window.open('/dashboard/${encodeURIComponent(c.client_id)}','_blank')">
-                    <td style="padding:8px; color:#64748b;">${i+1}</td>
-                    <td style="padding:8px;"><a href="/dashboard/${encodeURIComponent(c.client_id)}" target="_blank" style="color:#60a5fa; text-decoration:none; font-weight:500;" onclick="event.stopPropagation()">${c.name}</a></td>
-                    <td style="padding:8px; text-align:right; color:#94a3b8;">${sFmt}</td>
-                    <td style="padding:8px; text-align:right; color:#94a3b8;">${aFmt}</td>
-                    <td style="padding:8px; text-align:right; color:${color}; font-weight:600;">${dFmt}</td>
-                </tr>`;
-            }).join('');
+        function filterSaExcludeTable() {
+            const q = (document.getElementById('sa-exclude-search').value || '').toLowerCase();
+            document.querySelectorAll('#sa-exclude-tbody tr[data-client-id]').forEach((tr) => {
+                const id = (tr.getAttribute('data-client-id') || '').toLowerCase();
+                const t = (tr.querySelector('.sa-excl-trader')?.textContent || '').toLowerCase();
+                const a = (tr.querySelector('.sa-excl-admin')?.textContent || '').toLowerCase();
+                const match = !q || id.includes(q) || t.includes(q) || a.includes(q);
+                tr.style.display = match ? '' : 'none';
+            });
         }
 
-        function filterDiscTable() {
-            const q = (document.getElementById('disc-search').value || '').toLowerCase();
-            const filtered = q ? _discData.filter(c => c.name.toLowerCase().includes(q) || c.client_id.toLowerCase().includes(q)) : _discData;
-            renderDiscTable(filtered);
+        async function saveSuperAdminStatsExclusions() {
+            const btn = document.getElementById('sa-exclude-save-btn');
+            const boxes = document.querySelectorAll('#sa-exclude-tbody .sa-excl-cb:checked');
+            const excluded = Array.from(boxes).map((cb) => cb.getAttribute('data-client-id')).filter(Boolean);
+            btn.disabled = true;
+            try {
+                const resp = await fetch('/api/super_admin/stats_exclusions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ excluded }),
+                    credentials: 'same-origin'
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    showToast('success', 'Saved', `${(data.excluded || []).length} client(s) excluded from Super Admin totals`);
+                } else {
+                    showToast('error', 'Save failed', data.message || 'Unknown error');
+                }
+            } catch (e) {
+                showToast('error', 'Save failed', e.message || 'Network error');
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         /* ---------- Deleted Rows modal ---------- */

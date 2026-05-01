@@ -45,6 +45,11 @@ class SimpleCache:
 
 _overview_cache = SimpleCache(max_keys=50)
 
+
+def clear_financial_overview_cache():
+    """Invalidate cached financial overview results (e.g. after Super Admin stats exclusion saves)."""
+    _overview_cache.clear()
+
 def col_idx_to_letter(n):
     """
     Converts 0-based column index to Excel-style column letters.
@@ -1610,7 +1615,7 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
 
     clients_data = _get_cached_clients()
     clients_list = []
-    
+
     for client_id, data in clients_data.items():
         if not data: continue
         
@@ -1628,7 +1633,7 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
         h_info = client_map.get(real_client_name) or client_map.get(client_id)
         admin_name = h_info['admin'] if h_info else "-"
         trader_name = h_info['trader'] if h_info else "-"
-        
+
         # Init Stats
         c_stats = {
             "client_id": real_client_name,
