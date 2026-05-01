@@ -76,10 +76,10 @@ def _clients_and_admin_for_trader(hierarchy: dict, trader_name: str) -> tuple[li
 
 def _lookup_trader_credentials_by_email(email: str):
     """Match trader row by email (any is_active). Returns dict or None."""
-    from dashboard.database import get_connection
+    from dashboard.database import get_direct_connection
 
     e = (email or "").lower().strip()
-    with get_connection() as conn:
+    with get_direct_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
@@ -113,7 +113,7 @@ def delete_trader_by_email(email: str) -> None:
     from dashboard.database import (
         delete_user_credential,
         delete_client_data,
-        get_connection,
+        get_direct_connection,
     )
 
     reload_hierarchy()
@@ -155,7 +155,7 @@ def delete_trader_by_email(email: str) -> None:
                         if te != email:
                             continue
                         try:
-                            with get_connection() as conn:
+                            with get_direct_connection() as conn:
                                 cur = conn.cursor()
                                 cur.execute("DELETE FROM api_keys WHERE trader = ?", (tn,))
                                 conn.commit()
@@ -165,7 +165,7 @@ def delete_trader_by_email(email: str) -> None:
                             cid = (c.get("name") or "").strip()
                             if cid:
                                 try:
-                                    with get_connection() as conn:
+                                    with get_direct_connection() as conn:
                                         cur = conn.cursor()
                                         cur.execute("DELETE FROM api_keys WHERE client = ?", (cid,))
                                         conn.commit()
@@ -182,7 +182,7 @@ def delete_trader_by_email(email: str) -> None:
                         if me == email:
                             del reg[tn]
                     save_hierarchy(SYSTEM_HIERARCHY)
-                with get_connection() as conn:
+                with get_direct_connection() as conn:
                     cur = conn.cursor()
                     cur.execute(
                         """
@@ -232,7 +232,7 @@ def delete_trader_by_email(email: str) -> None:
 
     # API keys + sessions tied to this trader or their clients
     try:
-        with get_connection() as conn:
+        with get_direct_connection() as conn:
             cur = conn.cursor()
             cur.execute("DELETE FROM api_keys WHERE trader = ?", (trader_name,))
             for cid in client_names:
@@ -295,7 +295,7 @@ def delete_trader_by_email(email: str) -> None:
         delete_user_credential(trader_name, "trader")
     # Catch orphan rows: username empty or duplicate keyed by email only
     try:
-        with get_connection() as conn:
+        with get_direct_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 """
