@@ -9,16 +9,24 @@ STATS_GID = "839895136"
 WATERLOG_GID = "520289647"
 WATERLOG_TAB_NAME = "Profitability Waterlog"
 
+import time
+
 def get_sheet_csv(gid, sheet_id=None):
     sid = sheet_id or SHEET_ID
-    try:
-        url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.content.decode('utf-8')
-    except Exception as e:
-        logging.error(f"Error fetching sheet CSV (gid={gid}): {e}")
-        return None
+    last_err = None
+    for attempt in range(2):
+        try:
+            url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={gid}"
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            return response.content.decode('utf-8')
+        except Exception as e:
+            last_err = e
+            logging.warning(f"sheet CSV fetch attempt {attempt + 1} gid={gid}: {e}")
+            if attempt == 0:
+                time.sleep(0.45)
+    logging.error(f"Error fetching sheet CSV (gid={gid}): {last_err}")
+    return None
 
 def _extract_sheet_id(sheet_url):
     """Extract the spreadsheet key from a Google Sheets URL."""
