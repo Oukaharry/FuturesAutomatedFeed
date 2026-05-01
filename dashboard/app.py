@@ -75,6 +75,27 @@ ADMIN_PROP_DISPLAY_NAME = {
     'toponefutures': 'Top One Futures',
 }
 
+# Super Admin financial aggregates: excluded client names (not tied to Daily Summary tracker lists)
+_SUPER_ADMIN_STATS_EXCLUDED_KEY = 'super_admin_stats_excluded_clients'
+
+
+def _get_super_admin_stats_excluded_set():
+    from dashboard.database import get_setting
+    try:
+        raw = json.loads(get_setting(_SUPER_ADMIN_STATS_EXCLUDED_KEY) or '[]')
+    except (TypeError, ValueError):
+        return set()
+    return {str(x).strip() for x in raw if x is not None and str(x).strip()}
+
+
+def _client_excluded_from_super_admin_stats(client_id, display_name, excluded):
+    if not excluded:
+        return False
+    for nm in (client_id, display_name):
+        if nm and str(nm).strip() in excluded:
+            return True
+    return False
+
 
 def _norm_prop_firm_max_out_key(raw):
     """Normalize Prop Firm strings for admin max-out / prop slot counts."""
@@ -3164,6 +3185,8 @@ def get_super_admin_totals():
 
     # Derive ALL totals from per-client stats (fast — uses precomputed cashflow_inprogress)
     clients = get_client_performance_stats(profile_filter)
+    excluded_sa = _get_super_admin_stats_excluded_set()
+    clients = [c for c in clients if str(c.get('client_id') or '').strip() not in excluded_sa]
 
     t_pay = sum(c.get('payouts', 0) for c in clients)
     t_dep = sum(c.get('deposits', 0) for c in clients)
@@ -3220,6 +3243,7 @@ def get_profit_splits():
     from concurrent.futures import ThreadPoolExecutor
 
     clients_data = _get_cached_clients()
+    excluded_sa = _get_super_admin_stats_excluded_set()
     results = []
 
     def _money_to_float(v):
@@ -3282,6 +3306,9 @@ def get_profit_splits():
             # Profile filter
             source = get_client_profile(client_id, identity)
             if profile_filter != 'ALL' and source != profile_filter:
+                return None
+
+            if _client_excluded_from_super_admin_stats(client_id, display_name, excluded_sa):
                 return None
 
             # Mirror the client dashboard's Profit Split card EXACTLY so the super
@@ -3363,6 +3390,79 @@ def get_profit_splits():
     total = round(sum(r['profit_split_inprogress'] for r in results), 2)
     results.sort(key=lambda x: x['profit_split_inprogress'], reverse=True)
     return jsonify({'status': 'success', 'clients': results, 'total': total})
+
+
+@app.route('/api/super_admin/stats_exclusions', methods=['GET'])
+@require_role('super_admin')
+def api_super_admin_stats_exclusions_get():
+    """List all clients with trader/admin and current Super Admin exclusion set."""
+    from dashboard.database import get_setting, get_all_clients
+
+    try:
+        excluded = json.loads(get_setting(_SUPER_ADMIN_STATS_EXCLUDED_KEY) or '[]')
+    except (TypeError, ValueError):
+        excluded = []
+    if not isinstance(excluded, list):
+        excluded = []
+
+    rows = []
+    seen = set()
+    h = SYSTEM_HIERARCHY or {}
+    if h.get('admins'):
+        for admin_name, admin_data in h['admins'].items():
+            for trader_name, trader_data in admin_data.get('traders', {}).items():
+                for client in trader_data.get('clients', []):
+                    cname = (client.get('name') or '').strip()
+                    if not cname or cname in seen:
+                        continue
+                    seen.add(cname)
+                    rows.append({
+                        'client_id': cname,
+                        'trader': trader_name or '-',
+                        'admin': admin_name or '-',
+                    })
+
+    for cid, data in (get_all_clients() or {}).items():
+        if not data:
+            continue
+        identity = data.get('identity') or {}
+        display = (identity.get('name') or cid or '').strip()
+        if not display or display in seen:
+            continue
+        seen.add(display)
+        rows.append({'client_id': display, 'trader': '-', 'admin': '-'})
+
+    rows.sort(key=lambda r: r['client_id'].lower())
+    return jsonify({'status': 'success', 'clients': rows, 'excluded': excluded})
+
+
+@app.route('/api/super_admin/stats_exclusions', methods=['POST'])
+@require_role('super_admin')
+def api_super_admin_stats_exclusions_post():
+    """Replace Super Admin stats exclusion list (checked clients in Data Quality UI)."""
+    from dashboard.database import set_setting
+
+    body = request.get_json(silent=True) or {}
+    ex = body.get('excluded')
+    if not isinstance(ex, list):
+        return jsonify({'status': 'error', 'message': 'excluded must be a list'}), 400
+
+    clean = sorted({str(x).strip() for x in ex if x is not None and str(x).strip()})
+    user_id = request.session_user.get('user_identifier', '')
+    set_setting(_SUPER_ADMIN_STATS_EXCLUDED_KEY, json.dumps(clean), updated_by=user_id)
+    try:
+        from dashboard.financial_overview import clear_financial_overview_cache
+        clear_financial_overview_cache()
+    except Exception:
+        pass
+    log_action(
+        'SUPER_ADMIN_STATS_EXCLUSIONS',
+        'super_admin',
+        user_id,
+        get_remote_address(),
+        f'{len(clean)} excluded client(s)',
+    )
+    return jsonify({'status': 'success', 'excluded': clean})
 
 
 @app.route('/api/client_payouts/<client_id>')
@@ -8743,7 +8843,7 @@ def api_trader_summary_status():
 @app.route('/api/quality/summary_tracker_exclude', methods=['POST'])
 @require_role('super_admin')
 def api_summary_tracker_exclude():
-    """Toggle a trader or client exclusion from the Daily Summary Tracker."""
+    """Toggle trader/client exclusion for the Daily Summary Tracker and related quality views."""
     from dashboard.database import get_setting, set_setting
     import json as _json
 
