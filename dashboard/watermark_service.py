@@ -301,6 +301,56 @@ def get_client_split_pct(client_id):
     return 50
 
 
+def compute_waterlog_daily_fallback(client_id):
+    """
+    When `waterlog_periods` was never seeded but `daily_watermarks` has rows,
+    build a minimal Profit Share row so the dashboard works without Google Sheets.
+
+    Baseline: newest-only scan over prior daily snapshots — first strictly positive
+    net (same idea as “most recent prior positive” on coarser period data).
+    """
+    daily = get_all_daily_watermarks(client_id)
+    if not daily:
+        return None
+
+    latest_date, latest_val = daily[-1]
+    latest_f = float(latest_val)
+
+    baseline = 0.0
+    for j in range(len(daily) - 2, -1, -1):
+        v = float(daily[j][1])
+        if v > 0:
+            baseline = v
+            break
+
+    split_pct = get_client_split_pct(client_id)
+    if latest_f <= 0:
+        ps = 0.0
+    elif latest_f > baseline:
+        ps = (latest_f - baseline) * split_pct / 100.0
+    else:
+        ps = 0.0
+
+    def _fmt_cur(v):
+        if v < 0:
+            return f"-${abs(v):,.2f}"
+        return f"${v:,.2f}"
+
+    fd = f"{latest_date.month}/{latest_date.day}/{latest_date.year}"
+
+    return {
+        'periods': [{
+            'from_date': fd,
+            'to_date': fd,
+            'low': _fmt_cur(latest_f),
+            'profit_split': f"${ps:,.0f}" if ps > 0 else '$0',
+            'split_pct': split_pct,
+        }],
+        'last_split_net_profit': baseline,
+        '_source': 'daily_watermarks_fallback',
+    }
+
+
 def compute_waterlog_from_db(client_id):
     """
     Computes the Profit Share History table entirely from DB data.
