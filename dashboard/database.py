@@ -27,8 +27,12 @@ DATABASE_URL = os.environ.get(
 logger = logging.getLogger(__name__)
 
 # ─── Connection Pooling ─────────────────────────────────────────────
-# Reuse connections instead of creating new ones (prevents exhaustion)
-# Pool size: 5-15 connections (5 min, 10 max, useful for concurrent requests)
+# Reuse connections instead of creating new ones (prevents exhaustion).
+# On hosts with low max_connections (e.g. PythonAnywhere managed Postgres),
+# min=5 at pool init can fail with "remaining connection slots are reserved...".
+# Override via DB_POOL_MIN / DB_POOL_MAX (integers, min >= 1).
+_pool_min = max(1, int(os.environ.get("DB_POOL_MIN", "1")))
+_pool_max = max(_pool_min, int(os.environ.get("DB_POOL_MAX", "10")))
 _connection_pool = None
 
 def _init_pool():
@@ -37,11 +41,12 @@ def _init_pool():
     if _connection_pool is None:
         try:
             _connection_pool = psycopg2.pool.SimpleConnectionPool(
-                5, 15,  # min=5, max=15 connections
+                _pool_min,
+                _pool_max,
                 DATABASE_URL,
                 connect_timeout=5  # 5-second timeout per connection
             )
-            logger.info("[DB] Connection pool initialized (5-15 connections)")
+            logger.info("[DB] Connection pool initialized (%s-%s connections)", _pool_min, _pool_max)
         except Exception as e:
             logger.error(f"[DB] Failed to initialize connection pool: {e}")
             raise
@@ -154,6 +159,31 @@ def get_connection():
         # Always return connection to pool
         if raw is not None:
             _return_pooled_connection(raw)
+
+
+@contextmanager
+def get_direct_connection():
+    """
+    One-off PostgreSQL connection (not from the pool).
+    Use for CLI/cron/scripts so pool pre-allocation does not consume slots
+    on small Postgres plans. Always closes the connection when done.
+    """
+    raw = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    raw.autocommit = False
+    try:
+        raw.rollback()
+        conn = _PgConnWrapper(raw)
+        yield conn
+        raw.commit()
+    except Exception as e:
+        logger.warning(f"[DB] Transaction error (direct connection), rolling back: {e}")
+        raw.rollback()
+        raise
+    finally:
+        try:
+            raw.close()
+        except Exception:
+            pass
 
 
 def get_db_path():
