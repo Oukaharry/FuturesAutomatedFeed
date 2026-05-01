@@ -3214,7 +3214,7 @@ def get_profit_splits():
     if session_user.get('user_type') == 'kwok_admin':
         profile_filter = 'ALL'
 
-    from dashboard.watermark_service import compute_waterlog_from_db, get_client_split_pct
+    from dashboard.watermark_service import compute_waterlog_from_db
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
     from utils.data_processor import parse_currency
     from concurrent.futures import ThreadPoolExecutor
@@ -3222,11 +3222,24 @@ def get_profit_splits():
     clients_data = _get_cached_clients()
     results = []
 
-    # Mirror the client dashboard's `aggregateCashflowFromEvals` (index.html
-    # ~line 4672) exactly, so the super admin breakdown never disagrees with the
-    # per-client Profit Split card (#split-profit-amount).  The stored
-    # `statistics.cashflow_inprogress` on disk is sometimes stale, so we
-    # recompute from raw evaluations here.
+    def _money_to_float(v):
+        """Parse currency/stat fields the same way as quality-scan helpers."""
+        try:
+            if v is None:
+                return 0.0
+            s = str(v).replace("$", "").replace(",", "").strip()
+            if s == "":
+                return 0.0
+            return float(s)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # Net profit in progress for Profit Split must match index.html Stats card /
+    # window._statsNetProfit (lines ~5000–5005):
+    #   payouts + hedging_results + farming_results + hedging_review.discrepancy
+    #   - challenge_fees
+    # Recomputing from evaluations alone omits MT5↔sheet discrepancy and will
+    # disagree with the client's Profit Split tab.
     # Mirror the sheet (Evaluations tab) formulas exactly:
     #   Hedging Results = SUM(J:N) + SUM(U:AA)
     #                   = P1 hedges (HR 1..5) + ALL funded hedges (HR 1.1..5.1 + HR 6..7)
@@ -3265,7 +3278,7 @@ def get_profit_splits():
     def _compute_one(client_id, data):
         try:
             identity = data.get('identity', {})
-            real_name = (identity.get('name') or client_id).strip()
+            display_name = (identity.get('name') or client_id).strip()
             # Profile filter
             source = get_client_profile(client_id, identity)
             if profile_filter != 'ALL' and source != profile_filter:
@@ -3274,15 +3287,28 @@ def get_profit_splits():
             # Mirror the client dashboard's Profit Split card EXACTLY so the super
             # admin "Client Breakdown" matches #split-profit-amount per client.
             #
-            # Client dashboard formula (index.html):
-            #   latestNet = live aggregate from evaluations (aggregateCashflowFromEvals):
-            #               payouts + hedging + farming - (fees + activation_fee)
-            #   prevLow   = periods[-2].low from compute_waterlog_from_db (0 if none)
-            #   split_pct = periods[-1].split_pct (default 50)
+            # Client dashboard (index.html):
+            #   latestNet = window._statsNetProfit from cashflow_inprogress + discrepancy
+            #   prevLow   = second-newest period low after waterlog sort (same as periods[-2]
+            #               when periods are oldest-first from compute_waterlog_from_db)
             #   split_amt = max(0, (latestNet - prevLow) * split_pct / 100)
-            latest_net = _live_in_progress_net(data.get('evaluations') or [])
+            stats = data.get('statistics') if isinstance(data.get('statistics'), dict) else {}
+            cf = stats.get('cashflow_inprogress') if isinstance(stats.get('cashflow_inprogress'), dict) else {}
+            hr = stats.get('hedging_review') if isinstance(stats.get('hedging_review'), dict) else {}
+            if cf:
+                latest_net = round(
+                    _money_to_float(cf.get("payouts"))
+                    + _money_to_float(cf.get("hedging_results"))
+                    + _money_to_float(cf.get("farming_results"))
+                    + _money_to_float(hr.get("discrepancy"))
+                    - _money_to_float(cf.get("challenge_fees")),
+                    2,
+                )
+            else:
+                latest_net = _live_in_progress_net(data.get('evaluations') or [])
 
-            wl = compute_waterlog_from_db(real_name)
+            # Watermark DB rows are keyed by dashboard client_id, not display name.
+            wl = compute_waterlog_from_db(client_id)
             prev_low = 0.0
             split_pct = 50
             if wl and wl.get('periods'):
@@ -3304,7 +3330,7 @@ def get_profit_splits():
             )
 
             return {
-                'client_id': real_name,
+                'client_id': display_name,
                 'net_profit': round(latest_net, 2),
                 'profit_split_inprogress': round(split_amt, 2),
                 'split_pct': split_pct,
