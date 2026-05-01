@@ -144,7 +144,13 @@ def fetch_waterlog_data(sheet_url=None, client_id=None):
         hwm_low = 0.0  # running high-water mark on the Low column
 
         for (from_date, to_date, period_low, period_high, sheet_ps) in parsed_rows:
-            gain = period_low - hwm_low if period_low > hwm_low else 0.0
+            effective_hwm = max(hwm_low, 0.0)
+            if period_low <= 0:
+                gain = 0.0
+            elif period_low > effective_hwm:
+                gain = period_low - effective_hwm
+            else:
+                gain = 0.0
 
             # Determine split percentage:
             # 1. If there's an explicit override for this period, use it (admin-set)
@@ -169,9 +175,10 @@ def fetch_waterlog_data(sheet_url=None, client_id=None):
 
             if gain > 0:
                 profit_split = gain * split_pct / 100
-                hwm_low = period_low
             else:
                 profit_split = 0.0
+            if period_low > hwm_low:
+                hwm_low = period_low
 
             result.append({
                 'from_date':    fmt_from_date,

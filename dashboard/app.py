@@ -3291,7 +3291,7 @@ def get_profit_splits():
             #   latestNet = window._statsNetProfit from cashflow_inprogress + discrepancy
             #   prevLow   = second-newest period low after waterlog sort (same as periods[-2]
             #               when periods are oldest-first from compute_waterlog_from_db)
-            #   split_amt = max(0, (latestNet - prevLow) * split_pct / 100)
+            #   split_amt = 0 if latestNet <= 0 else max(0, (latestNet - max(prevLow,0)) * split_pct / 100)
             stats = data.get('statistics') if isinstance(data.get('statistics'), dict) else {}
             cf = stats.get('cashflow_inprogress') if isinstance(stats.get('cashflow_inprogress'), dict) else {}
             hr = stats.get('hedging_review') if isinstance(stats.get('hedging_review'), dict) else {}
@@ -3324,10 +3324,13 @@ def get_profit_splits():
                     except ValueError:
                         prev_low = 0.0
 
-            split_amt = (
-                (latest_net - prev_low) * split_pct / 100.0
-                if latest_net > prev_low else 0.0
-            )
+            effective_prev = max(prev_low, 0.0)
+            if latest_net <= 0:
+                split_amt = 0.0
+            elif latest_net > effective_prev:
+                split_amt = (latest_net - effective_prev) * split_pct / 100.0
+            else:
+                split_amt = 0.0
 
             return {
                 'client_id': display_name,
