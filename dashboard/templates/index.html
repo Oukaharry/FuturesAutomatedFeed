@@ -7699,12 +7699,20 @@
                             rows[0].low = formatMoney(latestNet);
 
                             const latestPct = _normSplitPct(rows[0].split_pct);
-                            const prevLowRaw = rows.length > 1 ? (rows[1].low || '$0') : '$0';
-                            const prevLow = parseFloat(String(prevLowRaw).replace(/[^0-9.-]/g, '')) || 0;
-                            const effectivePrev = Math.max(prevLow, 0);
+                            // Baseline = most recent *prior* period with net > 0 (newest-first scan).
+                            // Skips a negative dip (e.g. +34k, -11k, +69k → base 34k, not 0).
+                            // If no prior positive exists, baseline stays 0 (first recovery above zero).
+                            let baseline = 0;
+                            for (let i = 1; i < rows.length; i++) {
+                                const pv = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
+                                if (pv > 0) {
+                                    baseline = pv;
+                                    break;
+                                }
+                            }
                             let latestSplit = 0;
-                            if (latestNet > 0 && latestNet > effectivePrev) {
-                                latestSplit = (latestNet - effectivePrev) * latestPct / 100;
+                            if (latestNet > 0 && latestNet > baseline) {
+                                latestSplit = (latestNet - baseline) * latestPct / 100;
                             }
                             rows[0].profit_split = latestSplit > 0
                                 ? ('$' + Math.round(latestSplit).toLocaleString('en-US'))

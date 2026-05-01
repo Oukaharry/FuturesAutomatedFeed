@@ -3289,9 +3289,9 @@ def get_profit_splits():
             #
             # Client dashboard (index.html):
             #   latestNet = window._statsNetProfit from cashflow_inprogress + discrepancy
-            #   prevLow   = second-newest period low after waterlog sort (same as periods[-2]
-            #               when periods are oldest-first from compute_waterlog_from_db)
-            #   split_amt = 0 if latestNet <= 0 else max(0, (latestNet - max(prevLow,0)) * split_pct / 100)
+            #   baseline  = newest completed period with net > 0 (walk periods[-2], [-3], ...),
+            #               or 0 if none — so +34k → -11k → +69k uses base 34k, not 0.
+            #   split_amt = 0 if latestNet <= 0 else max(0, (latestNet - baseline) * split_pct / 100)
             stats = data.get('statistics') if isinstance(data.get('statistics'), dict) else {}
             cf = stats.get('cashflow_inprogress') if isinstance(stats.get('cashflow_inprogress'), dict) else {}
             hr = stats.get('hedging_review') if isinstance(stats.get('hedging_review'), dict) else {}
@@ -3309,7 +3309,7 @@ def get_profit_splits():
 
             # Watermark DB rows are keyed by dashboard client_id, not display name.
             wl = compute_waterlog_from_db(client_id)
-            prev_low = 0.0
+            baseline = 0.0
             split_pct = 50
             if wl and wl.get('periods'):
                 periods = wl['periods']
@@ -3317,18 +3317,21 @@ def get_profit_splits():
                     split_pct = int(periods[-1].get('split_pct', 50) or 50)
                 except (TypeError, ValueError):
                     split_pct = 50
-                if len(periods) >= 2:
-                    prev_raw = str(periods[-2].get('low', '$0')).replace('$', '').replace(',', '').strip()
+                completed = periods[:-1]
+                for p in reversed(completed):
+                    prev_raw = str(p.get('low', '$0')).replace('$', '').replace(',', '').strip()
                     try:
-                        prev_low = float(prev_raw)
+                        v = float(prev_raw)
                     except ValueError:
-                        prev_low = 0.0
+                        continue
+                    if v > 0:
+                        baseline = v
+                        break
 
-            effective_prev = max(prev_low, 0.0)
             if latest_net <= 0:
                 split_amt = 0.0
-            elif latest_net > effective_prev:
-                split_amt = (latest_net - effective_prev) * split_pct / 100.0
+            elif latest_net > baseline:
+                split_amt = (latest_net - baseline) * split_pct / 100.0
             else:
                 split_amt = 0.0
 
