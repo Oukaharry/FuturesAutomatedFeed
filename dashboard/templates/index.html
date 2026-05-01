@@ -7701,7 +7701,11 @@
                             const latestPct = _normSplitPct(rows[0].split_pct);
                             const prevLowRaw = rows.length > 1 ? (rows[1].low || '$0') : '$0';
                             const prevLow = parseFloat(String(prevLowRaw).replace(/[^0-9.-]/g, '')) || 0;
-                            const latestSplit = latestNet > prevLow ? ((latestNet - prevLow) * latestPct / 100) : 0;
+                            const effectivePrev = Math.max(prevLow, 0);
+                            let latestSplit = 0;
+                            if (latestNet > 0 && latestNet > effectivePrev) {
+                                latestSplit = (latestNet - effectivePrev) * latestPct / 100;
+                            }
                             rows[0].profit_split = latestSplit > 0
                                 ? ('$' + Math.round(latestSplit).toLocaleString('en-US'))
                                 : '$0';
