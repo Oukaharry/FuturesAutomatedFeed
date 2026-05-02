@@ -7015,9 +7015,91 @@ def _estimate_issue_date(ev, issue_check, fallback):
     if issue_check == 'Empty Activation Fee':
         return dates[-1]
     # Current/ongoing issues → latest date
-    if issue_check in ('No current day value', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
+    if issue_check in ('No current day value', 'Downtime detected', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
         return dates[-1]
     return dates[-1]
+
+
+# ── Weekday markers in Hedge Result / Hedge Day / Prop Day (quality scan) ──
+# Match whole tokens only (avoids "mon" inside "money"). Longer spellings first in the alternation.
+_WEEKDAY_TOKEN_TO_ABBR = {
+    'monday': 'mon', 'mon': 'mon',
+    'tuesday': 'tue', 'tues': 'tue', 'tue': 'tue',
+    'wednesday': 'wed', 'weds': 'wed', 'wed': 'wed',
+    'thursday': 'thu', 'thurs': 'thu', 'thu': 'thu',
+    'friday': 'fri', 'fri': 'fri',
+    'saturday': 'sat', 'sat': 'sat',
+    'sunday': 'sun', 'sun': 'sun',
+}
+_WEEKDAY_RE = re.compile(
+    r'\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|'
+    r'tues|weds|thurs|mon|tue|wed|thu|fri|sat|sun)\b',
+    re.I,
+)
+
+
+def _allowed_trading_day_abbrs(ref_dt):
+    """Which single-day markers are valid for *today* (Chicago-style trading week).
+
+    Mon–Thu: today and tomorrow (e.g. Tue → tue, wed).
+    Fri: fri and mon (next session Monday).
+    Sat–Sun: mon only (prep for Monday; no other weekday markers).
+    """
+    wd = ref_dt.weekday()
+    order = ('mon', 'tue', 'wed', 'thu', 'fri')
+    if wd >= 5:
+        return frozenset({'mon'})
+    if wd == 4:
+        return frozenset({'fri', 'mon'})
+    return frozenset({order[wd], order[wd + 1]})
+
+
+def _weekday_abbrs_in_text(raw):
+    """Return {'mon','tue',...} for weekday tokens in *raw* (empty if none)."""
+    s = str(raw or '').strip().lower()
+    if not s or s in ('-', '—', '–'):
+        return frozenset()
+    out = set()
+    for m in _WEEKDAY_RE.finditer(s):
+        tok = m.group(0).lower()
+        ab = _WEEKDAY_TOKEN_TO_ABBR.get(tok)
+        if ab:
+            out.add(ab)
+    return frozenset(out)
+
+
+def _hedge_cell_currency_only(raw):
+    """True when the cell is numeric P&L style (digits) with no weekday letters."""
+    s = str(raw or '').strip()
+    if not s or s in ('-', '—', '–'):
+        return False
+    low = s.lower()
+    if _WEEKDAY_RE.search(low):
+        return False
+    probe = low.replace('$', '').replace('€', '').replace('£', '').strip()
+    if not probe:
+        return False
+    return bool(re.search(r'\d', probe))
+
+
+def _row_all_day_slots_blank_or_currency(ev, day_cols):
+    """Every day-tracked cell is empty/dash or currency-only (no weekday text)."""
+    for col in day_cols:
+        s = str(ev.get(col) or '').strip()
+        if not s or s in ('-', '—', '–'):
+            continue
+        if _hedge_cell_currency_only(ev.get(col)):
+            continue
+        return False
+    return True
+
+
+def _row_has_nonzero_currency_in_day_cols(ev, day_cols, parse_nonzero_fn):
+    """At least one day column parses as non-zero money (PnL-only row heuristic)."""
+    for col in day_cols:
+        if _hedge_cell_currency_only(ev.get(col)) and abs(parse_nonzero_fn(ev.get(col))) > 1e-9:
+            return True
+    return False
 
 
 def run_quality_scan(target_client=None):
@@ -7444,35 +7526,90 @@ def run_quality_scan(target_client=None):
                                        'detail': f'{row_label}: Alpha Futures funded account has no Activation Fee',
                                        'estimated_date': _estimate_issue_date(ev, 'Alpha Futures: missing Activation Fee', scan_date_str)})
 
-                # Active account: at least one hedge result/day column must contain a weekday name (Mon-Fri)
+                # Active account: Hedge Result / Hedge Day / Prop Day markers must match the
+                # trading calendar (Mon–Thu: today + next weekday; Fri: fri + mon; Sat–Sun: mon only).
+                # Any other weekday token → Downtime detected. Whole-token match avoids "mon" in "money".
+                # Rows that only hold P&L numbers in those columns (no weekday letters) skip the
+                # "must show current day" rule when at least one such cell is non-zero currency.
                 _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
                 _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
-                # Only inspect hedge-specific columns for weekday detection (avoid false positives from dates/notes/other fields)
-                _day_columns = [k for k in ev.keys() if k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day') or k.startswith('Prop Progress')]
+                _day_columns = [
+                    k for k in ev.keys()
+                    if isinstance(k, str)
+                    and (k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day'))
+                    and not k.startswith('_')
+                ]
                 if (not new_row_strict_mode or has_account_num_local) and not _inactive_p1 and not _inactive_p2 and status_p1:
-                    weekdays = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-                                'mon', 'tue', 'wed', 'thu', 'fri',
-                                'tues', 'weds', 'thurs'}
-                    # A day cell counts as valid if it either contains a weekday
-                    # name OR has a note attached (note is treated as an explicit
-                    # explanation / override for that cell).
+                    _allowed_abbrs = _allowed_trading_day_abbrs(now)
+                    _allowed_human = '/'.join(sorted(_allowed_abbrs))
                     _cell_notes = ev.get('_notes') or {}
                     if not isinstance(_cell_notes, dict):
                         _cell_notes = {}
-                    has_weekday = False
+                    # Live funded (digits-only) rows must show an allowed weekday unless Status P1 has a cell note
+                    # explaining why not; other cell notes do not waive the day requirement for live rows.
+                    _is_live_day_row = is_live_funded_numeric_row
+                    _live_status_p1_note = bool(
+                        _is_live_day_row and str(_cell_notes.get('Status P1') or '').strip()
+                    )
+                    stale_detail_parts = []
+                    has_allowed_markers = bool(_live_status_p1_note)
                     for col in _day_columns:
-                        s = str(ev.get(col) or '').strip().lower()
-                        if any(wd in s for wd in weekdays):
-                            has_weekday = True
-                            break
-                        note_val = _cell_notes.get(col)
-                        if note_val and str(note_val).strip():
-                            has_weekday = True
-                            break
-                    if not has_weekday:
-                        issues.append({'check': 'No current day value', 'severity': 'medium', 'row': idx,
-                                       'detail': f'{row_label}: Active account has no cell with a weekday (Mon-Fri)',
-                                       'estimated_date': _estimate_issue_date(ev, 'No current day value', scan_date_str)})
+                        if not _is_live_day_row:
+                            note_val = _cell_notes.get(col)
+                            if note_val and str(note_val).strip():
+                                has_allowed_markers = True
+                                continue
+                        raw_cell = ev.get(col)
+                        if _hedge_cell_currency_only(raw_cell):
+                            continue
+                        ab = _weekday_abbrs_in_text(raw_cell)
+                        if not ab:
+                            continue
+                        disallowed = ab - _allowed_abbrs
+                        if disallowed:
+                            bad = ', '.join(sorted(disallowed))
+                            stale_detail_parts.append(f'{col}={str(raw_cell).strip()!r} ({bad})')
+                        if ab <= _allowed_abbrs:
+                            has_allowed_markers = True
+                    if stale_detail_parts:
+                        prevw = ', '.join(stale_detail_parts[:5])
+                        if len(stale_detail_parts) > 5:
+                            prevw += f' (+{len(stale_detail_parts) - 5} more)'
+                        issues.append({
+                            'check': 'Downtime detected',
+                            'severity': 'high',
+                            'row': idx,
+                            'detail': (f'{row_label}: Stale day(s) found: {prevw} — '
+                                       f'allowed markers for scan date: {_allowed_human} '
+                                       f'(Mon–Thu: today + next weekday; Fri: fri+mon; Sat–Sun: mon only)'),
+                            'estimated_date': _estimate_issue_date(ev, 'Downtime detected', scan_date_str),
+                        })
+                    elif (
+                        not has_allowed_markers
+                        and not (
+                            (not _is_live_day_row)
+                            and _row_all_day_slots_blank_or_currency(ev, _day_columns)
+                            and _row_has_nonzero_currency_in_day_cols(ev, _day_columns, _parse_nonzero)
+                        )
+                    ):
+                        if _is_live_day_row:
+                            _nd_msg = (
+                                f'{row_label}: Live funded row has no allowed day marker ({_allowed_human}) '
+                                f'in Hedge Result / Hedge Day / Prop Day — add one, or add a Status P1 cell note '
+                                f'explaining why no weekday is shown'
+                            )
+                        else:
+                            _nd_msg = (
+                                f'{row_label}: Active account has no allowed day marker ({_allowed_human}) '
+                                f'in Hedge Result / Hedge Day / Prop Day (or add a cell note)'
+                            )
+                        issues.append({
+                            'check': 'No current day value',
+                            'severity': 'medium',
+                            'row': idx,
+                            'detail': _nd_msg,
+                            'estimated_date': _estimate_issue_date(ev, 'No current day value', scan_date_str),
+                        })
 
                 # Negative Hedge Net without note
                 def _parse_num(v):
