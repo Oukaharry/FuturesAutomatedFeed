@@ -20,6 +20,7 @@ venv/
 plan.md
 
 # Local runtime state / data files
+pg_backups/
 config/hierarchy.json
 dashboard/.scheduler_state.json
 trader_companion/trader_bias.json
