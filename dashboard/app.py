@@ -6492,11 +6492,7 @@ def check_mt5_auto_populate(client_id):
         and (str(h.get('login', '') or '').strip() or str(h.get('password', '') or '').strip())
         for h in hedge_accounts
     )
-    has_prop_creds = any(
-        isinstance(p, dict)
-        and (str(p.get('login', '') or '').strip() or str(p.get('password', '') or '').strip())
-        for p in prop_accounts
-    )
+    has_prop_creds = any(_prop_account_has_credentials(p) for p in prop_accounts if isinstance(p, dict))
     
     # Need MT5 setup only when MT5 values are missing AND there are no usable
     # hedge creds AND no usable prop creds. If prop creds exist, bypass prompt.
@@ -7102,6 +7098,59 @@ def _row_has_nonzero_currency_in_day_cols(ev, day_cols, parse_nonzero_fn):
     return False
 
 
+def _prop_account_has_credentials(pa) -> bool:
+    """True if a prop_accounts row has portal login/password or Tradovate user/pass (Prop Firm tab)."""
+    if not isinstance(pa, dict):
+        return False
+    for key in ('login', 'password', 'tradovate_username', 'tradovate_password'):
+        if str(pa.get(key, '') or '').strip():
+            return True
+    return False
+
+
+def _eval_row_needs_hedge_or_prop_tabs(ev):
+    """True when this row is past bare sheet onboarding (Hedge/Prop *tabs* should exist)."""
+    if not isinstance(ev, dict) or ev.get('_deleted'):
+        return False
+    prop_firm = str(ev.get('Prop Firm', '') or '').strip()
+    acct_size = str(ev.get('Account Size', '') or '').strip()
+    if not (prop_firm or acct_size):
+        return False
+    if prop_firm.lower() in ('funding ticks', 'fundingticks'):
+        return False
+    status_p1 = str(ev.get('Status P1', '') or '').strip().lower()
+    status_p2 = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip().lower()
+    if 'delete' in status_p1 or 'delete' in status_p2:
+        return False
+    _inactive_p1 = ('fail', 'breach', 'delete', 'closed', 'sl')
+    _inactive_p2 = ('fail', 'breach', 'delete', 'closed', 'sl', 'complete', 'completed')
+    if any(t in status_p1 for t in _inactive_p1) or any(t in status_p2 for t in _inactive_p2):
+        return False
+    if _max_out_row_is_live_numeric_account(ev):
+        return True
+    if str(ev.get('Account #', '') or '').strip() or str(ev.get('Account #.1', '') or '').strip():
+        return True
+
+    def _pnz(v):
+        try:
+            s = str(v).replace('$', '').replace(',', '').strip()
+            if s in ('', '-', None):
+                return 0.0
+            return float(s)
+        except (ValueError, TypeError):
+            return 0.0
+
+    for k, v in ev.items():
+        if isinstance(k, str) and k.startswith('Hedge Result') and not k.startswith('_'):
+            if abs(_pnz(v)) > 1e-9:
+                return True
+    if status_p1 and 'not started' not in status_p1:
+        return True
+    if status_p2 and 'not started' not in status_p2:
+        return True
+    return False
+
+
 def run_quality_scan(target_client=None):
     """
     Automated quality scan: checks every client's data for SOP violations.
@@ -7526,6 +7575,19 @@ def run_quality_scan(target_client=None):
                                        'detail': f'{row_label}: Alpha Futures funded account has no Activation Fee',
                                        'estimated_date': _estimate_issue_date(ev, 'Alpha Futures: missing Activation Fee', scan_date_str)})
 
+                # Same idea as new_row_strict_mode for weekday: if challenge is paid, P1 is still
+                # "not started", no account #s yet, and no hedge numbers, do not require a day marker
+                # even when _row_added_at is missing (older rows / imports).
+                _suppress_no_current_day_eval_onboarding = (
+                    is_active
+                    and not is_live_funded_numeric_row
+                    and not has_hedge_value_local
+                    and not has_funded_hedge_value_local
+                    and is_not_started_p1
+                    and not has_account_num_local
+                    and fee_present
+                )
+
                 # Active account: Hedge Result / Hedge Day / Prop Day markers must match the
                 # trading calendar (Mon–Thu: today + next weekday; Fri: fri + mon; Sat–Sun: mon only).
                 # Any other weekday token → Downtime detected. Whole-token match avoids "mon" in "money".
@@ -7591,6 +7653,7 @@ def run_quality_scan(target_client=None):
                             and _row_all_day_slots_blank_or_currency(ev, _day_columns)
                             and _row_has_nonzero_currency_in_day_cols(ev, _day_columns, _parse_nonzero)
                         )
+                        and not _suppress_no_current_day_eval_onboarding
                     ):
                         if _is_live_day_row:
                             _nd_msg = (
@@ -7698,11 +7761,7 @@ def run_quality_scan(target_client=None):
                 for hacc in hedge_accounts
                 if isinstance(hacc, dict)
             )
-            _prop_filled = any(
-                str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
-                for pa in prop_accounts
-                if isinstance(pa, dict)
-            )
+            _prop_filled = any(_prop_account_has_credentials(pa) for pa in prop_accounts if isinstance(pa, dict))
             if total_checks > 0 and not _hedge_filled and not _prop_filled:
                 issues.append({
                     'check': 'Hedge account or Prop Firm missing',
