@@ -3323,6 +3323,16 @@ def _row_has_nonzero_currency_in_day_cols(ev, day_cols, parse_nonzero_fn):
     return False
 
 
+def _prop_account_has_credentials(pa) -> bool:
+    """True if a prop_accounts row has portal login/password or Tradovate user/pass (Prop Firm tab)."""
+    if not isinstance(pa, dict):
+        return False
+    for key in ('login', 'password', 'tradovate_username', 'tradovate_password'):
+        if str(pa.get(key, '') or '').strip():
+            return True
+    return False
+
+
 def run_quality_scan(target_client=None):
     """
     Automated quality scan: checks every client's data for SOP violations.
@@ -3560,6 +3570,26 @@ def run_quality_scan(target_client=None):
             _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
             _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
             is_live_funded_numeric_row = _max_out_row_is_live_numeric_account(ev)
+            _hr_cols_dep = [
+                k for k in ev.keys()
+                if isinstance(k, str) and k.startswith('Hedge Result') and not k.startswith('_')
+            ]
+            _hr_funded_dep = [k for k in _hr_cols_dep if k.endswith('.1')]
+            _fee_num_dep = _parse_nonzero_scan(ev.get('Fee', ''))
+            _fee_present_dep = _fee_num_dep > 0.0
+            _has_hr_dep = any(abs(_parse_nonzero_scan(ev.get(c))) > 1e-9 for c in _hr_cols_dep)
+            _has_hr_funded_dep = any(abs(_parse_nonzero_scan(ev.get(c))) > 1e-9 for c in _hr_funded_dep)
+            _has_acct_dep = bool(acct_num or acct_num2)
+            _not_started_p1_dep = ('not started' in status_p1)
+            _suppress_no_current_day_eval_onboarding = (
+                is_active
+                and not is_live_funded_numeric_row
+                and not _has_hr_dep
+                and not _has_hr_funded_dep
+                and _not_started_p1_dep
+                and not _has_acct_dep
+                and _fee_present_dep
+            )
             _day_columns = [
                 k for k in ev.keys()
                 if isinstance(k, str)
@@ -3616,6 +3646,7 @@ def run_quality_scan(target_client=None):
                         and _row_all_day_slots_blank_or_currency(ev, _day_columns)
                         and _row_has_nonzero_currency_in_day_cols(ev, _day_columns, _parse_nonzero_scan)
                     )
+                    and not _suppress_no_current_day_eval_onboarding
                 ):
                     if _is_live_day_row:
                         _nd_msg = (
@@ -3706,11 +3737,7 @@ def run_quality_scan(target_client=None):
             for hacc in hedge_accounts
             if isinstance(hacc, dict)
         )
-        _prop_filled = any(
-            str(pa.get('login', '') or '').strip() or str(pa.get('password', '') or '').strip()
-            for pa in prop_accounts
-            if isinstance(pa, dict)
-        )
+        _prop_filled = any(_prop_account_has_credentials(pa) for pa in prop_accounts if isinstance(pa, dict))
         if total_checks > 0 and not _hedge_filled and not _prop_filled:
             issues.append({
                 'check': 'Hedge account or Prop Firm missing',
