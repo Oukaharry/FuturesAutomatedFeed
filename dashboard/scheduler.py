@@ -163,6 +163,7 @@ def send_slack_to_webhook(webhook_url, text):
 def _build_daily_summary_text():
     """Build the daily quality summary text (same logic as the API endpoint)."""
     from dashboard.database import get_quality_scan_results, get_daily_checklists
+    from dashboard.app import _trader_ranking_health_metrics
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from config.hierarchy import SYSTEM_HIERARCHY
 
@@ -206,13 +207,10 @@ def _build_daily_summary_text():
             and ((r.get('trader') or 'Unassigned') not in excluded_traders)
         ]
 
-    # Filter out infrastructure scan errors and recalculate scores
-    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    # Leaderboard health excludes payout QA (super-admin); issues list still shows it for top-issues counts.
     for r in scan_results:
         r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
-        r['total_issues'] = len(r['issues'])
-        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
-        r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+        r['total_issues'], r['health_score'] = _trader_ranking_health_metrics(r.get('issues'))
 
     clients_healthy = sum(1 for r in scan_results if r['health_score'] >= 90)
     clients_warning = sum(1 for r in scan_results if 70 <= r['health_score'] < 90)
@@ -256,7 +254,7 @@ def _build_daily_summary_text():
         # Gamified Trader Health Leaderboard — ranked best to worst
         ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
         lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
-        lines.append("_Ranked by average client health score (highest first). Health score is based on: data freshness, hedging accuracy, payout tracking, notes quality, and checklist completion._")
+        lines.append("_Ranked by average client health score (highest first). Scores exclude super-admin daily-summary payout QA; otherwise reflects data freshness, hedging accuracy, notes quality, and checklist completion._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
