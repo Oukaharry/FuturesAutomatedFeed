@@ -218,6 +218,9 @@
             <button class="scan-btn" id="neg-hedge-qa-btn" onclick="showNegativeHedgeNetQA()" style="background:linear-gradient(135deg,#7c2d12,#ea580c);" title="Super-admin QA queue for negative hedge net">
                 <i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA
             </button>
+            <button class="scan-btn" id="daily-summary-payout-qa-btn" onclick="showDailySummaryPayoutQA()" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);" title="Super-admin QA queue: daily summary item 4, payout eligible count >= 1 (any prop firm)">
+                <i class="fas fa-file-invoice-dollar"></i> Daily summary payout-QA
+            </button>
             <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);" title="Post daily summary to Slack">
                 <i class="fab fa-slack"></i> Send to Slack
             </button>
@@ -252,6 +255,41 @@
                             </tr>
                         </thead>
                         <tbody id="neg-hedge-qa-tbody"><tr><td colspan="7" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily summary item 4: payout eligible >=1 (any prop firm) — QA Modal -->
+        <div id="daily-summary-payout-qa-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(1040px,96vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b;">
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-file-invoice-dollar" style="color:#a78bfa; margin-right:8px;"></i>Daily summary payout-QA
+                        <span id="daily-summary-payout-qa-badge" style="font-size:0.82rem; background:rgba(167,139,250,0.14); color:#c4b5fd; padding:2px 10px; border-radius:12px; margin-left:8px;"></span>
+                    </h3>
+                    <button type="button" onclick="document.getElementById('daily-summary-payout-qa-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                </div>
+                <div style="padding:14px 24px 8px; display:flex; gap:10px; align-items:center;">
+                    <input type="text" id="daily-summary-payout-qa-search" placeholder="Search client/trader..." oninput="filterDailySummaryPayoutQA()" style="flex:1; padding:8px 14px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.88rem; outline:none;">
+                    <button type="button" id="daily-summary-payout-qa-refresh" onclick="showDailySummaryPayoutQA(true)" style="background:rgba(255,255,255,0.06); border:1px solid #334155; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; font-size:0.85rem;">
+                        <i class="fas fa-rotate"></i> Refresh
+                    </button>
+                </div>
+                <div style="overflow-y:auto; flex:1; padding:0 24px 18px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155; position:sticky; top:0; background:#0f172a;">
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">#</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Client</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Trader</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">QA day</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Detail</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Est. date</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Submitted</th>
+                                <th style="text-align:center; padding:10px 8px; color:#94a3b8; font-weight:600;">Resolve</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daily-summary-payout-qa-tbody"><tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -637,7 +675,12 @@
             };
 
             body.innerHTML = filtered.map(i => {
-                const link = i.row !== null ? `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}` : `/dashboard/${encodeURIComponent(i.client)}`;
+                const t = (i.type || '');
+                const useEvalAnchor = (i.row !== null && i.row !== undefined)
+                    && t !== 'daily_summary_payout_qa' && t !== 'mff_payout_summary_qa';
+                const link = useEvalAnchor
+                    ? `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}`
+                    : `/dashboard/${encodeURIComponent(i.client)}`;
                 return `<tr>
                     <td style="color:#e2e8f0; font-weight:600;">${i.admin}</td>
                     <td style="color:#e2e8f0; font-weight:500;">${i.client}</td>
@@ -1133,8 +1176,34 @@
             }).join('');
         }
 
-        /* ---------- Negative Hedge Net-QA modal ---------- */
+        /* ---------- QA constants & helpers (daily summary payout + negative hedge) ---------- */
+        const QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE = 'Daily summary: payouts eligible >=1-QA';
+        const CHECK_NEGATIVE_HEDGE_NET_QA = 'Negative Hedge Net-QA';
         let _negHedgeQaData = [];
+        let _dailySummaryPayoutQaData = [];
+
+        function _isQaScanDayKey(row) {
+            const n = Number(row);
+            return Number.isFinite(n) && n >= 20000101 && n <= 20991231;
+        }
+        function formatQaRowCellLabel(check, row) {
+            if (check === QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE && _isQaScanDayKey(row)) {
+                const s = String(Math.floor(Number(row)));
+                return 'Scan day ' + s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8);
+            }
+            if (row !== null && row !== undefined) return 'Row ' + (Number(row) + 1);
+            return '-';
+        }
+        function clientIssuesTableLink(client, tab, check, row) {
+            if (tab) return '/dashboard/' + encodeURIComponent(client) + '#' + tab;
+            if (check === QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE && _isQaScanDayKey(row))
+                return '/dashboard/' + encodeURIComponent(client);
+            if (row !== null && row !== undefined)
+                return '/dashboard/' + encodeURIComponent(client) + '#eval-row-' + row;
+            return '/dashboard/' + encodeURIComponent(client);
+        }
+
+        /* ---------- Negative Hedge Net-QA modal ---------- */
 
         async function showNegativeHedgeNetQA(keepOpen = false) {
             const btn = document.getElementById('neg-hedge-qa-btn');
@@ -1206,7 +1275,91 @@
                     <td style="padding:8px; color:#94a3b8;">${(r.detail || '').replace(/</g,'&lt;')}</td>
                     <td style="padding:8px; color:#64748b;">${r.estimated_date || ''}</td>
                     <td style="padding:8px; text-align:center;">
-                        <button data-qa-resolve="1" data-client-id="${String(r.client_id).replace(/"/g,'&quot;')}" data-row="${Number(r.row)}"
+                        <button data-qa-resolve="1" data-qa-check="${CHECK_NEGATIVE_HEDGE_NET_QA}" data-client-id="${String(r.client_id).replace(/"/g,'&quot;')}" data-row="${Number(r.row)}"
+                            style="background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.32); color:#4ade80; padding:6px 12px; border-radius:10px; cursor:pointer; font-weight:800; font-size:0.8rem;">
+                            Resolve
+                        </button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function showDailySummaryPayoutQA(keepOpen = false) {
+            const btn = document.getElementById('daily-summary-payout-qa-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            }
+            const modal = document.getElementById('daily-summary-payout-qa-modal');
+            if (!keepOpen && modal) {
+                modal.style.display = 'flex';
+                const search = document.getElementById('daily-summary-payout-qa-search');
+                if (search) search.value = '';
+            } else if (modal) {
+                modal.style.display = 'flex';
+            }
+            const tbody = document.getElementById('daily-summary-payout-qa-tbody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+            try {
+                const today = (window._selectedScanDate || '').trim() || new Date().toISOString().slice(0, 10);
+                const resp = await fetch('/api/quality/daily_summary_payout_qa?date=' + encodeURIComponent(today) + '&_t=' + Date.now());
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    _dailySummaryPayoutQaData = data.items || [];
+                    const badge = document.getElementById('daily-summary-payout-qa-badge');
+                    if (badge) badge.textContent = `${_dailySummaryPayoutQaData.length} item${_dailySummaryPayoutQaData.length !== 1 ? 's' : ''}`;
+                    filterDailySummaryPayoutQA();
+                } else {
+                    showToast('error', 'Failed', data.message || 'Could not load QA queue');
+                    if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:24px; color:#f87171;">Failed: ' + (data.message || 'Unknown error') + '</td></tr>';
+                }
+            } catch (e) {
+                showToast('error', 'Error', e.message || 'Network error');
+                if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:24px; color:#f87171;">Error: ' + (e.message || e) + '</td></tr>';
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-file-invoice-dollar"></i> Daily summary payout-QA';
+                }
+            }
+        }
+
+        function filterDailySummaryPayoutQA() {
+            const q = (document.getElementById('daily-summary-payout-qa-search')?.value || '').toLowerCase();
+            const filtered = q
+                ? _dailySummaryPayoutQaData.filter(x =>
+                    String(x.client_id || '').toLowerCase().includes(q) ||
+                    String(x.trader || '').toLowerCase().includes(q) ||
+                    String(x.detail || '').toLowerCase().includes(q) ||
+                    String(x.submitted_at || '').toLowerCase().includes(q)
+                  )
+                : _dailySummaryPayoutQaData;
+            renderDailySummaryPayoutQA(filtered);
+        }
+
+        function renderDailySummaryPayoutQA(items) {
+            const tbody = document.getElementById('daily-summary-payout-qa-tbody');
+            if (!tbody) return;
+            if (!items.length) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:24px; color:#64748b;">No unresolved daily summary payout-QA items</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map((r, i) => {
+                const dash = '/dashboard/' + encodeURIComponent(r.client_id);
+                const dayLab = formatQaRowCellLabel(QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE, r.row);
+                const sub = String(r.submitted_at || '').replace(/</g, '&lt;');
+                const detRaw = String(r.detail || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<tr style="border-bottom:1px solid #1e293b;">
+                    <td style="padding:8px; color:#64748b;">${i + 1}</td>
+                    <td style="padding:8px;"><a href="${dash}" target="_blank" style="color:#60a5fa; text-decoration:none; font-weight:600;">${r.client_id}</a></td>
+                    <td style="padding:8px; color:#94a3b8;">${r.trader || ''}</td>
+                    <td style="padding:8px; color:#c4b5fd; font-size:0.8rem;">${dayLab}</td>
+                    <td style="padding:8px; color:#cbd5e1; font-size:0.8rem; line-height:1.45; max-width:min(440px,36vw); white-space:pre-line; vertical-align:top;">${detRaw}</td>
+                    <td style="padding:8px; color:#64748b;">${r.estimated_date || ''}</td>
+                    <td style="padding:8px; color:#64748b; font-size:0.78rem;">${sub}</td>
+                    <td style="padding:8px; text-align:center;">
+                        <button data-qa-resolve="1" data-qa-check="${QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE.replace(/"/g, '&quot;')}" data-client-id="${String(r.client_id).replace(/"/g,'&quot;')}" data-row="${Number(r.row)}"
                             style="background:rgba(34,197,94,0.14); border:1px solid rgba(34,197,94,0.32); color:#4ade80; padding:6px 12px; border-radius:10px; cursor:pointer; font-weight:800; font-size:0.8rem;">
                             Resolve
                         </button>
@@ -1222,24 +1375,26 @@
             ev.preventDefault();
             const clientId = btn.getAttribute('data-client-id') || '';
             const rowIndex = Number(btn.getAttribute('data-row'));
+            const qaCheck = btn.getAttribute('data-qa-check') || CHECK_NEGATIVE_HEDGE_NET_QA;
             // UI feedback immediately so it never feels "dead"
             btn.disabled = true;
             const old = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resolving...';
-            resolveQaIssue(clientId, rowIndex).finally(() => {
+            resolveQaIssue(clientId, rowIndex, qaCheck).finally(() => {
                 // If resolveQaIssue succeeded, it will re-render and this button will disappear anyway.
                 btn.disabled = false;
                 btn.innerHTML = old;
             });
         }, true);
 
-        async function resolveQaIssue(clientId, rowIndex) {
+        async function resolveQaIssue(clientId, rowIndex, checkName) {
+            const chk = checkName || CHECK_NEGATIVE_HEDGE_NET_QA;
             try {
                 const resp = await fetch('/api/quality/qa_resolve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        check: 'Negative Hedge Net-QA',
+                        check: chk,
                         client_id: String(clientId || ''),
                         row: Number(rowIndex)
                     })
@@ -1249,13 +1404,21 @@
                     showToast('error', 'Resolve failed', data.message || 'Could not resolve');
                     return;
                 }
-                showToast('success', 'Resolved', `${clientId} · Row ${Number(rowIndex) + 1}`);
-                // Remove locally then re-render quickly
-                _negHedgeQaData = (_negHedgeQaData || []).filter(x => !(x.client_id === clientId && Number(x.row) === Number(rowIndex)));
-                const badge = document.getElementById('neg-hedge-qa-badge');
-                if (badge) badge.textContent = `${_negHedgeQaData.length} item${_negHedgeQaData.length !== 1 ? 's' : ''}`;
-                filterNegativeHedgeNetQA();
-                // Refresh main results so the issue disappears from All Issues table as well.
+                const rowLbl = (chk === QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE)
+                    ? formatQaRowCellLabel(chk, rowIndex)
+                    : ('Row ' + (Number(rowIndex) + 1));
+                showToast('success', 'Resolved', `${clientId} · ${rowLbl}`);
+                if (chk === QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE) {
+                    _dailySummaryPayoutQaData = (_dailySummaryPayoutQaData || []).filter(x => !(x.client_id === clientId && Number(x.row) === Number(rowIndex)));
+                    const badge = document.getElementById('daily-summary-payout-qa-badge');
+                    if (badge) badge.textContent = `${_dailySummaryPayoutQaData.length} item${_dailySummaryPayoutQaData.length !== 1 ? 's' : ''}`;
+                    filterDailySummaryPayoutQA();
+                } else {
+                    _negHedgeQaData = (_negHedgeQaData || []).filter(x => !(x.client_id === clientId && Number(x.row) === Number(rowIndex)));
+                    const badge = document.getElementById('neg-hedge-qa-badge');
+                    if (badge) badge.textContent = `${_negHedgeQaData.length} item${_negHedgeQaData.length !== 1 ? 's' : ''}`;
+                    filterNegativeHedgeNetQA();
+                }
                 loadResults();
             } catch (e) {
                 showToast('error', 'Resolve failed', e.message || 'Network error');
@@ -1363,7 +1526,8 @@
                         detail: issue.detail || '',
                         row: issue.row !== undefined ? issue.row : null,
                         tab: issue.tab || null,
-                        estimated_date: issue.estimated_date || '-'
+                        estimated_date: issue.estimated_date || '-',
+                        submitted_at: issue.submitted_at || ''
                     });
                 });
             });
@@ -1426,21 +1590,18 @@
             }
 
             tbody.innerHTML = items.map(i => {
-                const rowLabel = i.row !== null ? `Row ${i.row + 1}` : '-';
-                let link;
-                if (i.tab) {
-                    link = `/dashboard/${encodeURIComponent(i.client)}#${i.tab}`;
-                } else if (i.row !== null) {
-                    link = `/dashboard/${encodeURIComponent(i.client)}#eval-row-${i.row}`;
-                } else {
-                    link = `/dashboard/${encodeURIComponent(i.client)}`;
-                }
+                const rowLabel = formatQaRowCellLabel(i.check, i.row);
+                const link = clientIssuesTableLink(i.client, i.tab, i.check, i.row);
+                const detEsc = String(i.detail || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const detStyle = i.check === QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE
+                    ? 'color:#94a3b8; font-size:0.78rem; max-width:320px; white-space:pre-line; line-height:1.42; vertical-align:top;'
+                    : 'color:#94a3b8; font-size:0.78rem; max-width:280px;';
                 return `<tr onclick="window.open('${link}', '_blank')">
                     <td style="color:#e2e8f0; font-weight:500;">${i.client}</td>
                     <td style="color:#94a3b8;">${i.trader}</td>
                     <td><span class="badge badge-${i.severity}">${i.severity}</span></td>
                     <td style="color:#e2e8f0;">${i.check}</td>
-                    <td style="color:#94a3b8; font-size:0.78rem; max-width:280px;">${i.detail}</td>
+                    <td style="${detStyle}">${detEsc}</td>
                     <td style="color:#60a5fa;">${rowLabel}</td>
                     <td style="color:#64748b; font-size:0.78rem;">${i.estimated_date || '-'}</td>
                     <td><a href="${link}" target="_blank" class="go-link" onclick="event.stopPropagation();"><i class="fas fa-arrow-right"></i> Go</a></td>

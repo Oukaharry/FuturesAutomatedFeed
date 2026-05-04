@@ -556,7 +556,10 @@
                 issuesList.innerHTML = data.admin_issues.map(i => {
                     const c = _sevColor(i.severity);
                     const type = (i.type || '').replace(/_/g, ' ');
-                    const link = `/dashboard/${encodeURIComponent(i.client_id)}${(i.row !== undefined && i.row !== null) ? ('#eval-row-' + i.row) : ''}`;
+                    const t = (i.type || '');
+                    const useEvalAnchor = (i.row !== undefined && i.row !== null)
+                        && t !== 'daily_summary_payout_qa' && t !== 'mff_payout_summary_qa';
+                    const link = `/dashboard/${encodeURIComponent(i.client_id)}${useEvalAnchor ? ('#eval-row-' + i.row) : ''}`;
                     return `
                         <div style="display:flex;gap:10px;align-items:flex-start;padding:10px 10px;border:1px solid rgba(22,32,64,0.9);border-radius:10px;background:rgba(2,6,23,0.55);margin-bottom:8px;">
                             <div style="flex:0 0 auto;padding:2px 8px;border-radius:999px;background:${c.bg};border:1px solid ${c.bd};color:${c.fg};font-family:'IBM Plex Mono',monospace;font-size:0.65rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;">${_esc(i.severity)}</div>

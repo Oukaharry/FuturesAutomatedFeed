@@ -75,6 +75,38 @@ ADMIN_PROP_DISPLAY_NAME = {
     'toponefutures': 'Top One Futures',
 }
 
+# QA-gated: trader daily summary item 4 — any prop firm with payouts-eligible count >= 1 (super_admin resolve)
+QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE = 'Daily summary: payouts eligible >=1-QA'
+# Older scan key; still honored when reading qa_resolutions so existing clears keep working.
+QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY = 'MFF payouts eligible >1-QA'
+
+# Omitted from client-sheet "Data Quality Issues" and trader dashboard aggregates; still stored on scans,
+# listed on admin tracker (synthetic rows), and surfaced in quality QA modals / super-admin APIs.
+_QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS = frozenset({
+    QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
+})
+
+
+def _issues_for_trader_client_quality_views(issues):
+    skip = _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS | {'Scan error'}
+    return [i for i in (issues or []) if i.get('check') not in skip]
+
+
+def _quality_scan_row_for_trader_client_quality_api(scan_row):
+    """Recompute issues, total_issues, and health_score for trader-facing quality UIs."""
+    issues = _issues_for_trader_client_quality_views(scan_row.get('issues'))
+    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    out = dict(scan_row)
+    out['issues'] = issues
+    out['total_issues'] = len(issues)
+    if not issues:
+        out['health_score'] = 100.0
+    else:
+        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
+        out['health_score'] = max(0.0, round(100.0 - deduction, 1))
+    return out
+
+
 # Super Admin financial aggregates: excluded client names (not tied to Daily Summary tracker lists)
 _SUPER_ADMIN_STATS_EXCLUDED_KEY = 'super_admin_stats_excluded_clients'
 
@@ -7016,6 +7048,8 @@ def _estimate_issue_date(ev, issue_check, fallback):
     # Current/ongoing issues → latest date
     if issue_check in ('No current day value', 'Downtime detected', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
         return dates[-1]
+    if issue_check == QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE:
+        return fallback
     return dates[-1]
 
 
@@ -7154,6 +7188,60 @@ def _eval_row_needs_hedge_or_prop_tabs(ev):
     return False
 
 
+def _daily_summary_payout_eligible_triggers_from_items(items):
+    """Daily summary item 4 (payout_requests) in Notes mode: each prop firm with count >= 1."""
+    triggers = []
+    if not isinstance(items, list):
+        return triggers
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if it.get('id') != 'payout_requests':
+            continue
+        if it.get('status') != 'warn':
+            continue
+        notes = it.get('notes')
+        if not isinstance(notes, dict):
+            continue
+        for firm_name, nv in notes.items():
+            if not isinstance(firm_name, str) or not firm_name.strip():
+                continue
+            if not isinstance(nv, dict):
+                continue
+            fields = nv.get('fields')
+            if not isinstance(fields, dict):
+                continue
+            raw = fields.get('count', '')
+            s = str(raw).strip().replace(',', '').replace('$', '')
+            if not s:
+                continue
+            m = re.match(r'^[-+]?\d*\.?\d+', s)
+            if not m:
+                continue
+            try:
+                n = float(m.group(0))
+            except (ValueError, TypeError):
+                continue
+            if n >= 1.0:
+                triggers.append({'firm': firm_name.strip(), 'count': n})
+    return triggers
+
+
+def _daily_summary_payout_qa_resolved_union(client_id: str, row_index: int) -> bool:
+    from dashboard.database import is_qa_resolved
+    return (
+        is_qa_resolved(QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE, client_id, row_index)
+        or is_qa_resolved(QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY, client_id, row_index)
+    )
+
+
+def _get_daily_summary_payout_qa_resolved_set():
+    from dashboard.database import get_qa_resolved_set
+    return get_qa_resolved_set(QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE) | get_qa_resolved_set(
+        QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY
+    )
+
+
 def run_quality_scan(target_client=None):
     """
     Automated quality scan: checks every client's data for SOP violations.
@@ -7161,7 +7249,11 @@ def run_quality_scan(target_client=None):
     If target_client is given, only scan that one client.
     """
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
-    from dashboard.database import get_client_data, get_client_activity
+    from dashboard.database import (
+        get_client_data,
+        get_client_activity,
+        get_latest_daily_summary_checklist_for_client,
+    )
 
     all_clients = [target_client] if target_client else hierarchy_get_all_clients()
     results = []
@@ -7774,6 +7866,46 @@ def run_quality_scan(target_client=None):
                                        'detail': f'{row_label}: {_preview}{_suffix}',
                                        'estimated_date': _estimate_issue_date(ev, 'Comma in hedge value', scan_date_str)})
 
+            # Trader daily summary item 4 (any prop firm): payouts eligible at next trading day count >= 1 — QA-gated
+            try:
+                _cl_row = get_latest_daily_summary_checklist_for_client(scan_date_str, client_name)
+                if _cl_row:
+                    _payout_triggers = _daily_summary_payout_eligible_triggers_from_items(_cl_row.get('items'))
+                    if _payout_triggers:
+                        _qa_day_key = int(scan_date_str.replace('-', ''))
+                        if not _daily_summary_payout_qa_resolved_union(client_name, _qa_day_key):
+                            _sub_at = str(_cl_row.get('submitted_at') or '').strip()
+                            _by = str(_cl_row.get('user_identifier') or '').strip()
+                            _lines = [
+                                'Daily summary · Item 4 — Payout requests (Notes)',
+                                '',
+                                'Eligible count at next trading day (QA flags each firm at >= 1):',
+                            ]
+                            for t in _payout_triggers[:12]:
+                                _lines.append(f"  • {t['firm']}: {t['count']:g}")
+                            if len(_payout_triggers) > 12:
+                                _lines.append(f"  • … +{len(_payout_triggers) - 12} more firm(s)")
+                            _lines.extend([
+                                '',
+                                f"Checklist submitted: {_sub_at or 'unknown time'}",
+                            ])
+                            if _by:
+                                _lines.append(f"Trader / user: {_by}")
+                            _lines.extend([
+                                '',
+                                'Super-admin QA resolution required.',
+                            ])
+                            issues.append({
+                                'check': QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
+                                'severity': 'high',
+                                'detail': '\n'.join(_lines),
+                                'estimated_date': scan_date_str,
+                                'row': _qa_day_key,
+                                'submitted_at': _sub_at,
+                            })
+            except Exception:
+                pass
+
             # ── Hedge account or Prop Firm account: at least one must be filled ──
             # If the client has evaluations with data, they need either hedge account
             # credentials OR prop firm account credentials entered.
@@ -7986,10 +8118,52 @@ def api_quality_negative_hedge_net_qa():
     return jsonify({'status': 'success', 'date': date, 'items': items, 'total': len(items)})
 
 
+@app.route('/api/quality/daily_summary_payout_qa', methods=['GET'])
+@app.route('/api/quality/mff_payout_summary_qa', methods=['GET'])
+@require_role('super_admin', 'bef_admin')
+def api_quality_daily_summary_payout_qa():
+    """List unresolved daily-summary item-4 (payout eligible >=1) QA items across the portfolio."""
+    from dashboard.database import get_quality_scan_results
+    date = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
+    scan = get_quality_scan_results(date) or []
+    resolved = _get_daily_summary_payout_qa_resolved_set()
+
+    items = []
+    for r in scan:
+        cid = r.get('client_id')
+        trader = r.get('trader', '')
+        admin = r.get('admin', '')
+        for iss in (r.get('issues') or []):
+            if iss.get('check') != QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE:
+                continue
+            row = iss.get('row')
+            if row is None:
+                continue
+            try:
+                row_i = int(row)
+            except Exception:
+                continue
+            if (cid, row_i) in resolved:
+                continue
+            items.append({
+                'client_id': cid,
+                'trader': trader,
+                'admin': admin,
+                'row': row_i,
+                'detail': iss.get('detail', ''),
+                'estimated_date': iss.get('estimated_date', ''),
+                'submitted_at': iss.get('submitted_at', ''),
+                'severity': iss.get('severity', 'high'),
+            })
+
+    items.sort(key=lambda x: (str(x.get('estimated_date') or ''), str(x.get('client_id') or '')), reverse=True)
+    return jsonify({'status': 'success', 'date': date, 'items': items, 'total': len(items)})
+
+
 @app.route('/api/quality/qa_resolve', methods=['POST'])
 @require_role('super_admin', 'bef_admin')
 def api_quality_qa_resolve():
-    """Resolve a QA-gated issue (super admin only)."""
+    """Resolve a QA-gated issue. Daily-summary payout-eligible check is super_admin only; other checks allow BEF."""
     from dashboard.database import mark_qa_resolved
     data = request.get_json(force=True) or {}
     check_name = (data.get('check') or '').strip()
@@ -8002,11 +8176,19 @@ def api_quality_qa_resolve():
         row_i = int(row)
     except Exception:
         return jsonify({'status': 'error', 'message': 'row must be an integer'}), 400
+    check_store = (
+        QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE
+        if check_name == QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY
+        else check_name
+    )
+    if check_store == QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE:
+        if request.session_user.get('user_type') != 'super_admin':
+            return jsonify({'status': 'error', 'message': 'Only super_admin can resolve this check'}), 403
     user = request.session_user.get('user_identifier', '')
-    mark_qa_resolved(check_name, client_id, row_i, user, notes=notes)
+    mark_qa_resolved(check_store, client_id, row_i, user, notes=notes)
     try:
         log_action('QA_RESOLVE', request.session_user.get('user_type'), user, get_remote_address(),
-                   f'{check_name} resolved for {client_id} row {row_i}')
+                   f'{check_store} resolved for {client_id} row {row_i}')
     except Exception:
         pass
     return jsonify({'status': 'success'})
@@ -8079,7 +8261,6 @@ def api_quality_client(client_id):
     if not can_access_client(user_type, user_identifier, client_id):
         return jsonify({"status": "error", "message": "Access denied"}), 403
     empty = {"client_id": client_id, "issues": [], "health_score": 100.0}
-    _hidden = {'Scan error'}
 
     # If rescan=1, run a live scan for this client and update the stored results
     if request.args.get('rescan') == '1':
@@ -8103,12 +8284,7 @@ def api_quality_client(client_id):
                         conn.commit()
                 except Exception:
                     pass  # Non-fatal — still return live results
-                issues = r.get('issues', [])
-                filtered = [i for i in issues if i.get('check') not in _hidden]
-                r = dict(r, issues=filtered, total_issues=len(filtered))
-                if not filtered:
-                    r['health_score'] = 100.0
-                return jsonify({"status": "success", "data": r})
+                return jsonify({"status": "success", "data": _quality_scan_row_for_trader_client_quality_api(r)})
         except Exception as e:
             return jsonify({"status": "error", "message": f"Scan failed: {str(e)}"}), 500
 
@@ -8119,12 +8295,10 @@ def api_quality_client(client_id):
         if saved:
             for r in saved:
                 if r.get('client_id') == client_id:
-                    issues = r.get('issues', [])
-                    filtered = [i for i in issues if i.get('check') not in _hidden]
-                    r = dict(r, issues=filtered, total_issues=len(filtered))
-                    if not filtered:
-                        r['health_score'] = 100.0
-                    return jsonify({"status": "success", "data": r})
+                    return jsonify({
+                        "status": "success",
+                        "data": _quality_scan_row_for_trader_client_quality_api(r),
+                    })
     except Exception:
         pass
     # No saved results — only super admins should trigger a live scan
@@ -8132,7 +8306,10 @@ def api_quality_client(client_id):
         try:
             results = run_quality_scan(target_client=client_id)
             if results:
-                return jsonify({"status": "success", "data": results[0]})
+                return jsonify({
+                    "status": "success",
+                    "data": _quality_scan_row_for_trader_client_quality_api(results[0]),
+                })
         except Exception as e:
             return jsonify({"status": "error", "message": f"Scan failed: {str(e)}"}), 500
     return jsonify({"status": "success", "data": empty})
@@ -8296,6 +8473,20 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
                     iss.get('severity') or 'high',
                     iss.get('detail') or 'Downtime detected',
                     extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
+                )
+        for iss in (r.get('issues') or []):
+            if iss.get('check') == QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE:
+                _add_issue(
+                    'daily_summary_payout_qa',
+                    cid,
+                    trader,
+                    iss.get('severity') or 'high',
+                    iss.get('detail') or QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
+                    extra={
+                        'row': iss.get('row'),
+                        'estimated_date': iss.get('estimated_date'),
+                        'submitted_at': iss.get('submitted_at'),
+                    },
                 )
 
         # Prop firm max-out counts
@@ -8536,6 +8727,20 @@ def api_admin_tracker():
                             iss.get('severity') or 'high',
                             iss.get('detail') or 'Downtime detected',
                             extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
+                        )
+                for iss in (r.get('issues') or []):
+                    if iss.get('check') == QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE:
+                        _add_issue(
+                            'daily_summary_payout_qa',
+                            cid,
+                            trader,
+                            iss.get('severity') or 'high',
+                            iss.get('detail') or QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
+                            extra={
+                                'row': iss.get('row'),
+                                'estimated_date': iss.get('estimated_date'),
+                                'submitted_at': iss.get('submitted_at'),
+                            },
                         )
 
                 # Prop firm max-out counts
@@ -8950,14 +9155,11 @@ def api_trader_issues():
 
         trader_clients = set(_clients_for_trader(trader_name))
         results = get_quality_scan_results() or []
-        filtered = [r for r in results if r.get('client_id') in trader_clients]
-
-        severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
-        for r in filtered:
-            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
-            r['total_issues'] = len(r['issues'])
-            deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
-            r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+        filtered = [
+            _quality_scan_row_for_trader_client_quality_api(r)
+            for r in results
+            if r.get('client_id') in trader_clients
+        ]
 
         scanned_ids = {r['client_id'] for r in filtered}
         for nm in sorted(trader_clients - scanned_ids):
