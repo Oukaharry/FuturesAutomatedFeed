@@ -7010,6 +7010,9 @@ def _estimate_issue_date(ev, issue_check, fallback):
     # Funded issues → latest date
     if issue_check == 'Empty Activation Fee':
         return dates[-1]
+    if issue_check == 'Funded phase: missing Date Ended':
+        ds1 = _parse_date_str(ev.get('Date Started.1', ''))
+        return ds1 or (dates[-1] if dates else fallback)
     # Current/ongoing issues → latest date
     if issue_check in ('No current day value', 'Downtime detected', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
         return dates[-1]
@@ -7309,7 +7312,7 @@ def run_quality_scan(target_client=None):
                     continue
 
                 status_p1 = str(ev.get('Status P1', '') or '').strip().lower()
-                status_p2 = str(ev.get('Status', '') or '').strip().lower()
+                status_p2 = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip().lower()
 
                 # Skip rows marked as deleted via status text — superadmin review rows, not real issues
                 if 'delete' in status_p1 or 'delete' in status_p2:
@@ -7540,6 +7543,26 @@ def run_quality_scan(target_client=None):
                     issues.append({'check': 'Empty Activation Fee', 'severity': 'medium', 'row': idx,
                                    'detail': f'{row_label}: Funded but no activation fee',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
+
+                # Funded-phase terminal outcome (Pass / Fail): funded "Date Ended" column must be set (Date Ended.1).
+                status_funded_raw = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip()
+                _sf_lower = status_funded_raw.lower()
+                _sf_first = ''
+                if _sf_lower:
+                    _sf_first = re.split(r'[\s\-–—:;]+', _sf_lower, maxsplit=1)[0].strip().rstrip('.,')
+                if (
+                    not is_live_funded_numeric_row
+                    and not new_row_strict_mode
+                    and _sf_first in ('pass', 'fail')
+                    and not str(ev.get('Date Ended.1', '') or '').strip()
+                ):
+                    issues.append({
+                        'check': 'Funded phase: missing Date Ended',
+                        'severity': 'medium',
+                        'row': idx,
+                        'detail': f'{row_label}: Funded status is \"{status_funded_raw}\" but Date Ended (funded) is blank',
+                        'estimated_date': _estimate_issue_date(ev, 'Funded phase: missing Date Ended', scan_date_str),
+                    })
 
                 # Alpha Futures always charges an activation fee when an account
                 # actually starts trading the funded account — so only flag a
