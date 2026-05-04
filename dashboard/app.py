@@ -84,6 +84,7 @@ QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY = 'MFF payouts eligible >1-QA'
 # listed on admin tracker (synthetic rows), and surfaced in quality QA modals / super-admin APIs.
 _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS = frozenset({
     QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
+    QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY,
 })
 
 
@@ -92,18 +93,23 @@ def _issues_for_trader_client_quality_views(issues):
     return [i for i in (issues or []) if i.get('check') not in skip]
 
 
+_QUALITY_SEVERITY_WEIGHT = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+
+
+def _trader_ranking_health_metrics(issues):
+    """(total_issues, health_score) for trader leaderboards and scorecards — excludes payout QA and scan errors."""
+    vis = _issues_for_trader_client_quality_views(issues)
+    if not vis:
+        return 0, 100.0
+    deduction = sum(_QUALITY_SEVERITY_WEIGHT.get(i.get('severity', 'low'), 2) for i in vis)
+    return len(vis), max(0.0, round(100.0 - deduction, 1))
+
+
 def _quality_scan_row_for_trader_client_quality_api(scan_row):
     """Recompute issues, total_issues, and health_score for trader-facing quality UIs."""
-    issues = _issues_for_trader_client_quality_views(scan_row.get('issues'))
-    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
     out = dict(scan_row)
-    out['issues'] = issues
-    out['total_issues'] = len(issues)
-    if not issues:
-        out['health_score'] = 100.0
-    else:
-        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in issues)
-        out['health_score'] = max(0.0, round(100.0 - deduction, 1))
+    out['issues'] = _issues_for_trader_client_quality_views(scan_row.get('issues'))
+    out['total_issues'], out['health_score'] = _trader_ranking_health_metrics(scan_row.get('issues'))
     return out
 
 
@@ -9668,13 +9674,10 @@ def api_weekly_scorecard():
     if not results:
         return jsonify({'status': 'success', 'scorecard': {}, 'message': 'No scan data for this period.'})
 
-    # Filter out infrastructure scan errors and recalculate scores
-    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    # Per-trader aggregates: health / issue counts exclude payout QA (admin-owned); full issues stay in DB.
     for r in results:
         r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
-        r['total_issues'] = len(r['issues'])
-        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
-        r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+        r['total_issues'], r['health_score'] = _trader_ranking_health_metrics(r.get('issues'))
 
     start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=days - 1)).strftime('%Y-%m-%d')
 
@@ -9781,13 +9784,10 @@ def api_daily_summary():
         excluded_traders = set()
         excluded_clients = set()
 
-    # Filter out infrastructure scan errors and recalculate scores
-    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
+    # Leaderboard / portfolio health: exclude payout QA from scores; keep full (non–scan-error) issues for top-issues + downtime.
     for r in scan_results:
         r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
-        r['total_issues'] = len(r['issues'])
-        deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
-        r['health_score'] = max(0.0, round(100.0 - deduction, 1))
+        r['total_issues'], r['health_score'] = _trader_ranking_health_metrics(r.get('issues'))
 
     all_clients = get_all_clients()
     # Filter portfolio list to excluded traders/clients for the report header.
@@ -9868,7 +9868,7 @@ def api_daily_summary():
         # Gamified Trader Health Leaderboard — ranked best to worst
         ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
         lines.append("🏆 **TRADER HEALTH LEADERBOARD**")
-        lines.append("_Ranked by average client health score (highest first). Health score is based on: data freshness, hedging accuracy, payout tracking, notes quality, and checklist completion._")
+        lines.append("_Ranked by average client health score (highest first). Scores exclude super-admin daily-summary payout QA; otherwise reflects data freshness, hedging accuracy, notes quality, and checklist completion._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
