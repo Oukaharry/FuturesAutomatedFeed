@@ -10170,7 +10170,7 @@ def api_set_slack_daily_webhook():
 @require_session
 def api_send_checklist_slack():
     """Send a daily summary to Slack."""
-    from dashboard.database import get_setting, save_daily_checklist
+    from dashboard.database import get_daily_checklists, get_setting, save_daily_checklist
     from dashboard.scheduler import send_slack_to_webhook
     session_user = request.session_user
     user_type = session_user.get('user_type')
@@ -10195,9 +10195,43 @@ def api_send_checklist_slack():
         if ok:
             if client_id:
                 today = datetime.now().strftime('%Y-%m-%d')
-                save_daily_checklist(today, user_identifier, user_type, 'daily_summary',
-                                     [{'id': 'slack_sent', 'title': 'Sent to Slack', 'status': 'ok', 'notes': ''}],
-                                     get_remote_address(), client_id=client_id)
+                # Do not replace a full daily_summary payload: the quality scan reads
+                # checklist items (e.g. payout_requests). Slack used to overwrite the row
+                # with only slack_sent, which wiped section 4 and broke payout-eligible QA.
+                slack_marker = {
+                    'id': 'slack_sent',
+                    'title': 'Sent to Slack',
+                    'status': 'ok',
+                    'notes': '',
+                }
+                items_to_save = [slack_marker]
+                try:
+                    for row in get_daily_checklists(today, user_identifier) or []:
+                        if row.get('checklist_type') != 'daily_summary':
+                            continue
+                        if (row.get('client_id') or '').strip() != client_id:
+                            continue
+                        prev = row.get('items') or []
+                        if not isinstance(prev, list) or not prev:
+                            break
+                        base = [
+                            it for it in prev
+                            if not (isinstance(it, dict) and it.get('id') == 'slack_sent')
+                        ]
+                        if any(isinstance(it, dict) and it.get('id') for it in base):
+                            items_to_save = base + [slack_marker]
+                        break
+                except Exception:
+                    pass
+                save_daily_checklist(
+                    today,
+                    user_identifier,
+                    user_type,
+                    'daily_summary',
+                    items_to_save,
+                    get_remote_address(),
+                    client_id=client_id,
+                )
             log_action('SLACK_DAILY_SUMMARY', user_type, user_identifier,
                        get_remote_address(), f'Daily summary sent to Slack for {client_id}')
             return jsonify({'status': 'success', 'message': 'Summary sent to Slack!'})
