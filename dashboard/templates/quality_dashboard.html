@@ -215,6 +215,9 @@
             <button class="scan-btn" id="sa-exclude-btn" onclick="showSuperAdminClientExclusion()" style="background:linear-gradient(135deg,#475569,#334155);" title="Exclude clients from Super Admin financial totals only">
                 <i class="fas fa-user-slash"></i> Client exclusion
             </button>
+            <button class="scan-btn" id="max-out-excl-btn" onclick="showMaxOutExclusionsModal()" style="background:linear-gradient(135deg,#0f766e,#115e59);" title="Skip max-out checks for a specific admin + client + prop firm (e.g. banned from a firm)">
+                <i class="fas fa-ban"></i> Max-out exclusions
+            </button>
             <button class="scan-btn" id="neg-hedge-qa-btn" onclick="showNegativeHedgeNetQA()" style="background:linear-gradient(135deg,#7c2d12,#ea580c);" title="Super-admin QA queue for negative hedge net">
                 <i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA
             </button>
@@ -320,6 +323,53 @@
                             </tr>
                         </thead>
                         <tbody id="sa-exclude-tbody"><tr><td colspan="4" style="text-align:center; padding:24px; color:#64748b;">Open this dialog to load clients.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Max-out rule exclusions (admin + client + prop firm) -->
+        <div id="max-out-excl-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(920px,96vw); max-height:86vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b;">
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-ban" style="color:#2dd4bf; margin-right:8px;"></i>Max-out exclusions</h3>
+                    <button type="button" onclick="document.getElementById('max-out-excl-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                </div>
+                <p style="margin:12px 24px 0; font-size:0.78rem; color:#64748b; line-height:1.45;">When a client cannot max out a prop firm (for example they are banned from that firm), the admin tracker would still flag a max-out gap. Add a triplet below to suppress max-out issues for that admin's view of that client for that firm only.</p>
+                <div style="padding:16px 24px; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; border-bottom:1px solid #1e293b;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">Admin</label>
+                        <select id="max-out-excl-admin" class="issue-type-filter" style="min-width:160px;" onchange="maxOutExclOnAdminChange()">
+                            <option value="">Select admin...</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">Client</label>
+                        <select id="max-out-excl-client" class="issue-type-filter" style="min-width:200px;">
+                            <option value="">Select admin first...</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:0.72rem; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">Prop firm</label>
+                        <select id="max-out-excl-prop" class="issue-type-filter" style="min-width:200px;">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <button type="button" id="max-out-excl-add-btn" onclick="addMaxOutExclusion()" style="background:linear-gradient(135deg,#14b8a6,#0d9488); border:none; color:#042f2e; padding:9px 18px; border-radius:10px; cursor:pointer; font-size:0.85rem; font-weight:700;">
+                        <i class="fas fa-plus"></i> Exclude
+                    </button>
+                </div>
+                <div style="overflow-y:auto; flex:1; padding:0 24px 18px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin-top:12px;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155; position:sticky; top:0; background:#0f172a;">
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Admin</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Client</th>
+                                <th style="text-align:left; padding:10px 8px; color:#94a3b8; font-weight:600;">Prop firm</th>
+                                <th style="text-align:center; padding:10px 8px; color:#94a3b8; font-weight:600; width:100px;">Remove</th>
+                            </tr>
+                        </thead>
+                        <tbody id="max-out-excl-tbody"><tr><td colspan="4" style="text-align:center; padding:24px; color:#64748b;">Open this dialog to load exclusions.</td></tr></tbody>
                     </table>
                 </div>
             </div>
@@ -1124,6 +1174,129 @@
                 showToast('error', 'Save failed', e.message || 'Network error');
             } finally {
                 btn.disabled = false;
+            }
+        }
+
+        /* ---------- Max-out exclusions (admin + client + prop firm) ---------- */
+        let _maxOutExclClients = [];
+
+        function _moEsc(s) {
+            return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        }
+        function _jsEsc(s) {
+            return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+
+        function maxOutExclOnAdminChange() {
+            const admin = (document.getElementById('max-out-excl-admin').value || '').trim();
+            const sel = document.getElementById('max-out-excl-client');
+            if (!admin) {
+                sel.innerHTML = '<option value="">' + _moEsc('Select admin first...') + '</option>';
+                return;
+            }
+            const rows = _maxOutExclClients.filter((r) => (r.admin || '') === admin);
+            sel.innerHTML = '<option value="">Select client...</option>' +
+                rows.map((r) => '<option value="' + _moEsc(r.client_id) + '">' + _moEsc(r.client_id) + '</option>').join('');
+        }
+
+        function renderMaxOutExclTable(exclusions) {
+            const tbody = document.getElementById('max-out-excl-tbody');
+            const list = exclusions || [];
+            if (!list.length) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:#64748b;">No exclusions yet. Use the form above to add one.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = list.map((ex) => {
+                const pf = ex.prop_firm_label || ex.prop_firm_key || '';
+                const idJs = _jsEsc(ex.id);
+                return '<tr style="border-bottom:1px solid #1e293b;">' +
+                    '<td style="padding:8px; color:#e2e8f0;">' + _moEsc(ex.admin) + '</td>' +
+                    '<td style="padding:8px; color:#e2e8f0; font-weight:500;">' + _moEsc(ex.client_id) + '</td>' +
+                    '<td style="padding:8px; color:#94a3b8;">' + _moEsc(pf) + '</td>' +
+                    '<td style="text-align:center; padding:8px;"><button type="button" onclick="removeMaxOutExclusion(\'' + idJs + '\')" style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.35); color:#fca5a5; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem;">Remove</button></td>' +
+                    '</tr>';
+            }).join('');
+        }
+
+        async function showMaxOutExclusionsModal() {
+            const btn = document.getElementById('max-out-excl-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            document.getElementById('max-out-excl-modal').style.display = 'flex';
+            try {
+                const resp = await fetch('/api/quality/max_out_exclusions', { credentials: 'same-origin' });
+                const data = await resp.json();
+                if (data.status !== 'success') {
+                    showToast('error', 'Failed', data.message || 'Could not load exclusions');
+                    return;
+                }
+                _maxOutExclClients = data.clients || [];
+                const admSel = document.getElementById('max-out-excl-admin');
+                admSel.innerHTML = '<option value="">Select admin...</option>' +
+                    (data.admins || []).map((a) => '<option value="' + _moEsc(a) + '">' + _moEsc(a) + '</option>').join('');
+                const propSel = document.getElementById('max-out-excl-prop');
+                propSel.innerHTML = '<option value="">Select prop firm...</option>' +
+                    (data.prop_firms || []).map((p) => '<option value="' + _moEsc(p.key) + '">' + _moEsc(p.label) + '</option>').join('');
+                document.getElementById('max-out-excl-client').innerHTML = '<option value="">Select admin first...</option>';
+                renderMaxOutExclTable(data.exclusions || []);
+            } catch (e) {
+                showToast('error', 'Error', e.message || 'Network error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-ban"></i> Max-out exclusions';
+            }
+        }
+
+        async function addMaxOutExclusion() {
+            const admin = (document.getElementById('max-out-excl-admin').value || '').trim();
+            const client_id = (document.getElementById('max-out-excl-client').value || '').trim();
+            const prop_firm_key = (document.getElementById('max-out-excl-prop').value || '').trim();
+            if (!admin || !client_id || !prop_firm_key) {
+                showToast('error', 'Incomplete', 'Choose admin, client, and prop firm.');
+                return;
+            }
+            const btn = document.getElementById('max-out-excl-add-btn');
+            btn.disabled = true;
+            try {
+                const resp = await fetch('/api/quality/max_out_exclusions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ admin, client_id, prop_firm_key }),
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    showToast('success', 'Saved', 'Max-out exclusion added for this triplet.');
+                    renderMaxOutExclTable(data.exclusions || []);
+                    document.getElementById('max-out-excl-prop').value = '';
+                } else {
+                    showToast('error', 'Not saved', data.message || 'Unknown error');
+                }
+            } catch (e) {
+                showToast('error', 'Not saved', e.message || 'Network error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function removeMaxOutExclusion(id) {
+            if (!id || !confirm('Remove this max-out exclusion?')) return;
+            try {
+                const resp = await fetch('/api/quality/max_out_exclusions', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ id }),
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    showToast('success', 'Removed', 'Exclusion deleted.');
+                    renderMaxOutExclTable(data.exclusions || []);
+                } else {
+                    showToast('error', 'Failed', data.message || 'Unknown error');
+                }
+            } catch (e) {
+                showToast('error', 'Failed', e.message || 'Network error');
             }
         }
 

@@ -155,6 +155,59 @@ def _admin_prop_display_name(pf_key):
     return ADMIN_PROP_DISPLAY_NAME.get(pf_key, pf_key)
 
 
+_QUALITY_MAX_OUT_EXCLUSIONS_KEY = 'quality_max_out_exclusions'
+
+# Prop firms that can appear in max-out checks beyond ADMIN_PROP_* (normalized keys).
+_MAX_OUT_EXTRA_PROP_KEYS = frozenset({
+    'fundednext', 'topstep', 'lucid', 'tradeify', 'fundednextplus',
+})
+
+
+def _prop_firm_dropdown_options_max_out():
+    """{key, label} for max-out exclusion UI (keys match _norm_prop_firm_max_out_key output)."""
+    keys = set(ADMIN_PROP_MAX_ACTIVE_ACCOUNTS.keys()) | set(ADMIN_PROP_DISPLAY_NAME.keys()) | set(_MAX_OUT_EXTRA_PROP_KEYS)
+    opts = []
+    for k in sorted(keys):
+        label = ADMIN_PROP_DISPLAY_NAME.get(k)
+        if not label:
+            label = k[:1].upper() + k[1:] if k else k
+        opts.append({'key': k, 'label': label})
+    return opts
+
+
+def _load_max_out_exclusions():
+    """Saved triplets (admin, client_id, prop_firm_key) — skip max-out flags for that combo."""
+    from dashboard.database import get_setting
+    try:
+        raw = json.loads(get_setting(_QUALITY_MAX_OUT_EXCLUSIONS_KEY) or '[]')
+    except (TypeError, ValueError):
+        raw = []
+    out = []
+    for i, x in enumerate(raw):
+        if not isinstance(x, dict):
+            continue
+        admin = str(x.get('admin') or '').strip()
+        cid = str(x.get('client_id') or '').strip()
+        pfk = _norm_prop_firm_max_out_key(x.get('prop_firm_key') or x.get('prop_firm') or '')
+        if not admin or not cid or not pfk:
+            continue
+        eid = str(x.get('id') or '').strip() or f'maxout-ex-{i}'
+        out.append({'id': eid, 'admin': admin, 'client_id': cid, 'prop_firm_key': pfk})
+    return out
+
+
+def _max_out_triplet_excluded(admin_name, client_id, pf_key, exclusion_list):
+    a = str(admin_name or '').strip().lower()
+    cid = str(client_id or '').strip()
+    pk = str(pf_key or '').strip().lower()
+    if not exclusion_list:
+        return False
+    for ex in exclusion_list:
+        if str(ex.get('admin') or '').strip().lower() == a and ex.get('client_id') == cid and ex.get('prop_firm_key') == pk:
+            return True
+    return False
+
+
 def _max_out_row_is_live_numeric_account(ev):
     """True if this row's account id looks like funded/live (digits-only), not eval (prefix + suffix).
 
@@ -8398,6 +8451,7 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
     excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
     excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
     _mffu_skip_admins = {'joy ndua', 'marion nyika'}
+    max_out_exclusions = _load_max_out_exclusions()
 
     # Build admin client roster from hierarchy profiles
     clients = []
@@ -8526,6 +8580,8 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
                 pf_rows.setdefault(pf_key, []).append({'idx': idx, 'has_note': has_note})
 
             for pf_key, rows in sorted(pf_rows.items()):
+                if _max_out_triplet_excluded(admin_name, cid, pf_key, max_out_exclusions):
+                    continue
                 count = len(rows)
                 expected = _admin_prop_max_active_expected(pf_key)
                 if count == 0:
@@ -8652,6 +8708,7 @@ def api_admin_tracker():
             # Exclusions mirror the Daily Summary Tracker rules
             excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
             excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+            max_out_exclusions = _load_max_out_exclusions()
 
             # Build admin client roster from hierarchy profiles
             clients = []
@@ -8779,6 +8836,8 @@ def api_admin_tracker():
                         pf_rows.setdefault(pf_key, []).append({'idx': idx, 'has_note': has_note})
 
                     for pf_key, rows in sorted(pf_rows.items()):
+                        if _max_out_triplet_excluded(admin_name, cid, pf_key, max_out_exclusions):
+                            continue
                         count = len(rows)
                         expected = _admin_prop_max_active_expected(pf_key)
                         if count == 0:
@@ -9296,6 +9355,95 @@ def api_summary_tracker_exclude():
                get_remote_address(), f'{action} {exclude_type}: {name}')
 
     return jsonify({'status': 'success', 'excluded': sorted(current)})
+
+
+@app.route('/api/quality/max_out_exclusions', methods=['GET', 'POST', 'DELETE'])
+@require_role('super_admin')
+def api_quality_max_out_exclusions():
+    """Manage admin+client+prop-firm triplets excluded from Admin Tracker max-out checks."""
+    from dashboard.database import get_setting, set_setting
+    import uuid as _uuid
+
+    if request.method == 'GET':
+        exclusions = list(_load_max_out_exclusions())
+        for ex in exclusions:
+            ex['prop_firm_label'] = _admin_prop_display_name(ex['prop_firm_key'])
+        admins = sorted(SYSTEM_HIERARCHY.get('admins', {}).keys(), key=lambda s: str(s).lower())
+        client_rows = []
+        for admin in SYSTEM_HIERARCHY.get('admins', {}):
+            ad = SYSTEM_HIERARCHY['admins'][admin]
+            for trader_name, trader_data in (ad.get('traders') or {}).items():
+                for client in trader_data.get('clients') or []:
+                    if not isinstance(client, dict):
+                        continue
+                    nm = (client.get('name') or '').strip()
+                    if nm:
+                        client_rows.append({
+                            'client_id': nm,
+                            'admin': admin,
+                            'trader': trader_name,
+                        })
+        client_rows.sort(key=lambda r: (str(r['admin']).lower(), str(r['client_id']).lower()))
+        return jsonify({
+            'status': 'success',
+            'exclusions': exclusions,
+            'admins': admins,
+            'clients': client_rows,
+            'prop_firms': _prop_firm_dropdown_options_max_out(),
+        })
+
+    data = request.get_json(silent=True) or {}
+    user_id = request.session_user.get('user_identifier', '')
+
+    if request.method == 'POST':
+        admin = (data.get('admin') or '').strip()
+        cid = (data.get('client_id') or '').strip()
+        pf_raw = (data.get('prop_firm_key') or data.get('prop_firm') or '').strip()
+        pfk = _norm_prop_firm_max_out_key(pf_raw)
+        if not admin or not cid or not pfk:
+            return jsonify({'status': 'error', 'message': 'admin, client_id, and prop_firm_key are required'}), 400
+        profile = get_client_profile(cid) or {}
+        if str(profile.get('admin') or '').strip().lower() != admin.lower():
+            return jsonify({'status': 'error', 'message': 'Selected client is not assigned to the selected admin'}), 400
+        cur = _load_max_out_exclusions()
+        if _max_out_triplet_excluded(admin, cid, pfk, cur):
+            return jsonify({'status': 'error', 'message': 'This exclusion already exists'}), 400
+        cur.append({
+            'id': str(_uuid.uuid4()),
+            'admin': admin,
+            'client_id': cid,
+            'prop_firm_key': pfk,
+        })
+        set_setting(_QUALITY_MAX_OUT_EXCLUSIONS_KEY, json.dumps(cur), updated_by=user_id)
+        log_action(
+            'MAX_OUT_EXCLUSION_ADD',
+            'super_admin',
+            user_id,
+            get_remote_address(),
+            f'admin={admin} client={cid} prop_firm_key={pfk}',
+        )
+        for ex in cur:
+            ex['prop_firm_label'] = _admin_prop_display_name(ex['prop_firm_key'])
+        return jsonify({'status': 'success', 'exclusions': cur})
+
+    eid = (data.get('id') or '').strip()
+    if not eid:
+        return jsonify({'status': 'error', 'message': 'id required'}), 400
+    cur = _load_max_out_exclusions()
+    new_list = [x for x in cur if str(x.get('id')) != eid]
+    if len(new_list) == len(cur):
+        return jsonify({'status': 'error', 'message': 'Exclusion not found'}), 404
+    set_setting(_QUALITY_MAX_OUT_EXCLUSIONS_KEY, json.dumps(new_list), updated_by=user_id)
+    log_action(
+        'MAX_OUT_EXCLUSION_REMOVE',
+        'super_admin',
+        user_id,
+        get_remote_address(),
+        f'id={eid}',
+    )
+    for ex in new_list:
+        ex['prop_firm_label'] = _admin_prop_display_name(ex['prop_firm_key'])
+    return jsonify({'status': 'success', 'exclusions': new_list})
 
 
 @app.route('/api/quality/trade_count_toggle', methods=['POST'])
