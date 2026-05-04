@@ -7681,13 +7681,11 @@ def run_quality_scan(target_client=None):
                         if _is_live_day_row:
                             _nd_msg = (
                                 f'{row_label}: Live funded row has no allowed day marker ({_allowed_human}) '
-                                f'in Hedge Result / Hedge Day / Prop Day — add one, or add a Status P1 cell note '
-                                f'explaining why no weekday is shown'
+                                f'in Hedge Result / Hedge Day / Prop Day'
                             )
                         else:
                             _nd_msg = (
-                                f'{row_label}: Active account has no allowed day marker ({_allowed_human}) '
-                                f'in Hedge Result / Hedge Day / Prop Day (or add a cell note)'
+                                f'{row_label}: Active account has no day marker in Hedge Result / Hedge Day / Prop Day'
                             )
                         issues.append({
                             'check': 'No current day value',
