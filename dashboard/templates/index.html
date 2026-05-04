@@ -3247,6 +3247,8 @@
         let isEditing = false;
         let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
         let _saveDebounceTimer = null;  // Debounce rapid edits into one save
+        /** When true, a save is in flight and another saveData() was requested — run again after success. */
+        let _pendingEvalSaveAfterFlight = false;
         let _statsRenderDebounce = null; // Debounce stats recompute while editing evals
         let _lastSavedVersion = null;   // Version from last successful save
         let _pendingSaveCallback = null; // Optional callback(bool) after saveData completes
@@ -6582,13 +6584,14 @@
             }
             
             const emptyPlaceholder = type !== 'date' ? ' placeholder="\u2014"' : '';
+            const escFieldAttr = String(key).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
             // Hedge cells: sync model on every keystroke. Saves are debounced — without this,
             // currentData still held the old number until blur/onchange, so a pending save could
             // persist stale values (-90.30) while the input visually showed (-121).
             const hedgeLiveSync = (!readOnly && (key.startsWith('Hedge Result') || key.startsWith('Hedge Day')))
                 ? ` oninput="syncEvalMoneyInput(${index}, '${key}', this.value)"`
                 : '';
-            return `<input type="${type}" class="cell-input" value="${displayVal}" onchange="handleInputChange(${index}, '${key}', this.value)"${hedgeLiveSync} ${readOnlyAttr}${emptyPlaceholder} style="${style}">`;
+            return `<input type="${type}" class="cell-input" data-eval-index="${index}" data-eval-field="${escFieldAttr}" value="${displayVal}" onchange="handleInputChange(${index}, '${key}', this.value)"${hedgeLiveSync} ${readOnlyAttr}${emptyPlaceholder} style="${style}">`;
         }
 
         // Global state for portal dropdowns
@@ -6887,7 +6890,7 @@
             _saveDebounceTimer = setTimeout(() => {
                 _saveDebounceTimer = null;
                 saveData();
-            }, 400);
+            }, 550);
         }
 
         function handleInputChange(index, key, value) {
@@ -6954,12 +6957,12 @@
                 }
                 saveData();
             } else {
-                // Debounce: batch rapid edits into a single save (400ms window)
+                // Debounce: batch rapid edits into a single save (550ms window)
                 if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
                 _saveDebounceTimer = setTimeout(() => {
                     _saveDebounceTimer = null;
                     saveData();
-                }, 400);
+                }, 550);
             }
             
             // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
@@ -7095,6 +7098,68 @@
             return warnings;
         }
 
+        /** Snapshot focused evaluation cell so we can restore after renderEvaluationsTable (post-save). */
+        function snapshotEvalCellFocus() {
+            const el = document.activeElement;
+            if (!el || !el.classList || !el.classList.contains('cell-input')) return null;
+            const idx = el.getAttribute('data-eval-index');
+            const field = el.getAttribute('data-eval-field');
+            if (idx == null || field == null) return null;
+            let start = null, end = null;
+            try {
+                if (typeof el.selectionStart === 'number') start = el.selectionStart;
+                if (typeof el.selectionEnd === 'number') end = el.selectionEnd;
+            } catch (e) { /* ignore */ }
+            return { index: parseInt(idx, 10), field, start, end };
+        }
+
+        function restoreEvalCellFocus(snap) {
+            if (!snap || snap.index == null || !snap.field) return;
+            const rows = document.querySelectorAll('input.cell-input[data-eval-index="' + snap.index + '"]');
+            for (let i = 0; i < rows.length; i++) {
+                const inp = rows[i];
+                if (inp.getAttribute('data-eval-field') === snap.field) {
+                    inp.focus();
+                    if (typeof snap.start === 'number' && typeof snap.end === 'number') {
+                        try { inp.setSelectionRange(snap.start, snap.end); } catch (e) { /* ignore */ }
+                    }
+                    return;
+                }
+            }
+        }
+
+        /**
+         * After save, server evaluations can lag keystrokes typed while the request was in flight.
+         * Re-apply any field names still listed in _changedFields from currentData before assign.
+         */
+        function mergeServerEvaluationsWithLocalEdits(serverEvals) {
+            const overlay = {};
+            for (const [idxStr, fields] of Object.entries(_changedFields)) {
+                const idx = parseInt(idxStr, 10);
+                if (!Number.isFinite(idx) || !currentData.evaluations || !currentData.evaluations[idx]) continue;
+                const evLocal = currentData.evaluations[idx];
+                const fieldSet = fields instanceof Set ? fields : new Set(Array.isArray(fields) ? fields : []);
+                if (!fieldSet.size) continue;
+                overlay[idx] = {};
+                fieldSet.forEach((key) => {
+                    if (key == null) return;
+                    overlay[idx][key] = evLocal[key];
+                });
+            }
+            const merged = Array.isArray(serverEvals) ? serverEvals.map((row) => (row && typeof row === 'object' ? { ...row } : row)) : serverEvals;
+            if (!merged || !Array.isArray(merged)) return merged;
+            for (const [idxStr, keys] of Object.entries(overlay)) {
+                const idx = parseInt(idxStr, 10);
+                if (!Number.isFinite(idx) || idx < 0 || idx >= merged.length) continue;
+                const row = merged[idx];
+                if (!row || typeof row !== 'object') continue;
+                for (const [k, v] of Object.entries(keys)) {
+                    row[k] = v;
+                }
+            }
+            return merged;
+        }
+
         function showValidationWarnings(warnings) {
             const existing = document.getElementById('validation-warning-banner');
             if (existing) existing.remove();
@@ -7142,6 +7207,12 @@
             }
             if (CLIENT_ID) {
                 currentData.identity.client = CLIENT_ID;
+            }
+
+            // Single-flight: overlapping saves apply responses out of order and wipe in-flight keystrokes.
+            if (isSaving && retryCount === 0 && !_retryBody) {
+                _pendingEvalSaveAfterFlight = true;
+                return;
             }
 
             // Set editing flag to prevent auto-refresh during save
@@ -7205,15 +7276,20 @@
                 if (data.version != null) _lastSavedVersion = data.version;
                 if (data._version != null) _lastSavedVersion = data._version;
 
+                const focusSnap = snapshotEvalCellFocus();
+
                 // Apply server recomputation immediately (Hedge Net, sheet totals, discrepancy).
                 if (data.statistics) currentData.statistics = data.statistics;
                 if (data.evaluations && Array.isArray(data.evaluations)) {
-                    currentData.evaluations = data.evaluations;
+                    currentData.evaluations = mergeServerEvaluationsWithLocalEdits(data.evaluations);
                     try {
                         renderEvaluationsTable(false);
                     } catch (e) {
                         console.error('renderEvaluationsTable after save:', e);
                     }
+                    requestAnimationFrame(() => {
+                        restoreEvalCellFocus(focusSnap);
+                    });
                 }
                 if (data.last_updated) currentData.last_updated = data.last_updated;
                 if (data._version != null) currentData._version = data._version;
@@ -7269,6 +7345,11 @@
                     finalizeRecalcUi();
                 }
                 if (_pendingSaveCallback) { _pendingSaveCallback(true); _pendingSaveCallback = null; }
+
+                if (_pendingEvalSaveAfterFlight) {
+                    _pendingEvalSaveAfterFlight = false;
+                    setTimeout(() => { saveData('UPDATE'); }, 0);
+                }
             })
             .catch((error) => {
                 console.error('Error saving data:', error);
@@ -7296,6 +7377,10 @@
                 setEvaluationsRecalcIndicator(false);
                 showSaveStatus('failed', error.message);
                 if (_pendingSaveCallback) { _pendingSaveCallback(false); _pendingSaveCallback = null; }
+                if (_pendingEvalSaveAfterFlight) {
+                    _pendingEvalSaveAfterFlight = false;
+                    setTimeout(() => { saveData('UPDATE'); }, 0);
+                }
             });
         }
         
