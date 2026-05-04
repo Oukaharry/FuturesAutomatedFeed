@@ -7652,7 +7652,28 @@ def run_quality_scan(target_client=None):
                     except Exception:
                         _weekday_ok = False
 
-                    if fee_present and status_p1 and status_p1 != 'not started' and not _nonhedge_ok and not _weekday_ok:
+                    # Farming-phase weekday in Prop Day cells, eval + funded both "pass", hedges still empty:
+                    # treat as intentional workflow state — do not flag "not started".
+                    _pass_propday_weekday_ok = False
+                    if status_p1 == 'pass' and status_p2 == 'pass' and not has_hedge_value_local:
+                        try:
+                            for _i in range(1, 51):
+                                _c = f'Prop Day {_i}'
+                                _v = str(ev.get(_c, '') or '').strip().lower()
+                                if _v and any(tok in _v for tok in _weekday_tokens):
+                                    _pass_propday_weekday_ok = True
+                                    break
+                        except Exception:
+                            _pass_propday_weekday_ok = False
+
+                    if (
+                        fee_present
+                        and status_p1
+                        and status_p1 != 'not started'
+                        and not _nonhedge_ok
+                        and not _weekday_ok
+                        and not _pass_propday_weekday_ok
+                    ):
                         issues.append({
                             'check': 'New row: Status P1 not started',
                             'severity': 'medium',
