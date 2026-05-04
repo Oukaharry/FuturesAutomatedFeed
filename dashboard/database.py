@@ -1219,6 +1219,33 @@ def get_daily_checklists(date: str, user_identifier: str = None) -> list:
         } for row in cursor.fetchall()]
 
 
+def get_latest_daily_summary_checklist_for_client(scan_date: str, client_id: str) -> dict:
+    """Most recent trader daily_summary row for this client on scan_date (by submitted_at)."""
+    if not scan_date or not client_id:
+        return None
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''SELECT items, submitted_at, user_identifier FROM daily_checklists
+                   WHERE date = ? AND client_id = ? AND checklist_type = ?
+                   ORDER BY submitted_at DESC LIMIT 1''',
+                (scan_date, client_id, 'daily_summary'),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            raw_items = row['items']
+            items = json.loads(raw_items) if isinstance(raw_items, str) else (raw_items or [])
+            return {
+                'items': items,
+                'submitted_at': row.get('submitted_at'),
+                'user_identifier': row.get('user_identifier') or '',
+            }
+    except Exception:
+        return None
+
+
 def get_checklist_clients_for_date(date: str) -> set:
     """Return set of client_ids that have a daily_summary checklist submitted for the given date."""
     try:
