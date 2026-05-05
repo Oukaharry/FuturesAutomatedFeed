@@ -2511,15 +2511,11 @@ def init_admin_password():
         bef_password = os.getenv('BEF_ADMIN_PASSWORD', 'BEFAdmin@123')
         set_admin_password('bef_admin', bef_password)
         print("bef_admin password initialized")
-    if not admin_password_exists('kwok_admin'):
-        # Legacy DB username was showcase_admin; copy hash so existing installs keep the same password.
-        if not copy_admin_password_row('showcase_admin', 'kwok_admin'):
-            kwok_password = os.getenv(
-                'KWOK_ADMIN_PASSWORD',
-                os.getenv('SHOWCASE_ADMIN_PASSWORD', 'KwokAdmin@123'),
-            )
-            set_admin_password('kwok_admin', kwok_password)
-        print("kwok_admin password initialized or migrated from legacy showcase_admin row")
+    # Kwok admin: set explicitly on startup so the password is predictable for demos.
+    # Override via KWOK_ADMIN_PASSWORD env var.
+    kwok_password = os.getenv('KWOK_ADMIN_PASSWORD', '123@kwok_admin')
+    set_admin_password('kwok_admin', kwok_password)
+    print("kwok_admin password set/updated")
 
 # Run initialization
 init_database()
@@ -10031,8 +10027,6 @@ def api_daily_summary():
 
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
-        lines.append("━" * 30)
-        lines.append("")
         lines.append("🚨🚨🚨 **DOWNTIME ALERT — ZERO TOLERANCE** 🚨🚨🚨")
         lines.append(f"⚠️ **{len(downtime_clients)} account(s) have stale trading days. This means the account was NOT traded on those days.**")
         lines.append("")
@@ -10045,6 +10039,8 @@ def api_daily_summary():
             lines.append(f"  🔴 **{client}** ({trader}{acct_tag}) — {stale_part}")
         lines.append("")
         lines.append("‼️ **Downtime is unacceptable. Every trading day must be accounted for. Traders responsible for these accounts must explain immediately.**")
+        lines.append("")
+        lines.append("━" * 30)
         lines.append("")
 
     # Admin tracker in daily summary export — disabled until admins are briefed; set flag True to restore.

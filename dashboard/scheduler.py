@@ -212,6 +212,20 @@ def _build_daily_summary_text():
         r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
         r['total_issues'], r['health_score'] = _trader_ranking_health_metrics(r.get('issues'))
 
+    # Collect downtime data (rendered at the bottom for maximum visibility)
+    downtime_clients = []
+    try:
+        for r in scan_results or []:
+            for iss in r.get('issues', []) or []:
+                if iss.get('check') == 'Downtime detected':
+                    downtime_clients.append((
+                        r.get('trader', 'Unknown') or 'Unknown',
+                        r.get('client_id', '') or '',
+                        iss.get('detail') or 'Downtime detected',
+                    ))
+    except Exception:
+        downtime_clients = []
+
     clients_healthy = sum(1 for r in scan_results if r['health_score'] >= 90)
     clients_warning = sum(1 for r in scan_results if 70 <= r['health_score'] < 90)
     clients_critical = sum(1 for r in scan_results if r['health_score'] < 70)
@@ -409,6 +423,22 @@ def _build_daily_summary_text():
     except Exception as e:
         import traceback
         traceback.print_exc()
+
+    # ── Downtime Alert (bottom of message for maximum visibility) ──
+    if downtime_clients:
+        lines.append("🚨🚨🚨 *DOWNTIME ALERT — ZERO TOLERANCE* 🚨🚨🚨")
+        lines.append(f"⚠️ *{len(downtime_clients)} account(s) have stale trading days. This means the account was NOT traded on those days.*")
+        lines.append("")
+        for trader, client, detail in sorted(downtime_clients):
+            # Keep this robust: detail formats differ depending on scan source.
+            stale_part = detail.split('Stale day(s) found: ')[-1].split(' —')[0] if 'Stale day(s) found: ' in detail else detail
+            lines.append(f"  🔴 *{client}* ({trader}) — {stale_part}")
+        lines.append("")
+        lines.append("‼️ *Downtime is unacceptable. Every trading day must be accounted for. Traders responsible for these accounts must explain immediately.*")
+        lines.append("")
+        # Divider goes LAST so nothing after it gets dropped by clients/bots.
+        lines.append("━" * 30)
+        lines.append("")
 
     # Admin tracker in scheduled Slack post — disabled until admins are briefed; set flag True to restore.
     _include_admin_tracker_in_slack_schedule = False
