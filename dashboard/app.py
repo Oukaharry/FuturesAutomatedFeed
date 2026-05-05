@@ -8645,7 +8645,7 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
     trader_submissions = get_summary_status_for_date(date) or []
     trader_sent_map = {}
     for s in trader_submissions:
-        cid = s.get('client_id')
+        cid = (s.get('client_id') or '').strip()
         if not cid:
             continue
         if cid not in trader_sent_map:
@@ -8671,17 +8671,17 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
             return False
 
     admin_signed_clients = {
-        c.get('client_id')
+        (c.get('client_id') or '').strip()
         for c in admin_checklists
         if c.get('client_id') and _is_admin_signed(c)
     }
 
     required_clients = sorted([
-        c['client_id']
+        (c.get('client_id') or '').strip()
         for c in clients
         if c.get('active_status') == 'active'
-        and c['client_id'] in trader_submitted_clients
-        and (c['client_id'] not in excluded_clients)
+        and (c.get('client_id') or '').strip() in {str(x or '').strip() for x in trader_submitted_clients}
+        and ((c.get('client_id') or '').strip() not in {str(x or '').strip() for x in excluded_clients})
         and ((c.get('trader') or '') not in excluded_traders)
     ])
     pending_clients = sorted([cid for cid in required_clients if cid not in admin_signed_clients])
@@ -8735,8 +8735,11 @@ def api_admin_tracker():
 
             # Build admin client roster from hierarchy profiles
             clients = []
-            for client_id in hierarchy_get_all_clients():
-                p = get_client_profile(client_id) or {}
+            for raw_client_id in hierarchy_get_all_clients():
+                client_id = str(raw_client_id or '').strip()
+                if not client_id:
+                    continue
+                p = get_client_profile(raw_client_id) or {}
                 if str(p.get('admin') or '').strip().lower() != admin_name.lower():
                     continue
                 trader = str(p.get('trader') or '').strip()
