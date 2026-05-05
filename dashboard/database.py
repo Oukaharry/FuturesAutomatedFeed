@@ -1148,6 +1148,13 @@ def save_daily_checklist(date: str, user_identifier: str, user_type: str,
                          checklist_type: str, items: list, ip_address: str = None,
                          client_id: str = ''):
     """Save a daily checklist submission (per client)."""
+    # Normalize identifiers to avoid subtle mismatches (e.g. trailing spaces)
+    # which can cause the UI to show "pending" even after a successful save.
+    date = (date or '').strip()
+    user_identifier = (user_identifier or '').strip()
+    user_type = (user_type or '').strip()
+    checklist_type = (checklist_type or '').strip()
+    client_id = (client_id or '').strip()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -1268,7 +1275,7 @@ def get_summary_status_for_date(date: str) -> list:
     (= 2:05 AM Kenyan → 2:05 AM Kenyan).  The `date` parameter is the
     UTC date (server runs UTC).
     """
-    results = {}  # client_id -> {client_id, submitted_by, submitted_at}
+    results = {}  # normalized client_id -> {client_id, submitted_by, submitted_at}
 
     from datetime import timedelta as _td
     try:
@@ -1294,7 +1301,9 @@ def get_summary_status_for_date(date: str) -> list:
                 (utc_start, utc_end)
             )
             for row in cursor.fetchall():
-                cid = row['client_id']
+                cid = (row.get('client_id') or '').strip()
+                if not cid:
+                    continue
                 if cid not in results:
                     results[cid] = {'client_id': cid, 'submitted_by': row['user_identifier'],
                                     'submitted_at': row['submitted_at']}
@@ -1315,6 +1324,7 @@ def get_summary_status_for_date(date: str) -> list:
                     import re
                     part = re.sub(r':\s*\d+\s+sections?\s*$', '', part).strip()
                     client_id = part
+                client_id = (client_id or '').strip()
                 if client_id and client_id not in results:
                     results[client_id] = {'client_id': client_id, 'submitted_by': row['user_identifier'],
                                           'submitted_at': row['timestamp']}
