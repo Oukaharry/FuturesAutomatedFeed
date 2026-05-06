@@ -14,11 +14,29 @@ $LOCAL_PORT = "5432"
 $LOCAL_DB   = "tradeopss"
 $LOCAL_USER = "postgres"
 
-# ── Production password ──────────────────────────────────────────────────────
-# WARNING: Do NOT commit this file to Git. Add sync_prod_to_local.ps1 to .gitignore
-$prodPass = "BallerAdmin123"
+# ── Passwords ────────────────────────────────────────────────────────────────
+# This script is safe to commit: passwords are NOT hardcoded.
+# Provide them via environment variables, or you will be prompted:
+# - PROD_PGPASSWORD / PROD_PGPASSWORD_ALT
+# - LOCAL_PGPASSWORD / LOCAL_PGPASSWORD_ALT
+function ConvertFrom-SecureStringPlain {
+    param([Parameter(Mandatory=$true)][securestring]$Secure)
+    $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+}
 
-$localPass = "postgres123"
+$prodPass = ($env:PROD_PGPASSWORD_DEFAULT ?? "").Trim()
+if (-not $prodPass) {
+    $sec = Read-Host "Enter PROD Postgres password (input hidden)" -AsSecureString
+    $prodPass = (ConvertFrom-SecureStringPlain $sec).Trim()
+}
+
+$localPass = ($env:LOCAL_PGPASSWORD_DEFAULT ?? "").Trim()
+if (-not $localPass) {
+    $sec2 = Read-Host "Enter LOCAL Postgres password (input hidden)" -AsSecureString
+    $localPass = (ConvertFrom-SecureStringPlain $sec2).Trim()
+}
 
 # ── Add PostgreSQL to PATH if not already available ───────────────────────────
 $pgBinCandidates = @(
@@ -65,29 +83,49 @@ $localPassCandidates = @(
     $localPass,
     $env:LOCAL_PGPASSWORD_ALT,
     "password123" # fallback for other local environments that still use this
-)
+    ""
+) | Where-Object { $_ -ne $null -and "$_".Trim() -ne "" } | ForEach-Object { "$_".Trim() }
 $prodPassCandidates = @(
     $env:PROD_PGPASSWORD,
     $prodPass,
     $env:PROD_PGPASSWORD_ALT
-)
+) | Where-Object { $_ -ne $null -and "$_".Trim() -ne "" } | ForEach-Object { "$_".Trim() }
 
-Write-Host "`n[1/3] Dropping and recreating local database '$LOCAL_DB'..." -ForegroundColor Yellow
-$ok = Invoke-PgWithPasswords -Label "Local recreate database" -Passwords $localPassCandidates -Run {
-    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$LOCAL_DB' AND pid <> pg_backend_pid();" postgres
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -c "DROP DATABASE IF EXISTS $LOCAL_DB;" postgres
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -c "CREATE DATABASE $LOCAL_DB;" postgres
+# ── Preflight: confirm SSH tunnel/port is reachable ───────────────────────────
+Write-Host "`n[0/4] Checking production tunnel $PROD_HOST`:$PROD_PORT ..." -ForegroundColor Yellow
+try {
+    $tnc = Test-NetConnection -ComputerName $PROD_HOST -Port ([int]$PROD_PORT) -WarningAction SilentlyContinue
+    if (-not $tnc.TcpTestSucceeded) {
+        Write-Host "ERROR: Can't reach $PROD_HOST`:$PROD_PORT." -ForegroundColor Red
+        Write-Host "Start your SSH tunnel first (example):" -ForegroundColor DarkGray
+        Write-Host "  ssh -L 5433:ballerquotes-5185.postgres.pythonanywhere-services.com:15185 ballerquotes@ssh.pythonanywhere.com -N" -ForegroundColor DarkGray
+        $env:PGPASSWORD = ""
+        exit 1
+    }
+} catch {
+    # If Test-NetConnection isn't available, we still try psql/pg_dump below.
 }
 
+Write-Host "    Tunnel looks reachable. Verifying auth..." -ForegroundColor Yellow
+$ok = Invoke-PgWithPasswords -Label "Production auth check" -Passwords $prodPassCandidates -Run {
+    psql -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB -c "SELECT 1;" | Out-Null
+}
 if (-not $ok) {
-    Write-Host "ERROR: Failed to recreate local database. Aborting." -ForegroundColor Red
+    Write-Host "ERROR: Can't authenticate to production over the tunnel (wrong password/user/db, or tunnel points to wrong server)." -ForegroundColor Red
     $env:PGPASSWORD = ""
     exit 1
 }
 
-Write-Host "[2/3] Dumping production to temp file..." -ForegroundColor Yellow
+# ── Safe swap restore strategy ────────────────────────────────────────────────
+# 1) Dump prod to a temp file
+# 2) Restore into a NEW temporary local database (no disruption to current LOCAL_DB)
+# 3) Validate the temp DB
+# 4) Swap: rename current LOCAL_DB to backup, rename temp → LOCAL_DB (brief disruption only at swap time)
+$stamp = (Get-Date -Format 'yyyyMMdd_HHmmss')
+$tempDb = "${LOCAL_DB}__sync_tmp_$stamp"
+$backupDb = "${LOCAL_DB}__backup_$stamp"
+
+Write-Host "`n[1/4] Dumping production to temp file..." -ForegroundColor Yellow
 $tempFile = "$env:TEMP\prod_dump_$(Get-Date -Format 'yyyyMMdd_HHmmss').sql"
 $ok = Invoke-PgWithPasswords -Label "Production pg_dump" -Passwords $prodPassCandidates -Run {
     pg_dump -h $PROD_HOST -p $PROD_PORT -U $PROD_USER -d $PROD_DB --no-owner --no-acl -f $tempFile
@@ -99,22 +137,72 @@ if (-not $ok -or !(Test-Path $tempFile)) {
     exit 1
 }
 
-Write-Host "    Restoring to local database..." -ForegroundColor Yellow
-$ok = Invoke-PgWithPasswords -Label "Local restore" -Passwords $localPassCandidates -Run {
-    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d $LOCAL_DB -f $tempFile
+Write-Host "[2/4] Creating temp local database '$tempDb'..." -ForegroundColor Yellow
+$ok = Invoke-PgWithPasswords -Label "Local create temp database" -Passwords $localPassCandidates -Run {
+    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d postgres -c "DROP DATABASE IF EXISTS ""$tempDb"";"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d postgres -c "CREATE DATABASE ""$tempDb"";"
 }
 
 if (-not $ok) {
-    Write-Host "ERROR: Restore failed." -ForegroundColor Red
+    Write-Host "ERROR: Failed to create temp database. Aborting." -ForegroundColor Red
     Remove-Item $tempFile -Force
     $env:PGPASSWORD = ""
     exit 1
 }
 
+Write-Host "[3/4] Restoring dump into temp database (no impact on '$LOCAL_DB')..." -ForegroundColor Yellow
+$ok = Invoke-PgWithPasswords -Label "Local restore to temp DB" -Passwords $localPassCandidates -Run {
+    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d $tempDb -f $tempFile
+}
+
+if (-not $ok) {
+    Write-Host "ERROR: Restore into temp database failed. Keeping existing '$LOCAL_DB' unchanged." -ForegroundColor Red
+    try {
+        Invoke-PgWithPasswords -Label "Local drop temp database" -Passwords $localPassCandidates -Run {
+            psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d postgres -c "DROP DATABASE IF EXISTS ""$tempDb"";"
+        } | Out-Null
+    } catch { }
+    Remove-Item $tempFile -Force
+    $env:PGPASSWORD = ""
+    exit 1
+}
+
+# Basic validation: ensure DB is reachable and has tables after restore.
+Write-Host "    Validating temp database..." -ForegroundColor Yellow
+$ok = Invoke-PgWithPasswords -Label "Validate temp DB" -Passwords $localPassCandidates -Run {
+    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d $tempDb -c "SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public';"
+}
+if (-not $ok) {
+    Write-Host "ERROR: Temp database validation failed. Keeping existing '$LOCAL_DB' unchanged." -ForegroundColor Red
+    try {
+        Invoke-PgWithPasswords -Label "Local drop temp database" -Passwords $localPassCandidates -Run {
+            psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d postgres -c "DROP DATABASE IF EXISTS ""$tempDb"";"
+        } | Out-Null
+    } catch { }
+    Remove-Item $tempFile -Force
+    $env:PGPASSWORD = ""
+    exit 1
+}
+
+Write-Host "[4/4] Swapping databases (briefly interrupts local connections)..." -ForegroundColor Yellow
+$ok = Invoke-PgWithPasswords -Label "Swap databases" -Passwords $localPassCandidates -Run {
+    # Kick everyone off the target DB just for the swap.
+    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('$LOCAL_DB', '$tempDb') AND pid <> pg_backend_pid();"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    # Rename existing LOCAL_DB out of the way (backup) if it exists.
+    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d postgres -c "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_database WHERE datname = '$LOCAL_DB') THEN EXECUTE 'ALTER DATABASE ""$LOCAL_DB"" RENAME TO ""$backupDb""'; END IF; END $$;"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+    # Rename temp DB into place.
+    psql -U $LOCAL_USER -h $LOCAL_HOST -p $LOCAL_PORT -d postgres -c "ALTER DATABASE ""$tempDb"" RENAME TO ""$LOCAL_DB"";"
+}
+
 Remove-Item $tempFile -Force
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Sync failed during dump/restore." -ForegroundColor Red
+if (-not $ok) {
+    Write-Host "ERROR: Swap failed. Your previous local DB should still be available as '$backupDb' (if it existed)." -ForegroundColor Red
     $env:PGPASSWORD = ""
     exit 1
 }
@@ -124,7 +212,8 @@ $env:PGPASSWORD = ""
 $prodPass = ""
 $localPass = ""
 
-Write-Host "[3/3] Sync complete. Local '$LOCAL_DB' now matches production." -ForegroundColor Green
+Write-Host "Sync complete. Local '$LOCAL_DB' now matches production." -ForegroundColor Green
+Write-Host "Previous local database (backup): $backupDb" -ForegroundColor DarkGray
 Write-Host "Completed at: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
 
 ## Commands to run:

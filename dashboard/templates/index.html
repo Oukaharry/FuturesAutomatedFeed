@@ -2254,6 +2254,13 @@
             {% endif %}
             {% if user_type in ('admin', 'super_admin') %}
             <span style="color:rgba(255,255,255,0.08);">|</span>
+            {% if user_type == 'super_admin' and client_id %}
+            <span id="companion-version-pill" title="Trader Companion version that last pushed MT5 data for this client" style="display:none; align-items:center; gap:6px; padding:2px 8px; border-radius:999px; border:1px solid rgba(96,165,250,0.25); background:rgba(96,165,250,0.08); color:#93c5fd; font-size:11px; font-weight:600; white-space:nowrap;">
+                <i class="fas fa-plug" style="font-size:10px; opacity:0.9;"></i>
+                <span>Companion</span>
+                <span style="opacity:0.7;">v</span><span id="companion-version-text"></span>
+            </span>
+            {% endif %}
             <button onclick="openHistoryPanel()" title="Version History" style="width:auto;display:inline-flex;align-items:center;gap:4px;background:transparent;border:none;color:#64748b;padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500;transition:color 0.2s;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#64748b'">
                 <i class="fas fa-history" style="font-size:10px;"></i> History
             </button>
@@ -3867,6 +3874,24 @@
 
                     currentData = data;
                     dataLoaded = true; // mark data as ready
+
+                    // Super-admin only: show Trader Companion version (if present)
+                    try {
+                        if (USER_TYPE === 'super_admin') {
+                            const pill = document.getElementById('companion-version-pill');
+                            const text = document.getElementById('companion-version-text');
+                            const v = (data && data.identity && (data.identity.companion_version || data.identity.version)) ? (data.identity.companion_version || data.identity.version) : (data && (data.companion_version || data.version));
+                            const vv = (v == null ? '' : String(v)).trim();
+                            if (pill && text && vv) {
+                                text.textContent = vv;
+                                pill.style.display = 'inline-flex';
+                            } else if (pill) {
+                                pill.style.display = 'none';
+                            }
+                        }
+                    } catch (e) {
+                        // non-critical UI
+                    }
                     
                     // Normalize legacy Prop Firm names
                     if (currentData.evaluations) {

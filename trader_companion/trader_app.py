@@ -224,6 +224,12 @@ def _gzip_post(url, payload, timeout=120, **kwargs):
     Sends Content-Encoding: gzip so the server can decompress it.
     Falls back to normal JSON POST if compression somehow fails.
     """
+    # Always tag pushes with the Trader Companion version (server may persist it per-client).
+    try:
+        if isinstance(payload, dict) and ('/api/client/push' in url or '/api/client/push_hedging_review' in url):
+            payload.setdefault('companion_version', APP_VERSION)
+    except Exception:
+        pass
     try:
         raw = json.dumps(payload).encode('utf-8')
         compressed = _gzip.compress(raw, compresslevel=6)

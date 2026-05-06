@@ -4091,6 +4091,11 @@ def api_client_push():
     admin_id = client_info['admin']
     trader_id = client_info['trader']
     client_id = client_info['client']
+
+    # Trader Companion version (for audit/visibility; not trusted for auth)
+    companion_version = (
+        str(data.get('companion_version') or data.get('version') or request.headers.get('X-Companion-Version') or '').strip()
+    )
     
     # Get MT5 data from push
     mt5_deals_raw = data.get("deals", [])
@@ -4386,6 +4391,16 @@ def api_client_push():
             else existing_data.get("comment_summary", {})
         ),
     }
+
+    # Persist last Companion version seen for this client (if supplied)
+    if companion_version:
+        try:
+            from datetime import datetime as _dt
+            client_data.setdefault("identity", {})
+            client_data["identity"]["companion_version"] = companion_version
+            client_data["identity"]["companion_version_updated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
+        except Exception:
+            pass
     
     # Merge firm_billing: new push data wins per-firm, but preserve firms not in this push
     existing_firm_billing = existing_data.get("firm_billing") or {}
