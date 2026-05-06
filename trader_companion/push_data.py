@@ -13,7 +13,7 @@ import requests
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from trader_companion.trader_app import MT5DataPusher
+from trader_companion.trader_app import MT5DataPusher, APP_VERSION
 
 
 def lookup_client(url, email):
@@ -48,7 +48,8 @@ def push_data(url, email, account, positions, deals, statistics):
             "deals": deals,
             "statistics": statistics,
             "evaluations": [],
-            "dropdown_options": {}
+            "dropdown_options": {},
+            "companion_version": APP_VERSION,
         }
         raw = json.dumps(payload).encode('utf-8')
         compressed = _gzip.compress(raw, compresslevel=6)
