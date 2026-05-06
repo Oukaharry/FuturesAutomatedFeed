@@ -8651,7 +8651,8 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
         if cid not in trader_sent_map:
             trader_sent_map[cid] = {
                 'submitted_at': s.get('submitted_at'),
-                'user_identifier': s.get('user_identifier'),
+                # `get_summary_status_for_date` uses `submitted_by`; keep backward compatibility.
+                'user_identifier': s.get('user_identifier') or s.get('submitted_by'),
             }
     trader_submitted_clients = set(trader_sent_map.keys())
 

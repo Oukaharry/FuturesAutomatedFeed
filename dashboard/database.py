@@ -1277,6 +1277,16 @@ def get_summary_status_for_date(date: str) -> list:
     """
     results = {}  # normalized client_id -> {client_id, submitted_by, submitted_at}
 
+    def _row_value(row, key, default=None):
+        """Support both dict rows and sqlite3.Row-like rows."""
+        try:
+            return row[key]
+        except Exception:
+            try:
+                return row.get(key, default)  # type: ignore[attr-defined]
+            except Exception:
+                return default
+
     from datetime import timedelta as _td
     try:
         utc_date = datetime.strptime(date, '%Y-%m-%d')
@@ -1301,12 +1311,15 @@ def get_summary_status_for_date(date: str) -> list:
                 (utc_start, utc_end)
             )
             for row in cursor.fetchall():
-                cid = (row.get('client_id') or '').strip()
+                cid = (_row_value(row, 'client_id') or '').strip()
                 if not cid:
                     continue
                 if cid not in results:
-                    results[cid] = {'client_id': cid, 'submitted_by': row['user_identifier'],
-                                    'submitted_at': row['submitted_at']}
+                    results[cid] = {
+                        'client_id': cid,
+                        'submitted_by': _row_value(row, 'user_identifier') or '',
+                        'submitted_at': _row_value(row, 'submitted_at'),
+                    }
 
             # Source 2: audit_log — same 23:05→23:05 UTC window
             cursor.execute(
@@ -1317,7 +1330,7 @@ def get_summary_status_for_date(date: str) -> list:
                 (utc_start, utc_end)
             )
             for row in cursor.fetchall():
-                details = row['details'] or ''
+                details = _row_value(row, 'details') or ''
                 client_id = ''
                 if ' for ' in details:
                     part = details.split(' for ', 1)[1]
@@ -1326,8 +1339,11 @@ def get_summary_status_for_date(date: str) -> list:
                     client_id = part
                 client_id = (client_id or '').strip()
                 if client_id and client_id not in results:
-                    results[client_id] = {'client_id': client_id, 'submitted_by': row['user_identifier'],
-                                          'submitted_at': row['timestamp']}
+                    results[client_id] = {
+                        'client_id': client_id,
+                        'submitted_by': _row_value(row, 'user_identifier') or '',
+                        'submitted_at': _row_value(row, 'timestamp'),
+                    }
     except Exception:
         pass
     return list(results.values())
