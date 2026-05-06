@@ -7737,11 +7737,17 @@ def run_quality_scan(target_client=None):
                 # Strict: Date Purchased does NOT count as start (purchase date can differ from first trade date).
                 p1_started = str(ev.get('Date Started', '') or '').strip()
                 p1_ended = str(ev.get('Date Ended', '') or '').strip()
+                # Special workflow marker: some rows use "BACK TO FUNDED" in Account # to indicate
+                # the trader is skipping eval dates and returning to funded. Do not flag date
+                # requirements on these rows if there are no eval-phase hedge values yet.
+                _acct_eval = str(ev.get('Account #', '') or '').strip().lower()
+                is_back_to_funded_marker = ('back to funded' in _acct_eval) and (not has_hedge_value_local)
                 if (
                     not is_live_funded_numeric_row
                     and not new_row_strict_mode
                     and status_p1 in ('pass', 'fail')
                     and not p1_started
+                    and not is_back_to_funded_marker
                 ):
                     issues.append({
                         'check': 'Phase 1: missing Date Started',
@@ -7755,6 +7761,7 @@ def run_quality_scan(target_client=None):
                     and not new_row_strict_mode
                     and status_p1 in ('pass', 'fail')
                     and not p1_ended
+                    and not is_back_to_funded_marker
                 ):
                     issues.append({
                         'check': 'Phase 1: missing Date Ended',
