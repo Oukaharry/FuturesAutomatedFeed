@@ -16,9 +16,43 @@ $LOCAL_USER = "postgres"
 
 # ── Passwords ────────────────────────────────────────────────────────────────
 # This script is safe to commit: passwords are NOT hardcoded.
-# Provide them via environment variables, or you will be prompted:
-# - PROD_PGPASSWORD / PROD_PGPASSWORD_ALT
-# - LOCAL_PGPASSWORD / LOCAL_PGPASSWORD_ALT
+# Provide them via `.env` (recommended) or environment variables, otherwise you will be prompted:
+# - PROD_PGPASSWORD / PROD_PGPASSWORD_ALT (and optional PROD_PGPASSWORD_DEFAULT)
+# - LOCAL_PGPASSWORD / LOCAL_PGPASSWORD_ALT (and optional LOCAL_PGPASSWORD_DEFAULT)
+
+function Import-DotEnvIfPresent {
+    param([string]$Path)
+    if (-not $Path) { return }
+    if (-not (Test-Path $Path)) { return }
+    try {
+        $lines = Get-Content -Raw $Path -ErrorAction Stop -Encoding UTF8
+        foreach ($line in ($lines -split "`r?`n")) {
+            $t = ("" + $line).Trim()
+            if (-not $t) { continue }
+            if ($t.StartsWith("#")) { continue }
+            $idx = $t.IndexOf("=")
+            if ($idx -lt 1) { continue }
+            $k = $t.Substring(0, $idx).Trim()
+            $v = $t.Substring($idx + 1).Trim()
+            if (-not $k) { continue }
+            # Strip optional surrounding quotes
+            if (($v.StartsWith('"') -and $v.EndsWith('"')) -or ($v.StartsWith("'") -and $v.EndsWith("'"))) {
+                $v = $v.Substring(1, $v.Length - 2)
+            }
+            $existing = [Environment]::GetEnvironmentVariable($k, "Process")
+            if (-not $existing) {
+                [Environment]::SetEnvironmentVariable($k, $v, "Process")
+            }
+        }
+    } catch {
+        # non-fatal
+    }
+}
+
+# Auto-load .env from the repo root (it's already gitignored).
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Import-DotEnvIfPresent (Join-Path $scriptDir ".env")
+
 function ConvertFrom-SecureStringPlain {
     param([Parameter(Mandatory=$true)][securestring]$Secure)
     $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
@@ -26,13 +60,13 @@ function ConvertFrom-SecureStringPlain {
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 }
 
-$prodPass = ($env:PROD_PGPASSWORD_DEFAULT ?? "").Trim()
+$prodPass = ("" + ($(if ($env:PROD_PGPASSWORD) { $env:PROD_PGPASSWORD } else { $env:PROD_PGPASSWORD_DEFAULT }))).Trim()
 if (-not $prodPass) {
     $sec = Read-Host "Enter PROD Postgres password (input hidden)" -AsSecureString
     $prodPass = (ConvertFrom-SecureStringPlain $sec).Trim()
 }
 
-$localPass = ($env:LOCAL_PGPASSWORD_DEFAULT ?? "").Trim()
+$localPass = ("" + ($(if ($env:LOCAL_PGPASSWORD) { $env:LOCAL_PGPASSWORD } else { $env:LOCAL_PGPASSWORD_DEFAULT }))).Trim()
 if (-not $localPass) {
     $sec2 = Read-Host "Enter LOCAL Postgres password (input hidden)" -AsSecureString
     $localPass = (ConvertFrom-SecureStringPlain $sec2).Trim()
