@@ -7101,10 +7101,13 @@ def _estimate_issue_date(ev, issue_check, fallback):
     dp = _parse_date_str(ev.get('Date Purchased', ''))
     ds = _parse_date_str(ev.get('Date Started', ''))
     # Setup/entry issues → earliest date (purchase/start)
-    if issue_check in ('Status blank', 'Empty Fee', 'Empty Account Size', 'Missing Date Started', 'Missing Date Purchased'):
+    if issue_check in (
+        'Status blank', 'Empty Fee', 'Empty Account Size', 'Missing Date Started', 'Missing Date Purchased',
+        'Phase 1: missing Date Started',
+    ):
         return dp or ds or dates[0]
     # End-of-life issues → latest known date
-    if issue_check == 'Missing Date Ended':
+    if issue_check in ('Missing Date Ended', 'Phase 1: missing Date Ended'):
         return ds or dates[-1]
     # Active account issues → start date
     if issue_check == 'Empty Account #':
@@ -7115,6 +7118,9 @@ def _estimate_issue_date(ev, issue_check, fallback):
     if issue_check == 'Funded phase: missing Date Ended':
         ds1 = _parse_date_str(ev.get('Date Started.1', ''))
         return ds1 or (dates[-1] if dates else fallback)
+    if issue_check == 'Funded phase: missing Date Started':
+        de1 = _parse_date_str(ev.get('Date Ended.1', ''))
+        return de1 or (dates[-1] if dates else fallback)
     # Current/ongoing issues → latest date
     if issue_check in ('No current day value', 'Downtime detected', 'Negative Hedge Net, no note', 'Negative Hedge Net-QA'):
         return dates[-1]
@@ -7727,17 +7733,63 @@ def run_quality_scan(target_client=None):
                                    'detail': f'{row_label}: Funded but no activation fee',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Activation Fee', scan_date_str)})
 
+                # Phase 1 terminal outcome (Pass / Fail): require both start and end dates.
+                # Strict: Date Purchased does NOT count as start (purchase date can differ from first trade date).
+                p1_started = str(ev.get('Date Started', '') or '').strip()
+                p1_ended = str(ev.get('Date Ended', '') or '').strip()
+                if (
+                    not is_live_funded_numeric_row
+                    and not new_row_strict_mode
+                    and status_p1 in ('pass', 'fail')
+                    and not p1_started
+                ):
+                    issues.append({
+                        'check': 'Phase 1: missing Date Started',
+                        'severity': 'medium',
+                        'row': idx,
+                        'detail': f'{row_label}: Status P1 is \"{status_p1}\" but Date Started is blank',
+                        'estimated_date': _estimate_issue_date(ev, 'Phase 1: missing Date Started', scan_date_str),
+                    })
+                if (
+                    not is_live_funded_numeric_row
+                    and not new_row_strict_mode
+                    and status_p1 in ('pass', 'fail')
+                    and not p1_ended
+                ):
+                    issues.append({
+                        'check': 'Phase 1: missing Date Ended',
+                        'severity': 'medium',
+                        'row': idx,
+                        'detail': f'{row_label}: Status P1 is \"{status_p1}\" but Date Ended is blank',
+                        'estimated_date': _estimate_issue_date(ev, 'Phase 1: missing Date Ended', scan_date_str),
+                    })
+
                 # Funded-phase terminal outcome (Pass / Fail): funded "Date Ended" column must be set (Date Ended.1).
                 status_funded_raw = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip()
                 _sf_lower = status_funded_raw.lower()
                 _sf_first = ''
                 if _sf_lower:
                     _sf_first = re.split(r'[\s\-–—:;]+', _sf_lower, maxsplit=1)[0].strip().rstrip('.,')
+                funded_started = str(ev.get('Date Started.1', '') or '').strip()
+                funded_ended = str(ev.get('Date Ended.1', '') or '').strip()
                 if (
                     not is_live_funded_numeric_row
                     and not new_row_strict_mode
                     and _sf_first in ('pass', 'fail')
-                    and not str(ev.get('Date Ended.1', '') or '').strip()
+                    and not funded_started
+                ):
+                    issues.append({
+                        'check': 'Funded phase: missing Date Started',
+                        'severity': 'medium',
+                        'row': idx,
+                        'detail': f'{row_label}: Funded status is \"{status_funded_raw}\" but Date Started (funded) is blank',
+                        'estimated_date': _estimate_issue_date(ev, 'Funded phase: missing Date Started', scan_date_str),
+                    })
+                if (
+                    not is_live_funded_numeric_row
+                    and not new_row_strict_mode
+                    and _sf_first in ('pass', 'fail')
+                    and not funded_ended
                 ):
                     issues.append({
                         'check': 'Funded phase: missing Date Ended',
