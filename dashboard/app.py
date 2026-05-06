@@ -7740,8 +7740,23 @@ def run_quality_scan(target_client=None):
                 # Special workflow marker: some rows use "BACK TO FUNDED" in Account # to indicate
                 # the trader is skipping eval dates and returning to funded. Do not flag date
                 # requirements on these rows if there are no eval-phase hedge values yet.
-                _acct_eval = str(ev.get('Account #', '') or '').strip().lower()
-                is_back_to_funded_marker = ('back to funded' in _acct_eval) and (not has_hedge_value_local)
+                def _norm_marker_text(v: str) -> str:
+                    # Normalize to make matching robust against double-spaces, punctuation, and line breaks.
+                    v = (v or '').strip().lower()
+                    v = v.replace('\u00a0', ' ')  # NBSP → space
+                    v = re.sub(r'[^a-z0-9]+', ' ', v)
+                    return re.sub(r'\s+', ' ', v).strip()
+
+                _marker_sources = (
+                    ev.get('Account #', ''),
+                    ev.get('Account #.1', ''),
+                    ev.get('Notes', ''),
+                    ev.get('Note', ''),
+                    ev.get('Status', ''),
+                    ev.get('Status Funded', ''),
+                )
+                _marker_text = _norm_marker_text(' '.join(str(s or '') for s in _marker_sources))
+                is_back_to_funded_marker = ('back to funded' in _marker_text)
                 if (
                     not is_live_funded_numeric_row
                     and not new_row_strict_mode
