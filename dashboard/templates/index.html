@@ -3270,8 +3270,23 @@
         let isEditing = false;
         let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
         let _saveDebounceTimer = null;  // Debounce rapid edits into one save
-        /** When true, a save is in flight and another saveData() was requested — run again after success. */
-        let _pendingEvalSaveAfterFlight = false;
+        // Extra guard: never save while mid-edit (focused input).
+        // Used by hedge cells which sync on every keystroke.
+        let _evalSaveDebounceTimer = null;
+        function scheduleEvalSave(delayMs = 900) {
+            if (_evalSaveDebounceTimer) clearTimeout(_evalSaveDebounceTimer);
+            _evalSaveDebounceTimer = setTimeout(() => {
+                _evalSaveDebounceTimer = null;
+                if (document.querySelector('#evaluations-table .cell-input:focus')) {
+                    // Still editing; try again shortly after blur.
+                    scheduleEvalSave(300);
+                    return;
+                }
+                saveData();
+            }, delayMs);
+        }
+        /** When a save is in flight, queue the next requested save (preserves CREATE/DELETE). */
+        let _pendingEvalSaveAfterFlight = null; // { action, description } | null
         let _statsRenderDebounce = null; // Debounce stats recompute while editing evals
         let _lastSavedVersion = null;   // Version from last successful save
         let _pendingSaveCallback = null; // Optional callback(bool) after saveData completes
@@ -6935,10 +6950,8 @@
             }, 150);
 
             if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
-            _saveDebounceTimer = setTimeout(() => {
-                _saveDebounceTimer = null;
-                saveData();
-            }, 550);
+            _saveDebounceTimer = null;
+            scheduleEvalSave(900);
         }
 
         function handleInputChange(index, key, value) {
@@ -7005,12 +7018,10 @@
                 }
                 saveData();
             } else {
-                // Debounce: batch rapid edits into a single save (550ms window)
+                // Batch rapid edits, but don't save mid-typing.
                 if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
-                _saveDebounceTimer = setTimeout(() => {
-                    _saveDebounceTimer = null;
-                    saveData();
-                }, 550);
+                _saveDebounceTimer = null;
+                scheduleEvalSave(900);
             }
             
             // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
@@ -7258,8 +7269,9 @@
             }
 
             // Single-flight: overlapping saves apply responses out of order and wipe in-flight keystrokes.
+            // Queue the next request so CREATE/DELETE aren't lost.
             if (isSaving && retryCount === 0 && !_retryBody) {
-                _pendingEvalSaveAfterFlight = true;
+                _pendingEvalSaveAfterFlight = { action, description };
                 return;
             }
 
@@ -7395,8 +7407,9 @@
                 if (_pendingSaveCallback) { _pendingSaveCallback(true); _pendingSaveCallback = null; }
 
                 if (_pendingEvalSaveAfterFlight) {
-                    _pendingEvalSaveAfterFlight = false;
-                    setTimeout(() => { saveData('UPDATE'); }, 0);
+                    const pending = _pendingEvalSaveAfterFlight;
+                    _pendingEvalSaveAfterFlight = null;
+                    setTimeout(() => { saveData(pending.action || 'UPDATE', pending.description || null); }, 0);
                 }
             })
             .catch((error) => {
@@ -7426,8 +7439,9 @@
                 showSaveStatus('failed', error.message);
                 if (_pendingSaveCallback) { _pendingSaveCallback(false); _pendingSaveCallback = null; }
                 if (_pendingEvalSaveAfterFlight) {
-                    _pendingEvalSaveAfterFlight = false;
-                    setTimeout(() => { saveData('UPDATE'); }, 0);
+                    const pending = _pendingEvalSaveAfterFlight;
+                    _pendingEvalSaveAfterFlight = null;
+                    setTimeout(() => { saveData(pending.action || 'UPDATE', pending.description || null); }, 0);
                 }
             });
         }
