@@ -26,6 +26,24 @@ DATABASE_URL = os.environ.get(
 
 logger = logging.getLogger(__name__)
 
+# ─── Identifier normalization ───────────────────────────────────────
+def _normalize_identifier(value: str) -> str:
+    """
+    Normalize user/client identifiers to prevent invisible-mismatch bugs.
+    Handles non‑breaking spaces (common from copy/paste) and zero‑width chars.
+    """
+    if value is None:
+        return ''
+    try:
+        s = str(value)
+    except Exception:
+        return ''
+    # Replace NBSP with regular space, drop common zero-width chars.
+    s = s.replace('\u00A0', ' ').replace('\u200B', '').replace('\u200C', '').replace('\u200D', '')
+    # Collapse all whitespace runs to a single space.
+    s = ' '.join(s.split())
+    return s.strip()
+
 # ─── Connection Pooling ─────────────────────────────────────────────
 # Reuse connections instead of creating new ones (prevents exhaustion).
 # On hosts with low max_connections (e.g. PythonAnywhere managed Postgres),
@@ -831,6 +849,8 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
     If overwrite=True, replaces all existing data with the provided data (used for sheet imports).
     If overwrite=False (default), merges: new values take precedence but missing keys fall back to existing.
     """
+    # Normalize to avoid storing duplicate client_ids that differ only by whitespace
+    client_id = _normalize_identifier(client_id)
     now = datetime.now().isoformat()
     
     with get_connection() as conn:
@@ -964,10 +984,41 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
 
 def get_client_data(client_id: str) -> dict:
     """Get client data from database."""
+    norm_id = _normalize_identifier(client_id)
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
-        row = cursor.fetchone()
+        row = None
+        # 1) Exact match (as provided)
+        if client_id:
+            cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
+            row = cursor.fetchone()
+        # 2) Exact match (normalized)
+        if row is None and norm_id and norm_id != client_id:
+            cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (norm_id,))
+            row = cursor.fetchone()
+        # 3) Trimmed match (repairs legacy rows with trailing spaces)
+        if row is None and norm_id:
+            cursor.execute('SELECT * FROM clients_data WHERE btrim(client_id) = ? LIMIT 1', (norm_id,))
+            row = cursor.fetchone()
+            # If we found a legacy row keyed by a whitespace-variant client_id, attempt a safe rename
+            try:
+                if row and row.get('client_id') and row.get('client_id') != norm_id:
+                    legacy_id = row.get('client_id')
+                    # Only rename if the normalized id doesn't already exist
+                    cursor.execute('SELECT 1 AS ok FROM clients_data WHERE client_id = ? LIMIT 1', (norm_id,))
+                    exists = cursor.fetchone() is not None
+                    if not exists:
+                        # Commit current read txn before performing rename in a new txn
+                        conn.commit()
+                        rename_client_in_db(legacy_id, norm_id)
+                        # Reload after rename
+                        with get_connection() as conn2:
+                            cur2 = conn2.cursor()
+                            cur2.execute('SELECT * FROM clients_data WHERE client_id = ?', (norm_id,))
+                            row = cur2.fetchone()
+            except Exception:
+                # If repair fails, still return the legacy row we found (read-only)
+                pass
         
         if row:
             try:
@@ -1150,11 +1201,11 @@ def save_daily_checklist(date: str, user_identifier: str, user_type: str,
     """Save a daily checklist submission (per client)."""
     # Normalize identifiers to avoid subtle mismatches (e.g. trailing spaces)
     # which can cause the UI to show "pending" even after a successful save.
-    date = (date or '').strip()
-    user_identifier = (user_identifier or '').strip()
-    user_type = (user_type or '').strip()
-    checklist_type = (checklist_type or '').strip()
-    client_id = (client_id or '').strip()
+    date = _normalize_identifier(date)
+    user_identifier = _normalize_identifier(user_identifier)
+    user_type = _normalize_identifier(user_type)
+    checklist_type = _normalize_identifier(checklist_type)
+    client_id = _normalize_identifier(client_id)
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -1311,7 +1362,7 @@ def get_summary_status_for_date(date: str) -> list:
                 (utc_start, utc_end)
             )
             for row in cursor.fetchall():
-                cid = (_row_value(row, 'client_id') or '').strip()
+                cid = _normalize_identifier(_row_value(row, 'client_id') or '')
                 if not cid:
                     continue
                 if cid not in results:
@@ -1337,7 +1388,7 @@ def get_summary_status_for_date(date: str) -> list:
                     import re
                     part = re.sub(r':\s*\d+\s+sections?\s*$', '', part).strip()
                     client_id = part
-                client_id = (client_id or '').strip()
+                client_id = _normalize_identifier(client_id or '')
                 if client_id and client_id not in results:
                     results[client_id] = {
                         'client_id': client_id,
