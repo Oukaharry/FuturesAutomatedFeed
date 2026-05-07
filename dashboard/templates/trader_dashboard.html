@@ -787,7 +787,7 @@
             Loading issues…
         </div>`;
         try {
-            const url = `/api/quality/trader_issues?trader=${encodeURIComponent(traderName)}`;
+            const url = `/api/quality/trader_issues?trader=${encodeURIComponent(traderName)}&rescan=1&_t=${Date.now()}`;
             const resp = await fetch(url);
             const data = await resp.json();
             if (data.status !== 'success') {

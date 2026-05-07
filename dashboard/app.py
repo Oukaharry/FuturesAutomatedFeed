@@ -9323,12 +9323,55 @@ def api_trader_issues():
     returned with total_issues=0 so the UI can show "all clear" rows too.
     """
     try:
-        from dashboard.database import get_quality_scan_results
+        from dashboard.database import get_quality_scan_results, get_connection
+        import json as _json
         trader_name, err = _resolve_trader_for_session(request.session_user, request.args.get('trader'))
         if err is not None:
             return err
 
         trader_clients = set(_clients_for_trader(trader_name))
+        # Optional: rescan=1 to force live recompute (keeps trader portal in sync with client dashboard).
+        # This is intentionally opt-in because it can be expensive across many clients.
+        do_rescan = request.args.get('rescan') == '1'
+        scan_date_today = datetime.now().strftime('%Y-%m-%d')
+
+        if do_rescan and trader_clients:
+            # Cap rescans for safety (super_admin can rescan larger sets).
+            ut = (request.session_user or {}).get('user_type') or ''
+            max_clients = 60 if ut in ('super_admin', 'bef_admin', 'kwok_admin') else 25
+            # Deterministic order to avoid "random" partial refreshes.
+            to_scan = sorted(list(trader_clients))[:max_clients]
+            live_results = None
+            # Fallback path: scan per client (run_quality_scan supports target_client)
+            if not live_results:
+                live_results = []
+                for cid in to_scan:
+                    try:
+                        rlist = run_quality_scan(target_client=cid) or []
+                        if rlist:
+                            live_results.append(rlist[0])
+                    except Exception:
+                        continue
+
+            # Persist into today's scan rows (best effort)
+            try:
+                with get_connection() as conn:
+                    cursor = conn.cursor()
+                    for r in live_results:
+                        try:
+                            cursor.execute('DELETE FROM quality_scan_results WHERE scan_date = ? AND client_id = ?',
+                                           (scan_date_today, r['client_id']))
+                            cursor.execute('''INSERT INTO quality_scan_results
+                                              (scan_date, client_id, trader, admin, total_issues, issues, health_score)
+                                              VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                                           (scan_date_today, r['client_id'], r.get('trader'), r.get('admin'),
+                                            r.get('total_issues', 0), _json.dumps(r.get('issues') or []), r.get('health_score', 100.0)))
+                        except Exception:
+                            continue
+                    conn.commit()
+            except Exception:
+                pass
+
         results = get_quality_scan_results() or []
         filtered = [
             _quality_scan_row_for_trader_client_quality_api(r)
