@@ -68,6 +68,11 @@ def _to_flat_format(hierarchy_data):
             for trader_name, trader_data in admin_data['traders'].items():
                 for client in trader_data.get('clients', []):
                     c = dict(client)
+                    # Normalize client name to prevent invisible mismatch bugs (trailing spaces/NBSP).
+                    nm = str(c.get('name', '') or '')
+                    nm = nm.replace('\u00A0', ' ').replace('\u200B', '').replace('\u200C', '').replace('\u200D', '')
+                    nm = ' '.join(nm.split()).strip()
+                    c['name'] = nm
                     c['assigned_trader'] = trader_name
                     flat_clients.append(c)
             # Preserve non-traders keys (email, slack_user_id, etc.)
