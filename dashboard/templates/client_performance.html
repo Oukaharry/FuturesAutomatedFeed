@@ -236,7 +236,14 @@
         </div>
         
         <div class="table-responsive">
-            <table class="finance-table">
+            <div class="rt-search-bar">
+                <input id="rt-search-client-performance" class="rt-search-input" type="text" placeholder="Search client / trader / admin / date / account… (shows ±10 rows)" autocomplete="off" />
+                <button id="rt-prev-client-performance" class="rt-search-btn" type="button">Prev</button>
+                <button id="rt-next-client-performance" class="rt-search-btn" type="button">Next</button>
+                <button id="rt-clear-client-performance" class="rt-search-btn" type="button">Clear</button>
+                <span id="rt-status-client-performance" class="rt-search-status"></span>
+            </div>
+            <table class="finance-table" id="client-performance-table">
                 <thead>
                     <tr style="background: rgba(15, 23, 42, 0.6); border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left;">
                         <th style="padding: 14px 16px; font-weight: 600; color: #94a3b8; text-align: left; cursor: pointer;" onclick="sortBy('client_id')">
@@ -282,6 +289,7 @@
 
     </div>
 
+    <script src="{{ url_for('static', filename='js/realtime_table_search.js') }}"></script>
     <script>
         // Formatting utilities
         function formatCurrency(num) {
@@ -490,12 +498,31 @@
                 `;
                 tbody.appendChild(tr);
             });
+
+            // If the user is actively searching, keep the search window consistent
+            const searchInput = document.getElementById('rt-search-client-performance');
+            if (searchInput && typeof searchInput.rtRefresh === 'function') {
+                searchInput.rtRefresh();
+            }
         }
 
         // Load data on page load and start polling
         document.addEventListener('DOMContentLoaded', () => {
             const tbody = document.getElementById('client-stats-body');
             updateSortIcons(); // Init icons
+
+            if (window.initRealtimeTableSearch) {
+                window.initRealtimeTableSearch({
+                    inputId: 'rt-search-client-performance',
+                    tableSelector: '#client-performance-table',
+                    statusId: 'rt-status-client-performance',
+                    prevBtnId: 'rt-prev-client-performance',
+                    nextBtnId: 'rt-next-client-performance',
+                    clearBtnId: 'rt-clear-client-performance',
+                    activeCheckboxId: 'activeFilter',
+                    windowRadius: 10
+                });
+            }
             
             // Initial Load
             fetchClientData();

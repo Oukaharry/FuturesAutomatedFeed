@@ -323,7 +323,14 @@
         {% endif %}
 
         <div class="table-responsive">
-            <table class="finance-table">
+            <div class="rt-search-bar">
+                <input id="rt-search-payout-history" class="rt-search-input" type="text" placeholder="Search account / client / date / firm… (shows ±10 rows)" autocomplete="off" />
+                <button id="rt-prev-payout-history" class="rt-search-btn" type="button">Prev</button>
+                <button id="rt-next-payout-history" class="rt-search-btn" type="button">Next</button>
+                <button id="rt-clear-payout-history" class="rt-search-btn" type="button">Clear</button>
+                <span id="rt-status-payout-history" class="rt-search-status"></span>
+            </div>
+            <table class="finance-table" id="payout-history-table">
                 <thead>
                     <tr>
                         <th style="text-align: left; color: #93c5fd !important;">Date</th>
@@ -414,6 +421,24 @@
     </script>
     {% endif %}
     
+    <script src="{{ url_for('static', filename='js/realtime_table_search.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.initRealtimeTableSearch) {
+                window.initRealtimeTableSearch({
+                    inputId: 'rt-search-payout-history',
+                    tableSelector: '#payout-history-table',
+                    statusId: 'rt-status-payout-history',
+                    prevBtnId: 'rt-prev-payout-history',
+                    nextBtnId: 'rt-next-payout-history',
+                    clearBtnId: 'rt-clear-payout-history',
+                    activeCheckboxId: 'activeFilter',
+                    windowRadius: 10
+                });
+            }
+        });
+    </script>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const dataEl = document.getElementById('payouts-data');

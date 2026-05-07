@@ -2321,6 +2321,20 @@
         <!-- Evaluations Tab -->
         <div id="evaluations" class="tab-content active">
             <div class="table-scroll-wrapper">
+                <!-- Search (appears only when Active Only is OFF) -->
+                <div id="rt-search-wrap-evals" style="display:none; justify-content:flex-end; align-items:center; gap:10px; margin:0 0 10px 0;">
+                    <select id="rt-mode-evals"
+                            style="padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(30,58,138,0.55); background: rgba(23,37,84,0.85); color: #e8eeff; outline: none; font-family: 'IBM Plex Mono', monospace; font-size: 12px;">
+                        <option value="acct_last5">Acct (last 5)</option>
+                        <option value="row">Row</option>
+                    </select>
+                    <input id="rt-search-evals" type="text"
+                           placeholder="Last 5 / Row…"
+                           style="width: 220px; max-width: 32vw; padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(30,58,138,0.55); background: rgba(1,3,10,0.55); color: #e8eeff; outline: none; font-family: 'IBM Plex Mono', monospace; font-size: 12px;"
+                           autocomplete="off" />
+                    <span id="rt-status-evals" style="font-size: 11px; color: #94a3b8; font-family: 'IBM Plex Mono', monospace; white-space: nowrap;"></span>
+                </div>
+
                 <!-- Section Jump Controls -->
                 <div class="scroll-controls">
                     <div class="scroll-buttons">
@@ -4189,6 +4203,13 @@
                   try {
                     const row = document.createElement('tr');
                     row.id = 'eval-row-' + index;
+                    // Provide deterministic row search targets:
+                    // - displayNum: the # you see in the left-most column
+                    // - rowNum: excel-like row number (index + 3)
+                    // - index: internal index (used in eval-row-<index>)
+                    row.dataset.displayNum = String(displayNum);
+                    row.dataset.rowNum = String(currentRowNum);
+                    row.dataset.index = String(index);
                     const getVal = (key) => {
                         const v = ev[key];
                         return (v === null || v === undefined) ? '' : v;
@@ -8891,6 +8912,40 @@
             }
         }
 
+    </script>
+
+    <script src="{{ url_for('static', filename='js/realtime_table_search.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!window.initRealtimeTableSearch) return;
+            window.initRealtimeTableSearch({
+                inputId: 'rt-search-evals',
+                modeSelectId: 'rt-mode-evals',
+                tableSelector: '#evaluations-table',
+                statusId: 'rt-status-evals',
+                activeCheckboxId: 'activeFilter',
+                windowRadius: 10,
+                autoExpand: true,
+                expandFnName: 'loadMoreEvaluations',
+                expandMax: 60
+            });
+
+            // Show search only when Active Only is OFF
+            const activeCb = document.getElementById('activeFilter');
+            const wrap = document.getElementById('rt-search-wrap-evals');
+            const input = document.getElementById('rt-search-evals');
+            const status = document.getElementById('rt-status-evals');
+            const toggle = () => {
+                const show = !!activeCb && !activeCb.checked;
+                if (wrap) wrap.style.display = show ? 'flex' : 'none';
+                if (!show) {
+                    if (input) input.value = '';
+                    if (status) status.textContent = '';
+                }
+            };
+            if (activeCb) activeCb.addEventListener('change', toggle);
+            toggle();
+        });
     </script>
 
     <!-- Client Change Password Modal -->

@@ -209,7 +209,14 @@
         </div>
 
         <div class="table-responsive">
-            <table class="finance-table">
+            <div class="rt-search-bar">
+                <input id="rt-search-trader-performance" class="rt-search-input" type="text" placeholder="Search trader / client / account / date… (shows ±10 rows)" autocomplete="off" />
+                <button id="rt-prev-trader-performance" class="rt-search-btn" type="button">Prev</button>
+                <button id="rt-next-trader-performance" class="rt-search-btn" type="button">Next</button>
+                <button id="rt-clear-trader-performance" class="rt-search-btn" type="button">Clear</button>
+                <span id="rt-status-trader-performance" class="rt-search-status"></span>
+            </div>
+            <table class="finance-table" id="trader-performance-table">
                 <thead>
                     <tr>
                          <th class="group-header group-header-blue" style="text-align: left;">Trader</th>
@@ -319,6 +326,7 @@
             * "Missing Notes" checks if a Farming Day has a corresponding Prop Day entry.
         </div>
     </div>
+    <script src="{{ url_for('static', filename='js/realtime_table_search.js') }}"></script>
     <script>
         function setFilter(filter) {
              const url = new URL(window.location);
@@ -412,6 +420,19 @@
                     btn.classList.add('active');
                 }
              });
+
+             if (window.initRealtimeTableSearch) {
+                 window.initRealtimeTableSearch({
+                     inputId: 'rt-search-trader-performance',
+                     tableSelector: '#trader-performance-table',
+                     statusId: 'rt-status-trader-performance',
+                     prevBtnId: 'rt-prev-trader-performance',
+                     nextBtnId: 'rt-next-trader-performance',
+                     clearBtnId: 'rt-clear-trader-performance',
+                     activeCheckboxId: 'activeFilter',
+                     windowRadius: 10
+                 });
+             }
         });
     </script>
 </body>
