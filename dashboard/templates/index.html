@@ -2321,6 +2321,7 @@
         <!-- Evaluations Tab -->
         <div id="evaluations" class="tab-content active">
             <div class="table-scroll-wrapper">
+                {% if user_type != 'client' %}
                 <!-- Search (appears only when Active Only is OFF) -->
                 <div id="rt-search-wrap-evals" style="display:none; justify-content:flex-end; align-items:center; gap:10px; margin:0 0 10px 0;">
                     <select id="rt-mode-evals"
@@ -2334,6 +2335,7 @@
                            autocomplete="off" />
                     <span id="rt-status-evals" style="font-size: 11px; color: #94a3b8; font-family: 'IBM Plex Mono', monospace; white-space: nowrap;"></span>
                 </div>
+                {% endif %}
 
                 <!-- Section Jump Controls -->
                 <div class="scroll-controls">
@@ -8914,39 +8916,41 @@
 
     </script>
 
-    <script src="{{ url_for('static', filename='js/realtime_table_search.js') }}"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            if (!window.initRealtimeTableSearch) return;
-            window.initRealtimeTableSearch({
-                inputId: 'rt-search-evals',
-                modeSelectId: 'rt-mode-evals',
-                tableSelector: '#evaluations-table',
-                statusId: 'rt-status-evals',
-                activeCheckboxId: 'activeFilter',
-                windowRadius: 10,
-                autoExpand: true,
-                expandFnName: 'loadMoreEvaluations',
-                expandMax: 60
-            });
+    {% if user_type != 'client' %}
+        <script src="{{ url_for('static', filename='js/realtime_table_search.js') }}"></script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                if (!window.initRealtimeTableSearch) return;
+                window.initRealtimeTableSearch({
+                    inputId: 'rt-search-evals',
+                    modeSelectId: 'rt-mode-evals',
+                    tableSelector: '#evaluations-table',
+                    statusId: 'rt-status-evals',
+                    activeCheckboxId: 'activeFilter',
+                    windowRadius: 10,
+                    autoExpand: true,
+                    expandFnName: 'loadMoreEvaluations',
+                    expandMax: 60
+                });
 
-            // Show search only when Active Only is OFF
-            const activeCb = document.getElementById('activeFilter');
-            const wrap = document.getElementById('rt-search-wrap-evals');
-            const input = document.getElementById('rt-search-evals');
-            const status = document.getElementById('rt-status-evals');
-            const toggle = () => {
-                const show = !!activeCb && !activeCb.checked;
-                if (wrap) wrap.style.display = show ? 'flex' : 'none';
-                if (!show) {
-                    if (input) input.value = '';
-                    if (status) status.textContent = '';
-                }
-            };
-            if (activeCb) activeCb.addEventListener('change', toggle);
-            toggle();
-        });
-    </script>
+                // Show search only when Active Only is OFF
+                const activeCb = document.getElementById('activeFilter');
+                const wrap = document.getElementById('rt-search-wrap-evals');
+                const input = document.getElementById('rt-search-evals');
+                const status = document.getElementById('rt-status-evals');
+                const toggle = () => {
+                    const show = !!activeCb && !activeCb.checked;
+                    if (wrap) wrap.style.display = show ? 'flex' : 'none';
+                    if (!show) {
+                        if (input) input.value = '';
+                        if (status) status.textContent = '';
+                    }
+                };
+                if (activeCb) activeCb.addEventListener('change', toggle);
+                toggle();
+            });
+        </script>
+    {% endif %}
 
     <!-- Client Change Password Modal -->
     <div id="change-pw-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:30000; align-items:center; justify-content:center;" onclick="if(event.target===this)closeChangePasswordModal()">
