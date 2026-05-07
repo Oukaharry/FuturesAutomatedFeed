@@ -600,7 +600,14 @@
             </div>
         </div>
         <div id="content" class="table-responsive">
-            <table class="finance-table">
+            <div class="rt-search-bar">
+                <input id="rt-search-financial-overview" class="rt-search-input" type="text" placeholder="Search prop firm / numbers / any cell… (shows ±10 rows)" autocomplete="off" />
+                <button id="rt-prev-financial-overview" class="rt-search-btn" type="button" title="Previous match">Prev</button>
+                <button id="rt-next-financial-overview" class="rt-search-btn" type="button" title="Next match">Next</button>
+                <button id="rt-clear-financial-overview" class="rt-search-btn" type="button" title="Clear search">Clear</button>
+                <span id="rt-status-financial-overview" class="rt-search-status"></span>
+            </div>
+            <table class="finance-table" id="finance-overview-table">
                 <thead>
                     <tr>
                         <th rowspan="2" style="vertical-align: middle; text-align: left; padding-left: 20px; width: 250px;">Prop Firm</th>
@@ -1111,6 +1118,8 @@
             }
         }
     </script>
+
+    <script src="{{ url_for('static', filename='js/realtime_table_search.js') }}"></script>
     <script>
         function setFilter(filter) {
              const url = new URL(window.location);
@@ -1171,6 +1180,19 @@
                     btn.classList.add('active');
                 }
              });
+
+             if (window.initRealtimeTableSearch) {
+                 window.initRealtimeTableSearch({
+                     inputId: 'rt-search-financial-overview',
+                     tableSelector: '#finance-overview-table',
+                     statusId: 'rt-status-financial-overview',
+                     prevBtnId: 'rt-prev-financial-overview',
+                     nextBtnId: 'rt-next-financial-overview',
+                     clearBtnId: 'rt-clear-financial-overview',
+                     activeCheckboxId: 'activeFilter',
+                     windowRadius: 10
+                 });
+             }
         });
     </script>
 </body>

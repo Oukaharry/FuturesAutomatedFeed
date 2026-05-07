@@ -236,10 +236,17 @@ def _gzip_post(url, payload, timeout=120, **kwargs):
         headers = kwargs.pop('headers', {})
         headers['Content-Type'] = 'application/json'
         headers['Content-Encoding'] = 'gzip'
+        # Redundant tagging so server can record version even if payload is transformed upstream.
+        if '/api/client/push' in url or '/api/client/push_hedging_review' in url:
+            headers.setdefault('X-Companion-Version', APP_VERSION)
         return requests.post(url, data=compressed, headers=headers, timeout=timeout, **kwargs)
     except Exception:
         # Fallback: plain JSON
-        return requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=timeout, **kwargs)
+        h = kwargs.pop('headers', {}) or {}
+        h.setdefault('Content-Type', 'application/json')
+        if '/api/client/push' in url or '/api/client/push_hedging_review' in url:
+            h.setdefault('X-Companion-Version', APP_VERSION)
+        return requests.post(url, json=payload, headers=h, timeout=timeout, **kwargs)
 
 
 def _to_topstepx_symbol(sym):

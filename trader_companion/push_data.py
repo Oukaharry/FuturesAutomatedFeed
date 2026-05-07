@@ -56,7 +56,11 @@ def push_data(url, email, account, positions, deals, statistics):
         response = requests.post(
             f"{url.rstrip('/')}/api/client/push",
             data=compressed,
-            headers={"Content-Type": "application/json", "Content-Encoding": "gzip"},
+            headers={
+                "Content-Type": "application/json",
+                "Content-Encoding": "gzip",
+                "X-Companion-Version": APP_VERSION,
+            },
             timeout=30
         )
         
