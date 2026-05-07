@@ -1350,6 +1350,14 @@ def get_summary_status_for_date(date: str) -> list:
     utc_end = utc_date.strftime('%Y-%m-%d') + 'T23:05'
 
     try:
+        # Build a set of valid client names to avoid mis-parsing audit_log details.
+        # (Some logs contain " for <client> : replaced ..." which is NOT a client id.)
+        try:
+            from config.hierarchy import get_all_clients as _hier_clients
+            _valid_clients = { _normalize_identifier(x) for x in (_hier_clients() or []) if _normalize_identifier(x) }
+        except Exception:
+            _valid_clients = set()
+
         with get_connection() as conn:
             cursor = conn.cursor()
             # Source 1: daily_checklists — filter by submitted_at timestamp
@@ -1387,8 +1395,21 @@ def get_summary_status_for_date(date: str) -> list:
                     part = details.split(' for ', 1)[1]
                     import re
                     part = re.sub(r':\s*\d+\s+sections?\s*$', '', part).strip()
-                    client_id = part
+                    # If the message includes extra suffixes (e.g. ": replaced ..."),
+                    # try to recover just the client name.
+                    candidate = _normalize_identifier(part or '')
+                    if candidate and _valid_clients:
+                        if candidate not in _valid_clients:
+                            # Common pattern: "<client> : <extra info>"
+                            head = _normalize_identifier(candidate.split(':', 1)[0])
+                            if head in _valid_clients:
+                                candidate = head
+                    client_id = candidate
+
                 client_id = _normalize_identifier(client_id or '')
+                if client_id and (_valid_clients and client_id not in _valid_clients):
+                    # Don't allow audit_log inference to create phantom client ids.
+                    continue
                 if client_id and client_id not in results:
                     results[client_id] = {
                         'client_id': client_id,
