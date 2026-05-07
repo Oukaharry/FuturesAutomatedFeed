@@ -3270,20 +3270,44 @@
         let isEditing = false;
         let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
         let _saveDebounceTimer = null;  // Debounce rapid edits into one save
-        // Extra guard: never save while mid-edit (focused input).
-        // Used by hedge cells which sync on every keystroke.
-        let _evalSaveDebounceTimer = null;
-        function scheduleEvalSave(delayMs = 900) {
-            if (_evalSaveDebounceTimer) clearTimeout(_evalSaveDebounceTimer);
-            _evalSaveDebounceTimer = setTimeout(() => {
-                _evalSaveDebounceTimer = null;
-                if (document.querySelector('#evaluations-table .cell-input:focus')) {
-                    // Still editing; try again shortly after blur.
-                    scheduleEvalSave(300);
-                    return;
-                }
+        // Save policy: while cursor is inside a cell, NEVER save.
+        // Only save after the user leaves the cell (blur / click outside).
+        let _evalPendingSave = false;
+        let _evalBlurSaveTimer = null;
+        let _evalBlurListenerAttached = false;
+
+        function _flushEvalPendingSave() {
+            if (!_evalPendingSave) return;
+            _evalPendingSave = false;
+            if (_evalBlurSaveTimer) clearTimeout(_evalBlurSaveTimer);
+            // Small delay lets the last keystroke + onchange settle.
+            _evalBlurSaveTimer = setTimeout(() => {
+                _evalBlurSaveTimer = null;
                 saveData();
-            }, delayMs);
+            }, 120);
+        }
+
+        function scheduleEvalSave() {
+            _evalPendingSave = true;
+            // If we're not actively focused in a cell, save soon.
+            if (!document.querySelector('#evaluations-table .cell-input:focus')) {
+                _flushEvalPendingSave();
+                return;
+            }
+            // Otherwise, wait for the next blur from any eval cell.
+            if (_evalBlurListenerAttached) return;
+            _evalBlurListenerAttached = true;
+            document.addEventListener('focusout', function onEvalFocusOut(e) {
+                try {
+                    const t = e && e.target;
+                    if (!t || !t.classList || !t.classList.contains('cell-input')) return;
+                    const tbl = document.getElementById('evaluations-table');
+                    if (!tbl || !tbl.contains(t)) return;
+                    _flushEvalPendingSave();
+                } finally {
+                    // keep listening for future edits; this is cheap and avoids re-attaching
+                }
+            }, true);
         }
         /** When a save is in flight, queue the next requested save (preserves CREATE/DELETE). */
         let _pendingEvalSaveAfterFlight = null; // { action, description } | null
@@ -6951,7 +6975,7 @@
 
             if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
             _saveDebounceTimer = null;
-            scheduleEvalSave(900);
+            scheduleEvalSave();
         }
 
         function handleInputChange(index, key, value) {
@@ -7021,7 +7045,7 @@
                 // Batch rapid edits, but don't save mid-typing.
                 if (_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
                 _saveDebounceTimer = null;
-                scheduleEvalSave(900);
+                scheduleEvalSave();
             }
             
             // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
