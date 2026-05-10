@@ -25,3 +25,4 @@ config/hierarchy.json
 dashboard/.scheduler_state.json
 trader_companion/trader_bias.json
 
+local-before-restore.dump

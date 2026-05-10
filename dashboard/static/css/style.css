@@ -575,6 +575,20 @@ tr:last-child td { border-bottom: none; }
 }
 
 .user-list-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+
+/* Super admin user list / edit-user modals: global `button { width: 100% }` is for login/forms;
+   without this, header close, row actions, and footer stretch full-width inside the card. */
+#userListModal button,
+#editUserModal button {
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: none;
+    letter-spacing: normal;
+}
+
 .user-list-table th { 
     position: sticky; top: 0; 
     background: #1e293b; 
