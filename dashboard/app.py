@@ -85,6 +85,7 @@ QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY = 'MFF payouts eligible >1-QA'
 _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS = frozenset({
     QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
     QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY,
+    'No evaluations',
 })
 
 
@@ -8612,6 +8613,16 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
 
         r = scan_by_client.get(cid) or {}
         for iss in (r.get('issues') or []):
+            if iss.get('check') == 'No evaluations':
+                _add_issue(
+                    'no_evaluations',
+                    cid,
+                    trader,
+                    iss.get('severity') or 'warning',
+                    iss.get('detail') or 'No evaluation rows found',
+                    extra={'estimated_date': iss.get('estimated_date')}
+                )
+        for iss in (r.get('issues') or []):
             if iss.get('check') in fee_issue_checks:
                 _add_issue(
                     'challenge_fees',
@@ -8872,6 +8883,16 @@ def api_admin_tracker():
                     continue
 
                 r = scan_by_client.get(cid) or {}
+                for iss in (r.get('issues') or []):
+                    if iss.get('check') == 'No evaluations':
+                        _add_issue(
+                            'no_evaluations',
+                            cid,
+                            trader,
+                            iss.get('severity') or 'warning',
+                            iss.get('detail') or 'No evaluation rows found',
+                            extra={'estimated_date': iss.get('estimated_date')}
+                        )
                 for iss in (r.get('issues') or []):
                     if iss.get('check') in fee_issue_checks:
                         _add_issue(
