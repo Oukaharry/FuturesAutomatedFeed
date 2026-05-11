@@ -87,117 +87,10 @@ _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS = frozenset({
     QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY,
 })
 
-_QUALITY_DETAIL_MAX_WORDS = 20
 
-
-def _quality_limit_detail_words(text, max_words=_QUALITY_DETAIL_MAX_WORDS):
-    clean = re.sub(r'\s+', ' ', str(text or '').strip())
-    words = clean.split()
-    if len(words) <= max_words:
-        return clean
-    return ' '.join(words[:max_words]).rstrip(' ,;:') + '...'
-
-
-def _quality_row_prefix(issue, detail):
-    match = re.match(r'^\s*(Row\s+\d+):\s*(.*)$', str(detail or ''), flags=re.I)
-    if match:
-        return match.group(1), match.group(2)
-    row = (issue or {}).get('row')
-    if isinstance(row, int) and row >= 0:
-        return f'Row {row + 1}', str(detail or '').strip()
-    return '', str(detail or '').strip()
-
-
-def _compact_quality_issue_detail(issue):
-    """Return clear UI copy capped at 20 words for quality issue details."""
-    issue = issue or {}
-    check = str(issue.get('check') or '').strip()
-    detail = re.sub(r'\s+', ' ', str(issue.get('detail') or '').strip())
-    row_label, rest = _quality_row_prefix(issue, detail)
-    prefix = f'{row_label}: ' if row_label else ''
-
-    if check == 'Downtime detected':
-        stale_match = re.search(
-            r'Stale day\(s\) found:\s*(.*?)(?:\s+[^A-Za-z0-9]*\s*allowed markers|\s+allowed markers|$)',
-            detail,
-            flags=re.I,
-        )
-        stale_text = stale_match.group(1).strip() if stale_match else rest
-        parts = [p.strip() for p in stale_text.split(', ') if p.strip()]
-        more = ''
-        if len(parts) > 2:
-            more = f' (+{len(parts) - 2} more)'
-        preview = ', '.join(parts[:2]) if parts else 'outdated weekday marker'
-        allowed_match = re.search(r'allowed markers for scan date:\s*([a-z/]+)', detail, flags=re.I)
-        allowed = allowed_match.group(1) if allowed_match else 'current day'
-        return _quality_limit_detail_words(f'{prefix}Stale day marker(s): {preview}{more}. Allowed: {allowed}.')
-
-    if check == 'No current day value':
-        allowed_match = re.search(r'allowed day marker\s*\(([^)]+)\)', detail, flags=re.I)
-        allowed = f" ({allowed_match.group(1)})" if allowed_match else ''
-        return _quality_limit_detail_words(
-            f'{prefix}Missing allowed day marker{allowed} in Hedge Result, Hedge Day, or Prop Day.'
-        )
-
-    if check == 'Hedging Results mismatch':
-        hr_match = re.search(r'HR=([^) ,]+)', detail)
-        profit_match = re.search(r'Profit=([^) ,]+)', detail)
-        suffix = ''
-        if hr_match and profit_match:
-            suffix = f" (HR={hr_match.group(1)}, MT5={profit_match.group(1)})"
-        return _quality_limit_detail_words(f'Sheet hedging total differs from MT5 profit{suffix}.')
-
-    if check == 'Not Started but hedge values present':
-        return _quality_limit_detail_words(f'{prefix}Status is not started but hedge results have non-zero values.')
-
-    if check == 'New row: Status P1 not started':
-        return _quality_limit_detail_words(f'{prefix}New row has fee; Status P1 should be not started.')
-
-    if check == 'Phase 1: missing Date Started':
-        return _quality_limit_detail_words(f'{prefix}Status P1 requires Date Started.')
-
-    if check == 'Phase 1: missing Date Ended':
-        return _quality_limit_detail_words(f'{prefix}Status P1 requires Date Ended.')
-
-    if check == 'Funded phase: missing Date Started':
-        return _quality_limit_detail_words(f'{prefix}Funded status requires funded Date Started.')
-
-    if check == 'Funded phase: missing Date Ended':
-        return _quality_limit_detail_words(f'{prefix}Funded status requires funded Date Ended.')
-
-    if check == 'Alpha Futures: missing Activation Fee':
-        return _quality_limit_detail_words(f'{prefix}Alpha Futures funded account missing Activation Fee.')
-
-    if check == 'Comma in hedge value':
-        return _quality_limit_detail_words(f'{prefix}Comma decimal in hedge value; use dot decimal format.')
-
-    if check == 'Hedge account or Prop Firm missing':
-        if 'Prop Firm Accounts' in detail:
-            return _quality_limit_detail_words('Prop firm credentials missing; fill Prop Firm Accounts tab.')
-        return _quality_limit_detail_words('Hedge account credentials missing; fill Hedge Accounts tab.')
-
-    if check in (QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE, QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE_LEGACY):
-        return _quality_limit_detail_words('Daily summary item 4 has payout-eligible firm(s); QA resolution required.')
-
-    return _quality_limit_detail_words(detail)
-
-
-def _compact_quality_issue_for_display(issue):
-    if not isinstance(issue, dict):
-        return issue
-    out = dict(issue)
-    out['detail'] = _compact_quality_issue_detail(out)
-    return out
-
-
-def _compact_quality_issues_for_display(issues):
-    return [_compact_quality_issue_for_display(i) for i in (issues or [])]
-
-
-# hide payout QA and scan errors from trader client views
 def _issues_for_trader_client_quality_views(issues):
     skip = _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS | {'Scan error'}
-    return _compact_quality_issues_for_display(i for i in (issues or []) if i.get('check') not in skip)
+    return [i for i in (issues or []) if i.get('check') not in skip]
 
 
 _QUALITY_SEVERITY_WEIGHT = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
@@ -7454,7 +7347,7 @@ def run_quality_scan(target_client=None):
             issues = []
 
             if not data:
-                issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'Client has no saved data in database',
+                issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'No saved client data',
                                'estimated_date': scan_date_str})
                 results.append({
                     'client_id': client_name, 'trader': trader, 'admin': admin,
@@ -7484,7 +7377,7 @@ def run_quality_scan(target_client=None):
                 pass
 
             if not evaluations:
-                issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows',
+                issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'No evaluation rows found',
                                'estimated_date': scan_date_str})
 
             # Activity tracking
@@ -7572,7 +7465,7 @@ def run_quality_scan(target_client=None):
                             issues.append({
                                 'check': 'Hedging Results mismatch',
                                 'severity': 'high',
-                                'detail': f"Mismatch between sheet hedging results and actual hedging results (HR={hedge_total_display:.2f}, Profit={chosen_profit:.2f})",
+                                'detail': f"Sheet hedge total differs from MT5 profit (HR={hedge_total_display:.2f}, MT5={chosen_profit:.2f})",
                                 'estimated_date': scan_date_str
                             })
             except Exception:
@@ -7657,8 +7550,7 @@ def run_quality_scan(target_client=None):
                 # skip sheet SOP flags except weekday-of-day tracking (and any client/global issues like downtime).
                 is_live_funded_numeric_row = _max_out_row_is_live_numeric_account(ev)
 
-                new_row_candidate = is_new_row and not has_hedge_value_local and not is_live_funded_numeric_row
-                new_row_strict_mode = new_row_candidate and status_p1 == 'not started'
+                new_row_strict_mode = is_new_row and not has_hedge_value_local and not is_live_funded_numeric_row
 
                 # If the row is explicitly "not started" but hedge values already exist, flag.
                 #
@@ -7693,7 +7585,7 @@ def run_quality_scan(target_client=None):
                         'check': 'Not Started but hedge values present',
                         'severity': 'high',
                         'row': idx,
-                        'detail': f'{row_label}: Status is \"not started\" but hedge results contain non-zero values',
+                        'detail': f'{row_label}: Status not started but hedge values exist',
                         'estimated_date': _estimate_issue_date(ev, 'Not Started but hedge values present', scan_date_str),
                     })
 
@@ -7737,10 +7629,14 @@ def run_quality_scan(target_client=None):
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
 
                 # New-row strict rule:
-                # A valid new row is added, has no hedge values yet, and Status P1 is "not started".
-                # Day markers may or may not exist. Missing/zero Fee and missing Date Purchased
-                # still flag, but other early workflow noise is suppressed until hedge values arrive.
-                if new_row_candidate:
+                # If it's a brand new row and there's NO hedge value yet, we only
+                # allow the scan to flag:
+                #   1) missing/zero Fee (handled above),
+                #   2) missing Date Purchased, or
+                #   3) Status P1 not being exactly "not started".
+                # Everything else (empty account #, missing weekday, etc.) is suppressed
+                # until hedge values arrive.
+                if new_row_strict_mode and not is_live_funded_numeric_row:
                     dp_raw = str(ev.get('Date Purchased', '') or '').strip()
                     if not dp_raw:
                         issues.append({
@@ -7750,19 +7646,65 @@ def run_quality_scan(target_client=None):
                             'detail': f'{row_label}: New row missing Date Purchased',
                             'estimated_date': _estimate_issue_date(ev, 'Missing Date Purchased', scan_date_str),
                         })
+                    # Special case: some clients do not hedge.
+                    # They may put a weekday into Hedge Result 1 to indicate the prop account should be traded,
+                    # while Status P1 is "hit tp1/2/3". Treat this as valid and suppress the "not started" flag.
+                    _hr1 = str(ev.get('Hedge Result 1', '') or '').strip().lower()
+                    _weekday_tokens = ('mon', 'monday', 'tue', 'tues', 'tuesday', 'wed', 'weds', 'wednesday',
+                                       'thu', 'thurs', 'thursday', 'fri', 'friday')
+                    _has_weekday_marker = any(tok in _hr1 for tok in _weekday_tokens)
+                    _is_hit_tp = status_p1.startswith('hit tp') or status_p1.replace(' ', '').startswith('hittp')
+                    _nonhedge_ok = _is_hit_tp and _has_weekday_marker
+
+                    # Additional special case:
+                    # Some rows are marked "pass" (or other non-"not started") even though no numeric hedge values exist yet,
+                    # but a weekday marker is placed in funded/farming hedge columns as a workflow cue.
+                    # If any funded hedge result or farming hedge day cell contains a weekday token, suppress the flag.
+                    _weekday_ok = False
+                    try:
+                        _funded_cols = (
+                            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
+                            'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
+                        )
+                        _farming_cols = tuple(f'Hedge Day {i}' for i in range(1, 51))
+                        for _c in (_funded_cols + _farming_cols):
+                            _v = str(ev.get(_c, '') or '').strip().lower()
+                            if _v and any(tok in _v for tok in _weekday_tokens):
+                                _weekday_ok = True
+                                break
+                    except Exception:
+                        _weekday_ok = False
+
+                    # Farming-phase weekday in Prop Day cells, eval + funded both "pass", hedges still empty:
+                    # treat as intentional workflow state — do not flag "not started".
+                    _pass_propday_weekday_ok = False
+                    if status_p1 == 'pass' and status_p2 == 'pass' and not has_hedge_value_local:
+                        try:
+                            for _i in range(1, 51):
+                                _c = f'Prop Day {_i}'
+                                _v = str(ev.get(_c, '') or '').strip().lower()
+                                if _v and any(tok in _v for tok in _weekday_tokens):
+                                    _pass_propday_weekday_ok = True
+                                    break
+                        except Exception:
+                            _pass_propday_weekday_ok = False
 
                     if (
                         fee_present
                         and status_p1
                         and status_p1 != 'not started'
+                        and not _nonhedge_ok
+                        and not _weekday_ok
+                        and not _pass_propday_weekday_ok
                     ):
                         issues.append({
                             'check': 'New row: Status P1 not started',
                             'severity': 'medium',
                             'row': idx,
-                            'detail': f'{row_label}: New row fee present but Status P1 is \"{status_p1}\" (expected \"not started\")',
+                            'detail': f'{row_label}: Fee present; Status P1 should be not started',
                             'estimated_date': _estimate_issue_date(ev, 'New row: Status P1 not started', scan_date_str),
                         })
+
                 # Empty Account Size
                 if not is_live_funded_numeric_row and not new_row_strict_mode and not acct_size and prop_firm and not is_double_dip:
                     issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
@@ -7826,7 +7768,7 @@ def run_quality_scan(target_client=None):
                         'check': 'Phase 1: missing Date Started',
                         'severity': 'medium',
                         'row': idx,
-                        'detail': f'{row_label}: Status P1 is \"{status_p1}\" but Date Started is blank',
+                        'detail': f'{row_label}: Status P1 \"{status_p1}\" missing Date Started',
                         'estimated_date': _estimate_issue_date(ev, 'Phase 1: missing Date Started', scan_date_str),
                     })
                 if (
@@ -7840,7 +7782,7 @@ def run_quality_scan(target_client=None):
                         'check': 'Phase 1: missing Date Ended',
                         'severity': 'medium',
                         'row': idx,
-                        'detail': f'{row_label}: Status P1 is \"{status_p1}\" but Date Ended is blank',
+                        'detail': f'{row_label}: Status P1 \"{status_p1}\" missing Date Ended',
                         'estimated_date': _estimate_issue_date(ev, 'Phase 1: missing Date Ended', scan_date_str),
                     })
 
@@ -7862,7 +7804,7 @@ def run_quality_scan(target_client=None):
                         'check': 'Funded phase: missing Date Started',
                         'severity': 'medium',
                         'row': idx,
-                        'detail': f'{row_label}: Funded status is \"{status_funded_raw}\" but Date Started (funded) is blank',
+                        'detail': f'{row_label}: Funded status \"{status_funded_raw}\" missing funded Date Started',
                         'estimated_date': _estimate_issue_date(ev, 'Funded phase: missing Date Started', scan_date_str),
                     })
                 if (
@@ -7875,7 +7817,7 @@ def run_quality_scan(target_client=None):
                         'check': 'Funded phase: missing Date Ended',
                         'severity': 'medium',
                         'row': idx,
-                        'detail': f'{row_label}: Funded status is \"{status_funded_raw}\" but Date Ended (funded) is blank',
+                        'detail': f'{row_label}: Funded status \"{status_funded_raw}\" missing funded Date Ended',
                         'estimated_date': _estimate_issue_date(ev, 'Funded phase: missing Date Ended', scan_date_str),
                     })
 
@@ -7910,7 +7852,7 @@ def run_quality_scan(target_client=None):
                     )
                     if _funded_marker and _has_funded_hr:
                         issues.append({'check': 'Alpha Futures: missing Activation Fee', 'severity': 'high', 'row': idx,
-                                       'detail': f'{row_label}: Alpha Futures funded account has no Activation Fee',
+                                       'detail': f'{row_label}: Alpha Futures funded account missing Activation Fee',
                                        'estimated_date': _estimate_issue_date(ev, 'Alpha Futures: missing Activation Fee', scan_date_str)})
 
                 # Same idea as new_row_strict_mode for weekday: if challenge is paid, P1 is still
@@ -7979,9 +7921,7 @@ def run_quality_scan(target_client=None):
                             'check': 'Downtime detected',
                             'severity': 'high',
                             'row': idx,
-                            'detail': (f'{row_label}: Stale day(s) found: {prevw} — '
-                                       f'allowed markers for scan date: {_allowed_human} '
-                                       f'(Mon–Thu: today + next weekday; Fri: fri+mon; Sat–Sun: mon only)'),
+                            'detail': f'{row_label}: Stale day marker found; allowed: {_allowed_human}',
                             'estimated_date': _estimate_issue_date(ev, 'Downtime detected', scan_date_str),
                         })
                     elif (
@@ -7994,16 +7934,9 @@ def run_quality_scan(target_client=None):
                         and not _suppress_no_current_day_eval_onboarding
                     ):
                         if _is_live_day_row:
-                            _nd_msg = (
-                                f'{row_label}: Live funded row has no allowed day marker ({_allowed_human}) '
-                                f'in Hedge Result / Hedge Day / Prop Day — add one, or add a Status P1 cell note '
-                                f'explaining why no weekday is shown'
-                            )
+                            _nd_msg = f'{row_label}: Missing allowed day marker ({_allowed_human}); add marker or Status P1 note'
                         else:
-                            _nd_msg = (
-                                f'{row_label}: Active account has no allowed day marker ({_allowed_human}) '
-                                f'in Hedge Result / Hedge Day / Prop Day (or add a cell note)'
-                            )
+                            _nd_msg = f'{row_label}: Missing allowed day marker ({_allowed_human}); add marker or cell note'
                         issues.append({
                             'check': 'No current day value',
                             'severity': 'medium',
@@ -8035,7 +7968,7 @@ def run_quality_scan(target_client=None):
                                     'check': 'Negative Hedge Net-QA',
                                     'severity': 'high',
                                     'row': idx,
-                                    'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                    'detail': f'{row_label}: Hedge Net=${hedge_net:.2f}; needs QA resolution',
                                     'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)
                                 })
                         except Exception:
@@ -8043,7 +7976,7 @@ def run_quality_scan(target_client=None):
                                 'check': 'Negative Hedge Net-QA',
                                 'severity': 'high',
                                 'row': idx,
-                                'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                'detail': f'{row_label}: Hedge Net=${hedge_net:.2f}; needs QA resolution',
                                 'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)
                             })
                     else:
@@ -8086,7 +8019,7 @@ def run_quality_scan(target_client=None):
                     _suffix = '' if len(_comma_cols) <= 3 else f' (+{len(_comma_cols) - 3} more)'
                     if not new_row_strict_mode and not is_live_funded_numeric_row:
                         issues.append({'check': 'Comma in hedge value', 'severity': 'low', 'row': idx,
-                                       'detail': f'{row_label}: {_preview}{_suffix}',
+                                       'detail': f'{row_label}: Comma decimal in hedge value; use dot decimals',
                                        'estimated_date': _estimate_issue_date(ev, 'Comma in hedge value', scan_date_str)})
 
             # Trader daily summary item 4 (any prop firm): payouts eligible at next trading day count >= 1 — QA-gated
@@ -8145,14 +8078,14 @@ def run_quality_scan(target_client=None):
                     'check': 'Hedge account or Prop Firm missing',
                     'severity': 'high',
                     'tab': 'hedge',
-                    'detail': 'No hedge account credentials found — fill in Hedge Accounts tab',
+                    'detail': 'Hedge account credentials missing; fill Hedge Accounts tab',
                     'estimated_date': scan_date_str,
                 })
                 issues.append({
                     'check': 'Hedge account or Prop Firm missing',
                     'severity': 'high',
                     'tab': 'prop',
-                    'detail': 'No prop firm credentials found — fill in Prop Firm Accounts tab',
+                    'detail': 'Prop firm credentials missing; fill Prop Firm Accounts tab',
                     'estimated_date': scan_date_str,
                 })
 
@@ -8175,7 +8108,7 @@ def run_quality_scan(target_client=None):
             results.append({
                 'client_id': client_name, 'trader': trader, 'admin': admin,
                 'total_issues': 1, 'issues': [{'check': 'Scan error', 'severity': 'critical',
-                    'detail': f'Error scanning client: {str(exc)}', 'estimated_date': scan_date_str}],
+                    'detail': 'Scan failed; check server logs', 'estimated_date': scan_date_str}],
                 'health_score': 0.0
             })
 
@@ -8332,7 +8265,7 @@ def api_quality_negative_hedge_net_qa():
                 'trader': trader,
                 'admin': admin,
                 'row': row_i,
-                'detail': _compact_quality_issue_detail(iss),
+                'detail': iss.get('detail', ''),
                 'estimated_date': iss.get('estimated_date', ''),
                 'severity': iss.get('severity', 'high'),
             })
@@ -8373,7 +8306,7 @@ def api_quality_daily_summary_payout_qa():
                 'trader': trader,
                 'admin': admin,
                 'row': row_i,
-                'detail': _compact_quality_issue_detail(iss),
+                'detail': iss.get('detail', ''),
                 'estimated_date': iss.get('estimated_date', ''),
                 'submitted_at': iss.get('submitted_at', ''),
                 'severity': iss.get('severity', 'high'),
@@ -8443,9 +8376,7 @@ def api_run_quality_scan():
     # Compute display stats after filtering out infrastructure scan errors
     severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
     for r in results:
-        r['issues'] = _compact_quality_issues_for_display(
-            i for i in r.get('issues', []) if i.get('check') != 'Scan error'
-        )
+        r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
         r['total_issues'] = len(r['issues'])
         deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
         r['health_score'] = max(0.0, round(100.0 - deduction, 1))
@@ -8573,9 +8504,7 @@ def api_quality_results():
         # Filter out scan errors and recalculate health scores BEFORE deduplication
         severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
         for r in results:
-            r['issues'] = _compact_quality_issues_for_display(
-                i for i in r.get('issues', []) if i.get('check') != 'Scan error'
-            )
+            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
             r['total_issues'] = len(r['issues'])
             deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
             r['health_score'] = max(0.0, round(100.0 - deduction, 1))
@@ -8699,7 +8628,7 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
                     cid,
                     trader,
                     iss.get('severity') or 'high',
-                    _compact_quality_issue_detail(iss) or 'Downtime detected',
+                    iss.get('detail') or 'Downtime detected',
                     extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
                 )
         for iss in (r.get('issues') or []):
@@ -8709,7 +8638,7 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
                     cid,
                     trader,
                     iss.get('severity') or 'high',
-                    _compact_quality_issue_detail(iss) or QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
+                    iss.get('detail') or QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
                     extra={
                         'row': iss.get('row'),
                         'estimated_date': iss.get('estimated_date'),
@@ -8960,7 +8889,7 @@ def api_admin_tracker():
                             cid,
                             trader,
                             iss.get('severity') or 'high',
-                            _compact_quality_issue_detail(iss) or 'Downtime detected',
+                            iss.get('detail') or 'Downtime detected',
                             extra={'row': iss.get('row'), 'estimated_date': iss.get('estimated_date')}
                         )
                 for iss in (r.get('issues') or []):
@@ -8970,7 +8899,7 @@ def api_admin_tracker():
                             cid,
                             trader,
                             iss.get('severity') or 'high',
-                            _compact_quality_issue_detail(iss) or QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
+                            iss.get('detail') or QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE,
                             extra={
                                 'row': iss.get('row'),
                                 'estimated_date': iss.get('estimated_date'),
@@ -9206,9 +9135,7 @@ def api_admin_issues():
         # Strip scan errors, recalculate health
         severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
         for r in filtered:
-            r['issues'] = _compact_quality_issues_for_display(
-                i for i in r.get('issues', []) if i.get('check') != 'Scan error'
-            )
+            r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
             r['total_issues'] = len(r['issues'])
             deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in r['issues'])
             r['health_score'] = max(0.0, round(100.0 - deduction, 1))

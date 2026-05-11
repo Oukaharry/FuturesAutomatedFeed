@@ -70,16 +70,15 @@ If `Prop Firm` normalizes to **My Funded Futures** / **MFF** / **TopStep** / **T
 
 A row counts as **new** when `ev['_row_added_at']` is set **and** the row is **active** (`is_active`).
 
-If the row is new, has **no** non-zero hedge result columns yet, is **not** a live numeric row, and Status P1 is exactly `not started` → **`new_row_strict_mode` is True**.
+If the row is new, has **no** non-zero hedge result columns yet, and is **not** a live numeric row → **`new_row_strict_mode` is True**.
 
 While in strict mode, the scan **suppresses** most early-life noise (empty account #, missing weekday, activation fee, negative hedge net, comma parsing, etc.) **except**:
 
 - **Empty Fee** / zero fee (still flagged unless fee cell note — see **Empty Fee**).
 - **Missing Date Purchased** (explicit extra check for new rows).
+- **New row: Status P1 not started** when fee is present and Status P1 is not exactly `not started`, subject to **non-hedge** and **weekday** exceptions (see that check below).
 
 **Bypass:** Enter any non-zero value in a `Hedge Result*` column to exit strict mode early; the full rule set then applies (which may add **more** flags).
-
-Newly added rows with no hedge values and Status P1 **not** equal to `not started` are **not** treated as valid new rows; they can emit **New row: Status P1 not started** when fee is present.
 
 ---
 
@@ -280,9 +279,9 @@ See **§3.4** (client-level).
 | Field | Value |
 |-------|--------|
 | **Severity** | `medium` |
-| **When** | Row was newly added, has no hedge values yet, fee is present (&gt; 0), and Status P1 is non-empty and **≠** `not started`. Weekday/day markers do not affect this check. |
+| **When** | New row strict mode; fee present (&gt; 0); Status P1 non-empty and **≠** `not started`; fails **non-hedge** exception: not (`hit tp…` + weekday token in `Hedge Result 1`); fails **weekday_ok**: no weekday token in funded hedge columns `Hedge Result 1.1` … `Hedge Result 7` or `Hedge Day 1`…`Hedge Day 50`. |
 
-**Bypass:** Set Status P1 to `not started` while the row has no hedge values; add hedge numbers to exit new-row handling (different rules apply).
+**Bypass:** Set Status P1 to `not started` until hedging begins; use hit-tp + weekday in HR1; place weekday in funded/farming columns; add hedge numbers to exit strict mode (different rules apply).
 
 ### 5.12 `No current day value`
 
