@@ -7657,7 +7657,8 @@ def run_quality_scan(target_client=None):
                 # skip sheet SOP flags except weekday-of-day tracking (and any client/global issues like downtime).
                 is_live_funded_numeric_row = _max_out_row_is_live_numeric_account(ev)
 
-                new_row_strict_mode = is_new_row and not has_hedge_value_local and not is_live_funded_numeric_row
+                new_row_candidate = is_new_row and not has_hedge_value_local and not is_live_funded_numeric_row
+                new_row_strict_mode = new_row_candidate and status_p1 == 'not started'
 
                 # If the row is explicitly "not started" but hedge values already exist, flag.
                 #
@@ -7736,14 +7737,10 @@ def run_quality_scan(target_client=None):
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
 
                 # New-row strict rule:
-                # If it's a brand new row and there's NO hedge value yet, we only
-                # allow the scan to flag:
-                #   1) missing/zero Fee (handled above),
-                #   2) missing Date Purchased, or
-                #   3) Status P1 not being exactly "not started".
-                # Everything else (empty account #, missing weekday, etc.) is suppressed
-                # until hedge values arrive.
-                if new_row_strict_mode and not is_live_funded_numeric_row:
+                # A valid new row is added, has no hedge values yet, and Status P1 is "not started".
+                # Day markers may or may not exist. Missing/zero Fee and missing Date Purchased
+                # still flag, but other early workflow noise is suppressed until hedge values arrive.
+                if new_row_candidate:
                     dp_raw = str(ev.get('Date Purchased', '') or '').strip()
                     if not dp_raw:
                         issues.append({
@@ -7753,56 +7750,11 @@ def run_quality_scan(target_client=None):
                             'detail': f'{row_label}: New row missing Date Purchased',
                             'estimated_date': _estimate_issue_date(ev, 'Missing Date Purchased', scan_date_str),
                         })
-                    # Special case: some clients do not hedge.
-                    # They may put a weekday into Hedge Result 1 to indicate the prop account should be traded,
-                    # while Status P1 is "hit tp1/2/3". Treat this as valid and suppress the "not started" flag.
-                    _hr1 = str(ev.get('Hedge Result 1', '') or '').strip().lower()
-                    _weekday_tokens = ('mon', 'monday', 'tue', 'tues', 'tuesday', 'wed', 'weds', 'wednesday',
-                                       'thu', 'thurs', 'thursday', 'fri', 'friday')
-                    _has_weekday_marker = any(tok in _hr1 for tok in _weekday_tokens)
-                    _is_hit_tp = status_p1.startswith('hit tp') or status_p1.replace(' ', '').startswith('hittp')
-                    _nonhedge_ok = _is_hit_tp and _has_weekday_marker
-
-                    # Additional special case:
-                    # Some rows are marked "pass" (or other non-"not started") even though no numeric hedge values exist yet,
-                    # but a weekday marker is placed in funded/farming hedge columns as a workflow cue.
-                    # If any funded hedge result or farming hedge day cell contains a weekday token, suppress the flag.
-                    _weekday_ok = False
-                    try:
-                        _funded_cols = (
-                            'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
-                            'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
-                        )
-                        _farming_cols = tuple(f'Hedge Day {i}' for i in range(1, 51))
-                        for _c in (_funded_cols + _farming_cols):
-                            _v = str(ev.get(_c, '') or '').strip().lower()
-                            if _v and any(tok in _v for tok in _weekday_tokens):
-                                _weekday_ok = True
-                                break
-                    except Exception:
-                        _weekday_ok = False
-
-                    # Farming-phase weekday in Prop Day cells, eval + funded both "pass", hedges still empty:
-                    # treat as intentional workflow state — do not flag "not started".
-                    _pass_propday_weekday_ok = False
-                    if status_p1 == 'pass' and status_p2 == 'pass' and not has_hedge_value_local:
-                        try:
-                            for _i in range(1, 51):
-                                _c = f'Prop Day {_i}'
-                                _v = str(ev.get(_c, '') or '').strip().lower()
-                                if _v and any(tok in _v for tok in _weekday_tokens):
-                                    _pass_propday_weekday_ok = True
-                                    break
-                        except Exception:
-                            _pass_propday_weekday_ok = False
 
                     if (
                         fee_present
                         and status_p1
                         and status_p1 != 'not started'
-                        and not _nonhedge_ok
-                        and not _weekday_ok
-                        and not _pass_propday_weekday_ok
                     ):
                         issues.append({
                             'check': 'New row: Status P1 not started',
@@ -7811,7 +7763,6 @@ def run_quality_scan(target_client=None):
                             'detail': f'{row_label}: New row fee present but Status P1 is \"{status_p1}\" (expected \"not started\")',
                             'estimated_date': _estimate_issue_date(ev, 'New row: Status P1 not started', scan_date_str),
                         })
-
                 # Empty Account Size
                 if not is_live_funded_numeric_row and not new_row_strict_mode and not acct_size and prop_firm and not is_double_dip:
                     issues.append({'check': 'Empty Account Size', 'severity': 'low', 'row': idx,
