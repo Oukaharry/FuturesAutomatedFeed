@@ -3358,7 +3358,7 @@ def run_quality_scan(target_client=None):
             results.append({
                 'client_id': client_name, 'trader': trader, 'admin': admin,
                 'total_issues': 1, 'issues': [{'check': 'Data load error', 'severity': 'critical',
-                    'detail': 'Failed to load client data from database', 'estimated_date': scan_date_str}],
+                    'detail': 'Failed to load client data', 'estimated_date': scan_date_str}],
                 'health_score': 0.0
             })
             continue
@@ -3366,7 +3366,7 @@ def run_quality_scan(target_client=None):
         issues = []
 
         if not data:
-            issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'Client has no saved data in database',
+            issues.append({'check': 'No data', 'severity': 'critical', 'detail': 'No saved client data',
                            'estimated_date': scan_date_str})
             results.append({
                 'client_id': client_name, 'trader': trader, 'admin': admin,
@@ -3394,7 +3394,7 @@ def run_quality_scan(target_client=None):
             pass
 
         if not evaluations:
-            issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'Client has zero evaluation rows',
+            issues.append({'check': 'No evaluations', 'severity': 'warning', 'detail': 'No evaluation rows found',
                            'estimated_date': scan_date_str})
 
         activity = get_client_activity(client_name) or {}
@@ -3459,7 +3459,7 @@ def run_quality_scan(target_client=None):
                         issues.append({
                             'check': 'Hedging Results mismatch',
                             'severity': 'high',
-                            'detail': f"Mismatch between sheet hedging results and actual hedging results (HR={hedge_total_display:.2f}, Profit={mt5_profit_display:.2f})",
+                            'detail': f"Sheet hedge total differs from MT5 profit (HR={hedge_total_display:.2f}, MT5={mt5_profit_display:.2f})",
                             'estimated_date': scan_date_str
                         })
         except Exception:
@@ -3528,7 +3528,7 @@ def run_quality_scan(target_client=None):
             if is_active and not acct_num and not acct_num2:
                 if not is_double_dip or not acct_num2:
                     issues.append({'check': 'Empty Account #', 'severity': 'medium', 'row': idx,
-                                   'detail': f'{row_label}: Active but no account number',
+                                   'detail': f'{row_label}: Active row missing account number',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Account #', scan_date_str)})
 
             activation = str(ev.get('Activation Fee', '') or '').strip()
@@ -3564,7 +3564,7 @@ def run_quality_scan(target_client=None):
                 )
                 if _funded_marker and _has_funded_hr:
                     issues.append({'check': 'Alpha Futures: missing Activation Fee', 'severity': 'high', 'row': idx,
-                                   'detail': f'{row_label}: Alpha Futures funded account has no Activation Fee',
+                                   'detail': f'{row_label}: Alpha Futures funded account missing Activation Fee',
                                    'estimated_date': _estimate_issue_date(ev, 'Alpha Futures: missing Activation Fee', scan_date_str)})
 
             _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
@@ -3634,9 +3634,7 @@ def run_quality_scan(target_client=None):
                         'check': 'Downtime detected',
                         'severity': 'high',
                         'row': idx,
-                        'detail': (f'{row_label}: Stale day(s) found: {prevw} — '
-                                   f'allowed markers for scan date: {_allowed_human} '
-                                   f'(Mon–Thu: today + next weekday; Fri: fri+mon; Sat–Sun: mon only)'),
+                        'detail': f'{row_label}: Stale day marker found; allowed: {_allowed_human}',
                         'estimated_date': _estimate_issue_date(ev, 'Downtime detected', scan_date_str),
                     })
                 elif (
@@ -3649,16 +3647,9 @@ def run_quality_scan(target_client=None):
                     and not _suppress_no_current_day_eval_onboarding
                 ):
                     if _is_live_day_row:
-                        _nd_msg = (
-                            f'{row_label}: Live funded row has no allowed day marker ({_allowed_human}) '
-                            f'in Hedge Result / Hedge Day / Prop Day — add one, or add a Status P1 cell note '
-                            f'explaining why no weekday is shown'
-                        )
+                        _nd_msg = f'{row_label}: Missing allowed day marker ({_allowed_human}); add marker or Status P1 note'
                     else:
-                        _nd_msg = (
-                            f'{row_label}: Active account has no allowed day marker ({_allowed_human}) '
-                            f'in Hedge Result / Hedge Day / Prop Day (or add a cell note)'
-                        )
+                        _nd_msg = f'{row_label}: Missing allowed day marker ({_allowed_human}); add marker or cell note'
                     issues.append({
                         'check': 'No current day value',
                         'severity': 'medium',
@@ -3681,11 +3672,11 @@ def run_quality_scan(target_client=None):
                         from dashboard.database import is_qa_resolved
                         if not is_qa_resolved('Negative Hedge Net-QA', client_name, idx):
                             issues.append({'check': 'Negative Hedge Net-QA', 'severity': 'high', 'row': idx,
-                                           'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                           'detail': f'{row_label}: Hedge Net=${hedge_net:.2f}; needs QA resolution',
                                            'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)})
                     except Exception:
                         issues.append({'check': 'Negative Hedge Net-QA', 'severity': 'high', 'row': idx,
-                                       'detail': f'{row_label}: Hedge Net=${hedge_net:.2f} (requires QA resolution)',
+                                       'detail': f'{row_label}: Hedge Net=${hedge_net:.2f}; needs QA resolution',
                                        'estimated_date': _estimate_issue_date(ev, 'Negative Hedge Net-QA', scan_date_str)})
                 else:
                     # Legacy behavior (pre-cutoff): notes clear the issue.
@@ -3727,7 +3718,7 @@ def run_quality_scan(target_client=None):
                 _preview = '; '.join(_comma_cols[:3])
                 _suffix = '' if len(_comma_cols) <= 3 else f' (+{len(_comma_cols) - 3} more)'
                 issues.append({'check': 'Comma in hedge value', 'severity': 'low', 'row': idx,
-                               'detail': f'{row_label}: {_preview}{_suffix}',
+                               'detail': f'{row_label}: Comma decimal in hedge value; use dot decimals',
                                'estimated_date': _estimate_issue_date(ev, 'Comma in hedge value', scan_date_str)})
 
         hedge_accounts = data.get('hedge_accounts') or []
@@ -3743,14 +3734,14 @@ def run_quality_scan(target_client=None):
                 'check': 'Hedge account or Prop Firm missing',
                 'severity': 'high',
                 'tab': 'hedge',
-                'detail': 'No hedge account credentials found — fill in Hedge Accounts tab',
+                'detail': 'Hedge account credentials missing; fill Hedge Accounts tab',
                 'estimated_date': scan_date_str
             })
             issues.append({
                 'check': 'Hedge account or Prop Firm missing',
                 'severity': 'high',
                 'tab': 'prop',
-                'detail': 'No prop firm credentials found — fill in Prop Firm Accounts tab',
+                'detail': 'Prop firm credentials missing; fill Prop Firm Accounts tab',
                 'estimated_date': scan_date_str
             })
 
