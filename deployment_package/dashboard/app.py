@@ -3179,6 +3179,95 @@ def change_admin_password():
 
 # ============ Quality Scan ============
 
+_QUALITY_DETAIL_MAX_WORDS = 20
+
+
+def _quality_limit_detail_words(text, max_words=_QUALITY_DETAIL_MAX_WORDS):
+    clean = re.sub(r'\s+', ' ', str(text or '').strip())
+    words = clean.split()
+    if len(words) <= max_words:
+        return clean
+    return ' '.join(words[:max_words]).rstrip(' ,;:') + '...'
+
+
+def _quality_row_prefix(issue, detail):
+    match = re.match(r'^\s*(Row\s+\d+):\s*(.*)$', str(detail or ''), flags=re.I)
+    if match:
+        return match.group(1), match.group(2)
+    row = (issue or {}).get('row')
+    if isinstance(row, int) and row >= 0:
+        return f'Row {row + 1}', str(detail or '').strip()
+    return '', str(detail or '').strip()
+
+
+def _compact_quality_issue_detail(issue):
+    """Return clear UI copy capped at 20 words for quality issue details."""
+    issue = issue or {}
+    check = str(issue.get('check') or '').strip()
+    detail = re.sub(r'\s+', ' ', str(issue.get('detail') or '').strip())
+    row_label, rest = _quality_row_prefix(issue, detail)
+    prefix = f'{row_label}: ' if row_label else ''
+
+    if check == 'Downtime detected':
+        stale_match = re.search(
+            r'Stale day\(s\) found:\s*(.*?)(?:\s+[^A-Za-z0-9]*\s*allowed markers|\s+allowed markers|$)',
+            detail,
+            flags=re.I,
+        )
+        stale_text = stale_match.group(1).strip() if stale_match else rest
+        parts = [p.strip() for p in stale_text.split(', ') if p.strip()]
+        more = ''
+        if len(parts) > 2:
+            more = f' (+{len(parts) - 2} more)'
+        preview = ', '.join(parts[:2]) if parts else 'outdated weekday marker'
+        allowed_match = re.search(r'allowed markers for scan date:\s*([a-z/]+)', detail, flags=re.I)
+        allowed = allowed_match.group(1) if allowed_match else 'current day'
+        return _quality_limit_detail_words(f'{prefix}Stale day marker(s): {preview}{more}. Allowed: {allowed}.')
+
+    if check == 'No current day value':
+        allowed_match = re.search(r'allowed day marker\s*\(([^)]+)\)', detail, flags=re.I)
+        allowed = f" ({allowed_match.group(1)})" if allowed_match else ''
+        return _quality_limit_detail_words(
+            f'{prefix}Missing allowed day marker{allowed} in Hedge Result, Hedge Day, or Prop Day.'
+        )
+
+    if check == 'Hedging Results mismatch':
+        hr_match = re.search(r'HR=([^) ,]+)', detail)
+        profit_match = re.search(r'Profit=([^) ,]+)', detail)
+        suffix = ''
+        if hr_match and profit_match:
+            suffix = f" (HR={hr_match.group(1)}, MT5={profit_match.group(1)})"
+        return _quality_limit_detail_words(f'Sheet hedging total differs from MT5 profit{suffix}.')
+
+    if check == 'Not Started but hedge values present':
+        return _quality_limit_detail_words(f'{prefix}Status is not started but hedge results have non-zero values.')
+
+    if check == 'Alpha Futures: missing Activation Fee':
+        return _quality_limit_detail_words(f'{prefix}Alpha Futures funded account missing Activation Fee.')
+
+    if check == 'Comma in hedge value':
+        return _quality_limit_detail_words(f'{prefix}Comma decimal in hedge value; use dot decimal format.')
+
+    if check == 'Hedge account or Prop Firm missing':
+        if 'Prop Firm Accounts' in detail:
+            return _quality_limit_detail_words('Prop firm credentials missing; fill Prop Firm Accounts tab.')
+        return _quality_limit_detail_words('Hedge account credentials missing; fill Hedge Accounts tab.')
+
+    return _quality_limit_detail_words(detail)
+
+
+def _compact_quality_issue_for_display(issue):
+    if not isinstance(issue, dict):
+        return issue
+    out = dict(issue)
+    out['detail'] = _compact_quality_issue_detail(out)
+    return out
+
+
+def _compact_quality_issues_for_display(issues):
+    return [_compact_quality_issue_for_display(i) for i in (issues or [])]
+
+
 def _estimate_issue_date(ev, issue_check, scan_date_str):
     """Estimate when an issue first appeared based on row data."""
     # Get all dates from evaluations to find reasonable range
@@ -3792,6 +3881,10 @@ def api_run_quality_scan():
     except Exception as e:
         save_warning = str(e)
         logging.warning(f'Quality scan results could not be saved: {e}')
+
+    for r in results:
+        r['issues'] = _compact_quality_issues_for_display(r.get('issues') or [])
+        r['total_issues'] = len(r['issues'])
 
     total_issues = sum(r['total_issues'] for r in results)
     clients_with_issues = sum(1 for r in results if r['total_issues'] > 0)
