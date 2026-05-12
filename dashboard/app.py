@@ -34,6 +34,7 @@ from config.hierarchy import (
 # Import database module for secure storage
 from dashboard.database import (
     init_database, check_and_repair_database,
+    get_connection,
     validate_api_key, generate_api_key, list_api_keys, revoke_api_key,
     verify_admin_password, set_admin_password, admin_password_exists, copy_admin_password_row,
     save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field, delete_client_data,
@@ -3124,6 +3125,137 @@ def _client_identity_details(client_name):
     return details
 
 
+def _ensure_client_database_membership(client_name, admin_name, trader_name, email='', category=''):
+    """Keep hierarchy clients represented in auth and clients_data."""
+    name = ' '.join(str(client_name or '').split()).strip()
+    if not name:
+        return
+
+    email = (email or '').strip()
+    category = (category or '').strip()
+    identity = {}
+    existing = None
+    try:
+        existing = get_client_data(name)
+        if isinstance(existing, dict) and isinstance(existing.get('identity'), dict):
+            identity = dict(existing.get('identity') or {})
+    except Exception:
+        identity = {}
+
+    desired = {
+        'name': identity.get('name') or name,
+        'client': identity.get('client') or name,
+        'email': email or identity.get('email', ''),
+        'category': category or identity.get('category', ''),
+        'profile': category or identity.get('profile') or identity.get('category', ''),
+        'source': category or identity.get('source') or 'Private',
+        'admin': admin_name,
+        'trader': trader_name,
+        'active_status': identity.get('active_status') or 'active',
+    }
+    next_identity = {**identity, **desired}
+    if not existing or any(identity.get(k) != v for k, v in desired.items()):
+        update_client_field(name, 'identity', next_identity)
+
+    try:
+        user = get_user(name, 'client')
+        if user:
+            needs_credential_update = (
+                (email and (user.get('email') or '') != email)
+                or (user.get('parent_admin') or '') != admin_name
+                or (user.get('parent_trader') or '') != trader_name
+            )
+            if not needs_credential_update:
+                return
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''UPDATE user_credentials
+                       SET email = COALESCE(NULLIF(?, ''), email),
+                           parent_admin = ?,
+                           parent_trader = ?,
+                           updated_at = ?
+                       WHERE username = ? AND user_type = 'client' ''',
+                    (email, admin_name, trader_name, datetime.now().isoformat(), name)
+                )
+                conn.commit()
+        else:
+            create_user(name, 'Test@123', 'client', email, admin_name, trader_name)
+    except Exception as exc:
+        print(f"[hierarchy_sync] client credential sync failed for {name}: {exc}")
+
+
+def _remove_client_from_hierarchy_anywhere(client_name, admin_name='', trader_name=''):
+    """Remove a client from hierarchy, using exact parent first then normalized global search."""
+    target = _normalized_client_key(client_name)
+    if not target:
+        return False
+
+    removed = False
+    admins = SYSTEM_HIERARCHY.get('admins', {}) or {}
+
+    def _remove_from_trader(a_name, t_name):
+        nonlocal removed
+        trader_data = ((admins.get(a_name) or {}).get('traders', {}) or {}).get(t_name)
+        if not trader_data:
+            return
+        clients = trader_data.get('clients', []) or []
+        kept = []
+        for client in clients:
+            name = client.get('name') if isinstance(client, dict) else client
+            if _normalized_client_key(name) == target:
+                removed = True
+                continue
+            kept.append(client)
+        trader_data['clients'] = kept
+
+    if admin_name and trader_name:
+        _remove_from_trader(admin_name, trader_name)
+
+    if not removed:
+        for a_name, a_data in admins.items():
+            for t_name in ((a_data or {}).get('traders', {}) or {}).keys():
+                _remove_from_trader(a_name, t_name)
+
+    if removed:
+        save_hierarchy(SYSTEM_HIERARCHY)
+    return removed
+
+
+def _delete_kyc_links_for_client(client_name):
+    """Remove KYC relationships so deleted clients are not re-created by sync."""
+    name = ' '.join(str(client_name or '').split()).strip()
+    if not name:
+        return 0
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'DELETE FROM kyc_links WHERE primary_client = ? OR linked_client = ?',
+                (name, name)
+            )
+            deleted = cursor.rowcount or 0
+            conn.commit()
+            return deleted
+    except Exception as exc:
+        print(f"[delete_user] KYC link cleanup failed for {name}: {exc}")
+        return 0
+
+
+def _delete_client_everywhere(client_name, admin_name='', trader_name=''):
+    """Delete a client from hierarchy, KYC links, auth credentials, and data tables."""
+    name = ' '.join(str(client_name or '').split()).strip()
+    if not name:
+        return False
+
+    removed_hierarchy = _remove_client_from_hierarchy_anywhere(name, admin_name, trader_name)
+    deleted_kyc = _delete_kyc_links_for_client(name)
+    deleted_credentials = delete_user_credential(name, 'client')
+    delete_client_data(name)
+
+    return bool(removed_hierarchy or deleted_kyc or deleted_credentials)
+
+
 def sync_kyc_links_into_hierarchy():
     """
     Ensure KYC-linked accounts are real hierarchy clients too.
@@ -3146,7 +3278,8 @@ def sync_kyc_links_into_hierarchy():
         linked_details = _client_identity_details(linked)
         linked_location = _find_client_in_hierarchy(linked)
         if linked_location:
-            _, _, linked_client = linked_location
+            link_admin, link_trader, linked_client = linked_location
+            linked_category = linked_details.get('category', '')
             if isinstance(linked_client, dict):
                 if linked_details.get('email') and not (linked_client.get('email') or '').strip():
                     linked_client['email'] = linked_details['email']
@@ -3154,6 +3287,14 @@ def sync_kyc_links_into_hierarchy():
                 if linked_details.get('category') and not (linked_client.get('category') or '').strip():
                     linked_client['category'] = linked_details['category']
                     changed = True
+                linked_category = linked_client.get('category') or linked_category
+            _ensure_client_database_membership(
+                linked,
+                link_admin,
+                link_trader,
+                linked_details.get('email') or (linked_client.get('email') if isinstance(linked_client, dict) else ''),
+                linked_category,
+            )
             continue
 
         primary_location = _find_client_in_hierarchy(primary)
@@ -3174,6 +3315,13 @@ def sync_kyc_links_into_hierarchy():
             'email': linked_details.get('email', ''),
             'category': linked_details.get('category') or primary_category,
         })
+        _ensure_client_database_membership(
+            linked,
+            admin_name,
+            trader_name,
+            linked_details.get('email', ''),
+            linked_details.get('category') or primary_category,
+        )
         changed = True
 
     if changed:
@@ -5871,29 +6019,7 @@ def api_delete_user():
         delete_user_credential(name, 'trader')
             
     elif user_type == 'client':
-        result = remove_client(admin or '', trader or '', name)
-        delete_user_credential(name, 'client')
-        # Always delete client data from database (even if hierarchy removal failed,
-        # e.g. name mismatch between identity display name and hierarchy name)
-        delete_client_data(name)
-        if not result:
-            # Try to find and remove from hierarchy by searching all admins/traders
-            from config.hierarchy import SYSTEM_HIERARCHY, save_hierarchy
-            for a_name, a_data in SYSTEM_HIERARCHY.get("admins", {}).items():
-                for t_name, t_data in a_data.get("traders", {}).items():
-                    for i, client in enumerate(t_data.get("clients", [])):
-                        if client.get("name") == name:
-                            del t_data["clients"][i]
-                            save_hierarchy(SYSTEM_HIERARCHY)
-                            result = True
-                            break
-                    if result:
-                        break
-                if result:
-                    break
-            if not result:
-                # Client data was still deleted from DB, consider it a success
-                result = True
+        result = _delete_client_everywhere(name, admin or '', trader or '')
     
     if result:
         log_action(f'DELETE_{user_type.upper()}', user_type, name, get_remote_address())
@@ -6286,7 +6412,7 @@ def api_remove_client():
             change_description=f"Final snapshot before client removal (Trader: {trader}, Admin: {admin})"
         )
     
-    if remove_client(admin, trader, name):
+    if _delete_client_everywhere(name, admin, trader):
         log_action('REMOVE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Client not found"}), 400
