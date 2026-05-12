@@ -28,7 +28,7 @@ from config.hierarchy import (
     remove_admin, remove_trader, remove_client,
     move_client, move_trader,
     rename_admin, rename_trader, rename_client,
-    reassign_client_trader
+    reassign_client_trader, save_hierarchy
 )
 
 # Import database module for secure storage
@@ -3083,6 +3083,104 @@ def client_dashboard(client_id):
 
 # ============ Hierarchy API with Role-Based Access Control ============
 
+def _normalized_client_key(value):
+    return ' '.join(str(value or '').replace('\u00A0', ' ').split()).strip().lower()
+
+
+def _find_client_in_hierarchy(client_name):
+    """Return (admin, trader, client_obj) for a client, matching normalized names."""
+    target = _normalized_client_key(client_name)
+    if not target:
+        return None
+
+    for admin_name, admin_data in (SYSTEM_HIERARCHY.get('admins', {}) or {}).items():
+        for trader_name, trader_data in ((admin_data or {}).get('traders', {}) or {}).items():
+            for client in (trader_data or {}).get('clients', []) or []:
+                name = client.get('name') if isinstance(client, dict) else client
+                if _normalized_client_key(name) == target:
+                    return admin_name, trader_name, client
+    return None
+
+
+def _client_identity_details(client_name):
+    """Best-effort email/category lookup for hierarchy repair rows."""
+    details = {'email': '', 'category': ''}
+    try:
+        user = get_user(client_name, 'client') or {}
+        details['email'] = (user.get('email') or '').strip()
+    except Exception:
+        pass
+
+    try:
+        data = get_client_data(client_name) or {}
+        identity = data.get('identity') if isinstance(data, dict) else {}
+        if isinstance(identity, dict):
+            details['email'] = details['email'] or (identity.get('email') or '').strip()
+            details['category'] = (
+                identity.get('category') or identity.get('profile') or ''
+            ).strip()
+    except Exception:
+        pass
+    return details
+
+
+def sync_kyc_links_into_hierarchy():
+    """
+    Ensure KYC-linked accounts are real hierarchy clients too.
+
+    KYC links grant dashboard access, but trader/admin dashboards and user
+    management are sourced from hierarchy.json. If a linked account is missing
+    there, attach it to the same admin/trader as its primary account.
+    """
+    try:
+        links = get_all_kyc_links() or []
+    except Exception:
+        return False
+
+    changed = False
+    for link in links:
+        primary = ' '.join(str(link.get('primary_client') or '').split()).strip()
+        linked = ' '.join(str(link.get('linked_client') or '').split()).strip()
+        if not primary or not linked or _normalized_client_key(primary) == _normalized_client_key(linked):
+            continue
+        linked_details = _client_identity_details(linked)
+        linked_location = _find_client_in_hierarchy(linked)
+        if linked_location:
+            _, _, linked_client = linked_location
+            if isinstance(linked_client, dict):
+                if linked_details.get('email') and not (linked_client.get('email') or '').strip():
+                    linked_client['email'] = linked_details['email']
+                    changed = True
+                if linked_details.get('category') and not (linked_client.get('category') or '').strip():
+                    linked_client['category'] = linked_details['category']
+                    changed = True
+            continue
+
+        primary_location = _find_client_in_hierarchy(primary)
+        if not primary_location:
+            continue
+
+        admin_name, trader_name, primary_client = primary_location
+        admin_data = (SYSTEM_HIERARCHY.get('admins', {}) or {}).get(admin_name, {})
+        trader_data = (admin_data.get('traders', {}) or {}).get(trader_name)
+        if not trader_data:
+            continue
+
+        primary_category = ''
+        if isinstance(primary_client, dict):
+            primary_category = (primary_client.get('category') or primary_client.get('profile') or '').strip()
+        trader_data.setdefault('clients', []).append({
+            'name': linked,
+            'email': linked_details.get('email', ''),
+            'category': linked_details.get('category') or primary_category,
+        })
+        changed = True
+
+    if changed:
+        save_hierarchy(SYSTEM_HIERARCHY)
+    return changed
+
+
 def get_filtered_hierarchy(user_type, user_identifier):
     """
     Returns hierarchy filtered based on user role:
@@ -3204,6 +3302,7 @@ def get_hierarchy():
     # Reload hierarchy to get latest changes from file
     from config.hierarchy import reload_hierarchy
     reload_hierarchy()
+    sync_kyc_links_into_hierarchy()
     
     filtered = get_filtered_hierarchy(user_type, user_identifier)
     
@@ -5377,6 +5476,7 @@ def api_kyc_link():
     if existing_links:
         return jsonify({"status": "error", "message": f"'{linked}' is already a primary account with linked KYCs. Unlink those first."}), 400
     if add_kyc_link(primary, linked, request.session_user.get('user_identifier', 'super_admin')):
+        sync_kyc_links_into_hierarchy()
         log_action('KYC_LINK', 'super_admin', primary, get_remote_address(), f"Linked: {linked}")
         return jsonify({"status": "success", "message": f"'{linked}' linked to '{primary}' as KYC"})
     return jsonify({"status": "error", "message": "Link already exists or failed"}), 400
