@@ -73,22 +73,27 @@ def download(remote, local):
         f.write(data)
     print(f"  Saved {len(data):,} bytes -> {os.path.abspath(local)}")
 
-# -- custom --src / --dest mode
-if "--src" in sys.argv:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--src",  required=True, help="Remote absolute path on PythonAnywhere")
-    parser.add_argument("--dest", required=True, help="Local destination path")
-    args = parser.parse_args()
-    download(args.src, args.dest)
-    sys.exit(0)
+def main():
+    # -- custom --src / --dest mode
+    if "--src" in sys.argv:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--src",  required=True, help="Remote absolute path on PythonAnywhere")
+        parser.add_argument("--dest", required=True, help="Local destination path")
+        args = parser.parse_args()
+        download(args.src, args.dest)
+        return
 
-# -- shortcut mode
-targets = [a for a in sys.argv[1:] if not a.startswith("-")] or list(FILES.keys())
-for t in targets:
-    if t not in FILES:
-        print(f"Unknown target '{t}'. Choose from: {', '.join(FILES)}")
-        print("Or use: --src /remote/path --dest local/path")
-        sys.exit(1)
-    download(*FILES[t])
+    # -- shortcut mode
+    targets = [a for a in sys.argv[1:] if not a.startswith("-")] or list(FILES.keys())
+    for t in targets:
+        if t not in FILES:
+            print(f"Unknown target '{t}'. Choose from: {', '.join(FILES)}")
+            print("Or use: --src /remote/path --dest local/path")
+            sys.exit(1)
+        download(*FILES[t])
 
-print("Done.")
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
