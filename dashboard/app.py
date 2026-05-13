@@ -3652,8 +3652,8 @@ def get_profit_splits():
             #
             # Client dashboard (index.html):
             #   latestNet = window._statsNetProfit from cashflow_inprogress + discrepancy
-            #   baseline  = newest completed period with net > 0 (walk periods[-2], [-3], ...),
-            #               or 0 if none — so +34k → -11k → +69k uses base 34k, not 0.
+            #   baseline  = net at end of the most recent *completed* period whose
+            #               profit_split > 0 (months with $0 split do not move baseline).
             #   split_amt = 0 if latestNet <= 0 else max(0, (latestNet - baseline) * split_pct / 100)
             stats = data.get('statistics') if isinstance(data.get('statistics'), dict) else {}
             cf = stats.get('cashflow_inprogress') if isinstance(stats.get('cashflow_inprogress'), dict) else {}
@@ -3682,14 +3682,19 @@ def get_profit_splits():
                     split_pct = 50
                 completed = periods[:-1]
                 for p in reversed(completed):
-                    prev_raw = str(p.get('low', '$0')).replace('$', '').replace(',', '').strip()
+                    ps_raw = str(p.get('profit_split', '$0')).replace('$', '').replace(',', '').strip()
                     try:
-                        v = float(prev_raw)
+                        psv = float(ps_raw)
                     except ValueError:
+                        psv = 0.0
+                    if psv <= 0:
                         continue
-                    if v > 0:
-                        baseline = v
-                        break
+                    low_raw = str(p.get('low', '$0')).replace('$', '').replace(',', '').strip()
+                    try:
+                        baseline = float(low_raw)
+                    except ValueError:
+                        baseline = 0.0
+                    break
                 if baseline == 0.0 and not completed:
                     lsn = wl.get('last_split_net_profit')
                     if lsn is not None:

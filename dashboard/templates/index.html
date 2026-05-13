@@ -5225,7 +5225,7 @@
             }
 
             // Update Profit Split tab cards — temporary values until profit share table loads
-            // Actual net = Stats net profit minus sum of profit splits (sum unknown until table loads → treat as 0)
+            // Actual net (card) = net in progress − accumulated splits once the table is loaded
             try {
                 const netProfit = window._statsNetProfit || 0;
                 const elNet = document.getElementById('split-net-profit');
@@ -7771,7 +7771,7 @@
         let waterlogDailyInitialized = false;
         let waterlogPollTimer = null;
 
-        /** Sum of Profit Split column + Actual net (Stats net − that sum). Latest-period card unchanged. */
+        /** NET PROFIT SPLIT card = sum of Profit Split column. Actual net = net in progress (table row 1 / live stats) − that sum. */
         function updateProfitSplitHeaderFromRows(rows) {
             const elTotal = document.getElementById('split-total-profit-splits');
             const elNet = document.getElementById('split-net-profit');
@@ -7787,13 +7787,12 @@
                 elTotal.style.color = totalSplits > 0 ? '#38bdf8' : '#94a3b8';
             }
             const statsNet = Number(window._statsNetProfit);
-            let baseNet = statsNet;
-            if (window._statsNetProfit === undefined || Number.isNaN(statsNet)) {
-                baseNet = (rows && rows[0])
+            let inProgress = (window._statsNetProfit !== undefined && !Number.isNaN(statsNet))
+                ? statsNet
+                : ((rows && rows[0])
                     ? (parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0)
-                    : 0;
-            }
-            const actualNet = baseNet - totalSplits;
+                    : 0);
+            const actualNet = inProgress - totalSplits;
             if (elNet) {
                 elNet.textContent = formatMoney(actualNet);
                 elNet.style.color = actualNet >= 0 ? '#4ade80' : '#f87171';
@@ -7907,14 +7906,13 @@
                             rows[0].low = formatMoney(latestNet);
 
                             const latestPct = _normSplitPct(rows[0].split_pct);
-                            // Baseline = most recent *prior* period with net > 0 (newest-first scan).
-                            // Skips a negative dip (e.g. +34k, -11k, +69k → base 34k, not 0).
-                            // If no prior positive exists, baseline stays 0 (first recovery above zero).
+                            // Baseline = net at end of most recent *prior* period that paid a split (profit_split > 0).
+                            // Periods with $0 split (drawdown) do not move the baseline.
                             let baseline = 0;
                             for (let i = 1; i < rows.length; i++) {
-                                const pv = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
-                                if (pv > 0) {
-                                    baseline = pv;
+                                const psPrior = parseFloat(String((rows[i].profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+                                if (psPrior > 0) {
+                                    baseline = parseFloat(String((rows[i].low || '$0')).replace(/[^0-9.-]/g, '')) || 0;
                                     break;
                                 }
                             }
@@ -7969,7 +7967,7 @@
                         if (psBody) psBody.innerHTML = psHtml;
 
                         window._lastProfitShareRows = rows;
-                        // Header cards: Actual net (Stats − sum of profit split column), latest period split, total splits
+                        // Header cards: Actual net (in progress − sum splits), latest period split, total splits
                         updateProfitSplitHeaderFromRows(rows);
                         if (rows.length) {
                             const latestRow = rows[0];
