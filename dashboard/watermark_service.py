@@ -368,9 +368,23 @@ def compute_waterlog_from_db(client_id):
     Periods before 2/24/2026 use old HWM logic.
     Periods overlapping 2/24-3/20/2026 are condensed into one transition row.
     Periods after 3/20/2026 are generated monthly with new split logic:
-      split = 50% of (current_net_profit - last_split_net_profit) if positive.
+      split = 50% of (current_net - net_at_last_paid_split) when current_net is
+      above that baseline. The baseline only advances when a period actually
+      pays a profit split (> 0); months with $0 split (e.g. drawdown) do not
+      move the baseline. last_split_net_profit in the return dict is that baseline.
     """
     from datetime import datetime as _dt, date as _date
+
+    def _parse_money_cell(s):
+        if s is None:
+            return 0.0
+        t = str(s).replace('$', '').replace(',', '').strip()
+        if not t or t.lower() == 'nan':
+            return 0.0
+        try:
+            return float(t)
+        except ValueError:
+            return 0.0
 
     periods_with_vals = get_waterlog_periods_with_values(client_id)
     if not periods_with_vals:
@@ -495,9 +509,14 @@ def compute_waterlog_from_db(client_id):
         'split_pct':    transition_split_pct,
     })
 
-    # ── Monthly periods from 3/21 onwards (HWM split logic) ─────────────
-    # High watermark = highest net profit across all historical periods
-    hwm_net = max(hwm_low, transition_net, 0.0)
+    # Net at end of the most recent period that actually paid a split (split > 0).
+    # Months with $0 split do not advance this — recoveries accrue from the last paid split.
+    last_net_at_split = 0.0
+    for row in result:
+        if _parse_money_cell(row.get('profit_split')) > 0:
+            last_net_at_split = _parse_money_cell(row.get('low'))
+
+    # ── Monthly periods from 3/21 onwards ──────────────────────────────
     prev_period_net = transition_net
     today = _dt.now().date()
     month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
@@ -525,9 +544,7 @@ def compute_waterlog_from_db(client_id):
         if monthly_np_key in spct_overrides:
             monthly_split_pct = spct_overrides[monthly_np_key]
 
-        # Split uses the period's split percentage
-        # Only if net profit exceeds the highest historical net profit
-        effective_base = max(hwm_net, 0.0)
+        effective_base = max(last_net_at_split, 0.0)
         if net_profit > effective_base and net_profit > 0:
             profit_split = (net_profit - effective_base) * monthly_split_pct / 100
         else:
@@ -541,11 +558,11 @@ def compute_waterlog_from_db(client_id):
             'split_pct':    monthly_split_pct,
         })
 
-        # For completed months, update the reference point and HWM
+        # Completed month: advance daily carry; baseline only moves when split was paid.
         if effective_end >= month_end:
             prev_period_net = net_profit
-            if net_profit > hwm_net:
-                hwm_net = net_profit
+            if profit_split > 0:
+                last_net_at_split = net_profit
 
         # Advance to next month
         month_start = month_end + timedelta(days=1)
@@ -567,7 +584,7 @@ def compute_waterlog_from_db(client_id):
 
     return {
         'periods': result,
-        'last_split_net_profit': hwm_net,
+        'last_split_net_profit': last_net_at_split,
     }
 
 
