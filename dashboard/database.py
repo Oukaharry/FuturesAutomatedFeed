@@ -15,9 +15,13 @@ import psycopg2.pool
 import logging
 from datetime import datetime, timedelta
 from contextlib import contextmanager
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv  # type: ignore
+except Exception:  # pragma: no cover
+    load_dotenv = None
 
-load_dotenv()
+if load_dotenv:
+    load_dotenv()
 
 DATABASE_URL = os.environ.get(
     'DATABASE_URL',
@@ -547,15 +551,47 @@ def find_user_by_identifier(identifier: str) -> dict:
     
     with get_connection() as conn:
         cursor = conn.cursor()
-        # Search by username or email across all user types
+        # Search by username or email across all user types.
+        #
+        # IMPORTANT: We must be deterministic here. The schema allows multiple rows to share
+        # the same email (unique is (username, user_type)), so a plain fetchone() can return
+        # different roles depending on query plan / insertion order. That leads to users
+        # sometimes being redirected to the wrong dashboard.
         cursor.execute('''
             SELECT id, username, email, user_type, parent_admin, parent_trader, 
                    is_active, must_change_password, password_hash, salt, last_login
             FROM user_credentials 
             WHERE (username = ? OR email = ?) AND is_active = 1
         ''', (identifier, identifier))
-        row = cursor.fetchone()
-        return dict(row) if row else None
+        rows = cursor.fetchall() or []
+        if not rows:
+            return None
+
+        ident_norm = (identifier or '').strip().lower()
+        is_email = '@' in ident_norm
+
+        # Prefer exact email matches when identifier is an email.
+        # For email logins, we want client accounts to win over accidentally-created admin/trader rows.
+        if is_email:
+            email_matches = [r for r in rows if (r.get('email') or '').strip().lower() == ident_norm]
+            candidates = email_matches or rows
+            role_priority = {'client': 0, 'trader': 1, 'admin': 2}
+        else:
+            # For username logins, prefer exact username matches first.
+            username_matches = [r for r in rows if (r.get('username') or '').strip().lower() == ident_norm]
+            candidates = username_matches or rows
+            role_priority = {'admin': 0, 'trader': 1, 'client': 2}
+
+        def _score(r):
+            ut = (r.get('user_type') or '').strip()
+            return (
+                role_priority.get(ut, 999),
+                0 if (r.get('last_login') or '') else 1,  # prefer accounts that have logged in before
+                r.get('id') or 0,
+            )
+
+        best = sorted((dict(r) for r in candidates), key=_score)[0]
+        return best
 
 def verify_user_by_identifier(identifier: str, password: str) -> dict:
     """
