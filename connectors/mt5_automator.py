@@ -587,7 +587,16 @@ class MT5Automator:
                 return False, "MT5 terminal not connected"
 
             if not terminal_info.trade_allowed:
-                return False, "Trading not allowed in MT5 terminal"
+                # `trade_allowed` is the AutoTrading toggle in the MT5 GUI.
+                # Reconnecting won't fix this — the user must enable it.
+                return False, (
+                    "MT5 AutoTrading is OFF — press Ctrl+E in the MT5 "
+                    "terminal (or click the 'AutoTrading' button in the "
+                    "top toolbar) to enable. Also verify Tools → Options "
+                    "→ Expert Advisors → 'Allow algorithmic trading' is "
+                    "checked, and that you are not signed in with the "
+                    "investor (read-only) password."
+                )
 
             # 3. Check account access
             account_info = mt5.account_info()

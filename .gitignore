@@ -26,3 +26,19 @@ dashboard/.scheduler_state.json
 trader_companion/trader_bias.json
 
 local-before-restore.dump
+
+# Local databases (large, contain real client data — never commit)
+*.db
+*.sqlite
+*.sqlite3
+dashboard/dashboard.db
+
+# Editor / agent state (machine-specific)
+.claude/
+.vscode/
+.idea/
+
+# Build / release artifacts (binaries, often hundreds of MB)
+Releases/
+build/
+dist/

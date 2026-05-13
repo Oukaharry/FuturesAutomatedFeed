@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.5.5"
+APP_VERSION = "1.5.6"
 RELEASE_DISABLE_HEDGE_GUARD = True
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
@@ -34,7 +34,36 @@ import json
 import gzip as _gzip
 import requests
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+# ── Kenya / East Africa Time (UTC+3) ───────────────────────────────────
+# Every day-of-week and trading-day decision is computed in Kenya time,
+# never in the host machine's local clock.  A Windows install whose
+# timezone is not set to Kenya (or a cloud VPS in another region) would
+# otherwise roll past midnight in Kenya while the code still thinks the
+# date is yesterday — which is what caused the auto-trade gate to
+# classify the current day as "future" and refuse trades.
+#
+# Kenya does not observe DST, so a fixed UTC+3 offset is correct
+# year-round.  We try zoneinfo first (more discoverable in logs) and
+# fall back to a fixed offset if tzdata is missing on the host.
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+    KENYA_TZ = ZoneInfo("Africa/Nairobi")
+except Exception:  # pragma: no cover — bare Python without tzdata
+    KENYA_TZ = timezone(timedelta(hours=3), name="EAT")
+
+
+def kenya_now():
+    """Current datetime in Kenya / EAT (UTC+3)."""
+    return datetime.now(KENYA_TZ)
+
+
+def kenya_today():
+    """Today's calendar date in Kenya / EAT (UTC+3)."""
+    return kenya_now().date()
+
+
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
@@ -1397,6 +1426,7 @@ class TradeOpssAIApp:
         "My Funded Futures": "#3B8ED0",
         "MFFU":             "#3B8ED0",
         "TopStep":          "#DA3633",
+        "TopStep RTP":      "#B91C1C",   # slightly darker red to distinguish from standard TopStep
         "Apex":             "#E67E22",
         "Funded Next":      "#E91E63",
         "FundingTicks":     "#F1C40F",
@@ -2794,7 +2824,8 @@ class TradeOpssAIApp:
 
             # Keep open-position aggregates strictly on the current trading day.
             # This prevents stale multi-day open entries from re-triggering FA pushes.
-            _today_local = datetime.now().date()
+            # "Today" is always Kenya time — see KENYA_TZ at the top of this file.
+            _today_local = kenya_today()
 
             def _is_current_trading_day_open(agg):
                 ts = agg.get('timestamp')
@@ -4364,6 +4395,8 @@ class TradeOpssAIApp:
         "Funded Next": "Funded Next",
         "FundedNext": "Funded Next",
         "TopStep": "TopStep",
+        "TopStep RTP": "TopStep RTP",
+        "TopStep_RTP": "TopStep RTP",
         "TradeDay": "TradeDay",
         "Tradeify": "Tradeify",
         "Alpha Futures": "AlphaFutures",
@@ -4390,6 +4423,7 @@ class TradeOpssAIApp:
         "MFFU":             "ZERO",
         "MFFU_Flex":        "ZERO",
         "TopStep":          "ZERO",  # TopStep funded accounts also start at $0
+        "TopStep RTP":      "ZERO",  # Same TopStep account family — funded starts at $0
         "Funded Next":      "ACCOUNT_SIZE",
         "FundingTicks":     "ACCOUNT_SIZE",
         "TradeDay":         "ACCOUNT_SIZE",
@@ -4505,7 +4539,36 @@ class TradeOpssAIApp:
         "wed": 2, "weds": 2, "wednesday": 2,
         "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
         "fri": 4, "friday": 4,
+        "sat": 5, "saturday": 5,
+        "sun": 6, "sunday": 6,
     }
+
+    @classmethod
+    def _parse_day_token(cls, value):
+        """Extract a weekday number (0=Mon..6=Sun) from a cell value.
+
+        Lenient parsing that handles surrounding punctuation, extra text,
+        and embedded day names (e.g. ``"MONDAY ✓"``, ``"Mon-04/27"``,
+        ``"Mon - waiting"``).  Returns the weekday number or ``None``.
+        """
+        if value is None:
+            return None
+        try:
+            s = str(value).strip().lower()
+        except Exception:
+            return None
+        if not s:
+            return None
+        # Whole-string match first
+        if s in cls._DAY_ABBREVS:
+            return cls._DAY_ABBREVS[s]
+        # Tokenise on common separators (whitespace, hyphen, slash, comma, colon)
+        import re as _re
+        for tok in _re.split(r"[\s\-/,:;\.]+", s):
+            tok = tok.strip()
+            if tok in cls._DAY_ABBREVS:
+                return cls._DAY_ABBREVS[tok]
+        return None
 
     def _get_phase_fields(self, current_phase):
         """Return the ordered list of eval field names for a phase."""
@@ -4545,7 +4608,7 @@ class TradeOpssAIApp:
                 # Empty cell
                 if next_empty is None:
                     next_empty = i
-            elif val_str.lower() in self._DAY_ABBREVS:
+            elif self._parse_day_token(val_str) is not None:
                 # Day placeholder — not yet traded
                 if next_empty is None:
                     next_empty = i
@@ -4559,26 +4622,40 @@ class TradeOpssAIApp:
         return completed, len(fields), next_empty
 
     def _find_tradeable_day_cell(self, ev, current_phase):
-        """Find the cell that should be traded today based on day placeholders.
+        """Find the next cell to trade based on day-name placeholders.
 
-        A cell is tradeable today if it contains today's day name OR a
-        previous weekday that hasn't been filled with a result yet (i.e. the
-        trader missed entering a day and it's still pending).
+        A cell with a day-name placeholder (MON / TUE / WED / ...) means the
+        trader has queued a trade for that cell and it has not yet been
+        executed.  We treat the presence of a placeholder as the primary
+        signal — the weekday-vs-today comparison is only used to **prefer**
+        one cell over another when multiple placeholders exist, never to
+        reject a placeholder outright.
 
-        A cell whose day is AFTER today = already been prepared for the next
-        trading day and should NOT be traded now.
+        Preference order, highest first:
+          1. cell whose day name == today's weekday  (today's trade)
+          2. cell whose day name is a previous weekday this week
+             (most-recent past first — "missed day, do it now")
+          3. cell whose day name is a future weekday this week
+             (closest future first — covers stale placeholders from a
+             previous week that look future-of-this-week)
 
-        Scans the detected phase's fields first. If nothing found, falls back
-        to scanning ALL other phase field sets so a misdetected phase doesn't
-        block trading.
+        Why rule 3 exists: a placeholder cell only shows a weekday name,
+        not an absolute date.  ``WEDNESDAY`` on a Monday could mean either
+        "next Wednesday, prepared in advance" or "last Wednesday, never
+        traded".  Refusing to trade rule-3 cells used to be the source of
+        the auto-trade bug where stale placeholders looked like future
+        ones.  Picking the most-imminent future day mirrors the trader's
+        usual intent: take the next queued trade.
+
+        Scans the detected phase's fields first.  If nothing found, falls
+        back to scanning ALL other phase field sets so a misdetected
+        phase doesn't block trading.
 
         Returns (stage_index, day_name, is_today, matched_phase) or
-        (None, None, False, None).
-        stage_index is 0-based position in the field list.
-        matched_phase is the phase name whose fields contained the match.
+        (None, None, False, None) when no day-name placeholder exists.
         """
-        import datetime
-        today_weekday = datetime.date.today().weekday()  # 0=Mon .. 4=Fri
+        # Kenya time (EAT, UTC+3) — independent of the host clock.
+        today_weekday = kenya_today().weekday()  # 0=Mon .. 6=Sun
 
         # Build ordered list: detected phase first, then all others as fallback
         primary_fields = self._get_phase_fields(current_phase)
@@ -4588,32 +4665,35 @@ class TradeOpssAIApp:
                 search_order.append((phase_name, field_list))
 
         for phase_name, fields in search_order:
-            best_idx = None
-            best_day_name = None
-            best_is_today = False
+            best_past = None     # (index, name, day_num) — most-recent past
+            best_future = None   # (index, name, day_num) — earliest future
 
             for i, f in enumerate(fields):
                 val = ev.get(f, None)
                 if val is None:
                     continue
-                val_str = str(val).strip().lower()
-                day_num = self._DAY_ABBREVS.get(val_str)
+                day_num = self._parse_day_token(val)
                 if day_num is None:
-                    continue  # Not a day placeholder (result value or empty)
+                    continue  # not a day placeholder
 
                 if day_num == today_weekday:
-                    # Exact match — this cell is for today
+                    # Today's cell — return immediately, highest priority.
                     return i, str(val).strip().upper(), True, phase_name
                 elif day_num < today_weekday:
-                    # Previous day still has a day placeholder (not yet traded)
-                    if best_idx is None or day_num > self._DAY_ABBREVS.get(best_day_name.lower(), -1):
-                        best_idx = i
-                        best_day_name = str(val).strip().upper()
-                        best_is_today = False
-                # day_num > today_weekday → future day, skip
+                    # Past weekday — prefer the MOST recent one.
+                    if best_past is None or day_num > best_past[2]:
+                        best_past = (i, str(val).strip().upper(), day_num)
+                else:
+                    # Future weekday — prefer the EARLIEST upcoming one.
+                    if best_future is None or day_num < best_future[2]:
+                        best_future = (i, str(val).strip().upper(), day_num)
 
-            if best_idx is not None:
-                return best_idx, best_day_name, best_is_today, phase_name
+            # Within this phase, prefer past over future.  Only fall through
+            # to the next phase if NEITHER kind of placeholder was found.
+            if best_past is not None:
+                return best_past[0], best_past[1], False, phase_name
+            if best_future is not None:
+                return best_future[0], best_future[1], False, phase_name
 
         return None, None, False, None
 
@@ -4632,7 +4712,6 @@ class TradeOpssAIApp:
 
         Returns (should_trade: bool, message: str).
         """
-        import datetime
         fields = self._get_phase_fields(current_phase)
         stages = prediction.get("stages", []) if prediction else []
 
@@ -4643,7 +4722,8 @@ class TradeOpssAIApp:
             # No day placeholder for today or any missed day → don't trade
             # Check if there's a future day placeholder across ALL field sets
             future_days = []
-            today_wd = datetime.date.today().weekday()
+            # Kenya time, not host local time.
+            today_wd = kenya_today().weekday()
             all_fields = []
             for _, flist in self._ALL_PHASE_FIELD_SETS:
                 all_fields.extend(flist)
@@ -4651,8 +4731,7 @@ class TradeOpssAIApp:
                 val = ev.get(f, None)
                 if val is None:
                     continue
-                val_str = str(val).strip().lower()
-                dn = self._DAY_ABBREVS.get(val_str)
+                dn = self._parse_day_token(val)
                 if dn is not None and dn > today_wd:
                     future_days.append((i, str(val).strip().upper()))
 
@@ -5427,6 +5506,18 @@ class TradeOpssAIApp:
 
         def _do_trade():
             try:
+                # 0. PRE-FLIGHT: if hedging is on, verify MT5 is ready BEFORE
+                # touching the broker leg.  Otherwise a bad MT5 state (e.g.
+                # AutoTrading toggle off) leaves the broker side filled and
+                # the hedge missing — exactly the state we want to avoid.
+                if hedging and mt5_api:
+                    is_healthy, health_msg = mt5_api.check_connection_health()
+                    if not is_healthy:
+                        raise Exception(
+                            f"MT5 not ready — broker order skipped to avoid "
+                            f"an unhedged position. {health_msg}"
+                        )
+
                 # 1. Broker order
                 if platform == "Tradovate":
                     if side == "buy":
@@ -6183,9 +6274,91 @@ class TradeOpssAIApp:
                 resolved_key, day_idx, day_name = self._resolve_phase_key_from_day(
                     auto_ev, firm_code, row_data.get("current_phase", ""))
                 if resolved_key is None:
-                    _an = acct_num
-                    self.root.after(0, lambda an=_an:
-                        self.log(f"⛔ {an}: No day placeholder — skipped", "ERROR"))
+                    # Build a precise diagnostic.  resolved_key can be None for
+                    # three different reasons; the message tells the user which
+                    # one fired so they can act on it.  "Today" is Kenya time
+                    # (EAT, UTC+3) — independent of the host clock — so the
+                    # diagnostic matches the same definition the cell-finder
+                    # is using.
+                    _today = kenya_today()
+                    today_wd = _today.weekday()
+                    today_name = _today.strftime("%A").upper()
+                    current_phase_str = row_data.get("current_phase", "?") or "?"
+
+                    # Re-run the cell finder so we can tell which sub-case we hit
+                    # without having to change the resolver's return signature.
+                    _di, _dn, _is_today, _matched_phase = (
+                        self._find_tradeable_day_cell(
+                            auto_ev, current_phase_str,
+                        )
+                    )
+
+                    # Collect every day-named placeholder for the log line so
+                    # the user can see what the scanner actually saw.
+                    placeholders: list[str] = []
+                    for _ph, _flist in self._ALL_PHASE_FIELD_SETS:
+                        for _f in _flist:
+                            _v = auto_ev.get(_f, None)
+                            _dn2 = self._parse_day_token(_v)
+                            if _dn2 is None:
+                                continue
+                            if _dn2 == today_wd:
+                                _tag = "today"
+                            elif _dn2 < today_wd:
+                                _tag = "past"
+                            else:
+                                _tag = "future"
+                            placeholders.append(
+                                f"{_f}={str(_v).strip()}({_tag})"
+                            )
+
+                    if _di is None:
+                        diag = (
+                            "no day-name placeholder anywhere in any phase"
+                            if not placeholders
+                            else f"cell finder still rejected every candidate "
+                                 f"[{', '.join(placeholders[:3])}]"
+                        )
+                    else:
+                        # A cell WAS found — None came from the phase-mapping
+                        # step (firm has no trade order for the matched phase,
+                        # or prop_firm_mgr is missing).
+                        eff_phase = _matched_phase or current_phase_str
+                        if self.prop_firm_mgr is None:
+                            diag = (
+                                f"prop_firm_mgr is None — cell "
+                                f"{_di + 1} ({_dn}) found in phase "
+                                f"'{eff_phase}' but no manager to map it"
+                            )
+                        else:
+                            firm_orders = (
+                                self.prop_firm_mgr._PHASE_TRADE_ORDER.get(
+                                    firm_code, {}
+                                )
+                            )
+                            available = list(firm_orders.keys())
+                            diag = (
+                                f"cell {_di + 1} ({_dn}) found in phase "
+                                f"'{eff_phase}' but firm '{firm_code}' has "
+                                f"no trade order for that phase "
+                                f"(has: {available})"
+                            )
+
+                    _an, _diag = acct_num, diag
+                    _ph_in = current_phase_str
+                    _fc_in = firm_code
+                    self.root.after(0, lambda an=_an, d=_diag,
+                                    twd=today_wd, tname=today_name,
+                                    ph=_ph_in, fc=_fc_in,
+                                    pl=placeholders:
+                        self.log(
+                            f"⛔ {an}: trade rejected — {d}. "
+                            f"[today={tname} (wd={twd}), "
+                            f"current_phase='{ph}', firm='{fc}', "
+                            f"cells={pl}]",
+                            "ERROR",
+                        )
+                    )
                     with total_success:
                         counters["fail"] += 1
                     continue
@@ -6223,6 +6396,16 @@ class TradeOpssAIApp:
 
                 trado_sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
                 trado_qty = int(config.get("tradovate_qty", 2) or config.get("topstepx_qty", 2))
+
+                # Log resolved blueprint up-front so the user can verify the
+                # correct trade is being placed (catches farming/challenge mix-ups).
+                _bp_tp = config.get("tradovate_tp_ticks", config.get("topstepx_tp_ticks", "?"))
+                _bp_sl = config.get("tradovate_sl_ticks", config.get("topstepx_sl_ticks", "?"))
+                _an, _fc, _pk, _sz = acct_num, firm_code, phase_key, acct_size
+                _bs, _bq, _bt, _bsl = trado_sym, trado_qty, _bp_tp, _bp_sl
+                self.root.after(0, lambda an=_an, fc=_fc, pk=_pk, sz=_sz, bs=_bs, bq=_bq, bt=_bt, bsl=_bsl:
+                    self.log(f"📋 {an}: blueprint {fc}/{pk}/{sz} → "
+                             f"{bs} qty={bq} TP={bt}t SL={bsl}t"))
 
                 # ── Farming: cap MT5 TP based on hard-stop proximity ──
                 _is_farming_sym_auto = "MNQ" in (config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")).upper()
@@ -6369,6 +6552,18 @@ class TradeOpssAIApp:
 
                 try:
                     # 1. Broker order — uses this firm's own Chrome instance
+                    # 0. PRE-FLIGHT: verify MT5 is ready BEFORE firing the
+                    # broker leg whenever hedging is on, so we never leave a
+                    # broker position uncovered because the MT5 terminal had
+                    # AutoTrading off or the connection dropped.
+                    if hedging and mt5_api:
+                        is_healthy, health_msg = mt5_api.check_connection_health()
+                        if not is_healthy:
+                            raise Exception(
+                                f"MT5 not ready — broker order skipped to "
+                                f"avoid an unhedged position. {health_msg}"
+                            )
+
                     if platform == "Tradovate":
                         if side == "buy":
                             order_result = broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
@@ -8358,9 +8553,20 @@ class TradeOpssAIApp:
 
         firm_bias = saved.get("firms", {})
         changed = False
-        for firm in firms:
+        # Assign in a deterministic order so balancing is reproducible
+        for firm in sorted(firms):
             if firm not in firm_bias:
-                firm_bias[firm] = random.choice(["buy", "sell"])
+                # Diversify: pick the direction held by FEWER existing firms.
+                # This prevents every firm from coincidentally landing on BUY.
+                buys = sum(1 for d in firm_bias.values() if d == "buy")
+                sells = sum(1 for d in firm_bias.values() if d == "sell")
+                if buys > sells:
+                    firm_bias[firm] = "sell"
+                elif sells > buys:
+                    firm_bias[firm] = "buy"
+                else:
+                    # Tie (or first firm) — random
+                    firm_bias[firm] = random.choice(["buy", "sell"])
                 changed = True
 
         if changed or saved.get("date") != today_str:
