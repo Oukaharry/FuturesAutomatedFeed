@@ -2276,14 +2276,18 @@
         <div id="waterlog" class="tab-content">
             <div class="card" style="margin-top: 20px;">
                 <h3 style="color: #60a5fa; margin-bottom: 20px;">Profit Split</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
                     <div style="background: rgba(4,6,14,0.9); padding: 20px; border-radius: 10px; border-left: 4px solid #4ade80; border: 1px solid #111c34; border-left: 4px solid #4ade80;">
-                         <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Net Profit (In Progress)</div>
+                         <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Actual Net profit</div>
                          <div id="split-net-profit" style="font-size: 1.9em; font-weight: bold; color: #4ade80;">Loading...</div>
                     </div>
                     <div style="background: rgba(4,6,14,0.9); padding: 20px; border-radius: 10px; border: 1px solid #111c34; border-left: 4px solid #fbbf24;">
                          <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Profit Split (50%)</div>
                          <div id="split-profit-amount" style="font-size: 1.9em; font-weight: bold; color: #fbbf24;">Loading...</div>
+                    </div>
+                    <div style="background: rgba(4,6,14,0.9); padding: 20px; border-radius: 10px; border: 1px solid #111c34; border-left: 4px solid #38bdf8;">
+                         <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Net Profit split</div>
+                         <div id="split-total-profit-splits" style="font-size: 1.9em; font-weight: bold; color: #38bdf8;">Loading...</div>
                     </div>
                 </div>
                 
@@ -5220,16 +5224,25 @@
                 if (statsContainer) statsContainer.innerHTML = `<div style="padding:20px;text-align:center;color:#ef4444;">Error loading stats: ${e.message}</div>`;
             }
 
-            // Update Profit Split tab cards — temporary values until waterlog table loads
-            // The definitive values come from the table data (after waterlog fetch)
+            // Update Profit Split tab cards — temporary values until profit share table loads
+            // Actual net = Stats net profit minus sum of profit splits (sum unknown until table loads → treat as 0)
             try {
                 const netProfit = window._statsNetProfit || 0;
                 const elNet = document.getElementById('split-net-profit');
-                if (elNet) {
-                    elNet.textContent = formatMoney(netProfit);
-                    elNet.style.color = netProfit >= 0 ? '#4ade80' : '#f87171';
+                const elTotalSplits = document.getElementById('split-total-profit-splits');
+                if (window._lastProfitShareRows && Array.isArray(window._lastProfitShareRows)) {
+                    updateProfitSplitHeaderFromRows(window._lastProfitShareRows);
+                } else {
+                    if (elNet) {
+                        elNet.textContent = formatMoney(netProfit);
+                        elNet.style.color = netProfit >= 0 ? '#4ade80' : '#f87171';
+                    }
+                    if (elTotalSplits) {
+                        elTotalSplits.textContent = '—';
+                        elTotalSplits.style.color = '#94a3b8';
+                    }
                 }
-                // Don't set profit split here — let the table data be the source of truth
+                // Don't set current-period profit split card here — table load is source of truth
             } catch (e2) {
                 console.error('Profit Split card update error:', e2);
             }
@@ -7758,6 +7771,35 @@
         let waterlogDailyInitialized = false;
         let waterlogPollTimer = null;
 
+        /** Sum of Profit Split column + Actual net (Stats net − that sum). Latest-period card unchanged. */
+        function updateProfitSplitHeaderFromRows(rows) {
+            const elTotal = document.getElementById('split-total-profit-splits');
+            const elNet = document.getElementById('split-net-profit');
+            let totalSplits = 0;
+            if (rows && rows.length) {
+                totalSplits = rows.reduce((sum, r) => {
+                    const ps = parseFloat(String((r.profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
+                    return sum + ps;
+                }, 0);
+            }
+            if (elTotal) {
+                elTotal.textContent = formatMoney(totalSplits);
+                elTotal.style.color = totalSplits > 0 ? '#38bdf8' : '#94a3b8';
+            }
+            const statsNet = Number(window._statsNetProfit);
+            let baseNet = statsNet;
+            if (window._statsNetProfit === undefined || Number.isNaN(statsNet)) {
+                baseNet = (rows && rows[0])
+                    ? (parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0)
+                    : 0;
+            }
+            const actualNet = baseNet - totalSplits;
+            if (elNet) {
+                elNet.textContent = formatMoney(actualNet);
+                elNet.style.color = actualNet >= 0 ? '#4ade80' : '#f87171';
+            }
+        }
+
         function loadWatermarkData() {
             const tbody = document.getElementById('waterlog-body');
             if (!CLIENT_ID || !tbody) return;
@@ -7809,9 +7851,14 @@
                 psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">Loading profit share history...</td></tr>';
             }
             const elSplitCard = document.getElementById('split-profit-amount');
+            const elTotalSplitsCard = document.getElementById('split-total-profit-splits');
             if (elSplitCard) {
                 elSplitCard.textContent = 'Loading...';
                 elSplitCard.style.color = '#fbbf24';
+            }
+            if (elTotalSplitsCard) {
+                elTotalSplitsCard.textContent = 'Loading...';
+                elTotalSplitsCard.style.color = '#38bdf8';
             }
             fetch(`/api/sheet/waterlog?client_id=${encodeURIComponent(CLIENT_ID)}&sheet_url=${encodeURIComponent(sheetUrl)}`)
                 .then(res => res.json())
@@ -7839,6 +7886,8 @@
                             if (psBody) psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">No profit share records found.</td></tr>';
                             const elNone = document.getElementById('split-profit-amount');
                             if (elNone) { elNone.textContent = '$0'; elNone.style.color = '#94a3b8'; }
+                            window._lastProfitShareRows = [];
+                            updateProfitSplitHeaderFromRows([]);
                             return;
                         }
                         let psHtml = '';
@@ -7919,19 +7968,11 @@
                         });
                         if (psBody) psBody.innerHTML = psHtml;
 
-                        // Sync header cards to match the most recent row from the table data
-                        // This ensures cards always reflect table values (including manual edits)
+                        window._lastProfitShareRows = rows;
+                        // Header cards: Actual net (Stats − sum of profit split column), latest period split, total splits
+                        updateProfitSplitHeaderFromRows(rows);
                         if (rows.length) {
                             const latestRow = rows[0];
-                            // Net Profit card — use the table's latest net profit value
-                            const latestNpRaw = (latestRow.low || '$0.00').trim();
-                            const latestNpNum = parseFloat(latestNpRaw.replace(/[^0-9.-]/g, '')) || 0;
-                            const elNet = document.getElementById('split-net-profit');
-                            if (elNet) {
-                                elNet.textContent = latestNpRaw;
-                                elNet.style.color = latestNpNum >= 0 ? '#4ade80' : '#f87171';
-                            }
-                            // Profit Split card — mirror the latest row value exactly
                             const latestPsRaw = (latestRow.profit_split || '').trim();
                             const latestPsNum = parseFloat(latestPsRaw.replace(/[^0-9.-]/g, '')) || 0;
                             const elSplit = document.getElementById('split-profit-amount');
@@ -8107,15 +8148,21 @@
                             });
                         }
                     } else {
+                        window._lastProfitShareRows = null;
                         if (psBody) psBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: #ef4444;">Error: ${psData.message || 'Failed to load profit share data.'}</td></tr>`;
                         const elErr = document.getElementById('split-profit-amount');
                         if (elErr) { elErr.textContent = '—'; elErr.style.color = '#94a3b8'; }
+                        const elErrTot = document.getElementById('split-total-profit-splits');
+                        if (elErrTot) { elErrTot.textContent = '—'; elErrTot.style.color = '#94a3b8'; }
                     }
                 })
                 .catch(() => {
+                    window._lastProfitShareRows = null;
                     if (psBody) psBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #ef4444;">Failed to load profit share data.</td></tr>';
                     const elErr = document.getElementById('split-profit-amount');
                     if (elErr) { elErr.textContent = '—'; elErr.style.color = '#94a3b8'; }
+                    const elErrTot = document.getElementById('split-total-profit-splits');
+                    if (elErrTot) { elErrTot.textContent = '—'; elErrTot.style.color = '#94a3b8'; }
                 });
         }
 
