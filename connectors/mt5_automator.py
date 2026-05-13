@@ -1266,9 +1266,12 @@ class MT5Automator:
                     "type_time": mt5.ORDER_TIME_GTC,
                 }
                 
-                # Add comment if provided
+                # Add comment if provided.  MT5's MqlTradeRequest.comment
+                # is a 32-byte char[] — 31 usable chars.  Longer values
+                # make order_send return None with last_error
+                # (-2, 'Invalid "comment" argument').  Cap defensively.
                 if comment:
-                    request["comment"] = comment
+                    request["comment"] = str(comment)[:31]
                 
                 # ALWAYS add SL and TP - never skip them
                 if sl_price is not None:
@@ -1329,9 +1332,54 @@ class MT5Automator:
                         
                         last_error = f"{error_msg} (Code: {result.retcode})"
                 else:
-                    last_error = "No result returned"
-                    print(f"[ERROR] MT5 CRITICAL: No response from MT5 terminal")
-                    print(f"[TOOL] SOLUTION: Check MT5 terminal connection and restart if needed")
+                    # mt5.order_send returned None — surface mt5.last_error()
+                    # so we can tell AutoTrading-OFF from investor-password
+                    # from a session-closed state.  Without this, every
+                    # failure logs the same useless message.
+                    try:
+                        err = mt5.last_error()
+                    except Exception:
+                        err = None
+                    if err and isinstance(err, tuple) and len(err) >= 2:
+                        err_code, err_msg = err[0], err[1]
+                    elif err:
+                        err_code, err_msg = err, ""
+                    else:
+                        err_code, err_msg = None, ""
+                    last_error = (
+                        f"order_send returned None — MT5 last_error="
+                        f"({err_code}, {err_msg!r})"
+                    )
+                    print(f"[ERROR] MT5 CRITICAL: order_send returned None")
+                    print(
+                        f"   mt5.last_error() = ({err_code}, {err_msg!r})"
+                    )
+                    if err_code in (-10004, -10003, 4754):
+                        print(
+                            "[TOOL] SOLUTION: enable AutoTrading in the "
+                            "MT5 terminal (Ctrl+E), confirm Tools → Options "
+                            "→ Expert Advisors → 'Allow algorithmic trading' "
+                            "is checked, and verify you are not logged in "
+                            "with the investor (read-only) password."
+                        )
+                    elif err_code in (-10005, 4756):
+                        print(
+                            "[TOOL] SOLUTION: MT5 trade-server connection "
+                            "looks dropped — bottom-right corner of the "
+                            "terminal should say 'connected', not "
+                            "'no connection'.  Reconnect there, then retry."
+                        )
+                    else:
+                        print(
+                            "[TOOL] SOLUTION: ticks worked but order_send "
+                            "did not — most often this is AutoTrading being "
+                            "OFF (press Ctrl+E in MT5), an investor "
+                            "(read-only) login, the broker session being "
+                            "closed for this symbol, or two MT5 installs "
+                            "where the wrong one received the initialize() "
+                            "call.  Check mt5.last_error() code above for "
+                            "the precise cause."
+                        )
                     
                 logging.warning(f"Order attempt failed: {order_type} {corrected_symbol} {volume} at {price}, filling={filling_mode}, error={last_error}")
                 

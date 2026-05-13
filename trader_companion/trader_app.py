@@ -64,6 +64,163 @@ def kenya_today():
     return kenya_now().date()
 
 
+# ── MT5 trade-comment helper ─────────────────────────────────────────
+# `MqlTradeRequest.comment` in MetaTrader 5 is a 32-byte char[] — only
+# 31 usable characters.  When the comment is longer, mt5.order_send
+# returns None and mt5.last_error() reports (-2, 'Invalid "comment"
+# argument') with no other diagnostic.  The raw form we used to build
+# — f"{acct_num}_{phase_key}" — overflows for any account whose
+# identifier is >14 chars (every FundedNext / TopstepX account is),
+# so the helper below produces a comment that fits while still being
+# readable in MT5 history (the account-number tail + a short phase
+# tag are enough to correlate a hedge back to its prop row).
+
+import re as _re  # local alias to avoid colliding with the `re` import
+                  # used further down the file
+
+
+def _normalize_acct_for_comment(acct_num: str, platform: str | None = None) -> str:
+    """Broker-specific normalisation of the account number used in MT5
+    comments — mirrors the TradeAccountConnector's per-broker logic.
+
+    The connector normalises account numbers inside each broker module
+    *before* the comment is built, and there are two distinct rules:
+
+    1. **TopStepX** — ``src/topstepx.py:871-880`` and ``:917-933``.
+       Raw text like ``"50KTC-V2-342449-32181797"`` reduces to
+       ``"V2-...1797"`` (literal ``V2-`` + ellipsis + last 4 chars
+       of the trailing segment).  The format is identical for every
+       TopStepX phase (challenge / funded / double-dip / farming) —
+       phase information only enters at the trailing ``_XXn`` suffix.
+
+    2. **Tradovate / prop-firm accounts** — ``src/tradovate.py:1302-1305``.
+       Any account 9+ chars long becomes ``<first 4>...<last 5>``,
+       which is what produces the ``MFFU...32064``, ``FNFT...24940``,
+       ``FTDF...00742``, ``TDFY...85097`` strings visible in the
+       MT5 comment column.
+
+    Rule 1 is checked first because its dash-shape would also satisfy
+    rule 2 — but the connector specifically uses the ``V2-...`` form
+    for TopStepX.  If neither rule matches (already shortened or too
+    short), the value passes through verbatim.
+
+    When ``platform == "TopStepX"`` we additionally guarantee a
+    ``V2-...`` prefix even when the raw input has no ``V2-`` marker
+    (e.g. dashes stripped upstream, or only the trailing account ID
+    was passed in).  Without this, an edge-case input like
+    ``"32877781"`` would slip through as ``32877781_FD1`` instead of
+    the connector-compatible ``V2-...7781_FD1``.
+    """
+    raw = str(acct_num or "")
+
+    # Rule 1 — TopStepX: "50KTC-V2-342449-32181797" -> "V2-...1797"
+    if "V2-" in raw and "-" in raw:
+        parts = raw.split("-")
+        if len(parts) >= 4:
+            last = parts[-1]
+            if len(last) >= 4:
+                return f"V2-...{last[-4:]}"
+
+    # Force the V2-... form for any TopStepX account whose raw shape
+    # doesn't include a V2- segment (dashes stripped upstream, only the
+    # account ID was passed, etc.).  Falls back to the last 4 chars
+    # of whatever we got.
+    if platform == "TopStepX":
+        if raw.startswith("V2-..."):
+            return raw  # already normalised, idempotent
+        # Take the last 4 chars of the *alphanumeric* tail — strip any
+        # leading separators / spaces so "32877781" or "...77781" both
+        # produce "V2-...7781".
+        tail = ''.join(ch for ch in raw if ch.isalnum())
+        if len(tail) >= 4:
+            return f"V2-...{tail[-4:]}"
+        # Less than 4 alnum chars — keep whatever we have.  Better to
+        # ship a debuggable identifier than to invent digits.
+        return f"V2-...{tail}"
+
+    # Rule 2 — generic Tradovate-style 4+5 truncation, only if the
+    # account is long enough to need it AND doesn't already look
+    # shortened (no existing ellipsis).
+    if len(raw) >= 9 and "..." not in raw:
+        return f"{raw[:4]}...{raw[-5:]}"
+
+    return raw
+
+
+def short_mt5_comment(
+    acct_num: str,
+    phase_key: str,
+    platform: str | None = None,
+    limit: int = 31,
+) -> str:
+    """Build an MT5 trade comment matching the TradeAccountConnector format.
+
+    Wire format:  ``"<account_number><phase_abbr>"``
+
+    Two halves glued together, no separator (``phase_abbr`` already
+    starts with an underscore).
+
+    Part 1 — ``account_number``: each broker emits its own shape, and
+    the connector normalises it before the comment is built (TopStepX
+    gets the ``V2-...XXXX`` form, Tradovate/prop accounts get the
+    ``<first 4>...<last 5>`` form).  See
+    ``_normalize_acct_for_comment``.
+
+    ``platform`` should be set to ``"TopStepX"`` for any TopStepX
+    trade so the comment is guaranteed to start with ``V2-`` even if
+    the raw account string lost its ``V2-`` marker upstream — this
+    keeps every TopStep phase (CH, FD, DD, FA) on the same prefix.
+
+    Part 2 — ``phase_abbr``: the connector's universal vocabulary, so
+    its parser (``_(CH|FD|DD)\\d+$`` / ``_FA`` / ``_UNK`` at
+    ``src/mt5.py:2253``) can round-trip the comment back to the
+    account number.
+
+        challenge_trade1..4         -> _CH1.._CH4
+        funded_trade1..4            -> _FD1.._FD4
+        funded_trade_doubledip_1..4 -> _DD1.._DD4
+        farming                     -> _FA
+        anything else / empty       -> _UNK
+
+    MT5's ``MqlTradeRequest.comment`` is a 32-byte ``char[]``
+    (31 usable chars).  If the combined form overflows, the LEFT
+    characters of the account number are trimmed — the firm prefix
+    repeats across many accounts; the suffix is what identifies a
+    single account.  ``phase_abbr`` is preserved intact so the
+    connector's parser still works against the trimmed comment.
+    """
+    raw_acct = _normalize_acct_for_comment(acct_num, platform=platform)
+
+    pk = str(phase_key or "").strip().lower()
+    if pk.startswith("funded_trade_doubledip_"):
+        n = pk[len("funded_trade_doubledip_"):]
+        phase_abbr = f"_DD{n}" if n.isdigit() else "_DD1"
+    elif pk.startswith("challenge_trade"):
+        n = pk[len("challenge_trade"):]
+        phase_abbr = f"_CH{n}" if n.isdigit() else "_CH1"
+    elif pk.startswith("funded_trade"):
+        n = pk[len("funded_trade"):]
+        phase_abbr = f"_FD{n}" if n.isdigit() else "_FD1"
+    elif pk == "farming":
+        # Connector's writer also supports "_FA_DDMMYY", but its own
+        # reverse parser only recognises the bare "_FA" form, so we
+        # use that for round-trip correctness.
+        phase_abbr = "_FA"
+    elif pk == "":
+        phase_abbr = ""
+    else:
+        phase_abbr = "_UNK"
+
+    candidate = f"{raw_acct}{phase_abbr}"
+    if len(candidate) <= limit:
+        return candidate
+
+    # Too long — trim account from the LEFT, keep phase_abbr intact so
+    # the connector's parser still strips it cleanly.
+    max_acct = max(limit - len(phase_abbr), 4)
+    return f"{raw_acct[-max_acct:]}{phase_abbr}"[:limit]
+
+
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
@@ -5551,7 +5708,10 @@ class TradeOpssAIApp:
                 # 2. MT5 hedge (opposite direction)
                 if hedging and mt5_api:
                     hedge_side = "sell" if side == "buy" else "buy"
-                    comment = f"{acct_num}_{phase_key}"
+                    # Pass platform so TopStepX trades always produce a
+                    # comment starting with "V2-..." regardless of phase
+                    # or the raw account-string shape.
+                    comment = short_mt5_comment(acct_num, phase_key, platform=platform)
                     if hedge_side == "buy":
                         mt5_api.buy_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
                     else:
@@ -6607,7 +6767,10 @@ class TradeOpssAIApp:
                     # 2. MT5 hedge (opposite direction)
                     if hedging and mt5_api:
                         hedge_side = "sell" if side == "buy" else "buy"
-                        comment = f"{acct_num}_{phase_key}"
+                        # Pass platform so TopStepX trades always produce
+                        # a "V2-..." comment regardless of phase or the
+                        # raw account-string shape.
+                        comment = short_mt5_comment(acct_num, phase_key, platform=platform)
                         if hedge_side == "buy":
                             mt5_api.buy_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
                         else:
