@@ -162,7 +162,13 @@ def send_slack_to_webhook(webhook_url, text):
 
 def _build_daily_summary_text():
     """Build the daily quality summary text (same logic as the API endpoint)."""
-    from dashboard.database import get_quality_scan_results, get_daily_checklists
+    from dashboard.database import (
+        get_quality_scan_results,
+        get_daily_checklists,
+        record_quality_slack_post,
+        upsert_quality_issue_baseline,
+        get_trader_issue_resolution_minutes,
+    )
     from dashboard.app import _trader_ranking_health_metrics
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from config.hierarchy import SYSTEM_HIERARCHY
@@ -211,6 +217,21 @@ def _build_daily_summary_text():
     for r in scan_results:
         r['issues'] = [i for i in r.get('issues', []) if i.get('check') != 'Scan error']
         r['total_issues'], r['health_score'] = _trader_ranking_health_metrics(r.get('issues'))
+
+    # Record Slack post time + baseline issue state (used only for implicit tie-breaks).
+    # This does NOT change the message content — it only influences tie ordering later.
+    try:
+        posted_at = datetime.utcnow().isoformat()
+        record_quality_slack_post(date, posted_at)
+        for r in scan_results or []:
+            upsert_quality_issue_baseline(
+                date,
+                str(r.get('client_id') or ''),
+                str(r.get('trader') or ''),
+                bool(r.get('total_issues') or 0),
+            )
+    except Exception:
+        pass
 
     # Collect downtime data (rendered at the bottom for maximum visibility)
     downtime_clients = []
@@ -264,15 +285,78 @@ def _build_daily_summary_text():
             lines.append(f"  • {check}: {count} occurrences")
         lines.append("")
 
+    # Build daily-summary missing counts per trader, to apply a penalty ONLY when NOT sent.
+    # Weight: roughly "medium" severity = 5 points per missing client.
+    missing_by_trader = {}
+    total_by_trader = {}
+    _apply_summary_penalty = True
+    try:
+        from dashboard.database import get_summary_status_for_date, get_setting, get_client_data
+        from config.hierarchy import get_client_profile as _gcp
+        from datetime import timezone, timedelta as _tz_td
+        import json as _json_mod
+
+        submissions = get_summary_status_for_date(date)
+        sent_map = {s['client_id']: s for s in submissions}
+        excluded_traders2 = set(_json_mod.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+        excluded_clients2 = set(_json_mod.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+
+        all_hierarchy_clients2 = hierarchy_get_all_clients()
+        from datetime import timezone as _tz2, timedelta as _td2
+        _eat_now = datetime.now(_tz2(_td2(hours=3)))
+        _is_weekend = _eat_now.weekday() in (5, 6)
+        if _is_weekend:
+            _apply_summary_penalty = False
+        else:
+            for client_name in all_hierarchy_clients2:
+                profile = _gcp(client_name)
+                trader = (profile.get('trader', '') if profile else '') or 'Unassigned'
+                if trader in excluded_traders2 or client_name in excluded_clients2:
+                    continue
+                try:
+                    cdata = get_client_data(client_name)
+                    if cdata and isinstance(cdata.get('identity'), dict):
+                        if cdata['identity'].get('active_status') == 'inactive':
+                            continue
+                except Exception:
+                    pass
+                total_by_trader[trader] = total_by_trader.get(trader, 0) + 1
+                if client_name not in sent_map:
+                    missing_by_trader[trader] = missing_by_trader.get(trader, 0) + 1
+    except Exception:
+        # If anything fails, do not penalize; keep previous behavior.
+        _apply_summary_penalty = False
+
     if trader_stats:
+        def _adjusted_avg(item):
+            t, s = item
+            raw = (s['health_sum'] / max(s['clients'], 1)) if s.get('clients') else 0.0
+            if not _apply_summary_penalty:
+                return raw
+            missing = int(missing_by_trader.get(t, 0) or 0)
+            total = int(total_by_trader.get(t, s.get('clients', 0)) or 0) or max(s.get('clients', 1), 1)
+            # Deduct 5 points per missing client summary, distributed across trader's portfolio.
+            deduction = 5.0 * (missing / max(total, 1))
+            return max(0.0, raw - deduction)
+
         # Gamified Trader Health Leaderboard — ranked best to worst
-        ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
+        # Primary: adjusted average (desc)
+        # Tie-break (implicit): time-to-resolve baseline issues after bot post (asc)
+        # Final tie-break: name (asc)
+        ranked = sorted(
+            trader_stats.items(),
+            key=lambda it: (
+                -round(_adjusted_avg(it), 4),
+                get_trader_issue_resolution_minutes(date, it[0]),
+                str(it[0]).lower(),
+            ),
+        )
         lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
         lines.append("_Ranked by average client health score (highest first). Scores exclude super-admin daily-summary payout QA; otherwise reflects data freshness, hedging accuracy, notes quality, and checklist completion._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
-            avg = round(s['health_sum'] / s['clients'], 1)
+            avg = round(_adjusted_avg((t, s)), 1)
             if rank == 1:
                 medal = '🥇'
             elif rank == 2:
@@ -301,8 +385,8 @@ def _build_daily_summary_text():
         if total_traders > 0:
             best_name = ranked[0][0]
             worst_name = ranked[-1][0]
-            best_avg = round(ranked[0][1]['health_sum'] / max(ranked[0][1]['clients'], 1), 1)
-            worst_avg = round(ranked[-1][1]['health_sum'] / max(ranked[-1][1]['clients'], 1), 1)
+            best_avg = round(_adjusted_avg(ranked[0]), 1)
+            worst_avg = round(_adjusted_avg(ranked[-1]), 1)
             lines.append("")
             if best_avg >= 90:
                 lines.append(f"🎉 *{best_name}* is on fire! Leading the pack at {best_avg}%")

@@ -8654,6 +8654,7 @@ def api_quality_client(client_id):
                 # Persist the updated result into today's scan row for this client
                 try:
                     from dashboard.database import get_connection
+                    from dashboard.database import mark_quality_issue_resolved
                     scan_date = datetime.now().strftime('%Y-%m-%d')
                     with get_connection() as conn:
                         cursor = conn.cursor()
@@ -8665,6 +8666,9 @@ def api_quality_client(client_id):
                                        (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
                                         r['total_issues'], json.dumps(r['issues']), r['health_score']))
                         conn.commit()
+                    # If issues are now fully resolved, record resolution time for Slack leaderboard tie-breaks.
+                    if int(r.get('total_issues') or 0) == 0:
+                        mark_quality_issue_resolved(scan_date, r.get('client_id'), datetime.utcnow().isoformat())
                 except Exception:
                     pass  # Non-fatal — still return live results
                 return jsonify({"status": "success", "data": _quality_scan_row_for_trader_client_quality_api(r)})

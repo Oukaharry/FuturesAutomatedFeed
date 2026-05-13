@@ -1181,6 +1181,181 @@ def _repair_quality_table():
     """No-op — schema is managed by Alembic. PostgreSQL handles table integrity."""
     print("[DB] quality_scan_results table integrity is managed by PostgreSQL")
 
+def _ensure_quality_bot_tables():
+    """
+    Small operational tables used by the Slack quality bot:
+    - quality_slack_posts: when the bot posted for a date
+    - quality_issue_baseline: which clients had issues at post time
+    - quality_issue_resolution: when a client first reached 0 issues after baseline
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS quality_slack_posts (
+                scan_date  TEXT PRIMARY KEY,
+                posted_at  TEXT NOT NULL
+            )
+            '''
+        )
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS quality_issue_baseline (
+                scan_date  TEXT NOT NULL,
+                client_id  TEXT NOT NULL,
+                trader     TEXT NOT NULL DEFAULT '',
+                had_issues INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (scan_date, client_id)
+            )
+            '''
+        )
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS quality_issue_resolution (
+                scan_date   TEXT NOT NULL,
+                client_id   TEXT NOT NULL,
+                resolved_at TEXT NOT NULL,
+                PRIMARY KEY (scan_date, client_id)
+            )
+            '''
+        )
+        conn.commit()
+
+
+def record_quality_slack_post(scan_date: str, posted_at: str):
+    """Record when the Slack quality bot posted for a scan_date (idempotent)."""
+    if not scan_date or not posted_at:
+        return
+    try:
+        _ensure_quality_bot_tables()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                INSERT INTO quality_slack_posts (scan_date, posted_at)
+                VALUES (?, ?)
+                ON CONFLICT(scan_date) DO UPDATE SET posted_at = excluded.posted_at
+                ''',
+                (scan_date, posted_at),
+            )
+            conn.commit()
+    except Exception:
+        # Non-critical: bot still works without the tie-breaker tables.
+        return
+
+
+def upsert_quality_issue_baseline(scan_date: str, client_id: str, trader: str, had_issues: bool):
+    """Upsert baseline issue state for a client at bot-post time."""
+    if not scan_date or not client_id:
+        return
+    try:
+        _ensure_quality_bot_tables()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                INSERT INTO quality_issue_baseline (scan_date, client_id, trader, had_issues)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(scan_date, client_id) DO UPDATE SET
+                    trader = excluded.trader,
+                    had_issues = excluded.had_issues
+                ''',
+                (scan_date, client_id, trader or '', 1 if had_issues else 0),
+            )
+            conn.commit()
+    except Exception:
+        return
+
+
+def mark_quality_issue_resolved(scan_date: str, client_id: str, resolved_at: str):
+    """
+    If the client had issues at baseline time and now has 0 issues,
+    record the FIRST time it was observed resolved.
+    """
+    if not scan_date or not client_id or not resolved_at:
+        return
+    try:
+        _ensure_quality_bot_tables()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT had_issues FROM quality_issue_baseline WHERE scan_date = ? AND client_id = ?',
+                (scan_date, client_id),
+            )
+            base = cursor.fetchone()
+            if not base or int(base.get('had_issues') or 0) != 1:
+                return
+            cursor.execute(
+                '''
+                INSERT INTO quality_issue_resolution (scan_date, client_id, resolved_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(scan_date, client_id) DO NOTHING
+                ''',
+                (scan_date, client_id, resolved_at),
+            )
+            conn.commit()
+    except Exception:
+        return
+
+
+def get_trader_issue_resolution_minutes(scan_date: str, trader: str, *, unresolved_minutes: int = 99999) -> int:
+    """
+    For Slack leaderboard tie-breaks.
+    Returns minutes from posted_at to the time ALL baseline-issue clients for this trader were resolved.
+    If any baseline-issue client is not yet resolved, returns unresolved_minutes.
+    If the trader had no baseline issues, returns 0 (fastest by default).
+    """
+    if not scan_date or not trader:
+        return unresolved_minutes
+    try:
+        _ensure_quality_bot_tables()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT posted_at FROM quality_slack_posts WHERE scan_date = ?', (scan_date,))
+            row = cursor.fetchone()
+            posted_at = (row.get('posted_at') if row else '') or ''
+            if not posted_at:
+                return unresolved_minutes
+
+            cursor.execute(
+                '''
+                SELECT client_id
+                FROM quality_issue_baseline
+                WHERE scan_date = ? AND lower(trader) = lower(?) AND had_issues = 1
+                ''',
+                (scan_date, trader),
+            )
+            clients = [r.get('client_id') for r in (cursor.fetchall() or []) if r.get('client_id')]
+            if not clients:
+                return 0
+
+            # Fetch resolution rows for those clients
+            cursor.execute(
+                '''
+                SELECT client_id, resolved_at
+                FROM quality_issue_resolution
+                WHERE scan_date = ? AND client_id = ANY(%s)
+                ''',
+                (scan_date, clients),
+            )
+            res_map = {r.get('client_id'): (r.get('resolved_at') or '') for r in (cursor.fetchall() or [])}
+            if any(not res_map.get(cid) for cid in clients):
+                return unresolved_minutes
+
+            try:
+                from datetime import datetime as _dt
+                posted = _dt.fromisoformat(posted_at.replace('Z', '+00:00'))
+                mins = []
+                for cid in clients:
+                    dt = _dt.fromisoformat(res_map[cid].replace('Z', '+00:00'))
+                    delta = dt - posted
+                    mins.append(max(0, round(delta.total_seconds() / 60)))
+                return int(max(mins) if mins else 0)
+            except Exception:
+                return unresolved_minutes
+    except Exception:
+        return unresolved_minutes
+
 def save_quality_scan_results(scan_date: str, results: list):
     """Save quality scan results for all clients."""
     try:
