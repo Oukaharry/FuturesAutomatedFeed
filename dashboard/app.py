@@ -1,3 +1,4 @@
+from typing import Any
 from flask import Flask, render_template, jsonify, request, redirect, url_for, g
 from flask_compress import Compress
 from flask_limiter import Limiter
@@ -124,7 +125,7 @@ def _get_super_admin_stats_excluded_set():
     try:
         raw = json.loads(get_setting(_SUPER_ADMIN_STATS_EXCLUDED_KEY) or '[]')
     except (TypeError, ValueError):
-        return set()
+        return set[Any]()
     return {str(x).strip() for x in raw if x is not None and str(x).strip()}
 
 
@@ -166,7 +167,7 @@ def _admin_prop_display_name(pf_key):
 _QUALITY_MAX_OUT_EXCLUSIONS_KEY = 'quality_max_out_exclusions'
 
 # Prop firms that can appear in max-out checks beyond ADMIN_PROP_* (normalized keys).
-_MAX_OUT_EXTRA_PROP_KEYS = frozenset({
+_MAX_OUT_EXTRA_PROP_KEYS = frozenset[str]({
     'fundednext', 'topstep', 'lucid', 'tradeify', 'fundednextplus',
 })
 
@@ -7560,9 +7561,17 @@ def run_quality_scan(target_client=None):
 
     all_clients = [target_client] if target_client else hierarchy_get_all_clients()
     results = []
+    # The server runs UTC, but the ops workflow (and Slack bot schedule) is keyed to Kenyan time.
+    # Use Kenyan "now" for day-marker / downtime logic so missing trading days are flagged
+    # as soon as we cross midnight EAT, not midnight UTC.
     now = datetime.now()
-    today_weekday = now.weekday()  # 0=Mon, 6=Sun
-    scan_date_str = now.strftime('%Y-%m-%d')
+    today_weekday = now.weekday()  # 0=Mon, 6=Sun (UTC)
+    scan_date_str = now.strftime('%Y-%m-%d')  # persisted scan date remains UTC
+    try:
+        from datetime import timezone as _tz, timedelta as _td
+        now_eat = datetime.now(_tz.utc).astimezone(_tz(_td(hours=3)))
+    except Exception:
+        now_eat = now
 
     for client_name in all_clients:
         profile = get_client_profile(client_name)
@@ -8109,7 +8118,8 @@ def run_quality_scan(target_client=None):
                     and not k.startswith('_')
                 ]
                 if (not new_row_strict_mode or has_account_num_local) and not _inactive_p1 and not _inactive_p2 and status_p1:
-                    _allowed_abbrs = _allowed_trading_day_abbrs(now)
+                    # Downtime/current-day markers should follow Kenyan day boundaries (midnight EAT).
+                    _allowed_abbrs = _allowed_trading_day_abbrs(now_eat)
                     _allowed_human = '/'.join(sorted(_allowed_abbrs))
                     _cell_notes = ev.get('_notes') or {}
                     if not isinstance(_cell_notes, dict):
@@ -8654,6 +8664,7 @@ def api_quality_client(client_id):
                 # Persist the updated result into today's scan row for this client
                 try:
                     from dashboard.database import get_connection
+                    from dashboard.database import mark_quality_issue_resolved
                     scan_date = datetime.now().strftime('%Y-%m-%d')
                     with get_connection() as conn:
                         cursor = conn.cursor()
@@ -8665,6 +8676,9 @@ def api_quality_client(client_id):
                                        (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
                                         r['total_issues'], json.dumps(r['issues']), r['health_score']))
                         conn.commit()
+                    # If issues are now fully resolved, record resolution time for Slack leaderboard tie-breaks.
+                    if int(r.get('total_issues') or 0) == 0:
+                        mark_quality_issue_resolved(scan_date, r.get('client_id'), datetime.utcnow().isoformat())
                 except Exception:
                     pass  # Non-fatal — still return live results
                 return jsonify({"status": "success", "data": _quality_scan_row_for_trader_client_quality_api(r)})
