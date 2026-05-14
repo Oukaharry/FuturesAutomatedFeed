@@ -3000,6 +3000,7 @@ def trader_dashboard(trader_name):
     session_user = request.session_user
     # Resolve trader email + parent admin for admin actions (reset/delete)
     try:
+        from config.hierarchy import reload_hierarchy
         reload_hierarchy()
     except Exception:
         pass
