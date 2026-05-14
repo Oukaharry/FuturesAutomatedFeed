@@ -5448,80 +5448,6 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
-    def _format_prop_broker_confirm_snapshot(self, broker_account, platform: str) -> str:
-        """Multi-line Tradovate / TopStepX-style snapshot for confirm dialog."""
-        if not broker_account or not hasattr(broker_account, "get_account_stats"):
-            return ""
-        try:
-            st = broker_account.get_account_stats()
-        except Exception:
-            return ""
-        if not isinstance(st, dict):
-            return ""
-        acct = (st.get("Account Number") or "").strip()
-        bal = (st.get("Balance") or "").strip()
-        pnl = (st.get("Profit/Loss") or "").strip()
-        opn = (st.get("Open Trades") or "").strip()
-        sym = (st.get("Symbol") or "").strip()
-        direction = (st.get("Direction") or "").strip()
-        if acct in ("Unknown", "Trading...", "Not Connected", ""):
-            if (not bal or bal == "N/A") and (not pnl or pnl == "N/A"):
-                return ""
-        lines = [f"── {platform} account ──"]
-        lines.append(f"  Account #: {acct or '—'}")
-        lines.append(f"  Balance: {bal or '—'}  |  P/L: {pnl or '—'}  |  Open trades: {opn or '—'}")
-        if sym or direction:
-            lines.append(f"  Context: {sym or '—'}  {direction or ''}".rstrip())
-        return "\n".join(lines)
-
-    def _format_mt5_confirm_snapshot(self, mt5_api) -> str:
-        """MT5 balance, equity, margin for confirm dialog (same detail level as prop broker block)."""
-        info = None
-        if mt5_api and getattr(mt5_api, "is_connected", lambda: False)() and MT5_AVAILABLE:
-            try:
-                import MetaTrader5 as _mt5
-                acc = _mt5.account_info()
-                if acc is not None:
-                    cur = getattr(acc, "currency", None) or "USD"
-                    profit = float(getattr(acc, "profit", 0) or 0)
-                    mlev = float(acc.margin_level) if acc.margin > 0 else 0.0
-                    lines = ["── MT5 (hedge account) ──"]
-                    lines.append(f"  Login: #{acc.login}  |  Server: {acc.server}")
-                    lines.append(
-                        f"  Balance: {cur} {acc.balance:,.2f}  |  Equity: {cur} {acc.equity:,.2f}  |  Floating P/L: {cur} {profit:,.2f}"
-                    )
-                    lines.append(
-                        f"  Margin: {cur} {acc.margin:,.2f}  |  Free margin: {cur} {acc.margin_free:,.2f}  |  Margin level: {mlev:,.1f}%"
-                    )
-                    return "\n".join(lines)
-            except Exception:
-                pass
-        if getattr(self, "pusher", None) and self.pusher.connected:
-            try:
-                info = self.pusher.get_account_info(include_balance_history=False)
-            except Exception:
-                info = None
-        if not info:
-            return ""
-        cur = info.get("currency") or "USD"
-        bal = float(info.get("balance") or 0)
-        eq = float(info.get("equity") or 0)
-        mg = float(info.get("margin") or 0)
-        mfree = float(info.get("margin_free") or 0)
-        mlev = float(info.get("margin_level") or 0)
-        profit = float(info.get("profit") or 0)
-        login = info.get("login", "—")
-        srv = info.get("server", "—")
-        lines = ["── MT5 (hedge account) ──"]
-        lines.append(f"  Login: {login}  |  Server: {srv}")
-        lines.append(
-            f"  Balance: {cur} {bal:,.2f}  |  Equity: {cur} {eq:,.2f}  |  Floating P/L: {cur} {profit:,.2f}"
-        )
-        lines.append(
-            f"  Margin: {cur} {mg:,.2f}  |  Free margin: {cur} {mfree:,.2f}  |  Margin level: {mlev:,.1f}%"
-        )
-        return "\n".join(lines)
-
     def _eval_has_payout(self, ev):
         """Check if any hedge result field contains 'payout' text."""
         if not ev:
@@ -5631,9 +5557,6 @@ class TradeOpssAIApp:
 
         trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
         trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
-        blueprint_tp_orig = trado_tp  # save originals for confirm dialog
-        blueprint_sl_orig = trado_sl
-        _adj_reasons = []  # collect adjustment explanations for confirm dialog
         mt5_sym = config.get("mt5_symbol", "NAS100")
         mt5_vol = float(config.get("mt5_volume", 2.8))
         mt5_tp = int(config.get("mt5_tp_points", 46))
@@ -5664,9 +5587,6 @@ class TradeOpssAIApp:
                     if adjusted_tp != trado_tp:
                         trado_tp = adjusted_tp
                         mt5_sl = adjusted_mt5_sl
-                        _adj_reasons.append(
-                            f"TP {blueprint_tp_orig}→{trado_tp}t: stage P/L ${stage_profit_so_far:+,.0f} "
-                            f"(already earned in this stage)")
                         self.log(f"📊 TP adjust {acct_num}: stage_start=${stage_start:,.0f}, "
                                  f"current P/L=${current_profit:,.2f}, stage P/L=${stage_profit_so_far:+,.2f} → "
                                  f"TP {orig_tp}→{trado_tp}t, MT5 SL {orig_mt5_sl}→{mt5_sl}pts")
@@ -5699,9 +5619,6 @@ class TradeOpssAIApp:
                                 trado_sl = midnight_sl
                                 mt5_tp = max(5, int(trado_sl / 4) - 1)
                                 daily_pnl = live_net_liq - net_liq_sod
-                                _adj_reasons.append(
-                                    f"SL {blueprint_sl_orig}→{trado_sl}t: midnight bal ${net_liq_sod:,.0f}, "
-                                    f"daily P/L ${daily_pnl:+,.0f}")
                                 self.log(f"🌙 Midnight SL {acct_num}: SOD=${net_liq_sod:,.2f}, "
                                          f"live=${live_net_liq:,.2f}, daily P/L=${daily_pnl:+,.2f} → "
                                          f"SL {orig_sl}→{trado_sl}t, MT5 TP {orig_mt5_tp}→{mt5_tp}pts")
@@ -5710,8 +5627,6 @@ class TradeOpssAIApp:
                         else:
                             self.log(f"⚠ Midnight SL floor breached {acct_num}: "
                                      f"live=${live_net_liq:,.2f} < floor=${sl_floor:,.2f} — using min SL")
-                            _adj_reasons.append(
-                                f"SL → 10t: balance below midnight SL floor ${sl_floor:,.0f}")
                             trado_sl = 10
                             mt5_tp = max(5, int(trado_sl / 4) - 1)
 
@@ -5724,8 +5639,6 @@ class TradeOpssAIApp:
                             orig_mt5_tp = mt5_tp
                             trado_sl = max(10, int(drawdown_remaining / (tick_val * trado_qty_for_calc)))
                             mt5_tp = max(5, int(trado_sl / 4) - 1)
-                            _adj_reasons.append(
-                                f"SL →{trado_sl}t: near drawdown limit, only ${drawdown_remaining:,.0f} remaining")
                             self.log(f"🎯 TMDL SL cap {acct_num}: remaining=${drawdown_remaining:,.2f} → "
                                      f"SL {orig_sl}→{trado_sl}t, MT5 TP {orig_mt5_tp}→{mt5_tp}pts")
                         elif drawdown_remaining <= 0:
@@ -5735,44 +5648,17 @@ class TradeOpssAIApp:
             except Exception:
                 pass
 
-        hedge_summary = (
-            f"Hedge order: MT5 {('SELL' if side == 'buy' else 'BUY')} {mt5_vol} {mt5_sym} (opposite of prop)"
-            if hedging else ""
+        # Confirm: prop TP/SL (ticks), then MT5 TP/SL (points) when hedging — keep dialog minimal
+        tp_sl_lines = (
+            f"\n{platform}:  TP {trado_tp} ticks  |  SL {trado_sl} ticks"
+            + (f"\nMT5:       TP {mt5_tp} pts    |  SL {mt5_sl} pts" if hedging else "")
         )
 
-        # Stage info from day placeholder
-        stage_text = (f"\n\n── Stage Info ──"
-                      f"\nDay Cell: {day_idx + 1} ({day_name}) → Blueprint: {phase_key}")
-
-        # Adjustment explanations
-        if _adj_reasons:
-            adj_text = "\n\n── Adjustments ──\n" + "\n".join(f"• {r}" for r in _adj_reasons)
-            adj_text += f"\n(Blueprint was TP {blueprint_tp_orig}t / SL {blueprint_sl_orig}t)"
-        else:
-            adj_text = ""
-
-        broker_snap = self._format_prop_broker_confirm_snapshot(broker_account, platform)
-        mt5_snap = self._format_mt5_confirm_snapshot(mt5_api) if hedging else ""
-        detail_blocks = []
-        if broker_snap:
-            detail_blocks.append(broker_snap)
-        if mt5_snap:
-            detail_blocks.append(mt5_snap)
-            if hedge_summary:
-                detail_blocks.append(f"  {hedge_summary}")
-        elif hedge_summary:
-            detail_blocks.append(f"── MT5 ──\n  {hedge_summary}")
-        detail_text = "\n".join(detail_blocks)
-        if detail_text:
-            detail_text = "\n" + detail_text + "\n"
-
-        confirm = messagebox.askyesno("Confirm Trade",
+        confirm = messagebox.askyesno(
+            "Confirm Trade",
             f"{side.upper()} {trado_qty} {trado_sym} on {platform}"
-            f"{detail_text}"
-            f"Account: {acct_num}  |  {firm_code}\n"
-            f"Phase: {row_data['current_phase']}  |  Size: {acct_size}\n"
-            f"TP: {trado_tp} ticks  |  SL: {trado_sl} ticks"
-            f"{stage_text}{adj_text}\n\nProceed?")
+            f"{tp_sl_lines}\n\nProceed?",
+        )
         if not confirm:
             return
 
