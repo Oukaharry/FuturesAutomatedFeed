@@ -121,6 +121,29 @@ def ensure_chrome_debug(url=None, port=CDP_DEBUG_PORT):
             f"Chrome launched but debug port {port} not responding after 15s")
 
 
+def shutdown_debug_chrome_spawned():
+    """
+    Terminate Chrome started by ensure_chrome_debug in this process.
+    No-op if we attached to an existing debug port (did not spawn a child).
+    """
+    global _chrome_process
+    proc = None
+    with _chrome_lock:
+        proc = _chrome_process
+        _chrome_process = None
+    if not proc:
+        return
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    except Exception as e:
+        logging.warning("shutdown_debug_chrome_spawned: %s", e)
+
+
 def _open_tab_in_debug_chrome(url, port=CDP_DEBUG_PORT):
     """Open a new tab in the already-running debug Chrome via the /json/new endpoint.
     Skips if a tab with the same domain is already open."""

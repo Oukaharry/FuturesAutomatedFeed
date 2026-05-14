@@ -342,19 +342,20 @@ _FUNDEDNEXT_IMPORT_ERROR = str(_fn_err) if not FUNDEDNEXT_AVAILABLE and '_fn_err
 try:
     from trader_companion.prop_firm_scrapers import (
         TradeifyAccount, LucidTradingAccount, TopStepAccount, MFFUAccount,
-        FundedNextCDPAccount, ensure_chrome_debug)
+        FundedNextCDPAccount, ensure_chrome_debug, shutdown_debug_chrome_spawned)
     CDP_SCRAPERS_AVAILABLE = True
 except Exception:
     try:
         from prop_firm_scrapers import (
             TradeifyAccount, LucidTradingAccount, TopStepAccount, MFFUAccount,
-            FundedNextCDPAccount, ensure_chrome_debug)
+            FundedNextCDPAccount, ensure_chrome_debug, shutdown_debug_chrome_spawned)
         CDP_SCRAPERS_AVAILABLE = True
     except Exception:
         CDP_SCRAPERS_AVAILABLE = False
         TradeifyAccount = LucidTradingAccount = TopStepAccount = MFFUAccount = None
         FundedNextCDPAccount = None
         ensure_chrome_debug = None
+        shutdown_debug_chrome_spawned = None
 
 try:
     from trader_companion.trade_limit_manager import TradeLimitManager
@@ -1616,6 +1617,7 @@ class TradeOpssAIApp:
             self.root.configure(bg=self.C_BG)
         self.root.resizable(True, True)
         self.root.bind("<Control-m>", self._test_min_equity)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_app_closing)
 
         # Set Window Icon + section logo
         self._section_logo = None  # small logo for section headers
@@ -5446,6 +5448,80 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
+    def _format_prop_broker_confirm_snapshot(self, broker_account, platform: str) -> str:
+        """Multi-line Tradovate / TopStepX-style snapshot for confirm dialog."""
+        if not broker_account or not hasattr(broker_account, "get_account_stats"):
+            return ""
+        try:
+            st = broker_account.get_account_stats()
+        except Exception:
+            return ""
+        if not isinstance(st, dict):
+            return ""
+        acct = (st.get("Account Number") or "").strip()
+        bal = (st.get("Balance") or "").strip()
+        pnl = (st.get("Profit/Loss") or "").strip()
+        opn = (st.get("Open Trades") or "").strip()
+        sym = (st.get("Symbol") or "").strip()
+        direction = (st.get("Direction") or "").strip()
+        if acct in ("Unknown", "Trading...", "Not Connected", ""):
+            if (not bal or bal == "N/A") and (not pnl or pnl == "N/A"):
+                return ""
+        lines = [f"── {platform} account ──"]
+        lines.append(f"  Account #: {acct or '—'}")
+        lines.append(f"  Balance: {bal or '—'}  |  P/L: {pnl or '—'}  |  Open trades: {opn or '—'}")
+        if sym or direction:
+            lines.append(f"  Context: {sym or '—'}  {direction or ''}".rstrip())
+        return "\n".join(lines)
+
+    def _format_mt5_confirm_snapshot(self, mt5_api) -> str:
+        """MT5 balance, equity, margin for confirm dialog (same detail level as prop broker block)."""
+        info = None
+        if mt5_api and getattr(mt5_api, "is_connected", lambda: False)() and MT5_AVAILABLE:
+            try:
+                import MetaTrader5 as _mt5
+                acc = _mt5.account_info()
+                if acc is not None:
+                    cur = getattr(acc, "currency", None) or "USD"
+                    profit = float(getattr(acc, "profit", 0) or 0)
+                    mlev = float(acc.margin_level) if acc.margin > 0 else 0.0
+                    lines = ["── MT5 (hedge account) ──"]
+                    lines.append(f"  Login: #{acc.login}  |  Server: {acc.server}")
+                    lines.append(
+                        f"  Balance: {cur} {acc.balance:,.2f}  |  Equity: {cur} {acc.equity:,.2f}  |  Floating P/L: {cur} {profit:,.2f}"
+                    )
+                    lines.append(
+                        f"  Margin: {cur} {acc.margin:,.2f}  |  Free margin: {cur} {acc.margin_free:,.2f}  |  Margin level: {mlev:,.1f}%"
+                    )
+                    return "\n".join(lines)
+            except Exception:
+                pass
+        if getattr(self, "pusher", None) and self.pusher.connected:
+            try:
+                info = self.pusher.get_account_info(include_balance_history=False)
+            except Exception:
+                info = None
+        if not info:
+            return ""
+        cur = info.get("currency") or "USD"
+        bal = float(info.get("balance") or 0)
+        eq = float(info.get("equity") or 0)
+        mg = float(info.get("margin") or 0)
+        mfree = float(info.get("margin_free") or 0)
+        mlev = float(info.get("margin_level") or 0)
+        profit = float(info.get("profit") or 0)
+        login = info.get("login", "—")
+        srv = info.get("server", "—")
+        lines = ["── MT5 (hedge account) ──"]
+        lines.append(f"  Login: {login}  |  Server: {srv}")
+        lines.append(
+            f"  Balance: {cur} {bal:,.2f}  |  Equity: {cur} {eq:,.2f}  |  Floating P/L: {cur} {profit:,.2f}"
+        )
+        lines.append(
+            f"  Margin: {cur} {mg:,.2f}  |  Free margin: {cur} {mfree:,.2f}  |  Margin level: {mlev:,.1f}%"
+        )
+        return "\n".join(lines)
+
     def _eval_has_payout(self, ev):
         """Check if any hedge result field contains 'payout' text."""
         if not ev:
@@ -5659,7 +5735,10 @@ class TradeOpssAIApp:
             except Exception:
                 pass
 
-        hedge_text = f" + MT5 {('SELL' if side == 'buy' else 'BUY')} {mt5_vol} {mt5_sym}" if hedging else ""
+        hedge_summary = (
+            f"Hedge order: MT5 {('SELL' if side == 'buy' else 'BUY')} {mt5_vol} {mt5_sym} (opposite of prop)"
+            if hedging else ""
+        )
 
         # Stage info from day placeholder
         stage_text = (f"\n\n── Stage Info ──"
@@ -5672,9 +5751,24 @@ class TradeOpssAIApp:
         else:
             adj_text = ""
 
+        broker_snap = self._format_prop_broker_confirm_snapshot(broker_account, platform)
+        mt5_snap = self._format_mt5_confirm_snapshot(mt5_api) if hedging else ""
+        detail_blocks = []
+        if broker_snap:
+            detail_blocks.append(broker_snap)
+        if mt5_snap:
+            detail_blocks.append(mt5_snap)
+            if hedge_summary:
+                detail_blocks.append(f"  {hedge_summary}")
+        elif hedge_summary:
+            detail_blocks.append(f"── MT5 ──\n  {hedge_summary}")
+        detail_text = "\n".join(detail_blocks)
+        if detail_text:
+            detail_text = "\n" + detail_text + "\n"
+
         confirm = messagebox.askyesno("Confirm Trade",
-            f"{side.upper()} {trado_qty} {trado_sym} on {platform}\n"
-            f"{hedge_text}\n\n"
+            f"{side.upper()} {trado_qty} {trado_sym} on {platform}"
+            f"{detail_text}"
             f"Account: {acct_num}  |  {firm_code}\n"
             f"Phase: {row_data['current_phase']}  |  Size: {acct_size}\n"
             f"TP: {trado_tp} ticks  |  SL: {trado_sl} ticks"
@@ -8965,6 +9059,59 @@ class TradeOpssAIApp:
             except Exception as e:
                 self.log(f"Failed to load config: {e}", "ERROR")
                 
+    def _shutdown_broker_and_scraper_browsers(self):
+        """Close Selenium broker sessions and CDP scrapers; quit CDP Chrome if we spawned it."""
+        for _firm, conn in list(getattr(self, "_broker_connections", {}).items()):
+            if not isinstance(conn, dict):
+                continue
+            acct = conn.get("account")
+            if not acct:
+                continue
+            closer = getattr(acct, "close", None)
+            if callable(closer):
+                try:
+                    closer()
+                except Exception:
+                    pass
+            conn["account"] = None
+
+        for _firm, acct in list(getattr(self, "_propfirm_browsers", {}).items()):
+            if not acct:
+                continue
+            closer = getattr(acct, "close", None)
+            if callable(closer):
+                try:
+                    closer()
+                except Exception:
+                    pass
+            try:
+                self._propfirm_browsers[_firm] = None
+            except Exception:
+                pass
+
+        self.tradovate_account = None
+        self.topstepx_account = None
+
+        if shutdown_debug_chrome_spawned:
+            try:
+                shutdown_debug_chrome_spawned()
+            except Exception:
+                pass
+
+    def _on_app_closing(self):
+        try:
+            self._status_poll_active = False
+        except Exception:
+            pass
+        try:
+            self._shutdown_broker_and_scraper_browsers()
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+
     def run(self):
         """Run the application."""
         self.root.mainloop()
