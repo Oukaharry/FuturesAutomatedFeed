@@ -566,7 +566,9 @@
             try { data = JSON.parse(raw); } catch (_) {}
             if (!resp.ok || !data || data.status !== 'success') throw new Error((data && data.message) ? data.message : (raw || `HTTP ${resp.status}`));
             if (status) {
-                status.textContent = data.email_sent ? 'Password reset. Email sent to trader.' : 'Password reset. Copy the temporary password below.';
+                status.textContent = data.email_sent
+                    ? 'Password reset. Email sent to trader. All other sign-ins for this account were signed out.'
+                    : 'Password reset. Copy the temporary password below. All other sign-ins for this account were signed out.';
                 status.style.borderColor = 'rgba(74,222,128,0.35)';
             }
             if (tpCode) tpCode.textContent = (data.temporary_password || '').trim();

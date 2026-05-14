@@ -41,6 +41,7 @@ from dashboard.database import (
     save_client_data, get_client_data, get_all_clients, get_clients_count, update_client_field, delete_client_data,
     log_action, get_audit_log,
     create_session, validate_session, delete_session,
+    delete_other_sessions_for_user, list_sessions_public_for_user,
     create_user, verify_user_password, verify_client_login, update_user_password,
     delete_user_credential, update_user_email, rename_user_credential, rename_client_in_db,
     get_user, list_users, deactivate_user, reset_user_password, user_exists,
@@ -2999,6 +3000,7 @@ def trader_dashboard(trader_name):
     session_user = request.session_user
     # Resolve trader email + parent admin for admin actions (reset/delete)
     try:
+        from config.hierarchy import reload_hierarchy
         reload_hierarchy()
     except Exception:
         pass
@@ -5109,6 +5111,43 @@ def api_logout():
     response.delete_cookie('session_token')
     return response
 
+@app.route('/api/auth/my_sessions', methods=['GET'])
+@require_session
+def api_my_sessions():
+    """List active login sessions for the current user (no secrets exposed)."""
+    session_user = request.session_user
+    token = request.cookies.get('session_token') or ''
+    rows = list_sessions_public_for_user(
+        session_user.get('user_type', ''),
+        session_user.get('user_identifier', ''),
+        token,
+    )
+    return jsonify({"status": "success", "sessions": rows, "count": len(rows)})
+
+
+@app.route('/api/auth/revoke_other_sessions', methods=['POST'])
+@require_session
+@limiter.limit("10 per hour")
+def api_revoke_other_sessions():
+    """Invalidate every session except the current browser (sign out other devices)."""
+    session_user = request.session_user
+    token = request.cookies.get('session_token') or ''
+    if not token:
+        return jsonify({"status": "error", "message": "No session cookie"}), 400
+    n = delete_other_sessions_for_user(
+        session_user.get('user_type', ''),
+        session_user.get('user_identifier', ''),
+        token,
+    )
+    log_action(
+        'REVOKE_OTHER_SESSIONS',
+        session_user.get('user_type', ''),
+        session_user.get('user_identifier', ''),
+        get_remote_address(),
+        f"revoked={n}",
+    )
+    return jsonify({"status": "success", "revoked": n})
+
 # ============ Unified Authentication Endpoint ============
 
 @app.route('/api/auth/check-admin', methods=['POST'])
@@ -5456,7 +5495,8 @@ def api_reset_password_rbac():
             "status": "success", 
             "message": f"Password reset for {username}",
             "temporary_password": temp_password,
-            "email_sent": email_sent
+            "email_sent": email_sent,
+            "all_sessions_invalidated": True,
         })
     
     return jsonify({"status": "error", "message": "User not found"}), 404
@@ -5490,7 +5530,8 @@ def api_reset_password():
             "status": "success", 
             "message": f"Password reset for {username}",
             "temporary_password": temp_password,
-            "email_sent": email_sent
+            "email_sent": email_sent,
+            "all_sessions_invalidated": True,
         })
     
     return jsonify({"status": "error", "message": "User not found"}), 404
