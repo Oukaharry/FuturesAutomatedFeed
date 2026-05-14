@@ -5152,18 +5152,26 @@ class TradeOpssAIApp:
                 prop_accounts = data.get("prop_accounts", [])
                 self.root.after(0, lambda ae=active_evals, pa=prop_accounts: self._populate_broker_rows(ae, pa))
 
+                # Status poll can be slow and touches Tradovate; defer so trade rows render first
+                if not RELEASE_DISABLE_STATUS_POLL:
+                    def _delayed_poll():
+                        def _run():
+                            try:
+                                self._poll_tradovate_balances()
+                            except Exception:
+                                pass
+                        threading.Thread(target=_run, daemon=True).start()
+                    self.root.after(600, _delayed_poll)
+
                 # Auto-launch browsers for prop firms that need dashboard monitoring
                 active_firms = list(dict.fromkeys(
-                    ev.get("Prop Firm", "") for ev in active_evals if ev.get("Prop Firm")))
+                    f for f in (
+                        (str(ev.get("Prop Firm")).strip() if ev.get("Prop Firm") is not None else "")
+                        for ev in active_evals
+                    ) if f
+                ))
                 if not RELEASE_DISABLE_PROP_DASHBOARD_ACCESS:
                     self.root.after(2000, lambda af=active_firms: self._auto_launch_propfirm_browsers(af))
-
-                # Trigger a status poll immediately after scan
-                if not RELEASE_DISABLE_STATUS_POLL:
-                    try:
-                        self._poll_tradovate_balances()
-                    except Exception:
-                        pass
 
                 # Auto-fill MT5 credentials from TradeOps dashboard.
                 # Prefer Hedge Accounts Configuration rows (what users actually edit in the UI),
@@ -5252,9 +5260,13 @@ class TradeOpssAIApp:
             return
 
         # Daily bias per prop firm (persisted, resets each day)
+        # JSON often has "Prop Firm": null — ev.get("Prop Firm", "Unknown") is still None;
+        # normalize so bias + row rendering never crash mid-loop.
         firms_seen = set()
         for ev in evaluations:
-            firms_seen.add(ev.get("Prop Firm", "Unknown"))
+            pf = ev.get("Prop Firm")
+            nm = str(pf).strip() if pf is not None else ""
+            firms_seen.add(nm or "Unknown")
         firm_bias = self._get_daily_bias(firms_seen)
         # Store for auto-trade compatibility
         self._auto_trade_firm_sides = firm_bias
@@ -5265,148 +5277,157 @@ class TradeOpssAIApp:
             arrow = "▲" if s == "buy" else "▼"
             bias_parts.append(f"{arrow} {f}: {s.upper()}")
         self.log(f"Direction bias: {', '.join(bias_parts)}")
+        self.log(f"Rendering {len(evaluations)} active trade row(s)…")
 
         for idx, ev in enumerate(evaluations):
-            prop_firm_name = ev.get("Prop Firm", "Unknown")
-            firm_code = self._FIRM_MAP.get(prop_firm_name, "MFFU_Flex")
-            acct_num = (ev.get("Account #.1", "") or ev.get("Account #", "") or "—").strip()
-            acct_size = ev.get("Account Size", "—") or "—"
-            current_display, phase_key = self._detect_eval_phase(ev)
+            try:
+                pf_raw = ev.get("Prop Firm")
+                prop_firm_name = (str(pf_raw).strip() if pf_raw is not None else "") or "Unknown"
+                firm_code = self._FIRM_MAP.get(prop_firm_name, "MFFU_Flex")
+                acct_num = (ev.get("Account #.1", "") or ev.get("Account #", "") or "—").strip()
+                sz_raw = ev.get("Account Size", "—")
+                acct_size = (str(sz_raw).strip() if sz_raw is not None else "") or "—"
+                current_display, phase_key = self._detect_eval_phase(ev)
+                current_display = str(current_display or "Challenge")
 
-            # Resolve phase_key from day placeholder (primary source of truth)
-            resolved_key, _di, _dn = self._resolve_phase_key_from_day(ev, firm_code, current_display)
-            if resolved_key:
-                phase_key = resolved_key
+                # Resolve phase_key from day placeholder (primary source of truth)
+                resolved_key, _di, _dn = self._resolve_phase_key_from_day(ev, firm_code, current_display)
+                if resolved_key:
+                    phase_key = resolved_key
 
-            next_display = self._get_next_phase(firm_code, current_display)
+                next_display = self._get_next_phase(firm_code, current_display)
+                next_display = str(next_display or "—")
 
-            strip_color = self.PROP_FIRM_COLORS.get(prop_firm_name, "#95A5A6")
-            glow_border, glow_bg, glow_fg = self._PHASE_GLOW.get(
-                current_display, ("#475569", "#0A0F1A", "#94A3B8"))
+                strip_color = self.PROP_FIRM_COLORS.get(prop_firm_name, "#95A5A6")
+                glow_border, glow_bg, glow_fg = self._PHASE_GLOW.get(
+                    current_display, ("#475569", "#0A0F1A", "#94A3B8"))
 
-            bias = firm_bias.get(prop_firm_name, "buy")
+                bias = firm_bias.get(prop_firm_name, "buy")
 
-            if CTK_AVAILABLE:
-                row_bg = "#050D18" if idx % 2 == 0 else "#071020"
-                row_frame = ctk.CTkFrame(self._trades_inner, fg_color=row_bg,
-                                         corner_radius=4, height=44,
-                                         border_width=1, border_color="#0A1628")
-                row_frame.pack(fill="x", pady=1, padx=1)
-                row_frame.pack_propagate(False)
+                if CTK_AVAILABLE:
+                    row_bg = "#050D18" if idx % 2 == 0 else "#071020"
+                    row_frame = ctk.CTkFrame(self._trades_inner, fg_color=row_bg,
+                                             corner_radius=4, height=44,
+                                             border_width=1, border_color="#0A1628")
+                    row_frame.pack(fill="x", pady=1, padx=1)
+                    row_frame.pack_propagate(False)
 
-                # Left accent bar
-                ctk.CTkFrame(row_frame, width=3, fg_color=strip_color,
-                             corner_radius=0).pack(side="left", fill="y")
+                    # Left accent bar
+                    ctk.CTkFrame(row_frame, width=3, fg_color=strip_color,
+                                 corner_radius=0).pack(side="left", fill="y")
 
-                # Prop firm name — aligned with header col
-                ctk.CTkLabel(row_frame, text=prop_firm_name[:18], width=110,
-                             font=("Consolas", 10, "bold"), text_color=strip_color,
-                             anchor="w").pack(side="left", padx=(8, 0))
+                    # Prop firm name — aligned with header col
+                    ctk.CTkLabel(row_frame, text=prop_firm_name[:18], width=110,
+                                 font=("Consolas", 10, "bold"), text_color=strip_color,
+                                 anchor="w").pack(side="left", padx=(8, 0))
 
-                # Account number
-                acct_display = acct_num[-8:] if len(acct_num) > 8 else acct_num
-                ctk.CTkLabel(row_frame, text=acct_display,
-                             width=88, font=("Consolas", 10),
-                             text_color="#6B8DAD", anchor="w").pack(side="left", padx=(8, 0))
+                    # Account number
+                    acct_display = acct_num[-8:] if len(acct_num) > 8 else acct_num
+                    ctk.CTkLabel(row_frame, text=acct_display,
+                                 width=88, font=("Consolas", 10),
+                                 text_color="#6B8DAD", anchor="w").pack(side="left", padx=(8, 0))
 
-                # Size
-                ctk.CTkLabel(row_frame, text=acct_size[:10], width=68,
-                             font=("Consolas", 10), text_color="#4A7C8F",
-                             anchor="w").pack(side="left", padx=(8, 0))
+                    # Size
+                    ctk.CTkLabel(row_frame, text=acct_size[:10], width=68,
+                                 font=("Consolas", 10), text_color="#4A7C8F",
+                                 anchor="w").pack(side="left", padx=(8, 0))
 
-                # Phase badge — neon pill with border glow
-                phase_holder = ctk.CTkFrame(row_frame, fg_color="transparent", width=88)
-                phase_holder.pack(side="left", padx=(8, 0))
-                phase_holder.pack_propagate(False)
-                phase_pill = ctk.CTkFrame(phase_holder, fg_color=glow_bg,
-                                          corner_radius=8, border_width=1,
-                                          border_color=glow_border)
-                phase_pill.pack(side="left", pady=6)
-                ctk.CTkLabel(phase_pill, text=current_display.upper(),
-                             font=("Consolas", 8, "bold"),
-                             text_color=glow_fg).pack(padx=8, pady=1)
+                    # Phase badge — neon pill with border glow
+                    phase_holder = ctk.CTkFrame(row_frame, fg_color="transparent", width=88)
+                    phase_holder.pack(side="left", padx=(8, 0))
+                    phase_holder.pack_propagate(False)
+                    phase_pill = ctk.CTkFrame(phase_holder, fg_color=glow_bg,
+                                              corner_radius=8, border_width=1,
+                                              border_color=glow_border)
+                    phase_pill.pack(side="left", pady=6)
+                    ctk.CTkLabel(phase_pill, text=current_display.upper(),
+                                 font=("Consolas", 8, "bold"),
+                                 text_color=glow_fg).pack(padx=8, pady=1)
 
-                # Next phase with arrow
-                ctk.CTkLabel(row_frame, text=f"→ {next_display}", width=100,
-                             font=("Consolas", 9), text_color="#00D4FF",
-                             anchor="w").pack(side="left", padx=(8, 0))
+                    # Next phase with arrow
+                    ctk.CTkLabel(row_frame, text=f"→ {next_display}", width=100,
+                                 font=("Consolas", 9), text_color="#00D4FF",
+                                 anchor="w").pack(side="left", padx=(8, 0))
 
-                # BUY / SELL action buttons — bias-aware
-                btn_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-                btn_frame.pack(side="right", padx=8)
+                    # BUY / SELL action buttons — bias-aware
+                    btn_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+                    btn_frame.pack(side="right", padx=8)
 
-                row_data = {
-                    "frame": row_frame, "eval": ev, "firm_code": firm_code,
-                    "phase_key": phase_key, "acct_size": acct_size,
-                    "acct_num": acct_num, "current_phase": current_display,
-                }
+                    row_data = {
+                        "frame": row_frame, "eval": ev, "firm_code": firm_code,
+                        "phase_key": phase_key, "acct_size": acct_size,
+                        "acct_num": acct_num, "current_phase": current_display,
+                    }
 
-                # Active button gets neon glow, opposite gets muted/grayed
-                if bias == "buy":
-                    buy_fg, buy_brd, buy_txt = "#052E16", "#16A34A", "#4ADE80"
-                    sell_fg, sell_brd, sell_txt = "#0A0F1A", "#1A1A2E", "#2A3040"
+                    # Active button gets neon glow, opposite gets muted/grayed
+                    if bias == "buy":
+                        buy_fg, buy_brd, buy_txt = "#052E16", "#16A34A", "#4ADE80"
+                        sell_fg, sell_brd, sell_txt = "#0A0F1A", "#1A1A2E", "#2A3040"
+                    else:
+                        buy_fg, buy_brd, buy_txt = "#0A0F1A", "#1A1A2E", "#2A3040"
+                        sell_fg, sell_brd, sell_txt = "#2D0A0A", "#DC2626", "#F87171"
+
+                    buy_btn = ctk.CTkButton(btn_frame, text="▲ BUY", width=58, height=26,
+                                            fg_color=buy_fg, hover_color="#14532D" if bias == "buy" else "#0A0F1A",
+                                            border_width=1, border_color=buy_brd,
+                                            font=("Consolas", 9, "bold"),
+                                            text_color=buy_txt, corner_radius=4,
+                                            command=lambda rd=row_data: self._execute_row_trade("buy", rd))
+                    buy_btn.pack(side="left", padx=(0, 3))
+
+                    sell_btn = ctk.CTkButton(btn_frame, text="▼ SELL", width=58, height=26,
+                                             fg_color=sell_fg, hover_color="#450A0A" if bias == "sell" else "#0A0F1A",
+                                             border_width=1, border_color=sell_brd,
+                                             font=("Consolas", 9, "bold"),
+                                             text_color=sell_txt, corner_radius=4,
+                                             command=lambda rd=row_data: self._execute_row_trade("sell", rd))
+                    sell_btn.pack(side="left")
                 else:
-                    buy_fg, buy_brd, buy_txt = "#0A0F1A", "#1A1A2E", "#2A3040"
-                    sell_fg, sell_brd, sell_txt = "#2D0A0A", "#DC2626", "#F87171"
+                    # Fallback plain tk
+                    row_bg = '#050D18' if idx % 2 == 0 else '#071020'
+                    row_frame = tk.Frame(self._trades_inner, bg=row_bg)
+                    row_frame.pack(fill="x", pady=1)
 
-                buy_btn = ctk.CTkButton(btn_frame, text="▲ BUY", width=58, height=26,
-                                        fg_color=buy_fg, hover_color="#14532D" if bias == "buy" else "#0A0F1A",
-                                        border_width=1, border_color=buy_brd,
-                                        font=("Consolas", 9, "bold"),
-                                        text_color=buy_txt, corner_radius=4,
+                    tk.Label(row_frame, text=prop_firm_name[:16], width=14, anchor='w',
+                             bg=row_bg, fg='#e2e8f0', font=('Consolas', 9)).pack(side="left", padx=2)
+                    tk.Label(row_frame, text=acct_num[:12], width=10, anchor='w',
+                             bg=row_bg, fg='#6B8DAD', font=('Consolas', 9)).pack(side="left", padx=2)
+                    tk.Label(row_frame, text=acct_size[:10], width=8, anchor='w',
+                             bg=row_bg, fg='#4A7C8F', font=('Consolas', 9)).pack(side="left", padx=2)
+                    tk.Label(row_frame, text=current_display, width=14, anchor='w',
+                             bg=row_bg, fg='#fbbf24', font=('Consolas', 9, 'bold')).pack(side="left", padx=2)
+                    tk.Label(row_frame, text=f"→ {next_display}", width=14, anchor='w',
+                             bg=row_bg, fg='#00D4FF', font=('Consolas', 9)).pack(side="left", padx=2)
+
+                    btn_frame = tk.Frame(row_frame, bg=row_bg)
+                    btn_frame.pack(side="left", padx=4)
+
+                    row_data = {
+                        "frame": row_frame, "eval": ev, "firm_code": firm_code,
+                        "phase_key": phase_key, "acct_size": acct_size,
+                        "acct_num": acct_num, "current_phase": current_display,
+                    }
+
+                    buy_btn = tk.Button(btn_frame, text="▲ BUY",
+                                        bg='#052E16' if bias == 'buy' else '#0A0F1A',
+                                        fg='#4ADE80' if bias == 'buy' else '#2A3040',
+                                        font=('Consolas', 8, 'bold'), relief='flat', padx=6, pady=1,
                                         command=lambda rd=row_data: self._execute_row_trade("buy", rd))
-                buy_btn.pack(side="left", padx=(0, 3))
+                    buy_btn.pack(side="left", padx=(0, 4))
 
-                sell_btn = ctk.CTkButton(btn_frame, text="▼ SELL", width=58, height=26,
-                                         fg_color=sell_fg, hover_color="#450A0A" if bias == "sell" else "#0A0F1A",
-                                         border_width=1, border_color=sell_brd,
-                                         font=("Consolas", 9, "bold"),
-                                         text_color=sell_txt, corner_radius=4,
+                    sell_btn = tk.Button(btn_frame, text="▼ SELL",
+                                         bg='#2D0A0A' if bias == 'sell' else '#0A0F1A',
+                                         fg='#F87171' if bias == 'sell' else '#2A3040',
+                                         font=('Consolas', 8, 'bold'), relief='flat', padx=6, pady=1,
                                          command=lambda rd=row_data: self._execute_row_trade("sell", rd))
-                sell_btn.pack(side="left")
-            else:
-                # Fallback plain tk
-                row_bg = '#050D18' if idx % 2 == 0 else '#071020'
-                row_frame = tk.Frame(self._trades_inner, bg=row_bg)
-                row_frame.pack(fill="x", pady=1)
+                    sell_btn.pack(side="left")
 
-                tk.Label(row_frame, text=prop_firm_name[:16], width=14, anchor='w',
-                         bg=row_bg, fg='#e2e8f0', font=('Consolas', 9)).pack(side="left", padx=2)
-                tk.Label(row_frame, text=acct_num[:12], width=10, anchor='w',
-                         bg=row_bg, fg='#6B8DAD', font=('Consolas', 9)).pack(side="left", padx=2)
-                tk.Label(row_frame, text=acct_size[:10], width=8, anchor='w',
-                         bg=row_bg, fg='#4A7C8F', font=('Consolas', 9)).pack(side="left", padx=2)
-                tk.Label(row_frame, text=current_display, width=14, anchor='w',
-                         bg=row_bg, fg='#fbbf24', font=('Consolas', 9, 'bold')).pack(side="left", padx=2)
-                tk.Label(row_frame, text=f"→ {next_display}", width=14, anchor='w',
-                         bg=row_bg, fg='#00D4FF', font=('Consolas', 9)).pack(side="left", padx=2)
-
-                btn_frame = tk.Frame(row_frame, bg=row_bg)
-                btn_frame.pack(side="left", padx=4)
-
-                row_data = {
-                    "frame": row_frame, "eval": ev, "firm_code": firm_code,
-                    "phase_key": phase_key, "acct_size": acct_size,
-                    "acct_num": acct_num, "current_phase": current_display,
-                }
-
-                buy_btn = tk.Button(btn_frame, text="▲ BUY",
-                                    bg='#052E16' if bias == 'buy' else '#0A0F1A',
-                                    fg='#4ADE80' if bias == 'buy' else '#2A3040',
-                                    font=('Consolas', 8, 'bold'), relief='flat', padx=6, pady=1,
-                                    command=lambda rd=row_data: self._execute_row_trade("buy", rd))
-                buy_btn.pack(side="left", padx=(0, 4))
-
-                sell_btn = tk.Button(btn_frame, text="▼ SELL",
-                                     bg='#2D0A0A' if bias == 'sell' else '#0A0F1A',
-                                     fg='#F87171' if bias == 'sell' else '#2A3040',
-                                     font=('Consolas', 8, 'bold'), relief='flat', padx=6, pady=1,
-                                     command=lambda rd=row_data: self._execute_row_trade("sell", rd))
-                sell_btn.pack(side="left")
-
-            row_data["buy_btn"] = buy_btn
-            row_data["sell_btn"] = sell_btn
-            self._active_trade_rows.append(row_data)
+                row_data["buy_btn"] = buy_btn
+                row_data["sell_btn"] = sell_btn
+                self._active_trade_rows.append(row_data)
+            except Exception as row_err:
+                acct_guess = (ev.get("Account #.1") or ev.get("Account #") or "?")
+                self.log(f"⚠ Skipped active row (render error) acct={acct_guess}: {row_err}", "WARN")
 
         count = len(self._active_trade_rows)
         self.trades_count_var.set(f"[ {count} ]")
@@ -5416,6 +5437,14 @@ class TradeOpssAIApp:
         except Exception:
             pass
         self.log(f"Loaded {count} active trades from dashboard")
+        # Ensure scrollable area expands after many rows (CTk canvas scrollregion)
+        try:
+            canvas = getattr(self._trades_scroll, "_parent_canvas", None)
+            if canvas:
+                self.root.update_idletasks()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+        except Exception:
+            pass
 
     def _eval_has_payout(self, ev):
         """Check if any hedge result field contains 'payout' text."""
@@ -8741,7 +8770,7 @@ class TradeOpssAIApp:
             except Exception:
                 pass
 
-        return {f: firm_bias[f] for f in firms}
+        return {f: firm_bias.get(f, "buy") for f in firms}
 
     # ============ Indicator-Based Signal ============
 

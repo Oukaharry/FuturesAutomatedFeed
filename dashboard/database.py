@@ -267,10 +267,11 @@ def verify_password(password: str, stored_hash: str, salt: str) -> bool:
 # ============ Admin Password Management ============
 
 def set_admin_password(username: str, password: str) -> bool:
-    """Set or update admin password."""
+    """Set or update admin password. Ends all sessions for that admin identity."""
     password_hash, salt = hash_password(password)
     now = datetime.now().isoformat()
-    
+    username = (username or '').strip()
+
     with get_connection() as conn:
         cursor = conn.cursor()
         try:
@@ -282,10 +283,13 @@ def set_admin_password(username: str, password: str) -> bool:
                     salt = excluded.salt,
                     updated_at = ?
             ''', (username, password_hash, salt, now, now))
+            # Sessions use (user_type, user_identifier) = (super_admin, super_admin), etc.
+            delete_all_sessions_for_user(username, username, conn=conn, cursor=cursor)
             conn.commit()
             return True
         except Exception as e:
             print(f"Error setting admin password: {e}")
+            conn.rollback()
             return False
 
 def admin_password_exists(username: str) -> bool:
@@ -441,10 +445,11 @@ def verify_client_login(email: str, password: str) -> dict:
         }
 
 def update_user_password(username: str, user_type: str, new_password: str) -> bool:
-    """Update a user's password."""
+    """Update a user's password. Invalidates all active sessions for this account."""
     password_hash, salt = hash_password(new_password)
     now = datetime.now().isoformat()
-    
+    username = username.strip()
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -452,8 +457,11 @@ def update_user_password(username: str, user_type: str, new_password: str) -> bo
             SET password_hash = ?, salt = ?, must_change_password = 0, updated_at = ?
             WHERE username = ? AND user_type = ?
         ''', (password_hash, salt, now, username, user_type))
+        ok = cursor.rowcount > 0
+        if ok:
+            delete_all_sessions_for_user(user_type, username, conn=conn, cursor=cursor)
         conn.commit()
-        return cursor.rowcount > 0
+        return ok
 
 def get_user(username: str, user_type: str) -> dict:
     """Get user info without password verification."""
@@ -488,15 +496,19 @@ def list_users(user_type: str = None) -> list:
         return [dict(row) for row in cursor.fetchall()]
 
 def deactivate_user(username: str, user_type: str) -> bool:
-    """Deactivate a user account."""
+    """Deactivate a user account and end all their sessions."""
+    username = username.strip()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
             UPDATE user_credentials SET is_active = 0, updated_at = ?
             WHERE username = ? AND user_type = ?
         ''', (datetime.now().isoformat(), username, user_type))
+        ok = cursor.rowcount > 0
+        if ok:
+            delete_all_sessions_for_user(user_type, username, conn=conn, cursor=cursor)
         conn.commit()
-        return cursor.rowcount > 0
+        return ok
 
 def activate_user(username: str, user_type: str) -> bool:
     """Activate a user account."""
@@ -510,10 +522,11 @@ def activate_user(username: str, user_type: str) -> bool:
         return cursor.rowcount > 0
 
 def reset_user_password(username: str, user_type: str, default_password: str = 'Test@123') -> str:
-    """Reset user password to the default password."""
+    """Reset user password to the default password. Ends all sessions for this account."""
     password_hash, salt = hash_password(default_password)
     now = datetime.now().isoformat()
-    
+    username = username.strip()
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute('''
@@ -521,10 +534,11 @@ def reset_user_password(username: str, user_type: str, default_password: str = '
             SET password_hash = ?, salt = ?, must_change_password = 1, updated_at = ?
             WHERE username = ? AND user_type = ?
         ''', (password_hash, salt, now, username, user_type))
-        conn.commit()
-        
         if cursor.rowcount > 0:
+            delete_all_sessions_for_user(user_type, username, conn=conn, cursor=cursor)
+            conn.commit()
             return default_password
+        conn.commit()
         return None
 
 def find_user_by_identifier(identifier: str) -> dict:
@@ -633,15 +647,18 @@ def verify_user_by_identifier(identifier: str, password: str) -> dict:
     return None
 
 def delete_user_credential(username: str, user_type: str) -> bool:
-    """Permanently delete a user credential."""
+    """Permanently delete a user credential and all their sessions."""
+    username = username.strip()
     with get_connection() as conn:
         cursor = conn.cursor()
+        delete_all_sessions_for_user(user_type, username, conn=conn, cursor=cursor)
         cursor.execute('''
             DELETE FROM user_credentials 
             WHERE username = ? AND user_type = ?
         ''', (username, user_type))
+        ok = cursor.rowcount > 0
         conn.commit()
-        return cursor.rowcount > 0
+        return ok
 
 def update_user_email(username: str, user_type: str, new_email: str) -> bool:
     """Update a user's email address."""
@@ -2247,6 +2264,96 @@ def delete_session(session_token: str):
         cursor = conn.cursor()
         cursor.execute('DELETE FROM sessions WHERE session_token = ?', (session_token,))
         conn.commit()
+
+
+def delete_all_sessions_for_user(
+    user_type: str,
+    user_identifier: str,
+    *,
+    conn=None,
+    cursor=None,
+) -> int:
+    """
+    Remove every session for this principal (all browsers / devices).
+    When conn/cursor are passed, uses that transaction (caller commits).
+    """
+    user_type = (user_type or '').strip()
+    user_identifier = (user_identifier or '').strip()
+    if not user_type or not user_identifier:
+        return 0
+    if cursor is not None:
+        cursor.execute(
+            'DELETE FROM sessions WHERE user_type = ? AND user_identifier = ?',
+            (user_type, user_identifier),
+        )
+        return int(cursor.rowcount or 0)
+    with get_connection() as c:
+        cur = c.cursor()
+        cur.execute(
+            'DELETE FROM sessions WHERE user_type = ? AND user_identifier = ?',
+            (user_type, user_identifier),
+        )
+        c.commit()
+        return int(cur.rowcount or 0)
+
+
+def delete_other_sessions_for_user(
+    user_type: str,
+    user_identifier: str,
+    except_session_token: str,
+) -> int:
+    """Remove sessions for this user except the given token (sign out other devices)."""
+    user_type = (user_type or '').strip()
+    user_identifier = (user_identifier or '').strip()
+    tok = (except_session_token or '').strip()
+    if not user_type or not user_identifier or not tok:
+        return 0
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''DELETE FROM sessions
+               WHERE user_type = ? AND user_identifier = ? AND session_token <> ?''',
+            (user_type, user_identifier, tok),
+        )
+        n = int(cursor.rowcount or 0)
+        conn.commit()
+        return n
+
+
+def list_sessions_public_for_user(
+    user_type: str, user_identifier: str, current_session_token: str
+) -> list:
+    """Active sessions for API: tokens are never returned; is_current marks this browser."""
+    user_type = (user_type or '').strip()
+    user_identifier = (user_identifier or '').strip()
+    cur_tok = (current_session_token or '').strip()
+    if not user_type or not user_identifier:
+        return []
+    now = datetime.now().isoformat()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            '''SELECT session_token, created_at, expires_at, ip_address
+               FROM sessions
+               WHERE user_type = ? AND user_identifier = ? AND expires_at > ?
+               ORDER BY created_at ASC''',
+            (user_type, user_identifier, now),
+        )
+        rows = cursor.fetchall() or []
+    out = []
+    for row in rows:
+        tok = (row['session_token'] or '').strip()
+        is_cur = bool(
+            cur_tok and tok and len(cur_tok) == len(tok) and secrets.compare_digest(tok, cur_tok)
+        )
+        out.append({
+            'created_at': row['created_at'],
+            'expires_at': row['expires_at'],
+            'ip_address': row['ip_address'],
+            'is_current': is_cur,
+        })
+    return out
+
 
 def cleanup_expired_sessions():
     """Delete all expired sessions."""
