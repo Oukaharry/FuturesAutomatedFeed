@@ -2286,7 +2286,7 @@
                          <div id="split-profit-amount" style="font-size: 1.9em; font-weight: bold; color: #fbbf24;">Loading...</div>
                     </div>
                     <div style="background: rgba(4,6,14,0.9); padding: 20px; border-radius: 10px; border: 1px solid #111c34; border-left: 4px solid #38bdf8;">
-                         <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">Net Profit split</div>
+                         <div style="font-size: 0.85em; color: #7898be; margin-bottom: 6px; letter-spacing: 0.5px;">PROFIT SPLITS PAID SO FAR</div>
                          <div id="split-total-profit-splits" style="font-size: 1.9em; font-weight: bold; color: #38bdf8;">Loading...</div>
                     </div>
                 </div>
@@ -5225,7 +5225,7 @@
             }
 
             // Update Profit Split tab cards — temporary values until profit share table loads
-            // Actual net (card) = net in progress − accumulated splits once the table is loaded
+            // Actual net = net in progress − profit splits paid so far (excludes current period)
             try {
                 const netProfit = window._statsNetProfit || 0;
                 const elNet = document.getElementById('split-net-profit');
@@ -7771,20 +7771,21 @@
         let waterlogDailyInitialized = false;
         let waterlogPollTimer = null;
 
-        /** NET PROFIT SPLIT card = sum of Profit Split column. Actual net = net in progress (table row 1 / live stats) − that sum. */
+        /** Profit Splits Paid so far card = sum of Profit Split for paid periods only (excludes row 0: current / unpaid). Actual net = net in progress − that same sum. */
         function updateProfitSplitHeaderFromRows(rows) {
             const elTotal = document.getElementById('split-total-profit-splits');
             const elNet = document.getElementById('split-net-profit');
-            let totalSplits = 0;
+            let totalSplitsPaid = 0;
             if (rows && rows.length) {
-                totalSplits = rows.reduce((sum, r) => {
+                rows.forEach((r, i) => {
+                    if (i === 0) return;
                     const ps = parseFloat(String((r.profit_split || '')).replace(/[^0-9.-]/g, '')) || 0;
-                    return sum + ps;
-                }, 0);
+                    totalSplitsPaid += ps;
+                });
             }
             if (elTotal) {
-                elTotal.textContent = formatMoney(totalSplits);
-                elTotal.style.color = totalSplits > 0 ? '#38bdf8' : '#94a3b8';
+                elTotal.textContent = formatMoney(totalSplitsPaid);
+                elTotal.style.color = totalSplitsPaid > 0 ? '#38bdf8' : '#94a3b8';
             }
             const statsNet = Number(window._statsNetProfit);
             let inProgress = (window._statsNetProfit !== undefined && !Number.isNaN(statsNet))
@@ -7792,7 +7793,7 @@
                 : ((rows && rows[0])
                     ? (parseFloat(String((rows[0].low || '$0')).replace(/[^0-9.-]/g, '')) || 0)
                     : 0);
-            const actualNet = inProgress - totalSplits;
+            const actualNet = inProgress - totalSplitsPaid;
             if (elNet) {
                 elNet.textContent = formatMoney(actualNet);
                 elNet.style.color = actualNet >= 0 ? '#4ade80' : '#f87171';
@@ -7967,7 +7968,7 @@
                         if (psBody) psBody.innerHTML = psHtml;
 
                         window._lastProfitShareRows = rows;
-                        // Header cards: Actual net (in progress − sum splits), latest period split, total splits
+                        // Header cards: Actual net & profit splits paid so far (exclude top row)
                         updateProfitSplitHeaderFromRows(rows);
                         if (rows.length) {
                             const latestRow = rows[0];
