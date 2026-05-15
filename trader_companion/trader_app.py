@@ -2025,6 +2025,10 @@ class TradeOpssAIApp:
         ctk.CTkLabel(trades_bezel, textvariable=self.trades_count_var,
                      font=("Consolas", 9), text_color="#3B6978").pack(side="left", padx=14)
 
+        self.mt5_free_margin_var = tk.StringVar(value="")
+        ctk.CTkLabel(trades_bezel, textvariable=self.mt5_free_margin_var,
+                     font=("Consolas", 9), text_color="#38bdf8").pack(side="right", padx=(0, 8))
+
         self.load_trades_btn = ctk.CTkButton(trades_bezel, text="⟳  SCAN", width=70, height=24,
                                              command=self._load_active_trades,
                                              fg_color="#0A2647", hover_color="#144272",
@@ -5448,6 +5452,174 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
+        if self.hedge_mode_var.get() == "Hedging":
+            self.root.after(400, self._refresh_mt5_margin_after_scan)
+
+    def _get_mt5_free_margin(self):
+        """Free margin from the connected MT5 account (pusher or trading API)."""
+        try:
+            if getattr(self, "pusher", None) and self.pusher.connected:
+                info = self.pusher.get_account_info()
+                if info is not None and info.get("margin_free") is not None:
+                    return float(info["margin_free"])
+        except Exception:
+            pass
+        try:
+            self._ensure_mt5_for_signals()
+            if getattr(self, "pusher", None) and self.pusher.connected:
+                info = self.pusher.get_account_info()
+                if info is not None and info.get("margin_free") is not None:
+                    return float(info["margin_free"])
+        except Exception:
+            pass
+        api = self._get_mt5_trading_api()
+        if api and MT5_AVAILABLE:
+            try:
+                import MetaTrader5 as _mt5
+                acc = _mt5.account_info()
+                if acc is not None:
+                    return float(acc.margin_free)
+            except Exception:
+                pass
+        return None
+
+    def _estimate_mt5_order_margin(self, symbol, volume, side):
+        """Margin required for one MT5 market order (via order_calc_margin)."""
+        if not MT5_AVAILABLE:
+            return None
+        sym = str(symbol or "").strip()
+        if not sym:
+            return None
+        try:
+            import MetaTrader5 as _mt5
+            if not _mt5.symbol_select(sym, True):
+                return None
+            tick = _mt5.symbol_info_tick(sym)
+            if tick is None:
+                return None
+            is_buy = str(side).lower() == "buy"
+            order_type = _mt5.ORDER_TYPE_BUY if is_buy else _mt5.ORDER_TYPE_SELL
+            price = tick.ask if is_buy else tick.bid
+            m = _mt5.order_calc_margin(order_type, sym, float(volume), price)
+            if m is None or m <= 0:
+                return None
+            return float(m)
+        except Exception:
+            return None
+
+    def _row_hedge_margin_estimate(self, row_data, prop_side):
+        """Estimate MT5 hedge margin for one active-trade row."""
+        if not self.prop_firm_mgr:
+            return None
+        config = self.prop_firm_mgr.get_strategy_config(
+            row_data["firm_code"], row_data["phase_key"], row_data["acct_size"])
+        if not config:
+            return None
+        mt5_sym = config.get("mt5_symbol", "NAS100")
+        mt5_vol = float(config.get("mt5_volume", 2.8) or 0)
+        if mt5_vol <= 0:
+            return None
+        hedge_side = "sell" if str(prop_side).lower() == "buy" else "buy"
+        return self._estimate_mt5_order_margin(mt5_sym, mt5_vol, hedge_side)
+
+    def _refresh_mt5_margin_after_scan(self):
+        """After SCAN: show MT5 free margin and estimated hedge margin for queued rows."""
+        if self.hedge_mode_var.get() != "Hedging":
+            self.mt5_free_margin_var.set("")
+            return
+        login = self.mt5_login.get().strip()
+        pwd = self.mt5_password.get().strip()
+        server = self.mt5_server.get().strip()
+        if login and pwd and server and not getattr(self.pusher, "connected", False):
+            try:
+                self.pusher.connect_mt5(login, pwd, server)
+            except Exception:
+                pass
+        free = self._get_mt5_free_margin()
+        rows = list(self._active_trade_rows)
+        firm_sides = getattr(self, "_auto_trade_firm_sides", {}) or {}
+        est_total = 0.0
+        est_count = 0
+        for rd in rows:
+            firm = (rd.get("eval") or {}).get("Prop Firm", rd.get("firm_code", ""))
+            side = firm_sides.get(firm, "buy")
+            m = self._row_hedge_margin_estimate(rd, side)
+            if m is not None:
+                est_total += m
+                est_count += 1
+        if free is None:
+            self.mt5_free_margin_var.set("MT5 free: not connected")
+            self.log("⚠ MT5 free margin unavailable — connect MT5 to size hedges", "WARN")
+            return
+        label = f"MT5 free: ${free:,.0f}"
+        if est_count:
+            label += f"  ·  est. ${est_total:,.0f} ({est_count} hedges)"
+            if est_total > free:
+                label += "  ⚠ short"
+        self.mt5_free_margin_var.set(label)
+        self.log(f"💰 MT5 free margin ${free:,.2f}" +
+                 (f", est. ${est_total:,.2f} for {est_count} hedge(s)" if est_count else ""))
+
+    def _cap_rows_by_mt5_margin(self, rows_by_firm, firm_sides):
+        """
+        Drop rows that would exceed MT5 free margin (hedging only).
+        Returns (updated rows_by_firm, affordable_count, skipped_count, free_margin, required_total).
+        """
+        if self.hedge_mode_var.get() != "Hedging":
+            total = sum(len(v) for v in rows_by_firm.values())
+            return rows_by_firm, total, 0, None, 0.0
+
+        free = self._get_mt5_free_margin()
+        if free is None:
+            total = sum(len(v) for v in rows_by_firm.values())
+            self.log("⚠ MT5 free margin unknown — not capping auto-trade count", "WARN")
+            return rows_by_firm, total, 0, None, 0.0
+
+        budget = max(0.0, free * 0.95)
+        used = 0.0
+        required_total = 0.0
+        affordable = 0
+        skipped = 0
+        kept_ids = set()
+
+        for rd in self._active_trade_rows:
+            firm = (rd.get("eval") or {}).get("Prop Firm", rd.get("firm_code", ""))
+            if firm not in rows_by_firm or rd not in rows_by_firm[firm]:
+                continue
+            side = firm_sides.get(firm, "buy")
+            need = self._row_hedge_margin_estimate(rd, side)
+            if need is None:
+                kept_ids.add(id(rd))
+                affordable += 1
+                continue
+            required_total += need
+            if used + need <= budget:
+                used += need
+                kept_ids.add(id(rd))
+                affordable += 1
+            else:
+                skipped += 1
+                self.log(
+                    f"   💰 {rd.get('acct_num', '?')} ({firm}) — skipped (need ${need:,.0f} margin, "
+                    f"${max(0.0, budget - used):,.0f} left)",
+                    "WARN",
+                )
+                try:
+                    rd["buy_btn"].configure(state="disabled", text="N/A")
+                    rd["sell_btn"].configure(state="disabled", text="N/A")
+                except Exception:
+                    pass
+
+        if skipped:
+            new_map = {}
+            for firm, firm_rows in rows_by_firm.items():
+                kept = [r for r in firm_rows if id(r) in kept_ids]
+                if kept:
+                    new_map[firm] = kept
+            rows_by_firm = new_map
+
+        return rows_by_firm, affordable, skipped, free, required_total
+
     def _eval_has_payout(self, ev):
         """Check if any hedge result field contains 'payout' text."""
         if not ev:
@@ -5648,9 +5820,17 @@ class TradeOpssAIApp:
             except Exception:
                 pass
 
-        # Confirm: prop TP/SL (ticks), then MT5 TP/SL (points) when hedging — keep dialog minimal
+        # Confirm: phase + prop TP/SL (ticks), then MT5 TP/SL (points) when hedging
+        trade_phase = (row_data.get("current_phase") or "").strip() or "Unknown"
+        phase_bits = [trade_phase]
+        if phase_key:
+            phase_bits.append(phase_key.replace("_", " "))
+        if day_name:
+            phase_bits.append(day_name)
+        phase_line = "\nPhase:     " + "  ·  ".join(phase_bits)
         tp_sl_lines = (
-            f"\n{platform}:  TP {trado_tp} ticks  |  SL {trado_sl} ticks"
+            phase_line
+            + f"\n{platform}:  TP {trado_tp} ticks  |  SL {trado_sl} ticks"
             + (f"\nMT5:       TP {mt5_tp} pts    |  SL {mt5_sl} pts" if hedging else "")
         )
 
@@ -6406,8 +6586,35 @@ class TradeOpssAIApp:
                 self._stop_auto_trade()
                 return
 
+        margin_skipped = 0
+        if hedging and mt5_api:
+            rows_by_firm, affordable_n, margin_skipped, free_m, required_m = self._cap_rows_by_mt5_margin(
+                rows_by_firm, firm_sides)
+            if margin_skipped > 0 and free_m is not None:
+                total_queued = affordable_n + margin_skipped
+                messagebox.showwarning(
+                    "Free Margin Limited",
+                    f"Free margin is not enough for all hedges.\n\n"
+                    f"MT5 free margin: ${free_m:,.0f}\n"
+                    f"Estimated for {total_queued} trade(s): ${required_m:,.0f}\n\n"
+                    f"Only taking {affordable_n} trade(s).",
+                )
+                self.log(
+                    f"💰 Free margin limited: taking {affordable_n} of {total_queued} hedge(s), "
+                    f"{margin_skipped} skipped")
+            if not rows_by_firm:
+                free_txt = f"${free_m:,.0f}" if free_m is not None else "unknown"
+                messagebox.showerror(
+                    "Insufficient Margin",
+                    f"MT5 free margin ({free_txt}) is not enough to open any hedges.",
+                )
+                self.log("❌ Auto-trade aborted — insufficient MT5 free margin", "ERROR")
+                self._stop_auto_trade()
+                return
+            self.root.after(0, self._refresh_mt5_margin_after_scan)
+
         total_success = threading.Lock()
-        counters = {"success": 0, "fail": 0, "skipped": len(skipped_rows)}
+        counters = {"success": 0, "fail": 0, "skipped": len(skipped_rows) + margin_skipped}
 
         def _execute_firm_trades(firm_name, firm_rows):
             """Execute all trades for one firm sequentially on its own Chrome."""
