@@ -150,6 +150,10 @@ def _norm_prop_firm_max_out_key(raw):
         return 'toponefutures'
     if s in ('tradeday', 'trade-day'):
         return 'tradeday'
+    if s in ('topsteprtp', 'topstep-rtp') or 'topsteprtp' in s:
+        return 'topstep'
+    if 'topstep' in s:
+        return 'topstep'
     if 'apex' in s:
         return 'apex'
     if s == 'alphafutures' or ('alpha' in s and 'future' in s):
@@ -11027,8 +11031,6 @@ def update_note():
         column_key = data.get('column_key')
         content = data.get('content')
 
-        # Clients have full notes access
-        
         if not client_id or row_index is None or not column_key:
             return jsonify({"status": "error", "message": "Missing required fields"}), 400
 
@@ -11037,8 +11039,8 @@ def update_note():
             log_action('ACCESS_DENIED', user_type, user_identifier, get_remote_address(), f"Note access denied: {client_id}", False)
             return jsonify({"status": "error", "message": "Access denied"}), 403
 
-        if user_type == 'kwok_admin':
-            return jsonify({"status": "error", "message": "View-only account"}), 403
+        if user_type in ('client', 'kwok_admin'):
+            return jsonify({"status": "error", "message": "Read-only account"}), 403
 
         if content:
             save_client_note(client_id, row_index, column_key, content, user_identifier)
@@ -11057,14 +11059,27 @@ def update_note():
 @app.route('/api/notes/delete', methods=['POST'])
 @require_session
 def delete_note():
-    data = request.json
+    data = request.json or {}
     client_id = data.get('client_id')
     row_index = data.get('row_index')
     column_key = data.get('column_key')
-    
+
     session_user = request.session_user
-        
+    user_type = session_user.get('user_type')
+    user_identifier = session_user.get('user_identifier')
+
+    if not client_id or row_index is None or not column_key:
+        return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+    if not can_access_client(user_type, user_identifier, client_id):
+        return jsonify({"status": "error", "message": "Access denied"}), 403
+
+    if user_type in ('client', 'kwok_admin'):
+        return jsonify({"status": "error", "message": "Read-only account"}), 403
+
     if delete_client_note(client_id, row_index, column_key):
+        log_action('DELETE_NOTE', user_type, user_identifier, get_remote_address(),
+                   f"Note on {client_id} row {row_index} col {column_key}", True)
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Database error"}), 500
 

@@ -1584,7 +1584,7 @@ class TradeOpssAIApp:
         "My Funded Futures": "#3B8ED0",
         "MFFU":             "#3B8ED0",
         "TopStep":          "#DA3633",
-        "TopStep RTP":      "#B91C1C",   # slightly darker red to distinguish from standard TopStep
+        "TopStep RTP":      "#EA580C",   # amber-orange — child of Topstep, distinct from standard red
         "Apex":             "#E67E22",
         "Funded Next":      "#E91E63",
         "FundingTicks":     "#F1C40F",

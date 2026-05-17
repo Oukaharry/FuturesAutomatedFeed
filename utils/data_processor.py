@@ -39,6 +39,7 @@ _FIRM_MAP = {
     "myfundedfutures": "My Funded Futures", "myfundedfx": "My Funded Futures",
     "mff": "My Funded Futures",
     "topstep": "Topstep",
+    "topsteprtp": "TopStep RTP",
     "fundingticks": "Funding Ticks", "fundingtick": "Funding Ticks",
     "fundednext": "FundedNext", "fundednext": "FundedNext",
     "tradeday": "TradeDay",
@@ -59,6 +60,12 @@ _FIRM_MAP = {
     "toponefutures": "Top One Futures", "topone": "Top One Futures",
 }
 
+# Child variants stored on their own row but rolled into the parent for stats / limits.
+_PROP_FIRM_STATS_PARENT = {
+    "TopStep RTP": "Topstep",
+}
+
+
 def normalize_prop_firm(name):
     """Normalize prop firm name to canonical form to prevent duplicates."""
     if not name:
@@ -73,10 +80,18 @@ def normalize_prop_firm(name):
     if "fundednext" in key:
         return "FundedNext"
     if "topstep" in key:
+        if "rtp" in key:
+            return "TopStep RTP"
         return "Topstep"
     if "fundingtick" in key:
         return "Funding Ticks"
     return original
+
+
+def prop_firm_stats_parent(name):
+    """Map child prop firm labels to parent for aggregate statistics."""
+    canonical = normalize_prop_firm(name)
+    return _PROP_FIRM_STATS_PARENT.get(canonical, canonical)
 
 def normalize_account_size(value):
     """
@@ -771,7 +786,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
 
     for ev in evaluations:
         try:
-            firm = normalize_prop_firm(ev.get('Prop Firm', 'Unknown'))
+            firm = prop_firm_stats_parent(ev.get('Prop Firm', 'Unknown'))
             status_p1 = str(ev.get('Status P1', '')).strip()
             # Support both 'Status' and 'Status Funded' column names (sheet variant)
             status_funded = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
@@ -1203,7 +1218,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Other'},
+        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }

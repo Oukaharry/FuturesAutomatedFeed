@@ -3005,6 +3005,8 @@
         const IS_KWOK_ADMIN = USER_TYPE === 'kwok_admin';
         /** Treat like client sheet cells: no inline edits (Kwok admin is read-only on the server). */
         const SHEET_EDIT_LOCKED = IS_CLIENT || IS_KWOK_ADMIN;
+        /** Right-click notes: editable for admin / super_admin / bef_admin / trader; read-only for client & kwok_admin. */
+        const CAN_EDIT_NOTES = !IS_CLIENT && !IS_KWOK_ADMIN;
         // Firms hidden from BEF admin view
         // Precomputed normalized keys for O(1) Set lookup instead of O(n) array scan
         const BEF_HIDDEN_FIRMS_SET = new Set(['lucid', 'apex', 'tradeday', 'toponefutures']);
@@ -3328,130 +3330,103 @@
         
         // Left-click on a cell: do nothing special — notes are right-click only
         function handleCellClick(event, index, key) {
-            // Intentionally empty: openNoteEditor is triggered only by oncontextmenu (right-click)
+            // Intentionally empty: openNoteEditor is triggered only by contextmenu (right-click)
+        }
+
+        function _escapeNoteFieldAttr(s) {
+            return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        }
+
+        /** One delegated handler on #evaluations-body — works for inputs, dropdowns, and plain cells. */
+        function initEvalNotesContextMenu() {
+            const tbody = document.getElementById('evaluations-body');
+            if (!tbody || tbody.dataset.notesCtxBound === '1') return;
+            tbody.dataset.notesCtxBound = '1';
+            tbody.addEventListener('contextmenu', function(e) {
+                const td = e.target.closest('td[data-eval-field]');
+                if (!td) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const index = parseInt(td.getAttribute('data-eval-index'), 10);
+                const key = td.getAttribute('data-eval-field');
+                if (Number.isNaN(index) || !key) return;
+                openNoteEditor(e, index, key);
+            });
         }
 
         // --- Note Logic ---
         function openNoteEditor(event, index, key) {
-             console.log(`Open Note Editor invoked for cell (${index}, ${key})`, event ? event.type : 'manual');
-             
-             if (event && event.preventDefault) event.preventDefault(); // Block standard menu
-             
-             // Ensure Modal Exists
+             if (event && event.preventDefault) event.preventDefault();
+
              const modal = document.getElementById('note-modal');
              if (!modal) {
-                 console.error("ERROR: #note-modal not found!");
                  alert("UI Error: Note popup missing. Please refresh.");
                  return;
              }
-             
-             // Debug State
-             console.log("Current Modal State before OPEN:", modal.style.display, modal.style.zIndex);
 
-             // Use global USER_TYPE if available, else derive from template
-             let userType = "client";
-             try {
-                 if (typeof USER_TYPE !== 'undefined') userType = USER_TYPE;
-                 else userType = "{{ user_type }}";
-             } catch(e) {
-                 console.error("User type check failed", e);
-             }
-
-             const isClient = (userType === "client");
-             // Force Admin for debugging if needed:
-             // const isClient = false; 
-
-             console.log("User Type:", userType, "Is Client:", isClient);
-             
-             // Find current note content
              let currentContent = '';
              let hasContent = false;
-             
              try {
-                // Check if notes exist safely
                 if (currentData && currentData.evaluations && currentData.evaluations[index]) {
-                    if (currentData.evaluations[index]._notes && 
+                    if (currentData.evaluations[index]._notes &&
                         currentData.evaluations[index]._notes[key]) {
                         currentContent = currentData.evaluations[index]._notes[key];
                         hasContent = true;
                     }
                 }
              } catch (e) { console.error("Error accessing note data", e); }
-             
-             currentNoteTarget = { index, key };
-             
-             // Setup Modal
-             // const modal = document.getElementById('note-modal'); // Already defined above
-             if (!modal) {
-                 console.error("Note modal not found!");
-                 return;
-             }
 
-             // Ensure modal is attached to body
+             currentNoteTarget = { index, key };
+
              if (modal.parentElement !== document.body) {
                  document.body.appendChild(modal);
              }
-             
-             // Force styles for visibility
-             modal.style.display = 'flex';
-             modal.style.zIndex = '20000';
-             modal.style.visibility = 'visible';
-             modal.style.opacity = '1';
-             
+
              const viewMode = document.getElementById('note-view-mode');
              const editMode = document.getElementById('note-edit-mode');
              const textDisplay = document.getElementById('note-text-display');
              const textArea = document.getElementById('note-textarea');
              const btnEdit = document.getElementById('btn-edit-note');
              const btnDelete = document.getElementById('btn-delete-note');
-             
-             // Reset Internal UI Element Displays
+             const titleEl = document.getElementById('note-modal-title');
+
              if (viewMode) viewMode.style.display = 'none';
              if (editMode) editMode.style.display = 'none';
-             if (btnEdit) btnEdit.style.display = 'none'; 
+             if (btnEdit) btnEdit.style.display = 'none';
              if (btnDelete) btnDelete.style.display = 'none';
-             
-             console.log("Has content:", hasContent);
 
-             // All users can view notes; only non-clients can create/edit/delete
-             {
-                 if (hasContent) {
-                     // View Mode
-                     viewMode.style.display = 'block';
-                     editMode.style.display = 'none';
-                     textDisplay.textContent = currentContent;
-                     // Show Edit/Delete only for non-clients
-                     if (btnEdit)   btnEdit.style.display   = isClient ? 'none' : 'inline-block';
-                     if (btnDelete) btnDelete.style.display = isClient ? 'none' : 'inline-block';
-                 } else {
-                     if (isClient) {
-                         // Client right-clicked a cell with no note — nothing to show, close silently
-                         modal.style.display = 'none';
-                         return;
-                     }
-                     // Non-client creating new note → Edit Mode
-                     viewMode.style.display = 'none';
-                     editMode.style.display = 'block';
-                     if (textArea) textArea.value = '';
-                     setTimeout(() => { if (textArea) textArea.focus(); }, 100);
+             const readOnlyNotes = !CAN_EDIT_NOTES;
+
+             if (hasContent) {
+                 if (titleEl) titleEl.textContent = readOnlyNotes ? 'View Note' : 'Cell Note';
+                 viewMode.style.display = 'block';
+                 editMode.style.display = 'none';
+                 textDisplay.textContent = currentContent;
+                 if (btnEdit) btnEdit.style.display = readOnlyNotes ? 'none' : 'inline-block';
+                 if (btnDelete) btnDelete.style.display = readOnlyNotes ? 'none' : 'inline-block';
+             } else {
+                 if (readOnlyNotes) {
+                     modal.style.display = 'none';
+                     return;
                  }
+                 if (titleEl) titleEl.textContent = 'Add Note';
+                 viewMode.style.display = 'none';
+                 editMode.style.display = 'block';
+                 if (textArea) textArea.value = '';
              }
-             
+
              modal.style.display = 'flex';
+             modal.style.zIndex = '20000';
+             modal.style.visibility = 'visible';
              modal.style.opacity = '1';
-             
-             // Focus textarea if in edit mode
-             if (editMode.style.display === 'block') {
-                 setTimeout(() => { 
-                     if(textArea) {
-                         console.log("Focusing textarea");
-                         textArea.focus(); 
-                     }
-                 }, 100);
+
+             if (editMode && editMode.style.display === 'block') {
+                 setTimeout(() => { if (textArea) textArea.focus(); }, 100);
              }
         }
         
         function enableNoteEdit() {
+             if (!CAN_EDIT_NOTES) return;
              const viewMode = document.getElementById('note-view-mode');
              const editMode = document.getElementById('note-edit-mode');
              const textDisplay = document.getElementById('note-text-display');
@@ -3475,6 +3450,7 @@
         }
         
         function saveNote() {
+             if (!CAN_EDIT_NOTES) return;
              if (!currentNoteTarget) return;
              const content = document.getElementById('note-textarea').value;
              const { index, key } = currentNoteTarget;
@@ -3507,6 +3483,7 @@
         }
         
         function deleteNote() {
+             if (!CAN_EDIT_NOTES) return;
              if (!confirm("Delete this note?")) return;
              if (!currentNoteTarget) return;
              const { index, key } = currentNoteTarget;
@@ -4323,9 +4300,11 @@
 
                         const classes = [hasNoteClass, highlightClass, stickyClass].filter(Boolean).join(' ');
 
-                        // Return CELL HTML
-                        return `<td ${cellId} class="${classes}" 
-                                   oncontextmenu="openNoteEditor(event, ${index}, '${key}')" 
+                        const fieldAttr = _escapeNoteFieldAttr(key);
+                        // Return CELL HTML (contextmenu via delegated listener on #evaluations-body)
+                        return `<td ${cellId} class="${classes}"
+                                   data-eval-index="${index}"
+                                   data-eval-field="${fieldAttr}"
                                    onclick="handleCellClick(event, ${index}, '${key}')"
                                    ${noteAttrs}>${content}</td>`;
                     };
@@ -4718,7 +4697,11 @@
                 const displayValue = progressContent.replace(/\n/g, ' ').replace(/"/g, '&quot;');
                 const noteClass = hasNote ? 'has-note' : '';
                 
-                    html += `<td class="prop-progress-cell ${noteClass}" style="padding: 2px;" ${hasNote ? `title="${displayValue}"` : ''}>
+                    const propDayFieldAttr = _escapeNoteFieldAttr(propDayKey);
+                    html += `<td class="prop-progress-cell ${noteClass}" style="padding: 2px;"
+                                    data-eval-index="${index}"
+                                    data-eval-field="${propDayFieldAttr}"
+                                    ${hasNote ? `title="${displayValue}"` : ''}>
                                 <input type="text" 
                                     class="cell-input" 
                                     value="${displayValue}" 
@@ -4738,6 +4721,7 @@
 
         // Handler for Prop Progress Input
         function updatePropProgress(input, index, key) {
+             if (!CAN_EDIT_NOTES) return;
              isEditing = true;  // Guard against auto-refresh during save
              const newValue = input.value;
              if (!currentData.evaluations[index]) return;
@@ -4889,6 +4873,7 @@
                         'myfundedfutures': 'My Funded Futures', 'myfundedfx': 'My Funded Futures',
                         'mff': 'My Funded Futures',
                         'topstep': 'Topstep',
+                        'topsteprtp': 'Topstep',
                         'fundingticks': 'Funding Ticks', 'fundingtick': 'Funding Ticks',
                         'fundednext': 'FundedNext',
                         'tradeday': 'TradeDay', 'tradeify': 'Tradeify',
@@ -5520,7 +5505,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Topstep', 'Lucid', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Other'
+                    'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -6556,7 +6541,7 @@
         }
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted', 'Completed']
@@ -6577,6 +6562,8 @@
                     return base + "background-color: #ffcc99; color: black;";
                 } else if (v.includes('tradeday')) {
                     return base + "background-color: #FFFFFF; color: black; border: 1px solid #ccc;";
+                } else if (v.includes('topsteprtp')) {
+                    return base + "background-color: #ea580c; color: white;";  // amber-orange — RTP child of Topstep
                 } else if (v.includes('topstep')) {
                     return base + "background-color: #e74c3c; color: white;";
                 } else if (v.includes('alpha')) {
@@ -6700,6 +6687,7 @@
 
         // Initialize portal on load
         document.addEventListener('DOMContentLoaded', () => {
+            initEvalNotesContextMenu();
             globalDropdownMenu = document.createElement('div');
             globalDropdownMenu.className = 'dropdown-menu-portal';
             globalDropdownMenu.style.display = 'none';
@@ -6790,6 +6778,7 @@
                                 if (v.includes('myfunded') || v.includes('mffu')) return "background-color: #FFD700; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('funding')) return "background-color: #ffcc99; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('tradeday')) return "background-color: #FFFFFF; color: black; border: 1px solid #ccc; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('topsteprtp')) return "background-color: #ea580c; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('topstep')) return "background-color: #e74c3c; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('alpha')) return "background-color: #27ae60; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('tradeify')) return "background-color: #000000; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
@@ -8329,7 +8318,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections() {
             const d = {};
