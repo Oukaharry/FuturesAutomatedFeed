@@ -4889,6 +4889,7 @@
                         'myfundedfutures': 'My Funded Futures', 'myfundedfx': 'My Funded Futures',
                         'mff': 'My Funded Futures',
                         'topstep': 'Topstep',
+                        'topsteprtp': 'Topstep',
                         'fundingticks': 'Funding Ticks', 'fundingtick': 'Funding Ticks',
                         'fundednext': 'FundedNext',
                         'tradeday': 'TradeDay', 'tradeify': 'Tradeify',
@@ -5520,7 +5521,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Topstep', 'Lucid', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Other'
+                    'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -6556,7 +6557,7 @@
         }
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', 'Hit TP1', 'Hit TP2', 'Hit TP3', 'Hit TP4', 'Hit TP5', 'Hit SL1', 'Hit SL2', 'Deleted', 'Completed']
@@ -6577,6 +6578,8 @@
                     return base + "background-color: #ffcc99; color: black;";
                 } else if (v.includes('tradeday')) {
                     return base + "background-color: #FFFFFF; color: black; border: 1px solid #ccc;";
+                } else if (v.includes('topsteprtp')) {
+                    return base + "background-color: #ea580c; color: white;";  // amber-orange — RTP child of Topstep
                 } else if (v.includes('topstep')) {
                     return base + "background-color: #e74c3c; color: white;";
                 } else if (v.includes('alpha')) {
@@ -6790,6 +6793,7 @@
                                 if (v.includes('myfunded') || v.includes('mffu')) return "background-color: #FFD700; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('funding')) return "background-color: #ffcc99; color: black; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('tradeday')) return "background-color: #FFFFFF; color: black; border: 1px solid #ccc; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
+                                if (v.includes('topsteprtp')) return "background-color: #ea580c; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('topstep')) return "background-color: #e74c3c; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('alpha')) return "background-color: #27ae60; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
                                 if (v.includes('tradeify')) return "background-color: #000000; color: white; border-radius: 12px; padding: 2px 8px; margin: 0 auto; display: inline-block; width: auto; min-width: 80px; text-align: center;";
@@ -8329,7 +8333,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections() {
             const d = {};

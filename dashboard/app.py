@@ -150,6 +150,10 @@ def _norm_prop_firm_max_out_key(raw):
         return 'toponefutures'
     if s in ('tradeday', 'trade-day'):
         return 'tradeday'
+    if s in ('topsteprtp', 'topstep-rtp') or 'topsteprtp' in s:
+        return 'topstep'
+    if 'topstep' in s:
+        return 'topstep'
     if 'apex' in s:
         return 'apex'
     if s == 'alphafutures' or ('alpha' in s and 'future' in s):

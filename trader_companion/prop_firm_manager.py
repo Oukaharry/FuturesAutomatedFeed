@@ -48,6 +48,8 @@ class PropFirmManager:
         "FundingTicks": "FundingTicks",
         "Trade Day": "TradeDay",
         "TopStep": "TopStep",
+        "TopStep RTP": "TopStep RTP",
+        "TopStep_RTP": "TopStep RTP",
         "Apex": "Apex",
         "Tradeify": "Tradeify",
         "Lucid": "Lucid",

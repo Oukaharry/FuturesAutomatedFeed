@@ -1,4 +1,5 @@
 from dashboard.database import get_all_clients
+from utils.data_processor import prop_firm_stats_parent
 import re
 from datetime import datetime, timedelta
 import json
@@ -313,7 +314,7 @@ def calculate_all_financials(profile_filter=None, start_date=None, end_date=None
             # Prop Firm Overview Logic
             raw_prop_firm = ev.get('Prop Firm')
             if raw_prop_firm and raw_prop_firm != "-" and str(raw_prop_firm).lower() != "prop firm":
-                prop_firm = normalize_prop_firm_name(raw_prop_firm)
+                prop_firm = prop_firm_stats_parent(normalize_prop_firm_name(raw_prop_firm))
                 if not prop_firm:
                     continue
                 
@@ -644,6 +645,7 @@ def normalize_prop_firm_name(name):
         "myfundedfx": "My Funded Futures",
         "fundednext": "FundedNext",
         "topstep": "Topstep",
+        "topsteprtp": "TopStep RTP",
         "fundingticks": "Funding Ticks",
         "fundingtick": "Funding Ticks",
         "tradeday": "TradeDay",
@@ -752,7 +754,7 @@ def get_payouts_history(start_date=None, end_date=None, prop_firm_filter=None, p
             prop_firm = eval_data.get('Prop Firm')
             if not prop_firm or prop_firm == "-": continue
             
-            prop_firm = normalize_prop_firm_name(prop_firm)
+            prop_firm = prop_firm_stats_parent(normalize_prop_firm_name(prop_firm))
             if not prop_firm: continue
             
             # Apply prop firm filter if provided
@@ -1181,8 +1183,8 @@ def calculate_propfirm_overview(profile_filter=None):
             if not raw_prop_firm or raw_prop_firm == "-" or str(raw_prop_firm).lower() == "prop firm":
                 continue
                 
-            # Normalize Name
-            prop_firm = normalize_prop_firm_name(raw_prop_firm)
+            # Normalize Name (TopStep RTP rolls up into Topstep for totals)
+            prop_firm = prop_firm_stats_parent(normalize_prop_firm_name(raw_prop_firm))
             if not prop_firm:
                 continue
             
