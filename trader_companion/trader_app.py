@@ -18,8 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.5.9"
-RELEASE_DISABLE_HEDGE_GUARD = True
+APP_VERSION = "1.6.0"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -364,17 +363,6 @@ except ImportError:
         from trade_limit_manager import TradeLimitManager
     except ImportError:
         TradeLimitManager = None
-
-try:
-    from trader_companion.hedge_protector import HedgeProtector
-    HEDGE_PROTECTOR_AVAILABLE = True
-except ImportError:
-    try:
-        from hedge_protector import HedgeProtector
-        HEDGE_PROTECTOR_AVAILABLE = True
-    except ImportError:
-        HEDGE_PROTECTOR_AVAILABLE = False
-        HedgeProtector = None
 
 try:
     from trader_companion.signals.rsi import get_rsi_signal
@@ -1681,7 +1669,6 @@ class TradeOpssAIApp:
         self._active_trade_rows = []
         self._firm_billing_summary = {}   # {firm_name: {total_fees, total_payouts, records: [...]}}
         self.push_billing_btn = None
-        self._hedge_protector = None
         self._status_poll_active = False   # real-time status polling flag
         self._last_known_statuses = {}     # {acct_display: last_computed_status} for change detection
         self._cached_acct_mappings = {}    # {firm_name: {acct_key: info}} cached on connect
@@ -5681,11 +5668,9 @@ class TradeOpssAIApp:
 
         hedging = self.hedge_mode_var.get() == "Hedging"
         prop_firm_name = row_data["eval"].get("Prop Firm", firm_code) if row_data.get("eval") else firm_code
-        # Auto-detect platform: TopStep firms always use TopStepX (Selenium)
-        if "topstep" in prop_firm_name.lower():
-            platform = "TopStepX"
-        else:
-            platform = self.broker_var.get()
+        # Platform follows the resolved blueprint code, not a substring of the
+        # free-text dashboard label (so e.g. TopStep RTP routes to TopStepX).
+        platform = self._platform_for_firm(firm_code or prop_firm_name)
         broker_account = self._get_broker_for_firm(prop_firm_name)
 
         if not broker_account:
@@ -5734,91 +5719,16 @@ class TradeOpssAIApp:
         mt5_tp = int(config.get("mt5_tp_points", 46))
         mt5_sl = int(config.get("mt5_sl_points", 42))
 
-        # ── Adjust TP based on stage progress ──
-        # If we already have profit in this stage, shrink TP so we don't overshoot.
-        # If we're short of the expected start balance, grow TP to catch up.
-        if self.prop_firm_mgr and broker_account and not _is_farming_sym:
-            try:
-                current_profit = self._get_current_phase_profit(
-                    ev, row_data["current_phase"], broker_account=broker_account, acct_size=acct_size)
-                size_key = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
-                stage_start = self.prop_firm_mgr.get_stage_start_target(
-                    firm_code, row_data["current_phase"], phase_key, size_key)
-                stage_profit_so_far = current_profit - stage_start
-                trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
-                tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
-                trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
-                if tick_val > 0 and trado_qty_for_calc > 0:
-                    orig_tp = trado_tp
-                    orig_mt5_sl = mt5_sl
-                    # Convert stage profit to ticks and subtract from TP
-                    profit_ticks = stage_profit_so_far / (tick_val * trado_qty_for_calc)
-                    adjusted_tp = max(5, round(trado_tp - profit_ticks))
-                    tp_ratio = adjusted_tp / trado_tp if trado_tp > 0 else 1.0
-                    adjusted_mt5_sl = max(5, round(mt5_sl * tp_ratio))
-                    if adjusted_tp != trado_tp:
-                        trado_tp = adjusted_tp
-                        mt5_sl = adjusted_mt5_sl
-                        self.log(f"📊 TP adjust {acct_num}: stage_start=${stage_start:,.0f}, "
-                                 f"current P/L=${current_profit:,.2f}, stage P/L=${stage_profit_so_far:+,.2f} → "
-                                 f"TP {orig_tp}→{trado_tp}t, MT5 SL {orig_mt5_sl}→{mt5_sl}pts")
-            except Exception as _te:
-                self.log(f"⚠ TP adjust failed for {acct_num}: {_te}")
-
-        # ── Adjust SL based on midnight balance + drawdown protection ──
-        if broker_account and platform == "Tradovate" and hasattr(broker_account, 'get_min_equity'):
-            try:
-                min_eq_data = broker_account.get_min_equity()
-                if min_eq_data:
-                    live_net_liq = min_eq_data['net_liq']
-                    net_liq_sod = min_eq_data.get('net_liq_sod', 0)
-                    live_min_equity = min_eq_data.get('min_equity', 0)
-                    tmdl = min_eq_data.get('trailing_max_drawdown_limit', 50000)
-                    trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
-                    trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
-                    tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
-
-                    # Step 1: Midnight balance SL — floor = SOD - blueprint_sl_dollars
-                    if net_liq_sod > 0 and tick_val > 0 and trado_qty_for_calc > 0:
-                        blueprint_sl_dollars = trado_sl * tick_val * trado_qty_for_calc
-                        sl_floor = net_liq_sod - blueprint_sl_dollars
-                        available = live_net_liq - sl_floor
-                        if available > 0:
-                            midnight_sl = max(10, int(available / (tick_val * trado_qty_for_calc)))
-                            if midnight_sl != trado_sl:
-                                orig_sl = trado_sl
-                                orig_mt5_tp = mt5_tp
-                                trado_sl = midnight_sl
-                                mt5_tp = max(5, int(trado_sl / 4) - 1)
-                                daily_pnl = live_net_liq - net_liq_sod
-                                self.log(f"🌙 Midnight SL {acct_num}: SOD=${net_liq_sod:,.2f}, "
-                                         f"live=${live_net_liq:,.2f}, daily P/L=${daily_pnl:+,.2f} → "
-                                         f"SL {orig_sl}→{trado_sl}t, MT5 TP {orig_mt5_tp}→{mt5_tp}pts")
-                            else:
-                                self.log(f"✅ Midnight SL OK {acct_num}: SOD=${net_liq_sod:,.2f}, SL={trado_sl}t unchanged")
-                        else:
-                            self.log(f"⚠ Midnight SL floor breached {acct_num}: "
-                                     f"live=${live_net_liq:,.2f} < floor=${sl_floor:,.2f} — using min SL")
-                            trado_sl = 10
-                            mt5_tp = max(5, int(trado_sl / 4) - 1)
-
-                    # Step 2: TMDL drawdown cap — further tighten if near breach
-                    if live_min_equity > 0 and live_net_liq < tmdl:
-                        drawdown_remaining = live_net_liq - live_min_equity
-                        current_sl_risk = trado_sl * tick_val * trado_qty_for_calc
-                        if drawdown_remaining > 0 and current_sl_risk > drawdown_remaining:
-                            orig_sl = trado_sl
-                            orig_mt5_tp = mt5_tp
-                            trado_sl = max(10, int(drawdown_remaining / (tick_val * trado_qty_for_calc)))
-                            mt5_tp = max(5, int(trado_sl / 4) - 1)
-                            self.log(f"🎯 TMDL SL cap {acct_num}: remaining=${drawdown_remaining:,.2f} → "
-                                     f"SL {orig_sl}→{trado_sl}t, MT5 TP {orig_mt5_tp}→{mt5_tp}pts")
-                        elif drawdown_remaining <= 0:
-                            self.log(f"⚠ No drawdown room for {acct_num} (${drawdown_remaining:,.2f})")
-                    elif live_min_equity > 0:
-                        self.log(f"✅ TMDL OK {acct_num}: ${live_net_liq:,.2f} ≥ TMDL=${tmdl:,.0f}")
-            except Exception:
-                pass
+        # ── Reference-ported TP→SL adjustment pipeline ──
+        config = self._apply_tp_sl_adjustments(
+            config, broker_account=broker_account, platform=platform,
+            firm_code=firm_code, current_phase=row_data["current_phase"],
+            phase_key=phase_key, acct_size=acct_size, row_eval=ev,
+            acct_num=acct_num, is_farming=_is_farming_sym)
+        trado_tp = int(config.get("tradovate_tp_ticks", trado_tp) or trado_tp)
+        trado_sl = int(config.get("tradovate_sl_ticks", trado_sl) or trado_sl)
+        mt5_tp = int(config.get("mt5_tp_points", mt5_tp) or mt5_tp)
+        mt5_sl = int(config.get("mt5_sl_points", mt5_sl) or mt5_sl)
 
         # Confirm: phase + prop TP/SL (ticks), then MT5 TP/SL (points) when hedging
         trade_phase = (row_data.get("current_phase") or "").strip() or "Unknown"
@@ -5946,6 +5856,113 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_do_trade, daemon=True).start()
 
+    def _apply_tp_sl_adjustments(self, config, *, broker_account, platform,
+                                 firm_code, current_phase, phase_key,
+                                 acct_size, row_eval, acct_num, is_farming):
+        """Reference-ported TP→SL adjustment pipeline (TradeAccountConnector).
+
+        Mirrors the connector's _compute_trade_adjustments routing exactly:
+
+          • Funded / Double Dip (phase_key.startswith("funded_trade")):
+            ONLY calculate_funded_sl — trade 1 = fixed $2,000 SL, trade 2+ =
+            balance − flat lock level (TopStep $0, MFFU $100, others
+            $50,000). Deliberately NO TP-by-stage / midnight / TMDL.
+          • Challenge / Farming (else): TP-by-stage → SL midnight-floor →
+            SL TMDL cap (calculate_adjusted_tp is skipped for farming
+            symbols, which use adjust_farming_tp_sl upstream).
+
+        The reference methods key off `tradovate_*`; mirror the broker-
+        namespaced TopStepX keys so TopStepX blueprints adjust identically.
+        """
+        if not self.prop_firm_mgr:
+            return config
+        config = config.copy()
+        if not config.get("tradovate_tp_ticks") and config.get("topstepx_tp_ticks"):
+            config["tradovate_tp_ticks"] = config["topstepx_tp_ticks"]
+        if not config.get("tradovate_sl_ticks") and config.get("topstepx_sl_ticks"):
+            config["tradovate_sl_ticks"] = config["topstepx_sl_ticks"]
+        if not config.get("tradovate_qty") and config.get("topstepx_qty"):
+            config["tradovate_qty"] = config["topstepx_qty"]
+
+        sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
+        tick_value = self.prop_firm_mgr.get_tick_value(sym) if sym else 5.0
+
+        # phase_key is funded_trade{n} or funded_trade_doubledip_{n} for the
+        # funded/double-dip phases (challenge_trade*/farming are excluded).
+        is_funded = (phase_key or "").startswith("funded_trade")
+
+        if is_funded:
+            # FUNDED / DOUBLE DIP: Tradovate SL + MT5 TP only via the funded
+            # SL rule. Deliberately NO calculate_adjusted_tp / midnight-floor
+            # / TMDL cap — those would move Tradovate TP and scale MT5 SL,
+            # which funded trades must not do.
+            try:
+                import re as _re
+                balance = None
+                if broker_account:
+                    _stats = broker_account.get_account_stats()
+                    _bal_str = _stats.get("Balance", "") if isinstance(_stats, dict) else ""
+                    if _bal_str and _bal_str not in ("N/A", "Error", ""):
+                        balance = float(str(_bal_str).replace("$", "").replace(",", ""))
+                if balance is None:
+                    self.log(f"⚠ Funded SL {acct_num}: balance unavailable — keeping blueprint SL/TP")
+                else:
+                    _m = _re.search(r'(\d+)$', phase_key or "")
+                    trade_index = int(_m.group(1)) if _m else 1
+                    # Flat lock level: distance the funded SL measures from
+                    # (TopStep $0, MFFU $100, others $50,000).
+                    threshold = self.prop_firm_mgr.get_lock_level(firm_code)
+                    config = self.prop_firm_mgr.calculate_funded_sl(
+                        config, balance, threshold, trade_index, tick_value)
+            except Exception as _fe:
+                self.log(f"⚠ Funded SL failed for {acct_num}: {_fe}")
+        else:
+            # CHALLENGE / FARMING.
+            # 1) TP by stage profit (skipped for farming symbols upstream)
+            if broker_account and not is_farming:
+                try:
+                    current_profit = self._get_current_phase_profit(
+                        row_eval, current_phase,
+                        broker_account=broker_account, acct_size=acct_size)
+                    size_key = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
+                    stage_start = self.prop_firm_mgr.get_stage_start_target(
+                        firm_code, current_phase, phase_key, size_key)
+                    # Only apply when stage_start is trustworthy — falling back
+                    # to 0 would attribute the whole account balance to this
+                    # stage and collapse TP to the floor.
+                    if stage_start is not None:
+                        stage_profit_so_far = current_profit - stage_start
+                        config = self.prop_firm_mgr.calculate_adjusted_tp(
+                            config, stage_profit_so_far, tick_value)
+                except Exception as _te:
+                    self.log(f"⚠ TP adjust failed for {acct_num}: {_te}")
+
+            # 2/3) SL midnight floor + TMDL cap. Runs for any broker that
+            # exposes get_min_equity() — Tradovate (live API) or TopStepX
+            # (static formula + persisted SOD), matching the connector.
+            if broker_account and hasattr(broker_account, 'get_min_equity'):
+                try:
+                    min_eq = broker_account.get_min_equity()
+                    if isinstance(min_eq, dict):
+                        live_net_liq = min_eq.get('net_liq')
+                        net_liq_sod = min_eq.get('net_liq_sod', 0)
+                        live_min_equity = min_eq.get('min_equity', 0)
+                        tmdl = min_eq.get('trailing_max_drawdown_limit', 50000)
+                        if live_net_liq is None:
+                            live_net_liq = net_liq_sod
+                        if net_liq_sod and net_liq_sod > 0:
+                            config = self.prop_firm_mgr.calculate_adjusted_sl_midnight_floor(
+                                config, live_net_liq, net_liq_sod, tick_value)
+                        if tmdl is not None and live_min_equity is not None:
+                            config = self.prop_firm_mgr.calculate_adjusted_sl_tmdl_cap(
+                                config, live_net_liq, live_min_equity, tmdl, tick_value)
+                except Exception:
+                    pass
+
+        for _r in (config.get('_adj_reasons') or []):
+            self.log(f"📐 {acct_num}: {_r}")
+        return config
+
     # ── Auto-Trade Scheduler Logic ──
 
     def _toggle_auto_trade(self):
@@ -5997,170 +6014,6 @@ class TradeOpssAIApp:
         if not found:
             self.log("  ⚠ No connected Tradovate brokers")
         self.log("🔍 Min equity test complete.")
-
-    def _start_hedge_protector(self):
-        """Start (or restart) the Hedge Protector engine. Called automatically on broker connect."""
-        if RELEASE_DISABLE_HEDGE_GUARD:
-            return
-
-        if not HEDGE_PROTECTOR_AVAILABLE:
-            return
-
-        # If already running, stop first so we can pick up newly connected accounts
-        if self._hedge_protector and self._hedge_protector.is_running:
-            try:
-                self._hedge_protector.stop()
-            except Exception:
-                pass
-            self._hedge_protector = None
-
-        # Gather every connected Tradovate account
-        connected_tv = {}
-        for firm_name, conn in self._broker_connections.items():
-            acct = conn.get("account")
-            if acct and hasattr(acct, '_api_fetch'):
-                connected_tv[firm_name] = acct
-
-        if not connected_tv:
-            return  # nothing to guard yet
-
-        # Get MT5 API
-        mt5_api = self._get_mt5_trading_api() if hasattr(self, '_get_mt5_trading_api') else None
-
-        def on_event(event_type, message):
-            """Route HedgeProtector events to the UI."""
-            try:
-                kind = {
-                    "info": "info", "warn": "queue", "error": "error",
-                    "sl_detected": "error", "tp_detected": "success",
-                    "close_sent": "trade",
-                }.get(event_type, "info")
-                self.root.after(0, lambda: self._add_activity(f"🛡️ {message}", kind))
-                self.root.after(0, lambda: self.log(f"🛡️ [{event_type.upper()}] {message}"))
-            except Exception:
-                pass
-
-        def on_status_change(acct_name, close_reason, phase_key):
-            """Immediately update dashboard status when TP/SL detected."""
-            self.root.after(0, lambda: self._handle_hedge_status_change(acct_name, close_reason, phase_key))
-
-        self._hedge_protector = HedgeProtector(
-            mt5_api=mt5_api,
-            tradovate_accounts=connected_tv,
-            on_event=on_event,
-            on_status_change=on_status_change,
-        )
-        self._hedge_protector.start()
-
-        self.log(f"🛡️ Hedge Guard ACTIVE — monitoring {len(connected_tv)} Tradovate account(s)")
-
-    def _stop_hedge_protector(self):
-        """Stop the Hedge Protector engine."""
-        if self._hedge_protector:
-            stats = self._hedge_protector.get_status()
-            self._hedge_protector.stop()
-            self._hedge_protector = None
-            self.log(f"🛡️ Hedge Guard stopped — SL protected: {stats.get('sl_protected', 0)}, TP passed: {stats.get('tp_passed', 0)}")
-
-    def _handle_hedge_status_change(self, acct_name, close_reason, phase_key):
-        """Update dashboard status immediately when TP/SL detected by hedge protector.
-        
-        Args:
-            acct_name: Tradovate account name (e.g. "FNFTCHHARRISONOUKA85625")
-            close_reason: "tp_detected" or "sl_detected"
-            phase_key: Blueprint stage key from MT5 comment (e.g. "challenge_trade2", "funded_trade1")
-        """
-        if RELEASE_DISABLE_AUTO_STATUS_UPDATES:
-            return
-
-        import re
-
-        # 1. Find the matching eval from active trade rows
-        matched_ev = None
-        matched_rd = None
-        acct_lower = acct_name.lower()
-        for rd in self._active_trade_rows:
-            ev = rd.get("eval")
-            if not ev:
-                continue
-            acct_ch = (ev.get("Account #") or "").strip().lower()
-            acct_fd = (ev.get("Account #.1") or "").strip().lower()
-            if acct_lower in acct_ch or acct_ch in acct_lower or \
-               acct_lower in acct_fd or acct_fd in acct_lower:
-                matched_ev = ev
-                matched_rd = rd
-                break
-
-        if not matched_ev:
-            self.log(f"⚠ Hedge status: no eval found for {acct_name} — skipping status update")
-            return
-
-        # 2. Determine which status field to update
-        has_funded = bool((matched_ev.get("Account #.1") or "").strip())
-        status_field = "Status" if has_funded else "Status P1"
-
-        # 3. Extract trade number from phase_key → status value
-        # phase_key examples: "challenge_trade1", "funded_trade2", "funded_trade_doubledip_3"
-        # Dashboard TP statuses: "Hit TP1", "Hit TP2", "Hit TP3", "Hit TP4"
-        # Dashboard SL statuses: "Fail"
-        if close_reason == "sl_detected":
-            new_status = "Fail"
-        else:
-            # Extract the trade number from the phase_key
-            m = re.search(r'(\d+)$', phase_key)
-            trade_num = int(m.group(1)) if m else 1
-            new_status = f"Hit TP{trade_num}"
-
-        current_status = (matched_ev.get(status_field) or "").strip()
-        if current_status.lower() == new_status.lower():
-            self.log(f"📋 Hedge status: {acct_name} already {new_status}")
-            return
-
-        # 4. Update the eval
-        matched_ev[status_field] = new_status
-        self.log(f"📋 Hedge status: {acct_name} [{phase_key}] → {status_field}='{new_status}' "
-                 f"({'SL hit' if close_reason == 'sl_detected' else 'TP hit'})")
-        self._add_activity(
-            f"📋 {acct_name}: {new_status} ({phase_key})",
-            "error" if close_reason == "sl_detected" else "success")
-
-        # 5. Push to dashboard immediately
-        email = self.client_email_entry.get().strip()
-        dashboard_url = self.url_entry.get().strip().rstrip('/')
-        if not email or not dashboard_url:
-            self.log(f"⚠ Hedge status: no email/dashboard URL — skipping push")
-            return
-        all_evals = [rd.get("eval") for rd in self._active_trade_rows if rd.get("eval")]
-        if not all_evals:
-            return
-
-        def _push():
-            try:
-                import requests
-                payload = {
-                    "email": email,
-                    "evaluations": all_evals,
-                    "statistics": {},
-                    "dropdown_options": {},
-                    "force_fields": [status_field],
-                }
-                resp = requests.post(
-                    f"{dashboard_url}/api/client/push",
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                    timeout=15)
-                if resp.status_code == 200 and resp.json().get("status") == "success":
-                    self.root.after(0, lambda:
-                        self.log(f"✅ Hedge status pushed: {acct_name} → {new_status}"))
-                else:
-                    self.root.after(0, lambda s=resp.status_code:
-                        self.log(f"⚠ Hedge status push failed: HTTP {s}"))
-            except Exception as e:
-                self.root.after(0, lambda err=str(e):
-                    self.log(f"⚠ Hedge status push error: {err}"))
-
-        import threading
-        threading.Thread(target=_push, daemon=True, name="HedgeStatusPush").start()
 
     # ── Close All Trades ────────────────────────────────────────────
 
@@ -6294,13 +6147,6 @@ class TradeOpssAIApp:
             self.root.after(0, lambda s=summary: self._add_activity(s, "error"))
 
         threading.Thread(target=_do_close_all, daemon=True, name="CloseAll").start()
-
-    def _refresh_hedge_status(self):
-        """Periodically check Hedge Protector health and log stats."""
-        if not self._hedge_protector or not self._hedge_protector.is_running:
-            return
-        # Schedule next check
-        self.root.after(5000, self._refresh_hedge_status)
 
     def _start_auto_trade(self):
         """Activate auto-trade: compute randomized start time, begin countdown."""
@@ -6618,11 +6464,10 @@ class TradeOpssAIApp:
 
         def _execute_firm_trades(firm_name, firm_rows):
             """Execute all trades for one firm sequentially on its own Chrome."""
-            # Auto-detect platform: TopStep firms always use TopStepX (Selenium)
-            if "topstep" in firm_name.lower():
-                platform = "TopStepX"
-            else:
-                platform = default_platform
+            # Platform follows the resolved blueprint code (first row's
+            # firm_code), not a substring of the dashboard label.
+            _fc = firm_rows[0].get("firm_code") if firm_rows else None
+            platform = self._platform_for_firm(_fc or firm_name, default=default_platform)
             broker_account = self._get_broker_for_firm(firm_name)
             if not broker_account:
                 for rd in firm_rows:
@@ -6823,108 +6668,16 @@ class TradeOpssAIApp:
                 mt5_tp = int(config.get("mt5_tp_points", 46))
                 mt5_sl = int(config.get("mt5_sl_points", 42))
 
-                # ── Adjust TP based on stage progress ──
-                if self.prop_firm_mgr and broker_account and not _is_farming_sym_auto:
-                    try:
-                        auto_profit = self._get_current_phase_profit(
-                            auto_ev, row_data.get("current_phase", ""),
-                            broker_account=broker_account, acct_size=acct_size)
-                        size_key_a = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
-                        stage_start = self.prop_firm_mgr.get_stage_start_target(
-                            firm_code, row_data.get("current_phase", ""), phase_key, size_key_a)
-                        stage_profit_so_far = auto_profit - stage_start
-                        trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
-                        tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
-                        trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
-                        if tick_val > 0 and trado_qty_for_calc > 0:
-                            orig_tp_a = trado_tp
-                            orig_mt5_sl_a = mt5_sl
-                            profit_ticks = stage_profit_so_far / (tick_val * trado_qty_for_calc)
-                            adjusted_tp = max(5, round(trado_tp - profit_ticks))
-                            tp_ratio = adjusted_tp / trado_tp if trado_tp > 0 else 1.0
-                            adjusted_mt5_sl = max(5, round(mt5_sl * tp_ratio))
-                            if adjusted_tp != trado_tp:
-                                trado_tp = adjusted_tp
-                                mt5_sl = adjusted_mt5_sl
-                                _an, _ss, _ap, _sp = acct_num, stage_start, auto_profit, stage_profit_so_far
-                                _otp, _ntp, _oms, _nms = orig_tp_a, trado_tp, orig_mt5_sl_a, mt5_sl
-                                self.root.after(0, lambda an=_an, ss=_ss, ap=_ap, sp=_sp, otp=_otp, ntp=_ntp, oms=_oms, nms=_nms:
-                                    self.log(f"📊 TP adjust {an}: stage_start=${ss:,.0f}, "
-                                             f"P/L=${ap:,.2f}, stage P/L=${sp:+,.2f} → "
-                                             f"TP {otp}→{ntp}t, MT5 SL {oms}→{nms}pts"))
-                    except Exception as _te:
-                        _an, _err = acct_num, str(_te)
-                        self.root.after(0, lambda an=_an, err=_err:
-                            self.log(f"⚠ TP adjust failed for {an}: {err}"))
-
-                # ── Adjust SL based on midnight balance + drawdown protection ──
-                if broker_account and platform == "Tradovate" and hasattr(broker_account, 'get_min_equity'):
-                    try:
-                        min_eq_data = broker_account.get_min_equity()
-                        if min_eq_data:
-                            live_net_liq = min_eq_data['net_liq']
-                            net_liq_sod = min_eq_data.get('net_liq_sod', 0)
-                            live_min_equity = min_eq_data.get('min_equity', 0)
-                            tmdl = min_eq_data.get('trailing_max_drawdown_limit', 50000)
-                            trado_qty_for_calc = int(config.get("tradovate_qty", 1) or config.get("topstepx_qty", 1))
-                            trado_sym_for_calc = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
-                            tick_val = self.prop_firm_mgr.get_tick_value(trado_sym_for_calc) if self.prop_firm_mgr else 5.0
-
-                            # Step 1: Midnight balance SL — floor = SOD - blueprint_sl_dollars
-                            if net_liq_sod > 0 and tick_val > 0 and trado_qty_for_calc > 0:
-                                blueprint_sl_dollars = trado_sl * tick_val * trado_qty_for_calc
-                                sl_floor = net_liq_sod - blueprint_sl_dollars
-                                available = live_net_liq - sl_floor
-                                if available > 0:
-                                    midnight_sl = max(10, int(available / (tick_val * trado_qty_for_calc)))
-                                    if midnight_sl != trado_sl:
-                                        orig_sl = trado_sl
-                                        orig_mt5_tp = mt5_tp
-                                        trado_sl = midnight_sl
-                                        mt5_tp = max(5, int(trado_sl / 4) - 1)
-                                        _an = acct_num
-                                        _sod, _nl, _dpnl = net_liq_sod, live_net_liq, live_net_liq - net_liq_sod
-                                        _osl, _nsl, _omt, _nmt = orig_sl, trado_sl, orig_mt5_tp, mt5_tp
-                                        self.root.after(0, lambda an=_an, sod=_sod, nl=_nl, dp=_dpnl, osl=_osl, nsl=_nsl, omt=_omt, nmt=_nmt:
-                                            self.log(f"🌙 Midnight SL {an}: SOD=${sod:,.2f}, "
-                                                     f"live=${nl:,.2f}, daily P/L=${dp:+,.2f} → "
-                                                     f"SL {osl}→{nsl}t, MT5 TP {omt}→{nmt}pts"))
-                                    else:
-                                        _an, _sod = acct_num, net_liq_sod
-                                        self.root.after(0, lambda an=_an, sod=_sod, sl=trado_sl:
-                                            self.log(f"✅ Midnight SL OK {an}: SOD=${sod:,.2f}, SL={sl}t unchanged"))
-                                else:
-                                    _an, _nl, _fl = acct_num, live_net_liq, sl_floor
-                                    self.root.after(0, lambda an=_an, nl=_nl, fl=_fl:
-                                        self.log(f"⚠ Midnight SL floor breached {an}: "
-                                                 f"live=${nl:,.2f} < floor=${fl:,.2f} — using min SL"))
-                                    trado_sl = 10
-                                    mt5_tp = max(5, int(trado_sl / 4) - 1)
-
-                            # Step 2: TMDL drawdown cap — further tighten if near breach
-                            if live_min_equity > 0 and live_net_liq < tmdl:
-                                drawdown_remaining = live_net_liq - live_min_equity
-                                current_sl_risk = trado_sl * tick_val * trado_qty_for_calc
-                                if drawdown_remaining > 0 and current_sl_risk > drawdown_remaining:
-                                    orig_sl = trado_sl
-                                    orig_mt5_tp = mt5_tp
-                                    trado_sl = max(10, int(drawdown_remaining / (tick_val * trado_qty_for_calc)))
-                                    mt5_tp = max(5, int(trado_sl / 4) - 1)
-                                    _an, _dr = acct_num, drawdown_remaining
-                                    _osl, _nsl, _omt, _nmt = orig_sl, trado_sl, orig_mt5_tp, mt5_tp
-                                    self.root.after(0, lambda an=_an, dr=_dr, osl=_osl, nsl=_nsl, omt=_omt, nmt=_nmt:
-                                        self.log(f"🎯 TMDL SL cap {an}: remaining=${dr:,.2f} → "
-                                                 f"SL {osl}→{nsl}t, MT5 TP {omt}→{nmt}pts"))
-                                elif drawdown_remaining <= 0:
-                                    _an, _dr = acct_num, drawdown_remaining
-                                    self.root.after(0, lambda an=_an, dr=_dr:
-                                        self.log(f"⚠ No drawdown room for {an} (${dr:,.2f})"))
-                            elif live_min_equity > 0:
-                                _an, _nl, _tmdl = acct_num, live_net_liq, tmdl
-                                self.root.after(0, lambda an=_an, nl=_nl, t=_tmdl:
-                                    self.log(f"✅ TMDL OK {an}: ${nl:,.2f} ≥ TMDL=${t:,.0f}"))
-                    except Exception:
-                        pass
+                # ── Reference-ported TP→SL adjustment pipeline ──
+                config = self._apply_tp_sl_adjustments(
+                    config, broker_account=broker_account, platform=platform,
+                    firm_code=firm_code, current_phase=row_data.get("current_phase", ""),
+                    phase_key=phase_key, acct_size=acct_size, row_eval=auto_ev,
+                    acct_num=acct_num, is_farming=_is_farming_sym_auto)
+                trado_tp = int(config.get("tradovate_tp_ticks", trado_tp) or trado_tp)
+                trado_sl = int(config.get("tradovate_sl_ticks", trado_sl) or trado_sl)
+                mt5_tp = int(config.get("mt5_tp_points", mt5_tp) or mt5_tp)
+                mt5_sl = int(config.get("mt5_sl_points", mt5_sl) or mt5_sl)
 
                 try:
                     # 1. Broker order — uses this firm's own Chrome instance
@@ -7268,12 +7021,9 @@ class TradeOpssAIApp:
         if not conn:
             return
 
-        # Auto-detect platform: TopStep firms always use TopStepX (Selenium)
-        firm_lower = firm_name.lower()
-        if "topstep" in firm_lower:
-            platform = "TopStepX"
-        else:
-            platform = self.broker_var.get()
+        # Platform follows the resolved blueprint, not just a substring of
+        # the firm label (so TopStep RTP connects via TopStepX).
+        platform = self._platform_for_firm(firm_name)
 
         user = conn["user_entry"].get().strip()
         pwd = conn["pass_entry"].get().strip()
@@ -7331,11 +7081,9 @@ class TradeOpssAIApp:
                     self.broker_status_var.set(f"{connected}/{total} connected")
                 self.root.after(0, _update_ui)
                 self.log(f"✅ {firm_name} connected to {platform} ({mode})")
-                # Release build: no status polling / hedge guard side-effects
+                # Release build: no status polling side-effects
                 if not RELEASE_DISABLE_STATUS_POLL:
                     self.root.after(0, self._start_status_polling)
-                if not RELEASE_DISABLE_HEDGE_GUARD:
-                    self.root.after(500, self._start_hedge_protector)
 
             except Exception as e:
                 def _fail():
@@ -8828,6 +8576,71 @@ class TradeOpssAIApp:
             self.root.after(0, lambda err=str(e):
                 self.log(f"⚠ {firm_name} breach detection failed: {err}", "WARN"))
 
+    def _platform_for_firm(self, firm_name, default=None):
+        """Resolve the trading platform (TopStepX / Tradovate) for a prop firm.
+
+        Routing follows the BLUEPRINT, not a substring of the free-text
+        dashboard label, so firms like 'TopStep RTP' (or any label that
+        does not literally contain 'topstep') still route to the platform
+        their blueprint is keyed for. Order of resolution:
+
+          1. Literal 'topstep' in the name  → TopStepX (fast path).
+          2. Resolve a blueprint code via _FIRM_MAP (case/format-insensitive),
+             a direct firm_blueprints key, or a fuzzy contains match.
+          3. Mapped code in the TopStep family → TopStepX.
+          4. Inspect the blueprint's key namespace: any topstepx_* field →
+             TopStepX, any tradovate_* field → Tradovate.
+          5. Fall back to the configured default broker.
+        """
+        if default is None:
+            default = self.broker_var.get()
+        name = (firm_name or "").strip()
+        if not name:
+            return default
+
+        # 1. Literal heuristic — fast path, preserves prior behaviour.
+        if "topstep" in name.lower():
+            return "TopStepX"
+
+        # 2. Resolve to a blueprint firm code.
+        norm = name.lower().replace("_", " ").replace("-", " ").strip()
+        fc = self._FIRM_MAP.get(name)
+        if not fc:
+            for k, v in self._FIRM_MAP.items():
+                if k.lower().replace("_", " ").replace("-", " ").strip() == norm:
+                    fc = v
+                    break
+
+        bp = None
+        blueprints = getattr(self.prop_firm_mgr, "firm_blueprints", {}) if self.prop_firm_mgr else {}
+        if fc and fc in blueprints:
+            bp = blueprints[fc]
+        elif name in blueprints:
+            fc, bp = name, blueprints[name]
+        else:
+            for bk, bv in blueprints.items():
+                bkn = bk.lower().replace("_", " ").replace("-", " ").strip()
+                if bkn == norm or (len(norm) >= 3 and (norm in bkn or bkn in norm)):
+                    fc, bp = bk, bv
+                    break
+
+        # 3. Mapped code clearly a TopStep family → TopStepX.
+        if fc and fc.lower().startswith("topstep"):
+            return "TopStepX"
+
+        # 4. Inspect the blueprint's key namespace.
+        if bp:
+            for stage in bp.get("strategy_configs", {}).values():
+                for size_cfg in stage.values():
+                    keys = list(size_cfg.keys())
+                    if any(k.startswith("topstepx_") for k in keys):
+                        return "TopStepX"
+                    if any(k.startswith("tradovate_") for k in keys):
+                        return "Tradovate"
+
+        # 5. Fall back to the configured default broker.
+        return default
+
     def _get_broker_for_firm(self, firm_name):
         """Get the connected broker account for a specific prop firm."""
         conn = self._broker_connections.get(firm_name)
@@ -8837,13 +8650,11 @@ class TradeOpssAIApp:
         # fall back — it means the user chose not to connect this firm.
         if conn is not None:
             return None
-        # Legacy fallback: only for setups without multi-firm broker panel
-        # Auto-detect TopStep firms to use TopStepX
-        if "topstep" in firm_name.lower():
-            if self.topstepx_account:
-                return self.topstepx_account
-            return None
-        platform = self.broker_var.get()
+        # Legacy fallback: only for setups without multi-firm broker panel.
+        # Platform follows the resolved blueprint, not just a label substring.
+        platform = self._platform_for_firm(firm_name)
+        if platform == "TopStepX":
+            return self.topstepx_account if self.topstepx_account else None
         if platform == "Tradovate" and self.tradovate_account:
             return self.tradovate_account
         if platform == "TopStepX" and self.topstepx_account:

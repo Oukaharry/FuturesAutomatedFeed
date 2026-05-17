@@ -4289,6 +4289,108 @@ class TopStepXAccount:
             return False
 
 
+    def _persisted_sod_balance(self, account_key, current_balance):
+        """First-balance-of-the-day snapshot for TopStep (no SOD API).
+
+        TopStepX's REST API does not expose a start-of-day net liq the way
+        Tradovate's /cashBalance/getCashBalanceSnapshot does, so we persist the
+        first successfully-read balance of each calendar day per account to
+        topstep_sod.json (same repo-root convention as direction_locks.json).
+
+        Semantics: "first app launch each day" — the first time get_min_equity
+        succeeds on a given local date, that balance is frozen as the SOD for
+        the rest of that date. Returns the frozen balance, or None if
+        persistence fails (callers then fall back to net_liq_sod=None).
+        """
+        import json
+        today = datetime.now().strftime("%Y-%m-%d")
+        key = str(account_key or "unknown")
+        sod_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "topstep_sod.json"
+        )
+        try:
+            data = {}
+            if os.path.exists(sod_file):
+                with open(sod_file, "r") as f:
+                    data = json.load(f) or {}
+
+            entry = data.get(key)
+            if isinstance(entry, dict) and entry.get("date") == today:
+                stored = entry.get("balance")
+                if isinstance(stored, (int, float)) and stored > 0:
+                    return float(stored)
+
+            # First successful read for this account today — freeze it. Prune
+            # any stale (not-today) entries so the file stays tiny.
+            data = {
+                k: v for k, v in data.items()
+                if isinstance(v, dict) and v.get("date") == today and k != key
+            }
+            data[key] = {
+                "date": today,
+                "balance": float(current_balance),
+                "captured_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            with open(sod_file, "w") as f:
+                json.dump(data, f, indent=2)
+            self.logger.info(
+                f"[SOD] Captured TopStep start-of-day balance for {key}: "
+                f"${current_balance:,.2f} ({today})"
+            )
+            return float(current_balance)
+        except Exception as e:
+            self.logger.warning(f"[SOD] Could not persist/read TopStep SOD balance: {e}")
+            return None
+
+    def get_min_equity(self):
+        """Static-formula trailing drawdown min-equity for TopStep funded.
+
+        TopStepX's REST API does not expose trailing drawdown directly the way
+        Tradovate's /userAccountAutoLiq/deps does, so this falls back to the
+        canonical formula:
+
+            min_equity = min(0, current_balance - 2000)
+
+        i.e. the threshold trails the balance by $2,000 and locks at $0 for
+        TopStep funded accounts.
+
+        `net_liq_sod` is sourced from a persisted first-balance-of-the-day
+        snapshot (see _persisted_sod_balance) since TopStepX has no SOD API.
+        This is what lets the SL midnight-floor step run for TopStep instead
+        of being skipped. The min_equity formula itself is unchanged and does
+        not use the SOD value.
+
+        Returns dict with the same shape as TradovateAccount.get_min_equity()
+        so callers can treat both uniformly. Returns None if balance can't be
+        resolved.
+        """
+        try:
+            stats = self.get_account_stats()
+            balance_str = (stats or {}).get("Balance", "")
+            if not balance_str or balance_str in ("N/A", "Error", ""):
+                return None
+            balance = float(str(balance_str).replace("$", "").replace(",", ""))
+        except (ValueError, TypeError):
+            return None
+
+        account_key = (stats or {}).get("Account Number") or "unknown"
+        net_liq_sod = self._persisted_sod_balance(account_key, balance)
+
+        DRAWDOWN = 2000.0
+        LOCK_LEVEL = 0.0  # TopStep funded
+        min_equity = min(LOCK_LEVEL, balance - DRAWDOWN)
+        return {
+            'net_liq': balance,
+            'net_liq_sod': net_liq_sod,  # persisted first-balance-of-day snapshot
+            'min_equity': min_equity,
+            'trailing_max_drawdown': DRAWDOWN,
+            'trailing_max_drawdown_limit': LOCK_LEVEL + DRAWDOWN,
+            'trailing_mode': 'static',
+            'max_net_liq': None,
+            'drawdown_remaining': balance - min_equity,
+            'source': 'topstepx_static',
+        }
+
     def __del__(self):
         """Cleanup when object is destroyed"""
         self.disconnect()
