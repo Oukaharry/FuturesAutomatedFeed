@@ -1410,9 +1410,18 @@ class PropFirmManager:
         return None
     
     def get_firm_info(self, firm_code: str) -> Dict:
-        """Get complete prop firm information."""
-        # Normalize firm_code to handle variations
+        """Get complete prop firm information.
+
+        This is the single convergence point for blueprint access
+        (get_strategy_config / get_account_sizes / etc. all route here), so
+        normalization is robust: an unrecognised-but-resolvable label must
+        NEVER silently fall back to the MFFU_Flex blueprint. In particular a
+        TopStep-family label always resolves to the correct TopStep vs
+        TopStep RTP blueprint regardless of casing/spacing.
+        """
         normalized_code = firm_code
+
+        # Legacy / explicit aliases.
         if firm_code == "Alpha Futures":
             normalized_code = "AlphaFutures"
         elif firm_code == "FundedNext":
@@ -1423,7 +1432,34 @@ class PropFirmManager:
             # Legacy alias — MFFU is no longer a separate blueprint
             normalized_code = "MFFU_Flex"
 
-        return self.firm_blueprints.get(normalized_code, self.firm_blueprints["MFFU_Flex"])
+        # Exact blueprint key — fast path.
+        if normalized_code in self.firm_blueprints:
+            return self.firm_blueprints[normalized_code]
+
+        raw = str(firm_code or "").strip()
+        if raw:
+            # Case-insensitive exact key match.
+            for bk in self.firm_blueprints:
+                if bk.lower() == raw.lower():
+                    return self.firm_blueprints[bk]
+
+            # TopStep family: distinguish RTP by substring so a label like
+            # 'Topstep' / 'topstep rtp' / 'TopstepRTP' can never collapse to
+            # the generic MFFU_Flex fallback. 'topsteprtp' (compacted)
+            # contains both tokens, so RTP is detected before plain TopStep.
+            compact = raw.lower().replace("_", "").replace("-", "").replace(" ", "")
+            if "topstep" in compact:
+                key = "TopStep RTP" if "rtp" in compact else "TopStep"
+                if key in self.firm_blueprints:
+                    return self.firm_blueprints[key]
+            elif "rtp" in compact and "TopStep RTP" in self.firm_blueprints:
+                return self.firm_blueprints["TopStep RTP"]
+
+        self.logger.warning(
+            f"get_firm_info: unrecognised firm_code '{firm_code}' — "
+            f"falling back to MFFU_Flex blueprint"
+        )
+        return self.firm_blueprints["MFFU_Flex"]
     
     def get_account_sizes(self, firm_code: str) -> list:
         """Get account sizes for specific prop firm."""
@@ -1543,10 +1579,10 @@ class PropFirmManager:
         """Get strategy config for current prop firm (manual trading only)"""
         self.logger.info(f"Looking up: '{self.current_firm_code}', phase='{trading_phase}', size='{account_size}'")
         
-        firm_info = self.firm_blueprints.get(self.current_firm_code, self.firm_blueprints["MFFU_Flex"])
-
-        if self.current_firm_code not in self.firm_blueprints:
-            self.logger.warning(f"Blueprint '{self.current_firm_code}' not found! Using MFFU_Flex fallback")
+        # Route through get_firm_info so the same robust normalization
+        # (case-insensitive + TopStep-vs-RTP) applies here too — never a
+        # silent direct-dict miss to MFFU_Flex.
+        firm_info = self.get_firm_info(self.current_firm_code)
         
         # Convert account size to size key (e.g., "$50,000" -> "50k", "$100,000" -> "100k", "$150,000" -> "150k")
         size_key = "50k"  # Default
