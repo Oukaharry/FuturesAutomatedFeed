@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -4554,6 +4554,56 @@ class TradeOpssAIApp:
         "Top One Futures": "Top One Futures",
     }
 
+    def _resolve_firm_code(self, prop_firm_name, default="MFFU_Flex"):
+        """Resolve a dashboard 'Prop Firm' label to a blueprint firm code.
+
+        Robust against the casing/format the dashboard actually emits
+        (e.g. dropdown value is 'Topstep', not 'TopStep'; RTP may arrive as
+        'TopStep RTP' / 'TopStep_RTP' / 'TopstepRTP' / 'topstep rtp').
+
+        Critically, a TopStep-family label NEVER silently collapses to the
+        MFFU_Flex fallback: an RTP account always resolves to the
+        'TopStep RTP' blueprint and a plain TopStep account to 'TopStep'.
+        """
+        name = (str(prop_firm_name).strip() if prop_firm_name is not None else "")
+        if not name:
+            return default
+
+        # 1. Exact map hit.
+        if name in self._FIRM_MAP:
+            return self._FIRM_MAP[name]
+
+        # 2. Case/format-insensitive match against the map keys.
+        norm = name.lower().replace("_", " ").replace("-", " ").strip()
+        for k, v in self._FIRM_MAP.items():
+            if k.lower().replace("_", " ").replace("-", " ").strip() == norm:
+                return v
+
+        # 3. Direct blueprint key (exact, then case-insensitive).
+        bps = getattr(self.prop_firm_mgr, "firm_blueprints", {}) if self.prop_firm_mgr else {}
+        if name in bps:
+            return name
+        for bk in bps:
+            if bk.lower() == name.lower():
+                return bk
+
+        # 4. TopStep family — distinguish RTP by substring so it can never
+        #    fall through to the generic default. 'topsteprtp' (no spaces)
+        #    contains both tokens, so RTP is detected before plain TopStep.
+        compact = norm.replace(" ", "")
+        if "topstep" in compact:
+            return "TopStep RTP" if "rtp" in compact else "TopStep"
+        if "rtp" in compact:               # bare 'RTP' label → TopStep RTP
+            return "TopStep RTP"
+
+        # 5. Other known families by substring (defensive).
+        if "mffu" in norm or "my funded futures" in norm:
+            return "MFFU_Flex"
+        if "fundednext" in compact or "funded next" in norm:
+            return "Funded Next"
+
+        return default
+
     _FAILED_STATUSES = {"fail", "failed", "breach", "delete", "deleted", "closed", "sl", "ended", "lost"}
 
     # Keywords for substring matching (catches "Fail", "Failed", "Breached", etc.)
@@ -5276,7 +5326,7 @@ class TradeOpssAIApp:
             try:
                 pf_raw = ev.get("Prop Firm")
                 prop_firm_name = (str(pf_raw).strip() if pf_raw is not None else "") or "Unknown"
-                firm_code = self._FIRM_MAP.get(prop_firm_name, "MFFU_Flex")
+                firm_code = self._resolve_firm_code(prop_firm_name)
                 acct_num = (ev.get("Account #.1", "") or ev.get("Account #", "") or "—").strip()
                 sz_raw = ev.get("Account Size", "—")
                 acct_size = (str(sz_raw).strip() if sz_raw is not None else "") or "—"
