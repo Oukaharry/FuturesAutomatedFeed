@@ -77,8 +77,8 @@ class PropFirmManager:
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 151,
-                            "tradovate_sl_ticks": 201,
-                            "mt5_volume": 4.6,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 3,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 42
                         }
@@ -88,8 +88,8 @@ class PropFirmManager:
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
                             "tradovate_tp_ticks": 151,
-                            "tradovate_sl_ticks": 201,
-                            "mt5_volume": 8.4,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 6.6,
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 42
                         }
@@ -97,85 +97,89 @@ class PropFirmManager:
                     "funded_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 540,
-                            "tradovate_sl_ticks": 201,
-                            "mt5_volume": 16,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 139
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 400,
+                            "mt5_volume": 6.6,
+                            "mt5_tp_points": 96,
+                            "mt5_sl_points": 154
                         }
                     },
                     "funded_trade2": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 240,
-                            "tradovate_sl_ticks": 261,
-                            "mt5_volume": 20,
-                            "mt5_tp_points": 61,
-                            "mt5_sl_points": 64
+                            "tradovate_tp_ticks": 190,
+                            "tradovate_sl_ticks": 140,
+                            "mt5_volume": 16,
+                            "mt5_tp_points": 31,
+                            "mt5_sl_points": 52
                         }
                     },
                     "funded_trade3": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 240,
-                            "tradovate_sl_ticks": 245,
-                            "mt5_volume": 18.0,
-                            "mt5_tp_points": 57,
-                            "mt5_sl_points": 64
+                            "tradovate_tp_ticks": 170,
+                            "tradovate_sl_ticks": 160,
+                            "mt5_volume": 1,
+                            "mt5_tp_points": 36,
+                            "mt5_sl_points": 47
                         }
                     },
                     "funded_trade4": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 240,
-                            "tradovate_sl_ticks": 238,
-                            "mt5_volume": 13.6,
-                            "mt5_tp_points": 55,
-                            "mt5_sl_points": 64
+                            "tradovate_tp_ticks": 170,
+                            "tradovate_sl_ticks": 160,
+                            "mt5_volume": 5,
+                            "mt5_tp_points": 36,
+                            "mt5_sl_points": 47
                         }
-                    },"funded_trade_doubledip_1": {
+                    },
+                    "funded_trade_doubledip_1": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 400,
+                            "mt5_volume": 6.8,
+                            "mt5_tp_points": 96,
+                            "mt5_sl_points": 154
+                        }
+                    },
+                    "funded_trade_doubledip_2": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 540,
-                            "tradovate_sl_ticks": 201,
-                            "mt5_volume": 13,
-                            "mt5_tp_points": 46,
-                            "mt5_sl_points": 139
+                            "tradovate_tp_ticks": 190,
+                            "tradovate_sl_ticks": 140,
+                            "mt5_volume": 17.6,
+                            "mt5_tp_points": 31,
+                            "mt5_sl_points": 52
                         }
-                    },"funded_trade_doubledip_2": {
+                    },
+                    "funded_trade_doubledip_3": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 240,
-                            "tradovate_sl_ticks": 261,
-                            "mt5_volume": 14,
-                            "mt5_tp_points": 61,
-                            "mt5_sl_points": 64
+                            "tradovate_tp_ticks": 170,
+                            "tradovate_sl_ticks": 160,
+                            "mt5_volume": 12,
+                            "mt5_tp_points": 36,
+                            "mt5_sl_points": 47
                         }
-                    },"funded_trade_doubledip_3": {
+                    },
+                    "funded_trade_doubledip_4": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 240,
-                            "tradovate_sl_ticks": 245,
-                            "mt5_volume": 9,
-                            "mt5_tp_points": 57,
-                            "mt5_sl_points": 64
-                        }
-                    },"funded_trade_doubledip_4": {
-                        "50k": {
-                            "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 240,
-                            "tradovate_sl_ticks": 238,
+                            "tradovate_tp_ticks": 170,
+                            "tradovate_sl_ticks": 160,
                             "mt5_volume": 20,
-                            "mt5_tp_points": 55,
-                            "mt5_sl_points": 64
+                            "mt5_tp_points": 36,
+                            "mt5_sl_points": 47
                         }
                     },
                     "farming": {
@@ -2198,6 +2202,320 @@ class PropFirmManager:
                 f"safe distance {safe_distance:.1f} pts — no change needed")
 
         return config
+
+    # ── Reference-ported TP→SL adjustment pipeline ───────────────────────
+    #
+    # Carried verbatim from TradeAccountConnector src/prop_firm_manager.py.
+    # Pre-trade adjustment runs in this order:
+    #   1) calculate_adjusted_tp  — reduce TP by stage profit already earned;
+    #                                scale MT5 SL proportionally.
+    #   2) calculate_adjusted_sl_midnight_floor — scale SL by today's daily P/L,
+    #                                using the SOD (midnight) balance as anchor.
+    #   3) calculate_adjusted_sl_tmdl_cap — final cap by remaining drawdown when
+    #                                live balance is below the TMDL lock level.
+    #
+    # All three are pure functions: they take a config dict and return a copy
+    # with adjusted fields plus metadata (`_original_*`, `_tp_was_adjusted`,
+    # `_sl_was_adjusted`, `_sl_adjustment_reason`, `_adj_reasons` list).
+
+    _SL_MIN_TICKS = 10
+    _TP_MIN_TICKS = 5
+    _MT5_MIN_POINTS = 5
+    # The MT5 hedge TP is set this many points SHORT of the SL-equivalent so
+    # the MT5 hedge closes before the prop SL triggers. Matches the 4-point
+    # buffer used in the farming-stage hard-stop check.
+    _MT5_TP_BUFFER_POINTS = 4
+    # Funded-account SL rule: trade 1 always risks exactly this many dollars.
+    FUNDED_TRADE1_SL_DOLLARS = 2000.0
+
+    @staticmethod
+    def _sl_to_mt5_tp(trado_sl_ticks: int) -> int:
+        """Convert Tradovate SL ticks → MT5 TP points.
+
+        int(sl / 4) − 4-point hedge buffer, floored at _MT5_MIN_POINTS.
+        """
+        return max(PropFirmManager._MT5_MIN_POINTS,
+                   int(trado_sl_ticks / PropFirmManager._NQ_TICK_TO_POINT_RATIO)
+                   - PropFirmManager._MT5_TP_BUFFER_POINTS)
+
+    def calculate_adjusted_tp(self, config: Dict, stage_profit_so_far: float,
+                              tick_value: float = 5.0) -> Dict:
+        """Adjust TP by stage profit/shortfall; scale MT5 SL proportionally.
+
+          • Ahead of the stage target (stage_profit_so_far > 0): we already
+            earned $X of this stage's target, so TP for this trade is reduced
+            by $X worth of ticks (floor _TP_MIN_TICKS).
+          • Behind the stage target (stage_profit_so_far < 0): we are short
+            $X, so TP is *raised* by $X worth of ticks to make up the
+            shortfall — capped at 2× the blueprint TP so an over-negative /
+            bad stage P/L can't balloon the target arbitrarily.
+
+        MT5 SL is scaled by adjusted_tp/orig_tp in both directions (so it
+        widens when TP grows).
+
+        Returns:
+            Adjusted config copy. No-op if qty/tp/tick invalid, or if the
+            computed TP equals the blueprint TP.
+        """
+        adjusted = config.copy()
+        orig_tp = float(config.get('tradovate_tp_ticks', 0) or 0)
+        orig_mt5_sl = float(config.get('mt5_sl_points', 0) or 0)
+        qty = float(config.get('tradovate_qty', 0) or config.get('topstepx_qty', 0) or 0)
+
+        if orig_tp <= 0 or qty <= 0 or tick_value <= 0:
+            return adjusted
+
+        profit_ticks = stage_profit_so_far / (tick_value * qty)
+
+        # Safety net: you cannot have already earned more than the entire stage
+        # TP target before this trade's stage even begins. profit_ticks >
+        # orig_tp means stage_profit_so_far was over-stated upstream (e.g. a
+        # hardcoded starting_balance causing the whole account balance to be
+        # treated as stage profit, or stage_start falling back to 0). Trust
+        # nothing here — keep the blueprint TP/SL instead of flooring TP to
+        # _TP_MIN_TICKS and dragging the MT5 SL down with it.
+        if profit_ticks > orig_tp:
+            self.logger.warning(
+                f"⚠ TP adjust SKIPPED (implausible input): profit_ticks="
+                f"{profit_ticks:,.0f} > orig_tp={int(orig_tp)}t "
+                f"(stage P/L=${stage_profit_so_far:,.0f}, tick_value=${tick_value}, "
+                f"qty={qty:g}) — keeping blueprint TP/SL"
+            )
+            adjusted.setdefault('_adj_reasons', []).append(
+                f"TP adjust skipped: stage P/L ${stage_profit_so_far:,.0f} "
+                f"implausible (> full {int(orig_tp)}t target)"
+            )
+            return adjusted
+
+        # Ahead (profit_ticks > 0) shrinks TP toward _TP_MIN_TICKS.
+        # Behind (profit_ticks < 0) grows TP to make up the shortfall, capped
+        # at 2× the blueprint so a bad/over-negative stage P/L can't balloon it.
+        raw_tp = round(orig_tp - profit_ticks)
+        tp_ceiling = 2.0 * orig_tp
+        adjusted_tp = min(tp_ceiling, max(self._TP_MIN_TICKS, raw_tp))
+        was_capped = raw_tp > tp_ceiling
+        if adjusted_tp == orig_tp:
+            return adjusted
+
+        tp_ratio = adjusted_tp / orig_tp if orig_tp > 0 else 1.0
+        adjusted_mt5_sl = max(self._MT5_MIN_POINTS, round(orig_mt5_sl * tp_ratio)) if orig_mt5_sl > 0 else int(orig_mt5_sl)
+
+        adjusted['_original_tradovate_tp_ticks'] = int(orig_tp)
+        adjusted['_original_mt5_sl_points'] = int(orig_mt5_sl)
+        adjusted['tradovate_tp_ticks'] = int(adjusted_tp)
+        adjusted['mt5_sl_points'] = int(adjusted_mt5_sl)
+        adjusted['_tp_was_adjusted'] = True
+
+        if profit_ticks >= 0:
+            detail = "already earned in this stage"
+        else:
+            detail = "behind stage target — TP raised to catch up"
+            if was_capped:
+                detail += f", capped at 2× ({int(tp_ceiling)}t)"
+        reason = (f"TP {int(orig_tp)}→{int(adjusted_tp)}t: stage P/L "
+                  f"${stage_profit_so_far:+,.0f} ({detail})")
+        adjusted.setdefault('_adj_reasons', []).append(reason)
+        self.logger.info(
+            f"📊 TP adjust: stage P/L=${stage_profit_so_far:+,.2f} → "
+            f"TP {int(orig_tp)}→{int(adjusted_tp)}t, "
+            f"MT5 SL {int(orig_mt5_sl)}→{int(adjusted_mt5_sl)}pts"
+        )
+        return adjusted
+
+    def calculate_adjusted_sl_midnight_floor(self, config: Dict, live_net_liq: float,
+                                             net_liq_sod: float, tick_value: float = 5.0) -> Dict:
+        """Step 1 of SL adjustment: scale by today's daily P/L.
+
+        Anchors at the SOD (midnight) balance so a winning intraday session
+        lets the SL widen, while a losing day tightens it.
+
+        Math:
+            blueprint_sl_dollars = trado_sl * tick_value * qty
+            sl_floor             = net_liq_sod - blueprint_sl_dollars
+            available            = live_net_liq - sl_floor       (= daily_pnl + blueprint_sl_dollars)
+            new_sl_ticks         = max(10, int(available / (tick_value * qty)))
+
+        If `available <= 0` the SL is forced to the 10-tick minimum.
+        """
+        adjusted = config.copy()
+        orig_sl = float(config.get('tradovate_sl_ticks', 0) or 0)
+        orig_mt5_tp = float(config.get('mt5_tp_points', 0) or 0)
+        qty = float(config.get('tradovate_qty', 0) or config.get('topstepx_qty', 0) or 0)
+
+        if orig_sl <= 0 or qty <= 0 or tick_value <= 0 or net_liq_sod <= 0:
+            return adjusted
+
+        blueprint_sl_dollars = orig_sl * tick_value * qty
+        sl_floor = net_liq_sod - blueprint_sl_dollars
+        available = live_net_liq - sl_floor
+        daily_pnl = live_net_liq - net_liq_sod
+
+        adjusted.setdefault('_original_tradovate_sl_ticks', int(orig_sl))
+        adjusted.setdefault('_original_mt5_tp_points', int(orig_mt5_tp))
+
+        if available > 0:
+            new_sl = max(self._SL_MIN_TICKS, int(available / (tick_value * qty)))
+            if new_sl == int(orig_sl):
+                return adjusted
+            new_mt5_tp = self._sl_to_mt5_tp(new_sl)
+            adjusted['tradovate_sl_ticks'] = new_sl
+            adjusted['mt5_tp_points'] = new_mt5_tp
+            adjusted['_sl_was_adjusted'] = True
+            reason = (f"SL {int(orig_sl)}→{new_sl}t: midnight bal "
+                      f"${net_liq_sod:,.0f}, daily P/L ${daily_pnl:+,.0f}")
+            adjusted.setdefault('_adj_reasons', []).append(reason)
+            adjusted['_sl_adjustment_reason'] = reason
+            self.logger.info(
+                f"🌙 Midnight SL: SOD=${net_liq_sod:,.2f}, live=${live_net_liq:,.2f}, "
+                f"daily P/L=${daily_pnl:+,.2f} → SL {int(orig_sl)}→{new_sl}t, "
+                f"MT5 TP {int(orig_mt5_tp)}→{new_mt5_tp}pts"
+            )
+        else:
+            new_sl = self._SL_MIN_TICKS
+            new_mt5_tp = self._sl_to_mt5_tp(new_sl)
+            adjusted['tradovate_sl_ticks'] = new_sl
+            adjusted['mt5_tp_points'] = new_mt5_tp
+            adjusted['_sl_was_adjusted'] = True
+            reason = f"SL → {new_sl}t: balance below midnight SL floor ${sl_floor:,.0f}"
+            adjusted.setdefault('_adj_reasons', []).append(reason)
+            adjusted['_sl_adjustment_reason'] = reason
+            self.logger.warning(
+                f"🚨 Midnight SL FLOOR BREACHED: live=${live_net_liq:,.2f} "
+                f"below floor=${sl_floor:,.2f} → SL forced to {new_sl}t"
+            )
+        return adjusted
+
+    def calculate_adjusted_sl_tmdl_cap(self, config: Dict, live_net_liq: float,
+                                       live_min_equity: float, tmdl: float,
+                                       tick_value: float = 5.0) -> Dict:
+        """Step 2 of SL adjustment: cap by remaining drawdown.
+
+        Only applies when the account has not yet reached the
+        trailing-drawdown lock (`live_net_liq < tmdl`). Caps the (possibly
+        already step-1-adjusted) SL to remaining drawdown.
+        """
+        adjusted = config.copy()
+        orig_sl = float(config.get('tradovate_sl_ticks', 0) or 0)
+        orig_mt5_tp = float(config.get('mt5_tp_points', 0) or 0)
+        qty = float(config.get('tradovate_qty', 0) or config.get('topstepx_qty', 0) or 0)
+
+        if orig_sl <= 0 or qty <= 0 or tick_value <= 0:
+            return adjusted
+        if live_min_equity <= 0 or live_net_liq >= tmdl:
+            return adjusted  # Already at the lock — no cap needed
+
+        drawdown_remaining = live_net_liq - live_min_equity
+        if drawdown_remaining <= 0:
+            self.logger.warning(
+                f"⚠ TMDL cap: drawdown_remaining=${drawdown_remaining:,.2f} "
+                f"(live=${live_net_liq:,.2f}, min_eq=${live_min_equity:,.2f}) — cannot tighten further"
+            )
+            return adjusted
+
+        current_sl_risk = orig_sl * tick_value * qty
+        if current_sl_risk <= drawdown_remaining:
+            return adjusted
+
+        capped_sl = max(self._SL_MIN_TICKS, int(drawdown_remaining / (tick_value * qty)))
+        if capped_sl == int(orig_sl):
+            return adjusted
+        capped_mt5_tp = self._sl_to_mt5_tp(capped_sl)
+
+        # Preserve original if midnight floor already recorded it
+        adjusted.setdefault('_original_tradovate_sl_ticks', int(orig_sl))
+        adjusted.setdefault('_original_mt5_tp_points', int(orig_mt5_tp))
+        adjusted['tradovate_sl_ticks'] = capped_sl
+        adjusted['mt5_tp_points'] = capped_mt5_tp
+        adjusted['_sl_was_adjusted'] = True
+        reason = (f"SL →{capped_sl}t: near drawdown limit, only "
+                  f"${drawdown_remaining:,.0f} remaining")
+        adjusted.setdefault('_adj_reasons', []).append(reason)
+        adjusted['_sl_adjustment_reason'] = reason
+        self.logger.warning(
+            f"🎯 TMDL SL cap: remaining=${drawdown_remaining:,.2f} → "
+            f"SL {int(orig_sl)}→{capped_sl}t, MT5 TP {int(orig_mt5_tp)}→{capped_mt5_tp}pts"
+        )
+        return adjusted
+
+    def calculate_funded_sl(self, config: Dict, current_balance: float,
+                            threshold: float, trade_index: int,
+                            tick_value: float = 5.0) -> Dict:
+        """Funded-account SL rule (REPLACES midnight-floor + TMDL for funded).
+
+        Applies to every firm's Funded and Double Dip phases:
+
+          • Trade 1 (funded_trade1 / doubledip_1): SL risk is fixed at
+            exactly $2,000 (FUNDED_TRADE1_SL_DOLLARS).
+          • Trade 2+:  SL risk dollars = current_balance - threshold, where
+            `threshold` is the FLAT lock level (TopStep $0, MFFU $100,
+            others $50,000) — i.e. the literal distance from the firm's
+            hard drawdown floor. NOT the trailing min(lock, balance−$2,000):
+            the SL must match exactly how much room is left to the floor.
+
+        SL is converted to ticks (sl_dollars / (tick × qty)), floored at
+        _SL_MIN_TICKS. The MT5 hedge TP is re-derived from the new SL via
+        _sl_to_mt5_tp so the prop SL and MT5 TP close together.
+
+        Args:
+            config: Blueprint (tradovate_sl_ticks, mt5_tp_points, qty).
+            current_balance: Live account balance in dollars.
+            threshold: Static drawdown threshold in dollars.
+            trade_index: 1-based trade number within the phase.
+            tick_value: $/tick.
+
+        Returns:
+            Adjusted config copy. No-op if qty/tick invalid.
+        """
+        adjusted = config.copy()
+        orig_sl = float(config.get('tradovate_sl_ticks', 0) or 0)
+        orig_mt5_tp = float(config.get('mt5_tp_points', 0) or 0)
+        qty = float(config.get('tradovate_qty', 0) or config.get('topstepx_qty', 0) or 0)
+
+        if qty <= 0 or tick_value <= 0:
+            return adjusted
+
+        if trade_index <= 1:
+            sl_dollars = self.FUNDED_TRADE1_SL_DOLLARS
+            basis = f"funded trade 1 — fixed ${sl_dollars:,.0f} SL"
+        else:
+            sl_dollars = current_balance - threshold
+            basis = (f"funded trade {trade_index} — balance "
+                     f"${current_balance:,.0f} − threshold ${threshold:,.0f}")
+
+        new_sl = max(self._SL_MIN_TICKS,
+                     int(round(sl_dollars / (tick_value * qty))))
+        new_mt5_tp = self._sl_to_mt5_tp(new_sl)
+
+        adjusted.setdefault('_original_tradovate_sl_ticks', int(orig_sl))
+        adjusted.setdefault('_original_mt5_tp_points', int(orig_mt5_tp))
+        adjusted['tradovate_sl_ticks'] = new_sl
+        adjusted['mt5_tp_points'] = new_mt5_tp
+        adjusted['_sl_was_adjusted'] = True
+        reason = (f"SL {int(orig_sl)}→{new_sl}t (${sl_dollars:,.0f}): {basis}")
+        adjusted.setdefault('_adj_reasons', []).append(reason)
+        adjusted['_sl_adjustment_reason'] = reason
+        self.logger.info(
+            f"💵 Funded SL rule: {reason}, "
+            f"MT5 TP {int(orig_mt5_tp)}→{new_mt5_tp}pts"
+        )
+        return adjusted
+
+    def get_lock_level(self, prop_firm: str, other_broker: Optional[str] = None) -> float:
+        """Public: the flat lock-level floor for a firm.
+
+        TopStep $0, MFFU $100, all others $50,000. This is the threshold the
+        funded SL rule measures distance from (SL$ = balance − lock_level for
+        funded trade 2+), NOT the trailing min(lock, balance−$2,000).
+        """
+        return self._get_lock_level(prop_firm, other_broker)
+
+    def _get_lock_level(self, prop_firm: str, other_broker: Optional[str] = None) -> float:
+        """Return the absolute floor the trailing threshold locks at."""
+        if prop_firm in ("TopStep", "TopStep RTP") or (prop_firm == "Other" and other_broker == "TopStep"):
+            return 0.0
+        if prop_firm in ("MFFU_Flex", "MFFU", "My Funded Futures"):
+            return 100.0
+        return 50000.0  # Standard $50k-start firms (and challenge phase)
 
     def get_default_config(self) -> Dict:
         """Get the default strategy config (MFFU_Flex challenge_trade1 50k).
