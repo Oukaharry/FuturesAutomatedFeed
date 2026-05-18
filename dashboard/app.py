@@ -11132,21 +11132,16 @@ def update_data():
                 action_type = data.get('action_type', 'UPDATE')
                 
                 if action_type == 'CREATE':
-                    # For "Add Account", ALWAYS use DB evaluations as the base
-                    # and only append genuinely new rows. This prevents a stale
-                    # frontend copy from overwriting push-sourced data.
+                    # Evaluations-tab "Add Account" only — hedge/prop/VPS saves must
+                    # use UPDATE so we never append a phantom evaluation row.
                     if len(evaluations) > len(existing_evals):
                         now_iso = datetime.utcnow().isoformat()
                         new_rows = evaluations[len(existing_evals):]
-                        # Mark appended rows so the quality dashboard can treat
-                        # them as "new / not populated yet" for initial validations.
                         for _r in new_rows:
                             if isinstance(_r, dict) and '_row_added_at' not in _r:
                                 _r['_row_added_at'] = now_iso
                         evaluations = normalize_evaluations(existing_evals) + new_rows
-                    else:
-                        # Frontend has fewer or equal evals — it's stale.
-                        # Append a default new evaluation to the DB version.
+                    elif data.get('create_evaluation'):
                         evaluations = normalize_evaluations(existing_evals)
                         new_row = {
                             "Prop Firm": "My Funded Futures",
@@ -11156,6 +11151,8 @@ def update_data():
                         }
                         new_row['_row_added_at'] = datetime.utcnow().isoformat()
                         evaluations.append(new_row)
+                    else:
+                        evaluations = normalize_evaluations(existing_evals)
                     existing_evals = existing_data.get("evaluations", [])
                 elif action_type not in ('DELETE', 'ROLLBACK'):
                     # General safety check: block saves that would drop eval count
