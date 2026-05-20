@@ -237,7 +237,7 @@ health_score = max(0, 100 - deduction), rounded to 1 decimal
 | **Severity** | `low` |
 | **When** | Fee missing or numeric ≤ 0; has_data; not live numeric; not double-dip; **no** cell note on column key **`Fee`** (case-insensitive match in `_notes`). |
 
-**Bypass:** Enter fee &gt; 0; double-dip with activation fee set; add a **cell note** on the Fee cell (explicit override).
+**Bypass:** Enter fee &gt; 0; double-dip with activation fee set; **Back to funded** marker (in `Account #`, `Account #.1`, notes, or status fields) with activation fee set; add a **cell note** on the Fee cell (explicit override).
 
 ### 5.7 `Hedging Results mismatch`
 
