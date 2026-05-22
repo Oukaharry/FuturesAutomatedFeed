@@ -8,9 +8,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Split-Path -Parent $scriptDir
 
 if (-not $DumpPath) {
-    $latest = Get-ChildItem (Join-Path $scriptDir "pg_backups\pgbackup-*.dump") |
+    $latest = Get-ChildItem (Join-Path $repoRoot "pg_backups\pgbackup-*.dump") |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
     if (-not $latest) {
@@ -44,7 +45,7 @@ function ConvertFrom-SecureStringPlain {
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 }
 
-Import-DotEnvIfPresent (Join-Path $scriptDir ".env")
+Import-DotEnvIfPresent (Join-Path $repoRoot ".env")
 
 $pgBinCandidates = @(
     "C:\Program Files\PostgreSQL\18\bin",

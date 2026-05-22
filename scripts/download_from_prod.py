@@ -7,8 +7,8 @@ Usage — named shortcuts:
     python scripts/download_from_prod.py             # download all shortcuts
     python scripts/download_from_prod.py db          # recovered db
     python scripts/download_from_prod.py hierarchy   # hierarchy.json
-    python scripts/download_from_prod.py backup      # today's pg_dump backup
-                                                       (pg_backups/pgbackup-YYYY-MM-DD-0001.dump)
+    python scripts/download_from_prod.py backup      # latest pg_dump for today
+                                                       (pg_backups/pgbackup-YYYY-MM-DD-HHMM.dump)
 
 Usage — specific backup date:
     python scripts/download_from_prod.py --date 2026-04-23 backup
@@ -16,7 +16,12 @@ Usage — specific backup date:
 Usage — custom file:
     python scripts/download_from_prod.py --src /home/ballerquotes/MT5Dashboard/config/settings.py --dest config/settings.py
 """
-import os, sys, ssl, urllib.request, argparse
+import json
+import os
+import sys
+import ssl
+import urllib.request
+import argparse
 from datetime import date
 
 def _make_ssl_context():
@@ -56,12 +61,42 @@ if "--date" in sys.argv:
     if _i + 1 < len(sys.argv):
         _backup_date = sys.argv[_i + 1]
         del sys.argv[_i:_i + 2]
-_backup_name = f"pgbackup-{_backup_date}-0001.dump"
+
+
+def _list_remote_backups():
+    url = f"https://www.pythonanywhere.com/api/v0/user/ballerquotes/files/tree/?path={PG_BACKUPS_REMOTE}"
+    req = urllib.request.Request(url, headers={"Authorization": f"Token {TOKEN}"})
+    with _urlopen(req) as resp:
+        paths = json.loads(resp.read().decode())
+    return sorted(os.path.basename(p) for p in paths if p.endswith(".dump"))
+
+
+def _resolve_backup_name(for_date=None):
+    """Pick the latest pgbackup-YYYY-MM-DD-HHMM.dump for the given date."""
+    target_date = for_date or _backup_date
+    prefix = f"pgbackup-{target_date}-"
+    matches = [name for name in _list_remote_backups() if name.startswith(prefix)]
+    if not matches:
+        available = _list_remote_backups()
+        hint = ", ".join(available[-5:]) if available else "(none on server)"
+        raise SystemExit(
+            f"No backup found for {target_date}. "
+            f"Expected {prefix}HHMM.dump. Recent on server: {hint}"
+        )
+    return max(matches)
+
+
+def _backup_paths():
+    name = _resolve_backup_name()
+    return (
+        f"{PG_BACKUPS_REMOTE}/{name}",
+        os.path.join(LOCAL, "pg_backups", name),
+    )
+
 
 FILES = {
     "db":        (f"{REMOTE}/dashboard/dashboard.db_recovered", os.path.join(LOCAL, "dashboard.db_recovered")),
     "hierarchy": (f"{REMOTE}/config/hierarchy.json",            os.path.join(LOCAL, "config", "hierarchy.json")),
-    "backup":    (f"{PG_BACKUPS_REMOTE}/{_backup_name}",        os.path.join(LOCAL, "pg_backups", _backup_name)),
 }
 
 def download(remote, local):
@@ -84,10 +119,13 @@ def main():
         return
 
     # -- shortcut mode
-    targets = [a for a in sys.argv[1:] if not a.startswith("-")] or list(FILES.keys())
+    targets = [a for a in sys.argv[1:] if not a.startswith("-")] or list(FILES.keys()) + ["backup"]
     for t in targets:
+        if t == "backup":
+            download(*_backup_paths())
+            continue
         if t not in FILES:
-            print(f"Unknown target '{t}'. Choose from: {', '.join(FILES)}")
+            print(f"Unknown target '{t}'. Choose from: {', '.join([*FILES, 'backup'])}")
             print("Or use: --src /remote/path --dest local/path")
             sys.exit(1)
         download(*FILES[t])
