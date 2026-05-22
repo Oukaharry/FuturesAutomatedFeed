@@ -19,6 +19,10 @@ venv/
 # Local AI/human memory docs (keep out of git)
 plan.md
 
+# Local-only PDF helper + generated report output (not tracked)
+_render_report_pdf.py
+reports/
+
 # Local runtime state / data files
 pg_backups/
 config/hierarchy.json
@@ -27,7 +31,7 @@ trader_companion/trader_bias.json
 
 local-before-restore.dump
 
-# Local databases (large, contain real client data — never commit)
+# Local databases (large, contain real client data  never commit)
 *.db
 *.sqlite
 *.sqlite3
