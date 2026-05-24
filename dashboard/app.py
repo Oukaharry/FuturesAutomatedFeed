@@ -7441,6 +7441,25 @@ def _allowed_trading_day_abbrs(ref_dt):
     return frozenset({order[wd], order[wd + 1]})
 
 
+def _should_skip_daily_summary_tracking(eat_dt):
+    """Skip daily-summary submission tracker when there is no session to track.
+
+    True on Sat/Sun (no trading) and on Mon before the new week is underway —
+    e.g. the 02:30 EAT bot run after Sunday (yesterday was non-trading), so the
+    Slack message matches the clean weekend post instead of flagging missing sends.
+    """
+    if eat_dt.weekday() in (5, 6):
+        return True
+    yesterday = eat_dt - timedelta(days=1)
+    return yesterday.weekday() in (5, 6)
+
+
+DAILY_SUMMARY_TRACKER_SKIP_MSG = (
+    "🛑 _No trading session to track (weekend or day after a non-trading day). "
+    "Daily summary submission tracking resumes on the next trading day._"
+)
+
+
 def _weekday_abbrs_in_text(raw):
     """Return {'mon','tue',...} for weekday tokens in *raw* (empty if none)."""
     s = str(raw or '').strip().lower()
@@ -10428,12 +10447,10 @@ def api_daily_summary():
         total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
         lines.append("📬 **DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)**")
-        # Skip submission tracking on weekends (no trading Sat/Sun)
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
-        _is_weekend = _eat_now.weekday() in (5, 6)  # Saturday=5, Sunday=6
-        if _is_weekend:
-            lines.append("🛑 _Weekend — no trading today. Submission tracking resumes on Monday._")
+        if _should_skip_daily_summary_tracking(_eat_now):
+            lines.append(DAILY_SUMMARY_TRACKER_SKIP_MSG)
             lines.append("")
         else:
             pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0
