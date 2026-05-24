@@ -169,7 +169,11 @@ def _build_daily_summary_text():
         upsert_quality_issue_baseline,
         get_trader_issue_resolution_minutes,
     )
-    from dashboard.app import _trader_ranking_health_metrics
+    from dashboard.app import (
+        _trader_ranking_health_metrics,
+        _should_skip_daily_summary_tracking,
+        DAILY_SUMMARY_TRACKER_SKIP_MSG,
+    )
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from config.hierarchy import SYSTEM_HIERARCHY
 
@@ -304,8 +308,7 @@ def _build_daily_summary_text():
         all_hierarchy_clients2 = hierarchy_get_all_clients()
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
-        _is_weekend = _eat_now.weekday() in (5, 6)
-        if _is_weekend:
+        if _should_skip_daily_summary_tracking(_eat_now):
             _apply_summary_penalty = False
         else:
             for client_name in all_hierarchy_clients2:
@@ -471,12 +474,10 @@ def _build_daily_summary_text():
         total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
         lines.append("📬 *DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)*")
-        # Skip submission tracking on weekends (no trading Sat/Sun)
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
-        _is_weekend = _eat_now.weekday() in (5, 6)  # Saturday=5, Sunday=6
-        if _is_weekend:
-            lines.append("🛑 _Weekend — no trading today. Submission tracking resumes on Monday._")
+        if _should_skip_daily_summary_tracking(_eat_now):
+            lines.append(DAILY_SUMMARY_TRACKER_SKIP_MSG)
             lines.append("")
         else:
             pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0
