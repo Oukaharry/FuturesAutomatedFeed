@@ -133,6 +133,9 @@
         .empty-state { text-align:center; padding:60px 20px; color:#64748b; }
         .empty-state i { font-size:3rem; margin-bottom:12px; opacity:0.3; }
 
+        .health-bar { height:8px; background:#1e293b; border-radius:4px; overflow:hidden; }
+        .health-fill { height:100%; border-radius:4px; transition:width 0.3s ease; }
+
         /* Checklist section */
         .section-title { font-size:1.1rem; font-weight:700; color:#e8eeff; margin:28px 0 14px 0; display:flex; align-items:center; gap:8px; font-family:'Plus Jakarta Sans',sans-serif; letter-spacing:-0.01em; }
         .checklist-status-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; margin-bottom:24px; }
@@ -504,7 +507,7 @@
         <!-- Daily Summary Tracker (traders ranked by issue-clearance speed) -->
         <div class="section-title" style="margin-top:32px;">
             <i class="fas fa-paper-plane" style="color:#4ade80;"></i> Daily Summary Tracker
-            <span style="margin-left:6px; font-size:0.72rem; color:#64748b; font-weight:500;">— traders ranked by fastest issue clearance on client dashboards</span>
+            <span style="margin-left:6px; font-size:0.72rem; color:#64748b; font-weight:500;">— fastest to clear scan issues first, then health %</span>
             <span id="summary-tracker-badge" style="margin-left:8px; font-size:0.78rem; padding:2px 10px; border-radius:12px; font-weight:600;"></span>
             <button onclick="loadSummaryStatus()" style="margin-left:12px; background:linear-gradient(135deg,#22c55e,#16a34a); border:none; color:#fff; padding:6px 16px; border-radius:8px; cursor:pointer; font-size:0.78rem;">
                 <i class="fas fa-sync-alt"></i> Refresh
@@ -1912,8 +1915,9 @@
                     const tColor = tPct === 100 ? '#4ade80' : tPct >= 50 ? '#fbbf24' : '#f87171';
                     const rank = t.clearance_rank || '';
                     const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : (rank ? `#${rank}` : '');
-                    const clearanceColor = t.clearance_unresolved ? '#fbbf24' : '#4ade80';
-                    const clearanceText = t.clearance_label || (t.clearance_unresolved ? 'Pending' : '');
+                    const avgHealth = t.avg_health != null ? t.avg_health : 100;
+                    const healthColor = avgHealth >= 90 ? '#4ade80' : avgHealth >= 70 ? '#fbbf24' : '#f87171';
+                    const metaLine = t.clearance_label || `${avgHealth}% health`;
                     const sentHtml = t.sent.map(s => {
                         const time = s.submitted_at ? s.submitted_at.split('T')[1]?.substring(0,5) || '' : '';
                         return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
@@ -1939,8 +1943,13 @@
                             </span>
                             <span style="font-size:0.78rem;font-weight:600;color:${tColor};">${t.sent_count}/${t.total}</span>
                         </div>
-                        ${clearanceText ? `<div style="font-size:0.75rem;color:${clearanceColor};margin-bottom:8px;font-weight:600;"><i class="fas fa-stopwatch" style="margin-right:4px;opacity:0.85;"></i>${clearanceText}${t.open_issues > 0 ? ` · ${t.open_issues} open` : ''}</div>` : ''}
-                        <div class="health-bar" style="margin-bottom:12px;"><div class="health-fill" style="width:${tPct}%;background:${tColor};"></div></div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <span style="font-size:0.75rem;color:#94a3b8;">${metaLine}</span>
+                            <span style="font-size:0.75rem;font-weight:600;color:${healthColor};">${avgHealth}%</span>
+                        </div>
+                        <div class="health-bar" style="margin-bottom:8px;"><div class="health-fill" style="width:${avgHealth}%;background:${healthColor};"></div></div>
+                        <div style="font-size:0.7rem;color:#64748b;margin-bottom:8px;">Daily summary sent</div>
+                        <div class="health-bar" style="margin-bottom:12px;opacity:0.85;"><div class="health-fill" style="width:${tPct}%;background:${tColor};"></div></div>
                         ${sentHtml ? '<div style="margin-bottom:8px;">' + sentHtml + '</div>' : ''}
                         ${notSentHtml || ''}
                     </div>`;

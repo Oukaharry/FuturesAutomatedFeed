@@ -1285,7 +1285,10 @@ def upsert_quality_issue_baseline(scan_date: str, client_id: str, trader: str, h
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(scan_date, client_id) DO UPDATE SET
                     trader = excluded.trader,
-                    had_issues = excluded.had_issues
+                    had_issues = CASE
+                        WHEN quality_issue_baseline.had_issues = 1 OR excluded.had_issues = 1 THEN 1
+                        ELSE 0
+                    END
                 ''',
                 (scan_date, client_id, trader or '', 1 if had_issues else 0),
             )
@@ -1325,12 +1328,18 @@ def mark_quality_issue_resolved(scan_date: str, client_id: str, resolved_at: str
         return
 
 
+# Leaderboard: trader had no clients with issues at morning baseline (not in the clearance race).
+TRADER_CLEARANCE_NOT_IN_RACE = -1
+
+
 def get_trader_issue_resolution_minutes(scan_date: str, trader: str, *, unresolved_minutes: int = 99999) -> int:
     """
-    For Slack leaderboard tie-breaks.
-    Returns minutes from posted_at to the time ALL baseline-issue clients for this trader were resolved.
-    If any baseline-issue client is not yet resolved, returns unresolved_minutes.
-    If the trader had no baseline issues, returns 0 (fastest by default).
+    Minutes from scan anchor to when ALL baseline-issue clients for this trader reached 0 issues.
+
+    Returns:
+      - TRADER_CLEARANCE_NOT_IN_RACE (-1): no baseline issues (clean at scan; not ranked as "fastest").
+      - 0..N: all baseline clients resolved; value is minutes for the slowest client to clear.
+      - unresolved_minutes (default 99999): still has unresolved baseline clients, or no anchor yet.
     """
     if not scan_date or not trader:
         return unresolved_minutes
@@ -1354,7 +1363,7 @@ def get_trader_issue_resolution_minutes(scan_date: str, trader: str, *, unresolv
             )
             clients = [r.get('client_id') for r in (cursor.fetchall() or []) if r.get('client_id')]
             if not clients:
-                return 0
+                return TRADER_CLEARANCE_NOT_IN_RACE
 
             # Fetch resolution rows for those clients
             placeholders = ','.join(['?'] * len(clients))
