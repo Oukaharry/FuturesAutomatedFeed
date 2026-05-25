@@ -343,17 +343,23 @@ def _build_daily_summary_text():
             return max(0.0, raw - deduction)
 
         # Gamified Trader Issue Clearance Leaderboard — fastest full clearance first
+        from dashboard.app import (
+            _format_clearance_minutes,
+            _trader_leaderboard_entry_lines,
+            _trader_leaderboard_sort_key,
+        )
         ranked = sorted(
             trader_stats.items(),
-            key=lambda it: (
-                get_trader_issue_resolution_minutes(date, it[0]),
-                str(it[0]).lower(),
+            key=lambda it: _trader_leaderboard_sort_key(
+                it[0], it[1], get_trader_issue_resolution_minutes(date, it[0]),
             ),
         )
-        lines.append("🏆 *TRADER ISSUE CLEARANCE LEADERBOARD*")
-        lines.append("_Ranked by how fast each trader cleared all morning-scan issues on their client dashboards (fastest first). Run a quality scan to start the clock._")
+        lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
+        lines.append(
+            "_Ranked by fastest morning issue clearance, then health score. "
+            "Green bar = average client health. Run a quality scan to start the clock._"
+        )
         lines.append("")
-        from dashboard.app import _format_clearance_minutes
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
             clear_mins = get_trader_issue_resolution_minutes(date, t)
@@ -365,22 +371,17 @@ def _build_daily_summary_text():
                 medal = '🥉'
             else:
                 medal = f'#{rank}'
-            if clear_mins >= 99999:
-                status = f"⏳ pending · {s['issues']} open issue{'s' if s['issues'] != 1 else ''}"
-            elif clear_mins == 0 and s['issues'] == 0:
-                status = '✅ no issues at scan'
-            else:
-                status = f"✅ cleared in {_format_clearance_minutes(clear_mins)}"
-            lines.append(f"{medal} *{t}* — {status}")
-            lines.append(f"   {s['clients']} clients tracked")
+            line1, line2 = _trader_leaderboard_entry_lines(t, clear_mins, s, medal)
+            lines.append(line1.replace('**', '*'))
+            lines.append(line2.replace('**', '*'))
         if total_traders > 0:
             best_name = ranked[0][0]
             best_mins = get_trader_issue_resolution_minutes(date, best_name)
             lines.append("")
-            if best_mins < 99999:
+            if 0 <= best_mins < 99999:
                 lines.append(
-                    f"🎉 *{best_name}* cleared the fastest"
-                    + (f" ({_format_clearance_minutes(best_mins)})" if best_mins else '')
+                    f"🎉 *{best_name}* cleared assigned issues the fastest"
+                    + (f" ({_format_clearance_minutes(best_mins)})" if best_mins else ' (at scan)')
                 )
         lines.append("")
 
