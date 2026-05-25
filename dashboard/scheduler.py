@@ -342,24 +342,21 @@ def _build_daily_summary_text():
             deduction = 5.0 * (missing / max(total, 1))
             return max(0.0, raw - deduction)
 
-        # Gamified Trader Health Leaderboard — ranked best to worst
-        # Primary: adjusted average (desc)
-        # Tie-break (implicit): time-to-resolve baseline issues after bot post (asc)
-        # Final tie-break: name (asc)
+        # Gamified Trader Issue Clearance Leaderboard — fastest full clearance first
         ranked = sorted(
             trader_stats.items(),
             key=lambda it: (
-                -round(_adjusted_avg(it), 4),
                 get_trader_issue_resolution_minutes(date, it[0]),
                 str(it[0]).lower(),
             ),
         )
-        lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
-        lines.append("_Ranked by average client health score (highest first). Scores exclude super-admin daily-summary payout QA; otherwise reflects data freshness, hedging accuracy, notes quality, and checklist completion._")
+        lines.append("🏆 *TRADER ISSUE CLEARANCE LEADERBOARD*")
+        lines.append("_Ranked by how fast each trader cleared all morning-scan issues on their client dashboards (fastest first). Run a quality scan to start the clock._")
         lines.append("")
+        from dashboard.app import _format_clearance_minutes
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
-            avg = round(_adjusted_avg((t, s)), 1)
+            clear_mins = get_trader_issue_resolution_minutes(date, t)
             if rank == 1:
                 medal = '🥇'
             elif rank == 2:
@@ -368,33 +365,23 @@ def _build_daily_summary_text():
                 medal = '🥉'
             else:
                 medal = f'#{rank}'
-            if avg >= 95:
-                title = '👑 Legendary'
-            elif avg >= 90:
-                title = '⭐ Elite'
-            elif avg >= 80:
-                title = '💪 Solid'
-            elif avg >= 70:
-                title = '⚡ Warming Up'
-            elif avg >= 50:
-                title = '🔧 Needs Work'
+            if clear_mins >= 99999:
+                status = f"⏳ pending · {s['issues']} open issue{'s' if s['issues'] != 1 else ''}"
+            elif clear_mins == 0 and s['issues'] == 0:
+                status = '✅ no issues at scan'
             else:
-                title = '🚨 SOS'
-            bar_filled = round(avg / 10)
-            bar_empty = 10 - bar_filled
-            bar = '🟩' * bar_filled + '⬛' * bar_empty
-            lines.append(f"{medal} *{t}* — {title}")
-            lines.append(f"   {bar} *{avg}%* · {s['clients']} clients · {s['issues']} issues")
+                status = f"✅ cleared in {_format_clearance_minutes(clear_mins)}"
+            lines.append(f"{medal} *{t}* — {status}")
+            lines.append(f"   {s['clients']} clients tracked")
         if total_traders > 0:
             best_name = ranked[0][0]
-            worst_name = ranked[-1][0]
-            best_avg = round(_adjusted_avg(ranked[0]), 1)
-            worst_avg = round(_adjusted_avg(ranked[-1]), 1)
+            best_mins = get_trader_issue_resolution_minutes(date, best_name)
             lines.append("")
-            if best_avg >= 90:
-                lines.append(f"🎉 *{best_name}* is on fire! Leading the pack at {best_avg}%")
-            if worst_avg < 50 and total_traders > 1:
-                lines.append(f"📣 *{worst_name}* — time to level up! Let's get those numbers moving 💪")
+            if best_mins < 99999:
+                lines.append(
+                    f"🎉 *{best_name}* cleared the fastest"
+                    + (f" ({_format_clearance_minutes(best_mins)})" if best_mins else '')
+                )
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: *{len(checklists)}*")

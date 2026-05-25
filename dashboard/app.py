@@ -117,6 +117,48 @@ def _quality_scan_row_for_trader_client_quality_api(scan_row):
     return out
 
 
+def _sync_quality_issue_tracking(scan_date: str, results: list):
+    """Record scan-day baseline + resolutions for trader clearance speed rankings."""
+    if not scan_date or not results:
+        return
+    try:
+        from dashboard.database import (
+            record_quality_scan_anchor,
+            upsert_quality_issue_baseline,
+            mark_quality_issue_resolved,
+        )
+        record_quality_scan_anchor(scan_date, datetime.utcnow().isoformat())
+        for r in results:
+            client_id = r.get('client_id')
+            if not client_id:
+                continue
+            total_issues, _ = _trader_ranking_health_metrics(r.get('issues'))
+            trader = str(r.get('trader') or '')
+            upsert_quality_issue_baseline(scan_date, client_id, trader, total_issues > 0)
+            if total_issues == 0:
+                mark_quality_issue_resolved(scan_date, client_id, datetime.utcnow().isoformat())
+    except Exception:
+        pass
+
+
+def _trader_clearance_sort_key(trader_entry: dict) -> tuple:
+    """Sort traders: fastest full clearance first, unresolved last, then name."""
+    mins = trader_entry.get('clearance_minutes')
+    unresolved = trader_entry.get('clearance_unresolved', False)
+    if unresolved or mins is None:
+        return (1, 99999, (trader_entry.get('trader') or '').lower())
+    return (0, int(mins), (trader_entry.get('trader') or '').lower())
+
+
+def _format_clearance_minutes(minutes: int) -> str:
+    if minutes is None or minutes >= 99999:
+        return ''
+    if minutes < 60:
+        return f'{minutes}m'
+    hours, rem = divmod(minutes, 60)
+    return f'{hours}h {rem}m' if rem else f'{hours}h'
+
+
 # Super Admin financial aggregates: excluded client names (not tied to Daily Summary tracker lists)
 _SUPER_ADMIN_STATS_EXCLUDED_KEY = 'super_admin_stats_excluded_clients'
 
@@ -8677,6 +8719,7 @@ def api_run_quality_scan():
     try:
         from dashboard.database import save_quality_scan_results
         save_quality_scan_results(scan_date, results)
+        _sync_quality_issue_tracking(scan_date, results)
     except Exception as e:
         save_warning = str(e)
         logging.warning(f'Quality scan results could not be saved: {e}')
@@ -8735,7 +8778,6 @@ def api_quality_client(client_id):
                 # Persist the updated result into today's scan row for this client
                 try:
                     from dashboard.database import get_connection
-                    from dashboard.database import mark_quality_issue_resolved
                     scan_date = datetime.now().strftime('%Y-%m-%d')
                     with get_connection() as conn:
                         cursor = conn.cursor()
@@ -8747,9 +8789,7 @@ def api_quality_client(client_id):
                                        (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
                                         r['total_issues'], json.dumps(r['issues']), r['health_score']))
                         conn.commit()
-                    # If issues are now fully resolved, record resolution time for Slack leaderboard tie-breaks.
-                    if int(r.get('total_issues') or 0) == 0:
-                        mark_quality_issue_resolved(scan_date, r.get('client_id'), datetime.utcnow().isoformat())
+                    _sync_quality_issue_tracking(scan_date, [r])
                 except Exception:
                     pass  # Non-fatal — still return live results
                 return jsonify({"status": "success", "data": _quality_scan_row_for_trader_client_quality_api(r)})
@@ -9570,17 +9610,44 @@ def api_summary_status():
             })
         else:
             traders[trader]['not_sent'].append(client_name)
-    # Build response
+    # Issue-clearance speed (from morning scan baseline → all clients at 0 issues)
+    from dashboard.database import get_trader_issue_resolution_minutes, get_quality_scan_results
+    scan_date = date
+    scan_by_trader = {}
+    for row in get_quality_scan_results(scan_date) or []:
+        t = (row.get('trader') or '') or 'Unassigned'
+        ti, _ = _trader_ranking_health_metrics(row.get('issues'))
+        if t not in scan_by_trader:
+            scan_by_trader[t] = {'open_issues': 0, 'clients_with_issues': 0}
+        if ti > 0:
+            scan_by_trader[t]['open_issues'] += ti
+            scan_by_trader[t]['clients_with_issues'] += 1
+
     total_sent = sum(len(d['sent']) for d in traders.values())
     result = []
-    for trader, data in sorted(traders.items()):
+    for trader, data in traders.items():
+        raw_mins = get_trader_issue_resolution_minutes(scan_date, trader)
+        unresolved = raw_mins >= 99999
+        stats = scan_by_trader.get(trader, {})
         result.append({
             'trader': trader,
             'total': len(data['sent']) + len(data['not_sent']),
             'sent_count': len(data['sent']),
             'sent': data['sent'],
-            'not_sent': data['not_sent']
+            'not_sent': data['not_sent'],
+            'clearance_minutes': None if unresolved else raw_mins,
+            'clearance_unresolved': unresolved,
+            'clearance_label': (
+                'Pending'
+                if unresolved and stats.get('clients_with_issues', 0) > 0
+                else (_format_clearance_minutes(raw_mins) or 'No issues at scan')
+            ),
+            'open_issues': stats.get('open_issues', 0),
+            'clients_with_issues': stats.get('clients_with_issues', 0),
         })
+    result.sort(key=_trader_clearance_sort_key)
+    for idx, row in enumerate(result, 1):
+        row['clearance_rank'] = idx
     return jsonify({
         'status': 'success', 'date': date,
         'total_clients': tracked_count, 'total_sent': total_sent,
@@ -9692,6 +9759,8 @@ def api_trader_issues():
                         except Exception:
                             continue
                     conn.commit()
+                if live_results:
+                    _sync_quality_issue_tracking(scan_date_today, live_results)
             except Exception:
                 pass
 
@@ -10320,15 +10389,21 @@ def api_daily_summary():
                 downtime_clients.append((r.get('trader', 'Unknown'), r['client_id'], iss['detail']))
 
     if trader_stats:
-        # Gamified Trader Health Leaderboard — ranked best to worst
-        ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
-        lines.append("🏆 **TRADER HEALTH LEADERBOARD**")
-        lines.append("_Ranked by average client health score (highest first). Scores exclude super-admin daily-summary payout QA; otherwise reflects data freshness, hedging accuracy, notes quality, and checklist completion._")
+        from dashboard.database import get_trader_issue_resolution_minutes
+        # Gamified Trader Health Leaderboard — fastest issue clearance first
+        ranked = sorted(
+            trader_stats.items(),
+            key=lambda it: (
+                get_trader_issue_resolution_minutes(date, it[0]),
+                str(it[0]).lower(),
+            ),
+        )
+        lines.append("🏆 **TRADER ISSUE CLEARANCE LEADERBOARD**")
+        lines.append("_Ranked by how fast each trader cleared all morning-scan issues on their client dashboards (fastest first). Run a quality scan to start the clock._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
-            avg = round(s['health_sum'] / s['clients'], 1)
-            # Rank medals
+            clear_mins = get_trader_issue_resolution_minutes(date, t)
             if rank == 1:
                 medal = '🥇'
             elif rank == 2:
@@ -10337,35 +10412,23 @@ def api_daily_summary():
                 medal = '🥉'
             else:
                 medal = f'`#{rank}`'
-            # Fun titles based on health
-            if avg >= 95:
-                title = '👑 Legendary'
-            elif avg >= 90:
-                title = '⭐ Elite'
-            elif avg >= 80:
-                title = '💪 Solid'
-            elif avg >= 70:
-                title = '⚡ Warming Up'
-            elif avg >= 50:
-                title = '🔧 Needs Work'
+            if clear_mins >= 99999:
+                status = f"⏳ pending · {s['issues']} open issue{'s' if s['issues'] != 1 else ''}"
+            elif clear_mins == 0 and s['issues'] == 0:
+                status = '✅ no issues at scan'
             else:
-                title = '🚨 SOS'
-            bar_filled = round(avg / 10)
-            bar_empty = 10 - bar_filled
-            bar = '🟩' * bar_filled + '⬛' * bar_empty
-            lines.append(f"{medal} **{t}** — {title}")
-            lines.append(f"   {bar} **{avg}%** · {s['clients']} clients · {s['issues']} issues")
-        # Fun footer
+                status = f"✅ cleared in {_format_clearance_minutes(clear_mins)}"
+            lines.append(f"{medal} **{t}** — {status}")
+            lines.append(f"   {s['clients']} clients tracked")
         if total_traders > 0:
             best_name = ranked[0][0]
-            worst_name = ranked[-1][0]
-            best_avg = round(ranked[0][1]['health_sum'] / max(ranked[0][1]['clients'], 1), 1)
-            worst_avg = round(ranked[-1][1]['health_sum'] / max(ranked[-1][1]['clients'], 1), 1)
+            best_mins = get_trader_issue_resolution_minutes(date, best_name)
             lines.append("")
-            if best_avg >= 90:
-                lines.append(f"🎉 **{best_name}** is on fire! Leading the pack at {best_avg}%")
-            if worst_avg < 50 and total_traders > 1:
-                lines.append(f"📣 **{worst_name}** — time to level up! Let's get those numbers moving 💪")
+            if best_mins < 99999:
+                lines.append(
+                    f"🎉 **{best_name}** cleared the fastest"
+                    + (f" ({_format_clearance_minutes(best_mins)})" if best_mins else '')
+                )
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: **{checklist_count}**")
