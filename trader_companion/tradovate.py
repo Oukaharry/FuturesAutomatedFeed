@@ -2017,6 +2017,22 @@ class TradovateAccount:
                     switched = self.switch_account(expected_account)
                     if not switched:
                         print(f"[ACCOUNT] ⚠ Switch attempt failed. Proceeding anyway.")
+
+            # --- DUPLICATE-TRADE GUARD ---
+            # Block any new order while a position is already running on this account.
+            # Root cause this protects against: place_order_api() can return None even
+            # when the REST call actually filled (network blip reading the response,
+            # exception during bracket placement after the main order filled), causing
+            # the Selenium fallback below to send a second order. Re-checking the
+            # account's open positions catches both that path and an outright double-tap.
+            has_pos, acct_label = self.has_open_position_for_account(expected_account)
+            if has_pos:
+                _sym_for_log = symbol or DEFAULT_SYMBOL
+                msg = f"[GUARD] BLOCKED: open position already running on '{acct_label}' — {side.upper()} {_sym_for_log} x{qty} NOT placed"
+                print(msg)
+                logging.warning(msg)
+                raise Exception(msg)
+
             # --- ACCOUNT SIZE PROTECTION ---
             # Try to populate account_size from env if missing, for safety
             check_size = account_size or os.getenv("ACCOUNT_SIZE", "50k")
@@ -2121,7 +2137,24 @@ class TradovateAccount:
                     print(f"[API-FIRST] ⚠ API returned None — falling back to Selenium")
             except Exception as api_err:
                 print(f"[API-FIRST] ⚠ API attempt failed: {api_err} — falling back to Selenium")
-            
+
+            # --- DUPLICATE-TRADE GUARD (post-API, pre-fallback) ---
+            # place_order_api() can return None / raise even when the REST call
+            # actually placed the order (response timeout, bracket exception after
+            # main fill, etc.). Before letting Selenium click another Send, re-check
+            # the account: if a position now exists, the API did land — skip the UI.
+            has_pos, acct_label = self.has_open_position_for_account(expected_account)
+            if has_pos:
+                msg = f"[GUARD] Selenium fallback aborted: position now open on '{acct_label}' — API order DID land. Skipping UI to avoid duplicate."
+                print(msg)
+                logging.info(msg)
+                if on_click:
+                    try:
+                        on_click()
+                    except Exception:
+                        pass
+                return
+
             # ── SELENIUM FALLBACK: Place via UI clicking ──
             print(f"[SELENIUM FALLBACK] Proceeding with Selenium-based order placement")
             
@@ -3084,6 +3117,49 @@ class TradovateAccount:
         if account_id:
             positions = [p for p in positions if p.get('accountId') == account_id]
         return positions
+
+    def _resolve_api_account_id(self, expected_account):
+        """Resolve the Tradovate numeric account-id for a given account name/suffix.
+
+        Mirrors the matching used in _place_order_side (substring + numeric suffix).
+        Returns (account_id, account_name) or (None, expected_account) on failure.
+        """
+        if not expected_account:
+            aid, name = self._get_account_for_api()
+            return aid, (name or "?")
+        try:
+            accounts = self._api_fetch("/account/list")
+            if accounts and isinstance(accounts, list):
+                expected_lower = str(expected_account).lower()
+                for acct in accounts:
+                    acct_name = (acct.get('name') or '').lower()
+                    if expected_lower in acct_name or acct_name in expected_lower:
+                        return acct.get('id'), acct.get('name', expected_account)
+                    import re as _re
+                    expected_digits = _re.search(r'(\d{5,})$', str(expected_account))
+                    if expected_digits and acct_name.endswith(expected_digits.group(1).lower()):
+                        return acct.get('id'), acct.get('name', expected_account)
+        except Exception:
+            pass
+        return None, str(expected_account)
+
+    def has_open_position_for_account(self, expected_account=None):
+        """Return (has_position, account_label) for the target account.
+
+        Used as a duplicate-trade guard: while the account has any position with
+        netPos != 0, _place_order_side refuses to place another order. Returns
+        (False, label) if we cannot determine — we never block on uncertainty.
+        """
+        try:
+            account_id, account_label = self._resolve_api_account_id(expected_account)
+            if not account_id:
+                return False, account_label
+            positions = self.get_positions_api(account_id=account_id) or []
+            open_positions = [p for p in positions if p.get('netPos', 0) != 0]
+            return bool(open_positions), account_label
+        except Exception as e:
+            print(f"[GUARD] has_open_position_for_account check failed: {e} — not blocking")
+            return False, str(expected_account or "?")
 
     def cancel_all_orders_api(self, account_id=None):
         """Cancel all working (pending) orders on the account via the REST API.
