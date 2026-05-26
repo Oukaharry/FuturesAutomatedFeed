@@ -10,6 +10,7 @@ import logging
 import random
 import hashlib
 import tempfile
+import re
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -38,7 +39,9 @@ class TradovateAccount:
     
     # Class-level registry to track Chrome instances per account
     _chrome_instances = {}
-    
+    # Set once per process after we sweep leftover throwaway fallback profiles.
+    _fallback_sweep_done = False
+
     def __init__(self, username, password, pair_id=None, trading_mode="Simulation"):
         self.username = username
         self.password = password
@@ -102,14 +105,173 @@ class TradovateAccount:
             logging.warning(f"Chrome compatibility check failed: {e}")
             # Continue anyway - don't break existing functionality
 
+    def _profile_dir_from_cmdline(self, cmdline):
+        """Extract the --user-data-dir value from a process command line, or None.
+
+        Handles both '--user-data-dir=PATH' (how Selenium passes it, and how Chrome
+        propagates it to child processes) and the rare split '--user-data-dir PATH'.
+        """
+        try:
+            for i, arg in enumerate(cmdline):
+                low = arg.lower()
+                if low.startswith("--user-data-dir="):
+                    return arg.split("=", 1)[1].strip().strip('"')
+                if low == "--user-data-dir" and i + 1 < len(cmdline):
+                    return cmdline[i + 1].strip().strip('"')
+        except Exception:
+            pass
+        return None
+
+    def _cleanup_stale_profile_lock(self, profile_dir):
+        """Best-effort: clear a stale lock on the persistent Chrome profile so a
+        relaunch doesn't fail with 'user data directory is already in use'.
+
+        Windows holds the directory via a live chrome.exe (there is no on-disk
+        SingletonLock), so we terminate ONLY orphaned chrome.exe processes whose
+        --user-data-dir is exactly this profile dir - never the user's normal Chrome
+        or another account's profile. On POSIX we also remove stale Singleton* files.
+        Matching is exact (full-path equality), so 'USER_1' never matches 'USER_11'.
+
+        Safe at this point: the per-process instance registry already reuses any live
+        driver for this account, so any Chrome still holding this dir here is an
+        orphan from a previous app run.
+        """
+        try:
+            target = os.path.normcase(os.path.abspath(profile_dir))
+
+            # POSIX-style on-disk locks (no-op on Windows; helps on VPS/Linux).
+            for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+                lock_path = os.path.join(profile_dir, name)
+                try:
+                    if os.path.islink(lock_path) or os.path.exists(lock_path):
+                        os.unlink(lock_path)
+                        logging.info(f"[CHROME] Removed stale lock file: {lock_path}")
+                except Exception:
+                    pass
+
+            try:
+                import psutil
+            except Exception:
+                return  # Can't inspect processes - nothing more we can do.
+
+            procs = []
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    pname = (proc.info.get('name') or "").lower()
+                    if pname not in ("chrome.exe", "chrome", "google chrome"):
+                        continue
+                    udd = self._profile_dir_from_cmdline(proc.cmdline())
+                    if udd and os.path.normcase(os.path.abspath(udd)) == target:
+                        procs.append(proc)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+                except Exception:
+                    continue
+
+            if not procs:
+                return
+
+            logging.warning(f"[CHROME] Found {len(procs)} orphaned Chrome process(es) holding this profile - terminating to clear stale lock...")
+            for p in procs:
+                try:
+                    p.terminate()
+                except Exception:
+                    pass
+            _, alive = psutil.wait_procs(procs, timeout=3)
+            for p in alive:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+            time.sleep(0.5)
+            logging.info("[CHROME] Stale profile lock cleared.")
+        except Exception as e:
+            logging.warning(f"[CHROME] Profile lock cleanup skipped: {e}")
+
+    def _in_use_profile_dirs(self):
+        """Set of normcased absolute --user-data-dir paths held by live Chrome processes."""
+        dirs = set()
+        try:
+            import psutil
+        except Exception:
+            return dirs
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                pname = (proc.info.get('name') or "").lower()
+                if pname not in ("chrome.exe", "chrome", "google chrome"):
+                    continue
+                udd = self._profile_dir_from_cmdline(proc.cmdline())
+                if udd:
+                    dirs.add(os.path.normcase(os.path.abspath(udd)))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+            except Exception:
+                continue
+        return dirs
+
+    def _prune_old_fallback_profiles(self):
+        """Remove leftover throwaway fallback profiles from past runs.
+
+        These '<key>_fallback_<timestamp>' folders are created only when the
+        persistent profile was locked at launch. A folder is deleted only if it is
+        (a) NOT currently held by a live Chrome process, and (b) older than a few
+        minutes - so a fallback another instance is mid-launch on is never removed
+        (a long-running trading session keeps its Chrome alive, which keeps the
+        folder in the in-use set regardless of age).
+        """
+        try:
+            import shutil
+            root = os.path.join(tempfile.gettempdir(), "tradovate_profiles")
+            if not os.path.isdir(root):
+                return
+            in_use = self._in_use_profile_dirs()
+            cutoff = time.time() - 300  # 5 minutes
+            removed = 0
+            for name in os.listdir(root):
+                if "_fallback_" not in name:
+                    continue
+                path = os.path.join(root, name)
+                if not os.path.isdir(path):
+                    continue
+                try:
+                    if os.path.normcase(os.path.abspath(path)) in in_use:
+                        continue
+                    if os.path.getmtime(path) > cutoff:
+                        continue
+                    shutil.rmtree(path, ignore_errors=True)
+                    removed += 1
+                except Exception:
+                    continue
+            if removed:
+                logging.info(f"[CHROME] Pruned {removed} stale fallback profile folder(s).")
+        except Exception as e:
+            logging.warning(f"[CHROME] Fallback profile prune skipped: {e}")
+
     def _initialize_driver(self):
         """Initialize Chrome WebDriver with crash-resistant options"""
         chrome_options = Options()
-        
-        # PERFORMANCE: Removed user-data-dir to speed up Chrome launch
-        # Incognito mode is faster than loading persistent profiles
-        # Each Chrome instance will be fresh and fast
-        
+
+        # PERSISTENCE: Use a stable per-account Chrome profile so cookies, localStorage
+        # and Tradovate onboarding state survive between launches. Without this, every
+        # login starts with a throwaway profile, so Tradovate treats the connector as a
+        # brand-new device and re-shows the "Complete your profile" / trading-mode gate
+        # every time (and anything typed there is discarded on close).
+        # Key the folder on username + pair_id (matching the instance registry) so two
+        # concurrent instances never share a profile dir, which Chrome forbids
+        # ("user data directory is already in use") and would crash the launch.
+        safe_key = re.sub(r"[^A-Za-z0-9_-]", "_", f"{self.username}_{self.pair_id}")
+        profile_dir = os.path.join(tempfile.gettempdir(), "tradovate_profiles", safe_key)
+        os.makedirs(profile_dir, exist_ok=True)
+        chrome_options.add_argument(f"--user-data-dir={profile_dir}")
+        logging.info(f"[CHROME] Using persistent profile dir: {profile_dir}")
+        # Clear any stale lock left by an orphaned Chrome from a previous run so this
+        # launch doesn't fail with "user data directory is already in use".
+        self._cleanup_stale_profile_lock(profile_dir)
+        # Once per process, sweep away leftover throwaway fallback profiles from prior runs.
+        if not TradovateAccount._fallback_sweep_done:
+            TradovateAccount._fallback_sweep_done = True
+            self._prune_old_fallback_profiles()
+
         # PERFORMANCE: Removed window positioning - let Chrome decide (faster)
         # PERFORMANCE: Removed remote debugging port - not needed for basic automation
         
@@ -155,11 +317,15 @@ class TradovateAccount:
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         
-        # Minimal preferences to prevent crashes
+        # Minimal preferences to prevent crashes.
+        # Images force-ENABLED (1): the persistent profile (user-data-dir above) can
+        # otherwise carry a saved "block images" setting between runs, which breaks the
+        # "Complete your profile" onboarding form rendering/submission.
         prefs = {
             "profile.default_content_setting_values": {
                 "popups": 2,  # Block popups only
                 "notifications": 2,  # Block notifications only
+                "images": 1,  # Force-enable images (1=allow, 2=block)
             }
         }
         chrome_options.add_experimental_option("prefs", prefs)
@@ -180,7 +346,30 @@ class TradovateAccount:
             
             import time
             start_time = time.time()
-            driver = webdriver.Chrome(options=chrome_options)
+            try:
+                driver = webdriver.Chrome(options=chrome_options)
+            except Exception as launch_err:
+                msg = str(launch_err).lower()
+                if "user data directory is already in use" in msg:
+                    # Cleanup couldn't free the lock (e.g. a process we lacked permission
+                    # to kill). Last resort: retry with a unique throwaway profile so the
+                    # connect still works. This one session won't reuse the saved Tradovate
+                    # cookies, so the onboarding gate may show once - but it won't block.
+                    fallback_key = re.sub(r"[^A-Za-z0-9_-]", "_", f"{self.username}_{self.pair_id}")
+                    fallback_dir = os.path.join(tempfile.gettempdir(), "tradovate_profiles",
+                                                f"{fallback_key}_fallback_{int(time.time())}")
+                    os.makedirs(fallback_dir, exist_ok=True)
+                    try:
+                        for a in list(chrome_options.arguments):
+                            if a.lower().startswith("--user-data-dir"):
+                                chrome_options.arguments.remove(a)
+                    except Exception:
+                        pass
+                    chrome_options.add_argument(f"--user-data-dir={fallback_dir}")
+                    logging.warning(f"[CHROME] Persistent profile still locked - retrying with a temporary profile: {fallback_dir}")
+                    driver = webdriver.Chrome(options=chrome_options)
+                else:
+                    raise
             elapsed = time.time() - start_time
             
             if elapsed > 5:
@@ -2725,7 +2914,7 @@ class TradovateAccount:
             # Absolute floor:    trailingMaxDrawdownLimit - trailing_max_drawdown
             # min_equity = max(sod_floor, absolute_floor)
             if trailing_max_drawdown > 0:
-                absolute_floor = (trailing_max_drawdown_limit - trailing_max_drawdown) if trailing_max_drawdown_limit > 0 else 0
+                absolute_floor = (net_liq_sod - trailing_max_drawdown) if trailing_max_drawdown_limit > 0 else 0
                 if net_liq_sod > 0:
                     sod_floor = net_liq_sod - trailing_max_drawdown
                     min_equity = max(sod_floor, absolute_floor)
