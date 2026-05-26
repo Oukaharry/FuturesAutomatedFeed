@@ -1297,7 +1297,7 @@ class PropFirmManager:
                 }
             },
             "Top One Futures": {
-                "name": "Top One Futures Elite Access",
+                "name": "Top One Futures Elite Daily",
                 "account_sizes": ["$50,000"],
                 "trading_phases": ["Challenge Phase", "Payout 1", "Payout 2", "Double Dip Payout 1", "Double Dip Payout 2", "Farming Phase"],
                 "strategy_configs": {
@@ -1305,7 +1305,7 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 301,
+                            "tradovate_tp_ticks": 101,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
                             "mt5_tp_points": 0,
@@ -1316,7 +1316,55 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 1,
-                            "tradovate_tp_ticks": 240,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade1a": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 100,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade1b": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 300,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade1c": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 500,
+                            "tradovate_sl_ticks": 180,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade1d": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
                             "mt5_tp_points": 0,
@@ -1328,8 +1376,32 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 1,
-                            "tradovate_tp_ticks": 102,
+                            "tradovate_tp_ticks": 200,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1000
+                        }
+                    },
+                    "funded_trade2a": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 400,
                             "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1000
+                        }
+                    },
+                    "funded_trade2b": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 80,
                             "mt5_volume": 0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1340,7 +1412,55 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 1,
-                            "tradovate_tp_ticks": 240,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade_doubledip_1a": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 100,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade_doubledip_1b": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 300,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade_doubledip_1c": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 500,
+                            "tradovate_sl_ticks": 180,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 3500
+                        }
+                    },
+                    "funded_trade_doubledip_1d": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
                             "mt5_tp_points": 0,
@@ -1352,8 +1472,32 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 1,
-                            "tradovate_tp_ticks": 102,
+                            "tradovate_tp_ticks": 200,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1000
+                        }
+                    },
+                    "funded_trade_doubledip_2a": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 400,
                             "tradovate_sl_ticks": 200,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1000
+                        }
+                    },
+                    "funded_trade_doubledip_2b": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 600,
+                            "tradovate_sl_ticks": 80,
                             "mt5_volume": 0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
