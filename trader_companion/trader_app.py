@@ -5090,6 +5090,118 @@ class TradeOpssAIApp:
             return False
         return True
 
+    def _find_day_field_name(self, ev, current_phase):
+        """Return the eval field key holding the next tradeable day-name
+        placeholder, or None if there isn't one.
+
+        Used so that after a trade lands we can mark the exact cell whose
+        MON/TUE/WED placeholder triggered the trade. Mirrors the cell-finder
+        logic in _resolve_phase_key_from_day so we always target the same cell.
+        """
+        try:
+            day_idx, _day_name, _is_today, matched_phase = self._find_tradeable_day_cell(ev, current_phase)
+            if day_idx is None:
+                return None
+            effective_phase = matched_phase or current_phase
+            phase_to_fields = {ph: flist for ph, flist in self._ALL_PHASE_FIELD_SETS}
+            if effective_phase == "Challenge":
+                fields = phase_to_fields.get("Challenge", [])
+            elif effective_phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4", "Double Dip"):
+                fields = phase_to_fields.get("Funded", [])
+            elif effective_phase == "Farming":
+                fields = phase_to_fields.get("Farming", [])
+            else:
+                fields = []
+            if 0 <= day_idx < len(fields):
+                return fields[day_idx]
+        except Exception:
+            pass
+        return None
+
+    def _mark_day_cell_traded_on_dashboard(self, acct_num, field_name):
+        """Replace the day-name placeholder cell with "$0.00" on the dashboard.
+
+        Called after a Tradovate or TopStepX order lands. Writing "$0.00" rather
+        than blanking the cell is deliberate: the cell-finder treats a real
+        value (non-empty, non-day-token) as a completed trade, so the next scan
+        will skip this cell and the trade cannot be re-fired.
+
+        The cell is only overwritten when it still holds a day-name token —
+        never when it already contains a real P&L result. Best-effort: never
+        raises so a push failure can't block the trade flow.
+        """
+        if not field_name or not acct_num:
+            return False
+        try:
+            email = self.client_email_entry.get().strip()
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+            if not email or not dashboard_url:
+                return False
+
+            r = requests.post(
+                f"{dashboard_url}/api/client/data",
+                json={"email": email},
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
+            if r.status_code != 200:
+                return False
+            data = r.json()
+            evaluations = data.get("evaluations", []) or []
+
+            acct_lower = str(acct_num).strip().lower()
+            touched = 0
+            for ev in evaluations:
+                if ev.get("_deleted"):
+                    continue
+                a1 = (ev.get("Account #.1") or "").strip().lower()
+                a0 = (ev.get("Account #") or "").strip().lower()
+                if acct_lower not in (a1, a0):
+                    continue
+                cur = str(ev.get(field_name, "") or "").strip()
+                # Only mark cells that still hold a day-name token. Skip empty
+                # cells and skip cells that already contain a real value.
+                if self._parse_day_token(cur) is None:
+                    continue
+                ev[field_name] = "$0.00"
+                touched += 1
+
+            if touched == 0:
+                return False
+
+            payload = {
+                "email": email,
+                "evaluations": evaluations,
+                "statistics": {},
+                "dropdown_options": {},
+                "force_fields": [field_name],
+            }
+            resp = requests.post(
+                f"{dashboard_url}/api/client/push",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            ok = resp.status_code == 200
+            try:
+                ok = ok and resp.json().get("status") == "success"
+            except Exception:
+                pass
+            if ok:
+                self.root.after(0, lambda an=acct_num, f=field_name:
+                    self.log(f"🗓 Day cell marked $0.00 on dashboard: {an} / {f}"))
+            else:
+                self.root.after(0, lambda an=acct_num, f=field_name:
+                    self.log(f"⚠ Day-cell mark push rejected: {an} / {f}", "WARN"))
+            return ok
+        except Exception as e:
+            try:
+                self.root.after(0, lambda err=str(e):
+                    self.log(f"⚠ Day-cell mark error: {err}", "WARN"))
+            except Exception:
+                pass
+            return False
+
     def _refresh_eval_for_account(self, acct_num):
         """Fetch fresh eval data from dashboard for a specific account.
 
@@ -5708,6 +5820,10 @@ class TradeOpssAIApp:
                      f"blueprint {resolved_key} (was {phase_key})")
             phase_key = resolved_key
 
+        # Capture the exact eval field holding the day placeholder so we can
+        # mark it $0.00 on the dashboard after the broker leg fills.
+        day_field = self._find_day_field_name(ev, row_data["current_phase"])
+
         # Get trade config from blueprint
         config = None
         if self.prop_firm_mgr:
@@ -5853,6 +5969,17 @@ class TradeOpssAIApp:
                     raise Exception(order_result.get("message") or "Broker reported unsuccessful order")
 
                 self.log(f"✅ {platform} filled {side.upper()} {trado_qty} {trado_sym} | TP:{trado_tp}t SL:{trado_sl}t | {acct_num}")
+
+                # Mark the day-name cell as traded ($0.00) on the dashboard now
+                # that the broker leg has filled. Triggered by Tradovate/TopStepX
+                # fill only — independent of whether the MT5 hedge succeeds.
+                # $0.00 makes the cell-finder skip it on the next scan, so the
+                # same trade can't fire twice.
+                if day_field:
+                    try:
+                        self._mark_day_cell_traded_on_dashboard(acct_num, day_field)
+                    except Exception:
+                        pass
 
                 # 2. MT5 hedge (opposite direction)
                 if hedging and mt5_api:
@@ -6639,6 +6766,10 @@ class TradeOpssAIApp:
                         self.log(f"📅 {an}: Day cell {di + 1} ({dn}) → blueprint {rk} (was {pk})"))
                     phase_key = resolved_key
 
+                # Capture the exact eval field holding the day placeholder so
+                # we can mark it $0.00 after the broker leg fills.
+                day_field = self._find_day_field_name(auto_ev, row_data.get("current_phase", ""))
+
                 # Determine direction: signal-based or random bias
                 if use_signal:
                     # Lazy-compute signal once per firm
@@ -6782,6 +6913,17 @@ class TradeOpssAIApp:
 
                     self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side, sym=trado_sym, qty=trado_qty:
                         self.log(f"✅ {platform} {sd.upper()} {qty} {sym} → {an} ({fc})"))
+
+                    # Mark the day-name cell as traded ($0.00) on the dashboard
+                    # now that the broker leg has filled. Triggered by
+                    # Tradovate/TopStepX fill only — independent of whether the
+                    # MT5 hedge succeeds. $0.00 makes the cell-finder skip it on
+                    # the next scan, so the same trade can't fire twice.
+                    if day_field:
+                        try:
+                            self._mark_day_cell_traded_on_dashboard(acct_num, day_field)
+                        except Exception:
+                            pass
 
                     # 2. MT5 hedge (opposite direction)
                     if hedging and mt5_api:
