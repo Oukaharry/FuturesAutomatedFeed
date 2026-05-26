@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.2"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -2517,18 +2517,70 @@ class TradeOpssAIApp:
         """Connect or disconnect from MT5."""
         if self.pusher.connected:
             success, msg = self.pusher.disconnect_mt5()
-            self.mt5_btn.configure(text="Connect to MT5")
+            self.mt5_btn.configure(text="Connect MT5")
             self.log(msg)
         else:
             login = self.mt5_login.get().strip()
             password = self.mt5_password.get()
             server = self.mt5_server.get().strip()
-            
+
             success, msg = self.pusher.connect_mt5(login, password, server)
             if success:
                 self.mt5_btn.configure(text="Disconnect MT5")
             self.log(msg, "INFO" if success else "ERROR")
-            
+
+    def _auto_connect_mt5(self):
+        """Auto-connect to MT5 once credentials are present (e.g. right after the
+        dashboard auto-fills them). No-op if already connected or the login/pass/
+        server fields aren't all filled yet. The connect call is blocking, so it
+        runs off the UI thread; on success the button flips to 'Disconnect MT5'."""
+        try:
+            if getattr(self.pusher, "connected", False):
+                # Already connected — just make sure the button reflects it.
+                try:
+                    self.mt5_btn.configure(text="Disconnect MT5")
+                except Exception:
+                    pass
+                return
+            login = self.mt5_login.get().strip()
+            password = self.mt5_password.get()
+            server = self.mt5_server.get().strip()
+        except Exception:
+            return
+
+        if not (login and password and server):
+            return  # nothing to connect with yet
+
+        # Guard against stacking multiple in-flight auto-connect attempts.
+        if getattr(self, "_mt5_autoconnect_inflight", False):
+            return
+        self._mt5_autoconnect_inflight = True
+        try:
+            self.mt5_btn.configure(text="Connecting...", state="disabled")
+        except Exception:
+            pass
+
+        def _worker(lg=login, pw=password, sv=server):
+            try:
+                success, msg = self.pusher.connect_mt5(lg, pw, sv)
+            except Exception as e:
+                success, msg = False, f"MT5 auto-connect error: {e}"
+
+            def _apply():
+                self._mt5_autoconnect_inflight = False
+                try:
+                    self.mt5_btn.configure(
+                        state="normal",
+                        text="Disconnect MT5" if success else "Connect MT5",
+                    )
+                except Exception:
+                    pass
+                self.log(("✅ " if success else "⚠ ") + msg, "INFO" if success else "ERROR")
+
+            self.root.after(0, _apply)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _push_billing_data(self):
         """Push only firm billing (actual fees & payouts) to the dashboard."""
         if RELEASE_DISABLE_PUSH_BILLING:
@@ -5094,7 +5146,7 @@ class TradeOpssAIApp:
         """Return the eval field key holding the next tradeable day-name
         placeholder, or None if there isn't one.
 
-        Used so that after a trade lands we can mark the exact cell whose
+        Used so that after a trade lands we can clear the exact cell whose
         MON/TUE/WED placeholder triggered the trade. Mirrors the cell-finder
         logic in _resolve_phase_key_from_day so we always target the same cell.
         """
@@ -5373,6 +5425,9 @@ class TradeOpssAIApp:
                             self.mt5_server.delete(0, tk.END)
                             self.mt5_server.insert(0, srv)
                         self.log("🔗 MT5 credentials auto-filled from TradeOps dashboard")
+                        # Now that creds are loaded, connect automatically so the
+                        # button shows "Disconnect MT5" without a manual click.
+                        self._auto_connect_mt5()
                     self.root.after(0, _fill_mt5)
 
             except Exception as e:
@@ -5821,7 +5876,7 @@ class TradeOpssAIApp:
             phase_key = resolved_key
 
         # Capture the exact eval field holding the day placeholder so we can
-        # mark it $0.00 on the dashboard after the broker leg fills.
+        # clear it on the dashboard after the broker leg fills.
         day_field = self._find_day_field_name(ev, row_data["current_phase"])
 
         # Get trade config from blueprint
@@ -5947,11 +6002,10 @@ class TradeOpssAIApp:
                     else:
                         order_result = broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                 elif platform == "TopStepX":
-                    # Switch to the correct account if multiple accounts under same login
-                    if hasattr(broker_account, 'switch_account') and acct_num:
-                        switched = broker_account.switch_account(account_name_contains=acct_num)
-                        if not switched:
-                            raise Exception(f"TopStepX could not switch to account {acct_num}")
+                    # Account is already selected upstream — don't re-open the slow
+                    # dropdown here. place_*_order verifies the selector still matches
+                    # acct_num (expected_account) and only switches if it drifted,
+                    # so we stay fast while never firing on the wrong account.
                     # TopStepX uses two-digit year futures codes (NQM26, MNQM26)
                     _tsx_sym = _to_topstepx_symbol(trado_sym)
                     # Convert ticks to dollars for TopStepX: dollars = ticks * tick_value * quantity
@@ -5959,9 +6013,9 @@ class TradeOpssAIApp:
                     _tsx_tp_dollars = trado_tp * _tsx_tick_val * trado_qty
                     _tsx_sl_dollars = trado_sl * _tsx_tick_val * trado_qty
                     if side == "buy":
-                        order_result = broker_account.place_buy_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
+                        order_result = broker_account.place_buy_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars, expected_account=acct_num)
                     else:
-                        order_result = broker_account.place_sell_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars)
+                        order_result = broker_account.place_sell_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars, expected_account=acct_num)
 
                 # Some broker implementations return a status dict instead of raising.
                 # Normalize failures so UI/logs don't report false fills.
@@ -6283,27 +6337,39 @@ class TradeOpssAIApp:
                         self.log(f"  ❌ {fn} close failed: {err}", "ERROR"))
 
             # 2. Close all MT5 positions
+            #
+            # Connect MT5 FIRST. Without this, mt5.positions_get() runs against an
+            # uninitialised module and returns None, the `if positions:` branch
+            # is skipped silently, and Close All appears to ignore MT5. The
+            # _get_mt5_trading_api() call is what triggers mt5.initialize() +
+            # login via MT5API.connect(), so calling it up front ensures the
+            # module is ready before we query.
             try:
                 if not MT5_AVAILABLE:
                     raise RuntimeError("MetaTrader5 module is not available")
+
+                mt5_api = self._get_mt5_trading_api()
+                if mt5_api is None:
+                    raise RuntimeError(
+                        "MT5 is not connected — enter MT5 credentials and "
+                        "connect MT5 first, then retry Close All"
+                    )
+
                 positions = mt5.positions_get()
-                if positions:
-                    mt5_api = self._get_mt5_trading_api() if hasattr(self, '_get_mt5_trading_api') else None
+                if positions is None:
+                    # Module is connected but the query itself failed.
+                    last_err = mt5.last_error() if hasattr(mt5, "last_error") else "?"
+                    raise RuntimeError(f"mt5.positions_get() returned None (last_error={last_err})")
+
+                if not positions:
+                    self.root.after(0, lambda:
+                        self.log("  ⏭ MT5 — no open positions (already flat)"))
+                else:
+                    self.root.after(0, lambda n=len(positions):
+                        self.log(f"  🔄 MT5 — closing {n} position(s)..."))
                     for pos in positions:
                         try:
-                            if mt5_api:
-                                mt5_api.close_trade(pos.ticket)
-                            else:
-                                # Direct close via MT5 API
-                                request = {
-                                    "action": mt5.TRADE_ACTION_DEAL,
-                                    "position": pos.ticket,
-                                    "symbol": pos.symbol,
-                                    "volume": pos.volume,
-                                    "type": mt5.ORDER_TYPE_SELL if pos.type == 0 else mt5.ORDER_TYPE_BUY,
-                                    "type_filling": mt5.ORDER_FILLING_IOC,
-                                }
-                                mt5.order_send(request)
+                            mt5_api.close_trade(pos.ticket)
                             closed_mt5 += 1
                             self.root.after(0, lambda t=pos.ticket, s=pos.symbol:
                                 self.log(f"  ✅ MT5 #{t} {s} closed"))
@@ -6314,7 +6380,7 @@ class TradeOpssAIApp:
             except Exception as e:
                 errors.append(f"MT5: {e}")
                 self.root.after(0, lambda err=str(e):
-                    self.log(f"  ⚠ MT5 close skipped: {err}"))
+                    self.log(f"  ❌ MT5 close skipped: {err}", "ERROR"))
 
             # Summary
             summary = f"🔴 Close All done — Brokers: {closed_tv}, MT5: {closed_mt5}"
@@ -6767,7 +6833,7 @@ class TradeOpssAIApp:
                     phase_key = resolved_key
 
                 # Capture the exact eval field holding the day placeholder so
-                # we can mark it $0.00 after the broker leg fills.
+                # we can clear it after the broker leg fills.
                 day_field = self._find_day_field_name(auto_ev, row_data.get("current_phase", ""))
 
                 # Determine direction: signal-based or random bias
@@ -6880,12 +6946,10 @@ class TradeOpssAIApp:
                         else:
                             order_result = broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                     elif platform == "TopStepX":
-                        # Ensure we are on the intended sub-account before placing the order.
-                        if hasattr(broker_account, 'switch_account') and acct_num:
-                            switched = broker_account.switch_account(account_name_contains=acct_num)
-                            if not switched:
-                                raise Exception(f"TopStepX could not switch to account {acct_num}")
-
+                        # Account is already selected upstream — don't re-open the slow
+                        # dropdown here. place_*_order verifies the selector still matches
+                        # acct_num (expected_account) and only switches if it drifted,
+                        # so we stay fast while never firing on the wrong account.
                         # TopStepX uses two-digit year futures codes (NQM26, MNQM26)
                         _tsx_sym = _to_topstepx_symbol(trado_sym)
                         _tsx_tick_val = self.prop_firm_mgr.get_tick_value(_tsx_sym) if self.prop_firm_mgr else 0.5
@@ -6897,6 +6961,7 @@ class TradeOpssAIApp:
                                 trado_qty,
                                 tp_dollars=_tsx_tp_dollars,
                                 sl_dollars=_tsx_sl_dollars,
+                                expected_account=acct_num,
                             )
                         else:
                             order_result = broker_account.place_sell_order(
@@ -6904,6 +6969,7 @@ class TradeOpssAIApp:
                                 trado_qty,
                                 tp_dollars=_tsx_tp_dollars,
                                 sl_dollars=_tsx_sl_dollars,
+                                expected_account=acct_num,
                             )
 
                     # TopStepX returns status dicts on both success and failure.

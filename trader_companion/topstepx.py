@@ -224,11 +224,16 @@ class TopStepXAccount:
         chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         
-        # Minimal preferences to prevent crashes
+        # Minimal preferences to prevent crashes.
+        # Images force-ENABLED (1): the persistent profile (user-data-dir above) can
+        # otherwise carry a saved "block images" setting between runs, and TopStepX's
+        # account dropdown / order form render and submit unreliably without images.
+        # Worth the slightly slower load for a working trade + account-switch flow.
         prefs = {
             "profile.default_content_setting_values": {
                 "popups": 2,  # Block popups only
                 "notifications": 2,  # Block notifications only
+                "images": 1,  # Force-enable images (1=allow, 2=block)
             }
         }
         chrome_options.add_experimental_option("prefs", prefs)
@@ -721,21 +726,18 @@ class TopStepXAccount:
                 if not search and not account_id:
                     return False
 
-                # 1) Cache hit
-                if cache_key and getattr(self, "_last_switched_key", None) == cache_key:
+                # 1) Fast path: already on the target account? Confirm against the
+                #    LIVE selector. We deliberately do NOT trust a blind cache here
+                #    — a stale cache (page reload, drift) returning True is exactly
+                #    what makes an order land on the wrong account.
+                if search and self.verify_account_selected(search)[0]:
+                    self._last_switched_key = cache_key
                     return True
 
-                # 2) Locate the selector and check if already active
+                # 2) Locate the selector so we can open the dropdown.
                 select_el = self.driver.find_element(By.XPATH,
                     "//div[contains(@class, 'MuiSelect-select') and contains(@class, 'MuiInputBase-input')]"
                 )
-                try:
-                    current = (select_el.text or "").strip()
-                except Exception:
-                    current = ""
-                if search and current and search.lower() in current.lower():
-                    self._last_switched_key = cache_key
-                    return True
 
                 # 3) Open dropdown and click the matching option
                 # Dismiss any backdrop first (a leftover from a previous interaction
@@ -787,8 +789,13 @@ class TopStepXAccount:
                     except Exception:
                         pass
 
-                clicked = False
-                needle = search.lower() if search else None
+                # Choose the option by EXACT (case-insensitive) text first, then a
+                # UNIQUE substring match. An ambiguous substring (matches >1 option)
+                # is REFUSED so we never click a similarly-numbered wrong account
+                # (e.g. '123' must not silently select '1234').
+                needle = search.lower() if search else ""
+                exact_item = None
+                substr_items = []
                 for item in items:
                     try:
                         text = (item.text or "").strip()
@@ -796,20 +803,27 @@ class TopStepXAccount:
                         continue
                     if not text:
                         continue
-                    if needle and needle in text.lower():
-                        # Native click first, then JS fallback
-                        try:
-                            item.click()
-                        except Exception:
-                            try:
-                                self.driver.execute_script("arguments[0].click()", item)
-                            except Exception:
-                                continue
-                        clicked = True
-                        self.logger.info(f"[SWITCH] Clicked: {text[:80]}")
+                    low = text.lower()
+                    if needle and low == needle:
+                        exact_item = (item, text)
                         break
+                    if needle and needle in low:
+                        substr_items.append((item, text))
 
-                if not clicked:
+                if exact_item is not None:
+                    target, target_text = exact_item
+                elif len(substr_items) == 1:
+                    target, target_text = substr_items[0]
+                elif len(substr_items) > 1:
+                    self.logger.error(
+                        f"[SWITCH] '{search}' is ambiguous — matches {len(substr_items)} accounts "
+                        f"{[t for _, t in substr_items][:5]}; refusing to guess (would risk wrong account).")
+                    try:
+                        ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
+                    except Exception:
+                        pass
+                    return False
+                else:
                     self.logger.error(f"[SWITCH] '{search}' not found among {len(items)} dropdown options")
                     try:
                         ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
@@ -817,19 +831,80 @@ class TopStepXAccount:
                         pass
                     return False
 
+                # Native click first, then JS fallback.
+                try:
+                    target.click()
+                except Exception:
+                    try:
+                        self.driver.execute_script("arguments[0].click()", target)
+                    except Exception:
+                        self.logger.error(f"[SWITCH] Could not click option '{target_text[:60]}'")
+                        return False
+                self.logger.info(f"[SWITCH] Clicked: {target_text[:80]}")
+
+                # CONFIRM the selector actually changed before reporting success.
+                # Without this, a swallowed MUI click silently leaves us on the old
+                # account and EVERY subsequent order piles onto it (the double-trade /
+                # "some accounts never placed" bug).
+                if not self._wait_account_selected(search, timeout=3.0):
+                    self.logger.error(
+                        f"[SWITCH] Clicked '{search}' but selector still shows "
+                        f"'{self._current_account_text()[:60]}' — switch FAILED, will not place here.")
+                    return False
+
                 # Invalidate cached stats so next poll fetches fresh data
                 self._cached_stats = None
                 self._stats_last_fetch_time = 0
                 self._first_stats_fetch = True
                 self._last_switched_key = cache_key
-
-                # Brief settle so the selector text + downstream UI catch up
-                time.sleep(0.4)
                 return True
 
             except Exception as e:
                 self.logger.error(f"[SWITCH] Account switch failed: {e}")
                 return False
+
+    def _current_account_text(self):
+        """Read the currently-selected sub-account from the MuiSelect trigger.
+
+        Fast and side-effect free: a single JS DOM read, NO dropdown open, and
+        not subject to Selenium's implicit wait. Returns '' if it can't be read.
+        """
+        try:
+            txt = self.driver.execute_script(
+                "const el = document.querySelector('.MuiSelect-select.MuiInputBase-input')"
+                " || document.querySelector('[role=\"combobox\"]');"
+                " return el ? (el.textContent || '').trim() : '';"
+            )
+            return (txt or "").strip()
+        except Exception:
+            return ""
+
+    def verify_account_selected(self, expected_account):
+        """Fast check that the UI is already on the intended sub-account WITHOUT
+        opening the (slow) dropdown.
+
+        Returns (matches: bool, current_text: str). With no target to check
+        against, treats it as a match so callers don't block.
+        """
+        needle = (expected_account or "").strip().lower()
+        if not needle:
+            return True, ""
+        current = self._current_account_text()
+        return (needle in current.lower()), current
+
+    def _wait_account_selected(self, expected_account, timeout=3.0):
+        """Poll the live selector until it shows `expected_account`, up to `timeout`
+        seconds. Used to CONFIRM a switch actually landed (MUI clicks can be
+        swallowed). Returns True only once the selector reflects the target."""
+        needle = (expected_account or "").strip().lower()
+        if not needle:
+            return False
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if needle in self._current_account_text().lower():
+                return True
+            time.sleep(0.1)
+        return False
 
     def cleanup_chrome_instance(self):
         """
@@ -1555,7 +1630,7 @@ class TopStepXAccount:
                     "platform": "TopStepX"
                 }
 
-    def place_buy_order(self, symbol, quantity, order_type="market", tp_dollars=None, sl_dollars=None, skip_post_trade_setup=False):
+    def place_buy_order(self, symbol, quantity, order_type="market", tp_dollars=None, sl_dollars=None, skip_post_trade_setup=False, expected_account=None):
         """
         Place a BUY order on TopStepX with optional post-trade TP/SL setup
         
@@ -1580,7 +1655,21 @@ class TopStepXAccount:
                 
                 if not self.is_connected():
                     raise Exception("Not connected to TopStepX")
-                
+
+                # ACCOUNT SAFETY: always SELECT + CONFIRM the target sub-account
+                # before placing. switch_account is internally fast when already on
+                # target, but it now also verifies the selector actually changed, so
+                # a swallowed click can't leave us on the wrong account. If we can't
+                # confirm we're on `expected_account`, we ABORT instead of placing —
+                # never double an order onto whichever account happens to be showing.
+                if expected_account:
+                    if not self.switch_account(account_name_contains=expected_account):
+                        return {"success": False, "message": f"Could not select account '{expected_account}'; BUY aborted to avoid wrong-account trade"}
+                    matches, current = self.verify_account_selected(expected_account)
+                    if not matches:
+                        return {"success": False, "message": f"Account shows '{current[:60]}', expected '{expected_account}'; BUY aborted to avoid wrong-account trade"}
+                    self.logger.info(f"[ACCOUNT] Confirmed on '{expected_account}' (selector: '{current[:60]}')")
+
                 if skip_post_trade_setup:
                     self.logger.info(f"⚡ [FAST MODE] Placing TopStepX BUY order: {symbol} x{quantity} (TP/SL setup deferred)")
                 else:
@@ -1798,7 +1887,7 @@ class TopStepXAccount:
                     "platform": "TopStepX"
                 }
     
-    def place_sell_order(self, symbol, quantity, order_type="market", tp_dollars=None, sl_dollars=None, skip_post_trade_setup=False):
+    def place_sell_order(self, symbol, quantity, order_type="market", tp_dollars=None, sl_dollars=None, skip_post_trade_setup=False, expected_account=None):
         """
         Place a SELL order on TopStepX with optional post-trade TP/SL setup
         
@@ -1823,7 +1912,21 @@ class TopStepXAccount:
                 
                 if not self.is_connected():
                     raise Exception("Not connected to TopStepX")
-                
+
+                # ACCOUNT SAFETY: always SELECT + CONFIRM the target sub-account
+                # before placing. switch_account is internally fast when already on
+                # target, but it now also verifies the selector actually changed, so
+                # a swallowed click can't leave us on the wrong account. If we can't
+                # confirm we're on `expected_account`, we ABORT instead of placing —
+                # never double an order onto whichever account happens to be showing.
+                if expected_account:
+                    if not self.switch_account(account_name_contains=expected_account):
+                        return {"success": False, "message": f"Could not select account '{expected_account}'; SELL aborted to avoid wrong-account trade"}
+                    matches, current = self.verify_account_selected(expected_account)
+                    if not matches:
+                        return {"success": False, "message": f"Account shows '{current[:60]}', expected '{expected_account}'; SELL aborted to avoid wrong-account trade"}
+                    self.logger.info(f"[ACCOUNT] Confirmed on '{expected_account}' (selector: '{current[:60]}')")
+
                 if skip_post_trade_setup:
                     self.logger.info(f"⚡ [FAST MODE] Placing TopStepX SELL order: {symbol} x{quantity} (TP/SL setup deferred)")
                 else:
