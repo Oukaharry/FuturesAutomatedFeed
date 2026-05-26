@@ -591,6 +591,44 @@ class PropFirmManager:
                             "mt5_sl_points": 39
                         }
                     },
+                    # ── Funded Payout 2+ (target ~$1,400) ───────────────
+                    # New blueprints synced from the connector reference.
+                    # Dormant until _PHASE_TRADE_ORDER routes "Payout 2+"
+                    # to these keys; MT5 hedge values left at 0 — fill
+                    # before enabling Payout-2+ hedged trading.
+                    "funded_trade1_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQM26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
+                        }
+                    },
+                    "funded_trade2_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQM26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
+                        }
+                    },
+                    "funded_trade3_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQM26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
+                        }
+                    },
                     # ── Funded Double Dip ──
                     # User spec: "Same as funded trades sequence above."
                     # Doubledip_1 holds the Payout-1 flavor, doubledip_2-4
@@ -637,6 +675,44 @@ class PropFirmManager:
                             "mt5_volume": 20,
                             "mt5_tp_points": 30,
                             "mt5_sl_points": 39
+                        }
+                    },
+                    # ── Double Dip Payout 2+ (mirrors Funded Payout 2+) ─
+                    # New blueprints synced from the connector reference.
+                    # Dormant until _PHASE_TRADE_ORDER routes
+                    # "Double Dip Payout 2+" to these keys; MT5 hedge
+                    # values left at 0 — fill before enabling.
+                    "funded_trade_doubledip_1_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQM26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
+                        }
+                    },
+                    "funded_trade_doubledip_2_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQM26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
+                        }
+                    },
+                    "funded_trade_doubledip_3_p2": {
+                        "50k": {
+                            "topstepx_symbol": "NQM26",
+                            "topstepx_qty": 2,
+                            "topstepx_tp_ticks": 47,
+                            "topstepx_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0
                         }
                     },
                     # ── Farming (MNQ vs USTEC) ──
@@ -1304,8 +1380,8 @@ class PropFirmManager:
                     "challenge_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 101,
+                            "tradovate_qty": 1,
+                            "tradovate_tp_ticks": 202,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 0,
                             "mt5_tp_points": 0,
