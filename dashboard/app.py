@@ -10803,6 +10803,9 @@ def api_daily_summary():
     except Exception:
         pass
 
+    lines.append("👁️ _We track everything — every submission, every miss, every second._")
+    lines.append("")
+
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
         lines.append("🚨🚨🚨 **DOWNTIME ALERT — ZERO TOLERANCE** 🚨🚨🚨")
@@ -10820,8 +10823,6 @@ def api_daily_summary():
         lines.append("")
         lines.append("━" * 30)
         lines.append("")
-
-    lines.append("👁️ _We track everything — every submission, every miss, every second._")
 
     summary_text = "\n".join(lines)
 

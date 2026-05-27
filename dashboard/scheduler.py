@@ -491,6 +491,9 @@ def _build_daily_summary_text():
     except Exception:
         pass
 
+    lines.append("👁️ _We track everything — every submission, every miss, every second._")
+    lines.append("")
+
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
         lines.append("🚨🚨🚨 *DOWNTIME ALERT — ZERO TOLERANCE* 🚨🚨🚨")
@@ -503,10 +506,9 @@ def _build_daily_summary_text():
         lines.append("")
         lines.append("‼️ *Downtime is unacceptable. Every trading day must be accounted for. Traders responsible for these accounts must explain immediately.*")
         lines.append("")
+        # Divider goes LAST so nothing after it gets dropped by clients/bots.
         lines.append("━" * 30)
         lines.append("")
-
-    lines.append("👁️ _We track everything — every submission, every miss, every second._")
 
     return "\n".join(lines)
 
