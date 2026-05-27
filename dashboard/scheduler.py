@@ -478,8 +478,6 @@ def _build_daily_summary_text():
                     lines.append(f"⚠️ *{t}* — {sent}/{total} sent")
                     lines.append(f"   ⛔ {', '.join(missing)}")
                 lines.append("")
-            lines.append("👁️ _We track everything — every submission, every miss, every second._")
-            lines.append("")
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -492,6 +490,9 @@ def _build_daily_summary_text():
         ))
     except Exception:
         pass
+
+    lines.append("👁️ _We track everything — every submission, every miss, every second._")
+    lines.append("")
 
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
