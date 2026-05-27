@@ -1579,17 +1579,6 @@ class PropFirmManager:
                             "mt5_sl_points": 0,
                             "profit_target": 1000
                         }
-                    },
-                    "farming": {
-                        "50k": {
-                            "tradovate_symbol": "MNQM6",
-                            "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 254,
-                            "tradovate_sl_ticks": 600,
-                            "mt5_volume": 0,
-                            "mt5_tp_points": 0,
-                            "mt5_sl_points": 0
-                        }
                     }
                 }
             }
