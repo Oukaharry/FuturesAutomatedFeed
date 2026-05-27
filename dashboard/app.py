@@ -199,8 +199,6 @@ def _trader_leaderboard_entry_lines(trader: str, clear_mins: int, stats: dict, m
     issues = int(stats.get('issues', 0) or 0)
     clients = int(stats.get('clients', 0) or 0)
     title = _trader_health_title(avg)
-    if clear_mins > 0:
-        title = f"{title} · cleared {_format_clearance_minutes(clear_mins)}"
     line1 = f"{medal} **{trader}** — {title}"
     line2 = f"   {_trader_health_bar(avg)} **{avg}%** · {clients} clients · {issues} issues"
     return line1, line2
@@ -10474,10 +10472,7 @@ def api_daily_summary():
             ),
         )
         lines.append("🏆 **TRADER HEALTH LEADERBOARD**")
-        lines.append(
-            "_Ranked by fastest morning issue clearance, then health score. "
-            "Green bar = average client health for that trader._"
-        )
+        lines.append("_Green bar = average client health for that trader._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
@@ -10493,15 +10488,6 @@ def api_daily_summary():
             line1, line2 = _trader_leaderboard_entry_lines(t, clear_mins, s, medal)
             lines.append(line1)
             lines.append(line2)
-        if total_traders > 0:
-            best_name = ranked[0][0]
-            best_mins = get_trader_issue_resolution_minutes(date, best_name)
-            lines.append("")
-            if 0 <= best_mins < 99999:
-                lines.append(
-                    f"🎉 **{best_name}** cleared assigned issues the fastest"
-                    + (f" ({_format_clearance_minutes(best_mins)})" if best_mins else ' (at scan)')
-                )
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: **{checklist_count}**")
