@@ -267,6 +267,65 @@ def _admin_team_display_name(admin_name: str) -> str:
     return str(admin_name or '').strip() or 'Team'
 
 
+def _admin_avg_signoff_minutes_and_label(date, admin_name, payload):
+    """(avg_minutes, HH:MM Kenyan) for admins who signed off all required clients; else (None, None)."""
+    from dashboard.database import get_daily_checklists
+    from datetime import timezone, timedelta
+
+    sign = payload.get('summary_signoff') or {}
+    required = int(sign.get('required_total') or 0)
+    signed = int(sign.get('signed_total') or 0)
+    if required <= 0 or signed != required:
+        return None, None
+
+    required_set = {str(x or '').strip() for x in (sign.get('signed_clients') or [])}
+    kenyan_tz = timezone(timedelta(hours=3))
+    minutes_list = []
+    for row in get_daily_checklists(date, admin_name) or []:
+        if row.get('checklist_type') != 'admin_daily_summary':
+            continue
+        cid = (row.get('client_id') or '').strip()
+        if not cid or cid not in required_set:
+            continue
+        items = row.get('items') or []
+        signed_ok = any(
+            isinstance(it, dict) and it.get('id') == 'sent_to_client' and bool(it.get('checked'))
+            for it in items
+        ) if isinstance(items, list) else False
+        if not signed_ok:
+            continue
+        ts = row.get('submitted_at') or ''
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(kenyan_tz)
+            minutes_list.append(dt.hour * 60 + dt.minute)
+        except Exception:
+            pass
+
+    if not minutes_list:
+        return None, None
+    avg = round(sum(minutes_list) / len(minutes_list))
+    hh, mm = divmod(avg, 60)
+    return avg, f'{hh:02d}:{mm:02d}'
+
+
+def _admin_teams_rank_sort_key(team_name, row):
+    """Score first; ties broken by earliest avg sign-off, then roster size."""
+    score = float(row.get('score') or 0)
+    required = int(row.get('sign_required') or 0)
+    signed = int(row.get('sign_signed') or 0)
+    avg_m = row.get('avg_signoff_minutes')
+    if required > 0 and signed == required and avg_m is not None:
+        sign_sort = int(avg_m)
+    else:
+        sign_sort = 999999
+    return (-score, sign_sort, -int(row.get('clients') or 0), (team_name or '').lower())
+
+
 def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, excluded_traders, for_slack=False):
     """Admin team leaderboard lines for daily summary (API + Slack bot)."""
     from config.hierarchy import SYSTEM_HIERARCHY, get_client_profile
@@ -311,19 +370,31 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
             roster.setdefault(trader, []).append(client_id)
         for t in roster:
             roster[t].sort()
-        admin_rows[a] = {'score': round(score, 1), 'clients': len(active_clients), 'roster': roster}
+        sign = payload.get('summary_signoff') or {}
+        avg_mins, avg_label = _admin_avg_signoff_minutes_and_label(date, a, payload)
+        admin_rows[a] = {
+            'score': round(score, 1),
+            'clients': len(active_clients),
+            'roster': roster,
+            'sign_required': int(sign.get('required_total') or 0),
+            'sign_signed': int(sign.get('signed_total') or 0),
+            'avg_signoff_minutes': avg_mins,
+            'avg_signoff_label': avg_label,
+        }
 
     ranked_teams = []
     for a in admin_names:
-        ranked_teams.append((admin_to_team.get(a, a), a, admin_rows[a]['score']))
-    ranked_teams.sort(key=lambda x: (-x[2], x[0].lower()))
+        team = admin_to_team.get(a, a)
+        ranked_teams.append((team, a, admin_rows[a]))
+    ranked_teams.sort(key=lambda x: _admin_teams_rank_sort_key(x[0], x[2]))
 
     out = [
         f"🏅 {_bold('ADMIN TEAMS')}",
-        "_Each admin is its own team. Scores penalize fees, downtime, and missing sign-offs; max-out and payout QA are tracked but excluded from score. Traders listed without client names._",
+        "_Each admin is its own team. Scores penalize fees, downtime, and missing sign-offs (max-out and payout QA tracked but excluded). Ties at 100% broken by earliest avg sign-off time. Traders listed without client names._",
         "",
     ]
-    for rank, (team, admin, score) in enumerate(ranked_teams, 1):
+    for rank, (team, admin, arow) in enumerate(ranked_teams, 1):
+        score = float(arow.get('score') or 0)
         if rank == 1:
             medal = '🥇'
         elif rank == 2:
@@ -332,11 +403,16 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
             medal = '🥉'
         else:
             medal = f'`#{rank}`' if not for_slack else f'#{rank}'
-        arow = admin_rows.get(admin) or {}
         team_clients = int(arow.get('clients') or 0)
-        out.append(
-            f"{medal} {_bold(team)} (Admin: {_bold(admin)}) — {_bold(f'{score}%')} · {team_clients} clients"
-        )
+        sign_extra = ''
+        req = int(arow.get('sign_required') or 0)
+        sgn = int(arow.get('sign_signed') or 0)
+        if req > 0:
+            sign_extra = f" · sign-offs {sgn}/{req}"
+            if arow.get('avg_signoff_label'):
+                sign_extra += f" · avg {arow['avg_signoff_label']}"
+        line = f"{medal} {_bold(team)} (Admin: {_bold(admin)}) — {_bold(f'{score}%')} · {team_clients} clients{sign_extra}"
+        out.append(line)
         for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
             out.append(f"     - Trader: {trader}")
         out.append("")
