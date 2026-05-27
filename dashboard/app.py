@@ -109,6 +109,24 @@ def _trader_ranking_health_metrics(issues):
     return len(vis), max(0.0, round(100.0 - deduction, 1))
 
 
+_ADMIN_HEALTH_ISSUE_TYPES_EXCLUDED_FROM_SCORE = frozenset({
+    'max_out',
+    'daily_summary_payout_qa',
+})
+_ADMIN_SIGNOFF_PENDING_PENALTY = 5
+
+
+def _compute_admin_health_score(admin_issues, pending_signoffs=0):
+    """Admin team health: penalize fees, downtime, sign-offs; max_out and payout QA excluded from score."""
+    deduction = sum(
+        _QUALITY_SEVERITY_WEIGHT.get(i.get('severity', 'low'), 2)
+        for i in (admin_issues or [])
+        if (i.get('type') or '') not in _ADMIN_HEALTH_ISSUE_TYPES_EXCLUDED_FROM_SCORE
+    )
+    deduction += int(pending_signoffs or 0) * _ADMIN_SIGNOFF_PENDING_PENALTY
+    return max(0.0, round(100.0 - deduction, 1))
+
+
 def _quality_scan_row_for_trader_client_quality_api(scan_row):
     """Recompute issues, total_issues, and health_score for trader-facing quality UIs."""
     out = dict(scan_row)
@@ -226,6 +244,103 @@ def _format_clearance_minutes(minutes: int) -> str:
 # Admin team rankings (generated summary only): not tracked in quality / daily-summary workflows.
 _ADMIN_TEAMS_EXCLUDED_ADMINS = frozenset({'philip tangara'})
 _ADMIN_TEAMS_EXCLUDED_TRADERS = frozenset({'tangara'})
+
+_ADMIN_TEAM_CUSTOM_NAMES = {
+    'marion nyika': 'JoeOppss',
+    'joy ndua': 'Turnups',
+    'dennis muthee': 'Hypernikao',
+    'shila orori': 'Locked In',
+    'kellen njeri': 'Young Bosses',
+}
+_ADMIN_TEAM_DEFAULT_NAMES = {
+    'shalline mukholi': 'Team Aurora',
+    'vivian miano': 'Team Comet',
+}
+
+
+def _admin_team_display_name(admin_name: str) -> str:
+    key = str(admin_name or '').strip().lower()
+    if key in _ADMIN_TEAM_CUSTOM_NAMES:
+        return _ADMIN_TEAM_CUSTOM_NAMES[key]
+    if key in _ADMIN_TEAM_DEFAULT_NAMES:
+        return _ADMIN_TEAM_DEFAULT_NAMES[key]
+    return str(admin_name or '').strip() or 'Team'
+
+
+def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, excluded_traders, for_slack=False):
+    """Admin team leaderboard lines for daily summary (API + Slack bot)."""
+    from config.hierarchy import SYSTEM_HIERARCHY, get_client_profile
+
+    def _bold(text):
+        return f"*{text}*" if for_slack else f"**{text}**"
+
+    admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
+    admin_names = sorted([
+        a for a in admins_map.keys()
+        if str(a).strip() and str(a).strip().lower() not in _ADMIN_TEAMS_EXCLUDED_ADMINS
+    ])
+    if not admin_names:
+        return []
+
+    admin_to_team = {a: _admin_team_display_name(a) for a in admin_names}
+    admin_rows = {}
+    for a in admin_names:
+        payload = compute_admin_tracker_payload(a, date) or {}
+        score = float(payload.get('health_score') or 0.0)
+        roster = {}
+        active_clients = []
+        for client_id in all_clients:
+            prof = get_client_profile(client_id) or {}
+            if str(prof.get('admin') or '').strip().lower() != str(a or '').strip().lower():
+                continue
+            trader = (str(prof.get('trader') or '').strip() or 'Unassigned')
+            if (
+                client_id in excluded_clients
+                or trader in excluded_traders
+                or trader.strip().lower() in _ADMIN_TEAMS_EXCLUDED_TRADERS
+            ):
+                continue
+            try:
+                from dashboard.database import get_client_data as _gcd
+                cdata = _gcd(client_id) or {}
+                if isinstance(cdata.get('identity'), dict) and str(cdata['identity'].get('active_status') or '').lower() == 'inactive':
+                    continue
+            except Exception:
+                pass
+            active_clients.append(client_id)
+            roster.setdefault(trader, []).append(client_id)
+        for t in roster:
+            roster[t].sort()
+        admin_rows[a] = {'score': round(score, 1), 'clients': len(active_clients), 'roster': roster}
+
+    ranked_teams = []
+    for a in admin_names:
+        ranked_teams.append((admin_to_team.get(a, a), a, admin_rows[a]['score']))
+    ranked_teams.sort(key=lambda x: (-x[2], x[0].lower()))
+
+    out = [
+        f"🏅 {_bold('ADMIN TEAMS')}",
+        "_Each admin is its own team. Scores penalize fees, downtime, and missing sign-offs; max-out and payout QA are tracked but excluded from score. Traders listed without client names._",
+        "",
+    ]
+    for rank, (team, admin, score) in enumerate(ranked_teams, 1):
+        if rank == 1:
+            medal = '🥇'
+        elif rank == 2:
+            medal = '🥈'
+        elif rank == 3:
+            medal = '🥉'
+        else:
+            medal = f'`#{rank}`' if not for_slack else f'#{rank}'
+        arow = admin_rows.get(admin) or {}
+        team_clients = int(arow.get('clients') or 0)
+        out.append(
+            f"{medal} {_bold(team)} (Admin: {_bold(admin)}) — {_bold(f'{score}%')} · {team_clients} clients"
+        )
+        for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
+            out.append(f"     - Trader: {trader}")
+        out.append("")
+    return out
 
 
 # Super Admin financial aggregates: excluded client names (not tied to Daily Summary tracker lists)
@@ -9198,9 +9313,7 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
     ])
     pending_clients = sorted([cid for cid in required_clients if cid not in admin_signed_clients])
 
-    severity_weight = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
-    deduction = sum(severity_weight.get(i.get('severity', 'low'), 2) for i in admin_issues)
-    health_score = max(0.0, round(100.0 - deduction, 1))
+    health_score = _compute_admin_health_score(admin_issues, pending_signoffs=len(pending_clients))
 
     # Backward/forward compatibility: different UIs may read `issues` or `admin_issues`.
     # Keep `issues` as canonical, but include both keys.
@@ -10609,87 +10722,12 @@ def api_daily_summary():
         import traceback
         traceback.print_exc()
 
-    # ── Admin Team Rankings (generated summary only; not sent by bot) ──
+    # ── Admin Team Rankings (included in Slack bot + API summary) ──
     try:
-        admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
-        admin_names = sorted([
-            a for a in admins_map.keys()
-            if str(a).strip() and str(a).strip().lower() not in _ADMIN_TEAMS_EXCLUDED_ADMINS
-        ])
-        if admin_names:
-            # Each admin is treated as its own team (so team count ~= admin count).
-            # Use friendly placeholder team names for now.
-            placeholder_team_names = [
-                'Team Atlas', 'Team Orion', 'Team Pegasus', 'Team Phoenix',
-                'Team Nova', 'Team Aurora', 'Team Titan', 'Team Comet',
-            ]
-            admin_to_team = {}
-            for idx, a in enumerate(admin_names):
-                admin_to_team[a] = (
-                    placeholder_team_names[idx]
-                    if idx < len(placeholder_team_names)
-                    else f'Team {idx + 1}'
-                )
-
-            # Build per-admin roster + score using existing admin-tracker logic.
-            admin_rows = {}
-            for a in admin_names:
-                payload = compute_admin_tracker_payload(a, date) or {}
-                score = float(payload.get('health_score') or 0.0)
-
-                roster = {}  # trader -> [clients]
-                active_clients = []
-                for client_id in all_clients:
-                    prof = get_client_profile(client_id) or {}
-                    if str(prof.get('admin') or '').strip().lower() != str(a or '').strip().lower():
-                        continue
-                    trader = (str(prof.get('trader') or '').strip() or 'Unassigned')
-                    if (
-                        client_id in excluded_clients
-                        or trader in excluded_traders
-                        or trader.strip().lower() in _ADMIN_TEAMS_EXCLUDED_TRADERS
-                    ):
-                        continue
-                    try:
-                        from dashboard.database import get_client_data as _gcd
-                        cdata = _gcd(client_id) or {}
-                        if isinstance(cdata.get('identity'), dict) and str(cdata['identity'].get('active_status') or '').lower() == 'inactive':
-                            continue
-                    except Exception:
-                        pass
-                    active_clients.append(client_id)
-                    roster.setdefault(trader, []).append(client_id)
-
-                for t in roster:
-                    roster[t].sort()
-                admin_rows[a] = {'score': round(score, 1), 'clients': len(active_clients), 'roster': roster}
-
-            ranked_teams = []
-            for a in admin_names:
-                ranked_teams.append((admin_to_team.get(a, a), a, admin_rows[a]['score']))
-            ranked_teams.sort(key=lambda x: (-x[2], x[0].lower()))
-
-            lines.append("🏅 **ADMIN TEAMS (internal preview — not posted by bot)**")
-            lines.append("_Each admin is its own team. Scores use the existing admin health metric; traders are listed without client names for privacy._")
-            lines.append("")
-            for rank, (team, admin, score) in enumerate(ranked_teams, 1):
-                if rank == 1:
-                    medal = '🥇'
-                elif rank == 2:
-                    medal = '🥈'
-                elif rank == 3:
-                    medal = '🥉'
-                else:
-                    medal = f'`#{rank}`'
-                arow = admin_rows.get(admin) or {}
-                team_clients = int(arow.get('clients') or 0)
-                lines.append(f"{medal} **{team}** (Admin: **{admin}**) — **{score}%** · {team_clients} clients")
-                # List traders under that admin (no client names).
-                for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
-                    lines.append(f"     - Trader: {trader}")
-                lines.append("")
+        lines.extend(_build_admin_teams_ranking_lines(
+            date, all_clients, excluded_clients, excluded_traders, for_slack=False,
+        ))
     except Exception:
-        # Never block summary generation if team aggregation fails.
         pass
 
     # ── Downtime Alert (bottom of message for maximum visibility) ──
@@ -10709,173 +10747,6 @@ def api_daily_summary():
         lines.append("")
         lines.append("━" * 30)
         lines.append("")
-
-    # Admin tracker in daily summary export — disabled until admins are briefed; set flag True to restore.
-    _include_admin_tracker_in_daily_summary = False
-    if _include_admin_tracker_in_daily_summary:
-        lines.append("—")
-
-        # ── Admin Tracker Summary (issues + sign-offs) ──
-        try:
-            admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
-            admin_names = sorted([a for a in admins_map.keys() if str(a).strip()])
-            if admin_names:
-                lines.append("")
-                lines.append("🏢 **ADMIN TRACKER (issues + sign-offs)**")
-                lines.append("_Based on admin-owned checks: fees, prop-firm max-out, downtime, and missing client sign-offs after trader submits._")
-                lines.append("")
-
-                admin_rows = []
-                total_admin_issues = 0
-                total_required_signoffs = 0
-                total_signed_signoffs = 0
-
-                for a in admin_names:
-                    payload = compute_admin_tracker_payload(a, date) or {}
-                    issues = payload.get('issues') or payload.get('admin_issues') or []
-                    sign = payload.get('summary_signoff') or {}
-                    required = int(sign.get('required_total') or 0)
-                    signed = int(sign.get('signed_total') or 0)
-                    pending = int(sign.get('pending_total') or 0)
-
-                    total_admin_issues += len(issues)
-                    total_required_signoffs += required
-                    total_signed_signoffs += signed
-
-                    admin_rows.append({
-                        'admin': a,
-                        'health': float(payload.get('health_score') or 0.0),
-                        'clients': int(payload.get('total_clients') or 0),
-                        'issues': len(issues),
-                        'sign_required': required,
-                        'sign_signed': signed,
-                        'pending_signoffs': pending,
-                        'pending_clients': (sign.get('pending_clients') or []),
-                    })
-
-                admin_rows.sort(key=lambda r: (r['health'], r['clients']), reverse=True)
-                avg_admin_health = round(sum(r['health'] for r in admin_rows) / len(admin_rows), 1) if admin_rows else 0.0
-
-                lines.append(f"🏢 **Admins tracked:** {len(admin_rows)}")
-                lines.append(f"📈 Avg Admin Health Score: **{avg_admin_health}%**  |  Total Admin Issues: **{total_admin_issues}**")
-                if total_required_signoffs:
-                    pct = round((total_signed_signoffs / total_required_signoffs) * 100)
-                    lines.append(f"✅ Admin sign-offs: **{total_signed_signoffs}/{total_required_signoffs}** ({pct}%)")
-                else:
-                    lines.append("✅ Admin sign-offs: **0/0** (no trader submissions yet)")
-                lines.append("")
-
-                lines.append("🏆 **ADMIN HEALTH LEADERBOARD**")
-                lines.append("_Ranked by admin health score (highest first)._")
-                lines.append("")
-                for rank, r in enumerate(admin_rows, 1):
-                    if rank == 1:
-                        medal = '🥇'
-                    elif rank == 2:
-                        medal = '🥈'
-                    elif rank == 3:
-                        medal = '🥉'
-                    else:
-                        medal = f'`#{rank}`'
-                    bar_filled = round(r['health'] / 10)
-                    bar_empty = 10 - bar_filled
-                    bar = '🟩' * bar_filled + '⬛' * bar_empty
-                    sign_extra = ""
-                    if int(r.get('sign_required') or 0) > 0:
-                        sign_extra = f" · sign-offs {int(r.get('sign_signed') or 0)}/{int(r.get('sign_required') or 0)}"
-                    extra = f" · {r['pending_signoffs']} pending sign-offs" if r['pending_signoffs'] else ""
-                    lines.append(f"{medal} **{r['admin']}**")
-                    lines.append(f"   {bar} **{r['health']}%** · {r['clients']} clients · {r['issues']} issues{sign_extra}{extra}")
-
-                # Admin completion leaderboard (only admins who signed off ALL required clients)
-                try:
-                    from datetime import timezone as _tz_admin, timedelta as _td_admin
-                    _kenyan_tz_admin = _tz_admin(_td_admin(hours=3))
-                    admin_complete = []
-                    for r in admin_rows:
-                        req = int(r.get('sign_required') or 0)
-                        sgn = int(r.get('sign_signed') or 0)
-                        if req <= 0 or sgn != req:
-                            continue
-                        # Build client_id -> submitted_at for checked sign-offs
-                        ts_by_client = {}
-                        try:
-                            cls = get_daily_checklists(date, r.get('admin')) or []
-                            for row in cls:
-                                if row.get('checklist_type') != 'admin_daily_summary':
-                                    continue
-                                cid = (row.get('client_id') or '').strip()
-                                if not cid:
-                                    continue
-                                items = row.get('items') or []
-                                ok = False
-                                if isinstance(items, list):
-                                    for it in items:
-                                        if isinstance(it, dict) and it.get('id') == 'sent_to_client' and bool(it.get('checked')):
-                                            ok = True
-                                            break
-                                if not ok:
-                                    continue
-                                ts_by_client[cid] = row.get('submitted_at') or ''
-                        except Exception:
-                            ts_by_client = {}
-
-                        minutes_list = []
-                        for cid, ts in ts_by_client.items():
-                            if not ts:
-                                continue
-                            try:
-                                dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
-                                if dt.tzinfo is None:
-                                    dt = dt.replace(tzinfo=_tz_admin.utc)
-                                dt = dt.astimezone(_kenyan_tz_admin)
-                                minutes_list.append(dt.hour * 60 + dt.minute)
-                            except Exception:
-                                pass
-                        avg_minutes = round(sum(minutes_list) / len(minutes_list)) if minutes_list else 1440
-                        avg_hh = avg_minutes // 60
-                        avg_mm = avg_minutes % 60
-                        avg_time_str = f"{avg_hh:02d}:{avg_mm:02d}"
-                        admin_complete.append((r.get('admin') or '', sgn, req, avg_minutes, avg_time_str))
-
-                    admin_complete.sort(key=lambda x: x[3])
-                    if admin_complete:
-                        lines.append("")
-                        lines.append("🏆 **Complete — ranked by earliest avg sign-off time:**")
-                        lines.append("_All required client summaries must be signed off to qualify. The earlier you finish, the higher you rank. 🥇 goes to the fastest!_")
-                        for rank, (a, sgn, req, _avg_m, avg_t) in enumerate(admin_complete, 1):
-                            if rank == 1:
-                                medal = '🥇'
-                            elif rank == 2:
-                                medal = '🥈'
-                            elif rank == 3:
-                                medal = '🥉'
-                            else:
-                                medal = f'`#{rank}`'
-                            lines.append(f"{medal} **{a}** — {sgn}/{req} ✅ · avg {avg_t}")
-                except Exception:
-                    pass
-
-                incomplete = [r for r in admin_rows if r['pending_signoffs'] > 0]
-                if incomplete:
-                    lines.append("")
-                    lines.append("📬 **ADMIN DAILY SUMMARY SIGN-OFF (after trader submits)**")
-                    lines.append("❌ **Incomplete — pending client sign-offs:**")
-                    for r in sorted(incomplete, key=lambda x: (-x['pending_signoffs'], x['admin'])):
-                        req = int(r.get('sign_required') or 0)
-                        sgn = int(r.get('sign_signed') or 0)
-                        badge = f"{sgn}/{req}" if req else "0/0"
-                        lines.append(f"⚠️ **{r['admin']}** — {badge} · {r['pending_signoffs']} pending")
-                        missing = r.get('pending_clients') or []
-                        if len(missing) > 25:
-                            shown = ", ".join(missing[:25]) + f", +{len(missing) - 25} more"
-                        else:
-                            shown = ", ".join(missing)
-                        lines.append(f"   ⛔ {shown}")
-                    lines.append("")
-        except Exception:
-            import traceback
-            traceback.print_exc()
 
     summary_text = "\n".join(lines)
 
