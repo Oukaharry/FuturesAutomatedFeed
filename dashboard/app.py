@@ -223,6 +223,11 @@ def _format_clearance_minutes(minutes: int) -> str:
     return f'{hours}h {rem}m' if rem else f'{hours}h'
 
 
+# Admin team rankings (generated summary only): not tracked in quality / daily-summary workflows.
+_ADMIN_TEAMS_EXCLUDED_ADMINS = frozenset({'philip tangara'})
+_ADMIN_TEAMS_EXCLUDED_TRADERS = frozenset({'tangara'})
+
+
 # Super Admin financial aggregates: excluded client names (not tied to Daily Summary tracker lists)
 _SUPER_ADMIN_STATS_EXCLUDED_KEY = 'super_admin_stats_excluded_clients'
 
@@ -10607,7 +10612,10 @@ def api_daily_summary():
     # ── Admin Team Rankings (generated summary only; not sent by bot) ──
     try:
         admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
-        admin_names = sorted([a for a in admins_map.keys() if str(a).strip()])
+        admin_names = sorted([
+            a for a in admins_map.keys()
+            if str(a).strip() and str(a).strip().lower() not in _ADMIN_TEAMS_EXCLUDED_ADMINS
+        ])
         if admin_names:
             # Each admin is treated as its own team (so team count ~= admin count).
             # Use friendly placeholder team names for now.
@@ -10636,7 +10644,11 @@ def api_daily_summary():
                     if str(prof.get('admin') or '').strip().lower() != str(a or '').strip().lower():
                         continue
                     trader = (str(prof.get('trader') or '').strip() or 'Unassigned')
-                    if client_id in excluded_clients or trader in excluded_traders:
+                    if (
+                        client_id in excluded_clients
+                        or trader in excluded_traders
+                        or trader.strip().lower() in _ADMIN_TEAMS_EXCLUDED_TRADERS
+                    ):
                         continue
                     try:
                         from dashboard.database import get_client_data as _gcd
@@ -10658,7 +10670,7 @@ def api_daily_summary():
             ranked_teams.sort(key=lambda x: (-x[2], x[0].lower()))
 
             lines.append("🏅 **ADMIN TEAMS (internal preview — not posted by bot)**")
-            lines.append("_Admins are grouped into teams for friendly competition. Team score is a weighted average of admin health scores (weighted by active client count)._")
+            lines.append("_Each admin is its own team. Scores use the existing admin health metric; traders are listed without client names for privacy._")
             lines.append("")
             for rank, (team, admin, score) in enumerate(ranked_teams, 1):
                 if rank == 1:
@@ -10672,19 +10684,9 @@ def api_daily_summary():
                 arow = admin_rows.get(admin) or {}
                 team_clients = int(arow.get('clients') or 0)
                 lines.append(f"{medal} **{team}** (Admin: **{admin}**) — **{score}%** · {team_clients} clients")
-                # List clients grouped by trader; cap to keep messages readable.
-                shown = 0
-                cap = 20
-                for trader, cids in sorted((arow.get('roster') or {}).items(), key=lambda it: it[0].lower()):
-                    if shown >= cap:
-                        break
-                    take = cids[: max(0, cap - shown)]
-                    shown += len(take)
-                    suffix = f" (+{len(cids) - len(take)} more)" if len(take) < len(cids) else ""
-                    lines.append(f"     - {trader}: {', '.join(take)}{suffix}")
-                total_listed = sum(len(v) for v in (arow.get('roster') or {}).values())
-                if total_listed > shown:
-                    lines.append(f"     - … (+{total_listed - shown} more clients)")
+                # List traders under that admin (no client names).
+                for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
+                    lines.append(f"     - Trader: {trader}")
                 lines.append("")
     except Exception:
         # Never block summary generation if team aggregation fails.
