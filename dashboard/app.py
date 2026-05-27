@@ -389,8 +389,7 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
     ranked_teams.sort(key=lambda x: _admin_teams_rank_sort_key(x[0], x[2]))
 
     out = [
-        f"🏅 {_bold('ADMIN TEAMS')}",
-        "_Each admin is its own team. Scores penalize fees, downtime, and missing sign-offs (max-out and payout QA tracked but excluded). Ties at 100% broken by earliest avg sign-off time. Traders listed without client names._",
+        _bold('ADMIN TEAMS'),
         "",
     ]
     for rank, (team, admin, arow) in enumerate(ranked_teams, 1):
