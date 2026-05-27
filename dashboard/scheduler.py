@@ -344,7 +344,6 @@ def _build_daily_summary_text():
 
         # Gamified Trader Issue Clearance Leaderboard — fastest full clearance first
         from dashboard.app import (
-            _format_clearance_minutes,
             _trader_leaderboard_entry_lines,
             _trader_leaderboard_sort_key,
         )
@@ -355,10 +354,7 @@ def _build_daily_summary_text():
             ),
         )
         lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
-        lines.append(
-            "_Ranked by fastest morning issue clearance, then health score. "
-            "Green bar = average client health. Run a quality scan to start the clock._"
-        )
+        lines.append("_Green bar = average client health for that trader._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
@@ -374,15 +370,6 @@ def _build_daily_summary_text():
             line1, line2 = _trader_leaderboard_entry_lines(t, clear_mins, s, medal)
             lines.append(line1.replace('**', '*'))
             lines.append(line2.replace('**', '*'))
-        if total_traders > 0:
-            best_name = ranked[0][0]
-            best_mins = get_trader_issue_resolution_minutes(date, best_name)
-            lines.append("")
-            if 0 <= best_mins < 99999:
-                lines.append(
-                    f"🎉 *{best_name}* cleared assigned issues the fastest"
-                    + (f" ({_format_clearance_minutes(best_mins)})" if best_mins else ' (at scan)')
-                )
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: *{len(checklists)}*")

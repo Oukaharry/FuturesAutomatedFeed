@@ -199,8 +199,6 @@ def _trader_leaderboard_entry_lines(trader: str, clear_mins: int, stats: dict, m
     issues = int(stats.get('issues', 0) or 0)
     clients = int(stats.get('clients', 0) or 0)
     title = _trader_health_title(avg)
-    if clear_mins > 0:
-        title = f"{title} · cleared {_format_clearance_minutes(clear_mins)}"
     line1 = f"{medal} **{trader}** — {title}"
     line2 = f"   {_trader_health_bar(avg)} **{avg}%** · {clients} clients · {issues} issues"
     return line1, line2
@@ -223,6 +221,11 @@ def _format_clearance_minutes(minutes: int) -> str:
         return f'{minutes}m'
     hours, rem = divmod(minutes, 60)
     return f'{hours}h {rem}m' if rem else f'{hours}h'
+
+
+# Admin team rankings (generated summary only): not tracked in quality / daily-summary workflows.
+_ADMIN_TEAMS_EXCLUDED_ADMINS = frozenset({'philip tangara'})
+_ADMIN_TEAMS_EXCLUDED_TRADERS = frozenset({'tangara'})
 
 
 # Super Admin financial aggregates: excluded client names (not tied to Daily Summary tracker lists)
@@ -10474,10 +10477,7 @@ def api_daily_summary():
             ),
         )
         lines.append("🏆 **TRADER HEALTH LEADERBOARD**")
-        lines.append(
-            "_Ranked by fastest morning issue clearance, then health score. "
-            "Green bar = average client health for that trader._"
-        )
+        lines.append("_Green bar = average client health for that trader._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
@@ -10493,15 +10493,6 @@ def api_daily_summary():
             line1, line2 = _trader_leaderboard_entry_lines(t, clear_mins, s, medal)
             lines.append(line1)
             lines.append(line2)
-        if total_traders > 0:
-            best_name = ranked[0][0]
-            best_mins = get_trader_issue_resolution_minutes(date, best_name)
-            lines.append("")
-            if 0 <= best_mins < 99999:
-                lines.append(
-                    f"🎉 **{best_name}** cleared assigned issues the fastest"
-                    + (f" ({_format_clearance_minutes(best_mins)})" if best_mins else ' (at scan)')
-                )
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: **{checklist_count}**")
@@ -10617,6 +10608,89 @@ def api_daily_summary():
     except Exception as e:
         import traceback
         traceback.print_exc()
+
+    # ── Admin Team Rankings (generated summary only; not sent by bot) ──
+    try:
+        admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
+        admin_names = sorted([
+            a for a in admins_map.keys()
+            if str(a).strip() and str(a).strip().lower() not in _ADMIN_TEAMS_EXCLUDED_ADMINS
+        ])
+        if admin_names:
+            # Each admin is treated as its own team (so team count ~= admin count).
+            # Use friendly placeholder team names for now.
+            placeholder_team_names = [
+                'Team Atlas', 'Team Orion', 'Team Pegasus', 'Team Phoenix',
+                'Team Nova', 'Team Aurora', 'Team Titan', 'Team Comet',
+            ]
+            admin_to_team = {}
+            for idx, a in enumerate(admin_names):
+                admin_to_team[a] = (
+                    placeholder_team_names[idx]
+                    if idx < len(placeholder_team_names)
+                    else f'Team {idx + 1}'
+                )
+
+            # Build per-admin roster + score using existing admin-tracker logic.
+            admin_rows = {}
+            for a in admin_names:
+                payload = compute_admin_tracker_payload(a, date) or {}
+                score = float(payload.get('health_score') or 0.0)
+
+                roster = {}  # trader -> [clients]
+                active_clients = []
+                for client_id in all_clients:
+                    prof = get_client_profile(client_id) or {}
+                    if str(prof.get('admin') or '').strip().lower() != str(a or '').strip().lower():
+                        continue
+                    trader = (str(prof.get('trader') or '').strip() or 'Unassigned')
+                    if (
+                        client_id in excluded_clients
+                        or trader in excluded_traders
+                        or trader.strip().lower() in _ADMIN_TEAMS_EXCLUDED_TRADERS
+                    ):
+                        continue
+                    try:
+                        from dashboard.database import get_client_data as _gcd
+                        cdata = _gcd(client_id) or {}
+                        if isinstance(cdata.get('identity'), dict) and str(cdata['identity'].get('active_status') or '').lower() == 'inactive':
+                            continue
+                    except Exception:
+                        pass
+                    active_clients.append(client_id)
+                    roster.setdefault(trader, []).append(client_id)
+
+                for t in roster:
+                    roster[t].sort()
+                admin_rows[a] = {'score': round(score, 1), 'clients': len(active_clients), 'roster': roster}
+
+            ranked_teams = []
+            for a in admin_names:
+                ranked_teams.append((admin_to_team.get(a, a), a, admin_rows[a]['score']))
+            ranked_teams.sort(key=lambda x: (-x[2], x[0].lower()))
+
+            lines.append("🏅 **ADMIN TEAMS (internal preview — not posted by bot)**")
+            lines.append("_Each admin is its own team. Scores use the existing admin health metric; traders are listed without client names for privacy._")
+            lines.append("")
+            for rank, (team, admin, score) in enumerate(ranked_teams, 1):
+                if rank == 1:
+                    medal = '🥇'
+                elif rank == 2:
+                    medal = '🥈'
+                elif rank == 3:
+                    medal = '🥉'
+                else:
+                    medal = f'`#{rank}`'
+                arow = admin_rows.get(admin) or {}
+                team_clients = int(arow.get('clients') or 0)
+                lines.append(f"{medal} **{team}** (Admin: **{admin}**) — **{score}%** · {team_clients} clients")
+                # List traders under that admin (no client names).
+                for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
+                    lines.append(f"     - Trader: {trader}")
+                lines.append("")
+    except Exception:
+        # Never block summary generation if team aggregation fails.
+        pass
 
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
