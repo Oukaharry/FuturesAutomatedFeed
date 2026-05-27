@@ -478,8 +478,6 @@ def _build_daily_summary_text():
                     lines.append(f"⚠️ *{t}* — {sent}/{total} sent")
                     lines.append(f"   ⛔ {', '.join(missing)}")
                 lines.append("")
-            lines.append("👁️ _We track everything — every submission, every miss, every second._")
-            lines.append("")
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -505,9 +503,10 @@ def _build_daily_summary_text():
         lines.append("")
         lines.append("‼️ *Downtime is unacceptable. Every trading day must be accounted for. Traders responsible for these accounts must explain immediately.*")
         lines.append("")
-        # Divider goes LAST so nothing after it gets dropped by clients/bots.
         lines.append("━" * 30)
         lines.append("")
+
+    lines.append("👁️ _We track everything — every submission, every miss, every second._")
 
     return "\n".join(lines)
 
