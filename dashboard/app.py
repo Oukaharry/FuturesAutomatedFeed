@@ -10604,6 +10604,92 @@ def api_daily_summary():
         import traceback
         traceback.print_exc()
 
+    # ── Admin Team Rankings (generated summary only; not sent by bot) ──
+    try:
+        admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
+        admin_names = sorted([a for a in admins_map.keys() if str(a).strip()])
+        if admin_names:
+            # Each admin is treated as its own team (so team count ~= admin count).
+            # Use friendly placeholder team names for now.
+            placeholder_team_names = [
+                'Team Atlas', 'Team Orion', 'Team Pegasus', 'Team Phoenix',
+                'Team Nova', 'Team Aurora', 'Team Titan', 'Team Comet',
+            ]
+            admin_to_team = {}
+            for idx, a in enumerate(admin_names):
+                admin_to_team[a] = (
+                    placeholder_team_names[idx]
+                    if idx < len(placeholder_team_names)
+                    else f'Team {idx + 1}'
+                )
+
+            # Build per-admin roster + score using existing admin-tracker logic.
+            admin_rows = {}
+            for a in admin_names:
+                payload = compute_admin_tracker_payload(a, date) or {}
+                score = float(payload.get('health_score') or 0.0)
+
+                roster = {}  # trader -> [clients]
+                active_clients = []
+                for client_id in all_clients:
+                    prof = get_client_profile(client_id) or {}
+                    if str(prof.get('admin') or '').strip().lower() != str(a or '').strip().lower():
+                        continue
+                    trader = (str(prof.get('trader') or '').strip() or 'Unassigned')
+                    if client_id in excluded_clients or trader in excluded_traders:
+                        continue
+                    try:
+                        from dashboard.database import get_client_data as _gcd
+                        cdata = _gcd(client_id) or {}
+                        if isinstance(cdata.get('identity'), dict) and str(cdata['identity'].get('active_status') or '').lower() == 'inactive':
+                            continue
+                    except Exception:
+                        pass
+                    active_clients.append(client_id)
+                    roster.setdefault(trader, []).append(client_id)
+
+                for t in roster:
+                    roster[t].sort()
+                admin_rows[a] = {'score': round(score, 1), 'clients': len(active_clients), 'roster': roster}
+
+            ranked_teams = []
+            for a in admin_names:
+                ranked_teams.append((admin_to_team.get(a, a), a, admin_rows[a]['score']))
+            ranked_teams.sort(key=lambda x: (-x[2], x[0].lower()))
+
+            lines.append("🏅 **ADMIN TEAMS (internal preview — not posted by bot)**")
+            lines.append("_Admins are grouped into teams for friendly competition. Team score is a weighted average of admin health scores (weighted by active client count)._")
+            lines.append("")
+            for rank, (team, admin, score) in enumerate(ranked_teams, 1):
+                if rank == 1:
+                    medal = '🥇'
+                elif rank == 2:
+                    medal = '🥈'
+                elif rank == 3:
+                    medal = '🥉'
+                else:
+                    medal = f'`#{rank}`'
+                arow = admin_rows.get(admin) or {}
+                team_clients = int(arow.get('clients') or 0)
+                lines.append(f"{medal} **{team}** (Admin: **{admin}**) — **{score}%** · {team_clients} clients")
+                # List clients grouped by trader; cap to keep messages readable.
+                shown = 0
+                cap = 20
+                for trader, cids in sorted((arow.get('roster') or {}).items(), key=lambda it: it[0].lower()):
+                    if shown >= cap:
+                        break
+                    take = cids[: max(0, cap - shown)]
+                    shown += len(take)
+                    suffix = f" (+{len(cids) - len(take)} more)" if len(take) < len(cids) else ""
+                    lines.append(f"     - {trader}: {', '.join(take)}{suffix}")
+                total_listed = sum(len(v) for v in (arow.get('roster') or {}).values())
+                if total_listed > shown:
+                    lines.append(f"     - … (+{total_listed - shown} more clients)")
+                lines.append("")
+    except Exception:
+        # Never block summary generation if team aggregation fails.
+        pass
+
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
         lines.append("🚨🚨🚨 **DOWNTIME ALERT — ZERO TOLERANCE** 🚨🚨🚨")
