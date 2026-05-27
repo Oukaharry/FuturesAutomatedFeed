@@ -169,7 +169,11 @@ def _build_daily_summary_text():
         upsert_quality_issue_baseline,
         get_trader_issue_resolution_minutes,
     )
-    from dashboard.app import _trader_ranking_health_metrics
+    from dashboard.app import (
+        _trader_ranking_health_metrics,
+        _should_skip_daily_summary_tracking,
+        DAILY_SUMMARY_TRACKER_SKIP_MSG,
+    )
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from config.hierarchy import SYSTEM_HIERARCHY
 
@@ -304,8 +308,7 @@ def _build_daily_summary_text():
         all_hierarchy_clients2 = hierarchy_get_all_clients()
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
-        _is_weekend = _eat_now.weekday() in (5, 6)
-        if _is_weekend:
+        if _should_skip_daily_summary_tracking(_eat_now):
             _apply_summary_penalty = False
         else:
             for client_name in all_hierarchy_clients2:
@@ -339,24 +342,23 @@ def _build_daily_summary_text():
             deduction = 5.0 * (missing / max(total, 1))
             return max(0.0, raw - deduction)
 
-        # Gamified Trader Health Leaderboard — ranked best to worst
-        # Primary: adjusted average (desc)
-        # Tie-break (implicit): time-to-resolve baseline issues after bot post (asc)
-        # Final tie-break: name (asc)
+        # Gamified Trader Issue Clearance Leaderboard — fastest full clearance first
+        from dashboard.app import (
+            _trader_leaderboard_entry_lines,
+            _trader_leaderboard_sort_key,
+        )
         ranked = sorted(
             trader_stats.items(),
-            key=lambda it: (
-                -round(_adjusted_avg(it), 4),
-                get_trader_issue_resolution_minutes(date, it[0]),
-                str(it[0]).lower(),
+            key=lambda it: _trader_leaderboard_sort_key(
+                it[0], it[1], get_trader_issue_resolution_minutes(date, it[0]),
             ),
         )
         lines.append("🏆 *TRADER HEALTH LEADERBOARD*")
-        lines.append("_Ranked by average client health score (highest first). Scores exclude super-admin daily-summary payout QA; otherwise reflects data freshness, hedging accuracy, notes quality, and checklist completion._")
+        lines.append("_Green bar = average client health for that trader._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
-            avg = round(_adjusted_avg((t, s)), 1)
+            clear_mins = get_trader_issue_resolution_minutes(date, t)
             if rank == 1:
                 medal = '🥇'
             elif rank == 2:
@@ -365,33 +367,9 @@ def _build_daily_summary_text():
                 medal = '🥉'
             else:
                 medal = f'#{rank}'
-            if avg >= 95:
-                title = '👑 Legendary'
-            elif avg >= 90:
-                title = '⭐ Elite'
-            elif avg >= 80:
-                title = '💪 Solid'
-            elif avg >= 70:
-                title = '⚡ Warming Up'
-            elif avg >= 50:
-                title = '🔧 Needs Work'
-            else:
-                title = '🚨 SOS'
-            bar_filled = round(avg / 10)
-            bar_empty = 10 - bar_filled
-            bar = '🟩' * bar_filled + '⬛' * bar_empty
-            lines.append(f"{medal} *{t}* — {title}")
-            lines.append(f"   {bar} *{avg}%* · {s['clients']} clients · {s['issues']} issues")
-        if total_traders > 0:
-            best_name = ranked[0][0]
-            worst_name = ranked[-1][0]
-            best_avg = round(_adjusted_avg(ranked[0]), 1)
-            worst_avg = round(_adjusted_avg(ranked[-1]), 1)
-            lines.append("")
-            if best_avg >= 90:
-                lines.append(f"🎉 *{best_name}* is on fire! Leading the pack at {best_avg}%")
-            if worst_avg < 50 and total_traders > 1:
-                lines.append(f"📣 *{worst_name}* — time to level up! Let's get those numbers moving 💪")
+            line1, line2 = _trader_leaderboard_entry_lines(t, clear_mins, s, medal)
+            lines.append(line1.replace('**', '*'))
+            lines.append(line2.replace('**', '*'))
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: *{len(checklists)}*")
@@ -471,12 +449,10 @@ def _build_daily_summary_text():
         total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
         lines.append("📬 *DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)*")
-        # Skip submission tracking on weekends (no trading Sat/Sun)
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
-        _is_weekend = _eat_now.weekday() in (5, 6)  # Saturday=5, Sunday=6
-        if _is_weekend:
-            lines.append("🛑 _Weekend — no trading today. Submission tracking resumes on Monday._")
+        if _should_skip_daily_summary_tracking(_eat_now):
+            lines.append(DAILY_SUMMARY_TRACKER_SKIP_MSG)
             lines.append("")
         else:
             pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0

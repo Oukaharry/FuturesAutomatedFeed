@@ -2526,7 +2526,9 @@
         <div id="hedge" class="tab-content">
             <div class="section-header">
                 <h3>Hedge Accounts Configuration</h3>
-                <button class="btn-primary" onclick="addHedgeAccount()">+ Add Hedge Account</button>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn-primary" onclick="addHedgeAccount()">+ Add Hedge Account</button>
+                </div>
             </div>
             
             <table id="hedge-accounts-table">
@@ -5617,7 +5619,7 @@
             renderPropAccounts(currentData);
             showPropSaveStatus('saving');
             _pendingSaveCallback = (ok) => showPropSaveStatus(ok ? 'saved' : 'failed');
-            saveData('CREATE', 'Added new prop account');
+            saveData('UPDATE', 'Added new prop account');
         }
 
         function renderMT5Credentials(data) {
@@ -5987,7 +5989,7 @@
                 name: ''
             });
             renderHedgeAccounts(currentData);
-            saveData('CREATE', 'Added new hedge account');
+            saveData('UPDATE', 'Added new hedge account');
         }
 
         function deleteHedgeAccount(index) {

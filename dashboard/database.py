@@ -1241,7 +1241,11 @@ def _ensure_quality_bot_tables():
 
 
 def record_quality_slack_post(scan_date: str, posted_at: str):
-    """Record when the Slack quality bot posted for a scan_date (idempotent)."""
+    """Record when the Slack quality bot posted for a scan_date (idempotent).
+
+    The first timestamp for a scan_date is kept (morning scan or Slack post) so
+    issue-clearance speed rankings are not reset by later posts or rescans.
+    """
     if not scan_date or not posted_at:
         return
     try:
@@ -1252,7 +1256,7 @@ def record_quality_slack_post(scan_date: str, posted_at: str):
                 '''
                 INSERT INTO quality_slack_posts (scan_date, posted_at)
                 VALUES (?, ?)
-                ON CONFLICT(scan_date) DO UPDATE SET posted_at = excluded.posted_at
+                ON CONFLICT(scan_date) DO NOTHING
                 ''',
                 (scan_date, posted_at),
             )
@@ -1260,6 +1264,11 @@ def record_quality_slack_post(scan_date: str, posted_at: str):
     except Exception:
         # Non-critical: bot still works without the tie-breaker tables.
         return
+
+
+def record_quality_scan_anchor(scan_date: str, anchored_at: str):
+    """Alias for the scan-day clock used by issue-clearance rankings (first write wins)."""
+    record_quality_slack_post(scan_date, anchored_at)
 
 
 def upsert_quality_issue_baseline(scan_date: str, client_id: str, trader: str, had_issues: bool):
@@ -1276,7 +1285,10 @@ def upsert_quality_issue_baseline(scan_date: str, client_id: str, trader: str, h
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(scan_date, client_id) DO UPDATE SET
                     trader = excluded.trader,
-                    had_issues = excluded.had_issues
+                    had_issues = CASE
+                        WHEN quality_issue_baseline.had_issues = 1 OR excluded.had_issues = 1 THEN 1
+                        ELSE 0
+                    END
                 ''',
                 (scan_date, client_id, trader or '', 1 if had_issues else 0),
             )
@@ -1316,12 +1328,18 @@ def mark_quality_issue_resolved(scan_date: str, client_id: str, resolved_at: str
         return
 
 
+# Leaderboard: trader had no clients with issues at morning baseline (not in the clearance race).
+TRADER_CLEARANCE_NOT_IN_RACE = -1
+
+
 def get_trader_issue_resolution_minutes(scan_date: str, trader: str, *, unresolved_minutes: int = 99999) -> int:
     """
-    For Slack leaderboard tie-breaks.
-    Returns minutes from posted_at to the time ALL baseline-issue clients for this trader were resolved.
-    If any baseline-issue client is not yet resolved, returns unresolved_minutes.
-    If the trader had no baseline issues, returns 0 (fastest by default).
+    Minutes from scan anchor to when ALL baseline-issue clients for this trader reached 0 issues.
+
+    Returns:
+      - TRADER_CLEARANCE_NOT_IN_RACE (-1): no baseline issues (clean at scan; not ranked as "fastest").
+      - 0..N: all baseline clients resolved; value is minutes for the slowest client to clear.
+      - unresolved_minutes (default 99999): still has unresolved baseline clients, or no anchor yet.
     """
     if not scan_date or not trader:
         return unresolved_minutes
@@ -1345,16 +1363,17 @@ def get_trader_issue_resolution_minutes(scan_date: str, trader: str, *, unresolv
             )
             clients = [r.get('client_id') for r in (cursor.fetchall() or []) if r.get('client_id')]
             if not clients:
-                return 0
+                return TRADER_CLEARANCE_NOT_IN_RACE
 
             # Fetch resolution rows for those clients
+            placeholders = ','.join(['?'] * len(clients))
             cursor.execute(
-                '''
+                f'''
                 SELECT client_id, resolved_at
                 FROM quality_issue_resolution
-                WHERE scan_date = ? AND client_id = ANY(%s)
+                WHERE scan_date = ? AND client_id IN ({placeholders})
                 ''',
-                (scan_date, clients),
+                (scan_date, *clients),
             )
             res_map = {r.get('client_id'): (r.get('resolved_at') or '') for r in (cursor.fetchall() or [])}
             if any(not res_map.get(cid) for cid in clients):

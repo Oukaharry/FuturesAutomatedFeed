@@ -117,6 +117,117 @@ def _quality_scan_row_for_trader_client_quality_api(scan_row):
     return out
 
 
+def _sync_quality_issue_tracking(scan_date: str, results: list):
+    """Record scan-day baseline + resolutions for trader clearance speed rankings."""
+    if not scan_date or not results:
+        return
+    try:
+        from dashboard.database import (
+            record_quality_scan_anchor,
+            upsert_quality_issue_baseline,
+            mark_quality_issue_resolved,
+        )
+        record_quality_scan_anchor(scan_date, datetime.utcnow().isoformat())
+        resolved_at = datetime.utcnow().isoformat()
+        for r in results:
+            client_id = r.get('client_id')
+            if not client_id:
+                continue
+            total_issues, _ = _trader_ranking_health_metrics(r.get('issues'))
+            trader = str(r.get('trader') or '')
+            # Record resolution before baseline upsert so had_issues=1 from morning is preserved.
+            if total_issues == 0:
+                mark_quality_issue_resolved(scan_date, client_id, resolved_at)
+            upsert_quality_issue_baseline(scan_date, client_id, trader, total_issues > 0)
+    except Exception as e:
+        logging.warning('Quality issue tracking sync failed: %s', e)
+
+
+def _trader_leaderboard_sort_key(trader: str, stats: dict, clear_mins: int) -> tuple:
+    """
+    0 = finished clearance race (fastest time first)
+    1 = clean at scan (not in race)
+    2 = still fixing
+    """
+    name = (trader or '').lower()
+    if clear_mins >= 99999:
+        return (2, int(stats.get('issues', 99999)), name)
+    if clear_mins < 0:
+        avg = stats.get('health_sum', 0) / max(stats.get('clients', 1), 1)
+        return (1, -avg, name)
+    return (0, int(clear_mins), name)
+
+
+def _trader_clearance_sort_key(trader_entry: dict) -> tuple:
+    """Sort traders for Daily Summary Tracker cards (same tiers as leaderboard)."""
+    if trader_entry.get('clearance_not_in_race'):
+        mins = -1
+    elif trader_entry.get('clearance_unresolved') or trader_entry.get('clearance_minutes') is None:
+        mins = 99999
+    else:
+        mins = int(trader_entry.get('clearance_minutes'))
+    stats = {
+        'issues': trader_entry.get('open_issues', 0),
+        'health_sum': trader_entry.get('avg_health', 100) * max(trader_entry.get('clients_scanned', 1), 1),
+        'clients': trader_entry.get('clients_scanned', 1),
+    }
+    return _trader_leaderboard_sort_key(trader_entry.get('trader', ''), stats, int(mins))
+
+
+def _trader_health_title(avg: float) -> str:
+    if avg >= 95:
+        return '👑 Legendary'
+    if avg >= 90:
+        return '⭐ Elite'
+    if avg >= 80:
+        return '💪 Solid'
+    if avg >= 70:
+        return '⚡ Warming Up'
+    if avg >= 50:
+        return '🔧 Needs Work'
+    return '🚨 SOS'
+
+
+def _trader_health_bar(avg: float) -> str:
+    bar_filled = max(0, min(10, round(avg / 10)))
+    return '🟩' * bar_filled + '⬛' * (10 - bar_filled)
+
+
+def _trader_leaderboard_entry_lines(trader: str, clear_mins: int, stats: dict, medal: str) -> tuple:
+    """Title + green health bar lines for Slack / daily summary leaderboard."""
+    avg = round(stats.get('health_sum', 0) / max(stats.get('clients', 1), 1), 1)
+    issues = int(stats.get('issues', 0) or 0)
+    clients = int(stats.get('clients', 0) or 0)
+    title = _trader_health_title(avg)
+    line1 = f"{medal} **{trader}** — {title}"
+    line2 = f"   {_trader_health_bar(avg)} **{avg}%** · {clients} clients · {issues} issues"
+    return line1, line2
+
+
+def _trader_tracker_subtitle(clear_mins: int, stats: dict) -> str:
+    """Short subtitle for Daily Summary Tracker cards (no 'still fixing')."""
+    avg = round(stats.get('health_sum', 0) / max(stats.get('clients', 1), 1), 1)
+    issues = int(stats.get('issues', 0) or 0)
+    parts = [f'{avg}% health', f'{issues} issue{"s" if issues != 1 else ""}']
+    if clear_mins > 0:
+        parts.append(f'cleared {_format_clearance_minutes(clear_mins)}')
+    return ' · '.join(parts)
+
+
+def _format_clearance_minutes(minutes: int) -> str:
+    if minutes is None or minutes >= 99999:
+        return ''
+    if minutes < 60:
+        return f'{minutes}m'
+    hours, rem = divmod(minutes, 60)
+    return f'{hours}h {rem}m' if rem else f'{hours}h'
+
+
+# Admin team rankings (generated summary only): not tracked in quality / daily-summary workflows.
+_ADMIN_TEAMS_EXCLUDED_ADMINS = frozenset({'philip tangara'})
+_ADMIN_TEAMS_EXCLUDED_TRADERS = frozenset({'tangara'})
+
+
 # Super Admin financial aggregates: excluded client names (not tied to Daily Summary tracker lists)
 _SUPER_ADMIN_STATS_EXCLUDED_KEY = 'super_admin_stats_excluded_clients'
 
@@ -7441,6 +7552,25 @@ def _allowed_trading_day_abbrs(ref_dt):
     return frozenset({order[wd], order[wd + 1]})
 
 
+def _should_skip_daily_summary_tracking(eat_dt):
+    """Skip daily-summary submission tracker when there is no session to track.
+
+    True on Sat/Sun (no trading) and on Mon before the new week is underway —
+    e.g. the 02:30 EAT bot run after Sunday (yesterday was non-trading), so the
+    Slack message matches the clean weekend post instead of flagging missing sends.
+    """
+    if eat_dt.weekday() in (5, 6):
+        return True
+    yesterday = eat_dt - timedelta(days=1)
+    return yesterday.weekday() in (5, 6)
+
+
+DAILY_SUMMARY_TRACKER_SKIP_MSG = (
+    "🛑 _No trading session to track (weekend or day after a non-trading day). "
+    "Daily summary submission tracking resumes on the next trading day._"
+)
+
+
 def _weekday_abbrs_in_text(raw):
     """Return {'mon','tue',...} for weekday tokens in *raw* (empty if none)."""
     s = str(raw or '').strip().lower()
@@ -7884,6 +8014,27 @@ def run_quality_scan(target_client=None):
                     and bool(activation_fee)
                 )
 
+                def _norm_marker_text(v: str) -> str:
+                    v = (v or '').strip().lower()
+                    v = v.replace('\u00a0', ' ')
+                    v = re.sub(r'[^a-z0-9]+', ' ', v)
+                    return re.sub(r'\s+', ' ', v).strip()
+
+                _marker_sources = (
+                    ev.get('Account #', ''),
+                    ev.get('Account #.1', ''),
+                    ev.get('Notes', ''),
+                    ev.get('Note', ''),
+                    ev.get('Status', ''),
+                    ev.get('Status Funded', ''),
+                )
+                _marker_text = _norm_marker_text(' '.join(str(s or '') for s in _marker_sources))
+                is_back_to_funded_marker = ('back to funded' in _marker_text)
+                # Eval Fee may be blank when returning to funded (activation fee only).
+                is_empty_fee_exempt = is_double_dip or (
+                    is_back_to_funded_marker and bool(activation_fee)
+                )
+
                 # Status blank on non-empty row
                 if not is_live_funded_numeric_row and not status_p1 and has_data and not is_double_dip:
                     issues.append({'check': 'Status blank', 'severity': 'medium', 'row': idx,
@@ -7907,7 +8058,7 @@ def run_quality_scan(target_client=None):
                     not is_live_funded_numeric_row
                     and (not fee_raw or fee_num <= 0.0)
                     and has_data
-                    and not is_double_dip
+                    and not is_empty_fee_exempt
                     and not _fee_note
                 ):
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
@@ -8023,26 +8174,7 @@ def run_quality_scan(target_client=None):
                 # Strict: Date Purchased does NOT count as start (purchase date can differ from first trade date).
                 p1_started = str(ev.get('Date Started', '') or '').strip()
                 p1_ended = str(ev.get('Date Ended', '') or '').strip()
-                # Special workflow marker: some rows use "BACK TO FUNDED" in Account # to indicate
-                # the trader is skipping eval dates and returning to funded. Do not flag date
-                # requirements on these rows if there are no eval-phase hedge values yet.
-                def _norm_marker_text(v: str) -> str:
-                    # Normalize to make matching robust against double-spaces, punctuation, and line breaks.
-                    v = (v or '').strip().lower()
-                    v = v.replace('\u00a0', ' ')  # NBSP → space
-                    v = re.sub(r'[^a-z0-9]+', ' ', v)
-                    return re.sub(r'\s+', ' ', v).strip()
-
-                _marker_sources = (
-                    ev.get('Account #', ''),
-                    ev.get('Account #.1', ''),
-                    ev.get('Notes', ''),
-                    ev.get('Note', ''),
-                    ev.get('Status', ''),
-                    ev.get('Status Funded', ''),
-                )
-                _marker_text = _norm_marker_text(' '.join(str(s or '') for s in _marker_sources))
-                is_back_to_funded_marker = ('back to funded' in _marker_text)
+                # Back-to-funded rows (see is_back_to_funded_marker above): skip eval date requirements.
                 if (
                     not is_live_funded_numeric_row
                     and not new_row_strict_mode
@@ -8656,6 +8788,7 @@ def api_run_quality_scan():
     try:
         from dashboard.database import save_quality_scan_results
         save_quality_scan_results(scan_date, results)
+        _sync_quality_issue_tracking(scan_date, results)
     except Exception as e:
         save_warning = str(e)
         logging.warning(f'Quality scan results could not be saved: {e}')
@@ -8714,7 +8847,6 @@ def api_quality_client(client_id):
                 # Persist the updated result into today's scan row for this client
                 try:
                     from dashboard.database import get_connection
-                    from dashboard.database import mark_quality_issue_resolved
                     scan_date = datetime.now().strftime('%Y-%m-%d')
                     with get_connection() as conn:
                         cursor = conn.cursor()
@@ -8726,9 +8858,7 @@ def api_quality_client(client_id):
                                        (scan_date, r['client_id'], r.get('trader'), r.get('admin'),
                                         r['total_issues'], json.dumps(r['issues']), r['health_score']))
                         conn.commit()
-                    # If issues are now fully resolved, record resolution time for Slack leaderboard tie-breaks.
-                    if int(r.get('total_issues') or 0) == 0:
-                        mark_quality_issue_resolved(scan_date, r.get('client_id'), datetime.utcnow().isoformat())
+                    _sync_quality_issue_tracking(scan_date, [r])
                 except Exception:
                     pass  # Non-fatal — still return live results
                 return jsonify({"status": "success", "data": _quality_scan_row_for_trader_client_quality_api(r)})
@@ -9549,17 +9679,54 @@ def api_summary_status():
             })
         else:
             traders[trader]['not_sent'].append(client_name)
-    # Build response
+    # Issue-clearance speed (from morning scan baseline → all clients at 0 issues)
+    from dashboard.database import get_trader_issue_resolution_minutes, get_quality_scan_results
+    scan_date = date
+    scan_by_trader = {}
+    for row in get_quality_scan_results(scan_date) or []:
+        t = (row.get('trader') or '') or 'Unassigned'
+        ti, hs = _trader_ranking_health_metrics(row.get('issues'))
+        if t not in scan_by_trader:
+            scan_by_trader[t] = {
+                'open_issues': 0, 'clients_with_issues': 0, 'health_sum': 0.0, 'clients_scanned': 0,
+            }
+        scan_by_trader[t]['health_sum'] += hs
+        scan_by_trader[t]['clients_scanned'] += 1
+        if ti > 0:
+            scan_by_trader[t]['open_issues'] += ti
+            scan_by_trader[t]['clients_with_issues'] += 1
+
     total_sent = sum(len(d['sent']) for d in traders.values())
     result = []
-    for trader, data in sorted(traders.items()):
+    for trader, data in traders.items():
+        raw_mins = get_trader_issue_resolution_minutes(scan_date, trader)
+        unresolved = raw_mins >= 99999
+        not_in_race = raw_mins < 0
+        st = scan_by_trader.get(trader, {})
+        avg_health = round(st.get('health_sum', 0) / max(st.get('clients_scanned', 1), 1), 1)
+        lb_stats = {
+            'issues': st.get('open_issues', 0),
+            'health_sum': st.get('health_sum', 0),
+            'clients': max(st.get('clients_scanned', 1), 1),
+        }
         result.append({
             'trader': trader,
             'total': len(data['sent']) + len(data['not_sent']),
             'sent_count': len(data['sent']),
             'sent': data['sent'],
-            'not_sent': data['not_sent']
+            'not_sent': data['not_sent'],
+            'clearance_minutes': None if unresolved or not_in_race else raw_mins,
+            'clearance_unresolved': unresolved,
+            'clearance_not_in_race': not_in_race,
+            'avg_health': avg_health,
+            'clearance_label': _trader_tracker_subtitle(raw_mins, lb_stats),
+            'open_issues': st.get('open_issues', 0),
+            'clients_with_issues': st.get('clients_with_issues', 0),
+            'clients_scanned': st.get('clients_scanned', 0),
         })
+    result.sort(key=_trader_clearance_sort_key)
+    for idx, row in enumerate(result, 1):
+        row['clearance_rank'] = idx
     return jsonify({
         'status': 'success', 'date': date,
         'total_clients': tracked_count, 'total_sent': total_sent,
@@ -9671,6 +9838,8 @@ def api_trader_issues():
                         except Exception:
                             continue
                     conn.commit()
+                if live_results:
+                    _sync_quality_issue_tracking(scan_date_today, live_results)
             except Exception:
                 pass
 
@@ -10299,15 +10468,20 @@ def api_daily_summary():
                 downtime_clients.append((r.get('trader', 'Unknown'), r['client_id'], iss['detail']))
 
     if trader_stats:
-        # Gamified Trader Health Leaderboard — ranked best to worst
-        ranked = sorted(trader_stats.items(), key=lambda x: x[1]['health_sum'] / max(x[1]['clients'], 1), reverse=True)
+        from dashboard.database import get_trader_issue_resolution_minutes
+        # Gamified Trader Health Leaderboard — fastest issue clearance first
+        ranked = sorted(
+            trader_stats.items(),
+            key=lambda it: _trader_leaderboard_sort_key(
+                it[0], it[1], get_trader_issue_resolution_minutes(date, it[0]),
+            ),
+        )
         lines.append("🏆 **TRADER HEALTH LEADERBOARD**")
-        lines.append("_Ranked by average client health score (highest first). Scores exclude super-admin daily-summary payout QA; otherwise reflects data freshness, hedging accuracy, notes quality, and checklist completion._")
+        lines.append("_Green bar = average client health for that trader._")
         lines.append("")
         total_traders = len(ranked)
         for rank, (t, s) in enumerate(ranked, 1):
-            avg = round(s['health_sum'] / s['clients'], 1)
-            # Rank medals
+            clear_mins = get_trader_issue_resolution_minutes(date, t)
             if rank == 1:
                 medal = '🥇'
             elif rank == 2:
@@ -10316,35 +10490,9 @@ def api_daily_summary():
                 medal = '🥉'
             else:
                 medal = f'`#{rank}`'
-            # Fun titles based on health
-            if avg >= 95:
-                title = '👑 Legendary'
-            elif avg >= 90:
-                title = '⭐ Elite'
-            elif avg >= 80:
-                title = '💪 Solid'
-            elif avg >= 70:
-                title = '⚡ Warming Up'
-            elif avg >= 50:
-                title = '🔧 Needs Work'
-            else:
-                title = '🚨 SOS'
-            bar_filled = round(avg / 10)
-            bar_empty = 10 - bar_filled
-            bar = '🟩' * bar_filled + '⬛' * bar_empty
-            lines.append(f"{medal} **{t}** — {title}")
-            lines.append(f"   {bar} **{avg}%** · {s['clients']} clients · {s['issues']} issues")
-        # Fun footer
-        if total_traders > 0:
-            best_name = ranked[0][0]
-            worst_name = ranked[-1][0]
-            best_avg = round(ranked[0][1]['health_sum'] / max(ranked[0][1]['clients'], 1), 1)
-            worst_avg = round(ranked[-1][1]['health_sum'] / max(ranked[-1][1]['clients'], 1), 1)
-            lines.append("")
-            if best_avg >= 90:
-                lines.append(f"🎉 **{best_name}** is on fire! Leading the pack at {best_avg}%")
-            if worst_avg < 50 and total_traders > 1:
-                lines.append(f"📣 **{worst_name}** — time to level up! Let's get those numbers moving 💪")
+            line1, line2 = _trader_leaderboard_entry_lines(t, clear_mins, s, medal)
+            lines.append(line1)
+            lines.append(line2)
         lines.append("")
 
     lines.append(f"📋 Checklists submitted today: **{checklist_count}**")
@@ -10426,12 +10574,10 @@ def api_daily_summary():
         total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
         lines.append("📬 **DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)**")
-        # Skip submission tracking on weekends (no trading Sat/Sun)
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
-        _is_weekend = _eat_now.weekday() in (5, 6)  # Saturday=5, Sunday=6
-        if _is_weekend:
-            lines.append("🛑 _Weekend — no trading today. Submission tracking resumes on Monday._")
+        if _should_skip_daily_summary_tracking(_eat_now):
+            lines.append(DAILY_SUMMARY_TRACKER_SKIP_MSG)
             lines.append("")
         else:
             pct = round(total_sent_summary / tracked_total * 100) if tracked_total else 0
@@ -10462,6 +10608,89 @@ def api_daily_summary():
     except Exception as e:
         import traceback
         traceback.print_exc()
+
+    # ── Admin Team Rankings (generated summary only; not sent by bot) ──
+    try:
+        admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
+        admin_names = sorted([
+            a for a in admins_map.keys()
+            if str(a).strip() and str(a).strip().lower() not in _ADMIN_TEAMS_EXCLUDED_ADMINS
+        ])
+        if admin_names:
+            # Each admin is treated as its own team (so team count ~= admin count).
+            # Use friendly placeholder team names for now.
+            placeholder_team_names = [
+                'Team Atlas', 'Team Orion', 'Team Pegasus', 'Team Phoenix',
+                'Team Nova', 'Team Aurora', 'Team Titan', 'Team Comet',
+            ]
+            admin_to_team = {}
+            for idx, a in enumerate(admin_names):
+                admin_to_team[a] = (
+                    placeholder_team_names[idx]
+                    if idx < len(placeholder_team_names)
+                    else f'Team {idx + 1}'
+                )
+
+            # Build per-admin roster + score using existing admin-tracker logic.
+            admin_rows = {}
+            for a in admin_names:
+                payload = compute_admin_tracker_payload(a, date) or {}
+                score = float(payload.get('health_score') or 0.0)
+
+                roster = {}  # trader -> [clients]
+                active_clients = []
+                for client_id in all_clients:
+                    prof = get_client_profile(client_id) or {}
+                    if str(prof.get('admin') or '').strip().lower() != str(a or '').strip().lower():
+                        continue
+                    trader = (str(prof.get('trader') or '').strip() or 'Unassigned')
+                    if (
+                        client_id in excluded_clients
+                        or trader in excluded_traders
+                        or trader.strip().lower() in _ADMIN_TEAMS_EXCLUDED_TRADERS
+                    ):
+                        continue
+                    try:
+                        from dashboard.database import get_client_data as _gcd
+                        cdata = _gcd(client_id) or {}
+                        if isinstance(cdata.get('identity'), dict) and str(cdata['identity'].get('active_status') or '').lower() == 'inactive':
+                            continue
+                    except Exception:
+                        pass
+                    active_clients.append(client_id)
+                    roster.setdefault(trader, []).append(client_id)
+
+                for t in roster:
+                    roster[t].sort()
+                admin_rows[a] = {'score': round(score, 1), 'clients': len(active_clients), 'roster': roster}
+
+            ranked_teams = []
+            for a in admin_names:
+                ranked_teams.append((admin_to_team.get(a, a), a, admin_rows[a]['score']))
+            ranked_teams.sort(key=lambda x: (-x[2], x[0].lower()))
+
+            lines.append("🏅 **ADMIN TEAMS (internal preview — not posted by bot)**")
+            lines.append("_Each admin is its own team. Scores use the existing admin health metric; traders are listed without client names for privacy._")
+            lines.append("")
+            for rank, (team, admin, score) in enumerate(ranked_teams, 1):
+                if rank == 1:
+                    medal = '🥇'
+                elif rank == 2:
+                    medal = '🥈'
+                elif rank == 3:
+                    medal = '🥉'
+                else:
+                    medal = f'`#{rank}`'
+                arow = admin_rows.get(admin) or {}
+                team_clients = int(arow.get('clients') or 0)
+                lines.append(f"{medal} **{team}** (Admin: **{admin}**) — **{score}%** · {team_clients} clients")
+                # List traders under that admin (no client names).
+                for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
+                    lines.append(f"     - Trader: {trader}")
+                lines.append("")
+    except Exception:
+        # Never block summary generation if team aggregation fails.
+        pass
 
     # ── Downtime Alert (bottom of message for maximum visibility) ──
     if downtime_clients:
@@ -11132,21 +11361,16 @@ def update_data():
                 action_type = data.get('action_type', 'UPDATE')
                 
                 if action_type == 'CREATE':
-                    # For "Add Account", ALWAYS use DB evaluations as the base
-                    # and only append genuinely new rows. This prevents a stale
-                    # frontend copy from overwriting push-sourced data.
+                    # Evaluations-tab "Add Account" only — hedge/prop/VPS saves must
+                    # use UPDATE so we never append a phantom evaluation row.
                     if len(evaluations) > len(existing_evals):
                         now_iso = datetime.utcnow().isoformat()
                         new_rows = evaluations[len(existing_evals):]
-                        # Mark appended rows so the quality dashboard can treat
-                        # them as "new / not populated yet" for initial validations.
                         for _r in new_rows:
                             if isinstance(_r, dict) and '_row_added_at' not in _r:
                                 _r['_row_added_at'] = now_iso
                         evaluations = normalize_evaluations(existing_evals) + new_rows
-                    else:
-                        # Frontend has fewer or equal evals — it's stale.
-                        # Append a default new evaluation to the DB version.
+                    elif data.get('create_evaluation'):
                         evaluations = normalize_evaluations(existing_evals)
                         new_row = {
                             "Prop Firm": "My Funded Futures",
@@ -11156,6 +11380,8 @@ def update_data():
                         }
                         new_row['_row_added_at'] = datetime.utcnow().isoformat()
                         evaluations.append(new_row)
+                    else:
+                        evaluations = normalize_evaluations(existing_evals)
                     existing_evals = existing_data.get("evaluations", [])
                 elif action_type not in ('DELETE', 'ROLLBACK'):
                     # General safety check: block saves that would drop eval count

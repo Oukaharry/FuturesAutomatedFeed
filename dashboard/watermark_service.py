@@ -303,51 +303,107 @@ def get_client_split_pct(client_id):
 
 def compute_waterlog_daily_fallback(client_id):
     """
-    When `waterlog_periods` was never seeded but `daily_watermarks` has rows,
-    build a minimal Profit Share row so the dashboard works without Google Sheets.
-
-    Baseline: newest-only scan over prior daily snapshots — first strictly positive
-    net (same idea as “most recent prior positive” on coarser period data).
+    Legacy entry point — delegates to monthly computation from daily watermarks.
+    Kept for callers that still invoke this name directly.
     """
     daily = get_all_daily_watermarks(client_id)
     if not daily:
         return None
+    result = _compute_waterlog_monthly_from_daily(client_id, daily)
+    if result:
+        result['_source'] = 'daily_watermarks_fallback'
+    return result
 
-    latest_date, latest_val = daily[-1]
-    latest_f = float(latest_val)
 
-    baseline = 0.0
-    for j in range(len(daily) - 2, -1, -1):
-        v = float(daily[j][1])
-        if v > 0:
-            baseline = v
-            break
+def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0, prev_period_net=0.0):
+    """
+    Build monthly Profit Share rows (21st → 20th) from daily_watermarks alone.
 
-    split_pct = get_client_split_pct(client_id)
-    if latest_f <= 0:
-        ps = 0.0
-    elif latest_f > baseline:
-        ps = (latest_f - baseline) * split_pct / 100.0
-    else:
-        ps = 0.0
+    Used for new clients with no imported waterlog_periods schedule.
+    """
+    from datetime import datetime as _dt, date as _date
 
-    def _fmt_cur(v):
+    def _parse_money_cell(s):
+        if s is None:
+            return 0.0
+        t = str(s).replace('$', '').replace(',', '').strip()
+        if not t or t.lower() == 'nan':
+            return 0.0
+        try:
+            return float(t)
+        except ValueError:
+            return 0.0
+
+    def _fmt_date(d):
+        return f"{d.month}/{d.day}/{d.year}"
+
+    def _fmt_currency(v):
         if v < 0:
             return f"-${abs(v):,.2f}"
         return f"${v:,.2f}"
 
-    fd = f"{latest_date.month}/{latest_date.day}/{latest_date.year}"
+    TRANSITION_END = _date(2026, 3, 20)
+    client_split_pct = get_client_split_pct(client_id)
+    np_overrides = get_net_profit_overrides(client_id)
+    spct_overrides = get_split_pct_overrides(client_id)
+
+    result = []
+    today = _dt.now().date()
+    month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
+
+    while month_start <= today:
+        if month_start.month == 12:
+            month_end = _date(month_start.year + 1, 1, 20)
+        else:
+            month_end = _date(month_start.year, month_start.month + 1, 20)
+
+        effective_end = min(month_end, today)
+        in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
+        net_profit = in_range[-1][1] if in_range else prev_period_net
+
+        monthly_np_key = _fmt_date(month_start)
+        if monthly_np_key in np_overrides:
+            net_profit = np_overrides[monthly_np_key]
+
+        monthly_split_pct = client_split_pct
+        if monthly_np_key in spct_overrides:
+            monthly_split_pct = spct_overrides[monthly_np_key]
+
+        effective_base = max(last_net_at_split, 0.0)
+        if net_profit > effective_base and net_profit > 0:
+            profit_split = (net_profit - effective_base) * monthly_split_pct / 100
+        else:
+            profit_split = 0.0
+
+        result.append({
+            'from_date':    _fmt_date(month_start),
+            'to_date':      _fmt_date(month_end),
+            'low':          _fmt_currency(net_profit),
+            'profit_split': f"${profit_split:,.0f}" if profit_split > 0 else '$0',
+            'split_pct':    monthly_split_pct,
+        })
+
+        if effective_end >= month_end:
+            prev_period_net = net_profit
+            if profit_split > 0:
+                last_net_at_split = net_profit
+
+        month_start = month_end + timedelta(days=1)
+        if month_start > today:
+            break
+
+    overrides = get_profit_split_overrides(client_id)
+    if overrides:
+        for period in result:
+            key = period['from_date']
+            if key in overrides:
+                val = overrides[key]
+                period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
+                period['profit_split_override'] = True
 
     return {
-        'periods': [{
-            'from_date': fd,
-            'to_date': fd,
-            'low': _fmt_cur(latest_f),
-            'profit_split': f"${ps:,.0f}" if ps > 0 else '$0',
-            'split_pct': split_pct,
-        }],
-        'last_split_net_profit': baseline,
-        '_source': 'daily_watermarks_fallback',
+        'periods': result,
+        'last_split_net_profit': last_net_at_split,
     }
 
 
@@ -387,10 +443,13 @@ def compute_waterlog_from_db(client_id):
             return 0.0
 
     periods_with_vals = get_waterlog_periods_with_values(client_id)
-    if not periods_with_vals:
-        return None  # No schedule stored — caller falls back to sheet
-
     daily = get_all_daily_watermarks(client_id)  # [(date_obj, float)]
+
+    # New clients: no imported sheet schedule — build monthly rows from daily data only.
+    if not periods_with_vals:
+        if not daily:
+            return None
+        return _compute_waterlog_monthly_from_daily(client_id, daily)
 
     TRANSITION_START = _date(2026, 2, 24)
     TRANSITION_END   = _date(2026, 3, 20)
