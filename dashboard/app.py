@@ -11018,6 +11018,46 @@ def api_send_checklist_slack():
                     get_remote_address(),
                     client_id=client_id,
                 )
+                # Post-send safety net:
+                # Sending the daily summary means the trader is "done" with this client for today.
+                # Immediately rescan the client so any stale day markers (downtime) show up as issues
+                # right away (prevents missed trades due to leftover weekday placeholders).
+                try:
+                    results = run_quality_scan(target_client=client_id) or []
+                    if results:
+                        r = results[0]
+                        try:
+                            from dashboard.database import get_connection
+                            scan_date = datetime.now().strftime('%Y-%m-%d')
+                            with get_connection() as conn:
+                                cursor = conn.cursor()
+                                cursor.execute(
+                                    'DELETE FROM quality_scan_results WHERE scan_date = ? AND client_id = ?',
+                                    (scan_date, client_id),
+                                )
+                                cursor.execute(
+                                    '''INSERT INTO quality_scan_results
+                                       (scan_date, client_id, trader, admin, total_issues, issues, health_score)
+                                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                                    (
+                                        scan_date,
+                                        r.get('client_id') or client_id,
+                                        r.get('trader'),
+                                        r.get('admin'),
+                                        r.get('total_issues', 0),
+                                        json.dumps(r.get('issues') or []),
+                                        r.get('health_score', 100.0),
+                                    ),
+                                )
+                                conn.commit()
+                            try:
+                                _sync_quality_issue_tracking(scan_date, [r])
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            logging.warning('Post-summary quality rescan save failed for %s: %s', client_id, e)
+                except Exception as e:
+                    logging.warning('Post-summary quality rescan failed for %s: %s', client_id, e)
             log_action('SLACK_DAILY_SUMMARY', user_type, user_identifier,
                        get_remote_address(), f'Daily summary sent to Slack for {client_id}')
             return jsonify({'status': 'success', 'message': 'Summary sent to Slack!'})
