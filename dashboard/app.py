@@ -8246,8 +8246,11 @@ def run_quality_scan(target_client=None):
                             _fee_note = str(_v).strip()
                             break
                 # Only allow a very explicit override for truly free accounts.
-                # The note must contain these exact words: "Free Account".
-                _is_free_account_override = bool(_fee_note and ("Free Account" in _fee_note))
+                # The note must contain these exact words: "Free Account"
+                # AND both fees must be truly $0.00 (not $1, not $5).
+                _is_free_account_note = bool(_fee_note and ("Free Account" in _fee_note))
+                _is_true_free_fees = (abs(challenge_fee_num) < 1e-9) and (abs(activation_fee_num) < 1e-9)
+                _is_free_account_override = _is_free_account_note and _is_true_free_fees
                 if (
                     not is_live_funded_numeric_row
                     and (challenge_fee_num < _MIN_FEE_USD and activation_fee_num < _MIN_FEE_USD)
