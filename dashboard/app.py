@@ -8233,8 +8233,11 @@ def run_quality_scan(target_client=None):
 
                 # Empty Fee
                 fee_raw = str(ev.get('Fee', '') or '').strip()
-                fee_num = _parse_nonzero(ev.get('Fee', ''))
-                # Treat "0", "0.00", etc. as missing fee — challenge fees must be > 0.00
+                challenge_fee_num = _parse_nonzero(ev.get('Fee', ''))
+                activation_fee_num = _parse_nonzero(ev.get('Activation Fee', ''))
+                # Treat <$10 challenge + activation as missing fees (accounts with no fees).
+                # Some traders were bypassing the check by putting $1; we treat anything under $10 as missing.
+                _MIN_FEE_USD = 10.0
                 _notes = ev.get('_notes') or {}
                 _fee_note = ''
                 if isinstance(_notes, dict):
@@ -8242,17 +8245,18 @@ def run_quality_scan(target_client=None):
                         if str(_k or '').strip().lower() == 'fee' and str(_v or '').strip():
                             _fee_note = str(_v).strip()
                             break
-                # If the Fee cell has a note, treat it as an explicit override/explanation
-                # and do not flag "Empty Fee" even when Fee is 0.00.
+                # Only allow a very explicit override for truly free accounts.
+                # The note must contain these exact words: "Free Account".
+                _is_free_account_override = bool(_fee_note and ("Free Account" in _fee_note))
                 if (
                     not is_live_funded_numeric_row
-                    and (not fee_raw or fee_num <= 0.0)
+                    and (challenge_fee_num < _MIN_FEE_USD and activation_fee_num < _MIN_FEE_USD)
                     and has_data
                     and not is_empty_fee_exempt
-                    and not _fee_note
+                    and not _is_free_account_override
                 ):
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
-                                   'detail': f'{row_label}: Fee not filled in',
+                                   'detail': f'{row_label}: Challenge + activation fees appear missing (< ${_MIN_FEE_USD:.0f})',
                                    'estimated_date': _estimate_issue_date(ev, 'Empty Fee', scan_date_str)})
 
                 # New-row strict rule:
