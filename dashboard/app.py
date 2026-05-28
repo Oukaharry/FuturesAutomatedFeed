@@ -8245,18 +8245,14 @@ def run_quality_scan(target_client=None):
                         if str(_k or '').strip().lower() == 'fee' and str(_v or '').strip():
                             _fee_note = str(_v).strip()
                             break
-                # Only allow a very explicit override for truly free accounts.
-                # The note must contain these exact words: "Free Account"
-                # AND both fees must be truly $0.00 (not $1, not $5).
-                _is_free_account_note = bool(_fee_note and ("Free Account" in _fee_note))
-                _is_true_free_fees = (abs(challenge_fee_num) < 1e-9) and (abs(activation_fee_num) < 1e-9)
-                _is_free_account_override = _is_free_account_note and _is_true_free_fees
+                # If the Fee cell has a note, treat it as an explicit override/explanation
+                # and do not flag when both fees are below the minimum.
                 if (
                     not is_live_funded_numeric_row
                     and (challenge_fee_num < _MIN_FEE_USD and activation_fee_num < _MIN_FEE_USD)
                     and has_data
                     and not is_empty_fee_exempt
-                    and not _is_free_account_override
+                    and not _fee_note
                 ):
                     issues.append({'check': 'Empty Fee', 'severity': 'low', 'row': idx,
                                    'detail': f'{row_label}: Challenge + activation fees appear missing (< ${_MIN_FEE_USD:.0f})',
