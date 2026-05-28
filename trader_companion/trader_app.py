@@ -4741,6 +4741,25 @@ class TradeOpssAIApp:
         else:
             return "Challenge", "challenge_trade1"
 
+    @staticmethod
+    def _phase_badge_label(current_phase: str, phase_key: str) -> str:
+        """Short label for the Phase column (CH1 / FD2 / FA / DD1...)."""
+        pk = str(phase_key or "").strip().lower()
+        if pk.startswith("challenge_trade"):
+            suf = pk.replace("challenge_trade", "").strip() or "1"
+            return f"CH{suf}"
+        if pk.startswith("funded_trade_doubledip_"):
+            suf = pk.replace("funded_trade_doubledip_", "").strip() or "1"
+            return f"DD{suf}"
+        if pk.startswith("funded_trade"):
+            suf = pk.replace("funded_trade", "").strip() or "1"
+            return f"FD{suf}"
+        if pk == "farming":
+            return "FA"
+        # Fallback: first 3 letters of detected phase
+        cp = str(current_phase or "").strip().upper()
+        return (cp[:3] or "PH")
+
     def _resolve_phase_key_from_day(self, ev, firm_code, current_phase):
         """Use the day placeholder cell index to determine the correct blueprint key.
 
@@ -4779,7 +4798,22 @@ class TradeOpssAIApp:
         if not trade_keys:
             return None, day_idx, day_name
 
-        # Clamp day index to available trade keys
+        # Clamp day index to available trade keys.
+        # If the trader placed a weekday placeholder in a cell beyond the
+        # configured number of trades for this firm/phase (e.g. Hedge Result 3
+        # when the firm only has CH1/CH2), we must not "invent" CH3 — instead
+        # we clamp to the last configured key and log a clear warning so the
+        # dashboard can be corrected.
+        if day_idx >= len(trade_keys):
+            try:
+                self.log(
+                    f"⚠ Phase cell overflow: firm={firm_code} phase={phase_group} "
+                    f"placeholder_cell={day_idx + 1} ({day_name}) but only {len(trade_keys)} "
+                    f"trade(s) configured — using {trade_keys[-1]}",
+                    "WARN",
+                )
+            except Exception:
+                pass
         key_idx = min(day_idx, len(trade_keys) - 1)
         resolved_key = trade_keys[key_idx]
         return resolved_key, day_idx, day_name
@@ -5505,6 +5539,8 @@ class TradeOpssAIApp:
                 if resolved_key:
                     phase_key = resolved_key
 
+                phase_badge = self._phase_badge_label(current_display, phase_key)
+
                 next_display = self._get_next_phase(firm_code, current_display)
                 next_display = str(next_display or "—")
 
@@ -5550,7 +5586,7 @@ class TradeOpssAIApp:
                                               corner_radius=8, border_width=1,
                                               border_color=glow_border)
                     phase_pill.pack(side="left", pady=6)
-                    ctk.CTkLabel(phase_pill, text=current_display.upper(),
+                    ctk.CTkLabel(phase_pill, text=phase_badge,
                                  font=("Consolas", 8, "bold"),
                                  text_color=glow_fg).pack(padx=8, pady=1)
 
@@ -5604,7 +5640,7 @@ class TradeOpssAIApp:
                              bg=row_bg, fg='#6B8DAD', font=('Consolas', 9)).pack(side="left", padx=2)
                     tk.Label(row_frame, text=acct_size[:10], width=8, anchor='w',
                              bg=row_bg, fg='#4A7C8F', font=('Consolas', 9)).pack(side="left", padx=2)
-                    tk.Label(row_frame, text=current_display, width=14, anchor='w',
+                    tk.Label(row_frame, text=phase_badge, width=14, anchor='w',
                              bg=row_bg, fg='#fbbf24', font=('Consolas', 9, 'bold')).pack(side="left", padx=2)
                     tk.Label(row_frame, text=f"→ {next_display}", width=14, anchor='w',
                              bg=row_bg, fg='#00D4FF', font=('Consolas', 9)).pack(side="left", padx=2)
@@ -7166,6 +7202,7 @@ class TradeOpssAIApp:
                      f"matched firms: {list(pa_lookup.keys())}")
 
         auto_count = 0
+        missing_creds = []  # list of firm names that have no dashboard creds
         for firm in firms:
             strip_color = self.PROP_FIRM_COLORS.get(firm, "#95A5A6")
             # Try exact match first, then case-insensitive, then alias match, then unmatched pool
@@ -7195,6 +7232,7 @@ class TradeOpssAIApp:
                 pa = pa_unmatched.pop(0)
             pre_user = (pa.get("tradovate_username") or "").strip()
             pre_pass = (pa.get("tradovate_password") or "").strip()
+            creds_from_dashboard = bool(pre_user and pre_pass)
 
             # Carry over existing connected account if available
             old_conn = old_connections.get(firm, {})
@@ -7297,6 +7335,19 @@ class TradeOpssAIApp:
 
             if pre_user and pre_pass:
                 auto_count += 1
+            else:
+                # Don't hang / silently wait: record missing creds so UI + logs are explicit.
+                missing_creds.append(firm)
+                try:
+                    # Mark status as missing creds (unless already connected)
+                    if not existing_account:
+                        status_var.set("❌")
+                        if hasattr(conn_btn, "configure"):
+                            conn_btn.configure(text="Missing", fg_color="#450A0A")
+                        if hasattr(status_lbl, "configure"):
+                            status_lbl.configure(text_color="#F87171")
+                except Exception:
+                    pass
 
             self._broker_connections[firm] = {
                 "user_entry": user_entry,
@@ -7306,7 +7357,13 @@ class TradeOpssAIApp:
                 "status_lbl": status_lbl,
                 "row_frame": row,
                 "account": existing_account,
+                "creds_source": "dashboard" if creds_from_dashboard else "missing",
             }
+
+        if missing_creds:
+            # Explicit log line per firm so it's impossible to miss.
+            for _f in missing_creds:
+                self.log(f"❌ Could not find Tradovate credentials for {_f}", "ERROR")
 
         if auto_count:
             self.log(f"Broker credentials found for {auto_count} prop firm(s) — auto-connecting...")
@@ -7426,6 +7483,10 @@ class TradeOpssAIApp:
             pwd = conn["pass_entry"].get().strip()
             if user and pwd and not conn.get("account"):
                 to_connect.append(firm)
+            elif not user or not pwd:
+                # If a firm row exists but has missing creds, log it explicitly once.
+                if (conn.get("creds_source") == "missing") and not conn.get("account"):
+                    self.log(f"❌ Auto-connect skipped: missing Tradovate credentials for {firm}", "ERROR")
 
         if not to_connect:
             return
