@@ -27,7 +27,13 @@ if ROOT not in sys.path:
 
 
 def _norm(s: Any) -> str:
-    return str(s or "").strip().lower().replace("_", " ").replace("-", " ")
+    """
+    Normalise prop firm labels so variants match:
+      "My Funded Futures" == "MyFundedFutures" == "my_funded-futures"
+    """
+    raw = str(s or "").strip().lower()
+    # Keep alnum only so whitespace/punct differences don't matter.
+    return "".join(ch for ch in raw if ch.isalnum())
 
 
 def _backup_path(client_id: str, out_dir: str) -> str:
