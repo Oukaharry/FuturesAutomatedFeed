@@ -785,6 +785,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
 
     for ev in evaluations:
+        # Soft-deleted rows are kept for audit/history but must not contribute
+        # to stats, cashflow totals, or firm breakdowns.
+        if isinstance(ev, dict) and ev.get('_deleted'):
+            continue
         try:
             firm = prop_firm_stats_parent(ev.get('Prop Firm', 'Unknown'))
             status_p1 = str(ev.get('Status P1', '')).strip()
