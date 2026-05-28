@@ -32,6 +32,19 @@ import requests
 import base64
 import json
 
+# Ensure all companion logs land in mt5_trading.log
+try:
+    from trader_companion.audit_log import ensure_mt5_trading_log_handler, audit
+except Exception:
+    try:
+        from audit_log import ensure_mt5_trading_log_handler, audit  # type: ignore
+    except Exception:
+        ensure_mt5_trading_log_handler = None  # type: ignore
+        audit = None  # type: ignore
+
+if ensure_mt5_trading_log_handler:
+    ensure_mt5_trading_log_handler()
+
 # Load .env at program start
 load_dotenv()
 
@@ -1647,6 +1660,18 @@ class TopStepXAccount:
         # Acquire lock to prevent stats fetching during order placement
         with self.lock:
             try:
+                if audit:
+                    audit(
+                        "topstepx.order.place.start",
+                        expected_account=str(expected_account or ""),
+                        side="BUY",
+                        symbol=str(symbol),
+                        quantity=int(quantity),
+                        order_type=str(order_type),
+                        tp_dollars=tp_dollars,
+                        sl_dollars=sl_dollars,
+                        skip_post_trade_setup=bool(skip_post_trade_setup),
+                    )
                 # TIME CHECKPOINT: Start overall timing
                 order_start_time = time.time()
                 

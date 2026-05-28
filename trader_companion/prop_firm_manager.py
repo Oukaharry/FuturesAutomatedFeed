@@ -377,7 +377,7 @@ class PropFirmManager:
             "TopStep": {
                 "name": "TopStep",
                 "account_sizes": ["$50,000"],
-                "trading_phases": ["Challenge Phase", "Funded Phase", "Double Dip Phase", "Farming Phase"],
+                "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase"],
                 "strategy_configs": {
                     "challenge_trade1": {
                         "50k": {
@@ -508,7 +508,7 @@ class PropFirmManager:
             "TopStep RTP": {
                 "name": "TopStep RTP",
                 "account_sizes": ["$50,000"],
-                "trading_phases": ["Challenge Phase", "Funded Phase", "Double Dip Phase", "Farming Phase"],
+                "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase"],
                 "strategy_configs": {
                     # ── Evaluation / Challenge ──
                     # Goal: +$3,000 profit before two losses in a row, while
@@ -2042,15 +2042,11 @@ class PropFirmManager:
         "TopStep": {
             "Challenge":  ["challenge_trade1", "challenge_trade2"],
             "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
-            "Double Dip": ["funded_trade_doubledip_1", "funded_trade_doubledip_2",
-                           "funded_trade_doubledip_3", "funded_trade_doubledip_4"],
             "Farming":    ["farming"],
         },
         "TopStep RTP": {
             "Challenge":  ["challenge_trade1", "challenge_trade2"],
             "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
-            "Double Dip": ["funded_trade_doubledip_1", "funded_trade_doubledip_2",
-                           "funded_trade_doubledip_3", "funded_trade_doubledip_4"],
             "Farming":    ["farming"],
         },
         "Lucid": {
@@ -2472,7 +2468,6 @@ class PropFirmManager:
     _MT5_TP_BUFFER_POINTS = 4
     # Funded-account SL rule: trade 1 always risks exactly this many dollars.
     FUNDED_TRADE1_SL_DOLLARS = 2000.0
-
     @staticmethod
     def _sl_to_mt5_tp(trado_sl_ticks: int) -> int:
         """Convert Tradovate SL ticks → MT5 TP points.

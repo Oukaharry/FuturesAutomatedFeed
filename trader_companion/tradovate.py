@@ -20,6 +20,19 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 from dotenv import load_dotenv
 
+# Ensure all companion logs land in mt5_trading.log
+try:
+    from trader_companion.audit_log import ensure_mt5_trading_log_handler, audit
+except Exception:
+    try:
+        from audit_log import ensure_mt5_trading_log_handler, audit  # type: ignore
+    except Exception:
+        ensure_mt5_trading_log_handler = None  # type: ignore
+        audit = None  # type: ignore
+
+if ensure_mt5_trading_log_handler:
+    ensure_mt5_trading_log_handler()
+
 # Load .env at program start
 load_dotenv()
 
@@ -1429,6 +1442,21 @@ class TradovateAccount:
         # Use lock to prevent conflict with order placement
         if not self.lock.acquire(blocking=False):
             # If locked (e.g. placing order), return cached stats immediately
+            # IMPORTANT: stats are account-specific. If we cannot safely fetch,
+            # return the last known stats for the currently active account (if any).
+            try:
+                _active = self.get_active_account()
+            except Exception:
+                _active = None
+            if _active and hasattr(self, "_cached_stats_by_account"):
+                return self._cached_stats_by_account.get(_active) or getattr(self, '_cached_stats', {
+                    "Account Number": "Trading...",
+                    "Balance": "N/A",
+                    "Profit/Loss": "N/A",
+                    "Open Trades": "N/A",
+                    "Symbol": "",
+                    "Direction": ""
+                })
             return getattr(self, '_cached_stats', {
                 "Account Number": "Trading...",
                 "Balance": "N/A", 
@@ -1440,6 +1468,19 @@ class TradovateAccount:
             
         try:
             if getattr(self, '_placing_order', False):
+                try:
+                    _active = self.get_active_account()
+                except Exception:
+                    _active = None
+                if _active and hasattr(self, "_cached_stats_by_account"):
+                    return self._cached_stats_by_account.get(_active) or getattr(self, '_cached_stats', {
+                        "Account Number": "Trading...",
+                        "Balance": "N/A",
+                        "Profit/Loss": "N/A",
+                        "Open Trades": "N/A",
+                        "Symbol": "",
+                        "Direction": ""
+                    })
                 return getattr(self, '_cached_stats', {
                     "Account Number": "Trading...",
                     "Balance": "N/A", 
@@ -1455,10 +1496,25 @@ class TradovateAccount:
             current_time = time.time()
             last_fetch_time = getattr(self, '_stats_last_fetch_time', 0)
             time_since_fetch = current_time - last_fetch_time
+            try:
+                active_account = self.get_active_account()
+            except Exception:
+                active_account = None
             
-            if time_since_fetch < cache_ttl and hasattr(self, '_cached_stats'):
-                # Return cached stats (still fresh)
-                return self._cached_stats
+            # Account-scoped cache (prevents wrong-account balance reads after a switch)
+            if not hasattr(self, "_cached_stats_by_account"):
+                self._cached_stats_by_account = {}
+            if not hasattr(self, "_stats_last_fetch_by_account"):
+                self._stats_last_fetch_by_account = {}
+
+            if active_account:
+                acct_last = self._stats_last_fetch_by_account.get(active_account, 0)
+                if (current_time - acct_last) < cache_ttl and active_account in self._cached_stats_by_account:
+                    return self._cached_stats_by_account[active_account]
+            else:
+                if time_since_fetch < cache_ttl and hasattr(self, '_cached_stats'):
+                    # Return cached stats (still fresh)
+                    return self._cached_stats
 
             # Always try to fetch stats from the live page, even if not self.logged_in
             try:
@@ -1542,6 +1598,12 @@ class TradovateAccount:
                 # Cache the stats WITH TIMESTAMP for performance optimization
                 self._cached_stats = stats
                 self._stats_last_fetch_time = time.time()
+                try:
+                    if active_account:
+                        self._cached_stats_by_account[active_account] = stats
+                        self._stats_last_fetch_by_account[active_account] = self._stats_last_fetch_time
+                except Exception:
+                    pass
                 return stats
                 
             except Exception as e:
@@ -1985,11 +2047,20 @@ class TradovateAccount:
                     new_lower = new_account.lower()
                     if target_lower in new_lower or new_lower in target_lower:
                         print(f"[ACCOUNT SWITCH] ✅ VERIFIED — now on: {new_account}")
+                        # Clear global stats cache (account-scoped cache remains safe)
                         self._stats_last_fetch_time = 0
+                        try:
+                            self._cached_stats = None
+                        except Exception:
+                            pass
                         return True
                     elif digit_suffix and new_account.endswith(digit_suffix):
                         print(f"[ACCOUNT SWITCH] ✅ VERIFIED (suffix) — now on: {new_account}")
                         self._stats_last_fetch_time = 0
+                        try:
+                            self._cached_stats = None
+                        except Exception:
+                            pass
                         return True
                     else:
                         print(f"[ACCOUNT SWITCH] ❌ Account did NOT change (attempt {attempt}). Still on: {new_account}")
@@ -2174,6 +2245,24 @@ class TradovateAccount:
         """
         Place a market order with enhanced crash detection and recovery
         """
+        if audit:
+            try:
+                _active = self.get_active_account()
+            except Exception:
+                _active = None
+            audit(
+                "tradovate.order.place.start",
+                expected_account=str(expected_account or ""),
+                active_account=str(_active or ""),
+                side=str(side),
+                symbol=str(symbol),
+                qty=int(qty),
+                tp=tp,
+                sl=sl,
+                prop_firm=str(prop_firm or ""),
+                phase=str(phase or ""),
+                account_size=str(account_size or ""),
+            )
         # Acquire lock to prevent stats fetching during order placement
         with self.lock:
             # --- ACCOUNT NUMBER VERIFICATION ---
@@ -2815,6 +2904,8 @@ class TradovateAccount:
     def _api_fetch(self, endpoint, method="GET", body=None):
         """Execute a fetch() call in the browser against the Tradovate REST API.
         Returns parsed JSON data or None on failure."""
+        if audit:
+            audit("tradovate.api.request", endpoint=str(endpoint), method=str(method), body=body)
         body_js = f"opts.body = JSON.stringify({json.dumps(body)});" if body else ""
         js = f"""
         var cb = arguments[arguments.length - 1];
@@ -2846,14 +2937,20 @@ class TradovateAccount:
         try:
             result = self.driver.execute_async_script(js)
             if result and result.get('ok'):
+                if audit:
+                    audit("tradovate.api.response", endpoint=str(endpoint), method=str(method), ok=True, status=int(result.get("status", 200) or 200))
                 return result.get('data')
             # Log the actual error instead of silently returning None
             status = result.get('status', '?') if result else '?'
             err = result.get('error', '') if result else 'no result'
             data = result.get('data', '') if result else ''
+            if audit:
+                audit("tradovate.api.response", endpoint=str(endpoint), method=str(method), ok=False, status=status, error=err, data=str(data)[:500])
             print(f"[API] fetch {endpoint} FAILED: status={status} error={err} data={data}")
             return None
         except Exception as e:
+            if audit:
+                audit("tradovate.api.exception", endpoint=str(endpoint), method=str(method), error=str(e))
             print(f"[API] fetch {endpoint} exception: {e}")
             return None
 
@@ -3069,9 +3166,16 @@ class TradovateAccount:
                 order_id = '?'
                 fill_price = None
 
-            # Now add TP/SL brackets using the actual fill price
+            # Now add TP/SL brackets using the actual fill price.
+            #
+            # IMPORTANT: bracket placement must NEVER make this function return None
+            # after the market order is already placed. Returning None triggers the
+            # Selenium fallback in _place_order_side(), which can place a SECOND
+            # market order. Instead, return the market-order result with a warning.
             if tp is not None or sl is not None:
                 import time as _time
+                brackets_ok = False
+                bracket_error = None
 
                 # Retry loop — market orders may take a moment to fill
                 if not fill_price and order_id != '?':
@@ -3108,12 +3212,23 @@ class TradovateAccount:
                         print(f"[API ORDER] ❌ SANITY FAIL: fill_price={fill_price} is too low for {symbol}! Brackets NOT placed.")
                     else:
                         print(f"[API ORDER] Placing brackets at fill_price={fill_price}")
-                        self._place_brackets_post_fill(
-                            account_name, account_id, contract_name, qty,
-                            side, fill_price, tp, sl, tick_size
-                        )
+                        try:
+                            self._place_brackets_post_fill(
+                                account_name, account_id, contract_name, qty,
+                                side, fill_price, tp, sl, tick_size
+                            )
+                            brackets_ok = True
+                        except Exception as ex:
+                            bracket_error = str(ex)
+                            print(f"[API ORDER] ❌ Bracket placement error (market order already placed): {bracket_error}")
                 else:
                     print(f"[API ORDER] ❌ Could not determine fill price — brackets NOT placed!")
+
+                # Attach bracket status to the returned dict so callers can alert the user.
+                if isinstance(result, dict):
+                    result["_brackets_ok"] = bool(brackets_ok)
+                    if bracket_error:
+                        result["_bracket_error"] = bracket_error
 
             return result
 
