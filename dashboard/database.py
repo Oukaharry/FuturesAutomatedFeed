@@ -1608,10 +1608,12 @@ def get_summary_status_for_date(date: str) -> list:
 
         with get_connection() as conn:
             cursor = conn.cursor()
-            # Source 1: daily_checklists — filter by submitted_at timestamp
-            # so the window is exactly 23:05→23:05 UTC
+            # Source 1: daily_checklists — ONLY count as "sent" if the checklist
+            # includes the explicit slack marker item (id == "slack_sent").
+            # Traders can Save & Preview without actually sending; that should NOT
+            # mark the client as done in the submission tracker.
             cursor.execute(
-                "SELECT client_id, user_identifier, submitted_at FROM daily_checklists "
+                "SELECT client_id, user_identifier, submitted_at, items FROM daily_checklists "
                 "WHERE checklist_type = 'daily_summary' AND client_id != '' "
                 "AND submitted_at >= ? AND submitted_at < ? "
                 "ORDER BY submitted_at DESC",
@@ -1620,6 +1622,18 @@ def get_summary_status_for_date(date: str) -> list:
             for row in cursor.fetchall():
                 cid = _normalize_identifier(_row_value(row, 'client_id') or '')
                 if not cid:
+                    continue
+                # Only count if slack_sent exists in the saved items payload.
+                try:
+                    raw_items = _row_value(row, 'items')
+                    items = json.loads(raw_items) if isinstance(raw_items, str) else (raw_items or [])
+                    has_slack_marker = any(
+                        isinstance(it, dict) and (it.get('id') == 'slack_sent')
+                        for it in (items or [])
+                    )
+                except Exception:
+                    has_slack_marker = False
+                if not has_slack_marker:
                     continue
                 if cid not in results:
                     results[cid] = {
@@ -1631,7 +1645,7 @@ def get_summary_status_for_date(date: str) -> list:
             # Source 2: audit_log — same 23:05→23:05 UTC window
             cursor.execute(
                 "SELECT user_identifier, details, timestamp FROM audit_log "
-                "WHERE action IN ('CHECKLIST_SUBMIT', 'SLACK_DAILY_SUMMARY') "
+                "WHERE action IN ('SLACK_DAILY_SUMMARY') "
                 "AND timestamp >= ? AND timestamp < ? AND success = 1 "
                 "ORDER BY timestamp DESC",
                 (utc_start, utc_end)
