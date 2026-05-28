@@ -2472,7 +2472,6 @@ class PropFirmManager:
     _MT5_TP_BUFFER_POINTS = 4
     # Funded-account SL rule: trade 1 always risks exactly this many dollars.
     FUNDED_TRADE1_SL_DOLLARS = 2000.0
-
     @staticmethod
     def _sl_to_mt5_tp(trado_sl_ticks: int) -> int:
         """Convert Tradovate SL ticks → MT5 TP points.

@@ -5995,6 +5995,25 @@ class TradeOpssAIApp:
                             f"an unhedged position. {health_msg}"
                         )
 
+                # PRE-FLIGHT SNAPSHOT: log expected account + active account + equity/balance
+                try:
+                    active_acct = broker_account.get_active_account() if hasattr(broker_account, "get_active_account") else None
+                except Exception:
+                    active_acct = None
+                try:
+                    stats = broker_account.get_account_stats() if hasattr(broker_account, "get_account_stats") else {}
+                except Exception:
+                    stats = {}
+                bal = (stats or {}).get("Balance", "N/A")
+                self.log(f"🧾 Pre-flight {platform}: expected={acct_num} active={active_acct or '?'} equity={bal}")
+                if hedging and mt5_api:
+                    try:
+                        mt5_info = mt5_api.get_account_info() if hasattr(mt5_api, "get_account_info") else None
+                        if isinstance(mt5_info, dict):
+                            self.log(f"🧾 Pre-flight MT5: login={mt5_info.get('login','?')} equity=${mt5_info.get('equity','?')}")
+                    except Exception:
+                        pass
+
                 # 1. Broker order
                 if platform == "Tradovate":
                     if side == "buy":
@@ -6939,6 +6958,27 @@ class TradeOpssAIApp:
                                 f"MT5 not ready — broker order skipped to "
                                 f"avoid an unhedged position. {health_msg}"
                             )
+
+                    # PRE-FLIGHT SNAPSHOT: log expected account + active account + equity/balance
+                    try:
+                        active_acct = broker_account.get_active_account() if hasattr(broker_account, "get_active_account") else None
+                    except Exception:
+                        active_acct = None
+                    try:
+                        stats = broker_account.get_account_stats() if hasattr(broker_account, "get_account_stats") else {}
+                    except Exception:
+                        stats = {}
+                    bal = (stats or {}).get("Balance", "N/A")
+                    self.root.after(0, lambda p=platform, an=acct_num, aa=(active_acct or "?"), b=bal:
+                        self.log(f"🧾 Pre-flight {p}: expected={an} active={aa} equity={b}"))
+                    if hedging and mt5_api:
+                        try:
+                            mt5_info = mt5_api.get_account_info() if hasattr(mt5_api, "get_account_info") else None
+                            if isinstance(mt5_info, dict):
+                                self.root.after(0, lambda mi=mt5_info:
+                                    self.log(f"🧾 Pre-flight MT5: login={mi.get('login','?')} equity=${mi.get('equity','?')}"))
+                        except Exception:
+                            pass
 
                     if platform == "Tradovate":
                         if side == "buy":
