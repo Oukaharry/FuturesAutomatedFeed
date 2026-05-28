@@ -4781,6 +4781,10 @@
             const firms = {};
             const pc = (v) => { try { return parseFloat(String(v||'').replace(/[$,]/g,'').trim()) || 0; } catch(e) { return 0; } };
             evals.forEach(ev => {
+                // Do not include soft-deleted rows in the By Prop Firm breakdown.
+                // Deleted rows can linger in the DB for audit/history but should not
+                // contribute to active client rollups.
+                if (ev && ev._deleted) return;
                 const name = String(ev['Prop Firm']||'').trim() || 'Unknown';
                 if (isFirmHidden(name)) return;
                 if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
