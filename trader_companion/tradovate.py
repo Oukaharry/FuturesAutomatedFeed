@@ -20,6 +20,19 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 from dotenv import load_dotenv
 
+# Ensure all companion logs land in mt5_trading.log
+try:
+    from trader_companion.audit_log import ensure_mt5_trading_log_handler, audit
+except Exception:
+    try:
+        from audit_log import ensure_mt5_trading_log_handler, audit  # type: ignore
+    except Exception:
+        ensure_mt5_trading_log_handler = None  # type: ignore
+        audit = None  # type: ignore
+
+if ensure_mt5_trading_log_handler:
+    ensure_mt5_trading_log_handler()
+
 # Load .env at program start
 load_dotenv()
 
@@ -2232,6 +2245,24 @@ class TradovateAccount:
         """
         Place a market order with enhanced crash detection and recovery
         """
+        if audit:
+            try:
+                _active = self.get_active_account()
+            except Exception:
+                _active = None
+            audit(
+                "tradovate.order.place.start",
+                expected_account=str(expected_account or ""),
+                active_account=str(_active or ""),
+                side=str(side),
+                symbol=str(symbol),
+                qty=int(qty),
+                tp=tp,
+                sl=sl,
+                prop_firm=str(prop_firm or ""),
+                phase=str(phase or ""),
+                account_size=str(account_size or ""),
+            )
         # Acquire lock to prevent stats fetching during order placement
         with self.lock:
             # --- ACCOUNT NUMBER VERIFICATION ---
@@ -2873,6 +2904,8 @@ class TradovateAccount:
     def _api_fetch(self, endpoint, method="GET", body=None):
         """Execute a fetch() call in the browser against the Tradovate REST API.
         Returns parsed JSON data or None on failure."""
+        if audit:
+            audit("tradovate.api.request", endpoint=str(endpoint), method=str(method), body=body)
         body_js = f"opts.body = JSON.stringify({json.dumps(body)});" if body else ""
         js = f"""
         var cb = arguments[arguments.length - 1];
@@ -2904,14 +2937,20 @@ class TradovateAccount:
         try:
             result = self.driver.execute_async_script(js)
             if result and result.get('ok'):
+                if audit:
+                    audit("tradovate.api.response", endpoint=str(endpoint), method=str(method), ok=True, status=int(result.get("status", 200) or 200))
                 return result.get('data')
             # Log the actual error instead of silently returning None
             status = result.get('status', '?') if result else '?'
             err = result.get('error', '') if result else 'no result'
             data = result.get('data', '') if result else ''
+            if audit:
+                audit("tradovate.api.response", endpoint=str(endpoint), method=str(method), ok=False, status=status, error=err, data=str(data)[:500])
             print(f"[API] fetch {endpoint} FAILED: status={status} error={err} data={data}")
             return None
         except Exception as e:
+            if audit:
+                audit("tradovate.api.exception", endpoint=str(endpoint), method=str(method), error=str(e))
             print(f"[API] fetch {endpoint} exception: {e}")
             return None
 
