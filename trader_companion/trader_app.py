@@ -309,6 +309,27 @@ except Exception as _trado_err:
         _trado_err = _trado_err2
 _TRADOVATE_IMPORT_ERROR = str(_trado_err) if not TRADOVATE_AVAILABLE and '_trado_err' in dir() and _trado_err else None
 
+# Structured/file logging so adjustment + account-selection diagnostics land in
+# mt5_trading.log (the companion debug log) — not just the in-app GUI feed.
+import logging
+try:
+    from trader_companion.audit_log import audit, ensure_mt5_trading_log_handler
+except Exception:
+    try:
+        from audit_log import audit, ensure_mt5_trading_log_handler  # type: ignore
+    except Exception:
+        def audit(event, **fields):  # type: ignore
+            try:
+                logging.getLogger("AUDIT").info("[AUDIT] %s %s", event, fields)
+            except Exception:
+                pass
+        def ensure_mt5_trading_log_handler(*_a, **_k):  # type: ignore
+            return None
+try:
+    ensure_mt5_trading_log_handler()
+except Exception:
+    pass
+
 try:
     from trader_companion.topstepx import TopStepXAccount
     TOPSTEPX_AVAILABLE = True
@@ -5068,30 +5089,48 @@ class TradeOpssAIApp:
 
         return True, "\n".join(msgs)
 
-    def _get_current_phase_profit(self, ev, current_phase, broker_account=None, acct_size=None):
+    def _get_current_phase_profit(self, ev, current_phase, broker_account=None, acct_size=None, live_equity=None, acct_num=None):
         """Get the current P/L for the active phase.
 
         Priority:
         1. Live broker equity (equity - starting balance) — most accurate
         2. Eval hedge result fields — fallback when broker not available
+
+        ``live_equity`` lets the caller supply an ACCOUNT-SCOPED equity (read by
+        account_id via the API) so the stage-profit/TP math is computed from the
+        trade's own account instead of whatever account happens to be active in
+        the broker UI. When None we fall back to the DOM-scraped active account.
         """
         # ── 1. Try live broker equity ──
-        if broker_account and acct_size:
+        equity = None
+        equity_src = None
+        if live_equity is not None:
+            try:
+                equity = float(live_equity)
+                equity_src = "account-scoped API netLiq"
+            except (ValueError, TypeError):
+                equity = None
+        if equity is None and broker_account and acct_size:
             try:
                 stats = broker_account.get_account_stats()
                 balance_str = stats.get("Balance", "N/A")
                 if balance_str and balance_str != "N/A":
                     cleaned = balance_str.replace("$", "").replace(",", "").strip()
                     equity = float(cleaned)
-                    # Firm-aware starting balance.  Critical for MFFU funded
-                    # accounts which start at $0 — using $50K here would make
-                    # the TP adjuster think we are -$50K down and inflate TP.
-                    starting = self._resolve_starting_balance(ev, current_phase, acct_size)
-                    live_profit = equity - starting
-                    if abs(live_profit) > 0.01:
-                        return live_profit
+                    equity_src = "active-UI get_account_stats() [FALLBACK — not account-scoped]"
             except Exception:
-                pass
+                equity = None
+        if equity is not None and acct_size:
+            # Firm-aware starting balance.  Critical for MFFU funded
+            # accounts which start at $0 — using $50K here would make
+            # the TP adjuster think we are -$50K down and inflate TP.
+            starting = self._resolve_starting_balance(ev, current_phase, acct_size)
+            live_profit = equity - starting
+            audit("trader.phase_profit.live", acct_num=str(acct_num or ""),
+                  phase=str(current_phase), equity=equity, starting=starting,
+                  live_profit=live_profit, source=equity_src)
+            if abs(live_profit) > 0.01:
+                return live_profit
 
         # ── 2. Fallback: sum eval hedge result fields ──
         total = 0.0
@@ -6177,6 +6216,74 @@ class TradeOpssAIApp:
         # funded/double-dip phases (challenge_trade*/farming are excluded).
         is_funded = (phase_key or "").startswith("funded_trade")
 
+        # Snapshot blueprint values BEFORE adjustment, for diff logging.
+        _before_tp = config.get("tradovate_tp_ticks")
+        _before_sl = config.get("tradovate_sl_ticks")
+
+        # ── ACCOUNT-SCOPED LIVE READS ──────────────────────────────────────
+        # Previously the adjustment read live numbers from get_account_stats()
+        # (the *active* UI account) and get_min_equity() (always accounts[0]).
+        # On a multi-account Tradovate login that meant TP/SL could be adjusted
+        # from the WRONG account's balance/drawdown. We now resolve THIS trade's
+        # own account_id and pull one account-scoped min-equity snapshot that
+        # every branch below reuses. TopStepX (no _resolve_api_account_id) keeps
+        # its previous behaviour via the legacy fallbacks.
+        target_account_id = None
+        resolved_name = None
+        active_ui = None
+        account_min_eq = None
+        if broker_account is not None:
+            try:
+                if hasattr(broker_account, 'get_active_account'):
+                    active_ui = broker_account.get_active_account()
+            except Exception:
+                active_ui = None
+            if hasattr(broker_account, '_resolve_api_account_id'):
+                try:
+                    target_account_id, resolved_name = broker_account._resolve_api_account_id(acct_num)
+                except Exception as _re_err:
+                    self.log(f"⚠ Adjust {acct_num}: could not resolve account_id ({_re_err}) — using active-account reads")
+                if hasattr(broker_account, 'get_min_equity'):
+                    try:
+                        account_min_eq = broker_account.get_min_equity(account_id=target_account_id)
+                    except Exception as _me_err:
+                        self.log(f"⚠ Adjust {acct_num}: get_min_equity(account_id={target_account_id}) failed — {_me_err}")
+
+        scoped = isinstance(account_min_eq, dict)
+        scoped_net_liq = float(account_min_eq['net_liq']) if (scoped and account_min_eq.get('net_liq') is not None) else None
+        # Cross-check: does the resolved/active account match the trade target?
+        _acct_match = None
+        try:
+            if active_ui and acct_num:
+                _au, _an = str(active_ui), str(acct_num)
+                _acct_match = (_an in _au) or (_au in _an) or _au.endswith(_an[-5:]) or _an.endswith(_au[-5:])
+        except Exception:
+            _acct_match = None
+        self.log(
+            f"🎯 Adjust scope {acct_num} [{'funded' if is_funded else 'challenge/farming'}]: "
+            f"target_id={target_account_id} resolved='{resolved_name}' active_ui='{active_ui or '?'}' "
+            f"match={_acct_match} scoped_reads={scoped}")
+        if scoped:
+            self.log(
+                f"📊 Live[{acct_num}] id={target_account_id}: netLiq=${account_min_eq.get('net_liq')} "
+                f"SOD=${account_min_eq.get('net_liq_sod')} minEq=${account_min_eq.get('min_equity')} "
+                f"TMDL=${account_min_eq.get('trailing_max_drawdown_limit')} "
+                f"TMD=${account_min_eq.get('trailing_max_drawdown')} mode={account_min_eq.get('trailing_mode')}")
+        audit("trader.adjust.scope", acct_num=str(acct_num or ""), firm=str(firm_code or ""),
+              phase_key=str(phase_key or ""), phase=str(current_phase or ""),
+              is_funded=bool(is_funded), is_farming=bool(is_farming),
+              target_account_id=target_account_id, resolved_name=str(resolved_name or ""),
+              active_ui=str(active_ui or ""), account_matches_target=_acct_match,
+              scoped_reads=scoped, live_net_liq=scoped_net_liq,
+              net_liq_sod=(account_min_eq.get('net_liq_sod') if scoped else None),
+              min_equity=(account_min_eq.get('min_equity') if scoped else None),
+              tmdl=(account_min_eq.get('trailing_max_drawdown_limit') if scoped else None),
+              before_tp=_before_tp, before_sl=_before_sl, tick_value=tick_value, symbol=str(sym or ""))
+        if _acct_match is False:
+            self.log(f"⚠ Adjust {acct_num}: active UI account '{active_ui}' ≠ trade target '{acct_num}' — "
+                     f"adjustments are account-scoped via API id={target_account_id}, "
+                     f"order will switch to target before firing", "WARN")
+
         if is_funded:
             # FUNDED / DOUBLE DIP: Tradovate SL + MT5 TP only via the funded
             # SL rule. Deliberately NO calculate_adjusted_tp / midnight-floor
@@ -6185,23 +6292,39 @@ class TradeOpssAIApp:
             try:
                 import re as _re
                 balance = None
-                if broker_account:
+                bal_src = None
+                if scoped_net_liq is not None:
+                    balance = scoped_net_liq
+                    bal_src = f"account-scoped API netLiq (id={target_account_id})"
+                elif broker_account:
                     _stats = broker_account.get_account_stats()
                     _bal_str = _stats.get("Balance", "") if isinstance(_stats, dict) else ""
                     if _bal_str and _bal_str not in ("N/A", "Error", ""):
                         balance = float(str(_bal_str).replace("$", "").replace(",", ""))
+                        bal_src = "active-UI get_account_stats() [FALLBACK — not account-scoped]"
                 if balance is None:
                     self.log(f"⚠ Funded SL {acct_num}: balance unavailable — keeping blueprint SL/TP")
+                    audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
+                          status="no_balance", target_account_id=target_account_id)
                 else:
                     _m = _re.search(r'(\d+)$', phase_key or "")
                     trade_index = int(_m.group(1)) if _m else 1
                     # Flat lock level: distance the funded SL measures from
                     # (TopStep $0, MFFU $100, others $50,000).
                     threshold = self.prop_firm_mgr.get_lock_level(firm_code)
+                    self.log(f"🧮 Funded SL {acct_num}: balance=${balance:,.2f} via {bal_src} | "
+                             f"trade_index={trade_index} lock_level=${threshold} tick_value={tick_value}")
                     config = self.prop_firm_mgr.calculate_funded_sl(
                         config, balance, threshold, trade_index, tick_value)
+                    audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
+                          status="applied", balance=balance, balance_source=bal_src,
+                          trade_index=trade_index, lock_level=threshold,
+                          target_account_id=target_account_id,
+                          sl_after=config.get("tradovate_sl_ticks"))
             except Exception as _fe:
                 self.log(f"⚠ Funded SL failed for {acct_num}: {_fe}")
+                audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
+                      status="error", error=str(_fe))
         else:
             # CHALLENGE / FARMING.
             # 1) TP by stage profit (skipped for farming symbols upstream)
@@ -6209,7 +6332,8 @@ class TradeOpssAIApp:
                 try:
                     current_profit = self._get_current_phase_profit(
                         row_eval, current_phase,
-                        broker_account=broker_account, acct_size=acct_size)
+                        broker_account=broker_account, acct_size=acct_size,
+                        live_equity=scoped_net_liq, acct_num=acct_num)
                     size_key = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
                     stage_start = self.prop_firm_mgr.get_stage_start_target(
                         firm_code, current_phase, phase_key, size_key)
@@ -6218,35 +6342,76 @@ class TradeOpssAIApp:
                     # stage and collapse TP to the floor.
                     if stage_start is not None:
                         stage_profit_so_far = current_profit - stage_start
+                        self.log(f"🧮 TP-by-stage {acct_num}: equity_scoped={'yes' if scoped_net_liq is not None else 'NO(fallback)'} "
+                                 f"current_profit=${current_profit:,.2f} stage_start=${stage_start:,.2f} "
+                                 f"stage_profit_so_far=${stage_profit_so_far:,.2f} size_key={size_key} tick_value={tick_value}")
                         config = self.prop_firm_mgr.calculate_adjusted_tp(
                             config, stage_profit_so_far, tick_value)
+                        audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
+                              status="applied", target_account_id=target_account_id,
+                              scoped_equity=(scoped_net_liq is not None),
+                              current_profit=current_profit, stage_start=stage_start,
+                              stage_profit_so_far=stage_profit_so_far, size_key=str(size_key),
+                              tp_before=_before_tp, tp_after=config.get("tradovate_tp_ticks"))
+                    else:
+                        self.log(f"⚠ TP-by-stage {acct_num}: stage_start unavailable ({firm_code}/{phase_key}) — TP unchanged")
+                        audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
+                              status="no_stage_start", firm=str(firm_code or ""), phase_key=str(phase_key or ""))
                 except Exception as _te:
                     self.log(f"⚠ TP adjust failed for {acct_num}: {_te}")
+                    audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
+                          status="error", error=str(_te))
 
-            # 2/3) SL midnight floor + TMDL cap. Runs for any broker that
-            # exposes get_min_equity() — Tradovate (live API) or TopStepX
-            # (static formula + persisted SOD), matching the connector.
-            if broker_account and hasattr(broker_account, 'get_min_equity'):
+            # 2/3) SL midnight floor + TMDL cap. Reuses the account-scoped
+            # snapshot when available (Tradovate); otherwise falls back to the
+            # legacy get_min_equity() for brokers without account resolution.
+            min_eq = account_min_eq
+            if min_eq is None and broker_account and hasattr(broker_account, 'get_min_equity'):
                 try:
                     min_eq = broker_account.get_min_equity()
                     if isinstance(min_eq, dict):
-                        live_net_liq = min_eq.get('net_liq')
-                        net_liq_sod = min_eq.get('net_liq_sod', 0)
-                        live_min_equity = min_eq.get('min_equity', 0)
-                        tmdl = min_eq.get('trailing_max_drawdown_limit', 50000)
-                        if live_net_liq is None:
-                            live_net_liq = net_liq_sod
-                        if net_liq_sod and net_liq_sod > 0:
-                            config = self.prop_firm_mgr.calculate_adjusted_sl_midnight_floor(
-                                config, live_net_liq, net_liq_sod, tick_value)
-                        if tmdl is not None and live_min_equity is not None:
-                            config = self.prop_firm_mgr.calculate_adjusted_sl_tmdl_cap(
-                                config, live_net_liq, live_min_equity, tmdl, tick_value)
-                except Exception:
-                    pass
+                        self.log(f"⚠ SL floor/TMDL {acct_num}: using LEGACY get_min_equity() "
+                                 f"(not account-scoped) — netLiq=${min_eq.get('net_liq')}", "WARN")
+                except Exception as _sle:
+                    self.log(f"⚠ SL floor/TMDL {acct_num}: get_min_equity failed — {_sle}")
+                    min_eq = None
+            if isinstance(min_eq, dict):
+                try:
+                    live_net_liq = min_eq.get('net_liq')
+                    net_liq_sod = min_eq.get('net_liq_sod', 0)
+                    live_min_equity = min_eq.get('min_equity', 0)
+                    tmdl = min_eq.get('trailing_max_drawdown_limit', 50000)
+                    if live_net_liq is None:
+                        live_net_liq = net_liq_sod
+                    _sl_pre = config.get("tradovate_sl_ticks")
+                    if net_liq_sod and net_liq_sod > 0:
+                        config = self.prop_firm_mgr.calculate_adjusted_sl_midnight_floor(
+                            config, live_net_liq, net_liq_sod, tick_value)
+                    if tmdl is not None and live_min_equity is not None:
+                        config = self.prop_firm_mgr.calculate_adjusted_sl_tmdl_cap(
+                            config, live_net_liq, live_min_equity, tmdl, tick_value)
+                    self.log(f"🧮 SL floor/TMDL {acct_num}: netLiq=${live_net_liq} SOD=${net_liq_sod} "
+                             f"minEq=${live_min_equity} TMDL=${tmdl} → SL {_sl_pre}→{config.get('tradovate_sl_ticks')} ticks")
+                    audit("trader.adjust.sl_floor_tmdl", acct_num=str(acct_num or ""),
+                          status="applied", scoped_reads=scoped, target_account_id=target_account_id,
+                          net_liq=live_net_liq, net_liq_sod=net_liq_sod, min_equity=live_min_equity,
+                          tmdl=tmdl, sl_before=_sl_pre, sl_after=config.get("tradovate_sl_ticks"))
+                except Exception as _sle2:
+                    self.log(f"⚠ SL floor/TMDL failed for {acct_num}: {_sle2}")
+                    audit("trader.adjust.sl_floor_tmdl", acct_num=str(acct_num or ""),
+                          status="error", error=str(_sle2))
 
         for _r in (config.get('_adj_reasons') or []):
             self.log(f"📐 {acct_num}: {_r}")
+        # Final before→after summary for quick log scanning.
+        self.log(f"📐 Adjust result {acct_num} [{'funded' if is_funded else 'challenge/farming'}]: "
+                 f"TP {_before_tp}→{config.get('tradovate_tp_ticks')} ticks | "
+                 f"SL {_before_sl}→{config.get('tradovate_sl_ticks')} ticks")
+        audit("trader.adjust.result", acct_num=str(acct_num or ""), is_funded=bool(is_funded),
+              target_account_id=target_account_id, scoped_reads=scoped,
+              tp_before=_before_tp, tp_after=config.get("tradovate_tp_ticks"),
+              sl_before=_before_sl, sl_after=config.get("tradovate_sl_ticks"),
+              reasons=list(config.get('_adj_reasons') or []))
         return config
 
     # ── Auto-Trade Scheduler Logic ──
