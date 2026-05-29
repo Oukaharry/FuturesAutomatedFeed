@@ -517,7 +517,13 @@ def post_slack_summary():
     """Build and post the daily quality summary to Slack."""
     try:
         text = _build_daily_summary_text()
-        send_slack_message(text)
+        ok = send_slack_message(text)
+        if ok:
+            try:
+                from dashboard.app import record_team_leaderboard_for_date
+                record_team_leaderboard_for_date(datetime.now().strftime('%Y-%m-%d'))
+            except Exception as lb_err:
+                logging.warning('Team leaderboard record after Slack bot: %s', lb_err)
     except Exception as e:
         logging.error(f"Failed to build/post Slack summary: {e}")
 
