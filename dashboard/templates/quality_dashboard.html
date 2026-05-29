@@ -218,9 +218,11 @@
             <button class="scan-btn" id="sa-exclude-btn" onclick="showSuperAdminClientExclusion()" style="background:linear-gradient(135deg,#475569,#334155);" title="Exclude clients from Super Admin financial totals only">
                 <i class="fas fa-user-slash"></i> Client exclusion
             </button>
+            <!-- Max-out exclusions button hidden — modal + API remain; uncomment to restore
             <button class="scan-btn" id="max-out-excl-btn" onclick="showMaxOutExclusionsModal()" style="background:linear-gradient(135deg,#0f766e,#115e59);" title="Skip max-out checks for a specific admin + client + prop firm (e.g. banned from a firm)">
                 <i class="fas fa-ban"></i> Max-out exclusions
             </button>
+            -->
             <button class="scan-btn" id="neg-hedge-qa-btn" onclick="showNegativeHedgeNetQA()" style="background:linear-gradient(135deg,#7c2d12,#ea580c);" title="Super-admin QA queue for negative hedge net">
                 <i class="fas fa-triangle-exclamation"></i> Negative Hedge Net-QA
             </button>
@@ -2057,12 +2059,10 @@
                     return;
                 }
                 container.innerHTML = data.traders.map(t => {
-                    const tPct = t.total > 0 ? Math.round(t.sent_count / t.total * 100) : 0;
-                    const tColor = tPct === 100 ? '#4ade80' : tPct >= 50 ? '#fbbf24' : '#f87171';
+                    const tColor = t.total > 0 && t.sent_count >= t.total ? '#4ade80' : (t.sent_count > 0 ? '#fbbf24' : '#f87171');
                     const rank = t.clearance_rank || '';
                     const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : (rank ? `#${rank}` : '');
                     const avgHealth = t.avg_health != null ? t.avg_health : 100;
-                    const healthColor = avgHealth >= 90 ? '#4ade80' : avgHealth >= 70 ? '#fbbf24' : '#f87171';
                     const metaLine = t.clearance_label || `${avgHealth}% health`;
                     const sentHtml = t.sent.map(s => {
                         const time = s.submitted_at ? s.submitted_at.split('T')[1]?.substring(0,5) || '' : '';
@@ -2089,13 +2089,10 @@
                             </span>
                             <span style="font-size:0.78rem;font-weight:600;color:${tColor};">${t.sent_count}/${t.total}</span>
                         </div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                        <div style="margin-bottom:8px;">
                             <span style="font-size:0.75rem;color:#94a3b8;">${metaLine}</span>
-                            <span style="font-size:0.75rem;font-weight:600;color:${healthColor};">${avgHealth}%</span>
                         </div>
-                        <div class="health-bar" style="margin-bottom:8px;"><div class="health-fill" style="width:${avgHealth}%;background:${healthColor};"></div></div>
                         <div style="font-size:0.7rem;color:#64748b;margin-bottom:8px;">Daily summary sent</div>
-                        <div class="health-bar" style="margin-bottom:12px;opacity:0.85;"><div class="health-fill" style="width:${tPct}%;background:${tColor};"></div></div>
                         ${sentHtml ? '<div style="margin-bottom:8px;">' + sentHtml + '</div>' : ''}
                         ${notSentHtml || ''}
                     </div>`;
