@@ -1892,9 +1892,11 @@ class TradovateAccount:
                 cur_lower = current.lower()
                 if target_lower in cur_lower or cur_lower in target_lower:
                     print(f"[ACCOUNT SWITCH] Already on correct account: {current}")
+                    logging.info(f"[ACCOUNT SWITCH] no-op — already on '{current}' (target '{target_account}')")
                     return True
                 if digit_suffix and current.endswith(digit_suffix):
                     print(f"[ACCOUNT SWITCH] Already correct (suffix match): {current}")
+                    logging.info(f"[ACCOUNT SWITCH] no-op — already on '{current}' (suffix match target '{target_account}')")
                     return True
 
             print(f"[ACCOUNT SWITCH] Current: {current}  →  Need: {target_account}")
@@ -2295,6 +2297,34 @@ class TradovateAccount:
                     switched = self.switch_account(expected_account)
                     if not switched:
                         print(f"[ACCOUNT] ⚠ Switch attempt failed. Proceeding anyway.")
+
+            # --- ACCOUNT SELECTION CONFIRMATION (logged to mt5_trading.log) ---
+            # Records the account the order will actually be placed on, so a
+            # wrong-account fill can be traced in the companion logs.
+            try:
+                _final_active = self.get_active_account()
+            except Exception:
+                _final_active = None
+            try:
+                _sel_match = None
+                if _final_active and expected_account:
+                    _fa, _ea = str(_final_active), str(expected_account)
+                    _sel_match = (_ea in _fa) or (_fa in _ea) or _fa.endswith(_ea[-5:]) or _ea.endswith(_fa[-5:])
+                logging.info(
+                    f"[ACCOUNT SELECT] order will use active='{_final_active}' expected='{expected_account}' "
+                    f"match={_sel_match} side={str(side).upper()} symbol={symbol} qty={qty} tp={tp} sl={sl}")
+                if audit:
+                    audit("tradovate.account.selected",
+                          expected_account=str(expected_account or ""),
+                          active_account=str(_final_active or ""),
+                          matches=_sel_match, side=str(side), symbol=str(symbol),
+                          qty=int(qty), tp=tp, sl=sl)
+                if _sel_match is False:
+                    logging.warning(
+                        f"[ACCOUNT SELECT] ⚠ MISMATCH — active '{_final_active}' ≠ expected "
+                        f"'{expected_account}'. Order would fire on the WRONG account.")
+            except Exception:
+                pass
 
             # --- DUPLICATE-TRADE GUARD ---
             # Block any new order while a position is already running on this account.
@@ -3128,6 +3158,13 @@ class TradovateAccount:
 
         print(f"[API ORDER] {side} {qty}x {contract_name} (id={contract_id}) on {account_name} — {order_type}"
               + (f" tick={tick_size}" if tick_size else ""))
+        # Persist the exact account used for this API order to mt5_trading.log.
+        logging.info(f"[API ORDER] account_id={account_id} accountSpec='{account_name}' "
+                     f"{side} {qty}x {contract_name} type={order_type} tp={tp} sl={sl}")
+        if audit:
+            audit("tradovate.order.api", account_id=account_id, account_name=str(account_name),
+                  side=str(side), symbol=str(contract_name), qty=int(qty),
+                  order_type=str(order_type), tp=tp, sl=sl)
 
         # Build order payload
         payload = {
