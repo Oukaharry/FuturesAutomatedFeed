@@ -8428,6 +8428,20 @@ class TradeOpssAIApp:
                     aname = acct.get('name', '')
                     if not aid or not aname:
                         continue
+                    # ── Defensive orphan-bracket sweep ──
+                    # cancel_all_orders_api() only cancels working orders when the
+                    # account is flat. In this app every working order on a flat
+                    # account is an orphaned TP/SL leg left over after the position
+                    # closed — if not cleaned up it later triggers as a random naked
+                    # trade. This is the safety net behind the OCO bracket linking.
+                    try:
+                        if hasattr(tv_account, 'cancel_all_orders_api'):
+                            cancelled = tv_account.cancel_all_orders_api(account_id=aid)
+                            if cancelled:
+                                self.root.after(0, lambda n=aname, c=cancelled:
+                                    self.log(f"🧹 Status poll: cancelled {c} orphaned order(s) on flat account {n}"))
+                    except Exception:
+                        pass
                     snapshot = tv_account._api_fetch(
                         "/cashBalance/getCashBalanceSnapshot", "POST",
                         {"accountId": aid})

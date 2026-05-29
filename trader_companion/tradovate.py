@@ -3246,6 +3246,14 @@ class TradovateAccount:
         
         For BUY main order:  TP = Sell Limit (above fill), SL = Sell Stop (below fill)
         For SELL main order: TP = Buy Limit (below fill),  SL = Buy Stop (above fill)
+
+        When BOTH a TP and SL exist they are submitted as a single OCO
+        (One-Cancels-Other) pair via /order/placeOCO. This is critical: with two
+        independent orders, when one leg fills (e.g. TP), the other (SL Stop) is
+        left WORKING on the server with no position behind it. That orphaned stop
+        later triggers when price drifts back to its level and opens a brand-new
+        naked position (no TP/SL) at a random time. OCO makes Tradovate cancel the
+        sibling automatically when either leg fills, so no orphan can survive.
         """
         tp_price = self._resolve_bracket_price(tp, tick_size, fill_price, side, is_tp=True) if tp else None
         sl_price = self._resolve_bracket_price(sl, tick_size, fill_price, side, is_tp=False) if sl else None
@@ -3267,6 +3275,37 @@ class TradovateAccount:
         print(f"[BRACKET] Main={side} fill={fill_price} | "
               f"TP={tp_action} {tp_type} @ {tp_price} | SL={sl_action} {sl_type} @ {sl_price}")
 
+        # ── Preferred path: link TP + SL as an OCO pair so one fill cancels the other ──
+        if tp_price and sl_price:
+            oco_payload = {
+                "accountSpec": account_name,
+                "accountId": account_id,
+                "action": tp_action,
+                "symbol": contract_name,
+                "orderQty": qty,
+                "orderType": tp_type,
+                "price": tp_price,
+                "isAutomated": False,
+                "other": {
+                    "action": sl_action,
+                    "orderType": sl_type,
+                    "stopPrice": sl_price,
+                    "orderQty": qty,
+                },
+            }
+            print(f"[BRACKET] Placing OCO (TP+SL linked): {oco_payload}")
+            try:
+                oco_result = self._api_fetch("/order/placeOCO", "POST", oco_payload)
+                if oco_result:
+                    print(f"[BRACKET] ✅ OCO placed (TP+SL linked, one fill cancels the other): {oco_result}")
+                    return
+                print(f"[BRACKET] ⚠ OCO returned no response — falling back to independent TP/SL orders")
+            except Exception as e:
+                print(f"[BRACKET] ⚠ OCO exception: {e} — falling back to independent TP/SL orders")
+
+        # ── Fallback: independent TP / SL orders (legacy, NOT linked) ──
+        # Used only when OCO is unavailable or one leg is missing. The flat-account
+        # orphan sweep is the safety net that cleans up whichever leg is left behind.
         # Place TP order
         if tp_price:
             tp_payload = {
