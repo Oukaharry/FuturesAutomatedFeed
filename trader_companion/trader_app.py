@@ -1954,7 +1954,8 @@ class TradeOpssAIApp:
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         toolbar.pack_propagate(False)
 
-        self.push_btn_live = self._ctk_button(toolbar, text="Push Data", command=self.push_data,
+        self.push_btn_live = self._ctk_button(toolbar, text="Push Data",
+                                              command=lambda: self.push_data(full_prop_refresh=True),
                                               fg=self.C_SUCCESS, hover="#16a34a", width=90)
         self.push_btn_live.pack(side="left", padx=(8, 4), pady=5)
         self.auto_btn_live = self._ctk_button(toolbar, text="Auto-Push", command=self.toggle_auto_push,
@@ -2720,8 +2721,14 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_do_push, daemon=True).start()
 
-    def push_data(self):
-        """Push data to dashboard - NO API KEY REQUIRED."""
+    def push_data(self, full_prop_refresh=False):
+        """Push data to dashboard - NO API KEY REQUIRED.
+
+        full_prop_refresh=True (manual Push button) synchronously re-scrapes prop
+        firm billing and blocks on the Tradovate prop-day fetch so MT5 data, firm
+        billing (fees/payouts) and prop-day trade values all go out in the same push.
+        Auto-push leaves this False and relies on cached/background-refreshed values.
+        """
         dashboard_url = self.url_entry.get().strip().rstrip('/')
         email = self.client_email_entry.get().strip()
         
@@ -2759,7 +2766,7 @@ class TradeOpssAIApp:
         def _do_push():
             should_run_follow_up = False
             try:
-                self._push_data_worker(dashboard_url, email, client_name)
+                self._push_data_worker(dashboard_url, email, client_name, full_prop_refresh)
             finally:
                 with self._push_lock:
                     self._push_in_progress = False
@@ -2769,7 +2776,7 @@ class TradeOpssAIApp:
                 if should_run_follow_up:
                     try:
                         self.root.after(0, lambda: self.log("🔁 Running queued push"))
-                        self.root.after(0, self.push_data)
+                        self.root.after(0, lambda: self.push_data(full_prop_refresh=full_prop_refresh))
                     except Exception:
                         pass
                 elif hasattr(self, 'push_btn_live') and self.push_btn_live:
@@ -2790,7 +2797,31 @@ class TradeOpssAIApp:
     # Fetching fills + balance logs is slow; reuse within the same TTL window.
     _TRADOVATE_FARMING_CACHE_TTL = 300  # seconds
 
-    def _push_data_worker(self, dashboard_url, email, client_name):
+    def _refresh_prop_billing_sync(self, _log):
+        """Manual Push: synchronously re-scrape billing (fees & payouts) from every
+        connected prop firm dashboard so firm_billing and the per-eval Fee/Date are
+        fresh for the push that follows. Runs on the push worker's background thread.
+
+        If no prop firm dashboard browser is connected, we push anyway and log a clear
+        warning that billing was not refreshed (per configured behaviour)."""
+        browsers = dict(getattr(self, "_propfirm_browsers", {}) or {})
+        if not browsers:
+            _log("⚠️ No prop firm dashboard connected — billing NOT refreshed "
+                 "(pushing MT5 + cached prop data only)", "WARN")
+            return
+
+        if not hasattr(self, "_cached_acct_mappings"):
+            self._cached_acct_mappings = {}
+
+        for firm_name, account in browsers.items():
+            try:
+                _log(f"🔄 Refreshing {firm_name} billing for push...")
+                acct_mapping = self._autofill_challenge_fees(firm_name, account)
+                self._cached_acct_mappings[firm_name] = acct_mapping or {}
+            except Exception as e:
+                _log(f"⚠️ {firm_name}: billing refresh failed: {e}", "WARN")
+
+    def _push_data_worker(self, dashboard_url, email, client_name, full_prop_refresh=False):
         """Heavy push work — runs on a background thread."""
         def _log(msg, level="INFO"):
             self.root.after(0, lambda m=msg, lv=level: self.log(m, lv))
@@ -3164,10 +3195,18 @@ class TradeOpssAIApp:
                 by_phase[phase_name]['total_net_profit'] += agg.get('net_profit', 0)
             comment_summary = {'by_phase': by_phase}
 
+        # Manual Push: synchronously re-scrape prop firm billing (fees & payouts) so
+        # firm_billing and eval Fee/Date are fresh in THIS push. Auto-push skips this
+        # and reuses whatever was scraped when the dashboard browser last connected.
+        if full_prop_refresh:
+            self._refresh_prop_billing_sync(_log)
+
         # Collect Tradovate MNQ daily P&L for Prop Day values.
         # ONLY runs if at least one Tradovate account is actively connected.
         # Cache-miss fetches are done in a background thread so they never add
         # to push wall-time — the result is available for the NEXT push.
+        # On a manual push (full_prop_refresh) we block on the fetch instead so the
+        # prop days land in the same payload.
         tradovate_farming_days = []
         if not hasattr(self, '_tradovate_farming_cache'):
             self._tradovate_farming_cache = {}
@@ -3193,8 +3232,20 @@ class TradeOpssAIApp:
                         total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in mnq_data)
                         _log(f"🌾 {firm_name}: {total_days} Prop Day(s) ready (cached)")
                     tradovate_farming_days.extend(mnq_data)
+                elif full_prop_refresh:
+                    # Manual push — block on the fetch so prop days land in THIS payload.
+                    _log(f"🌾 {firm_name}: fetching Tradovate prop-day history (manual push — blocking)...")
+                    try:
+                        data = tv_account.get_mnq_daily_pnl() or []
+                        self._tradovate_farming_cache[firm_name] = (time.time(), data)
+                        if data:
+                            total_days = sum(len(a.get('mnq_daily_pnl', [])) for a in data)
+                            _log(f"🌾 {firm_name}: {total_days} Prop Day(s) fetched")
+                        tradovate_farming_days.extend(data)
+                    except Exception as _e:
+                        _log(f"⚠️ {firm_name}: prop-day fetch failed: {_e}", "WARN")
                 else:
-                    # Cache miss — use whatever we have now (empty on first push),
+                    # Auto-push cache miss — use whatever we have now (empty on first push),
                     # and refresh asynchronously so the NEXT push benefits.
                     existing = (_tv_cached[1] if _tv_cached else []) or []
                     if existing:
