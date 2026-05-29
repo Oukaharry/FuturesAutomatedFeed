@@ -230,6 +230,64 @@
             <button class="scan-btn" id="slack-btn" onclick="sendToSlack()" style="background:linear-gradient(135deg,#4A154B,#611f69);" title="Post daily summary to Slack">
                 <i class="fab fa-slack"></i> Send to Slack
             </button>
+            <button class="scan-btn" id="team-leaderboard-btn" onclick="showTeamLeaderboardModal()" style="background:linear-gradient(135deg,#b45309,#d97706);" title="Monthly admin-team points and daily timing ranks">
+                <i class="fas fa-trophy"></i> Team Leaderboard
+            </button>
+        </div>
+
+        <!-- Admin team monthly leaderboard modal -->
+        <div id="team-leaderboard-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); align-items:center; justify-content:center;">
+            <div style="background:#0f172a; border:1px solid #334155; border-radius:14px; width:min(1100px,96vw); max-height:88vh; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 24px 12px; border-bottom:1px solid #1e293b; flex-wrap:wrap; gap:10px;">
+                    <h3 style="margin:0; font-size:1.15rem; color:#f1f5f9;"><i class="fas fa-trophy" style="color:#fbbf24; margin-right:8px;"></i>Admin Team Leaderboard
+                        <span id="team-lb-month-badge" style="font-size:0.82rem; background:rgba(251,191,36,0.14); color:#fcd34d; padding:2px 10px; border-radius:12px; margin-left:8px;"></span>
+                    </h3>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <label style="font-size:0.78rem; color:#94a3b8;">Month</label>
+                        <input type="month" id="team-lb-month" style="padding:6px 10px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.85rem;">
+                        <label style="font-size:0.78rem; color:#94a3b8;">Day</label>
+                        <input type="date" id="team-lb-date" style="padding:6px 10px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-size:0.85rem;">
+                        <button type="button" onclick="showTeamLeaderboardModal(true)" style="background:rgba(255,255,255,0.06); border:1px solid #334155; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; font-size:0.85rem;">
+                            <i class="fas fa-rotate"></i> Refresh
+                        </button>
+                        <button type="button" onclick="document.getElementById('team-leaderboard-modal').style.display='none'" style="background:none; border:none; color:#94a3b8; font-size:1.4rem; cursor:pointer; padding:4px 8px;">&times;</button>
+                    </div>
+                </div>
+                <p id="team-lb-note" style="margin:10px 24px 0; font-size:0.76rem; color:#64748b; line-height:1.45;">Ranked by combined minutes: admin sign-off + avg trader issue clearance + avg trader daily-summary send (lower = faster). Points are saved when the daily Slack summary posts.</p>
+                <div style="overflow-y:auto; flex:1; padding:12px 24px 20px;">
+                    <div style="font-size:0.82rem; color:#60a5fa; font-weight:600; margin-bottom:8px;">Monthly standings</div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem; margin-bottom:20px;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155;">
+                                <th style="text-align:left; padding:8px; color:#94a3b8;">#</th>
+                                <th style="text-align:left; padding:8px; color:#94a3b8;">Team</th>
+                                <th style="text-align:left; padding:8px; color:#94a3b8;">Admin</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Month pts</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Days</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Best day</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Avg composite</th>
+                            </tr>
+                        </thead>
+                        <tbody id="team-lb-month-tbody"><tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
+                    </table>
+                    <div style="font-size:0.82rem; color:#60a5fa; font-weight:600; margin-bottom:8px;">Selected day — timing breakdown</div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid #334155;">
+                                <th style="text-align:left; padding:8px; color:#94a3b8;">#</th>
+                                <th style="text-align:left; padding:8px; color:#94a3b8;">Team</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Pts</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Composite</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Sign-off</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Clearance</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Summaries</th>
+                                <th style="text-align:right; padding:8px; color:#94a3b8;">Health</th>
+                            </tr>
+                        </thead>
+                        <tbody id="team-lb-day-tbody"><tr><td colspan="8" style="text-align:center; padding:20px; color:#64748b;">—</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Negative Hedge Net-QA Modal -->
@@ -1668,6 +1726,94 @@
                 alert('Failed to send. Check console.');
                 btn.innerHTML = '<i class="fas fa-user-secret"></i> Test DM';
                 btn.disabled = false;
+            }
+        }
+
+        function _teamLbMedal(rank) {
+            if (rank === 1) return '🥇';
+            if (rank === 2) return '🥈';
+            if (rank === 3) return '🥉';
+            return '#' + rank;
+        }
+
+        function _fmtLbTime(label, minutes) {
+            if (label && label !== 'incomplete') return label;
+            if (minutes != null && minutes < 999999) {
+                const h = Math.floor(minutes / 60);
+                const m = minutes % 60;
+                return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+            }
+            return '—';
+        }
+
+        async function showTeamLeaderboardModal(forceRefresh) {
+            const modal = document.getElementById('team-leaderboard-modal');
+            const monthEl = document.getElementById('team-lb-month');
+            const dateEl = document.getElementById('team-lb-date');
+            const today = new Date();
+            const todayStr = today.toISOString().slice(0, 10);
+            const monthStr = todayStr.slice(0, 7);
+            if (!monthEl.value) monthEl.value = monthStr;
+            if (!dateEl.value) dateEl.value = todayStr;
+            modal.style.display = 'flex';
+
+            const monthTb = document.getElementById('team-lb-month-tbody');
+            const dayTb = document.getElementById('team-lb-day-tbody');
+            monthTb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+            dayTb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#64748b;"><i class="fas fa-spinner fa-spin"></i></td></tr>';
+
+            try {
+                const q = new URLSearchParams({ month: monthEl.value, date: dateEl.value });
+                const resp = await fetch('/api/quality/team_leaderboard?' + q.toString());
+                const data = await resp.json();
+                if (data.status !== 'success') {
+                    monthTb.innerHTML = '<tr><td colspan="7" style="color:#f87171;padding:16px;">' + (data.message || 'Load failed') + '</td></tr>';
+                    dayTb.innerHTML = '<tr><td colspan="8"></td></tr>';
+                    return;
+                }
+                document.getElementById('team-lb-month-badge').textContent = data.month;
+                document.getElementById('team-lb-note').textContent = data.ranking_note || '';
+
+                const monthRows = data.month_standings || [];
+                if (!monthRows.length) {
+                    monthTb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b;">No points recorded this month yet — post the daily Slack summary to score teams.</td></tr>';
+                } else {
+                    monthTb.innerHTML = monthRows.map((r, i) => {
+                        const rank = i + 1;
+                        return '<tr style="border-bottom:1px solid #1e293b;">'
+                            + '<td style="padding:8px;">' + _teamLbMedal(rank) + '</td>'
+                            + '<td style="padding:8px;color:#e2e8f0;font-weight:600;">' + (r.team_name || '') + '</td>'
+                            + '<td style="padding:8px;color:#94a3b8;">' + (r.admin_name || '') + '</td>'
+                            + '<td style="padding:8px;text-align:right;color:#fbbf24;font-weight:700;">' + (r.month_points || 0) + '</td>'
+                            + '<td style="padding:8px;text-align:right;">' + (r.days_ranked || 0) + '</td>'
+                            + '<td style="padding:8px;text-align:right;">#' + (r.best_rank || '—') + '</td>'
+                            + '<td style="padding:8px;text-align:right;">' + (r.avg_composite != null ? _fmtLbTime(null, r.avg_composite) : '—') + '</td>'
+                            + '</tr>';
+                    }).join('');
+                }
+
+                const dayRows = data.day_ranking || [];
+                if (!dayRows.length) {
+                    dayTb.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#64748b;">No teams for this day.</td></tr>';
+                } else {
+                    dayTb.innerHTML = dayRows.map(r => {
+                        const rank = r.rank || 0;
+                        return '<tr style="border-bottom:1px solid #1e293b;">'
+                            + '<td style="padding:8px;">' + _teamLbMedal(rank) + '</td>'
+                            + '<td style="padding:8px;color:#e2e8f0;font-weight:600;">' + (r.team_name || '') + '</td>'
+                            + '<td style="padding:8px;text-align:right;color:#fbbf24;">+' + (r.points || 0) + '</td>'
+                            + '<td style="padding:8px;text-align:right;">' + _fmtLbTime(r.composite_label, r.composite_minutes) + '</td>'
+                            + '<td style="padding:8px;text-align:right;">' + _fmtLbTime(r.avg_signoff_label, r.avg_signoff_minutes) + '</td>'
+                            + '<td style="padding:8px;text-align:right;">' + _fmtLbTime(r.clearance_label, r.clearance_minutes) + '</td>'
+                            + '<td style="padding:8px;text-align:right;">' + _fmtLbTime(r.summary_label, r.summary_minutes) + '</td>'
+                            + '<td style="padding:8px;text-align:right;">' + (r.health_score != null ? r.health_score + '%' : (r.score != null ? r.score + '%' : '—')) + '</td>'
+                            + '</tr>';
+                    }).join('');
+                }
+            } catch (e) {
+                console.error(e);
+                monthTb.innerHTML = '<tr><td colspan="7" style="color:#f87171;padding:16px;">Failed to load leaderboard.</td></tr>';
+                dayTb.innerHTML = '<tr><td colspan="8"></td></tr>';
             }
         }
 

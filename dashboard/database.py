@@ -1237,6 +1237,25 @@ def _ensure_quality_bot_tables():
             )
             '''
         )
+        cursor.execute(
+            '''
+            CREATE TABLE IF NOT EXISTS quality_team_leaderboard_daily (
+                scan_date          TEXT NOT NULL,
+                admin_name         TEXT NOT NULL,
+                team_name          TEXT NOT NULL,
+                rank               INTEGER NOT NULL,
+                points             INTEGER NOT NULL DEFAULT 0,
+                composite_minutes  INTEGER,
+                signoff_minutes    INTEGER,
+                clearance_minutes  INTEGER,
+                summary_minutes  INTEGER,
+                health_score       REAL,
+                clients            INTEGER NOT NULL DEFAULT 0,
+                created_at         TEXT NOT NULL,
+                PRIMARY KEY (scan_date, admin_name)
+            )
+            '''
+        )
         conn.commit()
 
 
@@ -1330,6 +1349,102 @@ def mark_quality_issue_resolved(scan_date: str, client_id: str, resolved_at: str
 
 # Leaderboard: trader had no clients with issues at morning baseline (not in the clearance race).
 TRADER_CLEARANCE_NOT_IN_RACE = -1
+
+
+def save_quality_team_leaderboard_day(scan_date: str, rows: list) -> None:
+    """Persist daily admin-team ranks and points (one row per admin per scan_date)."""
+    if not scan_date:
+        return
+    try:
+        _ensure_quality_bot_tables()
+        from datetime import datetime as _dt
+        now = _dt.utcnow().isoformat()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'DELETE FROM quality_team_leaderboard_daily WHERE scan_date = ?',
+                (scan_date,),
+            )
+            for row in rows or []:
+                admin = str(row.get('admin_name') or '').strip()
+                if not admin:
+                    continue
+                cursor.execute(
+                    '''
+                    INSERT INTO quality_team_leaderboard_daily (
+                        scan_date, admin_name, team_name, rank, points,
+                        composite_minutes, signoff_minutes, clearance_minutes, summary_minutes,
+                        health_score, clients, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    (
+                        scan_date,
+                        admin,
+                        str(row.get('team_name') or admin),
+                        int(row.get('rank') or 0),
+                        int(row.get('points') or 0),
+                        row.get('composite_minutes'),
+                        row.get('signoff_minutes') if row.get('signoff_minutes') is not None else row.get('avg_signoff_minutes'),
+                        row.get('clearance_minutes'),
+                        row.get('summary_minutes'),
+                        row.get('health_score') if row.get('health_score') is not None else row.get('score'),
+                        int(row.get('clients') or 0),
+                        now,
+                    ),
+                )
+            conn.commit()
+    except Exception as e:
+        print(f"Error saving team leaderboard for {scan_date}: {e}")
+
+
+def get_quality_team_leaderboard_day(scan_date: str) -> list:
+    """Rows for one UTC scan_date, ordered by rank."""
+    if not scan_date:
+        return []
+    try:
+        _ensure_quality_bot_tables()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                SELECT * FROM quality_team_leaderboard_daily
+                WHERE scan_date = ?
+                ORDER BY rank ASC, team_name ASC
+                ''',
+                (scan_date,),
+            )
+            return [dict(r) for r in (cursor.fetchall() or [])]
+    except Exception as e:
+        print(f"Error loading team leaderboard for {scan_date}: {e}")
+        return []
+
+
+def get_quality_team_leaderboard_month(month_prefix: str) -> list:
+    """Aggregate points per team for scan_dates starting with YYYY-MM."""
+    if not month_prefix:
+        return []
+    try:
+        _ensure_quality_bot_tables()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''
+                SELECT admin_name, team_name,
+                       SUM(points) AS month_points,
+                       COUNT(*) AS days_ranked,
+                       MIN(rank) AS best_rank,
+                       ROUND(AVG(composite_minutes)) AS avg_composite
+                FROM quality_team_leaderboard_daily
+                WHERE scan_date LIKE ?
+                GROUP BY admin_name, team_name
+                ORDER BY month_points DESC, best_rank ASC, team_name ASC
+                ''',
+                (f'{month_prefix}%',),
+            )
+            return [dict(r) for r in (cursor.fetchall() or [])]
+    except Exception as e:
+        print(f"Error loading team leaderboard month {month_prefix}: {e}")
+        return []
 
 
 def get_trader_issue_resolution_minutes(scan_date: str, trader: str, *, unresolved_minutes: int = 99999) -> int:

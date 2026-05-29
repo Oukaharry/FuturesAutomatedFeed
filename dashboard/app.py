@@ -313,25 +313,103 @@ def _admin_avg_signoff_minutes_and_label(date, admin_name, payload):
     return avg, f'{hh:02d}:{mm:02d}'
 
 
+# Penalty when a timing metric is missing or incomplete (sorts last).
+_ADMIN_TEAM_TIME_PENALTY = 999999
+
+
+def _minutes_to_hhmm(minutes):
+    """Format minutes-from-midnight as HH:MM, or em dash for penalty/missing."""
+    if minutes is None:
+        return '—'
+    try:
+        m = int(minutes)
+    except (TypeError, ValueError):
+        return '—'
+    if m >= _ADMIN_TEAM_TIME_PENALTY:
+        return 'incomplete'
+    hh, mm = divmod(m, 60)
+    return f'{hh:02d}:{mm:02d}'
+
+
+def _trader_clearance_minutes_for_team(scan_date, trader):
+    """Per-trader issue clearance minutes; clean-at-scan = 0; unresolved = penalty."""
+    from dashboard.database import get_trader_issue_resolution_minutes, TRADER_CLEARANCE_NOT_IN_RACE
+    raw = get_trader_issue_resolution_minutes(scan_date, trader)
+    if raw == TRADER_CLEARANCE_NOT_IN_RACE:
+        return 0
+    if raw >= 99999:
+        return _ADMIN_TEAM_TIME_PENALTY
+    return int(raw)
+
+
+def _trader_summary_minutes_for_team(trader, client_ids, sent_map):
+    """Avg Kenyan time-of-day (minutes) when trader sent all required client summaries."""
+    if not client_ids:
+        return 0
+    minutes_list = []
+    for cid in client_ids:
+        entry = sent_map.get(cid)
+        if not entry:
+            return _ADMIN_TEAM_TIME_PENALTY
+        ts = entry.get('submitted_at') or ''
+        if not ts:
+            return _ADMIN_TEAM_TIME_PENALTY
+        try:
+            dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+            minutes_list.append(dt.hour * 60 + dt.minute)
+        except Exception:
+            return _ADMIN_TEAM_TIME_PENALTY
+    return round(sum(minutes_list) / len(minutes_list))
+
+
+def _team_avg_clearance_minutes(scan_date, roster):
+    """Mean trader clearance time for an admin team roster (lower is better)."""
+    traders = sorted((roster or {}).keys(), key=lambda t: t.lower())
+    if not traders:
+        return 0
+    vals = [_trader_clearance_minutes_for_team(scan_date, t) for t in traders]
+    if any(v >= _ADMIN_TEAM_TIME_PENALTY for v in vals):
+        return _ADMIN_TEAM_TIME_PENALTY
+    return round(sum(vals) / len(vals))
+
+
+def _team_avg_summary_minutes(roster, sent_map):
+    """Mean trader daily-summary send time for an admin team (lower is better)."""
+    traders = sorted((roster or {}).keys(), key=lambda t: t.lower())
+    if not traders:
+        return 0
+    vals = [_trader_summary_minutes_for_team(t, roster.get(t) or [], sent_map) for t in traders]
+    if any(v >= _ADMIN_TEAM_TIME_PENALTY for v in vals):
+        return _ADMIN_TEAM_TIME_PENALTY
+    return round(sum(vals) / len(vals))
+
+
 def _admin_teams_rank_sort_key(team_name, row):
-    """Score first; ties broken by earliest avg sign-off, then roster size."""
-    score = float(row.get('score') or 0)
-    required = int(row.get('sign_required') or 0)
-    signed = int(row.get('sign_signed') or 0)
-    avg_m = row.get('avg_signoff_minutes')
-    if required > 0 and signed == required and avg_m is not None:
-        sign_sort = int(avg_m)
-    else:
-        sign_sort = 999999
-    return (-score, sign_sort, -int(row.get('clients') or 0), (team_name or '').lower())
+    """Lowest composite time wins (sign-off + clearance + summary); then health score."""
+    composite = row.get('composite_minutes')
+    if composite is None:
+        composite = _ADMIN_TEAM_TIME_PENALTY
+    return (int(composite), -float(row.get('score') or 0), (team_name or '').lower())
 
 
-def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, excluded_traders, for_slack=False):
-    """Admin team leaderboard lines for daily summary (API + Slack bot)."""
+def _leaderboard_points_for_rank(rank, num_teams):
+    """More points for better daily rank; 1st of 5 teams → 5 pts, last → 1 pt."""
+    try:
+        n = max(1, int(num_teams))
+        r = max(1, int(rank))
+    except (TypeError, ValueError):
+        return 1
+    return max(1, n - r + 1)
+
+
+def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_traders):
+    """
+    Build admin team rows with three timing metrics + composite aggregate.
+    Returns list of dicts sorted best → worst (lowest composite first).
+    """
     from config.hierarchy import SYSTEM_HIERARCHY, get_client_profile
-
-    def _bold(text):
-        return f"*{text}*" if for_slack else f"**{text}**"
+    from dashboard.database import get_summary_status_for_date
+    from datetime import timezone, timedelta
 
     admins_map = SYSTEM_HIERARCHY.get('admins', {}) if isinstance(SYSTEM_HIERARCHY, dict) else {}
     admin_names = sorted([
@@ -341,8 +419,21 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
     if not admin_names:
         return []
 
-    admin_to_team = {a: _admin_team_display_name(a) for a in admin_names}
-    admin_rows = {}
+    kenyan_tz = timezone(timedelta(hours=3))
+    submissions = get_summary_status_for_date(date) or []
+    for s in submissions:
+        ts = s.get('submitted_at', '')
+        if ts:
+            try:
+                dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                s['submitted_at'] = dt.astimezone(kenyan_tz).isoformat()
+            except Exception:
+                pass
+    sent_map = {s['client_id']: s for s in submissions if s.get('client_id')}
+
+    rows = []
     for a in admin_names:
         payload = compute_admin_tracker_payload(a, date) or {}
         score = float(payload.get('health_score') or 0.0)
@@ -370,29 +461,101 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
             roster.setdefault(trader, []).append(client_id)
         for t in roster:
             roster[t].sort()
+
         sign = payload.get('summary_signoff') or {}
-        avg_mins, avg_label = _admin_avg_signoff_minutes_and_label(date, a, payload)
-        admin_rows[a] = {
+        signoff_mins, signoff_label = _admin_avg_signoff_minutes_and_label(date, a, payload)
+        if signoff_mins is None:
+            signoff_mins = _ADMIN_TEAM_TIME_PENALTY
+
+        clearance_mins = _team_avg_clearance_minutes(date, roster)
+        summary_mins = _team_avg_summary_minutes(roster, sent_map)
+        composite = int(signoff_mins) + int(clearance_mins) + int(summary_mins)
+
+        rows.append({
+            'admin_name': a,
+            'team_name': _admin_team_display_name(a),
             'score': round(score, 1),
+            'health_score': round(score, 1),
             'clients': len(active_clients),
             'roster': roster,
             'sign_required': int(sign.get('required_total') or 0),
             'sign_signed': int(sign.get('signed_total') or 0),
-            'avg_signoff_minutes': avg_mins,
-            'avg_signoff_label': avg_label,
-        }
+            'avg_signoff_minutes': signoff_mins if signoff_mins < _ADMIN_TEAM_TIME_PENALTY else None,
+            'avg_signoff_label': signoff_label,
+            'clearance_minutes': clearance_mins if clearance_mins < _ADMIN_TEAM_TIME_PENALTY else None,
+            'clearance_label': _minutes_to_hhmm(clearance_mins),
+            'summary_minutes': summary_mins if summary_mins < _ADMIN_TEAM_TIME_PENALTY else None,
+            'summary_label': _minutes_to_hhmm(summary_mins),
+            'composite_minutes': composite if composite < _ADMIN_TEAM_TIME_PENALTY * 3 else None,
+            'composite_label': (
+                _format_clearance_minutes(composite)
+                if composite < _ADMIN_TEAM_TIME_PENALTY * 3
+                else 'incomplete'
+            ),
+        })
 
-    ranked_teams = []
-    for a in admin_names:
-        team = admin_to_team.get(a, a)
-        ranked_teams.append((team, a, admin_rows[a]))
-    ranked_teams.sort(key=lambda x: _admin_teams_rank_sort_key(x[0], x[2]))
+    rows.sort(key=lambda r: _admin_teams_rank_sort_key(r.get('team_name'), r))
+    num_teams = len(rows)
+    for idx, row in enumerate(rows, 1):
+        row['rank'] = idx
+        row['points'] = _leaderboard_points_for_rank(idx, num_teams)
+    return rows
+
+
+def record_team_leaderboard_for_date(date):
+    """Persist daily team ranks/points after the quality bot posts (or manual Slack send)."""
+    from config.hierarchy import get_all_clients as hierarchy_get_all_clients
+    from dashboard.database import get_setting, save_quality_team_leaderboard_day
+    import json as _json
+
+    try:
+        excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+        excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+    except Exception:
+        excluded_traders = set()
+        excluded_clients = set()
+
+    all_clients = hierarchy_get_all_clients()
+    filtered = []
+    for client_name in all_clients:
+        if client_name in excluded_clients:
+            continue
+        from config.hierarchy import get_client_profile
+        prof = get_client_profile(client_name) or {}
+        trader = (prof.get('trader') or '') or 'Unassigned'
+        if trader in excluded_traders:
+            continue
+        filtered.append(client_name)
+
+    ranked = compute_admin_teams_ranked(date, filtered, excluded_clients, excluded_traders)
+    if not ranked:
+        return []
+    save_quality_team_leaderboard_day(date, ranked)
+    logging.info(
+        '[TEAM LEADERBOARD] recorded %s teams for %s (leader: %s, %s pts)',
+        len(ranked), date, ranked[0].get('team_name'), ranked[0].get('points'),
+    )
+    return ranked
+
+
+def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, excluded_traders, for_slack=False):
+    """Admin team leaderboard lines for daily summary (API + Slack bot)."""
+    def _bold(text):
+        return f"*{text}*" if for_slack else f"**{text}**"
+
+    ranked = compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_traders)
+    if not ranked:
+        return []
 
     out = [
         _bold('ADMIN TEAMS'),
+        "_Ranked by combined time: admin sign-off + trader issue clearance + trader daily summaries (lower = faster)._",
         "",
     ]
-    for rank, (team, admin, arow) in enumerate(ranked_teams, 1):
+    for arow in ranked:
+        rank = int(arow.get('rank') or 0)
+        team = arow.get('team_name') or ''
+        admin = arow.get('admin_name') or ''
         score = float(arow.get('score') or 0)
         if rank == 1:
             medal = '🥇'
@@ -403,14 +566,20 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
         else:
             medal = f'`#{rank}`' if not for_slack else f'#{rank}'
         team_clients = int(arow.get('clients') or 0)
-        sign_extra = ''
         req = int(arow.get('sign_required') or 0)
         sgn = int(arow.get('sign_signed') or 0)
-        if req > 0:
-            sign_extra = f" · sign-offs {sgn}/{req}"
-            if arow.get('avg_signoff_label'):
-                sign_extra += f" · avg {arow['avg_signoff_label']}"
-        line = f"{medal} {_bold(team)} (Admin: {_bold(admin)}) — {_bold(f'{score}%')} · {team_clients} clients{sign_extra}"
+        sign_extra = f" · sign-offs {sgn}/{req}" if req > 0 else ''
+        timing = (
+            f"composite {_bold(arow.get('composite_label') or 'incomplete')}"
+            f" (sign-off {_bold(arow.get('avg_signoff_label') or 'incomplete')}"
+            f" · clearance {_bold(arow.get('clearance_label') or 'incomplete')}"
+            f" · summaries {_bold(arow.get('summary_label') or 'incomplete')})"
+        )
+        pts = int(arow.get('points') or 0)
+        line = (
+            f"{medal} {_bold(team)} (Admin: {_bold(admin)}) — {_bold(f'{score}%')}"
+            f" · {team_clients} clients{sign_extra} · {timing} · +{pts} pts"
+        )
         out.append(line)
         for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
             out.append(f"     - Trader: {trader}")
@@ -10881,6 +11050,65 @@ def api_set_slack_webhook():
     return jsonify({'status': 'success', 'message': f'Slack webhook {action} successfully.'})
 
 
+@app.route('/api/quality/team_leaderboard')
+@require_role('super_admin', 'bef_admin')
+def api_quality_team_leaderboard():
+    """Monthly team points + optional daily rank breakdown for the quality dashboard modal."""
+    from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
+    from dashboard.database import (
+        get_quality_team_leaderboard_day,
+        get_quality_team_leaderboard_month,
+        get_setting,
+    )
+    import json as _json
+
+    month = (request.args.get('month') or '').strip() or datetime.now().strftime('%Y-%m')
+    date = (request.args.get('date') or '').strip() or datetime.now().strftime('%Y-%m-%d')
+
+    try:
+        excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
+        excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
+    except Exception:
+        excluded_traders = set()
+        excluded_clients = set()
+
+    all_clients = hierarchy_get_all_clients()
+    filtered = []
+    for client_name in all_clients:
+        if client_name in excluded_clients:
+            continue
+        prof = get_client_profile(client_name) or {}
+        trader = (prof.get('trader') or '') or 'Unassigned'
+        if trader in excluded_traders:
+            continue
+        filtered.append(client_name)
+
+    month_standings = get_quality_team_leaderboard_month(month)
+    day_stored = get_quality_team_leaderboard_day(date)
+    if day_stored:
+        day_ranking = day_stored
+        recorded_for_date = True
+    else:
+        day_ranking = compute_admin_teams_ranked(
+            date, filtered, excluded_clients, excluded_traders,
+        )
+        recorded_for_date = False
+
+    return jsonify({
+        'status': 'success',
+        'month': month,
+        'date': date,
+        'recorded_for_date': recorded_for_date,
+        'month_standings': month_standings,
+        'day_ranking': day_ranking,
+        'ranking_note': (
+            'Points are saved when the daily Slack summary is posted (bot or Send to Slack).'
+            if not recorded_for_date
+            else 'Daily points recorded for this date.'
+        ),
+    })
+
+
 @app.route('/api/quality/send_slack', methods=['POST'])
 @require_role('super_admin')
 def api_send_slack_summary():
@@ -10910,6 +11138,10 @@ def api_send_slack_summary():
             dest = 'test webhook (DM)' if test_webhook else 'main channel'
             log_action('SLACK_SUMMARY', 'super_admin', request.session_user.get('user_identifier'),
                        get_remote_address(), f'Manual Slack summary posted to {dest}')
+            try:
+                record_team_leaderboard_for_date(datetime.now().strftime('%Y-%m-%d'))
+            except Exception as lb_err:
+                logging.warning('Team leaderboard record after manual Slack: %s', lb_err)
             return jsonify({'status': 'success', 'message': f'Summary posted to {dest}.'})
         else:
             return jsonify({'status': 'error', 'message': 'Slack post failed — check webhook URL and logs.'}), 502
