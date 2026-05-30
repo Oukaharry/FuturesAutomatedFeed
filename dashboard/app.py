@@ -384,12 +384,42 @@ def _team_avg_summary_minutes(roster, sent_map):
     return round(sum(vals) / len(vals))
 
 
+def _team_timing_values_for_aggregate(row):
+    """Collect valid per-leg minutes for average (sign-off only if required)."""
+    vals = []
+    if int(row.get('sign_required') or 0) > 0:
+        m = row.get('avg_signoff_minutes')
+        if m is not None and m < _ADMIN_TEAM_TIME_PENALTY:
+            vals.append(int(m))
+    for key in ('clearance_minutes', 'summary_minutes'):
+        m = row.get(key)
+        if m is not None and m < _ADMIN_TEAM_TIME_PENALTY:
+            vals.append(int(m))
+    return vals
+
+
+def _team_avg_aggregate_minutes(row):
+    """Average of sign-off (if required), clearance, and summary — lower is faster."""
+    vals = _team_timing_values_for_aggregate(row)
+    if not vals:
+        return None
+    return round(sum(vals) / len(vals))
+
+
+def _team_avg_aggregate_label(row):
+    """Display label for team average time."""
+    avg = _team_avg_aggregate_minutes(row)
+    if avg is None:
+        return 'incomplete'
+    return _minutes_to_hhmm(avg)
+
+
 def _admin_teams_rank_sort_key(team_name, row):
-    """Lowest composite time wins (sign-off + clearance + summary); then health score."""
-    composite = row.get('composite_minutes')
-    if composite is None:
-        composite = _ADMIN_TEAM_TIME_PENALTY
-    return (int(composite), -float(row.get('score') or 0), (team_name or '').lower())
+    """Lowest average time wins; then health score."""
+    avg = _team_avg_aggregate_minutes(row)
+    if avg is None:
+        avg = _ADMIN_TEAM_TIME_PENALTY
+    return (int(avg), -float(row.get('score') or 0), (team_name or '').lower())
 
 
 def _leaderboard_points_for_rank(rank, num_teams):
@@ -463,36 +493,44 @@ def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_tra
             roster[t].sort()
 
         sign = payload.get('summary_signoff') or {}
+        sign_required = int(sign.get('required_total') or 0)
         signoff_mins, signoff_label = _admin_avg_signoff_minutes_and_label(date, a, payload)
-        if signoff_mins is None:
+        if sign_required == 0:
+            signoff_mins = None
+        elif signoff_mins is None:
             signoff_mins = _ADMIN_TEAM_TIME_PENALTY
 
         clearance_mins = _team_avg_clearance_minutes(date, roster)
         summary_mins = _team_avg_summary_minutes(roster, sent_map)
-        composite = int(signoff_mins) + int(clearance_mins) + int(summary_mins)
 
-        rows.append({
+        row = {
             'admin_name': a,
             'team_name': _admin_team_display_name(a),
             'score': round(score, 1),
             'health_score': round(score, 1),
             'clients': len(active_clients),
             'roster': roster,
-            'sign_required': int(sign.get('required_total') or 0),
+            'sign_required': sign_required,
             'sign_signed': int(sign.get('signed_total') or 0),
-            'avg_signoff_minutes': signoff_mins if signoff_mins < _ADMIN_TEAM_TIME_PENALTY else None,
+            'avg_signoff_minutes': signoff_mins if signoff_mins is not None and signoff_mins < _ADMIN_TEAM_TIME_PENALTY else None,
             'avg_signoff_label': signoff_label,
             'clearance_minutes': clearance_mins if clearance_mins < _ADMIN_TEAM_TIME_PENALTY else None,
             'clearance_label': _minutes_to_hhmm(clearance_mins),
             'summary_minutes': summary_mins if summary_mins < _ADMIN_TEAM_TIME_PENALTY else None,
             'summary_label': _minutes_to_hhmm(summary_mins),
-            'composite_minutes': composite if composite < _ADMIN_TEAM_TIME_PENALTY * 3 else None,
-            'composite_label': (
-                _format_clearance_minutes(composite)
-                if composite < _ADMIN_TEAM_TIME_PENALTY * 3
-                else 'incomplete'
-            ),
-        })
+        }
+        row['avg_aggregate_minutes'] = _team_avg_aggregate_minutes(row)
+        row['avg_aggregate_label'] = _team_avg_aggregate_label(row)
+        # Legacy fields for DB / modal (composite = sum kept for storage only)
+        composite = sum(
+            int(x) for x in (
+                signoff_mins if signoff_mins is not None else 0,
+                clearance_mins if clearance_mins < _ADMIN_TEAM_TIME_PENALTY else 0,
+                summary_mins if summary_mins < _ADMIN_TEAM_TIME_PENALTY else 0,
+            )
+        ) if row['avg_aggregate_minutes'] is not None else None
+        row['composite_minutes'] = composite
+        rows.append(row)
 
     rows.sort(key=lambda r: _admin_teams_rank_sort_key(r.get('team_name'), r))
     num_teams = len(rows)
@@ -506,7 +544,12 @@ def record_team_leaderboard_for_date(date):
     """Persist daily team ranks/points after the quality bot posts (or manual Slack send)."""
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients
     from dashboard.database import get_setting, save_quality_team_leaderboard_day
+    from datetime import timezone as _tz_lb, timedelta as _td_lb
     import json as _json
+
+    _eat_now = datetime.now(_tz_lb(_td_lb(hours=3)))
+    if _should_skip_daily_summary_tracking(_eat_now):
+        return []
 
     try:
         excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
@@ -543,13 +586,22 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
     def _bold(text):
         return f"*{text}*" if for_slack else f"**{text}**"
 
+    from datetime import timezone as _tz_at, timedelta as _td_at
+    _eat_now = datetime.now(_tz_at(_td_at(hours=3)))
+    if _should_skip_daily_summary_tracking(_eat_now):
+        return [
+            _bold('ADMIN TEAMS'),
+            DAILY_SUMMARY_TRACKER_SKIP_MSG,
+            "",
+        ]
+
     ranked = compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_traders)
     if not ranked:
         return []
 
     out = [
         _bold('ADMIN TEAMS'),
-        "_Ranked by combined time: admin sign-off + trader issue clearance + trader daily summaries (lower = faster)._",
+        "_Ranked by average time (sign-off if required, issue clearance, daily summaries) — lower is faster._",
         "",
     ]
     for arow in ranked:
@@ -566,19 +618,10 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
         else:
             medal = f'`#{rank}`' if not for_slack else f'#{rank}'
         team_clients = int(arow.get('clients') or 0)
-        req = int(arow.get('sign_required') or 0)
-        sgn = int(arow.get('sign_signed') or 0)
-        sign_extra = f" · sign-offs {sgn}/{req}" if req > 0 else ''
-        timing = (
-            f"composite {_bold(arow.get('composite_label') or 'incomplete')}"
-            f" (sign-off {_bold(arow.get('avg_signoff_label') or 'incomplete')}"
-            f" · clearance {_bold(arow.get('clearance_label') or 'incomplete')}"
-            f" · summaries {_bold(arow.get('summary_label') or 'incomplete')})"
-        )
-        pts = int(arow.get('points') or 0)
+        avg_time = arow.get('avg_aggregate_label') or 'incomplete'
         line = (
             f"{medal} {_bold(team)} (Admin: {_bold(admin)}) — {_bold(f'{score}%')}"
-            f" · {team_clients} clients{sign_extra} · {timing} · +{pts} pts"
+            f" · {team_clients} clients · avg {_bold(avg_time)}"
         )
         out.append(line)
         for trader in sorted((arow.get('roster') or {}).keys(), key=lambda t: t.lower()):
