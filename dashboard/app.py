@@ -23,13 +23,13 @@ from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
 
 from config.hierarchy import (
-    SYSTEM_HIERARCHY, add_admin, add_trader, add_client, 
+    SYSTEM_HIERARCHY, add_admin, add_trader, add_client,
     update_admin_details, update_trader_details, update_client_details, update_client_category,
     get_client_by_email, get_user_by_email, get_client_profile,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader,
     rename_admin, rename_trader, rename_client,
-    reassign_client_trader, save_hierarchy
+    reassign_client_trader, save_hierarchy, reload_hierarchy, find_trader_admin,
 )
 
 # Import database module for secure storage
@@ -5861,7 +5861,9 @@ def api_create_user():
     
     if user_type not in ['admin', 'trader', 'client']:
         return jsonify({"status": "error", "message": "Invalid user type"}), 400
-    
+
+    reload_hierarchy()
+
     # Check if user already exists in DB
     user_db_exists = user_exists(username, user_type)
     
@@ -5871,10 +5873,7 @@ def api_create_user():
         if username in hierarchy.get('admins', {}):
             hierarchy_exists = True
     elif user_type == 'trader':
-        for adm in hierarchy.get('admins', {}).values():
-            if username in adm.get('traders', {}):
-                hierarchy_exists = True
-                break
+        hierarchy_exists = find_trader_admin(username) is not None
     elif user_type == 'client':
         for adm in hierarchy.get('admins', {}).values():
             for tr in adm.get('traders', {}).values():
@@ -5888,30 +5887,57 @@ def api_create_user():
             if hierarchy_exists: break
 
     if user_db_exists and hierarchy_exists:
-        return jsonify({"status": "error", "message": f"{user_type.title()} '{username}' already exists"}), 400
+        extra = ''
+        if user_type == 'trader':
+            parent = find_trader_admin(username)
+            if parent:
+                extra = f" under admin '{parent}'"
+        elif user_type == 'client':
+            prof = get_client_profile(username)
+            if prof:
+                extra = f" (trader: {prof.get('trader')}, admin: {prof.get('admin')})"
+        return jsonify({
+            "status": "success",
+            "already_exists": True,
+            "message": (
+                f"{user_type.title()} '{username}' is already set up{extra}. "
+                "Refresh the page if you do not see them in Platform Management."
+            ),
+        })
     
     # Create user in database (auth) if not exists
+    created_db_user = False
     if not user_db_exists:
-        if not create_user(username, password, user_type, email, parent_admin, parent_trader):
+        p_admin_for_db = data.get('parent_user') or parent_admin if user_type == 'trader' else parent_admin
+        p_trader_for_db = data.get('parent_user') or parent_trader if user_type == 'client' else parent_trader
+        if not create_user(username, password, user_type, email, p_admin_for_db, p_trader_for_db):
             return jsonify({"status": "error", "message": "Failed to create user"}), 500
+        created_db_user = True
 
     # Update Hierarchy (for display) - even if they existed in DB but not hierarchy
+    hierarchy_ok = True
+    hierarchy_error = None
     try:
         if user_type == 'admin':
             if not hierarchy_exists:
-                add_admin(username, email)
+                if not add_admin(username, email):
+                    hierarchy_ok = False
+                    hierarchy_error = f"Admin '{username}' could not be added to hierarchy"
         elif user_type == 'trader':
             if not hierarchy_exists:
-                # Map parent_user to parent_admin for simple logic if needed, 
-                # but request.json usually sends 'parent_user' which we need to grab
                 p_admin = data.get('parent_user') or parent_admin
-                if p_admin:
-                    add_trader(p_admin, username, email)
+                if not p_admin:
+                    hierarchy_ok = False
+                    hierarchy_error = 'Parent admin is required for traders'
+                elif not add_trader(p_admin, username, email):
+                    hierarchy_ok = False
+                    hierarchy_error = (
+                        f"Trader '{username}' could not be added under admin '{p_admin}' "
+                        "(admin not found or trader already exists)"
+                    )
         elif user_type == 'client':
             if not hierarchy_exists:
                 p_trader = data.get('parent_user') or parent_trader
-                # We need to find the admin for this trader to call add_client(admin, trader, client)
-                # Search hierarchy for the trader
                 found_admin = None
                 if hierarchy.get('admins'):
                     for adm, a_data in hierarchy['admins'].items():
@@ -5919,11 +5945,29 @@ def api_create_user():
                             found_admin = adm
                             break
                 if found_admin and p_trader:
-                    add_client(found_admin, p_trader, username, email)
+                    if not add_client(found_admin, p_trader, username, email):
+                        hierarchy_ok = False
+                        hierarchy_error = f"Client '{username}' could not be added under trader '{p_trader}'"
+                else:
+                    hierarchy_ok = False
+                    hierarchy_error = f"Trader '{p_trader}' not found in hierarchy"
     except Exception as e:
         print(f"Hierarchy update failed: {e}")
-        # Continue, as user was created in DB
+        hierarchy_ok = False
+        hierarchy_error = str(e)
 
+    if not hierarchy_ok:
+        if created_db_user:
+            try:
+                delete_user_credential(username, user_type)
+            except Exception as rollback_exc:
+                print(f"Rollback delete_user_credential failed: {rollback_exc}")
+        return jsonify({
+            "status": "error",
+            "message": hierarchy_error or "Hierarchy update failed",
+        }), 500
+
+    reload_hierarchy()
     log_action('CREATE_USER', 'admin', username, get_remote_address(), f"Type: {user_type}")
     return jsonify({"status": "success", "message": f"{user_type.title()} '{username}' created successfully"})
 

@@ -1627,7 +1627,9 @@
             Object.values(hierarchyData.admins).forEach(adm => {
                 const tradersMap = buildTraderMapForAdmin(adm);
                 let adminHasFilteredClients = false;
-                Object.values(tradersMap).forEach(tr => {
+                let adminHasTraders = false;
+                Object.entries(tradersMap).forEach(([traderName, tr]) => {
+                    if (!traderName) return;
                     let clients = tr.clients || [];
 
                     // Filter stats
@@ -1640,13 +1642,14 @@
                         return cat === currentProfile;
                     });
 
+                    t += 1;
+                    adminHasTraders = true;
                     c += clients.length;
                     if (clients.length > 0) {
-                        t += 1;
                         adminHasFilteredClients = true;
                     }
                 });
-                if (currentProfile === 'ALL' || adminHasFilteredClients) {
+                if (currentProfile === 'ALL' || adminHasFilteredClients || adminHasTraders) {
                     a += 1;
                 }
             });
@@ -1857,19 +1860,31 @@
 
         function buildTraderMapForAdmin(adminData) {
             const tradersMap = {};
+            const registry = hierarchyData.traders || {};
+
+            const ensureTrader = (traderName, emailHint) => {
+                const key = String(traderName || '').trim();
+                if (!key) return;
+                if (!tradersMap[key]) {
+                    tradersMap[key] = {
+                        email: emailHint || registry[key]?.email || '',
+                        clients: []
+                    };
+                } else if (emailHint && !tradersMap[key].email) {
+                    tradersMap[key].email = emailHint;
+                }
+            };
 
             // Legacy / current API format: { traders: { traderName: {email, clients: []} } }
             if (adminData && adminData.traders && typeof adminData.traders === 'object') {
                 Object.entries(adminData.traders).forEach(([traderName, traderData]) => {
                     if (!traderName) return;
                     const clients = Array.isArray(traderData?.clients) ? traderData.clients : (Array.isArray(traderData) ? traderData : []);
-                    tradersMap[traderName] = {
-                        email: traderData?.email || '',
-                        clients: clients.map(client => (typeof client === 'object' && client)
-                            ? { ...client, assigned_trader: client.assigned_trader || traderName }
-                            : { name: client, assigned_trader: traderName }
-                        )
-                    };
+                    ensureTrader(traderName, traderData?.email || '');
+                    tradersMap[traderName].clients = clients.map(client => (typeof client === 'object' && client)
+                        ? { ...client, assigned_trader: client.assigned_trader || traderName }
+                        : { name: client, assigned_trader: traderName }
+                    );
                 });
             }
 
@@ -1878,10 +1893,15 @@
                 adminData.clients.forEach(client => {
                     if (!client) return;
                     const traderName = String((client.assigned_trader || 'Unassigned')).trim() || 'Unassigned';
-                    if (!tradersMap[traderName]) {
-                        tradersMap[traderName] = { email: '', clients: [] };
-                    }
+                    ensureTrader(traderName, registry[traderName]?.email || '');
                     tradersMap[traderName].clients.push({ ...client, assigned_trader: traderName });
+                });
+            }
+
+            // Traders assigned to this admin but with no clients yet (flat file assigned_traders)
+            if (adminData && Array.isArray(adminData.assigned_traders)) {
+                adminData.assigned_traders.forEach(traderName => {
+                    ensureTrader(traderName, registry[traderName]?.email || '');
                 });
             }
 
@@ -2043,15 +2063,40 @@
                     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
 
                 if (!clientsToShow.length) {
-                    const empty = document.createElement('div');
-                    empty.style.padding = '18px';
-                    empty.style.border = '1px dashed rgba(148,163,184,0.25)';
-                    empty.style.borderRadius = '14px';
-                    empty.style.color = 'rgba(148,163,184,0.9)';
-                    empty.style.fontSize = '0.85rem';
-                    empty.style.textAlign = 'center';
-                    empty.textContent = traders.length ? 'No clients match your current filter.' : 'No traders for this admin.';
-                    lanes.appendChild(empty);
+                    if (traders.length > 0) {
+                        traders.forEach(trader => {
+                            const sTrader = escJsAttr(trader.name);
+                            const sTraderEmail = escJsAttr(trader.email || '');
+                            const lane = document.createElement('div');
+                            lane.style.border = '1px dashed rgba(52,211,153,0.35)';
+                            lane.style.borderRadius = '12px';
+                            lane.style.padding = '14px 16px';
+                            lane.style.background = 'rgba(16,185,129,0.06)';
+                            lane.innerHTML = `
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                                    <div style="min-width:0;">
+                                        <div style="font-weight:700; color:#d1fae5; font-size:0.92rem;">${escHtml(trader.name)}</div>
+                                        <div style="font-size:0.75rem; color:rgba(148,163,184,0.9); margin-top:4px;">${escHtml(trader.email || 'No email')} · 0 clients</div>
+                                    </div>
+                                    <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+                                        <a href="/trader/${encodeURIComponent(trader.name)}" style="color:rgba(148,163,184,0.7); text-decoration:none;" title="View trader portfolio"><i class="fas fa-arrow-up-right-from-square"></i></a>
+                                        <button type="button" onclick="openEditUserModal('trader', '${sTrader}', '${sTraderEmail}', '${sAdmin}')" style="background:none; border:none; color:rgba(255,255,255,0.8); cursor:pointer;" title="Edit trader"><i class="fas fa-pen-to-square"></i></button>
+                                        <button type="button" onclick="deleteUser('trader', '${sTrader}', '${sAdmin}')" style="background:none; border:none; color:#ff4d4d; cursor:pointer;" title="Delete trader"><i class="fas fa-trash"></i></button>
+                                    </div>
+                                </div>`;
+                            lanes.appendChild(lane);
+                        });
+                    } else {
+                        const empty = document.createElement('div');
+                        empty.style.padding = '18px';
+                        empty.style.border = '1px dashed rgba(148,163,184,0.25)';
+                        empty.style.borderRadius = '14px';
+                        empty.style.color = 'rgba(148,163,184,0.9)';
+                        empty.style.fontSize = '0.85rem';
+                        empty.style.textAlign = 'center';
+                        empty.textContent = 'No traders for this admin.';
+                        lanes.appendChild(empty);
+                    }
                 } else {
                     const traderNames = hierarchyData.traders
                         ? Object.keys(hierarchyData.traders).sort((a, b) => a.localeCompare(b))
