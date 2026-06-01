@@ -1223,7 +1223,7 @@ def extract_unique_values(data):
     # Default options (baseline)
     options = {
         'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Other'},
-        'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
+        'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }
     
