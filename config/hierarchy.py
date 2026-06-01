@@ -35,8 +35,17 @@ def load_hierarchy():
                             # Keep assigned_trader on the client object for frontend/UI use
                             client_copy = dict(client)
                             traders_map[key]['clients'].append(client_copy)
+                        # Traders with no clients yet (assigned_traders on disk)
+                        for trader_name in admin_data.get('assigned_traders', []):
+                            key = (trader_name or '').strip()
+                            if key and key not in traders_map:
+                                tr_email = trader_registry.get(key, {}).get('email', '')
+                                traders_map[key] = {'email': tr_email, 'clients': []}
                         # Preserve all original admin fields (email, slack_user_id, etc.)
-                        preserved = {k: v for k, v in admin_data.items() if k != 'clients'}
+                        preserved = {
+                            k: v for k, v in admin_data.items()
+                            if k not in ('clients', 'assigned_traders')
+                        }
                         preserved['traders'] = traders_map
                         new_admins[admin_name] = preserved
                     data['admins'] = new_admins
@@ -62,11 +71,26 @@ def _to_flat_format(hierarchy_data):
     """Convert in-memory nested format back to flat format for disk persistence."""
     import copy
     out = copy.deepcopy(hierarchy_data)
+    trader_registry = out.get('traders')
+    if not isinstance(trader_registry, dict):
+        trader_registry = {}
+    out['traders'] = trader_registry
+
     for admin_name, admin_data in out.get('admins', {}).items():
         if 'traders' in admin_data and 'clients' not in admin_data:
             flat_clients = []
+            assigned_traders = []
             for trader_name, trader_data in admin_data['traders'].items():
-                for client in trader_data.get('clients', []):
+                tname = (trader_name or '').strip()
+                if tname:
+                    assigned_traders.append(tname)
+                    em = (trader_data or {}).get('email', '') or ''
+                    entry = trader_registry.setdefault(tname, {})
+                    if em:
+                        entry['email'] = em
+                    elif 'email' not in entry:
+                        entry['email'] = ''
+                for client in (trader_data or {}).get('clients', []):
                     c = dict(client)
                     # Normalize client name to prevent invisible mismatch bugs (trailing spaces/NBSP).
                     nm = str(c.get('name', '') or '')
@@ -75,9 +99,13 @@ def _to_flat_format(hierarchy_data):
                     c['name'] = nm
                     c['assigned_trader'] = trader_name
                     flat_clients.append(c)
-            # Preserve non-traders keys (email, slack_user_id, etc.)
-            preserved = {k: v for k, v in admin_data.items() if k != 'traders'}
-            out['admins'][admin_name] = {**preserved, 'clients': flat_clients}
+            preserved = {
+                k: v for k, v in admin_data.items()
+                if k not in ('traders', 'assigned_traders')
+            }
+            preserved['assigned_traders'] = sorted(set(assigned_traders), key=lambda s: s.lower())
+            preserved['clients'] = flat_clients
+            out['admins'][admin_name] = preserved
     return out
 
 
@@ -218,10 +246,24 @@ def update_client_category(admin_name, trader_name, client_name, category):
     return False
 
 
+def find_trader_admin(trader_name):
+    """Return admin name if *trader_name* is assigned under any admin (including empty lanes)."""
+    reload_hierarchy()
+    name = (trader_name or '').strip()
+    if not name:
+        return None
+    for admin_name, admin_data in SYSTEM_HIERARCHY.get('admins', {}).items():
+        if name in admin_data.get('traders', {}):
+            return admin_name
+    return None
+
+
 def add_trader(admin_name, trader_name, email=""):
+    reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
-        if trader_name not in SYSTEM_HIERARCHY["admins"][admin_name]["traders"]:
-            SYSTEM_HIERARCHY["admins"][admin_name]["traders"][trader_name] = {
+        traders = SYSTEM_HIERARCHY["admins"][admin_name].setdefault("traders", {})
+        if trader_name not in traders:
+            traders[trader_name] = {
                 "email": email,
                 "clients": []
             }
