@@ -7957,14 +7957,16 @@ def _allowed_trading_day_abbrs(ref_dt):
 def _should_skip_daily_summary_tracking(eat_dt):
     """Skip daily-summary submission tracker when there is no session to track.
 
-    True on Sat/Sun (no trading) and on Mon before the new week is underway —
-    e.g. the 02:30 EAT bot run after Sunday (yesterday was non-trading), so the
-    Slack message matches the clean weekend post instead of flagging missing sends.
+    True on Sat/Sun (no trading). On Mon before 03:00 EAT, skip so the ~02:30
+    bot run after Sunday does not flag missing sends; from 03:00 EAT Monday onward,
+    tracking resumes (traders are placing trades for the new week).
     """
-    if eat_dt.weekday() in (5, 6):
+    wd = eat_dt.weekday()
+    if wd in (5, 6):
         return True
-    yesterday = eat_dt - timedelta(days=1)
-    return yesterday.weekday() in (5, 6)
+    if wd == 0 and eat_dt.hour < 3:
+        return True
+    return False
 
 
 DAILY_SUMMARY_TRACKER_SKIP_MSG = (
