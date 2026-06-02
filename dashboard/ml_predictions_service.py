@@ -308,7 +308,7 @@ def get_state() -> Dict[str, Any]:
     if out["status"] == "ready" and out["has_html"]:
         with _lock:
             out["error"] = _state.get("error")
-    elif not out["error"] and disk.get("error"):
+    elif not out["error"] and disk and disk.get("error"):
         out["error"] = disk.get("error")
     return out
 
