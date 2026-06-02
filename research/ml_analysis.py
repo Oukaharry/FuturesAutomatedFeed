@@ -747,11 +747,11 @@ def _portfolio_timing_meta() -> Dict[str, Any]:
         note = (
             "Entry hours: East Africa Time (Africa/Nairobi, UTC+3). "
             f"Per-client calibration applied ({meta['correction_hours_range']}). "
-            "Skew is estimated from time_raw vs time on each client's deals; "
-            "re-push from TradeopssAI with a fresh MT5 sync for best accuracy."
+            "Uses MT5 TimeCurrent vs Nairobi when stored on push; otherwise inferred from deals. "
+            "Re-push from TradeopssAI (MT5 connected) for best accuracy."
         )
     if stored < len(corrections):
-        note += f" {stored}/{len(corrections)} clients have mt5_timing from a recent push."
+        note += f" {stored}/{len(corrections)} clients have mt5_timing (TimeCurrent probe) from a recent push."
     meta["note"] = note
     return meta
 

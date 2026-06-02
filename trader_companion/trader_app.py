@@ -3384,10 +3384,19 @@ class TradeOpssAIApp:
         try:
             from research.mt5_time import capture_push_timing_context
 
+            _mt5_mod = mt5 if (MT5_AVAILABLE and self.pusher.connected) else None
             payload["mt5_timing"] = capture_push_timing_context(
                 account=account,
                 sample_deals=trade_history_deals,
+                mt5=_mt5_mod,
             )
+            _probe = (payload["mt5_timing"].get("timecurrent_probe") or {})
+            if _probe.get("mt5_server_minus_nairobi_hours") is not None:
+                _log(
+                    f"🕐 MT5 TimeCurrent vs Nairobi: {_probe.get('mt5_server_minus_nairobi_hours'):+.1f}h "
+                    f"(correction {_probe.get('utc_correction_sec', 0) / 3600:+.1f}h, "
+                    f"tick age {_probe.get('tick_freshness_sec', '?')}s)",
+                )
         except Exception as _tz_exc:
             _log(f"⚠️ mt5_timing snapshot skipped: {_tz_exc}", "WARNING")
 
