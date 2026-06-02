@@ -142,7 +142,11 @@ def _model_feature_names(ml: Dict[str, Any], clf: Any) -> List[str]:
 
 def _predict_aligned(clf: Any, Xa: pd.DataFrame, feat_names: List[str]):
     """DataFrame with sklearn feature_names_in_ column order (avoids numpy warnings)."""
-    names = list(getattr(clf, "feature_names_in_", None) or feat_names)
+    fitted = getattr(clf, "feature_names_in_", None)
+    if fitted is not None and len(fitted):
+        names = list(fitted)
+    else:
+        names = list(feat_names)
     Xp = Xa.reindex(columns=names, fill_value=0.0)
     return clf.predict(Xp), clf.predict_proba(Xp)
 
@@ -397,15 +401,14 @@ def analyze_business_rules(
             out["recommended_date_hint"] = f"historically strongest entry day: {best_hist_dow}"
 
     out["best_historical_dow"] = best_hist_dow
-    if out["same_day_ok"]:
-        out["recommended_dow"] = today_dow
-    elif best_hist_dow:
-        out["recommended_dow"] = best_hist_dow
+    # Coordinated trading day is ALWAYS today in EAT — the actionable "enter together" day.
+    # The historically strongest day is kept separately for analytics only.
+    out["recommended_dow"] = today_dow
+    if not out["same_day_ok"]:
         out["recommended_date_hint"] = (
-            f"Split entry days — coordinate to {today_dow} ({today_date}) or next {best_hist_dow}"
+            f"Split entry days — coordinate all accounts to {today_dow} ({today_date})."
+            + (f" Historical best day: {best_hist_dow}." if best_hist_dow else "")
         )
-    else:
-        out["recommended_dow"] = today_dow
 
     hist_en = engineer_features(historical) if not historical.empty else pd.DataFrame()
     violations = []
