@@ -301,12 +301,15 @@ def get_state() -> Dict[str, Any]:
             out["generated_at"] = disk["generated_at"]
         if not out["meta"] and disk.get("meta"):
             out["meta"] = dict(disk["meta"])
-        if not out["error"] and disk.get("error"):
-            out["error"] = disk.get("error")
 
     # UI can show last report while a new refresh runs
     if out["has_html"] and out["refresh_in_progress"]:
         out["status"] = "ready"
+    if out["status"] == "ready" and out["has_html"]:
+        with _lock:
+            out["error"] = _state.get("error")
+    elif not out["error"] and disk.get("error"):
+        out["error"] = disk.get("error")
     return out
 
 

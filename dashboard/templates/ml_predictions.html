@@ -118,8 +118,12 @@
                 document.getElementById('meta-active').textContent = d.meta?.n_active ?? '—';
                 document.getElementById('meta-underwater').textContent = d.meta?.underwater_on_recommendation ?? '—';
                 const errEl = document.getElementById('meta-error');
-                if (d.error) { errEl.style.display = ''; errEl.textContent = d.error; }
-                else { errEl.style.display = 'none'; }
+                if (d.error && d.status === 'error') {
+                    errEl.style.display = '';
+                    errEl.textContent = d.error;
+                } else {
+                    errEl.style.display = 'none';
+                }
                 if (d.has_html) {
                     loading.style.display = 'none';
                     frame.style.display = 'block';

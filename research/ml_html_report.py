@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from research.eat_time import format_dt_eat, format_hour_eat
+
 DOW_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # Blueprint-aligned column colors (dashboard evaluations table)
@@ -33,6 +35,13 @@ def _pct(v: float) -> str:
 
 
 def _pnl_class(v: float) -> str:
+    try:
+        if hasattr(v, "item"):
+            v = float(v.item())
+        else:
+            v = float(v)
+    except (TypeError, ValueError):
+        return "zero"
     if v > 0:
         return "pos"
     if v < 0:
@@ -76,15 +85,7 @@ def _fmt_hour(h: Any) -> str:
 
 
 def _fmt_dt(val: Any) -> str:
-    if val is None or (isinstance(val, float) and pd.isna(val)):
-        return "—"
-    try:
-        ts = pd.Timestamp(val)
-        if pd.isna(ts):
-            return "—"
-        return ts.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return html.escape(str(val)[:16])
+    return format_dt_eat(val)
 
 
 def _table_from_records(
@@ -122,7 +123,7 @@ def _table_from_records(
                 except (TypeError, ValueError):
                     tds.append(f"<td>{html.escape(str(val))}</td>")
             elif key == "entry_hour":
-                tds.append(f"<td>{_fmt_hour(val)}</td>")
+                tds.append(f"<td>{format_hour_eat(val)}</td>")
             elif key in ("entry_time", "close_time"):
                 tds.append(f"<td class='num'>{_fmt_dt(val)}</td>")
             elif key == "ml_confidence" and val != "":
@@ -282,17 +283,24 @@ def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
     violations = len(br.get("direction_violations") or [])
     day_ok = br.get("same_day_ok", True)
     rec_day = br.get("recommended_dow", "—")
+    today_dow = br.get("today_dow_name", "—")
+    hist_dow = br.get("best_historical_dow") or "—"
     ml = analysis.get("ml") or {}
     acc = ml.get("accuracy_test")
-    acc_s = f"{acc * 100:.1f}%" if acc is not None else "—"
+    acc_s = f"{float(acc) * 100:.1f}%" if acc is not None else "—"
     n_closed = analysis.get("n_trades", 0)
+    kpi_sub_day = (
+        f"Today (EAT): {html.escape(str(today_dow))}"
+        if day_ok
+        else f"Today {html.escape(str(today_dow))} · hist. best {html.escape(str(hist_dow))}"
+    )
 
     return f"""
     <section class="kpi-grid">
       <div class="kpi"><span class="kpi-label">All clients (closed)</span><span class="kpi-value">{n_closed:,}</span><span class="kpi-sub">Round-trip history</span></div>
       <div class="kpi"><span class="kpi-label">Live trades</span><span class="kpi-value accent">{active_n}</span><span class="kpi-sub">{clients_n} clients · {accounts_n} accounts</span></div>
       <div class="kpi"><span class="kpi-label">Phase model accuracy</span><span class="kpi-value">{acc_s}</span><span class="kpi-sub">Time-ordered holdout</span></div>
-      <div class="kpi"><span class="kpi-label">Same entry day</span><span class="kpi-value {'pos' if day_ok else 'warn'}">{'Yes' if day_ok else 'Split'}</span><span class="kpi-sub">Target {html.escape(str(rec_day))}</span></div>
+      <div class="kpi"><span class="kpi-label">Same entry day</span><span class="kpi-value {'pos' if day_ok else 'warn'}">{'Yes' if day_ok else 'Split'}</span><span class="kpi-sub">{kpi_sub_day}</span></div>
       <div class="kpi"><span class="kpi-label">Direction conflicts</span><span class="kpi-value {'pos' if violations == 0 else 'neg'}">{violations}</span><span class="kpi-sub">Per prop account</span></div>
     </section>
     """
@@ -301,10 +309,10 @@ def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
 def _render_nav() -> str:
     return """
     <nav class="report-nav">
+      <a href="#analytics">Analytics</a>
+      <a href="#coordinated-plan">Plan</a>
       <a href="#live-trades">Live trades</a>
       <a href="#all-clients-data">All clients data</a>
-      <a href="#coordinated-plan">Plan</a>
-      <a href="#analytics">Analytics</a>
     </nav>
     """
 
@@ -320,9 +328,12 @@ def _render_alerts(analysis: Dict[str, Any]) -> str:
             f"All accounts should share one calendar day. Target: <strong>{html.escape(str(br.get('recommended_dow')))}</strong>.</div>"
         )
     else:
+        udate = br.get("unified_entry_date") or br.get("today_eat", "")
+        udow = br.get("today_dow_name", br.get("recommended_dow", ""))
         alerts.append(
-            f"<div class='alert alert-ok'><strong>Same-day aligned</strong> — entry date "
-            f"<code>{html.escape(str(br.get('unified_entry_date', 'today')))}</code>.</div>"
+            f"<div class='alert alert-ok'><strong>Same-day aligned (EAT)</strong> — "
+            f"<strong>{html.escape(str(udow))}</strong> "
+            f"<code>{html.escape(str(udate))}</code>.</div>"
         )
 
     for v in br.get("direction_violations") or []:
@@ -352,12 +363,12 @@ def _render_timing_heatmap(block: Dict[str, Any], phase: str) -> str:
         v = hour_map.get(h, 0)
         if h not in hour_map:
             cls = "heat-empty"
-            title = f"{h:02d}:00 — no data"
+            title = f"{format_hour_eat(h)} — no data"
             cells.append(f'<div class="heat-cell {cls}" title="{html.escape(title)}">{h:02d}</div>')
         else:
             intensity = min(1.0, abs(v) / max_abs)
             cls = "heat-pos" if v >= 0 else "heat-neg"
-            title = f"{h:02d}:00 avg {_money(v)}"
+            title = f"{format_hour_eat(h)} avg {_money(v)}"
             cells.append(
                 f'<div class="heat-cell {cls}" style="opacity:{0.35 + intensity * 0.65:.2f}" title="{html.escape(title)}">{h:02d}</div>'
             )
@@ -531,9 +542,9 @@ def render_ml_html_report(
     """
 
     recs = analysis.get("portfolio_recommendations") or {}
-    uw = recs.get("underwater_on_recommendation", 0)
+    uw = int(recs.get("underwater_on_recommendation", 0) or 0)
     uw_alert = ""
-    if uw:
+    if uw > 0:
         uw_alert = (
             f"<div class='alert alert-danger'><strong>Market vs recommendation</strong> — "
             f"{uw} open leg(s) are on the recommended side but show negative float P/L "
@@ -548,7 +559,9 @@ def render_ml_html_report(
         <section id="coordinated-plan" class="panel highlight">
           <h2>Coordinated plan (from live book)</h2>
           <div class="rec-grid">
-            <div class="rec-item"><span class="rec-label">Trading day</span><span class="rec-value">{html.escape(str(recs.get('trading_day', '—')))}</span></div>
+            <div class="rec-item"><span class="rec-label">Trading day (EAT)</span><span class="rec-value">{html.escape(str(recs.get('trading_day', '—')))}</span></div>
+            <div class="rec-item"><span class="rec-label">Today (EAT)</span><span class="rec-value">{html.escape(str(recs.get('today_dow_name', '—')))} · {html.escape(str(recs.get('today_eat', '—')))}</span></div>
+            <div class="rec-item"><span class="rec-label">Hist. best day</span><span class="rec-value">{html.escape(str(recs.get('best_historical_dow', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Entry window</span><span class="rec-value">{html.escape(str(recs.get('best_hour_window', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Direction bias</span><span class="rec-value">{html.escape(str(recs.get('portfolio_side', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Underwater on rec</span><span class="rec-value {'neg' if uw else ''}">{uw}</span></div>
@@ -593,6 +606,7 @@ def render_ml_html_report(
       <h1>{html.escape(title)}</h1>
       <p class="meta">{html.escape(data_source_line)}<br/>
         Generated {html.escape(str(analysis.get('generated_at', '')))} ·
+        All entry times in <strong>EAT (Africa/Nairobi)</strong> ·
         Phase labels <strong>CH1 / FD2 / FA</strong> match blueprint · sorted by <strong>prop firm</strong>.
       </p>
     </div>
@@ -602,10 +616,10 @@ def render_ml_html_report(
     {phase_legend}
     {_render_kpi_cards(analysis)}
     {_render_alerts(analysis)}
+    {analytics}
     {rec_html}
     {live_section}
     {closed_section}
-    {analytics}
     <footer>Not trading advice. One direction per prop account; same entry day across clients.</footer>
   </div>
 </body>

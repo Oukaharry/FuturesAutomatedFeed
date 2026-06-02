@@ -9,7 +9,15 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-DOW_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+from research.eat_time import (
+    DOW_NAMES,
+    format_hour_eat,
+    now_eat,
+    today_eat_date_str,
+    today_eat_dow_name,
+    to_eat_series,
+    eat_dow_name,
+)
 
 
 def _phase_group(code: Any) -> str:
@@ -51,9 +59,17 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         if col in out.columns:
             out[col] = pd.to_datetime(out[col], errors="coerce")
 
-    out["entry_hour"] = out["entry_time"].dt.hour.fillna(-1).astype(int)
-    out["entry_dow"] = out["entry_time"].dt.dayofweek.fillna(-1).astype(int)
-    out["entry_dow_name"] = out["entry_dow"].map(lambda i: DOW_NAMES[i] if 0 <= i < 7 else "?")
+    if "entry_time" in out.columns:
+        entry_eat = to_eat_series(out["entry_time"])
+        out["entry_time_eat"] = entry_eat
+        out["entry_hour"] = entry_eat.dt.hour.fillna(-1).astype(int)
+        out["entry_dow"] = entry_eat.dt.dayofweek.fillna(-1).astype(int)
+        out["entry_dow_name"] = eat_dow_name(entry_eat)
+        out["trade_date"] = entry_eat.dt.strftime("%Y-%m-%d")
+    else:
+        out["entry_hour"] = -1
+        out["entry_dow"] = -1
+        out["entry_dow_name"] = "?"
     out["holding_min"] = (
         (out["close_time"] - out["entry_time"]).dt.total_seconds() / 60.0
     ).fillna(0)
@@ -310,6 +326,8 @@ def analyze_business_rules(
     """
     Enforce: all accounts same entry day; one direction per prop-firm account.
     """
+    today_dow = today_eat_dow_name()
+    today_date = today_eat_date_str()
     out: Dict[str, Any] = {
         "active_count": 0,
         "active_clients": 0,
@@ -319,7 +337,11 @@ def analyze_business_rules(
         "unified_entry_date": None,
         "direction_violations": [],
         "active_phases": [],
-        "recommended_dow": None,
+        "recommended_dow": today_dow,
+        "best_historical_dow": None,
+        "today_eat": today_date,
+        "today_dow_name": today_dow,
+        "timezone": "Africa/Nairobi (EAT)",
         "recommended_date_hint": "",
     }
     if active is None or active.empty:
@@ -331,11 +353,13 @@ def analyze_business_rules(
     accts = act["account_number"].dropna().unique()
     out["active_accounts"] = len(accts)
 
-    dates = sorted({str(d) for d in act["trade_date"].dropna().unique() if str(d)})
+    dates = sorted({str(d) for d in act["trade_date"].dropna().unique() if str(d) and str(d) != "NaT"})
     out["active_dates"] = dates
     out["same_day_ok"] = len(dates) <= 1
     if dates:
         out["unified_entry_date"] = dates[0]
+    elif out["same_day_ok"]:
+        out["unified_entry_date"] = today_date
 
     phases = sorted(act["phase_group"].dropna().unique().tolist())
     out["active_phases"] = [p for p in phases if p != "?"]
@@ -354,10 +378,12 @@ def analyze_business_rules(
                 w = float(r.get("n", 1))
                 dow_scores[d] = dow_scores.get(d, 0) + float(r.get("avg_pnl", 0)) * w
                 dow_weights[d] = dow_weights.get(d, 0) + w
+    best_hist_dow: Optional[str] = None
     if dow_scores:
-        best_dow = max(dow_scores.keys(), key=lambda d: dow_scores[d] / max(dow_weights.get(d, 1), 1))
-        out["recommended_dow"] = best_dow
-        out["recommended_date_hint"] = f"align new entries on next {best_dow}"
+        best_hist_dow = max(
+            dow_scores.keys(), key=lambda d: dow_scores[d] / max(dow_weights.get(d, 1), 1)
+        )
+        out["recommended_date_hint"] = f"historically strongest entry day: {best_hist_dow}"
     elif not historical.empty:
         hist = engineer_features(historical)
         by_d = (
@@ -367,8 +393,19 @@ def analyze_business_rules(
             .sort_values("avg", ascending=False)
         )
         if len(by_d):
-            out["recommended_dow"] = str(by_d.iloc[0]["entry_dow_name"])
-            out["recommended_date_hint"] = "from full portfolio history"
+            best_hist_dow = str(by_d.iloc[0]["entry_dow_name"])
+            out["recommended_date_hint"] = f"historically strongest entry day: {best_hist_dow}"
+
+    out["best_historical_dow"] = best_hist_dow
+    if out["same_day_ok"]:
+        out["recommended_dow"] = today_dow
+    elif best_hist_dow:
+        out["recommended_dow"] = best_hist_dow
+        out["recommended_date_hint"] = (
+            f"Split entry days — coordinate to {today_dow} ({today_date}) or next {best_hist_dow}"
+        )
+    else:
+        out["recommended_dow"] = today_dow
 
     hist_en = engineer_features(historical) if not historical.empty else pd.DataFrame()
     violations = []
@@ -379,11 +416,10 @@ def analyze_business_rules(
         if len(sides) > 1:
             phase = str(grp["phase_group"].mode().iloc[0]) if len(grp["phase_group"].mode()) else "UNK"
             rec_side, reason = _account_side_preference(hist_en, cid, acct, phase)
-            if phase in timing and timing[phase].get("prefer_side"):
-                pref = timing[phase]["prefer_side"]
-                if pref in ("BUY", "SELL"):
-                    rec_side = pref
-                    reason = f"phase {phase} historical edge → {pref}"
+            ps = timing[phase].get("prefer_side") if phase in timing else None
+            if ps in ("BUY", "SELL"):
+                rec_side = str(ps)
+                reason = f"phase {phase} historical edge → {ps}"
             violations.append(
                 {
                     "client_id": cid,
@@ -460,7 +496,7 @@ def predict_active_positions(
             rec = viol_map[key]
             status = "FIX: mixed direction on account"
         else:
-            rec = pref if pref in ("BUY", "SELL") else cur_side
+            rec = str(pref) if str(pref) in ("BUY", "SELL") else cur_side
             if acct is not None and not (isinstance(acct, float) and pd.isna(acct)) and not hist_en.empty:
                 rec_hist, _ = _account_side_preference(hist_en, cid, acct, ph)
                 if pref == "?":
@@ -521,7 +557,7 @@ def build_portfolio_recommendations(
 
     best_hours = sorted(hour_scores.keys(), key=lambda h: hour_scores[h], reverse=True)[:3]
     if best_hours:
-        window = ", ".join(f"{h:02d}:00" for h in best_hours)
+        window = ", ".join(format_hour_eat(h) for h in best_hours)
     else:
         window = "—"
 
@@ -534,17 +570,24 @@ def build_portfolio_recommendations(
             active_pred["market_status"].str.contains("against rec", na=False).sum()
         )
 
+    coord_day = business.get("recommended_dow") or business.get("today_dow_name") or "—"
     return {
-        "trading_day": business.get("recommended_dow") or "—",
+        "trading_day": coord_day,
+        "today_eat": business.get("today_eat", today_eat_date_str()),
+        "today_dow_name": business.get("today_dow_name", today_eat_dow_name()),
+        "best_historical_dow": business.get("best_historical_dow") or "—",
+        "timezone": business.get("timezone", "Africa/Nairobi (EAT)"),
         "best_hour_window": window,
         "portfolio_side": str(port_side),
         "accounts_needing_fix": n_fix,
         "underwater_on_recommendation": n_against,
         "summary": (
-            f"Active {len(active_pred)} legs across {active_pred['client_id'].nunique()} clients. "
-            f"Align entry day to {business.get('recommended_dow', 'best historical day')}; "
-            f"resolve {len(business.get('direction_violations') or [])} direction conflict(s); "
-            f"{n_against} leg(s) on recommended side but underwater (market against rec)."
+            f"Active {len(active_pred)} legs across {active_pred['client_id'].nunique()} clients "
+            f"(times in EAT). "
+            f"Coordinated entry day: {coord_day} ({business.get('today_eat', '')}). "
+            f"Historical best DOW: {business.get('best_historical_dow') or '—'}. "
+            f"Resolve {len(business.get('direction_violations') or [])} direction conflict(s); "
+            f"{n_against} leg(s) underwater on recommended side."
         ),
     }
 
@@ -589,8 +632,8 @@ def run_full_analysis(
         insight_tips.append(
             f"Entry dates split: <code>{', '.join(business['active_dates'])}</code> — coordinate to one day."
         )
-    uw = (portfolio_recs or {}).get("underwater_on_recommendation", 0)
-    if uw:
+    uw = int((portfolio_recs or {}).get("underwater_on_recommendation", 0) or 0)
+    if uw > 0:
         insight_tips.append(
             f"<strong>{uw}</strong> open leg(s) match recommended direction but float P/L is negative "
             "(market moved against the recommended side on the hedge book)."
@@ -611,7 +654,7 @@ def run_full_analysis(
         "closed_trades": closed_sorted,
         "portfolio_recommendations": portfolio_recs,
         "insight_tips": insight_tips,
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "generated_at": now_eat().strftime("%Y-%m-%d %H:%M:%S EAT"),
         "n_trades": len(enriched),
         "n_active": len(active_pred) if not active_pred.empty else 0,
     }
