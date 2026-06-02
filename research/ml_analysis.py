@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -185,13 +186,18 @@ def train_phase_classifier(
     X_test = X_test.reindex(columns=feat_names, fill_value=0.0)
     y_test = test_df["phase_group"]
 
+    try:
+        rf_n_jobs = int(os.environ.get("ML_RF_N_JOBS", "-1"))
+    except ValueError:
+        rf_n_jobs = -1
+
     clf = RandomForestClassifier(
         n_estimators=120,
         max_depth=12,
         min_samples_leaf=25,
         class_weight="balanced",
         random_state=42,
-        n_jobs=-1,
+        n_jobs=rf_n_jobs,
     )
     clf.fit(X_train, y_train)
     pred_test = clf.predict(X_test)
@@ -560,7 +566,7 @@ def build_portfolio_recommendations(
             "accounts_needing_fix": 0,
             "summary": (
                 f"No active positions. Coordinated entry day (EAT): {coord}. "
-                "Use closed-history timing below for the next Mon–Fri session."
+                "Use closed-history timing below for the next Mon-Fri session."
             ),
         }
 

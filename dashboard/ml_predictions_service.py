@@ -13,10 +13,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, Literal, Optional
 from urllib.parse import urlparse
@@ -40,6 +42,7 @@ _state: Dict[str, Any] = {
 }
 
 _worker_lock = threading.Lock()
+_refresh_lock = threading.Lock()
 _worker_started = False
 _stop_event = threading.Event()
 _leader_lock_handle = None  # keeps flock open for process lifetime (Linux/PA)
@@ -270,6 +273,38 @@ def _startup_delay_sec() -> int:
         return 45
 
 
+def _use_subprocess_refresh() -> bool:
+    """Isolate heavy sklearn work from uWSGI workers (avoids 502 / harakiri)."""
+    raw = os.environ.get("ML_USE_SUBPROCESS", "").strip().lower()
+    if raw in ("0", "false", "no"):
+        return False
+    if raw in ("1", "true", "yes"):
+        return True
+    return _ml_runtime_mode() == "production"
+
+
+def _refresh_timeout_sec() -> int:
+    try:
+        return max(120, int(os.environ.get("ML_REFRESH_TIMEOUT_SEC", "600")))
+    except ValueError:
+        return 600
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if hasattr(obj, "item") and callable(getattr(obj, "item", None)):
+        try:
+            return obj.item()
+        except (TypeError, ValueError):
+            pass
+    return obj
+
+
 def get_state() -> Dict[str, Any]:
     _recover_stale_running()
     mode = _ml_runtime_mode()
@@ -310,7 +345,7 @@ def get_state() -> Dict[str, Any]:
             out["error"] = _state.get("error")
     elif not out["error"] and disk and disk.get("error"):
         out["error"] = disk.get("error")
-    return out
+    return _sanitize_for_json(out)
 
 
 def get_cached_html() -> str:
@@ -417,17 +452,69 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     )
 
 
-def refresh_now(*, reason: str = "manual") -> None:
+def run_refresh_once(*, reason: str = "subprocess") -> int:
+    """Single refresh in the current process (CLI / subprocess entry). Returns 0 on success."""
     t0 = time.time()
     _set_running()
-    logger.info("[ML] Refresh started (%s, mode=%s)", reason, _ml_runtime_mode())
+    logger.info("[ML] Refresh started (%s, mode=%s, pid=%s)", reason, _ml_runtime_mode(), os.getpid())
     try:
         with _ml_data_session() as source_line:
             logger.info("[ML] Using %s", source_line)
             _execute_refresh(reason=reason, source_line=source_line, t0=t0)
+        return 0
     except Exception as e:
         logger.exception("[ML] Refresh failed")
         _set_error(str(e), time.time() - t0)
+        return 1
+
+
+def _run_subprocess_refresh(*, reason: str) -> None:
+    t0 = time.time()
+    _set_running()
+    env = os.environ.copy()
+    env.setdefault("ML_RF_N_JOBS", "1")
+    cmd = [sys.executable, "-m", "dashboard.ml_refresh_worker", "--reason", reason]
+    logger.info("[ML] Spawning subprocess refresh: %s", " ".join(cmd))
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=_project_root(),
+            env=env,
+            timeout=_refresh_timeout_sec(),
+            capture_output=True,
+            text=True,
+        )
+        _warm_memory_from_disk()
+        _heal_disk_meta()
+        if proc.returncode != 0:
+            tail = ((proc.stderr or "") + "\n" + (proc.stdout or "")).strip()[-2000:]
+            _set_error(
+                f"ML subprocess exit {proc.returncode}"
+                + (f": {tail}" if tail else ""),
+                time.time() - t0,
+            )
+            logger.error("[ML] Subprocess failed: %s", tail or "(no output)")
+        elif not _cache_html_path().is_file():
+            _set_error("ML subprocess finished but report cache is missing", time.time() - t0)
+    except subprocess.TimeoutExpired:
+        _set_error(f"ML refresh timed out after {_refresh_timeout_sec()}s", time.time() - t0)
+        logger.error("[ML] Subprocess refresh timed out")
+    except Exception as e:
+        logger.exception("[ML] Subprocess refresh failed")
+        _set_error(str(e), time.time() - t0)
+
+
+def refresh_now(*, reason: str = "manual") -> None:
+    if not _refresh_lock.acquire(blocking=False):
+        logger.info("[ML] Refresh skipped (%s): another refresh is in progress", reason)
+        return
+    try:
+        if _use_subprocess_refresh():
+            _run_subprocess_refresh(reason=reason)
+            return
+        run_refresh_once(reason=reason)
+    finally:
+        _refresh_lock.release()
 
 
 def _worker_loop() -> None:
