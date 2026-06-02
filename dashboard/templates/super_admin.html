@@ -577,6 +577,7 @@
                 {% if not is_kwok_admin %}<a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>{% endif %}
                 {% if not is_bef_admin and not is_kwok_admin %}<a href="/trader_performance" class="tab-btn"><i class="fas fa-chart-line"></i> Traders</a>{% endif %}
                 {% if not is_bef_admin and not is_kwok_admin %}<a href="/quality_dashboard" class="tab-btn" style="color:#4ade80;"><i class="fas fa-clipboard-check"></i> Data Quality</a>{% endif %}
+                {% if not is_bef_admin and not is_kwok_admin %}<a href="/ml_predictions" class="tab-btn" style="color:#a78bfa;"><i class="fas fa-brain"></i> ML Predictions</a>{% endif %}
             </div>
 
             <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">

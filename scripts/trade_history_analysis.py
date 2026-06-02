@@ -8,9 +8,10 @@ and surfaces win-rate / P&L patterns by day-of-week, hour, and direction (BUY vs
 Usage (from project root, same venv as the dashboard):
     python scripts/trade_history_analysis.py Aaron
     python scripts/trade_history_analysis.py "Brian Shore" --output reports/brian.html
-    python scripts/trade_history_analysis.py Aaron --open
+    python scripts/trade_history_analysis.py --portfolio --production
+    python scripts/trade_history_analysis.py --portfolio --production --open
 
-Requires DATABASE_URL (or default local postgres) and psycopg2.
+Requires DATABASE_URL (or PRODUCTION_USE_SSH_TUNNEL in .env) and psycopg2, scikit-learn.
 """
 from __future__ import annotations
 
@@ -654,31 +655,96 @@ def analyse_client(client_id: str, min_trades: int = 3) -> Tuple[str, dict]:
     return html_out, meta
 
 
+def analyse_portfolio_ml(*, production: bool = False, database_url: str | None = None) -> Tuple[str, dict]:
+    """All clients: ML phase/timing analysis → HTML."""
+    from research.db_source import configure_source, run_learning_with_source, describe_active_source
+    from research.ml_analysis import run_full_analysis, render_ml_html_report
+    from research.trade_dataset import load_active_positions_df, load_all_round_trips
+
+    def _run():
+        df = load_all_round_trips(attach_positions=True)
+        active = load_active_positions_df()
+        analysis = run_full_analysis(df, active_df=active)
+        return analysis
+
+    if production:
+        from research.db_source import run_with_production
+
+        with run_with_production():
+            from research.db_source import describe_active_source
+
+            analysis = _run()
+            desc = describe_active_source("production")
+    elif database_url:
+        configure_source(database_url=database_url)
+        analysis = _run()
+        from research.db_source import describe_active_source
+
+        desc = describe_active_source("prod_backup")
+    else:
+        configure_source()
+        analysis = _run()
+        from research.db_source import describe_active_source
+
+        desc = describe_active_source("local")
+
+    html_out = render_ml_html_report(
+        analysis,
+        data_source_line=desc,
+        title="ML Trade Timing — All Clients",
+    )
+    ml = analysis["ml"]
+    meta = {
+        "trades": analysis["n_trades"],
+        "active": analysis.get("n_active", 0),
+        "ml_accuracy": ml.get("accuracy_test"),
+        "phases": list(analysis["timing"].keys()),
+        "direction_violations": len((analysis.get("business_rules") or {}).get("direction_violations") or []),
+    }
+    return html_out, meta
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyse dashboard trade history and write HTML report")
-    parser.add_argument("client", help='Client name (e.g. Aaron or "Brian Shore")')
-    parser.add_argument("--output", "-o", help="Output HTML path (default: reports/trade_analysis_<client>.html)")
-    parser.add_argument("--min-trades", type=int, default=3, help="Minimum trades per bucket for ranked insights (default: 3)")
+    parser.add_argument("client", nargs="?", help='Client name (e.g. Aaron). Omit with --portfolio')
+    parser.add_argument("--portfolio", action="store_true", help="Analyse all clients with ML (phase × timing)")
+    parser.add_argument("--production", action="store_true", help="SSH tunnel to production PostgreSQL")
+    parser.add_argument("--database-url", help="Override DATABASE_URL")
+    parser.add_argument("--output", "-o", help="Output HTML path")
+    parser.add_argument("--min-trades", type=int, default=3, help="Minimum trades per bucket for single-client mode")
     parser.add_argument("--open", action="store_true", help="Open the report in the default browser")
     args = parser.parse_args()
 
-    client_id = _resolve_client_id(args.client)
-    html_report, meta = analyse_client(client_id, min_trades=args.min_trades)
-
-    reports_dir = os.path.join(_ROOT, "reports")
+    reports_dir = os.path.join(_ROOT, "research", "reports")
     os.makedirs(reports_dir, exist_ok=True)
-    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in client_id)
-    out_path = args.output or os.path.join(reports_dir, f"trade_analysis_{safe}.html")
+
+    if args.portfolio:
+        out_path = args.output or os.path.join(reports_dir, "ml_trade_timing_analysis.html")
+        html_report, meta = analyse_portfolio_ml(
+            production=args.production,
+            database_url=args.database_url,
+        )
+        print(f"Trades:      {meta['trades']:,}")
+        print(f"Active:      {meta.get('active', 0):,}")
+        print(f"ML accuracy: {meta.get('ml_accuracy')}")
+        print(f"Violations:  {meta.get('direction_violations', 0)} mixed-direction accounts")
+        print(f"Phases:      {', '.join(meta.get('phases') or [])}")
+    else:
+        if not args.client:
+            parser.error("Provide a client name or use --portfolio")
+        client_id = _resolve_client_id(args.client)
+        html_report, meta = analyse_client(client_id, min_trades=args.min_trades)
+        safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in client_id)
+        out_path = args.output or os.path.join(reports_dir, f"trade_analysis_{safe}.html")
+        print(f"Client:     {client_id}")
+        print(f"Deals:      {meta['deals']} raw, {meta['filtered_deals']} trade legs, {meta['trades']} round-trips")
+        print(f"Win rate:   {meta['win_rate']:.1f}%")
+        print(f"Net P/L:    ${meta['net_pnl']:,.2f}")
+
     out_path = os.path.abspath(out_path)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html_report)
-
-    print(f"Client:     {client_id}")
-    print(f"Deals:      {meta['deals']} raw, {meta['filtered_deals']} trade legs, {meta['trades']} round-trips")
-    print(f"Win rate:   {meta['win_rate']:.1f}%")
-    print(f"Net P/L:    ${meta['net_pnl']:,.2f}")
     print(f"Report:     {out_path}")
 
     if args.open:

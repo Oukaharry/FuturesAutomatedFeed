@@ -813,6 +813,14 @@ except ImportError:
 except Exception as e:
     logging.error(f"Failed to start Watermark Scheduler: {e}")
 
+try:
+    from dashboard.ml_predictions_service import start_ml_predictions_worker
+    start_ml_predictions_worker()
+except ImportError:
+    logging.warning("Could not start ML predictions worker (ImportError).")
+except Exception as e:
+    logging.error(f"Failed to start ML predictions worker: {e}")
+
 from logging.handlers import RotatingFileHandler
 
 # Initialize logging to file - WITH AUTO-FLUSH AND FSYNC
@@ -3329,6 +3337,72 @@ def quality_dashboard():
     if request.session_user.get('user_type') not in ('super_admin',):
         return redirect('/')
     return render_template('quality_dashboard.html')
+
+
+@app.route('/ml_predictions')
+@require_session
+def ml_predictions_page():
+    """Live ML timing / direction report (auto-refreshed from DB)."""
+    if request.session_user.get('user_type') != 'super_admin':
+        return redirect('/')
+    return render_template('ml_predictions.html')
+
+
+@app.route('/api/ml_predictions/status')
+@require_session
+def api_ml_predictions_status():
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+    from dashboard.ml_predictions_service import get_state
+    return jsonify(get_state())
+
+
+@app.route('/api/ml_predictions/report')
+@require_session
+def api_ml_predictions_report():
+    if request.session_user.get('user_type') != 'super_admin':
+        return redirect('/')
+    from dashboard.ml_predictions_service import get_cached_html, get_state
+    html_body = get_cached_html()
+    if not html_body:
+        st = get_state()
+        if st.get("status") == "running":
+            return (
+                "<html><body style='background:#070b14;color:#94a3b8;font-family:sans-serif;padding:40px'>"
+                "<p>Report is building… refresh status bar will update shortly.</p></body></html>",
+                202,
+                {"Content-Type": "text/html; charset=utf-8"},
+            )
+        return (
+            "<html><body style='background:#070b14;color:#f87171;font-family:sans-serif;padding:40px'>"
+            f"<p>No report yet. {st.get('error') or ''}</p></body></html>",
+            503,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+    headers = {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+    }
+    return html_body, 200, headers
+
+
+@app.route('/api/ml_predictions/refresh', methods=['POST'])
+@require_session
+def api_ml_predictions_refresh():
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+    from dashboard.ml_predictions_service import get_state, refresh_now
+    st = get_state()
+    if st.get("status") == "running":
+        return jsonify({"status": "running", "message": "Refresh already in progress"})
+    threading.Thread(
+        target=lambda: refresh_now(reason="manual"),
+        daemon=True,
+        name="ml-predictions-manual",
+    ).start()
+    return jsonify({"status": "started"})
+
 
 @app.route('/admin/<admin_name>')
 @require_session

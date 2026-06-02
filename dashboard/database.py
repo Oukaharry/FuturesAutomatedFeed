@@ -55,6 +55,7 @@ def _normalize_identifier(value: str) -> str:
 # Override via DB_POOL_MIN / DB_POOL_MAX (integers, min >= 1).
 _pool_min = max(1, int(os.environ.get("DB_POOL_MIN", "1")))
 _pool_max = max(_pool_min, int(os.environ.get("DB_POOL_MAX", "10")))
+_db_connect_timeout = max(5, int(os.environ.get("DB_CONNECT_TIMEOUT", "5")))
 _connection_pool = None
 
 def _init_pool():
@@ -66,7 +67,7 @@ def _init_pool():
                 _pool_min,
                 _pool_max,
                 DATABASE_URL,
-                connect_timeout=5  # 5-second timeout per connection
+                connect_timeout=_db_connect_timeout
             )
             logger.info("[DB] Connection pool initialized (%s-%s connections)", _pool_min, _pool_max)
         except Exception as e:
@@ -85,6 +86,25 @@ def _return_pooled_connection(conn):
         _connection_pool.putconn(conn)
     else:
         conn.close()
+
+
+def reset_connection_pool():
+    """Close and discard the pool (e.g. after switching DATABASE_URL)."""
+    global _connection_pool
+    if _connection_pool is not None:
+        try:
+            _connection_pool.closeall()
+        except Exception as e:
+            logger.warning("[DB] Error closing connection pool: %s", e)
+        _connection_pool = None
+
+
+def set_database_url(url: str) -> None:
+    """Point the app at a different PostgreSQL URL and reset the pool."""
+    global DATABASE_URL
+    os.environ["DATABASE_URL"] = url
+    DATABASE_URL = url
+    reset_connection_pool()
 
 
 # ─── Compatibility wrappers ────────────────────────────────────────
@@ -166,9 +186,12 @@ def get_connection():
             # Auto-commit on successful exit (safety net)
             raw.commit()
         except Exception as e:
-            # Log and rollback on error
             logger.warning(f"[DB] Transaction error, rolling back: {e}")
-            raw.rollback()
+            try:
+                if raw and not raw.closed:
+                    raw.rollback()
+            except Exception:
+                pass
             raise
     except psycopg2.OperationalError as e:
         # Connection pool exhausted or DB unreachable
@@ -178,9 +201,15 @@ def get_connection():
         logger.error(f"[DB] Unexpected error in get_connection: {e}")
         raise
     finally:
-        # Always return connection to pool
         if raw is not None:
-            _return_pooled_connection(raw)
+            try:
+                if not raw.closed:
+                    _return_pooled_connection(raw)
+            except Exception:
+                try:
+                    raw.close()
+                except Exception:
+                    pass
 
 
 @contextmanager
@@ -190,7 +219,7 @@ def get_direct_connection():
     Use for CLI/cron/scripts so pool pre-allocation does not consume slots
     on small Postgres plans. Always closes the connection when done.
     """
-    raw = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+    raw = psycopg2.connect(DATABASE_URL, connect_timeout=_db_connect_timeout)
     raw.autocommit = False
     try:
         raw.rollback()

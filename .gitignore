@@ -27,6 +27,7 @@ reports/
 pg_backups/
 config/hierarchy.json
 dashboard/.scheduler_state.json
+dashboard/instance/ml_cache/
 trader_companion/trader_bias.json
 
 local-before-restore.dump

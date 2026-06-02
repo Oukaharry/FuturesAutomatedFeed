@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Trade Predictions - TradeOpss</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #01030a; color: #e2e8f0; font-family: Inter, system-ui, sans-serif; min-height: 100vh; padding: 0 16px 24px; }
+        .modern-nav {
+            background: #07091a; border: 1px solid #162040; border-radius: 14px; padding: 0 24px; height: 64px;
+            display: flex; justify-content: center; align-items: center; margin-bottom: 16px;
+            position: sticky; top: 0; z-index: 1000;
+        }
+        .nav-links { display: flex; gap: 4px; align-items: center; }
+        .tab-btn {
+            color: #7898be; text-decoration: none; font-weight: 600; font-size: 0.78rem;
+            padding: 7px 13px; border-radius: 7px; border-bottom: 2px solid transparent;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
+        .tab-btn.active { color: #a78bfa; border-bottom-color: #a78bfa; }
+        .nav-btn-key, .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center; padding: 8px 11px;
+            border-radius: 8px; text-decoration: none;
+        }
+        .nav-btn-key { border: 1px solid rgba(251,191,36,0.28); background: rgba(251,191,36,0.07); margin-right: 8px; }
+        .nav-btn-key i { color: #fbbf24; }
+        .nav-btn-logout { border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.07); }
+        .nav-btn-logout i { color: #ef4444; }
+        .brand { position: absolute; left: 24px; top: 50%; transform: translateY(-50%); }
+        .brand img { width: 90px; height: auto; }
+        .nav-right { position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; }
+        .status-bar {
+            display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
+            background: #090f1e; border: 1px solid #162040; border-radius: 12px; padding: 14px 18px; margin-bottom: 14px;
+        }
+        .status-bar .item { font-size: 0.85rem; color: #94a3b8; }
+        .status-bar .item strong { color: #e2e8f0; }
+        .status-pill { padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+        .pill-ready { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .pill-running { background: rgba(251,191,36,0.15); color: #fbbf24; }
+        .pill-error { background: rgba(239,68,68,0.15); color: #f87171; }
+        .btn-refresh {
+            margin-left: auto; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff;
+            border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem;
+        }
+        .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
+        .report-shell {
+            background: #070b14; border: 1px solid #162040; border-radius: 12px; overflow: hidden; min-height: 70vh;
+        }
+        .report-shell iframe { width: 100%; min-height: 75vh; border: none; display: block; }
+        .loading-msg { padding: 48px; text-align: center; color: #64748b; }
+    </style>
+</head>
+<body>
+    <nav class="modern-nav">
+        <div class="brand">
+            <a href="/super_admin"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"></a>
+        </div>
+        <div class="nav-links">
+            <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+            <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
+            <a href="/quality_dashboard" class="tab-btn"><i class="fas fa-clipboard-check"></i> Data Quality</a>
+            <a href="/ml_predictions" class="tab-btn active"><i class="fas fa-brain"></i> ML Predictions</a>
+        </div>
+        <div class="nav-right">
+            <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
+            <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
+        </div>
+    </nav>
+
+    <div class="status-bar" id="status-bar">
+        <span class="status-pill pill-running" id="status-pill">Loading…</span>
+        <span class="item">Source: <strong id="meta-source" style="font-size:0.78rem;">—</strong></span>
+        <span class="item">Updated: <strong id="meta-updated">—</strong></span>
+        <span class="item">DB sync: <strong id="meta-db-sync">—</strong></span>
+        <span class="item">Closed: <strong id="meta-trades">—</strong></span>
+        <span class="item">Live: <strong id="meta-active">—</strong></span>
+        <span class="item">Underwater on rec: <strong id="meta-underwater">—</strong></span>
+        <span class="item" id="meta-error" style="color:#f87171;display:none;"></span>
+        <button type="button" class="btn-refresh" id="btn-refresh"><i class="fas fa-sync-alt"></i> Refresh now</button>
+    </div>
+
+    <div class="report-shell">
+        <div class="loading-msg" id="loading-msg"><i class="fas fa-spinner fa-spin"></i> Building first report from live database…</div>
+        <iframe id="report-frame" title="ML report" style="display:none;"></iframe>
+    </div>
+
+    <script>
+        const pill = document.getElementById('status-pill');
+        const frame = document.getElementById('report-frame');
+        const loading = document.getElementById('loading-msg');
+        const btnRefresh = document.getElementById('btn-refresh');
+
+        function setPill(status) {
+            pill.className = 'status-pill ' + (status === 'ready' ? 'pill-ready' : status === 'running' ? 'pill-running' : 'pill-error');
+            pill.textContent = status === 'ready' ? 'Live' : status === 'running' ? 'Updating…' : 'Error';
+        }
+
+        async function pollStatus() {
+            try {
+                const r = await fetch('/api/ml_predictions/status');
+                const d = await r.json();
+                setPill(d.status);
+                document.getElementById('meta-updated').textContent = d.generated_at || '—';
+                document.getElementById('meta-db-sync').textContent = d.meta?.db_max_last_updated || '—';
+                document.getElementById('meta-db-sync').title = 'clients_data max last_updated';
+                const mode = d.runtime_mode || d.meta?.runtime_mode || '';
+                const src = d.meta?.data_source || '';
+                document.getElementById('meta-source').textContent = mode || (src.includes('production') ? 'production' : src.includes('local') ? 'local' : '—');
+                document.getElementById('meta-source').title = src || mode;
+                document.getElementById('meta-trades').textContent = d.meta?.n_trades?.toLocaleString?.() ?? d.meta?.n_trades ?? '—';
+                document.getElementById('meta-active').textContent = d.meta?.n_active ?? '—';
+                document.getElementById('meta-underwater').textContent = d.meta?.underwater_on_recommendation ?? '—';
+                const errEl = document.getElementById('meta-error');
+                if (d.error) { errEl.style.display = ''; errEl.textContent = d.error; }
+                else { errEl.style.display = 'none'; }
+                if (d.has_html && d.status !== 'running') {
+                    loading.style.display = 'none';
+                    frame.style.display = 'block';
+                    const stamp = d.generated_at || '';
+                    if (stamp !== pollStatus._lastReportAt) {
+                        pollStatus._lastReportAt = stamp;
+                        frame.src = '/api/ml_predictions/report?t=' + Date.now();
+                    }
+                }
+                btnRefresh.disabled = d.status === 'running';
+            } catch (e) {
+                setPill('error');
+            }
+        }
+
+        btnRefresh.addEventListener('click', async () => {
+            btnRefresh.disabled = true;
+            await fetch('/api/ml_predictions/refresh', { method: 'POST' });
+            pollStatus();
+        });
+
+        pollStatus._lastReportAt = '';
+        pollStatus();
+        const pollMs = 10000;
+        setInterval(pollStatus, pollMs);
+    </script>
+</body>
+</html>
