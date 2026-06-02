@@ -594,7 +594,8 @@ class MT5DataPusher:
                 "tp": pos.tp,
                 "profit": pos.profit,
                 "swap": pos.swap,
-                "time": datetime.fromtimestamp(pos.time).isoformat(),
+                "time": datetime.fromtimestamp(pos.time, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+                "time_raw": int(pos.time),
                 "magic": pos.magic,
                 "comment": pos.comment
             })
@@ -627,8 +628,9 @@ class MT5DataPusher:
                 "commission": deal.commission,
                 "swap": deal.swap,
                 "fee": deal.fee,
-                "time": datetime.fromtimestamp(deal.time).isoformat(),
-                "time_raw": deal.time,
+                "time": datetime.fromtimestamp(deal.time, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+                "time_raw": int(deal.time),
+                "time_msc": int(getattr(deal, "time_msc", 0) or 0),
                 "magic": deal.magic,
                 "comment": deal.comment
             })
@@ -3379,6 +3381,15 @@ class TradeOpssAIApp:
             "dropdown_options": {},
             "firm_billing": self._firm_billing_summary if self._firm_billing_summary else None,
         }
+        try:
+            from research.mt5_time import capture_push_timing_context
+
+            payload["mt5_timing"] = capture_push_timing_context(
+                account=account,
+                sample_deals=trade_history_deals,
+            )
+        except Exception as _tz_exc:
+            _log(f"⚠️ mt5_timing snapshot skipped: {_tz_exc}", "WARNING")
 
         # Only include Tradovate prop day data if we actually have it.
         # Omitting the key entirely means the server will never touch existing Prop Day values.

@@ -608,7 +608,7 @@ def render_ml_html_report(
       <h1>{html.escape(title)}</h1>
       <p class="meta">{html.escape(data_source_line)}<br/>
         Generated {html.escape(str(analysis.get('generated_at', '')))} ·
-        All entry times in <strong>EAT (Africa/Nairobi)</strong> ·
+        {html.escape(str(analysis.get('timing_note') or 'Entry hours in EAT (Africa/Nairobi).'))} ·
         Phase labels <strong>CH1 / FD2 / FA</strong> match blueprint · sorted by <strong>prop firm</strong>.
       </p>
     </div>
@@ -622,7 +622,9 @@ def render_ml_html_report(
     {rec_html}
     {live_section}
     {closed_section}
-    <footer>Not trading advice. One direction per prop account; same entry day across clients.</footer>
+    <footer>Not trading advice. One direction per prop account; same entry day across clients.
+      <br/>{html.escape(str(analysis.get('timing_note') or ''))}
+    </footer>
   </div>
 </body>
 </html>"""

@@ -5515,6 +5515,17 @@ def api_client_push():
             client_data["identity"]["companion_version_updated_at"] = _dt.utcnow().isoformat(timespec="seconds") + "Z"
         except Exception:
             pass
+
+    mt5_timing = data.get("mt5_timing")
+    if isinstance(mt5_timing, dict) and mt5_timing:
+        client_data.setdefault("identity", {})
+        client_data["identity"]["mt5_timing"] = mt5_timing
+        app.logger.info(
+            "   - mt5_timing: server=%s correction=%ss samples=%s",
+            mt5_timing.get("mt5_server", "?"),
+            mt5_timing.get("utc_correction_sec", 0),
+            (mt5_timing.get("calibration") or {}).get("samples", 0),
+        )
     
     # Merge firm_billing: new push data wins per-firm, but preserve firms not in this push
     existing_firm_billing = existing_data.get("firm_billing") or {}

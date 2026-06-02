@@ -681,6 +681,8 @@ def run_full_analysis(
     closed_sorted = sort_for_report(enriched)
     active_sorted = sort_for_report(active_pred) if not active_pred.empty else active_pred
 
+    timing_meta = _portfolio_timing_meta()
+
     return {
         "df": closed_sorted,
         "ml": ml,
@@ -692,9 +694,66 @@ def run_full_analysis(
         "portfolio_recommendations": portfolio_recs,
         "insight_tips": insight_tips,
         "generated_at": now_eat().strftime("%Y-%m-%d %H:%M:%S EAT"),
+        "timing_meta": timing_meta,
+        "timing_note": timing_meta.get("note", ""),
         "n_trades": len(enriched),
         "n_active": len(active_pred) if not active_pred.empty else 0,
     }
+
+
+def _portfolio_timing_meta() -> Dict[str, Any]:
+    """Summarize per-client UTC calibration used for entry-hour buckets."""
+    from research.mt5_time import timing_for_client
+    from research.trade_dataset import (
+        _utc_correction_for_client,
+        load_clients_deals,
+        load_clients_identity,
+    )
+
+    deals_map = load_clients_deals()
+    identity_map = load_clients_identity()
+    corrections: List[int] = []
+    stored = 0
+    for cid, deals in deals_map.items():
+        if not deals:
+            continue
+        ident = identity_map.get(cid, {})
+        if timing_for_client(ident):
+            stored += 1
+        corrections.append(_utc_correction_for_client(cid, deals, ident))
+
+    if not corrections:
+        return {
+            "note": (
+                "Entry hours: East Africa Time (Africa/Nairobi). "
+                "No deal history loaded for calibration."
+            ),
+        }
+
+    uniq = sorted(set(corrections))
+    meta: Dict[str, Any] = {
+        "clients_with_deals": len(corrections),
+        "clients_with_stored_timing": stored,
+        "correction_sec_min": min(uniq),
+        "correction_sec_max": max(uniq),
+        "correction_hours_range": f"{min(uniq) / 3600:+.1f}h … {max(uniq) / 3600:+.1f}h",
+    }
+    if len(uniq) == 1 and uniq[0] == 0:
+        note = (
+            "Entry hours: East Africa Time (Africa/Nairobi, UTC+3). "
+            "MT5 Unix timestamps align with stored deal times (no per-client skew)."
+        )
+    else:
+        note = (
+            "Entry hours: East Africa Time (Africa/Nairobi, UTC+3). "
+            f"Per-client calibration applied ({meta['correction_hours_range']}). "
+            "Skew is estimated from time_raw vs time on each client's deals; "
+            "re-push from TradeopssAI with a fresh MT5 sync for best accuracy."
+        )
+    if stored < len(corrections):
+        note += f" {stored}/{len(corrections)} clients have mt5_timing from a recent push."
+    meta["note"] = note
+    return meta
 
 
 def render_ml_html_report(

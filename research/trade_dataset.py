@@ -8,62 +8,21 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from research.eat_time import EAT
+from research.mt5_time import deal_instant_utc, infer_utc_correction_sec, timing_for_client
 from trader_companion.mt5_comment_parser import MT5CommentParser
 
 
-def _timestamp_from_unix(ts: float) -> Optional[pd.Timestamp]:
-    try:
-        t = float(ts)
-        if t > 0:
-            return pd.Timestamp(t, unit="s", tz="UTC")
-    except (TypeError, ValueError, OSError):
-        pass
-    return None
-
-
-def _timestamp_from_value(value: Any) -> Optional[pd.Timestamp]:
-    """
-    Normalize MT5 timestamps for EAT analytics.
-
-    - time_raw / Unix: always UTC (MetaTrader5 API).
-    - Companion ``time`` ISO without offset: Kenya-local wall clock from the desktop push.
-    """
-    if value is None:
-        return None
-    if isinstance(value, (int, float)) and value > 0:
-        return _timestamp_from_unix(float(value))
-    s = str(value).strip()
-    if not s:
-        return None
-    try:
-        if "T" in s or " " in s:
-            ts = pd.Timestamp(s.replace("Z", "+00:00"))
-            if ts.tz is None:
-                ts = ts.tz_localize(EAT, ambiguous=True, nonexistent="shift_forward")
-            return ts.tz_convert("UTC")
-        ts = pd.Timestamp(datetime.strptime(s.split()[0], "%Y-%m-%d"))
-        return ts.tz_localize(EAT).tz_convert("UTC")
-    except (ValueError, TypeError):
-        return None
-
-
-def _timestamp_from_deal(deal: dict) -> Optional[pd.Timestamp]:
-    """Prefer time_raw (UTC); fall back to companion time field."""
-    raw = deal.get("time_raw")
-    if raw is not None and str(raw).strip() not in ("", "0"):
-        ts = _timestamp_from_unix(float(raw))
-        if ts is not None:
-            return ts
-    return _timestamp_from_value(deal.get("time"))
+def _timestamp_from_deal(deal: dict, *, correction_sec: int = 0) -> Optional[pd.Timestamp]:
+    return deal_instant_utc(deal, correction_sec=correction_sec)
 
 
 def _parse_close_time(value: Any) -> Optional[datetime]:
     """Legacy helper — returns naive UTC wall time for sorting."""
-    ts = _timestamp_from_value(value)
+    fake = {"time": value} if not isinstance(value, dict) else value
+    ts = deal_instant_utc(fake, correction_sec=0)
     if ts is None:
         return None
-    return ts.tz_convert("UTC").to_pydatetime().replace(tzinfo=None)
+    return ts.to_pydatetime().replace(tzinfo=None)
 
 
 def _normalize_side(raw: Any) -> str:
@@ -118,11 +77,9 @@ def load_active_positions_df(client_id: Optional[str] = None) -> pd.DataFrame:
                 continue
             comment = str(p.get("comment") or "")
             parsed = parser.parse(comment)
-            entry_ts = _timestamp_from_value(p.get("time"))
+            entry_ts = _timestamp_from_deal(p, correction_sec=0)
             entry_dt = (
-                entry_ts.tz_convert(EAT).to_pydatetime().replace(tzinfo=None)
-                if entry_ts is not None
-                else now
+                entry_ts.to_pydatetime().replace(tzinfo=None) if entry_ts is not None else now
             )
             open_px = float(p.get("price_open") or p.get("price_current") or 0)
             sl = float(p.get("sl") or 0)
@@ -224,14 +181,50 @@ def load_clients_deals(client_id: Optional[str] = None) -> Dict[str, List[dict]]
     return out
 
 
-def _deal_time_raw(deal: dict) -> float:
-    ts = _timestamp_from_deal(deal)
+def load_clients_identity(client_id: Optional[str] = None) -> Dict[str, dict]:
+    import json as _json
+
+    from dashboard.database import get_direct_connection
+
+    out: Dict[str, dict] = {}
+    with get_direct_connection() as conn:
+        if client_id:
+            row = conn.execute(
+                "SELECT client_id, identity FROM clients_data WHERE client_id = ?",
+                (client_id,),
+            ).fetchone()
+            rows = [row] if row else []
+        else:
+            rows = conn.execute("SELECT client_id, identity FROM clients_data").fetchall()
+        for row in rows:
+            cid = row["client_id"]
+            raw = row["identity"]
+            ident = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+            out[cid] = ident if isinstance(ident, dict) else {}
+    return out
+
+
+def _utc_correction_for_client(client_id: str, deals: List[dict], identity: dict) -> int:
+    timing = timing_for_client(identity)
+    if timing.get("utc_correction_sec") is not None:
+        try:
+            return int(timing["utc_correction_sec"])
+        except (TypeError, ValueError):
+            pass
+    correction, _ = infer_utc_correction_sec(deals)
+    return correction
+
+
+def _deal_time_raw(deal: dict, *, correction_sec: int = 0) -> float:
+    ts = _timestamp_from_deal(deal, correction_sec=correction_sec)
     return float(ts.timestamp()) if ts is not None else 0.0
 
 
 def deals_to_round_trips(
     deals: List[dict],
     client_id: str = "",
+    *,
+    utc_correction_sec: int = 0,
 ) -> pd.DataFrame:
     if not deals:
         return pd.DataFrame()
@@ -266,7 +259,7 @@ def deals_to_round_trips(
                 entry_deal = d
             if is_exit:
                 has_exit = True
-            t = _deal_time_raw(d)
+            t = _deal_time_raw(d, correction_sec=utc_correction_sec)
             if t > exit_time:
                 exit_time = t
             total_profit += float(d.get("profit") or 0)
@@ -292,20 +285,24 @@ def deals_to_round_trips(
             entry_str = str(entry_val).upper() if entry_val != "" else ""
             is_exit = entry_val in (1, 2, 3) or entry_str in ("OUT", "INOUT", "OUT_BY")
             if is_exit:
-                if exit_deal is None or _deal_time_raw(d) >= _deal_time_raw(exit_deal):
+                if exit_deal is None or _deal_time_raw(d, correction_sec=utc_correction_sec) >= _deal_time_raw(
+                    exit_deal, correction_sec=utc_correction_sec
+                ):
                     exit_deal = d
         if exit_deal is None:
             exit_deal = deal_list[-1]
 
         comment = entry_deal.get("comment") or ""
         parsed = parser.parse(comment)
-        entry_ts = _timestamp_from_deal(entry_deal)
+        entry_ts = _timestamp_from_deal(entry_deal, correction_sec=utc_correction_sec)
         entry_dt = (
-            entry_ts.tz_convert("UTC").to_pydatetime().replace(tzinfo=None)
-            if entry_ts is not None
-            else None
+            entry_ts.to_pydatetime().replace(tzinfo=None) if entry_ts is not None else None
         )
-        exit_ts = _timestamp_from_unix(exit_time) if exit_time else _timestamp_from_deal(exit_deal)
+        exit_ts = (
+            pd.Timestamp(exit_time, unit="s", tz="UTC") + pd.Timedelta(seconds=int(utc_correction_sec))
+            if exit_time
+            else _timestamp_from_deal(exit_deal, correction_sec=utc_correction_sec)
+        )
         close_dt = (
             exit_ts.tz_convert("UTC").to_pydatetime().replace(tzinfo=None)
             if exit_ts is not None
@@ -356,11 +353,13 @@ def load_all_round_trips(
 ) -> pd.DataFrame:
     parts: List[pd.DataFrame] = []
     deals_map = load_clients_deals(client_id)
+    identity_map = load_clients_identity(client_id)
     pos_map = load_clients_positions(client_id) if attach_positions else {}
     for cid, deals in deals_map.items():
         if not deals:
             continue
-        rt = deals_to_round_trips(deals, client_id=cid)
+        corr = _utc_correction_for_client(cid, deals, identity_map.get(cid, {}))
+        rt = deals_to_round_trips(deals, client_id=cid, utc_correction_sec=corr)
         if not rt.empty:
             if attach_positions:
                 rt = enrich_round_trips_with_positions(rt, {cid: pos_map.get(cid, [])})
@@ -386,7 +385,13 @@ def coverage_report(clients_deals: Optional[Dict[str, List[dict]]] = None) -> pd
             deals = json.loads(deals)
         n_deals = len(deals)
         last_up = last_updated_map.get(cid)
-        rt = deals_to_round_trips(deals, client_id=cid) if n_deals else pd.DataFrame()
+        ident = load_clients_identity(cid).get(cid, {})
+        corr = _utc_correction_for_client(cid, deals, ident) if n_deals else 0
+        rt = (
+            deals_to_round_trips(deals, client_id=cid, utc_correction_sec=corr)
+            if n_deals
+            else pd.DataFrame()
+        )
         n_rt = len(rt)
         valid = int(rt["parse_valid"].sum()) if n_rt and "parse_valid" in rt.columns else 0
         pnl = float(rt["net_pnl"].sum()) if n_rt else 0.0
