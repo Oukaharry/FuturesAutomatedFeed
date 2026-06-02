@@ -114,6 +114,8 @@ _ADMIN_HEALTH_ISSUE_TYPES_EXCLUDED_FROM_SCORE = frozenset({
     'daily_summary_payout_qa',
 })
 _ADMIN_SIGNOFF_PENDING_PENALTY = 5
+# Penalty when a timing metric is missing or incomplete (sorts last in time tie-breaks).
+_ADMIN_TEAM_TIME_PENALTY = 999999
 
 
 def _compute_admin_health_score(admin_issues, pending_signoffs=0):
@@ -163,6 +165,7 @@ def _sync_quality_issue_tracking(scan_date: str, results: list):
 
 def _trader_leaderboard_sort_key(trader: str, stats: dict, clear_mins: int) -> tuple:
     """
+    Issue-clearance race tiers (Daily Summary Tracker cards):
     0 = finished clearance race (fastest time first)
     1 = clean at scan (not in race)
     2 = still fixing
@@ -174,6 +177,21 @@ def _trader_leaderboard_sort_key(trader: str, stats: dict, clear_mins: int) -> t
         avg = stats.get('health_sum', 0) / max(stats.get('clients', 1), 1)
         return (1, -avg, name)
     return (0, int(clear_mins), name)
+
+
+def _trader_health_leaderboard_sort_key(trader: str, stats: dict, clear_mins: int) -> tuple:
+    """
+    TRADER HEALTH LEADERBOARD: health score always ranks above lower scores.
+    Average clearance time breaks ties only among equal health (e.g. five teams at 100%).
+    """
+    avg = stats.get('health_sum', 0) / max(stats.get('clients', 1), 1)
+    if clear_mins >= 99999:
+        time_tiebreak = _ADMIN_TEAM_TIME_PENALTY
+    elif clear_mins < 0:
+        time_tiebreak = _ADMIN_TEAM_TIME_PENALTY - 1
+    else:
+        time_tiebreak = int(clear_mins)
+    return (-round(avg, 1), time_tiebreak, int(stats.get('issues', 0) or 0), (trader or '').lower())
 
 
 def _trader_clearance_sort_key(trader_entry: dict) -> tuple:
@@ -313,10 +331,6 @@ def _admin_avg_signoff_minutes_and_label(date, admin_name, payload):
     return avg, f'{hh:02d}:{mm:02d}'
 
 
-# Penalty when a timing metric is missing or incomplete (sorts last).
-_ADMIN_TEAM_TIME_PENALTY = 999999
-
-
 def _minutes_to_hhmm(minutes):
     """Format minutes-from-midnight as HH:MM, or em dash for penalty/missing."""
     if minutes is None:
@@ -415,11 +429,12 @@ def _team_avg_aggregate_label(row):
 
 
 def _admin_teams_rank_sort_key(team_name, row):
-    """Lowest average time wins; then health score."""
+    """Health score first (higher wins); average time breaks ties only."""
+    score = float(row.get('score') or row.get('health_score') or 0.0)
     avg = _team_avg_aggregate_minutes(row)
     if avg is None:
         avg = _ADMIN_TEAM_TIME_PENALTY
-    return (int(avg), -float(row.get('score') or 0), (team_name or '').lower())
+    return (-score, int(avg), (team_name or '').lower())
 
 
 def _leaderboard_points_for_rank(rank, num_teams):
@@ -435,7 +450,7 @@ def _leaderboard_points_for_rank(rank, num_teams):
 def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_traders):
     """
     Build admin team rows with three timing metrics + composite aggregate.
-    Returns list of dicts sorted best → worst (lowest composite first).
+    Returns list of dicts sorted best → worst (highest health first; time breaks ties).
     """
     from config.hierarchy import SYSTEM_HIERARCHY, get_client_profile
     from dashboard.database import get_summary_status_for_date
@@ -601,7 +616,7 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
 
     out = [
         _bold('ADMIN TEAMS'),
-        "_Ranked by average time (sign-off if required, issue clearance, daily summaries) — lower is faster._",
+        "_Ranked by health score first; ties broken by average time (sign-off, clearance, summaries)._",
         "",
     ]
     for arow in ranked:
@@ -4250,6 +4265,122 @@ def get_profit_splits():
     total = round(sum(r['profit_split_inprogress'] for r in results), 2)
     results.sort(key=lambda x: x['profit_split_inprogress'], reverse=True)
     return jsonify({'status': 'success', 'clients': results, 'total': total})
+
+
+@app.route('/api/super_admin/avg_profit_splits')
+@require_session
+def get_avg_profit_splits():
+    """
+    Return per-client average profit split for completed periods only.
+
+    Criteria (matches client dashboard Profit Split tab):
+    - Exclude the most recent (in-progress) period
+    - Find window from first completed period that paid profit_split > 0
+      through last completed period that paid profit_split > 0
+    - Include $0 months inside that window in the average denominator
+    """
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
+
+    profile_filter = request.args.get('profile', 'ALL').upper()
+    if session_user.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
+    if session_user.get('user_type') == 'kwok_admin':
+        profile_filter = 'ALL'
+
+    from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
+    from dashboard.financial_overview import _get_cached_clients, get_client_profile
+    from concurrent.futures import ThreadPoolExecutor
+
+    clients_data = _get_cached_clients()
+    excluded_sa = _get_super_admin_stats_excluded_set()
+    results = []
+
+    def _money_to_float(v) -> float:
+        try:
+            if v is None:
+                return 0.0
+            s = str(v).replace("$", "").replace(",", "").strip()
+            if s == "":
+                return 0.0
+            return float(s)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _compute_one(client_id, data):
+        try:
+            identity = data.get('identity', {})
+            display_name = (identity.get('name') or client_id).strip()
+            source = get_client_profile(client_id, identity)
+            if profile_filter != 'ALL' and source != profile_filter:
+                return None
+            if _client_excluded_from_super_admin_stats(client_id, display_name, excluded_sa):
+                return None
+
+            wl = compute_waterlog_from_db(client_id) or compute_waterlog_daily_fallback(client_id)
+            periods = (wl or {}).get('periods') or []
+            if len(periods) < 2:
+                return {
+                    'client_id': display_name,
+                    'avg_profit_split': 0.0,
+                    'periods_in_avg': 0,
+                    'paid_periods': 0,
+                }
+
+            completed = periods[:-1]  # drop in-progress
+            paid_idxs = [i for i, p in enumerate(completed) if _money_to_float(p.get('profit_split')) > 0]
+            if not paid_idxs:
+                return {
+                    'client_id': display_name,
+                    'avg_profit_split': 0.0,
+                    'periods_in_avg': 0,
+                    'paid_periods': 0,
+                }
+
+            first_i = min(paid_idxs)
+            last_i = max(paid_idxs)
+            window = completed[first_i:last_i + 1]
+            if not window:
+                return {
+                    'client_id': display_name,
+                    'avg_profit_split': 0.0,
+                    'periods_in_avg': 0,
+                    'paid_periods': len(paid_idxs),
+                }
+
+            total = sum(_money_to_float(p.get('profit_split')) for p in window)
+            avg = total / float(len(window)) if window else 0.0
+            return {
+                'client_id': display_name,
+                'avg_profit_split': round(avg, 2),
+                'periods_in_avg': len(window),
+                'paid_periods': len(paid_idxs),
+            }
+        except Exception as _exc:
+            import traceback
+            print(f"[avg_profit_splits] error for {client_id}: {_exc}\n{traceback.format_exc()}")
+            return None
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(_compute_one, cid, d) for cid, d in clients_data.items()]
+        for f in futures:
+            r = f.result()
+            if r is not None:
+                results.append(r)
+
+    # Card total = sum of each client's average (modal still shows per-client averages)
+    paid = [r for r in results if (r.get('paid_periods') or 0) > 0 and (r.get('periods_in_avg') or 0) > 0]
+    total = round(sum(r.get('avg_profit_split', 0.0) for r in paid), 2)
+
+    results.sort(key=lambda x: (x.get('avg_profit_split') or 0.0), reverse=True)
+    return jsonify({
+        'status': 'success',
+        'clients': results,
+        'total': total,
+        'paid_clients': len(paid),
+        'client_count': len(results),
+    })
 
 
 @app.route('/api/super_admin/stats_exclusions', methods=['GET'])
@@ -11054,10 +11185,10 @@ def api_daily_summary():
 
     if trader_stats:
         from dashboard.database import get_trader_issue_resolution_minutes
-        # Gamified Trader Health Leaderboard — fastest issue clearance first
+        # Trader Health Leaderboard — health % first; clearance time breaks ties
         ranked = sorted(
             trader_stats.items(),
-            key=lambda it: _trader_leaderboard_sort_key(
+            key=lambda it: _trader_health_leaderboard_sort_key(
                 it[0], it[1], get_trader_issue_resolution_minutes(date, it[0]),
             ),
         )

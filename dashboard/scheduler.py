@@ -342,14 +342,14 @@ def _build_daily_summary_text():
             deduction = 5.0 * (missing / max(total, 1))
             return max(0.0, raw - deduction)
 
-        # Gamified Trader Issue Clearance Leaderboard — fastest full clearance first
+        # Trader Health Leaderboard — health % first; clearance time breaks ties
         from dashboard.app import (
             _trader_leaderboard_entry_lines,
-            _trader_leaderboard_sort_key,
+            _trader_health_leaderboard_sort_key,
         )
         ranked = sorted(
             trader_stats.items(),
-            key=lambda it: _trader_leaderboard_sort_key(
+            key=lambda it: _trader_health_leaderboard_sort_key(
                 it[0], it[1], get_trader_issue_resolution_minutes(date, it[0]),
             ),
         )

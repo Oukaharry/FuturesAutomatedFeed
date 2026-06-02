@@ -773,6 +773,12 @@
                         <div id="grand-profit-split" class="stat-value-modern" style="color: #2dd4bf !important; text-shadow: 0 0 20px rgba(45, 212, 191, 0.3);"><i class="fas fa-spinner fa-spin" style="font-size:1rem;"></i></div>
                     </div>
 
+                    <!-- Avg Profit Split (Completed Periods) -->
+                    <div class="stat-card-modern" onclick="showBreakdown('avg_profit_split')" style="cursor:pointer; background: linear-gradient(135deg, rgba(167, 139, 250, 0.14) 0%, rgba(76, 29, 149, 0.55) 100%); border: 1px solid rgba(167, 139, 250, 0.45); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);">
+                        <div class="stat-label-modern" style="color: #ddd6fe !important; font-weight: 700;">Avg Profit Split</div>
+                        <div id="grand-avg-profit-split" class="stat-value-modern" style="color: #a78bfa !important; text-shadow: 0 0 20px rgba(167, 139, 250, 0.25);"><i class="fas fa-spinner fa-spin" style="font-size:1rem;"></i></div>
+                    </div>
+
 
 
 
@@ -1328,6 +1334,7 @@
         let currentProfile = USER_ROLE === 'bef_admin' ? 'BEF' : 'ALL';
         let clientsBreakdownData = [];
         let profitSplitsData = [];  // dedicated store for profit split breakdown
+        let avgProfitSplitsData = [];  // dedicated store for avg profit split breakdown
         
         // Glue code for new buttons
         function setFilter(profile) {
@@ -1350,9 +1357,10 @@
             passed: 'Passed Accounts',
             failed: 'Failed Accounts',
             profit_split_inprogress: 'Profit Split (In Progress)',
+            avg_profit_split: 'Avg Profit Split',
         };
 
-        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','profit_split_inprogress'];
+        const CURRENCY_METRICS = ['payouts','deposits','fees','net_profit','hedge_profit','profit_split_inprogress','avg_profit_split'];
 
         function escHtml(str) {
             const d = document.createElement('div');
@@ -1367,7 +1375,10 @@
             const valHeader = document.getElementById('breakdownValueHeader');
 
             // Use dedicated splits data for this metric
-            const dataSource = (metric === 'profit_split_inprogress') ? profitSplitsData : clientsBreakdownData;
+            const dataSource =
+                (metric === 'profit_split_inprogress') ? profitSplitsData :
+                (metric === 'avg_profit_split') ? avgProfitSplitsData :
+                clientsBreakdownData;
 
             if (!dataSource || dataSource.length === 0) {
                 alert('Data still loading. Please wait a moment.');
@@ -1617,6 +1628,29 @@
                     const el = document.getElementById('grand-profit-split');
                     if (el) el.textContent = 'Error';
                     debugLog("Profit Splits Load Error: " + err.message, 'error');
+                });
+
+            // 4. Load Avg Profit Splits (completed — lazy background load)
+            const avgSplitsUrl = currentProfile === 'ALL' ? '/api/super_admin/avg_profit_splits' : `/api/super_admin/avg_profit_splits?profile=${currentProfile}`;
+            fetch(avgSplitsUrl)
+                .then(r => r.json())
+                .then(aData => {
+                    if (aData.status === 'success') {
+                        const el = document.getElementById('grand-avg-profit-split');
+                        if (el) {
+                            const v = (aData.total !== null && aData.total !== undefined) ? aData.total : 0;
+                            el.textContent = (aData.paid_clients && aData.paid_clients > 0) ? formatCurrency(v) : '—';
+                        }
+                        if (aData.clients) {
+                            avgProfitSplitsData = aData.clients;
+                        }
+                        debugLog("Avg profit splits loaded: paid=" + (aData.paid_clients || 0));
+                    }
+                })
+                .catch(err => {
+                    const el = document.getElementById('grand-avg-profit-split');
+                    if (el) el.textContent = 'Error';
+                    debugLog("Avg Profit Splits Load Error: " + err.message, 'error');
                 });
         }
 
