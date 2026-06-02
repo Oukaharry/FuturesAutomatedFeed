@@ -23,6 +23,11 @@ plan.md
 _render_report_pdf.py
 reports/
 
+# ML artifacts (exported trades + trained models)
+data/ml/*.parquet
+data/ml/*.csv
+data/ml/models/
+
 # Local runtime state / data files
 pg_backups/
 config/hierarchy.json
