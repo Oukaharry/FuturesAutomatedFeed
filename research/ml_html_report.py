@@ -486,7 +486,9 @@ def _report_styles() -> str:
     .heat-cell.heat-pos { background: var(--pos); color: #042f1a; }
     .heat-cell.heat-neg { background: var(--neg); color: #3f0a0a; }
     .rec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
-    .rec-item { background: rgba(91,156,245,0.06); border-radius: 10px; padding: 14px; }
+    .rec-item { display: flex; flex-direction: column; gap: 6px; background: rgba(91,156,245,0.06); border-radius: 10px; padding: 14px; }
+    .rec-label { display: block; font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .rec-value { display: block; font-size: 1.05rem; font-weight: 600; }
     pre.report { background: #0a0e18; padding: 12px; border-radius: 8px; font-size: 0.75rem; color: var(--muted); overflow-x: auto; }
     footer { margin-top: 24px; color: var(--muted); font-size: 0.8rem; }
     @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }

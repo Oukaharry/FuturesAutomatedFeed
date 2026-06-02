@@ -11,7 +11,11 @@ import pandas as pd
 
 from research.eat_time import (
     DOW_NAMES,
+    TRADING_WEEKDAY_NAMES,
+    coordinated_entry_dow_name,
     format_hour_eat,
+    is_trading_day_eat,
+    is_trading_weekday_name,
     now_eat,
     today_eat_date_str,
     today_eat_dow_name,
@@ -233,6 +237,8 @@ def timing_tables_by_phase(
         sub = df[df["phase_group"] == phase]
         if len(sub) < min_trades:
             continue
+        if "entry_dow_name" in sub.columns:
+            sub = sub[sub["entry_dow_name"].isin(TRADING_WEEKDAY_NAMES)]
 
         by_dow = (
             sub.groupby("entry_dow_name")
@@ -332,6 +338,7 @@ def analyze_business_rules(
     """
     today_dow = today_eat_dow_name()
     today_date = today_eat_date_str()
+    coord_dow = coordinated_entry_dow_name()
     out: Dict[str, Any] = {
         "active_count": 0,
         "active_clients": 0,
@@ -341,7 +348,7 @@ def analyze_business_rules(
         "unified_entry_date": None,
         "direction_violations": [],
         "active_phases": [],
-        "recommended_dow": today_dow,
+        "recommended_dow": coord_dow,
         "best_historical_dow": None,
         "today_eat": today_date,
         "today_dow_name": today_dow,
@@ -384,10 +391,13 @@ def analyze_business_rules(
                 dow_weights[d] = dow_weights.get(d, 0) + w
     best_hist_dow: Optional[str] = None
     if dow_scores:
-        best_hist_dow = max(
-            dow_scores.keys(), key=lambda d: dow_scores[d] / max(dow_weights.get(d, 1), 1)
-        )
-        out["recommended_date_hint"] = f"historically strongest entry day: {best_hist_dow}"
+        trading_scores = {d: s for d, s in dow_scores.items() if is_trading_weekday_name(d)}
+        if trading_scores:
+            best_hist_dow = max(
+                trading_scores.keys(),
+                key=lambda d: dow_scores[d] / max(dow_weights.get(d, 1), 1),
+            )
+            out["recommended_date_hint"] = f"historically strongest weekday (EAT): {best_hist_dow}"
     elif not historical.empty:
         hist = engineer_features(historical)
         by_d = (
@@ -396,18 +406,18 @@ def analyze_business_rules(
             .reset_index()
             .sort_values("avg", ascending=False)
         )
+        by_d = by_d[by_d["entry_dow_name"].isin(TRADING_WEEKDAY_NAMES)]
         if len(by_d):
             best_hist_dow = str(by_d.iloc[0]["entry_dow_name"])
-            out["recommended_date_hint"] = f"historically strongest entry day: {best_hist_dow}"
+            out["recommended_date_hint"] = f"historically strongest weekday (EAT): {best_hist_dow}"
 
     out["best_historical_dow"] = best_hist_dow
-    # Coordinated trading day is ALWAYS today in EAT — the actionable "enter together" day.
-    # The historically strongest day is kept separately for analytics only.
-    out["recommended_dow"] = today_dow
+    # Coordinated trading day: current EAT weekday, or Monday on weekends (no Sat/Sun trading).
+    out["recommended_dow"] = coord_dow
     if not out["same_day_ok"]:
         out["recommended_date_hint"] = (
-            f"Split entry days — coordinate all accounts to {today_dow} ({today_date})."
-            + (f" Historical best day: {best_hist_dow}." if best_hist_dow else "")
+            f"Split entry days — coordinate all accounts to {coord_dow} ({today_date} EAT)."
+            + (f" Historical best weekday: {best_hist_dow}." if best_hist_dow else "")
         )
 
     hist_en = engineer_features(historical) if not historical.empty else pd.DataFrame()
@@ -538,12 +548,20 @@ def build_portfolio_recommendations(
     timing: Dict[str, Any],
 ) -> Dict[str, Any]:
     if active_pred is None or active_pred.empty:
+        coord = business.get("recommended_dow") or coordinated_entry_dow_name()
         return {
-            "trading_day": business.get("recommended_dow", "—"),
+            "trading_day": coord,
+            "today_eat": business.get("today_eat", today_eat_date_str()),
+            "today_dow_name": business.get("today_dow_name", today_eat_dow_name()),
+            "best_historical_dow": business.get("best_historical_dow") or "—",
+            "timezone": business.get("timezone", "Africa/Nairobi (EAT)"),
             "best_hour_window": "—",
             "portfolio_side": "—",
             "accounts_needing_fix": 0,
-            "summary": "No active positions; use closed-history timing below for next entry.",
+            "summary": (
+                f"No active positions. Coordinated entry day (EAT): {coord}. "
+                "Use closed-history timing below for the next Mon–Fri session."
+            ),
         }
 
     phases = active_pred["phase_group"].dropna().unique().tolist()
@@ -573,11 +591,18 @@ def build_portfolio_recommendations(
             active_pred["market_status"].str.contains("against rec", na=False).sum()
         )
 
-    coord_day = business.get("recommended_dow") or business.get("today_dow_name") or "—"
+    coord_day = business.get("recommended_dow") or coordinated_entry_dow_name()
+    today_name = business.get("today_dow_name", today_eat_dow_name())
+    weekend_note = ""
+    if not is_trading_day_eat():
+        weekend_note = (
+            f" Calendar day is {today_name} (no EAT trading session); "
+            f"coordinate new entries for {coord_day}."
+        )
     return {
         "trading_day": coord_day,
         "today_eat": business.get("today_eat", today_eat_date_str()),
-        "today_dow_name": business.get("today_dow_name", today_eat_dow_name()),
+        "today_dow_name": today_name,
         "best_historical_dow": business.get("best_historical_dow") or "—",
         "timezone": business.get("timezone", "Africa/Nairobi (EAT)"),
         "best_hour_window": window,
@@ -587,8 +612,9 @@ def build_portfolio_recommendations(
         "summary": (
             f"Active {len(active_pred)} legs across {active_pred['client_id'].nunique()} clients "
             f"(times in EAT). "
-            f"Coordinated entry day: {coord_day} ({business.get('today_eat', '')}). "
-            f"Historical best DOW: {business.get('best_historical_dow') or '—'}. "
+            f"Coordinated entry day: {coord_day} ({business.get('today_eat', '')})."
+            f"{weekend_note} "
+            f"Historical best weekday: {business.get('best_historical_dow') or '—'}. "
             f"Resolve {len(business.get('direction_violations') or [])} direction conflict(s); "
             f"{n_against} leg(s) underwater on recommended side."
         ),

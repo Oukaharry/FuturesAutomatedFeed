@@ -20,6 +20,9 @@ DOW_NAMES = [
     "Sunday",
 ]
 
+# Mon–Fri only (no weekend trading; matches dashboard _should_skip_daily_summary_tracking).
+TRADING_WEEKDAY_NAMES = frozenset(DOW_NAMES[:5])
+
 
 def now_eat() -> datetime:
     return datetime.now(EAT)
@@ -31,6 +34,26 @@ def today_eat_date_str() -> str:
 
 def today_eat_dow_name() -> str:
     return DOW_NAMES[now_eat().weekday()]
+
+
+def is_trading_weekday_name(name: str) -> bool:
+    return str(name or "") in TRADING_WEEKDAY_NAMES
+
+
+def is_trading_day_eat() -> bool:
+    """True on Mon–Fri in Kenya (EAT); False on Saturday/Sunday."""
+    return now_eat().weekday() < 5
+
+
+def coordinated_entry_dow_name() -> str:
+    """
+    Actionable coordinated entry day in EAT.
+    Weekends map to the next session (Monday), not calendar Saturday/Sunday.
+    """
+    today = today_eat_dow_name()
+    if is_trading_weekday_name(today):
+        return today
+    return "Monday (next EAT session)"
 
 
 def to_eat_series(series: pd.Series) -> pd.Series:
