@@ -259,7 +259,9 @@ def timing_tables_by_phase(
             .agg(n=("net_pnl", "count"), win_rate=("won", "mean"), avg_pnl=("net_pnl", "mean"), total_pnl=("net_pnl", "sum"))
             .reset_index()
         )
-        by_hour["bucket"] = by_hour["entry_hour"].map(lambda h: f"{int(h):02d}:00")
+        by_hour["bucket"] = by_hour["entry_hour"].map(
+            lambda h: format_hour_eat(h) if int(h) >= 0 else "—"
+        )
         by_hour = by_hour[by_hour["n"] >= max(5, min_trades // 5)].sort_values("avg_pnl", ascending=False)
 
         by_side = (

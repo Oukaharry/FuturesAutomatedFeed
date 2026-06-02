@@ -58,12 +58,14 @@ def coordinated_entry_dow_name() -> str:
 
 def to_eat_series(series: pd.Series) -> pd.Series:
     """
-    Normalize deal/position timestamps to EAT for hour/DOW and calendar date.
-    Naive values are treated as UTC (MT5/server storage), then converted.
+    Normalize timestamps to EAT for hour/DOW and calendar date.
+
+    tz-aware values are converted to EAT. Naive values are treated as UTC wall
+    time (round-trip entry_time from trade_dataset is stored as UTC-naive).
     """
-    s = pd.to_datetime(series, errors="coerce")
-    if s.dt.tz is None:
-        s = s.dt.tz_localize("UTC", ambiguous="infer", nonexistent="shift_forward")
+    s = pd.to_datetime(series, errors="coerce", utc=True)
+    if getattr(s.dt, "tz", None) is None:
+        s = s.dt.tz_localize("UTC", ambiguous=True, nonexistent="shift_forward")
     return s.dt.tz_convert(EAT)
 
 
@@ -81,7 +83,7 @@ def format_dt_eat(val: object) -> str:
         if pd.isna(ts):
             return "—"
         if ts.tzinfo is None:
-            ts = ts.tz_localize("UTC", ambiguous="infer", nonexistent="shift_forward")
+            ts = ts.tz_localize("UTC", ambiguous=True, nonexistent="shift_forward")
         return ts.tz_convert(EAT).strftime("%Y-%m-%d %H:%M EAT")
     except Exception:
         return str(val)[:22]

@@ -8,26 +8,62 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from research.eat_time import EAT
 from trader_companion.mt5_comment_parser import MT5CommentParser
 
 
-def _parse_close_time(value: Any) -> Optional[datetime]:
+def _timestamp_from_unix(ts: float) -> Optional[pd.Timestamp]:
+    try:
+        t = float(ts)
+        if t > 0:
+            return pd.Timestamp(t, unit="s", tz="UTC")
+    except (TypeError, ValueError, OSError):
+        pass
+    return None
+
+
+def _timestamp_from_value(value: Any) -> Optional[pd.Timestamp]:
+    """
+    Normalize MT5 timestamps for EAT analytics.
+
+    - time_raw / Unix: always UTC (MetaTrader5 API).
+    - Companion ``time`` ISO without offset: Kenya-local wall clock from the desktop push.
+    """
     if value is None:
         return None
     if isinstance(value, (int, float)) and value > 0:
-        try:
-            return datetime.fromtimestamp(float(value))
-        except (OSError, ValueError):
-            return None
+        return _timestamp_from_unix(float(value))
     s = str(value).strip()
     if not s:
         return None
     try:
-        if "T" in s:
-            return datetime.fromisoformat(s.replace("Z", "+00:00")[:26])
-        return datetime.strptime(s.split()[0], "%Y-%m-%d")
-    except ValueError:
+        if "T" in s or " " in s:
+            ts = pd.Timestamp(s.replace("Z", "+00:00"))
+            if ts.tz is None:
+                ts = ts.tz_localize(EAT, ambiguous=True, nonexistent="shift_forward")
+            return ts.tz_convert("UTC")
+        ts = pd.Timestamp(datetime.strptime(s.split()[0], "%Y-%m-%d"))
+        return ts.tz_localize(EAT).tz_convert("UTC")
+    except (ValueError, TypeError):
         return None
+
+
+def _timestamp_from_deal(deal: dict) -> Optional[pd.Timestamp]:
+    """Prefer time_raw (UTC); fall back to companion time field."""
+    raw = deal.get("time_raw")
+    if raw is not None and str(raw).strip() not in ("", "0"):
+        ts = _timestamp_from_unix(float(raw))
+        if ts is not None:
+            return ts
+    return _timestamp_from_value(deal.get("time"))
+
+
+def _parse_close_time(value: Any) -> Optional[datetime]:
+    """Legacy helper — returns naive UTC wall time for sorting."""
+    ts = _timestamp_from_value(value)
+    if ts is None:
+        return None
+    return ts.tz_convert("UTC").to_pydatetime().replace(tzinfo=None)
 
 
 def _normalize_side(raw: Any) -> str:
@@ -82,7 +118,12 @@ def load_active_positions_df(client_id: Optional[str] = None) -> pd.DataFrame:
                 continue
             comment = str(p.get("comment") or "")
             parsed = parser.parse(comment)
-            entry_dt = _parse_close_time(p.get("time")) or now
+            entry_ts = _timestamp_from_value(p.get("time"))
+            entry_dt = (
+                entry_ts.tz_convert(EAT).to_pydatetime().replace(tzinfo=None)
+                if entry_ts is not None
+                else now
+            )
             open_px = float(p.get("price_open") or p.get("price_current") or 0)
             sl = float(p.get("sl") or 0)
             tp = float(p.get("tp") or 0)
@@ -184,14 +225,8 @@ def load_clients_deals(client_id: Optional[str] = None) -> Dict[str, List[dict]]
 
 
 def _deal_time_raw(deal: dict) -> float:
-    t = deal.get("time_raw")
-    if t is not None and t != "":
-        try:
-            return float(t)
-        except (TypeError, ValueError):
-            pass
-    dt = _parse_close_time(deal.get("time"))
-    return dt.timestamp() if dt else 0.0
+    ts = _timestamp_from_deal(deal)
+    return float(ts.timestamp()) if ts is not None else 0.0
 
 
 def deals_to_round_trips(
@@ -264,13 +299,18 @@ def deals_to_round_trips(
 
         comment = entry_deal.get("comment") or ""
         parsed = parser.parse(comment)
-        entry_dt = _parse_close_time(entry_deal.get("time"))
-        if not entry_dt and entry_deal.get("time_raw"):
-            try:
-                entry_dt = datetime.fromtimestamp(float(entry_deal["time_raw"]))
-            except (TypeError, ValueError, OSError):
-                entry_dt = None
-        close_dt = datetime.fromtimestamp(exit_time) if exit_time else _parse_close_time(exit_deal.get("time"))
+        entry_ts = _timestamp_from_deal(entry_deal)
+        entry_dt = (
+            entry_ts.tz_convert("UTC").to_pydatetime().replace(tzinfo=None)
+            if entry_ts is not None
+            else None
+        )
+        exit_ts = _timestamp_from_unix(exit_time) if exit_time else _timestamp_from_deal(exit_deal)
+        close_dt = (
+            exit_ts.tz_convert("UTC").to_pydatetime().replace(tzinfo=None)
+            if exit_ts is not None
+            else None
+        )
         side = _normalize_side(entry_deal.get("type"))
         open_px = float(entry_deal.get("price") or 0)
         close_px = float(exit_deal.get("price") or 0)

@@ -378,7 +378,7 @@ def _render_timing_heatmap(block: Dict[str, Any], phase: str) -> str:
     <div class="phase-card">
       <div class="phase-head">
         {_phase_badge_html(badge, phase)}
-        <span class="phase-meta">{block.get('n', 0):,} closed · prefer <strong>{html.escape(str(block.get('prefer_side', '?')))}</strong></span>
+        <span class="phase-meta">{block.get('n', 0):,} closed · prefer <strong>{html.escape(str(block.get('prefer_side', '?')))}</strong> · hours EAT (UTC+3)</span>
       </div>
       <div class="heat-row">{''.join(cells)}</div>
       <div class="phase-tables grid-2">
