@@ -124,6 +124,13 @@ def _model_feature_names(ml: Dict[str, Any], clf: Any) -> List[str]:
     return list(ml.get("feature_names") or [])
 
 
+def _predict_aligned(clf: Any, Xa: pd.DataFrame, feat_names: List[str]):
+    """DataFrame with sklearn feature_names_in_ column order (avoids numpy warnings)."""
+    names = list(getattr(clf, "feature_names_in_", None) or feat_names)
+    Xp = Xa.reindex(columns=names, fill_value=0.0)
+    return clf.predict(Xp), clf.predict_proba(Xp)
+
+
 def train_phase_classifier(
     df: pd.DataFrame,
     min_train: int = 200,
@@ -176,8 +183,8 @@ def train_phase_classifier(
     if len(unk):
         Xu, _ = _feature_matrix(unk, symbol_columns=sym_cols)
         Xu = _align_feature_matrix(Xu, feat_names)
-        unk["ml_predicted_phase"] = clf.predict(Xu)
-        probs = clf.predict_proba(Xu)
+        pred, probs = _predict_aligned(clf, Xu, feat_names)
+        unk["ml_predicted_phase"] = pred
         unk["ml_confidence"] = probs.max(axis=1)
         unk_pred = unk
 
@@ -411,8 +418,9 @@ def predict_active_positions(
         # Never use `sym_cols or None` — empty [] is falsy and would allow all symbol dummies
         X, _ = _feature_matrix(act, symbol_columns=sym_cols)
         Xa = _align_feature_matrix(X, feat_names)
-        act["ml_predicted_phase"] = clf.predict(Xa)
-        act["ml_confidence"] = clf.predict_proba(Xa).max(axis=1)
+        pred, probs = _predict_aligned(clf, Xa, feat_names)
+        act["ml_predicted_phase"] = pred
+        act["ml_confidence"] = probs.max(axis=1)
     else:
         act["ml_predicted_phase"] = act["phase_group"]
         act["ml_confidence"] = 0.0

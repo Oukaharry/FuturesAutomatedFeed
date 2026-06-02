@@ -96,16 +96,17 @@
         const loading = document.getElementById('loading-msg');
         const btnRefresh = document.getElementById('btn-refresh');
 
-        function setPill(status) {
-            pill.className = 'status-pill ' + (status === 'ready' ? 'pill-ready' : status === 'running' ? 'pill-running' : 'pill-error');
-            pill.textContent = status === 'ready' ? 'Live' : status === 'running' ? 'Updating…' : 'Error';
+        function setPill(status, refreshing) {
+            const showUpdating = refreshing || status === 'running';
+            pill.className = 'status-pill ' + (showUpdating ? 'pill-running' : status === 'ready' ? 'pill-ready' : 'pill-error');
+            pill.textContent = showUpdating ? 'Updating…' : status === 'ready' ? 'Live' : 'Error';
         }
 
         async function pollStatus() {
             try {
                 const r = await fetch('/api/ml_predictions/status');
                 const d = await r.json();
-                setPill(d.status);
+                setPill(d.status, d.refresh_in_progress);
                 document.getElementById('meta-updated').textContent = d.generated_at || '—';
                 document.getElementById('meta-db-sync').textContent = d.meta?.db_max_last_updated || '—';
                 document.getElementById('meta-db-sync').title = 'clients_data max last_updated';
@@ -119,7 +120,7 @@
                 const errEl = document.getElementById('meta-error');
                 if (d.error) { errEl.style.display = ''; errEl.textContent = d.error; }
                 else { errEl.style.display = 'none'; }
-                if (d.has_html && d.status !== 'running') {
+                if (d.has_html) {
                     loading.style.display = 'none';
                     frame.style.display = 'block';
                     const stamp = d.generated_at || '';
@@ -127,8 +128,11 @@
                         pollStatus._lastReportAt = stamp;
                         frame.src = '/api/ml_predictions/report?t=' + Date.now();
                     }
+                } else if (!d.refresh_in_progress && d.status !== 'running') {
+                    loading.style.display = 'block';
+                    frame.style.display = 'none';
                 }
-                btnRefresh.disabled = d.status === 'running';
+                btnRefresh.disabled = !!d.refresh_in_progress;
             } catch (e) {
                 setPill('error');
             }

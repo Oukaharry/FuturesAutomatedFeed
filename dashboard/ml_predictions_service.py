@@ -68,6 +68,13 @@ def _cache_meta_path() -> Path:
     return _cache_dir() / "meta.json"
 
 
+def _leader_lock_path() -> Path:
+    """Fixed path so all uWSGI workers agree on the same lock file."""
+    override = (os.environ.get("ML_CACHE_DIR") or "").strip()
+    base = Path(override) if override else Path(_project_root()) / "dashboard" / "instance" / "ml_cache"
+    return base / ".ml_worker_leader.lock"
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -194,8 +201,47 @@ def _interval_sec() -> int:
     return 120 if _ml_runtime_mode() == "production" else 300
 
 
-def _recover_stale_running(max_minutes: int = 20) -> None:
-    """After uWSGI reload, a 'running' cache entry may never finish."""
+def _heal_disk_meta() -> None:
+    """After uWSGI SIGTERM, meta.json can say 'running' while report.html is valid."""
+    if not _cache_meta_path().is_file() or not _cache_html_path().is_file():
+        return
+    disk = _load_disk_cache()
+    if not disk or disk.get("status") != "running":
+        return
+    disk["status"] = "ready"
+    disk["error"] = None
+    try:
+        _atomic_write_json(_cache_meta_path(), disk)
+        logger.info("[ML] Healed disk cache meta (running -> ready, report on disk)")
+    except OSError as e:
+        logger.warning("[ML] Could not heal disk meta: %s", e)
+
+
+def _warm_memory_from_disk() -> None:
+    """So any uWSGI worker can serve the last good report immediately."""
+    html = ""
+    path = _cache_html_path()
+    if path.is_file():
+        try:
+            html = path.read_text(encoding="utf-8")
+        except OSError:
+            return
+    if not html:
+        return
+    disk = _load_disk_cache() or {}
+    with _lock:
+        if _state.get("html"):
+            return
+        _state["html"] = html
+        _state["meta"] = dict(disk.get("meta") or {})
+        _state["generated_at"] = disk.get("generated_at")
+        _state["error"] = disk.get("error")
+        st = disk.get("status") or "ready"
+        _state["status"] = "ready" if st == "running" and html else st
+
+
+def _recover_stale_running(max_minutes: int = 5) -> None:
+    """In-memory refresh stuck after reload (production reloads every few minutes)."""
     with _lock:
         if _state.get("status") != "running":
             return
@@ -209,16 +255,28 @@ def _recover_stale_running(max_minutes: int = 20) -> None:
     if (datetime.now() - t0).total_seconds() <= max_minutes * 60:
         return
     with _lock:
-        _state["status"] = "error"
-        _state["error"] = "Refresh interrupted (app reload or worker timeout). Click Refresh now."
+        if _cache_html_path().is_file():
+            _state["status"] = "ready"
+            _state["error"] = "Previous refresh was interrupted; showing last cached report."
+        else:
+            _state["status"] = "error"
+            _state["error"] = "Refresh interrupted (app reload). Click Refresh now."
+
+
+def _startup_delay_sec() -> int:
+    try:
+        return max(0, int(os.environ.get("ML_REFRESH_STARTUP_DELAY_SEC", "45")))
+    except ValueError:
+        return 45
 
 
 def get_state() -> Dict[str, Any]:
     _recover_stale_running()
     mode = _ml_runtime_mode()
     with _lock:
+        mem_status = _state["status"]
         out = {
-            "status": _state["status"],
+            "status": mem_status,
             "meta": dict(_state.get("meta") or {}),
             "error": _state.get("error"),
             "generated_at": _state.get("generated_at"),
@@ -229,6 +287,8 @@ def get_state() -> Dict[str, Any]:
             "runtime_mode": mode,
             "deployed": mode == "production",
             "uses_production": mode == "production",
+            "cache_dir": str(_cache_dir()),
+            "refresh_in_progress": mem_status == "running",
         }
 
     disk = _load_disk_cache()
@@ -236,24 +296,17 @@ def get_state() -> Dict[str, Any]:
         if not out["has_html"] and _cache_html_path().is_file():
             out["has_html"] = True
         if out["status"] == "idle" and disk.get("status"):
-            out["status"] = disk["status"]
-        if out["status"] == "running" and disk.get("started_at"):
-            try:
-                t0 = datetime.strptime(disk["started_at"], "%Y-%m-%d %H:%M:%S")
-                if (datetime.now() - t0).total_seconds() > 20 * 60:
-                    out["status"] = "error"
-                    out["error"] = (
-                        disk.get("error")
-                        or "Refresh interrupted (app reload). Click Refresh now."
-                    )
-            except ValueError:
-                pass
+            out["status"] = "ready" if disk.get("status") == "running" else disk["status"]
         if not out["generated_at"] and disk.get("generated_at"):
             out["generated_at"] = disk["generated_at"]
         if not out["meta"] and disk.get("meta"):
             out["meta"] = dict(disk["meta"])
         if not out["error"] and disk.get("error"):
             out["error"] = disk.get("error")
+
+    # UI can show last report while a new refresh runs
+    if out["has_html"] and out["refresh_in_progress"]:
+        out["status"] = "ready"
     return out
 
 
@@ -376,12 +429,18 @@ def refresh_now(*, reason: str = "manual") -> None:
 
 def _worker_loop() -> None:
     mode = _ml_runtime_mode()
+    _heal_disk_meta()
+    _warm_memory_from_disk()
     logger.info(
-        "[ML] Worker started mode=%s interval=%ss DATABASE_URL host=%s",
+        "[ML] Worker started mode=%s interval=%ss cache=%s host=%s",
         mode,
         _interval_sec(),
+        _cache_dir(),
         urlparse(os.environ.get("DATABASE_URL", "")).hostname or "(from app)",
     )
+    delay = _startup_delay_sec()
+    if delay and _stop_event.wait(delay):
+        return
     while not _stop_event.is_set():
         refresh_now(reason="scheduled")
         if _stop_event.wait(_interval_sec()):
@@ -397,7 +456,7 @@ def _try_acquire_leader() -> bool:
     if os.environ.get("ML_PREDICTIONS_LEADER", "").strip().lower() in ("0", "false", "no"):
         return False
 
-    lock_path = _cache_dir().parent / ".ml_worker_leader.lock"
+    lock_path = _leader_lock_path()
     try:
         import fcntl
 
@@ -408,6 +467,7 @@ def _try_acquire_leader() -> bool:
         logger.info("[ML] Leader lock acquired (%s)", lock_path)
         return True
     except OSError:
+        logger.info("[ML] Not leader (lock held by another worker): %s", lock_path)
         return False
     except ImportError:
         pass
@@ -415,11 +475,14 @@ def _try_acquire_leader() -> bool:
     try:
         import uwsgi
 
-        if uwsgi.worker_id() != 1:
+        wid = int(uwsgi.worker_id())
+        if wid != 1:
+            logger.info("[ML] Not leader (uwsgi.worker_id=%s)", wid)
             return False
         logger.info("[ML] Leader via uwsgi.worker_id()=1")
         return True
     except ImportError:
+        logger.info("[ML] Leader (single-process / dev, no flock/uwsgi)")
         return True
 
 
