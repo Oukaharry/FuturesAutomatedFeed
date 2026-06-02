@@ -42,6 +42,7 @@ _state: Dict[str, Any] = {
 _worker_lock = threading.Lock()
 _worker_started = False
 _stop_event = threading.Event()
+_leader_lock_handle = None  # keeps flock open for process lifetime (Linux/PA)
 
 
 def _project_root() -> str:
@@ -149,7 +150,11 @@ def _is_deployed_production() -> bool:
 
 
 def _prepare_database_for_refresh() -> None:
-    """Reset pool; on production deploy verify DATABASE_URL is not localhost."""
+    """
+    Validate DATABASE_URL for this runtime mode.
+    Does not reset the connection pool — ML reads use get_direct_connection()
+    and resetting the pool under uWSGI disrupts concurrent /api/update_data requests.
+    """
     from dashboard import database as db
 
     _load_env()
@@ -168,11 +173,8 @@ def _prepare_database_for_refresh() -> None:
                 "Production deploy must set DATABASE_URL to PythonAnywhere Postgres "
                 "(not localhost). Check Web app environment variables."
             )
-    # local: use DATABASE_URL as configured — never swap to PRODUCTION_* / SSH tunnel
-
-    if url and url != db.DATABASE_URL:
-        db.set_database_url(url)
-    db.reset_connection_pool()
+        if url and url != db.DATABASE_URL:
+            db.set_database_url(url)
 
 
 @contextmanager
@@ -192,7 +194,27 @@ def _interval_sec() -> int:
     return 120 if _ml_runtime_mode() == "production" else 300
 
 
+def _recover_stale_running(max_minutes: int = 20) -> None:
+    """After uWSGI reload, a 'running' cache entry may never finish."""
+    with _lock:
+        if _state.get("status") != "running":
+            return
+        started = _state.get("started_at") or ""
+    if not started:
+        return
+    try:
+        t0 = datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return
+    if (datetime.now() - t0).total_seconds() <= max_minutes * 60:
+        return
+    with _lock:
+        _state["status"] = "error"
+        _state["error"] = "Refresh interrupted (app reload or worker timeout). Click Refresh now."
+
+
 def get_state() -> Dict[str, Any]:
+    _recover_stale_running()
     mode = _ml_runtime_mode()
     with _lock:
         out = {
@@ -215,6 +237,17 @@ def get_state() -> Dict[str, Any]:
             out["has_html"] = True
         if out["status"] == "idle" and disk.get("status"):
             out["status"] = disk["status"]
+        if out["status"] == "running" and disk.get("started_at"):
+            try:
+                t0 = datetime.strptime(disk["started_at"], "%Y-%m-%d %H:%M:%S")
+                if (datetime.now() - t0).total_seconds() > 20 * 60:
+                    out["status"] = "error"
+                    out["error"] = (
+                        disk.get("error")
+                        or "Refresh interrupted (app reload). Click Refresh now."
+                    )
+            except ValueError:
+                pass
         if not out["generated_at"] and disk.get("generated_at"):
             out["generated_at"] = disk["generated_at"]
         if not out["meta"] and disk.get("meta"):
@@ -355,9 +388,47 @@ def _worker_loop() -> None:
             break
 
 
+def _try_acquire_leader() -> bool:
+    """
+    On uWSGI with multiple workers, only one process runs the ML refresh loop.
+    Uses non-blocking flock on Linux (PythonAnywhere); falls back to uwsgi.worker_id().
+    """
+    global _leader_lock_handle
+    if os.environ.get("ML_PREDICTIONS_LEADER", "").strip().lower() in ("0", "false", "no"):
+        return False
+
+    lock_path = _cache_dir().parent / ".ml_worker_leader.lock"
+    try:
+        import fcntl
+
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(lock_path, "a+", encoding="utf-8")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _leader_lock_handle = fh
+        logger.info("[ML] Leader lock acquired (%s)", lock_path)
+        return True
+    except OSError:
+        return False
+    except ImportError:
+        pass
+
+    try:
+        import uwsgi
+
+        if uwsgi.worker_id() != 1:
+            return False
+        logger.info("[ML] Leader via uwsgi.worker_id()=1")
+        return True
+    except ImportError:
+        return True
+
+
 def start_ml_predictions_worker() -> Optional[threading.Thread]:
     global _worker_started
     if os.environ.get("WERKZEUG_RUN_MAIN") == "false":
+        return None
+    if not _try_acquire_leader():
+        logger.info("[ML] Background worker skipped (another uWSGI worker is leader)")
         return None
     with _worker_lock:
         if _worker_started:
@@ -368,6 +439,7 @@ def start_ml_predictions_worker() -> Optional[threading.Thread]:
         return None
     _stop_event.clear()
     _load_env()
+    logger.info("[ML] Cache directory: %s", _cache_dir())
     t = threading.Thread(target=_worker_loop, daemon=True, name="ml-predictions")
     t.start()
     return t

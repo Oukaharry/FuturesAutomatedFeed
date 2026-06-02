@@ -176,9 +176,8 @@ def train_phase_classifier(
     if len(unk):
         Xu, _ = _feature_matrix(unk, symbol_columns=sym_cols)
         Xu = _align_feature_matrix(Xu, feat_names)
-        Xn = Xu.to_numpy()
-        unk["ml_predicted_phase"] = clf.predict(Xn)
-        probs = clf.predict_proba(Xn)
+        unk["ml_predicted_phase"] = clf.predict(Xu)
+        probs = clf.predict_proba(Xu)
         unk["ml_confidence"] = probs.max(axis=1)
         unk_pred = unk
 
@@ -412,10 +411,8 @@ def predict_active_positions(
         # Never use `sym_cols or None` — empty [] is falsy and would allow all symbol dummies
         X, _ = _feature_matrix(act, symbol_columns=sym_cols)
         Xa = _align_feature_matrix(X, feat_names)
-        # Numpy input avoids sklearn rejecting unseen symbol dummies on live book
-        Xn = Xa.to_numpy()
-        act["ml_predicted_phase"] = clf.predict(Xn)
-        act["ml_confidence"] = clf.predict_proba(Xn).max(axis=1)
+        act["ml_predicted_phase"] = clf.predict(Xa)
+        act["ml_confidence"] = clf.predict_proba(Xa).max(axis=1)
     else:
         act["ml_predicted_phase"] = act["phase_group"]
         act["ml_confidence"] = 0.0
