@@ -11816,6 +11816,11 @@ def update_data():
                         for _r in new_rows:
                             if isinstance(_r, dict) and '_row_added_at' not in _r:
                                 _r['_row_added_at'] = now_iso
+                            if isinstance(_r, dict):
+                                if not str(_r.get('Status P1') or '').strip():
+                                    _r['Status P1'] = 'Not Started'
+                                if not str(_r.get('Status') or '').strip():
+                                    _r['Status'] = '-'
                         evaluations = normalize_evaluations(existing_evals) + new_rows
                     elif data.get('create_evaluation'):
                         evaluations = normalize_evaluations(existing_evals)
@@ -11823,7 +11828,9 @@ def update_data():
                             "Prop Firm": "My Funded Futures",
                             "Account Size": "$100,000",
                             "Date Purchased": "",
-                            "Fee": "0"
+                            "Fee": "0",
+                            "Status P1": "Not Started",
+                            "Status": "-",
                         }
                         new_row['_row_added_at'] = datetime.utcnow().isoformat()
                         evaluations.append(new_row)

@@ -7081,6 +7081,14 @@
         }
 
         function addAccount() {
+            const newRow = {
+                "Prop Firm": "My Funded Futures",
+                "Account Size": "$50,000",
+                "Date Purchased": "",
+                "Fee": "0",
+                "Status P1": "Not Started",
+                "Status": "-"
+            };
             // Refresh data from server first to prevent stale overwrites,
             // then append the new account and save.
             const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}`;
@@ -7091,24 +7099,14 @@
                         currentData = freshData;
                     }
                     if (!currentData.evaluations) currentData.evaluations = [];
-                    currentData.evaluations.push({
-                        "Prop Firm": "My Funded Futures",
-                        "Account Size": "$50,000",
-                        "Date Purchased": "",
-                        "Fee": "0"
-                    });
+                    currentData.evaluations.push({ ...newRow });
                     renderEvaluationsTable();
                     saveData('CREATE', 'Added new evaluation account');
                 })
                 .catch(() => {
                     // If refresh fails, still add — backend safety check will protect
                     if (!currentData.evaluations) currentData.evaluations = [];
-                    currentData.evaluations.push({
-                        "Prop Firm": "My Funded Futures",
-                        "Account Size": "$50,000",
-                        "Date Purchased": "",
-                        "Fee": "0"
-                    });
+                    currentData.evaluations.push({ ...newRow });
                     renderEvaluationsTable();
                     saveData('CREATE', 'Added new evaluation account');
                 });
