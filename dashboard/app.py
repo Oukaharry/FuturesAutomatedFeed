@@ -114,6 +114,8 @@ _ADMIN_HEALTH_ISSUE_TYPES_EXCLUDED_FROM_SCORE = frozenset({
     'daily_summary_payout_qa',
 })
 _ADMIN_SIGNOFF_PENDING_PENALTY = 5
+# Penalty when a timing metric is missing or incomplete (sorts last in time tie-breaks).
+_ADMIN_TEAM_TIME_PENALTY = 999999
 
 
 def _compute_admin_health_score(admin_issues, pending_signoffs=0):
@@ -163,6 +165,7 @@ def _sync_quality_issue_tracking(scan_date: str, results: list):
 
 def _trader_leaderboard_sort_key(trader: str, stats: dict, clear_mins: int) -> tuple:
     """
+    Issue-clearance race tiers (Daily Summary Tracker cards):
     0 = finished clearance race (fastest time first)
     1 = clean at scan (not in race)
     2 = still fixing
@@ -174,6 +177,21 @@ def _trader_leaderboard_sort_key(trader: str, stats: dict, clear_mins: int) -> t
         avg = stats.get('health_sum', 0) / max(stats.get('clients', 1), 1)
         return (1, -avg, name)
     return (0, int(clear_mins), name)
+
+
+def _trader_health_leaderboard_sort_key(trader: str, stats: dict, clear_mins: int) -> tuple:
+    """
+    TRADER HEALTH LEADERBOARD: health score always ranks above lower scores.
+    Average clearance time breaks ties only among equal health (e.g. five teams at 100%).
+    """
+    avg = stats.get('health_sum', 0) / max(stats.get('clients', 1), 1)
+    if clear_mins >= 99999:
+        time_tiebreak = _ADMIN_TEAM_TIME_PENALTY
+    elif clear_mins < 0:
+        time_tiebreak = _ADMIN_TEAM_TIME_PENALTY - 1
+    else:
+        time_tiebreak = int(clear_mins)
+    return (-round(avg, 1), time_tiebreak, int(stats.get('issues', 0) or 0), (trader or '').lower())
 
 
 def _trader_clearance_sort_key(trader_entry: dict) -> tuple:
@@ -313,10 +331,6 @@ def _admin_avg_signoff_minutes_and_label(date, admin_name, payload):
     return avg, f'{hh:02d}:{mm:02d}'
 
 
-# Penalty when a timing metric is missing or incomplete (sorts last).
-_ADMIN_TEAM_TIME_PENALTY = 999999
-
-
 def _minutes_to_hhmm(minutes):
     """Format minutes-from-midnight as HH:MM, or em dash for penalty/missing."""
     if minutes is None:
@@ -415,11 +429,12 @@ def _team_avg_aggregate_label(row):
 
 
 def _admin_teams_rank_sort_key(team_name, row):
-    """Lowest average time wins; then health score."""
+    """Health score first (higher wins); average time breaks ties only."""
+    score = float(row.get('score') or row.get('health_score') or 0.0)
     avg = _team_avg_aggregate_minutes(row)
     if avg is None:
         avg = _ADMIN_TEAM_TIME_PENALTY
-    return (int(avg), -float(row.get('score') or 0), (team_name or '').lower())
+    return (-score, int(avg), (team_name or '').lower())
 
 
 def _leaderboard_points_for_rank(rank, num_teams):
@@ -435,7 +450,7 @@ def _leaderboard_points_for_rank(rank, num_teams):
 def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_traders):
     """
     Build admin team rows with three timing metrics + composite aggregate.
-    Returns list of dicts sorted best → worst (lowest composite first).
+    Returns list of dicts sorted best → worst (highest health first; time breaks ties).
     """
     from config.hierarchy import SYSTEM_HIERARCHY, get_client_profile
     from dashboard.database import get_summary_status_for_date
@@ -601,7 +616,7 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
 
     out = [
         _bold('ADMIN TEAMS'),
-        "_Ranked by average time (sign-off if required, issue clearance, daily summaries) — lower is faster._",
+        "_Ranked by health score first; ties broken by average time (sign-off, clearance, summaries)._",
         "",
     ]
     for arow in ranked:
@@ -11054,10 +11069,10 @@ def api_daily_summary():
 
     if trader_stats:
         from dashboard.database import get_trader_issue_resolution_minutes
-        # Gamified Trader Health Leaderboard — fastest issue clearance first
+        # Trader Health Leaderboard — health % first; clearance time breaks ties
         ranked = sorted(
             trader_stats.items(),
-            key=lambda it: _trader_leaderboard_sort_key(
+            key=lambda it: _trader_health_leaderboard_sort_key(
                 it[0], it[1], get_trader_issue_resolution_minutes(date, it[0]),
             ),
         )
