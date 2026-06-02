@@ -6102,7 +6102,20 @@
                 );
             });
 
-            if (countEl) countEl.textContent = deals.length > 0 ? `(${deals.length} TRADES)` : '';
+            if (countEl) {
+                const dates = deals.map(d => {
+                    const ms = parseDealTime(d.time || d.open_time || d.time_raw);
+                    if (!ms) return null;
+                    const dt = new Date(ms);
+                    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+                }).filter(Boolean).sort();
+                const rangeLabel = dates.length > 1
+                    ? `(${deals.length} TRADES, ${dates[0]} – ${dates[dates.length - 1]})`
+                    : dates.length === 1
+                        ? `(${deals.length} TRADES, ${dates[0]})`
+                        : `(${deals.length} TRADES)`;
+                countEl.textContent = rangeLabel;
+            }
 
             histBody.innerHTML = '';
             if (deals.length > 0) {
@@ -6110,15 +6123,15 @@
                 histTable.style.display = 'table';
 
                 const sorted = [...deals].sort((a, b) => {
-                    const ta = parseDealTime(a.time || a.open_time);
-                    const tb = parseDealTime(b.time || b.open_time);
+                    const ta = parseDealTime(a.time || a.open_time || a.time_raw);
+                    const tb = parseDealTime(b.time || b.open_time || b.time_raw);
                     return histSortAsc ? ta - tb : tb - ta;
                 });
 
                 sorted.forEach((deal, index) => {
                     const profit = deal.profit || deal.net_profit || 0;
                     const profitClass = parseFloat(profit) >= 0 ? 'profit-positive' : 'profit-negative';
-                    const displayTime = formatDealTime(deal.time || deal.open_time);
+                    const displayTime = formatDealTime(deal.time || deal.open_time || deal.time_raw);
                     const displayPrice = deal.price || deal.open_price || '-';
                     const ticketId = deal.ticket || deal.position_id || '-';
                     const row = document.createElement('tr');
@@ -7068,6 +7081,14 @@
         }
 
         function addAccount() {
+            const newRow = {
+                "Prop Firm": "My Funded Futures",
+                "Account Size": "$50,000",
+                "Date Purchased": "",
+                "Fee": "0",
+                "Status P1": "Not Started",
+                "Status": "-"
+            };
             // Refresh data from server first to prevent stale overwrites,
             // then append the new account and save.
             const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}`;
@@ -7078,24 +7099,14 @@
                         currentData = freshData;
                     }
                     if (!currentData.evaluations) currentData.evaluations = [];
-                    currentData.evaluations.push({
-                        "Prop Firm": "My Funded Futures",
-                        "Account Size": "$50,000",
-                        "Date Purchased": "",
-                        "Fee": "0"
-                    });
+                    currentData.evaluations.push({ ...newRow });
                     renderEvaluationsTable();
                     saveData('CREATE', 'Added new evaluation account');
                 })
                 .catch(() => {
                     // If refresh fails, still add — backend safety check will protect
                     if (!currentData.evaluations) currentData.evaluations = [];
-                    currentData.evaluations.push({
-                        "Prop Firm": "My Funded Futures",
-                        "Account Size": "$50,000",
-                        "Date Purchased": "",
-                        "Fee": "0"
-                    });
+                    currentData.evaluations.push({ ...newRow });
                     renderEvaluationsTable();
                     saveData('CREATE', 'Added new evaluation account');
                 });

@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.6.4"
+APP_VERSION = "1.6.5"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -2792,6 +2792,8 @@ class TradeOpssAIApp:
     # TTL is 5 minutes — auto-push fires frequently so we avoid re-scanning MT5 history
     # on every tick.  Only the last-24h slice is always fetched fresh.
     _FA_HISTORY_CACHE_TTL = 300  # seconds
+    # Stats tab trade history only — not used for hedge results / hedge days.
+    TRADE_HISTORY_DAYS = 3650  # ~10y; max MT5 history depth for display
 
     # Tradovate MNQ farming history cache: { firm_name: (fetched_at_epoch, mnq_data) }
     # Fetching fills + balance logs is slow; reuse within the same TTL window.
@@ -3066,6 +3068,28 @@ class TradeOpssAIApp:
 
         if len(deals) < len(raw_deals):
             _log(f"Filtered {len(raw_deals) - len(deals)} deals with invalid comments")
+
+        # Stats tab trade history ONLY — dedicated full MT5 fetch, separate from hedge pipeline.
+        _log(f"📜 Fetching trade history ({self.TRADE_HISTORY_DAYS}-day window) for Stats tab…")
+        trade_history_raw = self.pusher.get_deals(days=self.TRADE_HISTORY_DAYS) or []
+        trade_history_deals = []
+        for deal in trade_history_raw:
+            d_type = str(deal.get('type', '')).upper()
+            if d_type in ['BALANCE', 'CREDIT', '2', '3', 'CHARGE', 'CORRECTION', 'BONUS']:
+                _bal_comment_l = str(deal.get('comment', '') or '').strip().lower()
+                if ('internal transfer' in _bal_comment_l) or (not _bal_comment_l):
+                    continue
+            trade_history_deals.append(deal)
+        if trade_history_deals:
+            _ts_vals = [d.get('time_raw') or 0 for d in trade_history_deals if d.get('time_raw')]
+            if _ts_vals:
+                _oldest = datetime.fromtimestamp(min(_ts_vals)).strftime('%Y-%m-%d')
+                _newest = datetime.fromtimestamp(max(_ts_vals)).strftime('%Y-%m-%d')
+                _log(f"📜 Trade history: {len(trade_history_deals)} deal(s), {_oldest} → {_newest} (hedge unchanged)")
+            else:
+                _log(f"📜 Trade history: {len(trade_history_deals)} deal(s) (hedge unchanged)")
+        else:
+            _log("📜 Trade history: 0 deals returned from MT5")
 
         statistics = self.pusher.calculate_statistics(deals)
         
@@ -3345,7 +3369,8 @@ class TradeOpssAIApp:
             "email": email,
             "account": account,
             "positions": positions,
-            "deals": deals,
+            "deals": [],  # intentionally empty — hedge/stats use aggregated_by_comment + statistics below
+            "trade_history_deals": trade_history_deals,
             "statistics": statistics,
             "evaluations": [],
             "aggregated_by_comment": aggregated_by_comment,
@@ -3380,7 +3405,7 @@ class TradeOpssAIApp:
                     dep = account.get('total_deposits', 0)
                     hedge_log = data.get("hedge_match_log", [])
                     hedge_updates = data.get("hedge_updates", 0)
-                    _log(f"\n✅ PUSH SUCCESSFUL → Bal: ${bal:,.0f} | Dep: ${dep:,.0f} | {len(deals)} deals | {pos_count} pos | {agg_count} hedge groups")
+                    _log(f"\n✅ PUSH SUCCESSFUL → Bal: ${bal:,.0f} | Dep: ${dep:,.0f} | {len(trade_history_deals)} history deals | {pos_count} pos | {agg_count} hedge groups")
                     
                     # Log detailed response from server showing what was processed
                     _log(f"\n📥 SERVER PROCESSING LOG ({len(hedge_log)} entries):")

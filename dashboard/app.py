@@ -4842,6 +4842,120 @@ def _drop_balance_deals(deals):
     return filtered, dropped
 
 
+def _deal_timestamp_ms(deal: dict) -> int:
+    """
+    Best-effort parse of deal time into epoch-ms.
+    Accepts:
+      - unix seconds (int/float/string)
+      - unix ms
+      - ISO-ish strings (e.g. "2026-06-01T08:42:00", "2026-06-01 08:42:00")
+    Returns 0 when unknown/unparseable.
+    """
+    if not isinstance(deal, dict):
+        return 0
+    raw = deal.get("time", None)
+    if raw is None or raw == "":
+        raw = deal.get("open_time", None)
+    if raw is None or raw == "":
+        raw = deal.get("time_raw", None)
+    if raw is None or raw == "":
+        return 0
+
+    # Numeric: seconds or ms
+    try:
+        n = float(raw)
+        if n > 10_000_000_000:  # already ms
+            return int(n)
+        if n > 1_000_000_000:  # seconds
+            return int(n * 1000)
+    except (TypeError, ValueError):
+        pass
+
+    # String timestamp
+    try:
+        s = str(raw).strip()
+        # Handle trailing 'Z' (UTC)
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        # fromisoformat supports "YYYY-MM-DD HH:MM:SS" and "YYYY-MM-DDTHH:MM:SS"
+        dt = datetime.fromisoformat(s)
+        return int(dt.timestamp() * 1000)
+    except Exception:
+        return 0
+
+
+def _deal_fingerprint(deal: dict) -> tuple:
+    """Stable-ish de-dupe key for MT5 deals (best effort)."""
+    if not isinstance(deal, dict):
+        return ("",)
+    ticket = str(deal.get("ticket") or deal.get("position_id") or "").strip()
+    sym = str(deal.get("symbol") or "").strip()
+    typ = str(deal.get("type") or "").strip()
+    vol = str(deal.get("volume") or "").strip()
+    price = str(deal.get("price") or deal.get("open_price") or "").strip()
+    tms = _deal_timestamp_ms(deal)
+    # ticket/position_id is usually enough; fallback to a broader key.
+    if ticket and tms:
+        return ("t", ticket, tms)
+    if ticket:
+        return ("t", ticket, sym, typ, vol, price)
+    return ("d", sym, typ, vol, price, tms)
+
+
+def _merge_deals(existing_deals: list, incoming_deals: list, days: int | None = None) -> list:
+    """
+    Merge incoming deals into existing deals and de-dupe.
+    Stats trade history keeps the full merged set (days=None).
+    Optional days=N trims to the last N days for callers that need retention.
+    Deals with unknown timestamps (timestamp_ms==0) are always kept.
+    """
+    existing_deals = existing_deals if isinstance(existing_deals, list) else []
+    incoming_deals = incoming_deals if isinstance(incoming_deals, list) else []
+
+    merged = []
+    seen = set()
+
+    # Prefer incoming ordering first (freshest push), but keep everything.
+    for src in (incoming_deals, existing_deals):
+        for d in src:
+            if not isinstance(d, dict):
+                continue
+            fp = _deal_fingerprint(d)
+            if fp in seen:
+                continue
+            seen.add(fp)
+            merged.append(d)
+
+    if days is not None:
+        try:
+            cutoff_ms = int((datetime.now() - timedelta(days=max(1, int(days)))).timestamp() * 1000)
+        except Exception:
+            cutoff_ms = 0
+        if cutoff_ms:
+            kept = []
+            for d in merged:
+                ts = _deal_timestamp_ms(d) if isinstance(d, dict) else 0
+                if ts == 0 or ts >= cutoff_ms:
+                    kept.append(d)
+            merged = kept
+
+    merged.sort(key=lambda d: _deal_timestamp_ms(d) if isinstance(d, dict) else 0, reverse=True)
+    return merged
+
+
+def _deals_date_span(deals: list) -> str:
+    """Human-readable oldest→newest date span for logging."""
+    if not deals:
+        return "empty"
+    ms_vals = [_deal_timestamp_ms(d) for d in deals if isinstance(d, dict)]
+    ms_vals = [m for m in ms_vals if m > 0]
+    if not ms_vals:
+        return f"{len(deals)} deals (no timestamps)"
+    oldest = datetime.fromtimestamp(min(ms_vals) / 1000).strftime('%Y-%m-%d')
+    newest = datetime.fromtimestamp(max(ms_vals) / 1000).strftime('%Y-%m-%d')
+    return f"{len(deals)} deals, {oldest} → {newest}"
+
+
 @app.route('/api/client/push', methods=['POST'])
 @limiter.limit("60 per minute")
 def api_client_push():
@@ -4870,9 +4984,17 @@ def api_client_push():
         str(data.get('companion_version') or data.get('version') or request.headers.get('X-Companion-Version') or '').strip()
     )
     
-    # Get MT5 data from push
-    mt5_deals_raw = data.get("deals", [])
-    mt5_deals, dropped_internal = _drop_balance_deals(mt5_deals_raw)
+    # Get MT5 data from push.
+    # trade_history_deals = Stats tab only (full history). deals = legacy; hedge uses aggregated_by_comment.
+    trade_history_incoming = data.get("trade_history_deals")
+    if trade_history_incoming is not None:
+        trade_history_deals, dropped_internal = _drop_balance_deals(trade_history_incoming)
+        mt5_deals = []  # do not feed full history into hedge / stats recalc paths
+    else:
+        trade_history_deals = []
+        mt5_deals_raw = data.get("deals", [])
+        mt5_deals, dropped_internal = _drop_balance_deals(mt5_deals_raw)
+        trade_history_deals = mt5_deals  # legacy clients: same list for storage
     if dropped_internal:
         app.logger.info(f"🚫 Dropped {dropped_internal} internal transfer deal(s) (BALANCE/CREDIT) from push payload")
     mt5_account = data.get("account", {})
@@ -4906,7 +5028,7 @@ def api_client_push():
     hedge_match_log = []
     
     if aggregated_by_comment or mt5_deals:
-        app.logger.info(f"📋 Received {len(aggregated_by_comment)} aggregated groups, {len(mt5_deals)} raw deals")
+        app.logger.info(f"📋 Received {len(aggregated_by_comment)} aggregated groups, {len(mt5_deals)} raw deals (hedge)")
         if prefer_client_aggregation:
             app.logger.info("⚡ Preferring client-side aggregation for hedge matching")
         if tradovate_farming_days:
@@ -4930,10 +5052,12 @@ def api_client_push():
                 if app.logger.isEnabledFor(logging.DEBUG):
                     for log_line in hedge_match_log:
                         app.logger.debug(f"   {log_line}")
+    if trade_history_deals:
+        app.logger.info(f"📜 Trade history payload: {_deals_date_span(trade_history_deals)}")
     
     # Debug logging
     acct_balance = mt5_account.get('balance', 0) if mt5_account else 0
-    app.logger.info(f"📥 Push for {client_id}: {len(mt5_deals)} deals, balance={acct_balance}, {len(evaluations)} evaluations")
+    app.logger.info(f"📥 Push for {client_id}: hedge_deals={len(mt5_deals)}, history={len(trade_history_deals)}, balance={acct_balance}, evals={len(evaluations)}")
     
     # Log detailed MT5 account info
     if mt5_account:
@@ -5023,7 +5147,7 @@ def api_client_push():
             
             # Pass MT5 data - if empty, discrepancy will be 0
             mt5_acc_param = mt5_account if mt5_account else None
-            mt5_deals_param = mt5_deals if mt5_deals else None
+            mt5_deals_param = mt5_deals if mt5_deals else None  # empty when trade_history_deals used
             
             # Fetch Stats tab values from Google Sheet so the SUMIF stats
             # use formula-precision values instead of CSV-rounded values.
@@ -5131,9 +5255,21 @@ def api_client_push():
         if not incoming_acct.get(_preserve_key):
             merged_acct[_preserve_key] = existing_acct.get(_preserve_key, 0)
 
+    # Merge full trade history for Stats tab only. Empty push must not wipe stored history.
+    existing_deals = existing_data.get('deals', [])
+    if trade_history_deals:
+        stored_deals = _merge_deals(existing_deals, trade_history_deals)
+        app.logger.info(
+            f"📚 Trade history stored for {client_id}: "
+            f"{len(existing_deals)} existing + {len(trade_history_deals)} incoming → "
+            f"{len(stored_deals)} total ({_deals_date_span(stored_deals)})"
+        )
+    else:
+        stored_deals = existing_deals
+
     # Prepare client data
     client_data = {
-        "deals": mt5_deals,
+        "deals": stored_deals,
         "positions": data.get("positions", []),
         "account": merged_acct,
         "evaluations": evaluations,
@@ -11680,6 +11816,11 @@ def update_data():
                         for _r in new_rows:
                             if isinstance(_r, dict) and '_row_added_at' not in _r:
                                 _r['_row_added_at'] = now_iso
+                            if isinstance(_r, dict):
+                                if not str(_r.get('Status P1') or '').strip():
+                                    _r['Status P1'] = 'Not Started'
+                                if not str(_r.get('Status') or '').strip():
+                                    _r['Status'] = '-'
                         evaluations = normalize_evaluations(existing_evals) + new_rows
                     elif data.get('create_evaluation'):
                         evaluations = normalize_evaluations(existing_evals)
@@ -11687,7 +11828,9 @@ def update_data():
                             "Prop Firm": "My Funded Futures",
                             "Account Size": "$100,000",
                             "Date Purchased": "",
-                            "Fee": "0"
+                            "Fee": "0",
+                            "Status P1": "Not Started",
+                            "Status": "-",
                         }
                         new_row['_row_added_at'] = datetime.utcnow().isoformat()
                         evaluations.append(new_row)
@@ -11981,9 +12124,16 @@ def update_data_with_api_key(data, identity, user_info):
         if not incoming_acct.get(_preserve_key):
             merged_acct[_preserve_key] = existing_acct.get(_preserve_key, 0)
 
+    incoming_deals, _ = _drop_balance_deals(data.get("deals", []))
+    existing_deals = existing_data.get('deals', [])
+    if incoming_deals:
+        stored_deals = _merge_deals(existing_deals, incoming_deals)
+    else:
+        stored_deals = existing_deals
+
     # Prepare client data
     client_data = {
-        "deals": _drop_balance_deals(data.get("deals", []))[0],
+        "deals": stored_deals,
         "positions": data.get("positions", []),
         "account": merged_acct,
         "evaluations": evaluations,
@@ -12117,7 +12267,11 @@ def push_deals():
     deals, dropped_internal = _drop_balance_deals(deals_raw)
     if dropped_internal:
         app.logger.info(f"🚫 Dropped {dropped_internal} internal transfer deal(s) (BALANCE/CREDIT) from /api/trader/push_deals")
-    update_client_field(client_id, 'deals', deals)
+    # Merge into DB so the dashboard Stats tab can show full trade history.
+    existing_data = get_client_data(client_id) or {}
+    existing_deals = existing_data.get('deals', [])
+    merged_deals = _merge_deals(existing_deals, deals)
+    update_client_field(client_id, 'deals', merged_deals)
     log_action('PUSH_DEALS', 'trader', request.api_user.get('trader'), get_remote_address(), f"Client: {client_id}")
     
     return jsonify({"status": "success", "message": "Deals updated"})
