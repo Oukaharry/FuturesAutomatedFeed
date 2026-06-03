@@ -365,9 +365,6 @@ def get_state() -> Dict[str, Any]:
             out["error"] = _state.get("error")
     elif not out["error"] and disk and disk.get("error"):
         out["error"] = disk.get("error")
-    meta = dict(out.get("meta") or {})
-    meta.update(_m1_market_freshness())
-    out["meta"] = meta
     return _sanitize_for_json(out)
 
 
@@ -543,12 +540,32 @@ def run_refresh_once(*, reason: str = "subprocess") -> int:
         return 1
 
 
+def _subprocess_python() -> str:
+    """uWSGI sets sys.executable to uwsgi — use a real Python for -m dashboard.ml_refresh_worker."""
+    override = os.environ.get("ML_PYTHON", "").strip()
+    if override:
+        return override
+    if "uwsgi" in os.path.basename(sys.executable).lower():
+        venv = os.environ.get("VIRTUAL_ENV", "").strip()
+        if venv:
+            candidate = os.path.join(venv, "bin", "python")
+            if os.path.isfile(candidate):
+                return candidate
+        import shutil
+
+        for name in ("python3", "python"):
+            found = shutil.which(name)
+            if found:
+                return found
+    return sys.executable
+
+
 def _run_subprocess_refresh(*, reason: str) -> None:
     t0 = time.time()
     _set_running()
     env = os.environ.copy()
     env.setdefault("ML_RF_N_JOBS", "1")
-    cmd = [sys.executable, "-m", "dashboard.ml_refresh_worker", "--reason", reason]
+    cmd = [_subprocess_python(), "-m", "dashboard.ml_refresh_worker", "--reason", reason]
     logger.info("[ML] Spawning subprocess refresh: %s", " ".join(cmd))
     try:
         proc = subprocess.run(

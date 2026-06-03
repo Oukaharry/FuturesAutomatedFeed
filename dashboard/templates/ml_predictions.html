@@ -196,9 +196,6 @@
                 document.getElementById('meta-updated').textContent = fmtReportEat(d.generated_at);
                 document.getElementById('meta-db-sync').textContent = fmtDbSyncEat(d.meta?.db_max_last_updated, mode, src);
                 document.getElementById('meta-db-sync').title = 'clients_data max last_updated (evaluations push)';
-                const m1Newest = d.meta?.m1_newest;
-                document.getElementById('meta-m1-newest').textContent = m1Newest ? fmtBarTs(m1Newest) : '—';
-                pollStatus._refreshing = !!d.refresh_in_progress;
                 document.getElementById('meta-source').textContent = mode || (src.includes('production') ? 'production' : src.includes('local') ? 'local' : '—');
                 document.getElementById('meta-source').title = src || mode;
                 document.getElementById('meta-trades').textContent = d.meta?.n_trades?.toLocaleString?.() ?? d.meta?.n_trades ?? '—';
@@ -231,23 +228,9 @@
 
         btnRefresh.addEventListener('click', async () => {
             btnRefresh.disabled = true;
-            pollStatus._lastReportAt = '';
-            try {
-                await fetch('/api/ml_predictions/refresh', { method: 'POST' });
-                for (let i = 0; i < 120; i++) {
-                    await new Promise(r => setTimeout(r, 2000));
-                    await pollStatus();
-                    if (!pollStatus._refreshing) break;
-                }
-                await pollM1Status();
-                if (m1PreviewState.open && m1PreviewState.symbol) {
-                    await loadM1Preview(m1PreviewState.clientId, m1PreviewState.symbol);
-                }
-            } catch (e) {
-                setPill('error');
-            } finally {
-                btnRefresh.disabled = false;
-            }
+            await fetch('/api/ml_predictions/refresh', { method: 'POST' });
+            pollStatus();
+            pollM1Status();
         });
 
         const TZ_EAT = 'Africa/Nairobi';
@@ -440,6 +423,7 @@
                     `;
                 }).join('');
                 document.getElementById('m1-latest-bar').textContent = fmtTs(globalNewest);
+                document.getElementById('meta-m1-newest').textContent = fmtTs(globalNewest);
                 const stale = document.getElementById('m1-stale-hint');
                 const gapHint = document.getElementById('m1-gap-hint');
                 const ageSec = Math.floor(Date.now() / 1000) - globalNewest;
@@ -473,7 +457,6 @@
         m1Body.classList.add('open');
 
         pollStatus._lastReportAt = '';
-        pollStatus._refreshing = false;
         pollStatus();
         pollM1Status();
         const pollMs = 10000;
