@@ -44,9 +44,15 @@ _state: Dict[str, Any] = {
 
 _worker_lock = threading.Lock()
 _refresh_lock = threading.Lock()
+_debounce_lock = threading.Lock()
 _worker_started = False
 _stop_event = threading.Event()
+_data_changed_event = threading.Event()
 _leader_lock_handle = None  # keeps flock open for process lifetime (Linux/PA)
+_debounce_timer: Optional[threading.Timer] = None
+_refresh_queued = False
+_last_db_fingerprint: Optional[tuple] = None
+_last_scheduled_refresh_at: float = 0.0
 
 
 def _project_root() -> str:
@@ -206,7 +212,13 @@ def _ml_data_session() -> Iterator[str]:
     yield describe_active_source(mode)
 
 
+def _use_watch_mode() -> bool:
+    """Default: watch clients_data and refresh when it changes (debounced)."""
+    return os.environ.get("ML_REFRESH_MODE", "watch").strip().lower() != "interval"
+
+
 def _interval_sec() -> int:
+    """Legacy fixed-interval mode only (ML_REFRESH_MODE=interval)."""
     explicit = (os.environ.get("ML_REFRESH_INTERVAL_SEC") or "").strip()
     if explicit:
         try:
@@ -214,6 +226,86 @@ def _interval_sec() -> int:
         except ValueError:
             pass
     return 120 if _ml_runtime_mode() == "production" else 300
+
+
+def _watch_poll_sec() -> float:
+    """Lightweight DB fingerprint poll (not a full ML rebuild)."""
+    explicit = (os.environ.get("ML_WATCH_POLL_SEC") or "").strip()
+    if explicit:
+        try:
+            return max(1.0, float(explicit))
+        except ValueError:
+            pass
+    return 3.0 if _ml_runtime_mode() == "production" else 5.0
+
+
+def _debounce_sec() -> float:
+    """Wait after last data change before starting heavy sklearn refresh."""
+    explicit = (os.environ.get("ML_REFRESH_DEBOUNCE_SEC") or "").strip()
+    if explicit:
+        try:
+            return max(5.0, float(explicit))
+        except ValueError:
+            pass
+    return 20.0 if _ml_runtime_mode() == "production" else 30.0
+
+
+def _fallback_interval_sec() -> int:
+    """Safety-net full refresh if watch misses a change (0 = disabled)."""
+    explicit = (os.environ.get("ML_FALLBACK_INTERVAL_SEC") or "").strip()
+    if explicit:
+        try:
+            return max(0, int(explicit))
+        except ValueError:
+            pass
+    return 1800 if _ml_runtime_mode() == "production" else 0
+
+
+def _read_db_fingerprint() -> tuple:
+    fresh = _clients_data_freshness()
+    max_u = fresh.get("db_max_last_updated")
+    n = fresh.get("db_client_count", 0)
+    return (str(max_u) if max_u is not None else "", int(n or 0))
+
+
+def notify_clients_data_changed(source: str = "save") -> None:
+    """Wake the watch worker immediately (e.g. after companion push / save)."""
+    _data_changed_event.set()
+    logger.debug("[ML] Data change signal (%s)", source)
+
+
+def _schedule_debounced_refresh(reason: str) -> None:
+    """Coalesce bursts of pushes into one heavy refresh (runs on a timer thread)."""
+    global _debounce_timer
+
+    def _fire() -> None:
+        global _last_scheduled_refresh_at
+        _last_scheduled_refresh_at = time.time()
+        fp_before = _read_db_fingerprint()
+        refresh_now(reason=reason)
+        fp_after = _read_db_fingerprint()
+        global _last_db_fingerprint
+        _last_db_fingerprint = fp_after
+        if fp_after != fp_before:
+            logger.info("[ML] DB changed during refresh — scheduling follow-up")
+            _schedule_debounced_refresh("coalesce")
+
+    with _debounce_lock:
+        if _debounce_timer is not None:
+            _debounce_timer.cancel()
+        _debounce_timer = threading.Timer(_debounce_sec(), _fire)
+        _debounce_timer.daemon = True
+        _debounce_timer.start()
+    logger.info("[ML] Refresh scheduled in %.0fs (%s)", _debounce_sec(), reason)
+
+
+def _on_db_fingerprint_changed(reason: str) -> None:
+    global _last_db_fingerprint
+    fp = _read_db_fingerprint()
+    if _last_db_fingerprint is not None and fp == _last_db_fingerprint:
+        return
+    logger.info("[ML] clients_data changed (%s) %s → %s", reason, _last_db_fingerprint, fp)
+    _schedule_debounced_refresh(reason)
 
 
 def _heal_disk_meta() -> None:
@@ -336,7 +428,10 @@ def get_state() -> Dict[str, Any]:
             "error": _state.get("error"),
             "generated_at": _state.get("generated_at"),
             "started_at": _state.get("started_at"),
-            "refresh_interval_sec": _state.get("refresh_interval_sec", _interval_sec()),
+            "refresh_interval_sec": _state.get("refresh_interval_sec"),
+            "refresh_mode": _state.get("refresh_mode", "watch" if _use_watch_mode() else "interval"),
+            "watch_poll_sec": _state.get("watch_poll_sec", _watch_poll_sec()),
+            "debounce_sec": _state.get("debounce_sec", _debounce_sec()),
             "last_duration_sec": _state.get("last_duration_sec"),
             "has_html": bool(_state.get("html")),
             "runtime_mode": mode,
@@ -434,7 +529,14 @@ def _set_result(
         _state["error"] = None
         _state["generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _state["last_duration_sec"] = round(duration_sec, 1)
-        _state["refresh_interval_sec"] = _interval_sec()
+        if _use_watch_mode():
+            _state["refresh_mode"] = "watch"
+            _state["watch_poll_sec"] = _watch_poll_sec()
+            _state["debounce_sec"] = _debounce_sec()
+            _state["refresh_interval_sec"] = _debounce_sec()
+        else:
+            _state["refresh_mode"] = "interval"
+            _state["refresh_interval_sec"] = _interval_sec()
     _persist_cache(html, meta, closed_history_html=closed_history_html)
 
 
@@ -555,28 +657,45 @@ def _run_subprocess_refresh(*, reason: str) -> None:
 
 
 def refresh_now(*, reason: str = "manual") -> None:
+    global _refresh_queued
     if not _refresh_lock.acquire(blocking=False):
-        logger.info("[ML] Refresh skipped (%s): another refresh is in progress", reason)
+        with _debounce_lock:
+            _refresh_queued = True
+        logger.info("[ML] Refresh queued (%s): another refresh is in progress", reason)
         return
     try:
         if _use_subprocess_refresh():
             _run_subprocess_refresh(reason=reason)
-            return
-        run_refresh_once(reason=reason)
+        else:
+            run_refresh_once(reason=reason)
     finally:
         _refresh_lock.release()
+        follow_up = False
+        with _debounce_lock:
+            if _refresh_queued:
+                _refresh_queued = False
+                follow_up = True
+        if follow_up:
+            threading.Thread(
+                target=lambda: refresh_now(reason="queued"),
+                daemon=True,
+                name="ml-predictions-followup",
+            ).start()
 
 
-def _worker_loop() -> None:
+def _interval_worker_loop() -> None:
+    """Legacy: fixed timer between full rebuilds."""
     mode = _ml_runtime_mode()
     _heal_disk_meta()
     _warm_memory_from_disk()
+    with _lock:
+        _state["refresh_mode"] = "interval"
+        _state["refresh_interval_sec"] = _interval_sec()
     logger.info(
-        "[ML] Worker started mode=%s interval=%ss cache=%s host=%s",
+        "[ML] Interval worker mode=%s every %ss cache=%s",
         mode,
         _interval_sec(),
         _cache_dir(),
-        urlparse(os.environ.get("DATABASE_URL", "")).hostname or "(from app)",
     )
     delay = _startup_delay_sec()
     if delay and _stop_event.wait(delay):
@@ -585,6 +704,66 @@ def _worker_loop() -> None:
         refresh_now(reason="scheduled")
         if _stop_event.wait(_interval_sec()):
             break
+
+
+def _watch_worker_loop() -> None:
+    """Poll DB fingerprint + wake on save; debounce heavy ML rebuilds."""
+    global _last_db_fingerprint, _last_scheduled_refresh_at
+
+    mode = _ml_runtime_mode()
+    _heal_disk_meta()
+    _warm_memory_from_disk()
+    poll = _watch_poll_sec()
+    debounce = _debounce_sec()
+    fallback = _fallback_interval_sec()
+    with _lock:
+        _state["refresh_mode"] = "watch"
+        _state["watch_poll_sec"] = poll
+        _state["debounce_sec"] = debounce
+        _state["refresh_interval_sec"] = debounce
+
+    logger.info(
+        "[ML] Watch worker mode=%s poll=%.1fs debounce=%.1fs fallback=%ss cache=%s host=%s",
+        mode,
+        poll,
+        debounce,
+        fallback,
+        _cache_dir(),
+        urlparse(os.environ.get("DATABASE_URL", "")).hostname or "(from app)",
+    )
+
+    delay = _startup_delay_sec()
+    if delay and _stop_event.wait(delay):
+        return
+
+    _last_db_fingerprint = _read_db_fingerprint()
+    refresh_now(reason="startup")
+    _last_db_fingerprint = _read_db_fingerprint()
+    _last_scheduled_refresh_at = time.time()
+
+    while not _stop_event.is_set():
+        woke = _data_changed_event.wait(timeout=poll)
+        if _stop_event.is_set():
+            break
+        if woke:
+            _data_changed_event.clear()
+
+        fp = _read_db_fingerprint()
+        if fp != _last_db_fingerprint:
+            _on_db_fingerprint_changed("watch" if not woke else "notify")
+
+        if fallback > 0:
+            since = time.time() - _last_scheduled_refresh_at
+            if since >= fallback:
+                logger.info("[ML] Fallback refresh (%.0fs since last scheduled)", since)
+                _schedule_debounced_refresh("fallback")
+
+
+def _worker_loop() -> None:
+    if _use_watch_mode():
+        _watch_worker_loop()
+    else:
+        _interval_worker_loop()
 
 
 def _try_acquire_leader() -> bool:
