@@ -56,6 +56,7 @@ from dashboard.database import (
     upsert_m1_bars, get_m1_bar_stats, get_m1_bars, get_last_m1_bar_time, prune_m1_bars_older_than,
     list_m1_bar_summaries, get_latest_m1_bars,
     M1_MARKET_CLIENT_ID, is_plexy_broker_name, m1_market_storage_id, migrate_m1_bars_to_market_store,
+    get_m1_coverage_stats,
 )
 from dashboard.notes_service import (
     get_client_notes, save_client_note, delete_client_note
@@ -5748,7 +5749,13 @@ def api_ml_m1_bars_status():
     if request.session_user.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Forbidden"}), 403
     summaries = list_m1_bar_summaries()
-    return jsonify({"status": "success", "summaries": summaries, "total_series": len(summaries)})
+    coverage = get_m1_coverage_stats(M1_MARKET_CLIENT_ID, "USTECH")
+    return jsonify({
+        "status": "success",
+        "summaries": summaries,
+        "total_series": len(summaries),
+        "coverage": coverage,
+    })
 
 
 @app.route('/api/ml/m1_bars', methods=['GET'])
@@ -5764,14 +5771,16 @@ def api_ml_m1_bars():
     latest = request.args.get("latest", type=int)
     limit = request.args.get("limit", 50000, type=int)
     storage_id = m1_market_storage_id(symbol) if client_id.upper() == M1_MARKET_CLIENT_ID else client_id
+    n = None
     if latest:
-        bars = get_latest_m1_bars(storage_id, symbol, limit=min(latest, 500))
+        n = max(1, min(int(latest), 500))
+        bars = get_latest_m1_bars(storage_id, symbol, limit=n)
     else:
         start_ts = int(start) if start else None
         end_ts = int(end) if end else None
         bars = get_m1_bars(storage_id, symbol, start_ts, end_ts, limit=limit)
     stats = get_m1_bar_stats(storage_id, symbol)
-    return jsonify({
+    resp = jsonify({
         "status": "success",
         "client_id": storage_id,
         "market_store": storage_id == M1_MARKET_CLIENT_ID,
@@ -5779,7 +5788,10 @@ def api_ml_m1_bars():
         "count": len(bars),
         "stats": stats,
         "bars": bars,
+        "latest_n": n if latest else None,
     })
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return resp
 
 
 @app.route('/api/client/migrate_sheet', methods=['POST'])

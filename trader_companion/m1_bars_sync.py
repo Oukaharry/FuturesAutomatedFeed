@@ -187,6 +187,12 @@ class M1BarsDashboardSync:
             if not self._alive(generation):
                 return
 
+            # Fill holes inside the span (e.g. missing May between April and June)
+            self._fill_internal_gaps(generation)
+
+            if not self._alive(generation):
+                return
+
             # One-time backfill: Jun 1 2025 UTC through existing oldest bar (then live keeps current)
             target_start = HISTORY_START_UTC
             target_ts = int(target_start.timestamp())
@@ -437,6 +443,82 @@ class M1BarsDashboardSync:
                 return None
             mt5.symbol_select(sym, True)
             return mt5.copy_rates_from(sym, mt5.TIMEFRAME_M1, dt, count)
+
+    def _fetch_rates_range(self, date_from: datetime, date_to: datetime):
+        import MetaTrader5 as mt5
+        from trader_companion.mt5_market_feed import MT5_API_LOCK
+
+        sym = self._resolved_symbol
+        if not sym:
+            return None
+        dt_from = date_from.replace(tzinfo=None) if date_from.tzinfo else date_from
+        dt_to = date_to.replace(tzinfo=None) if date_to.tzinfo else date_to
+        with MT5_API_LOCK:
+            if not mt5.terminal_info():
+                return None
+            mt5.symbol_select(sym, True)
+            return mt5.copy_rates_range(sym, mt5.TIMEFRAME_M1, dt_from, dt_to)
+
+    def _fill_internal_gaps(self, generation: int) -> None:
+        """
+        If DB has fewer bars than the oldest→newest span suggests, pull missing
+        ranges from MT5 (fixes April→June holes / missing May).
+        """
+        stats = self._fetch_server_status()
+        count = int(stats.get("count") or 0)
+        oldest = stats.get("oldest")
+        newest = stats.get("newest")
+        if not oldest or not newest or count < 100:
+            return
+
+        span_minutes = max(1, (int(newest) - int(oldest)) // 60)
+        expected = max(int(span_minutes * 0.55), 1000)
+        if count >= expected * 0.85:
+            return
+
+        self._log(
+            f"Internal gap fill — {count} bars vs ~{expected} expected "
+            f"({span_minutes} min span); fetching from MT5 in 14-day chunks"
+        )
+        self._audit(
+            "internal_gap_start",
+            db_count=count,
+            expected=expected,
+            span_minutes=span_minutes,
+        )
+
+        cursor = datetime.fromtimestamp(int(oldest), tz=timezone.utc)
+        end = datetime.fromtimestamp(int(newest), tz=timezone.utc)
+        chunk_days = 14
+        pages = 0
+        while cursor < end and self._alive(generation) and pages < 80:
+            chunk_end = min(cursor + timedelta(days=chunk_days), end)
+            rates = self._fetch_rates_range(cursor, chunk_end)
+            if rates is not None and len(rates) > 0:
+                bars = self._rates_to_bars(rates)
+                if bars:
+                    self._push_bars(bars, "backfill", generation=generation)
+                    pages += 1
+                    if pages == 1 or pages % 5 == 0:
+                        self._log(
+                            f"Internal gap chunk {pages}: {len(bars)} bar(s) "
+                            f"({cursor.date()} → {chunk_end.date()})"
+                        )
+            cursor = chunk_end
+            time.sleep(0.12)
+
+        stats_after = self._fetch_server_status()
+        self._log(
+            f"Internal gap fill done — DB has {stats_after.get('count', 0)} bars "
+            f"(oldest={stats_after.get('oldest')}, newest={stats_after.get('newest')})"
+        )
+        self._audit(
+            "internal_gap_done",
+            db_count=stats_after.get("count"),
+            db_oldest=stats_after.get("oldest"),
+            db_newest=stats_after.get("newest"),
+            chunks=pages,
+        )
 
     def _gap_fill_since(self, after_ts: int, generation: int) -> int:
         """
