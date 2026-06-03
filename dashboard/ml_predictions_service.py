@@ -646,3 +646,44 @@ def start_ml_predictions_worker() -> Optional[threading.Thread]:
     t = threading.Thread(target=_worker_loop, daemon=True, name="ml-predictions")
     t.start()
     return t
+
+
+def fetch_m1_bars_for_ml(
+    client_id: str = "PLEXY",
+    symbol: str = "USTECH",
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
+    limit: int = 50000,
+) -> list:
+    """
+    Load shared Plexy USTECH M1 bars from Postgres for ML / research scripts.
+
+    Example:
+        bars = fetch_m1_bars_for_ml()  # shared PLEXY / USTECH series
+    """
+    from dashboard.database import get_m1_bars, M1_MARKET_CLIENT_ID
+
+    storage_id = M1_MARKET_CLIENT_ID if (not client_id or client_id.upper() == M1_MARKET_CLIENT_ID) else client_id
+    _prepare_database_for_refresh()
+    return get_m1_bars(storage_id, symbol, start_time, end_time, limit=limit)
+
+
+def fetch_m1_bars_dataframe(
+    client_id: str,
+    symbol: str = "USTECH",
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
+    limit: int = 50000,
+):
+    """Return pandas DataFrame of M1 bars (requires pandas)."""
+    bars = fetch_m1_bars_for_ml(client_id, symbol, start_time, end_time, limit)
+    if not bars:
+        return None
+    try:
+        import pandas as pd
+    except ImportError:
+        raise ImportError("pandas required for fetch_m1_bars_dataframe")
+    df = pd.DataFrame(bars)
+    if "time" in df.columns:
+        df["datetime"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    return df

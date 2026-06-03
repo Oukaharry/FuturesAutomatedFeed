@@ -14,6 +14,7 @@ import psycopg2.extras
 import psycopg2.pool
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 from contextlib import contextmanager
 try:
     from dotenv import load_dotenv  # type: ignore
@@ -267,7 +268,28 @@ def init_database():
                     cursor.execute(f"ALTER TABLE clients_data ADD COLUMN IF NOT EXISTS {_col} TEXT DEFAULT {_default}")
                 except Exception:
                     pass
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS m1_bars (
+                    client_id   TEXT NOT NULL,
+                    symbol      TEXT NOT NULL,
+                    bar_time    BIGINT NOT NULL,
+                    open        DOUBLE PRECISION,
+                    high        DOUBLE PRECISION,
+                    low         DOUBLE PRECISION,
+                    close       DOUBLE PRECISION,
+                    tick_volume BIGINT,
+                    PRIMARY KEY (client_id, symbol, bar_time)
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_m1_bars_client_symbol_time
+                ON m1_bars (client_id, symbol, bar_time DESC)
+            """)
             conn.commit()
+        try:
+            migrate_m1_bars_to_market_store()
+        except Exception as e:
+            print(f"M1 market store migration skipped: {e}")
     except Exception as e:
         print(f"Database connection failed: {e}")
 
@@ -2585,6 +2607,230 @@ def migrate_from_json(api_keys_file: str = None, data_file: str = None):
             print(f"Error migrating client data: {e}")
     
     return migrated
+
+
+# ============ M1 OHLC bars (companion → dashboard, ML) ============
+
+# Single shared USTECH series for all PlexyTrade companions (same market data).
+M1_MARKET_CLIENT_ID = "PLEXY"
+
+
+def is_plexy_broker_name(server: str = "", company: str = "", broker: str = "") -> bool:
+    blob = f"{server or ''} {company or ''} {broker or ''}".lower()
+    return "plexy" in blob
+
+
+def m1_market_storage_id(symbol: str) -> str:
+    """Return canonical DB client_id for shared market OHLC (USTECH on Plexy)."""
+    return M1_MARKET_CLIENT_ID
+
+
+def migrate_m1_bars_to_market_store() -> None:
+    """Merge per-client USTECH rows into one PLEXY series; drop duplicates."""
+    cid = M1_MARKET_CLIENT_ID
+    sym = "USTECH"
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO m1_bars (client_id, symbol, bar_time, open, high, low, close, tick_volume)
+            SELECT ?, symbol, bar_time, open, high, low, close, tick_volume
+            FROM m1_bars
+            WHERE symbol = ? AND client_id != ?
+            ON CONFLICT (client_id, symbol, bar_time) DO UPDATE SET
+                open = EXCLUDED.open,
+                high = EXCLUDED.high,
+                low = EXCLUDED.low,
+                close = EXCLUDED.close,
+                tick_volume = EXCLUDED.tick_volume
+            """,
+            (cid, sym, cid),
+        )
+        cursor.execute(
+            "DELETE FROM m1_bars WHERE symbol = ? AND client_id != ?",
+            (sym, cid),
+        )
+        conn.commit()
+
+
+def upsert_m1_bars(client_id: str, symbol: str, bars: list) -> int:
+    """Insert or update M1 bars. Returns number of rows written."""
+    if not client_id or not symbol or not bars:
+        return 0
+    sym = str(symbol).strip().upper()
+    cid = str(client_id).strip()
+    rows = []
+    for b in bars:
+        if not b:
+            continue
+        t = int(b.get("time") or b.get("bar_time") or 0)
+        if t <= 0:
+            continue
+        rows.append((
+            cid, sym, t,
+            float(b.get("open", 0)),
+            float(b.get("high", 0)),
+            float(b.get("low", 0)),
+            float(b.get("close", 0)),
+            int(b.get("tick_volume") or b.get("volume") or 0),
+        ))
+    if not rows:
+        return 0
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.executemany("""
+            INSERT INTO m1_bars (client_id, symbol, bar_time, open, high, low, close, tick_volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (client_id, symbol, bar_time) DO UPDATE SET
+                open = EXCLUDED.open,
+                high = EXCLUDED.high,
+                low = EXCLUDED.low,
+                close = EXCLUDED.close,
+                tick_volume = EXCLUDED.tick_volume
+        """, rows)
+        conn.commit()
+        return len(rows)
+
+
+def get_m1_bar_stats(client_id: str, symbol: str) -> dict:
+    """Return count, oldest/newest bar_time for a client+symbol."""
+    sym = str(symbol).strip().upper()
+    cid = str(client_id).strip()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) AS cnt, MIN(bar_time) AS oldest, MAX(bar_time) AS newest
+            FROM m1_bars WHERE client_id = ? AND symbol = ?
+        """, (cid, sym))
+        row = cursor.fetchone()
+    if not row:
+        return {"count": 0, "oldest": None, "newest": None}
+    cnt = row["cnt"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
+    oldest = row["oldest"] if isinstance(row, dict) or hasattr(row, "keys") else row[1]
+    newest = row["newest"] if isinstance(row, dict) or hasattr(row, "keys") else row[2]
+    return {
+        "count": int(cnt or 0),
+        "oldest": int(oldest) if oldest is not None else None,
+        "newest": int(newest) if newest is not None else None,
+    }
+
+
+def get_last_m1_bar_time(client_id: str, symbol: str) -> Optional[int]:
+    stats = get_m1_bar_stats(client_id, symbol)
+    return stats.get("newest")
+
+
+def get_m1_bars(
+    client_id: str,
+    symbol: str,
+    start_time: Optional[int] = None,
+    end_time: Optional[int] = None,
+    limit: int = 50000,
+) -> list:
+    """Fetch M1 bars ordered by bar_time ascending."""
+    sym = str(symbol).strip().upper()
+    cid = str(client_id).strip()
+    lim = max(1, min(int(limit), 200_000))
+    sql = """
+        SELECT bar_time, open, high, low, close, tick_volume
+        FROM m1_bars WHERE client_id = ? AND symbol = ?
+    """
+    params: list = [cid, sym]
+    if start_time is not None:
+        sql += " AND bar_time >= ?"
+        params.append(int(start_time))
+    if end_time is not None:
+        sql += " AND bar_time <= ?"
+        params.append(int(end_time))
+    sql += " ORDER BY bar_time ASC LIMIT ?"
+    params.append(lim)
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(sql, tuple(params))
+        out = []
+        for row in cursor.fetchall():
+            out.append({
+                "time": int(row["bar_time"]),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "tick_volume": int(row["tick_volume"] or 0),
+            })
+        return out
+
+
+def list_m1_bar_summaries() -> list:
+    """Shared Plexy USTECH market series (single row for ML dashboard)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT client_id, symbol, COUNT(*) AS cnt,
+                   MIN(bar_time) AS oldest, MAX(bar_time) AS newest
+            FROM m1_bars
+            WHERE client_id = ?
+            GROUP BY client_id, symbol
+            ORDER BY symbol
+        """, (M1_MARKET_CLIENT_ID,))
+        rows = cursor.fetchall()
+    out = []
+    for row in rows:
+        if isinstance(row, dict) or hasattr(row, "keys"):
+            cid, sym, cnt, oldest, newest = (
+                row["client_id"], row["symbol"], row["cnt"], row["oldest"], row["newest"]
+            )
+        else:
+            cid, sym, cnt, oldest, newest = row[0], row[1], row[2], row[3], row[4]
+        out.append({
+            "client_id": str(cid),
+            "symbol": str(sym),
+            "count": int(cnt or 0),
+            "oldest": int(oldest) if oldest is not None else None,
+            "newest": int(newest) if newest is not None else None,
+        })
+    return out
+
+
+def get_latest_m1_bars(client_id: str, symbol: str, limit: int = 20) -> list:
+    """Most recent M1 bars, oldest-first within the returned slice."""
+    sym = str(symbol).strip().upper()
+    cid = str(client_id).strip()
+    lim = max(1, min(int(limit), 500))
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT bar_time, open, high, low, close, tick_volume
+            FROM m1_bars WHERE client_id = ? AND symbol = ?
+            ORDER BY bar_time DESC LIMIT ?
+        """, (cid, sym, lim))
+        rows = list(reversed(cursor.fetchall()))
+    out = []
+    for row in rows:
+        out.append({
+            "time": int(row["bar_time"]),
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+            "tick_volume": int(row["tick_volume"] or 0),
+        })
+    return out
+
+
+def prune_m1_bars_older_than(client_id: str, symbol: str, cutoff_time: int) -> int:
+    """Delete bars older than cutoff_time (epoch seconds). Returns deleted count."""
+    sym = str(symbol).strip().upper()
+    cid = str(client_id).strip()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM m1_bars WHERE client_id = ? AND symbol = ? AND bar_time < ?",
+            (cid, sym, int(cutoff_time)),
+        )
+        deleted = cursor.rowcount
+        conn.commit()
+        return deleted or 0
+
 
 # Initialize database on import
 init_database()

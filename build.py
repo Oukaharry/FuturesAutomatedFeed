@@ -45,7 +45,7 @@ data_args = [
 ]
 
 # Bundle all trading engine modules from trader_companion/
-for module in ['mt5_trading.py', 'tradovate.py', 'topstepx.py', 'prop_firm_manager.py',
+for module in ['mt5_trading.py', 'mt5_market_feed.py', 'm1_bars_sync.py', 'tradovate.py', 'topstepx.py', 'prop_firm_manager.py',
                'trade_limit_manager.py', 'broker_selection.py', 'mt5_dashboard_sync.py',
                'mt5_comment_parser.py']:
     src = os.path.join(TRADER_COMPANION_DIR, module)

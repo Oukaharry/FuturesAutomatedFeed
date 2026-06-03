@@ -20,7 +20,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column('clients_data', sa.Column('firm_billing', sa.Text(), server_default='{}'))
+    # Column may already exist if schema was created/updated outside Alembic.
+    op.execute(
+        "ALTER TABLE clients_data ADD COLUMN IF NOT EXISTS firm_billing TEXT DEFAULT '{}'"
+    )
 
 
 def downgrade() -> None:
