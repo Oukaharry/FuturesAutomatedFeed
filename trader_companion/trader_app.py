@@ -247,6 +247,15 @@ except ImportError:
 try:
     import MetaTrader5 as mt5
     MT5_AVAILABLE = True
+    try:
+        from trader_companion.signals.price_data import copy_rates_from_pos_cached
+        mt5.copy_rates_from_pos = copy_rates_from_pos_cached
+    except ImportError:
+        try:
+            from signals.price_data import copy_rates_from_pos_cached
+            mt5.copy_rates_from_pos = copy_rates_from_pos_cached
+        except ImportError:
+            pass
 except Exception as e:
     MT5_AVAILABLE = False
     import traceback
@@ -511,6 +520,7 @@ class MT5DataPusher:
             self.server = server
         
         self.connected = True
+
         account = mt5.account_info()
         if account:
             # Update server info from actual account connection if not manually provided
@@ -523,6 +533,16 @@ class MT5DataPusher:
     
     def disconnect_mt5(self):
         """Disconnect from MT5."""
+        try:
+            from trader_companion.mt5_market_feed import stop_mt5_market_feed
+            stop_mt5_market_feed()
+        except Exception:
+            pass
+        try:
+            from trader_companion.m1_bars_sync import stop_m1_dashboard_sync
+            stop_m1_dashboard_sync()
+        except Exception:
+            pass
         if MT5_AVAILABLE:
             mt5.shutdown()
         self.connected = False
@@ -2384,10 +2404,19 @@ class TradeOpssAIApp:
         self.import_hint.pack(side="left", padx=(12, 0))
 
     def log(self, message, level="INFO"):
-        """Add a message to the log and the live activity display."""
+        """Add a message to the log, live activity display, and mt5_trading.log."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
         self.log_text.see(tk.END)
+        try:
+            from trader_companion.audit_log import log_gui
+            log_gui(message, level)
+        except Exception:
+            try:
+                from audit_log import log_gui  # type: ignore
+                log_gui(message, level)
+            except Exception:
+                pass
         # Feed into live display
         kind = "info"
         msg_lower = message.lower()
@@ -2544,6 +2573,69 @@ class TradeOpssAIApp:
 
         threading.Thread(target=_do_lookup, daemon=True).start()
         
+    def _start_m1_feed_after_mt5_connect(self) -> None:
+        """Start local M1 poller (signal cache) + dashboard Postgres sync."""
+        try:
+            from trader_companion.mt5_market_feed import (
+                start_mt5_market_feed,
+                format_market_feed_status_for_user,
+            )
+
+            started = start_mt5_market_feed(["USTECH", "ustech"])
+            line = format_market_feed_status_for_user()
+            level = "INFO" if started else "WARN"
+            self.log(f"📡 {line}", level)
+            print(f"[MT5Feed] {line}")
+        except Exception as exc:
+            self.log(f"📡 M1 feed failed: {exc}", "WARN")
+            print(f"[MT5Feed] failed: {exc}")
+
+        self._start_m1_dashboard_sync()
+
+    def _start_m1_dashboard_sync(self) -> None:
+        """Push shared Plexy USTECH M1 OHLC to dashboard (gap + backfill + live)."""
+        try:
+            url = self.url_entry.get().strip().rstrip("/")
+            email = self.client_email_entry.get().strip().lower()
+            if not url or not email:
+                return
+
+            from trader_companion.m1_bars_sync import is_plexy_trade_mt5, start_m1_dashboard_sync
+
+            if not is_plexy_trade_mt5():
+                self.log(
+                    "📊 M1 DB sync skipped — PlexyTrade only (shared USTECH market feed)",
+                    "INFO",
+                )
+                return
+
+            def _sync_log(msg, level="INFO"):
+                try:
+                    self.root.after(0, lambda m=msg, lv=level: self.log(f"📊 M1 DB: {m}", lv))
+                except Exception:
+                    pass
+
+            start_m1_dashboard_sync(url, email, "ustech", log_fn=_sync_log, force=True)
+            self.log("📊 M1 shared Plexy USTECH sync started (gap + backfill + live)", "INFO")
+        except Exception as exc:
+            self.log(f"📊 M1 dashboard sync failed: {exc}", "WARN")
+
+    def _log_market_feed_status(self, delay_ms: int = 2500) -> None:
+        """Log M1 feed cache status after first poll cycle."""
+        def _emit():
+            try:
+                from trader_companion.mt5_market_feed import format_market_feed_status_for_user
+                line = format_market_feed_status_for_user()
+            except Exception as exc:
+                line = f"M1 feed: {exc}"
+            level = "INFO" if "active" in line else "WARN"
+            self.log(f"📡 {line}", level)
+
+        try:
+            self.root.after(delay_ms, _emit)
+        except Exception:
+            _emit()
+
     def toggle_mt5_connection(self):
         """Connect or disconnect from MT5."""
         if self.pusher.connected:
@@ -2558,14 +2650,14 @@ class TradeOpssAIApp:
             success, msg = self.pusher.connect_mt5(login, password, server)
             if success:
                 self.mt5_btn.configure(text="Disconnect MT5")
+                self._start_m1_feed_after_mt5_connect()
                 self.start_auto_push()
+                self._log_market_feed_status()
             self.log(msg, "INFO" if success else "ERROR")
 
     def _auto_connect_mt5(self):
         """Auto-connect to MT5 once credentials are present (e.g. right after the
-        dashboard auto-fills them). No-op if already connected or the login/pass/
-        server fields aren't all filled yet. The connect call is blocking, so it
-        runs off the UI thread; on success the button flips to 'Disconnect MT5'."""
+        dashboard auto-fills them). Runs on the UI thread so MT5 + M1 feed share one thread."""
         try:
             if getattr(self.pusher, "connected", False):
                 # Already connected — just make sure the button reflects it.
@@ -2573,6 +2665,8 @@ class TradeOpssAIApp:
                     self.mt5_btn.configure(text="Disconnect MT5")
                 except Exception:
                     pass
+                self._start_m1_feed_after_mt5_connect()
+                self._log_market_feed_status()
                 return
             login = self.mt5_login.get().strip()
             password = self.mt5_password.get()
@@ -2592,28 +2686,26 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
-        def _worker(lg=login, pw=password, sv=server):
+        def _connect_on_ui(lg=login, pw=password, sv=server):
             try:
                 success, msg = self.pusher.connect_mt5(lg, pw, sv)
             except Exception as e:
                 success, msg = False, f"MT5 auto-connect error: {e}"
+            self._mt5_autoconnect_inflight = False
+            try:
+                self.mt5_btn.configure(
+                    state="normal",
+                    text="Disconnect MT5" if success else "Connect MT5",
+                )
+            except Exception:
+                pass
+            self.log(("✅ " if success else "⚠ ") + msg, "INFO" if success else "ERROR")
+            if success:
+                self._start_m1_feed_after_mt5_connect()
+                self.start_auto_push()
+                self._log_market_feed_status()
 
-            def _apply():
-                self._mt5_autoconnect_inflight = False
-                try:
-                    self.mt5_btn.configure(
-                        state="normal",
-                        text="Disconnect MT5" if success else "Connect MT5",
-                    )
-                except Exception:
-                    pass
-                self.log(("✅ " if success else "⚠ ") + msg, "INFO" if success else "ERROR")
-                if success:
-                    self.root.after(0, self.start_auto_push)
-
-            self.root.after(0, _apply)
-
-        threading.Thread(target=_worker, daemon=True).start()
+        self.root.after(0, _connect_on_ui)
 
     def _push_billing_data(self):
         """Push only firm billing (actual fees & payouts) to the dashboard."""
@@ -5896,7 +5988,7 @@ class TradeOpssAIApp:
             row_data["firm_code"], row_data["phase_key"], row_data["acct_size"])
         if not config:
             return None
-        mt5_sym = config.get("mt5_symbol", "NAS100")
+        mt5_sym = config.get("mt5_symbol", "ustech")
         mt5_vol = float(config.get("mt5_volume", 2.8) or 0)
         if mt5_vol <= 0:
             return None
@@ -6112,7 +6204,7 @@ class TradeOpssAIApp:
 
         trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
         trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
-        mt5_sym = config.get("mt5_symbol", "NAS100")
+        mt5_sym = config.get("mt5_symbol", "ustech")
         mt5_vol = float(config.get("mt5_volume", 2.8))
         mt5_tp = int(config.get("mt5_tp_points", 46))
         mt5_sl = int(config.get("mt5_sl_points", 42))
@@ -7166,7 +7258,7 @@ class TradeOpssAIApp:
                         if self.prop_firm_mgr:
                             config_tmp = self.prop_firm_mgr.get_strategy_config(
                                 firm_code, phase_key, acct_size)
-                        mt5_sym = (config_tmp or {}).get("mt5_symbol", "NAS100")
+                        mt5_sym = (config_tmp or {}).get("mt5_symbol", "ustech")
                         sig = self._get_signal_direction(mt5_sym)
                         firm_sides[firm_name] = sig
                         self.root.after(0, lambda fn=firm_name, s=sig, sym=mt5_sym:
@@ -7232,7 +7324,7 @@ class TradeOpssAIApp:
 
                 trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
                 trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
-                mt5_sym = config.get("mt5_symbol", "NAS100")
+                mt5_sym = config.get("mt5_symbol", "ustech")
                 mt5_vol = float(config.get("mt5_volume", 2.8))
                 mt5_tp = int(config.get("mt5_tp_points", 46))
                 mt5_sl = int(config.get("mt5_sl_points", 42))
@@ -9356,6 +9448,13 @@ class TradeOpssAIApp:
                 self.log("🔗 MT5 connected for signal data")
                 return True
             self.log(f"⚠ MT5 auto-connect failed: {msg}", "WARN")
+        elif mt5.terminal_info():
+            try:
+                from trader_companion.mt5_market_feed import start_mt5_market_feed
+                start_mt5_market_feed()
+            except Exception:
+                pass
+            return True
         return False
 
     # ============ Daily Bias Persistence ============
@@ -9473,6 +9572,15 @@ class TradeOpssAIApp:
             if not mt5_mod.terminal_info():
                 self.root.after(0, lambda: self.log("⚠ MT5 not connected — using random direction", "WARN"))
                 return random.choice(["buy", "sell"])
+
+        try:
+            from trader_companion.mt5_market_feed import get_market_feed, start_mt5_market_feed
+            feed = get_market_feed()
+            feed.ensure_symbol(mt5_symbol)
+            if not feed.is_running:
+                start_mt5_market_feed([mt5_symbol])
+        except Exception:
+            pass
 
         indicators = self._get_indicator_map()
         if not indicators:

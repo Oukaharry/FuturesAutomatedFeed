@@ -54,6 +54,52 @@
         }
         .report-shell iframe { width: 100%; min-height: 75vh; border: none; display: block; }
         .loading-msg { padding: 48px; text-align: center; color: #64748b; }
+        .m1-panel {
+            background: #090f1e; border: 1px solid #162040; border-radius: 12px;
+            margin-bottom: 14px; overflow: hidden;
+        }
+        .m1-panel-head {
+            display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center;
+            padding: 12px 16px; cursor: pointer; user-select: none;
+            border-bottom: 1px solid transparent;
+        }
+        .m1-panel-head.open { border-bottom-color: #162040; }
+        .m1-panel-head h3 {
+            margin: 0; font-size: 0.9rem; font-weight: 600; color: #c4b5fd;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .m1-panel-head .meta { font-size: 0.8rem; color: #64748b; }
+        .m1-panel-head .meta strong { color: #94a3b8; }
+        .m1-panel-body { display: none; padding: 0 16px 14px; }
+        .m1-panel-body.open { display: block; }
+        .m1-table-wrap { overflow-x: auto; margin-top: 10px; }
+        .m1-table {
+            width: 100%; border-collapse: collapse; font-size: 0.78rem;
+        }
+        .m1-table th, .m1-table td {
+            padding: 8px 10px; text-align: left; border-bottom: 1px solid #162040;
+        }
+        .m1-table th { color: #64748b; font-weight: 600; }
+        .m1-table td { color: #cbd5e1; }
+        .m1-table tr:hover td { background: rgba(30,48,96,0.18); }
+        .m1-btn {
+            background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.35);
+            padding: 4px 10px; border-radius: 6px; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+        }
+        .m1-btn:hover { background: rgba(99,102,241,0.28); }
+        .m1-btn.active { background: rgba(99,102,241,0.35); color: #c7d2fe; }
+        .m1-preview { margin-top: 12px; display: none; }
+        .m1-preview.open { display: block; }
+        .m1-preview-head {
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer; user-select: none; margin-bottom: 6px;
+        }
+        .m1-preview-title { font-size: 0.78rem; color: #94a3b8; margin: 0; }
+        .m1-preview-toggle {
+            font-size: 0.72rem; color: #64748b;
+        }
+        .m1-preview-head:hover .m1-preview-title { color: #c4b5fd; }
+        .m1-empty { padding: 14px 0; color: #64748b; font-size: 0.82rem; }
     </style>
 </head>
 <body>
@@ -83,6 +129,42 @@
         <span class="item">Underwater on rec: <strong id="meta-underwater">—</strong></span>
         <span class="item" id="meta-error" style="color:#f87171;display:none;"></span>
         <button type="button" class="btn-refresh" id="btn-refresh"><i class="fas fa-sync-alt"></i> Refresh now</button>
+    </div>
+
+    <div class="m1-panel" id="m1-panel">
+        <div class="m1-panel-head" id="m1-panel-head">
+            <h3><i class="fas fa-chart-line"></i> M1 market data (Plexy USTECH — shared)</h3>
+            <span class="meta">Store: <strong id="m1-series-count">—</strong></span>
+            <span class="meta">Latest bar: <strong id="m1-latest-bar">—</strong></span>
+            <span class="meta" id="m1-stale-hint" style="display:none;color:#fbbf24;">No recent bars (&gt;5 min)</span>
+        </div>
+        <div class="m1-panel-body" id="m1-panel-body">
+            <div class="m1-empty" id="m1-empty">No shared Plexy USTECH bars yet — connect a PlexyTrade companion.</div>
+            <div class="m1-table-wrap" id="m1-summary-wrap" style="display:none;">
+                <table class="m1-table">
+                    <thead>
+                        <tr>
+                            <th>Source</th><th>Symbol</th><th>Bars</th><th>Oldest</th><th>Newest</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="m1-summary-body"></tbody>
+                </table>
+            </div>
+            <div class="m1-preview" id="m1-preview">
+                <div class="m1-preview-head" id="m1-preview-head" title="Click to collapse">
+                    <div class="m1-preview-title" id="m1-preview-title">Last 15 bars</div>
+                    <span class="m1-preview-toggle" id="m1-preview-toggle"><i class="fas fa-chevron-up"></i> Hide</span>
+                </div>
+                <div class="m1-table-wrap" id="m1-preview-table-wrap">
+                    <table class="m1-table">
+                        <thead>
+                            <tr><th>Time (UTC)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Vol</th></tr>
+                        </thead>
+                        <tbody id="m1-preview-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="report-shell">
@@ -146,12 +228,157 @@
             btnRefresh.disabled = true;
             await fetch('/api/ml_predictions/refresh', { method: 'POST' });
             pollStatus();
+            pollM1Status();
         });
+
+        function fmtTs(ts) {
+            if (!ts) return '—';
+            return new Date(ts * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+        }
+
+        function fmtNum(n, d) {
+            if (n == null || Number.isNaN(n)) return '—';
+            return Number(n).toFixed(d == null ? 2 : d);
+        }
+
+        const m1PreviewState = { open: false, symbol: null, clientId: null };
+
+        function setM1PreviewOpen(open) {
+            const preview = document.getElementById('m1-preview');
+            const toggle = document.getElementById('m1-preview-toggle');
+            m1PreviewState.open = open;
+            preview.classList.toggle('open', open);
+            toggle.innerHTML = open
+                ? '<i class="fas fa-chevron-up"></i> Hide'
+                : '<i class="fas fa-chevron-down"></i> Show';
+            updateM1PreviewButtons();
+        }
+
+        function updateM1PreviewButtons() {
+            document.querySelectorAll('#m1-summary-body .m1-btn').forEach(btn => {
+                const sym = btn.dataset.symbol;
+                const isOpen = m1PreviewState.open && m1PreviewState.symbol === sym;
+                btn.textContent = isOpen ? 'Hide last 15' : 'View last 15';
+                btn.classList.toggle('active', isOpen);
+            });
+        }
+
+        function collapseM1Preview() {
+            m1PreviewState.symbol = null;
+            m1PreviewState.clientId = null;
+            setM1PreviewOpen(false);
+        }
+
+        async function loadM1Preview(clientId, symbol) {
+            const preview = document.getElementById('m1-preview');
+            const title = document.getElementById('m1-preview-title');
+            const body = document.getElementById('m1-preview-body');
+            title.textContent = `Last 15 bars — Plexy shared / ${symbol}`;
+            body.innerHTML = '<tr><td colspan="6">Loading…</td></tr>';
+            m1PreviewState.clientId = clientId;
+            m1PreviewState.symbol = symbol;
+            setM1PreviewOpen(true);
+            try {
+                const r = await fetch(`/api/ml/m1_bars?symbol=${encodeURIComponent(symbol)}&latest=15`);
+                const d = await r.json();
+                if (d.status !== 'success' || !d.bars?.length) {
+                    body.innerHTML = '<tr><td colspan="6">No bars</td></tr>';
+                    return;
+                }
+                body.innerHTML = d.bars.map(b => `
+                    <tr>
+                        <td>${fmtTs(b.time)}</td>
+                        <td>${fmtNum(b.open)}</td>
+                        <td>${fmtNum(b.high)}</td>
+                        <td>${fmtNum(b.low)}</td>
+                        <td>${fmtNum(b.close)}</td>
+                        <td>${b.tick_volume ?? '—'}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                body.innerHTML = '<tr><td colspan="6">Failed to load</td></tr>';
+            }
+        }
+
+        function toggleM1Preview(clientId, symbol) {
+            const isSameOpen = m1PreviewState.open && m1PreviewState.symbol === symbol;
+            if (isSameOpen) {
+                collapseM1Preview();
+                return;
+            }
+            loadM1Preview(clientId, symbol);
+        }
+
+        async function pollM1Status() {
+            try {
+                const r = await fetch('/api/ml/m1_bars/status');
+                const d = await r.json();
+                if (d.status !== 'success') return;
+                const summaries = d.summaries || [];
+                document.getElementById('m1-series-count').textContent = summaries.length ? 'PLEXY (shared)' : '—';
+                const empty = document.getElementById('m1-empty');
+                const wrap = document.getElementById('m1-summary-wrap');
+                const tbody = document.getElementById('m1-summary-body');
+                if (!summaries.length) {
+                    empty.style.display = 'block';
+                    wrap.style.display = 'none';
+                    document.getElementById('m1-latest-bar').textContent = '—';
+                    return;
+                }
+                empty.style.display = 'none';
+                wrap.style.display = 'block';
+                let globalNewest = 0;
+                tbody.innerHTML = summaries.map(s => {
+                    if (s.newest > globalNewest) globalNewest = s.newest;
+                    return `
+                        <tr>
+                            <td>PlexyTrade (all clients)</td>
+                            <td>${s.symbol}</td>
+                            <td>${(s.count || 0).toLocaleString()}</td>
+                            <td>${fmtTs(s.oldest)}</td>
+                            <td>${fmtTs(s.newest)}</td>
+                            <td><button type="button" class="m1-btn" data-client="${s.client_id}" data-symbol="${s.symbol}">View last 15</button></td>
+                        </tr>
+                    `;
+                }).join('');
+                document.getElementById('m1-latest-bar').textContent = fmtTs(globalNewest);
+                const stale = document.getElementById('m1-stale-hint');
+                const ageSec = Math.floor(Date.now() / 1000) - globalNewest;
+                stale.style.display = ageSec > 300 ? '' : 'none';
+                tbody.querySelectorAll('.m1-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleM1Preview(btn.dataset.client, btn.dataset.symbol);
+                    });
+                });
+                updateM1PreviewButtons();
+                if (m1PreviewState.open && m1PreviewState.symbol) {
+                    setM1PreviewOpen(true);
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        document.getElementById('m1-preview-head').addEventListener('click', () => {
+            if (m1PreviewState.open) collapseM1Preview();
+        });
+
+        const m1Head = document.getElementById('m1-panel-head');
+        const m1Body = document.getElementById('m1-panel-body');
+        m1Head.addEventListener('click', () => {
+            m1Head.classList.toggle('open');
+            m1Body.classList.toggle('open');
+        });
+        m1Head.classList.add('open');
+        m1Body.classList.add('open');
 
         pollStatus._lastReportAt = '';
         pollStatus();
+        pollM1Status();
         const pollMs = 10000;
         setInterval(pollStatus, pollMs);
+        setInterval(pollM1Status, 30000);
     </script>
 </body>
 </html>
+
+

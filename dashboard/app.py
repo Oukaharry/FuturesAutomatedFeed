@@ -52,7 +52,10 @@ from dashboard.database import (
     rollback_to_version, compare_versions, get_latest_version,
     # KYC link management
     add_kyc_link, remove_kyc_link, get_kyc_linked_clients, get_kyc_primary_for,
-    get_all_kyc_accounts, get_all_kyc_links, is_kyc_primary
+    get_all_kyc_accounts, get_all_kyc_links, is_kyc_primary,
+    upsert_m1_bars, get_m1_bar_stats, get_m1_bars, get_last_m1_bar_time, prune_m1_bars_older_than,
+    list_m1_bar_summaries, get_latest_m1_bars,
+    M1_MARKET_CLIENT_ID, is_plexy_broker_name, m1_market_storage_id, migrate_m1_bars_to_market_store,
 )
 from dashboard.notes_service import (
     get_client_notes, save_client_note, delete_client_note
@@ -5647,6 +5650,136 @@ def api_client_push():
         response_data["hedge_updates"] = len([l for l in hedge_match_log if l.startswith("✅")])
     
     return jsonify(response_data)
+
+
+@app.route('/api/client/m1_bars/status', methods=['GET'])
+@limiter.limit("120 per minute")
+def api_client_m1_bars_status():
+    """Return shared Plexy USTECH M1 stats (email auth only; one series for all clients)."""
+    email = (request.args.get("email") or "").strip().lower()
+    symbol = (request.args.get("symbol") or "USTECH").strip().upper()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+    storage_id = m1_market_storage_id(symbol)
+    stats = get_m1_bar_stats(storage_id, symbol)
+    return jsonify({
+        "status": "success",
+        "client_id": storage_id,
+        "market_store": True,
+        "registered_client": client_info["client"],
+        "symbol": symbol,
+        "count": stats.get("count", 0),
+        "oldest": stats.get("oldest"),
+        "newest": stats.get("newest"),
+    })
+
+
+@app.route('/api/client/m1_bars', methods=['POST'])
+@limiter.limit("300 per minute")
+def api_client_m1_bars_push():
+    """
+    Upsert M1 OHLC bars from TradeOpssAI companion (shared Plexy USTECH store).
+    Body: { email, symbol, bars, phase?, broker?, mt5_server? }
+    """
+    data = request.json or {}
+    email = (data.get("email") or "").strip().lower()
+    symbol = (data.get("symbol") or "USTECH").strip().upper()
+    bars = data.get("bars") or []
+    phase = (data.get("phase") or "live").strip()
+    broker = (data.get("broker") or data.get("company") or "").strip()
+    mt5_server = (data.get("mt5_server") or data.get("server") or "").strip()
+
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    if not bars:
+        return jsonify({"status": "error", "message": "No bars in payload"}), 400
+
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+
+    if not is_plexy_broker_name(mt5_server, broker, broker):
+        app.logger.info(
+            "[M1Bars] skipped non-Plexy push from %s (server=%s company=%s)",
+            client_info["client"], mt5_server, broker,
+        )
+        return jsonify({
+            "status": "skipped",
+            "message": "Non-Plexy broker — shared M1 market data not updated",
+        }), 200
+
+    storage_id = m1_market_storage_id(symbol)
+    try:
+        written = upsert_m1_bars(storage_id, symbol, bars)
+    except Exception as exc:
+        app.logger.error("[M1Bars] upsert failed: %s", exc)
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+    # Rolling retention ~13 months
+    try:
+        from datetime import datetime, timedelta, timezone
+        cutoff = int((datetime.now(timezone.utc) - timedelta(days=400)).timestamp())
+        prune_m1_bars_older_than(storage_id, symbol, cutoff)
+    except Exception:
+        pass
+
+    app.logger.info(
+        "[M1Bars] %s %s phase=%s upserted=%s bars (batch=%s) via %s",
+        storage_id, symbol, phase, written, len(bars), client_info["client"],
+    )
+    stats = get_m1_bar_stats(storage_id, symbol)
+    return jsonify({
+        "status": "success",
+        "written": written,
+        "count": stats.get("count"),
+        "oldest": stats.get("oldest"),
+        "newest": stats.get("newest"),
+        "market_store": True,
+    })
+
+
+@app.route('/api/ml/m1_bars/status', methods=['GET'])
+@require_session
+def api_ml_m1_bars_status():
+    """Super admin: summary of stored M1 bars per client/symbol."""
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+    summaries = list_m1_bar_summaries()
+    return jsonify({"status": "success", "summaries": summaries, "total_series": len(summaries)})
+
+
+@app.route('/api/ml/m1_bars', methods=['GET'])
+@require_session
+def api_ml_m1_bars():
+    """Super admin: fetch shared Plexy USTECH M1 bars (client_id defaults to PLEXY)."""
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+    client_id = (request.args.get("client_id") or M1_MARKET_CLIENT_ID).strip()
+    symbol = (request.args.get("symbol") or "USTECH").strip().upper()
+    start = request.args.get("start")
+    end = request.args.get("end")
+    latest = request.args.get("latest", type=int)
+    limit = request.args.get("limit", 50000, type=int)
+    storage_id = m1_market_storage_id(symbol) if client_id.upper() == M1_MARKET_CLIENT_ID else client_id
+    if latest:
+        bars = get_latest_m1_bars(storage_id, symbol, limit=min(latest, 500))
+    else:
+        start_ts = int(start) if start else None
+        end_ts = int(end) if end else None
+        bars = get_m1_bars(storage_id, symbol, start_ts, end_ts, limit=limit)
+    stats = get_m1_bar_stats(storage_id, symbol)
+    return jsonify({
+        "status": "success",
+        "client_id": storage_id,
+        "market_store": storage_id == M1_MARKET_CLIENT_ID,
+        "symbol": symbol,
+        "count": len(bars),
+        "stats": stats,
+        "bars": bars,
+    })
 
 
 @app.route('/api/client/migrate_sheet', methods=['POST'])
