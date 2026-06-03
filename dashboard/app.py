@@ -7289,7 +7289,7 @@ def api_update_client_profile():
 @require_session
 def api_assign_client_trader():
     """
-    Reassign a client to a new trader and persist to:
+    Reassign a client to a trader under a target admin (same or different admin) and persist to:
     - hierarchy JSON (reassign_client_trader — auto-creates lane if needed)
     - user_credentials (parent_trader/parent_admin)
     - clients_data.identity (admin/trader fields, if record exists)
