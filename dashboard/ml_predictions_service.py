@@ -234,15 +234,20 @@ def _heal_disk_meta() -> None:
 
 def _warm_memory_from_disk() -> None:
     """So any uWSGI worker can serve the last good report immediately."""
+    _reload_cache_from_disk(force=False)
+
+
+def _reload_cache_from_disk(*, force: bool = False) -> bool:
+    """Load report.html + meta.json into memory. Returns True if html loaded."""
     html = ""
     path = _cache_html_path()
     if path.is_file():
         try:
             html = path.read_text(encoding="utf-8")
         except OSError:
-            return
+            return False
     if not html:
-        return
+        return False
     closed_hist = ""
     ch_path = _cache_closed_history_path()
     if ch_path.is_file():
@@ -252,8 +257,8 @@ def _warm_memory_from_disk() -> None:
             closed_hist = ""
     disk = _load_disk_cache() or {}
     with _lock:
-        if _state.get("html"):
-            return
+        if not force and _state.get("html"):
+            return True
         _state["html"] = html
         _state["closed_history_html"] = closed_hist
         _state["meta"] = dict(disk.get("meta") or {})
@@ -261,6 +266,22 @@ def _warm_memory_from_disk() -> None:
         _state["error"] = disk.get("error")
         st = disk.get("status") or "ready"
         _state["status"] = "ready" if st == "running" and html else st
+        if force and html:
+            _state["status"] = "ready"
+            _state["error"] = None
+    return True
+
+
+def _parse_started_at(started: str) -> Optional[datetime]:
+    s = (started or "").strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S EAT", "%Y-%m-%d %H:%M:%S UTC", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def _recover_stale_running(max_minutes: int = 5) -> None:
@@ -269,11 +290,8 @@ def _recover_stale_running(max_minutes: int = 5) -> None:
         if _state.get("status") != "running":
             return
         started = _state.get("started_at") or ""
-    if not started:
-        return
-    try:
-        t0 = datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
-    except ValueError:
+    t0 = _parse_started_at(started)
+    if not t0:
         return
     if (datetime.now() - t0).total_seconds() <= max_minutes * 60:
         return
@@ -352,7 +370,16 @@ def get_state() -> Dict[str, Any]:
             out["has_html"] = True
         if out["status"] == "idle" and disk.get("status"):
             out["status"] = "ready" if disk.get("status") == "running" else disk["status"]
-        if not out["generated_at"] and disk.get("generated_at"):
+        disk_ga = disk.get("generated_at") or ""
+        if disk_ga and (not out["generated_at"] or str(disk_ga) > str(out["generated_at"])):
+            out["generated_at"] = disk_ga
+            if disk.get("meta"):
+                merged = dict(out.get("meta") or {})
+                merged.update(disk["meta"])
+                out["meta"] = merged
+            if not out["refresh_in_progress"]:
+                _reload_cache_from_disk(force=True)
+        elif not out["generated_at"] and disk.get("generated_at"):
             out["generated_at"] = disk["generated_at"]
         if not out["meta"] and disk.get("meta"):
             out["meta"] = dict(disk["meta"])
@@ -588,6 +615,11 @@ def _run_subprocess_refresh(*, reason: str) -> None:
             logger.error("[ML] Subprocess failed: %s", tail or "(no output)")
         elif not _cache_html_path().is_file():
             _set_error("ML subprocess finished but report cache is missing", time.time() - t0)
+        else:
+            _reload_cache_from_disk(force=True)
+            with _lock:
+                ga = _state.get("generated_at")
+            logger.info("[ML] Subprocess refresh OK (%s) generated_at=%s", reason, ga)
     except subprocess.TimeoutExpired:
         _set_error(f"ML refresh timed out after {_refresh_timeout_sec()}s", time.time() - t0)
         logger.error("[ML] Subprocess refresh timed out")
