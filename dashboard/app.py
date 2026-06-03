@@ -3387,6 +3387,35 @@ def api_ml_predictions_report():
     return html_body, 200, headers
 
 
+@app.route('/api/ml_predictions/closed_history')
+@require_session
+def api_ml_predictions_closed_history():
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+    from dashboard.ml_predictions_service import get_cached_closed_history_html, get_state
+
+    fragment = get_cached_closed_history_html()
+    if not fragment:
+        st = get_state()
+        if st.get("status") == "running":
+            return (
+                "<p class='muted'>Full history is still building… try again shortly.</p>",
+                202,
+                {"Content-Type": "text/html; charset=utf-8"},
+            )
+        return (
+            "<p class='muted'>Full history not available. Click Refresh report on the toolbar.</p>",
+            503,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+    headers = {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+    }
+    return fragment, 200, headers
+
+
 @app.route('/api/ml_predictions/refresh', methods=['POST'])
 @require_session
 def api_ml_predictions_refresh():
@@ -8335,19 +8364,21 @@ _WEEKDAY_RE = re.compile(
 
 
 def _allowed_trading_day_abbrs(ref_dt):
-    """Which single-day markers are valid for *today* (Chicago-style trading week).
+    """Which weekday markers may remain in Hedge Result / Hedge Day / Prop Day cells today.
 
-    Mon–Thu: today and tomorrow (e.g. Tue → tue, wed).
-    Fri: fri and mon (next session Monday).
-    Sat–Sun: mon only (prep for Monday; no other weekday markers).
+    Stale = any other weekday token (e.g. Wed markers still in the sheet on Wednesday).
+
+    Mon–Thu: only the *next* session day (e.g. Wednesday → thu only; leftover wed is stale).
+    Fri: mon only (next session Monday).
+    Sat–Sun: mon only (prep for Monday).
     """
     wd = ref_dt.weekday()
     order = ('mon', 'tue', 'wed', 'thu', 'fri')
     if wd >= 5:
         return frozenset({'mon'})
     if wd == 4:
-        return frozenset({'fri', 'mon'})
-    return frozenset({order[wd], order[wd + 1]})
+        return frozenset({'mon'})
+    return frozenset({order[wd + 1]})
 
 
 def _should_skip_daily_summary_tracking(eat_dt):
@@ -9090,8 +9121,8 @@ def run_quality_scan(target_client=None):
                 )
 
                 # Active account: Hedge Result / Hedge Day / Prop Day markers must match the
-                # trading calendar (Mon–Thu: today + next weekday; Fri: fri + mon; Sat–Sun: mon only).
-                # Any other weekday token → Downtime detected. Whole-token match avoids "mon" in "money".
+                # trading calendar (Mon–Thu: next session day only; Fri/Sat/Sun: mon only).
+                # Any other weekday token (e.g. today's day left in a cell) → Downtime detected.
                 # Rows that only hold P&L numbers in those columns (no weekday letters) skip the
                 # "must show current day" rule when at least one such cell is non-zero currency.
                 _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
@@ -9143,7 +9174,10 @@ def run_quality_scan(target_client=None):
                             'check': 'Downtime detected',
                             'severity': 'high',
                             'row': idx,
-                            'detail': f'{row_label}: Stale day marker found; allowed: {_allowed_human}',
+                            'detail': (
+                                f'{row_label}: Stale day(s) found: {prevw} — '
+                                f'allowed today: {_allowed_human}'
+                            ),
                             'estimated_date': _estimate_issue_date(ev, 'Downtime detected', scan_date_str),
                         })
                     elif (
@@ -10938,6 +10972,52 @@ def api_repair_database():
     return jsonify({'status': 'error', 'message': message}), 500
 
 
+def _persist_quality_scan_for_client(client_id: str, scan_result: dict) -> None:
+    """Upsert today's quality_scan_results row for one client."""
+    from dashboard.database import get_connection
+
+    scan_date = datetime.now().strftime('%Y-%m-%d')
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            'DELETE FROM quality_scan_results WHERE scan_date = ? AND client_id = ?',
+            (scan_date, client_id),
+        )
+        cursor.execute(
+            '''INSERT INTO quality_scan_results
+               (scan_date, client_id, trader, admin, total_issues, issues, health_score)
+               VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            (
+                scan_date,
+                scan_result.get('client_id') or client_id,
+                scan_result.get('trader'),
+                scan_result.get('admin'),
+                scan_result.get('total_issues', 0),
+                json.dumps(scan_result.get('issues') or []),
+                scan_result.get('health_score', 100.0),
+            ),
+        )
+        conn.commit()
+
+
+def _rescan_client_after_daily_summary(client_id: str) -> None:
+    """Run quality scan immediately after a trader submits/sends a daily summary."""
+    if not (client_id or '').strip():
+        return
+    try:
+        results = run_quality_scan(target_client=client_id) or []
+        if not results:
+            return
+        r = results[0]
+        _persist_quality_scan_for_client(client_id, r)
+        try:
+            _sync_quality_issue_tracking(datetime.now().strftime('%Y-%m-%d'), [r])
+        except Exception:
+            pass
+    except Exception as e:
+        logging.warning('Post-summary quality rescan failed for %s: %s', client_id, e)
+
+
 # ============ Daily Checklists ============
 
 @app.route('/api/checklist/submit', methods=['POST'])
@@ -10963,6 +11043,10 @@ def api_submit_checklist():
 
     log_action('CHECKLIST_SUBMIT', user_type, user_identifier, get_remote_address(),
                f"{checklist_type} for {client_id}: {len(items)} sections")
+
+    # Trader finished the daily summary — rescan now so stale weekday markers surface immediately.
+    if checklist_type == 'daily_summary' and (client_id or '').strip():
+        _rescan_client_after_daily_summary(client_id.strip())
 
     return jsonify({'status': 'success', 'message': 'Daily summary saved'})
 
@@ -11687,46 +11771,8 @@ def api_send_checklist_slack():
                     get_remote_address(),
                     client_id=client_id,
                 )
-                # Post-send safety net:
-                # Sending the daily summary means the trader is "done" with this client for today.
-                # Immediately rescan the client so any stale day markers (downtime) show up as issues
-                # right away (prevents missed trades due to leftover weekday placeholders).
-                try:
-                    results = run_quality_scan(target_client=client_id) or []
-                    if results:
-                        r = results[0]
-                        try:
-                            from dashboard.database import get_connection
-                            scan_date = datetime.now().strftime('%Y-%m-%d')
-                            with get_connection() as conn:
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    'DELETE FROM quality_scan_results WHERE scan_date = ? AND client_id = ?',
-                                    (scan_date, client_id),
-                                )
-                                cursor.execute(
-                                    '''INSERT INTO quality_scan_results
-                                       (scan_date, client_id, trader, admin, total_issues, issues, health_score)
-                                       VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                                    (
-                                        scan_date,
-                                        r.get('client_id') or client_id,
-                                        r.get('trader'),
-                                        r.get('admin'),
-                                        r.get('total_issues', 0),
-                                        json.dumps(r.get('issues') or []),
-                                        r.get('health_score', 100.0),
-                                    ),
-                                )
-                                conn.commit()
-                            try:
-                                _sync_quality_issue_tracking(scan_date, [r])
-                            except Exception:
-                                pass
-                        except Exception as e:
-                            logging.warning('Post-summary quality rescan save failed for %s: %s', client_id, e)
-                except Exception as e:
-                    logging.warning('Post-summary quality rescan failed for %s: %s', client_id, e)
+                # Post-send safety net: same immediate rescan as checklist submit.
+                _rescan_client_after_daily_summary(client_id)
             log_action('SLACK_DAILY_SUMMARY', user_type, user_identifier,
                        get_remote_address(), f'Daily summary sent to Slack for {client_id}')
             return jsonify({'status': 'success', 'message': 'Summary sent to Slack!'})
