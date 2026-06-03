@@ -144,6 +144,19 @@
         .badge-admin { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
         .badge-trader { background: rgba(45,212,191,0.12); color: #2dd4bf; border: 1px solid rgba(45,212,191,0.28); }
 
+        .modal-admin-select {
+            width: 100%;
+            max-width: 200px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(168, 85, 247, 0.4);
+            background: #0f172a;
+            color: #e9d5ff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
         .action-btn {
             background: transparent;
             border: none;
@@ -803,7 +816,7 @@
     <div id="userListModal" class="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10000; background: rgba(0,0,0,0.8);">
         <!-- Helper container to center content reliably -->
         <div style="display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;">
-            <div class="modal-content" style="width: 90%; max-width: 800px; height: 80vh; background: #1e293b; border: 2px solid #1e3a8a; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+            <div class="modal-content" style="width: 92%; max-width: 960px; height: 80vh; background: #1e293b; border: 2px solid #1e3a8a; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
                 
                 <!-- Header -->
                 <div class="modal-header" style="padding: 15px 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
@@ -817,6 +830,8 @@
                         <thead style="position: sticky; top: 0; background: #334155; color: white; z-index: 5;">
                             <tr>
                                 <th id="col-user" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">User</th>
+                                <th id="col-trader" style="display: none; text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Trader</th>
+                                <th id="col-admin-assign" style="display: none; text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Admin</th>
                                 <th id="col-parent" style="text-align: left; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Parent</th>
                                 <th id="col-actions" style="text-align: right; padding: 10px 15px; border-bottom: 2px solid #1e3a8a;">Actions</th>
                             </tr>
@@ -1041,34 +1056,31 @@
                     } else if (type === 'client') {
                         if(hierarchyData.admins) {
                             Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
-                                const traders = adminData.traders || {};
-                                Object.entries(traders).forEach(([traderName, traderData]) => {
-                                    let clients = [];
-                                    if (Array.isArray(traderData)) clients = traderData;
-                                    else if (traderData && traderData.clients) clients = traderData.clients;
-                                    
-                                    if(Array.isArray(clients)){
-                                        clients.forEach(client => {
-                                            if (!client) return;
-                                            const cName = (typeof client === 'object') ? client.name : client;
-                                            const cEmail = (typeof client === 'object') ? client.email : '';
-                                            const cCat = (typeof client === 'object') ? (client.category || client.profile || 'Private') : 'Private';
-                                            const cActiveStatus = (typeof client === 'object') ? (client.active_status || 'active') : 'active';
-                                            const cSplitPct = (typeof client === 'object') ? (client.split_pct != null ? client.split_pct : 50) : 50;
-                                            rows.push({ 
-                                                name: cName || 'Unknown', 
-                                                email: cEmail, 
-                                                parent: `${traderName} (${adminName})`,
-                                                url: '/dashboard/' + cName,
-                                                type: 'client',
-                                                admin: adminName,
-                                                trader: traderName,
-                                                category: cCat,
-                                                active_status: cActiveStatus,
-                                                split_pct: cSplitPct
-                                            });
+                                const tradersMap = buildTraderMapForAdmin(adminData || {});
+                                Object.entries(tradersMap).forEach(([traderName, traderData]) => {
+                                    const clients = Array.isArray(traderData?.clients) ? traderData.clients : [];
+                                    clients.forEach(client => {
+                                        if (!client) return;
+                                        const cName = (typeof client === 'object') ? client.name : client;
+                                        const cEmail = (typeof client === 'object') ? client.email : '';
+                                        const cCat = (typeof client === 'object') ? (client.category || client.profile || 'Private') : 'Private';
+                                        const cActiveStatus = (typeof client === 'object') ? (client.active_status || 'active') : 'active';
+                                        const cSplitPct = (typeof client === 'object') ? (client.split_pct != null ? client.split_pct : 50) : 50;
+                                        const assignedTrader = (typeof client === 'object')
+                                            ? String(client.assigned_trader || client.trader || traderName).trim()
+                                            : traderName;
+                                        rows.push({
+                                            name: cName || 'Unknown',
+                                            email: cEmail,
+                                            url: '/dashboard/' + cName,
+                                            type: 'client',
+                                            admin: adminName,
+                                            trader: assignedTrader || traderName,
+                                            category: cCat,
+                                            active_status: cActiveStatus,
+                                            split_pct: cSplitPct
                                         });
-                                    }
+                                    });
                                 });
                             });
                         }
@@ -1079,14 +1091,32 @@
                 
                 // Handle Columns
                 const colParentHeader = document.getElementById('col-parent');
-                if (type === 'admin') colParentHeader.style.display = 'none';
-                else {
+                const colTraderHeader = document.getElementById('col-trader');
+                const colAdminHeader = document.getElementById('col-admin-assign');
+                const allAdminNames = (hierarchyData.admins && type === 'client')
+                    ? Object.keys(hierarchyData.admins).sort((a, b) => a.localeCompare(b))
+                    : [];
+                const canAssignAdmin = USER_ROLE === 'super_admin' || USER_ROLE === 'bef_admin';
+
+                if (type === 'client') {
+                    colParentHeader.style.display = 'none';
+                    colTraderHeader.style.display = 'table-cell';
+                    colAdminHeader.style.display = 'table-cell';
+                } else if (type === 'admin') {
+                    colParentHeader.style.display = 'none';
+                    colTraderHeader.style.display = 'none';
+                    colAdminHeader.style.display = 'none';
+                } else {
                     colParentHeader.style.display = 'table-cell';
-                    colParentHeader.textContent = (type==='client') ? 'Trader/Admin' : 'Admin';
+                    colParentHeader.textContent = 'Admin';
+                    colTraderHeader.style.display = 'none';
+                    colAdminHeader.style.display = 'none';
                 }
 
+                const emptyColspan = (type === 'client') ? 4 : 3;
+
                 if (rows.length === 0) {
-                     tbody.innerHTML = '<tr><td colspan="3" style="padding:20px; text-align:center; color:white;">No records found</td></tr>';
+                     tbody.innerHTML = `<tr><td colspan="${emptyColspan}" style="padding:20px; text-align:center; color:white;">No records found</td></tr>`;
                 } else {
                      // Build HTML String
                      let html = '';
@@ -1126,7 +1156,27 @@
                              btns += `<button onclick="openSetPasswordModal('${safeName}', '${type}')" style="${setPwStyle}" title="Set specific password">🔐</button>`;
                          }
 
-                         let parentCol = (type !== 'admin') ? `<td style="padding:10px; color:#cbd5e1;">${r.parent || '-'}</td>` : '';
+                         const escAttr = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+                         let parentCol = '';
+                         if (type === 'client') {
+                             const traderDisplay = escAttr(r.trader || '-');
+                             let adminCell = '';
+                             if (canAssignAdmin && allAdminNames.length) {
+                                 const opts = allAdminNames.map(a => {
+                                     const sel = a === r.admin ? ' selected' : '';
+                                     return `<option value="${escAttr(a)}"${sel}>${escAttr(a)}</option>`;
+                                 }).join('');
+                                 adminCell = `<select class="modal-admin-select" data-client="${escAttr(r.name)}" data-trader="${escAttr(r.trader)}" data-original="${escAttr(r.admin)}" onchange="onModalAdminChange(this)">${opts}</select>`;
+                             } else {
+                                 adminCell = escAttr(r.admin || '-');
+                             }
+                             parentCol = `
+                                <td style="padding:10px; color:#cbd5e1; white-space:nowrap;">${traderDisplay}</td>
+                                <td style="padding:10px;">${adminCell}</td>`;
+                         } else if (type === 'trader') {
+                             parentCol = `<td style="padding:10px; color:#cbd5e1;">${escAttr(r.parent || r.admin || '-')}</td>`;
+                         }
                          
                          // Create clickable email span
                          const emailDisplay = (r.email) ? r.email : '<span style="color:#64748b; font-style:italic;">No Email</span>';
@@ -1165,6 +1215,28 @@
         function closeUserListModal() {
             const m = document.getElementById('userListModal');
             if(m) m.style.display = 'none';
+        }
+
+        async function onModalAdminChange(sel) {
+            const clientName = sel.dataset.client;
+            const trader = sel.dataset.trader;
+            const newAdmin = sel.value;
+            const original = sel.dataset.original;
+            if (!clientName || !newAdmin || newAdmin === original) return;
+
+            sel.disabled = true;
+            try {
+                await assignClientToTrader(clientName, newAdmin, trader, null);
+                sel.dataset.original = newAdmin;
+                sel.style.borderColor = '#4ade80';
+            } catch (e) {
+                sel.value = original;
+                sel.style.borderColor = '#f87171';
+                alert('Admin reassignment failed: ' + (e && e.message ? e.message : String(e)));
+            } finally {
+                sel.disabled = false;
+                setTimeout(() => { sel.style.borderColor = ''; }, 1500);
+            }
         }
 
 
@@ -1944,22 +2016,25 @@
         }
 
 
-        async function assignClientToTrader(clientName, adminName, newTrader, saveBtn) {
+        async function assignClientToTrader(clientName, targetAdmin, newTrader, saveBtn) {
             try {
                 const res = await fetch('/api/assign_client_trader', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         client_name: clientName,
-                        admin: adminName,
+                        admin: targetAdmin,
                         new_trader: newTrader
                     })
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || data.status !== 'success') {
-                    alert('Assign failed: ' + (data.message || 'Unknown error'));
-                    if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
-                    return;
+                    const msg = data.message || 'Unknown error';
+                    if (saveBtn) {
+                        saveBtn.textContent = 'Save';
+                        saveBtn.disabled = false;
+                    }
+                    throw new Error(msg);
                 }
                 if (saveBtn) {
                     saveBtn.textContent = '✓ Saved';
@@ -1970,8 +2045,12 @@
                     loadData();
                 }
             } catch (e) {
-                alert('Network error: ' + (e && e.message ? e.message : String(e)));
-                if (saveBtn) { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }
+                if (saveBtn) {
+                    alert('Assign failed: ' + (e && e.message ? e.message : String(e)));
+                    saveBtn.textContent = 'Save';
+                    saveBtn.disabled = false;
+                }
+                throw e;
             }
         }
 
@@ -2090,7 +2169,6 @@
 
                 // Clients-first hierarchy (admin -> clients with assigned-trader dropdown)
                 lanes.innerHTML = '';
-                lanes.style.gridTemplateColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
 
                 const clientsToShow = (filteredClients || [])
                     .slice()
@@ -2270,6 +2348,7 @@
                         traderRow.style.marginTop = '5px';
 
                         const select = document.createElement('select');
+                        select.className = 'client-trader-select';
                         select.style.flex = '1';
                         select.style.minWidth = '120px';
                         select.style.width = '100%';
@@ -2307,21 +2386,15 @@
                             if (newTrader === assignedTrader) return;
                             select.style.borderColor = '#94a3b8';
                             try {
-                                const res = await fetch('/api/assign_client_trader', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ client_name: cName, admin: adminName, new_trader: newTrader })
-                                });
-                                const data = await res.json().catch(() => ({}));
-                                if (!res.ok || data.status !== 'success') {
-                                    select.style.borderColor = '#f87171';
-                                    setTimeout(() => { select.style.borderColor = 'rgba(115,144,255,0.3)'; }, 2000);
-                                    return;
-                                }
+                                await assignClientToTrader(cName, adminName, newTrader, null);
                                 select.style.borderColor = '#4ade80';
                                 select.style.boxShadow = '0 0 12px rgba(74,222,128,0.5)';
-                                setTimeout(() => { select.style.borderColor = 'rgba(115,144,255,0.3)'; select.style.boxShadow = 'none'; loadData(); }, 1200);
-                            } catch(err) {
+                                setTimeout(() => {
+                                    select.style.borderColor = 'rgba(115,144,255,0.3)';
+                                    select.style.boxShadow = 'none';
+                                }, 1200);
+                            } catch (err) {
+                                select.value = assignedTrader;
                                 select.style.borderColor = '#f87171';
                                 setTimeout(() => { select.style.borderColor = 'rgba(115,144,255,0.3)'; }, 2000);
                             }

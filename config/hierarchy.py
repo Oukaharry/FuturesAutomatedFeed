@@ -124,10 +124,10 @@ def save_hierarchy(hierarchy_data):
 
 def reassign_client_trader(client_name, admin_name, new_trader):
     """
-    Reassign a client to a different trader within the same admin.
-    Auto-creates the new trader lane under the admin if it doesn't exist,
+    Reassign a client to a trader under target admin (may differ from current admin).
+    Auto-creates the new trader lane under the target admin if it doesn't exist,
     pulling the email from the top-level traders registry.
-    Returns True on success, False if the client or admin cannot be found.
+    Returns True on success, False if the client or target admin cannot be found.
     """
     reload_hierarchy()
 
