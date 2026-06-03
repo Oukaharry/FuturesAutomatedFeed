@@ -23,6 +23,12 @@ plan.md
 _render_report_pdf.py
 reports/
 
+# Local ML package + dev tooling (not published to remote yet)
+machine_learning/
+requirements-ml.txt
+notebooks/trade_ml_walkforward.ipynb
+scripts/export_trades_for_ml.py
+
 # ML artifacts (exported trades + trained models)
 data/ml/*.parquet
 data/ml/*.csv
