@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-EAT = ZoneInfo("Africa/Nairobi")
+try:
+    EAT = ZoneInfo("Africa/Nairobi")
+except Exception:  # pragma: no cover — missing tzdata on some hosts
+    # Kenya has no DST; fixed UTC+3 matches Nairobi civil time.
+    EAT = timezone(timedelta(hours=3), name="EAT")
 
 DOW_NAMES = [
     "Monday",

@@ -77,6 +77,9 @@
         <span class="status-pill pill-running" id="status-pill">Loading…</span>
         <span class="item">Source: <strong id="meta-source" style="font-size:0.78rem;">—</strong></span>
         <span class="item">Updated: <strong id="meta-updated">—</strong></span>
+        <span class="item">Today (EAT): <strong id="meta-today-eat">—</strong></span>
+        <span class="item" id="meta-stale-wrap" style="display:none; color:#fbbf24;">Report day: <strong id="meta-report-day">—</strong> — <span id="meta-stale-msg">stale</span></span>
+        <span class="item" id="meta-legacy-wrap" style="display:none; color:#fbbf24;"><i class="fas fa-exclamation-triangle"></i> Old report layout — <span id="meta-legacy-msg">refreshing…</span></span>
         <span class="item">DB sync: <strong id="meta-db-sync">—</strong></span>
         <span class="item">Closed: <strong id="meta-trades">—</strong></span>
         <span class="item">Live: <strong id="meta-active">—</strong></span>
@@ -108,6 +111,32 @@
                 const d = await r.json();
                 setPill(d.status, d.refresh_in_progress);
                 document.getElementById('meta-updated').textContent = d.generated_at || '—';
+                const todayEl = document.getElementById('meta-today-eat');
+                if (todayEl) {
+                    todayEl.textContent = (d.now_eat_dow && d.now_eat_date)
+                        ? `${d.now_eat_dow} ${d.now_eat_date}` : '—';
+                }
+                const staleWrap = document.getElementById('meta-stale-wrap');
+                const staleMsg = document.getElementById('meta-stale-msg');
+                if (staleWrap && d.report_stale) {
+                    staleWrap.style.display = '';
+                    document.getElementById('meta-report-day').textContent =
+                        (d.report_eat_dow && d.report_eat_date)
+                            ? `${d.report_eat_dow} ${d.report_eat_date}` : (d.report_eat_date || '—');
+                    if (staleMsg) staleMsg.textContent = d.refresh_in_progress
+                        ? 'refreshing…' : 'click Refresh now';
+                } else if (staleWrap) {
+                    staleWrap.style.display = 'none';
+                }
+                const legacyWrap = document.getElementById('meta-legacy-wrap');
+                const legacyMsg = document.getElementById('meta-legacy-msg');
+                if (legacyWrap && d.report_format_legacy) {
+                    legacyWrap.style.display = '';
+                    if (legacyMsg) legacyMsg.textContent = d.refresh_in_progress
+                        ? 'rebuilding report (25-row preview)…' : 'click Refresh now';
+                } else if (legacyWrap) {
+                    legacyWrap.style.display = 'none';
+                }
                 document.getElementById('meta-db-sync').textContent = d.meta?.db_max_last_updated || '—';
                 document.getElementById('meta-db-sync').title = 'clients_data max last_updated';
                 const mode = d.runtime_mode || d.meta?.runtime_mode || '';
@@ -128,8 +157,9 @@
                     loading.style.display = 'none';
                     frame.style.display = 'block';
                     const stamp = d.generated_at || '';
-                    if (stamp !== pollStatus._lastReportAt) {
-                        pollStatus._lastReportAt = stamp;
+                    const fmtKey = (d.report_format_legacy ? 'legacy' : 'v2') + ':' + stamp;
+                    if (fmtKey !== pollStatus._lastReportAt || d.report_format_legacy) {
+                        pollStatus._lastReportAt = fmtKey;
                         frame.src = '/api/ml_predictions/report?t=' + Date.now();
                     }
                 } else if (!d.refresh_in_progress && d.status !== 'running') {
