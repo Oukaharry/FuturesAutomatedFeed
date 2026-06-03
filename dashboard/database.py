@@ -1060,6 +1060,12 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 json.dumps(merged_firm_billing),
             ))
             conn.commit()
+            try:
+                from dashboard.ml_predictions_service import notify_clients_data_changed
+
+                notify_clients_data_changed("save")
+            except Exception:
+                pass
             return True
         except Exception as e:
             print(f"Error saving client data: {e}")

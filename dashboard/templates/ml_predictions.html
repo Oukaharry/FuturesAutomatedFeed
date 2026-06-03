@@ -149,9 +149,23 @@
         });
 
         pollStatus._lastReportAt = '';
-        pollStatus();
-        const pollMs = 10000;
-        setInterval(pollStatus, pollMs);
+        function statusPollMs(d) {
+            if (d && d.refresh_mode === 'watch' && d.watch_poll_sec) {
+                return Math.max(3000, Math.min(8000, Number(d.watch_poll_sec) * 1000 + 1000));
+            }
+            return 10000;
+        }
+        async function pollLoop() {
+            await pollStatus();
+            let ms = 5000;
+            try {
+                const r = await fetch('/api/ml_predictions/status');
+                const d = await r.json();
+                ms = statusPollMs(d);
+            } catch (_) {}
+            setTimeout(pollLoop, ms);
+        }
+        pollLoop();
     </script>
 </body>
 </html>
