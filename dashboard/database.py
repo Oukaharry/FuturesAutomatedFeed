@@ -2757,7 +2757,26 @@ def get_m1_bars(
                 "close": float(row["close"]),
                 "tick_volume": int(row["tick_volume"] or 0),
             })
-        return out
+    return out
+
+
+def get_m1_coverage_stats(client_id: str, symbol: str) -> dict:
+    """Bar count vs time span — used to detect internal gaps (e.g. missing May)."""
+    stats = get_m1_bar_stats(client_id, symbol)
+    count = int(stats.get("count") or 0)
+    oldest = stats.get("oldest")
+    newest = stats.get("newest")
+    if not oldest or not newest or count <= 0:
+        return {**stats, "span_minutes": 0, "expected_bars": 0, "coverage_ratio": 0.0}
+    span_minutes = max(1, (int(newest) - int(oldest)) // 60)
+    expected = max(int(span_minutes * 0.55), 1000)
+    ratio = count / expected if expected else 0.0
+    return {
+        **stats,
+        "span_minutes": span_minutes,
+        "expected_bars": expected,
+        "coverage_ratio": round(ratio, 3),
+    }
 
 
 def list_m1_bar_summaries() -> list:
@@ -2792,7 +2811,7 @@ def list_m1_bar_summaries() -> list:
 
 
 def get_latest_m1_bars(client_id: str, symbol: str, limit: int = 20) -> list:
-    """Most recent M1 bars, oldest-first within the returned slice."""
+    """Most recent M1 bars by bar_time, returned oldest-first within the slice."""
     sym = str(symbol).strip().upper()
     cid = str(client_id).strip()
     lim = max(1, min(int(limit), 500))
@@ -2800,10 +2819,16 @@ def get_latest_m1_bars(client_id: str, symbol: str, limit: int = 20) -> list:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT bar_time, open, high, low, close, tick_volume
-            FROM m1_bars WHERE client_id = ? AND symbol = ?
-            ORDER BY bar_time DESC LIMIT ?
+            FROM (
+                SELECT bar_time, open, high, low, close, tick_volume
+                FROM m1_bars
+                WHERE client_id = ? AND symbol = ?
+                ORDER BY bar_time DESC
+                LIMIT ?
+            ) recent
+            ORDER BY bar_time ASC
         """, (cid, sym, lim))
-        rows = list(reversed(cursor.fetchall()))
+        rows = cursor.fetchall()
     out = []
     for row in rows:
         out.append({

@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, Literal, Optional
 from urllib.parse import urlparse
@@ -365,6 +365,9 @@ def get_state() -> Dict[str, Any]:
             out["error"] = _state.get("error")
     elif not out["error"] and disk and disk.get("error"):
         out["error"] = disk.get("error")
+    meta = dict(out.get("meta") or {})
+    meta.update(_m1_market_freshness())
+    out["meta"] = meta
     return _sanitize_for_json(out)
 
 
@@ -406,16 +409,34 @@ def _clients_data_freshness() -> Dict[str, Any]:
         ).fetchone()
     if not row:
         return {}
+    raw = row["max_updated"]
     return {
-        "db_max_last_updated": row["max_updated"],
+        "db_max_last_updated": raw,
         "db_client_count": row["n_clients"],
     }
 
 
+def _m1_market_freshness() -> Dict[str, Any]:
+    try:
+        from dashboard.database import get_m1_coverage_stats, M1_MARKET_CLIENT_ID
+
+        cov = get_m1_coverage_stats(M1_MARKET_CLIENT_ID, "USTECH")
+        return {
+            "m1_count": cov.get("count"),
+            "m1_oldest": cov.get("oldest"),
+            "m1_newest": cov.get("newest"),
+            "m1_coverage_ratio": cov.get("coverage_ratio"),
+        }
+    except Exception:
+        return {}
+
+
 def _set_running() -> None:
+    from research.eat_time import now_eat
+
     with _lock:
         _state["status"] = "running"
-        _state["started_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _state["started_at"] = now_eat().strftime("%Y-%m-%d %H:%M:%S EAT")
         _state["error"] = None
 
 
@@ -432,7 +453,9 @@ def _set_result(
         _state["closed_history_html"] = closed_history_html
         _state["meta"] = meta
         _state["error"] = None
-        _state["generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        from research.eat_time import now_eat
+
+        _state["generated_at"] = now_eat().strftime("%Y-%m-%d %H:%M:%S EAT")
         _state["last_duration_sec"] = round(duration_sec, 1)
         _state["refresh_interval_sec"] = _interval_sec()
     _persist_cache(html, meta, closed_history_html=closed_history_html)
@@ -456,6 +479,7 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     from research.trade_dataset import load_active_positions_df, load_all_round_trips
     from research.ml_analysis import run_full_analysis, render_ml_html_report
     from research.ml_html_report import render_closed_history_full_html
+    from research.eat_time import now_eat
 
     df = load_all_round_trips(attach_positions=True)
     active = load_active_positions_df()
@@ -488,8 +512,9 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
         "underwater_on_recommendation": recs.get("underwater_on_recommendation", 0),
         "same_day_ok": br.get("same_day_ok"),
         "recommended_dow": br.get("recommended_dow"),
-        "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "fetched_at": now_eat().strftime("%Y-%m-%d %H:%M:%S EAT"),
         **_clients_data_freshness(),
+        **_m1_market_freshness(),
     }
     duration = time.time() - t0
     _set_result(html_out, meta, duration, closed_history_html=closed_history_html)

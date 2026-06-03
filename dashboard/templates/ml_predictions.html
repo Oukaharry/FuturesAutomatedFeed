@@ -122,8 +122,9 @@
     <div class="status-bar" id="status-bar">
         <span class="status-pill pill-running" id="status-pill">Loading…</span>
         <span class="item">Source: <strong id="meta-source" style="font-size:0.78rem;">—</strong></span>
-        <span class="item">Updated: <strong id="meta-updated">—</strong></span>
-        <span class="item">DB sync: <strong id="meta-db-sync">—</strong></span>
+        <span class="item">ML report: <strong id="meta-updated">—</strong></span>
+        <span class="item">Eval sync: <strong id="meta-db-sync">—</strong></span>
+        <span class="item">M1 bar: <strong id="meta-m1-newest">—</strong></span>
         <span class="item">Closed: <strong id="meta-trades">—</strong></span>
         <span class="item">Live: <strong id="meta-active">—</strong></span>
         <span class="item">Underwater on rec: <strong id="meta-underwater">—</strong></span>
@@ -137,6 +138,7 @@
             <span class="meta">Store: <strong id="m1-series-count">—</strong></span>
             <span class="meta">Latest bar: <strong id="m1-latest-bar">—</strong></span>
             <span class="meta" id="m1-stale-hint" style="display:none;color:#fbbf24;">No recent bars (&gt;5 min)</span>
+            <span class="meta" id="m1-gap-hint" style="display:none;color:#fbbf24;">History gap detected — reconnect Plexy companion to fill</span>
         </div>
         <div class="m1-panel-body" id="m1-panel-body">
             <div class="m1-empty" id="m1-empty">No shared Plexy USTECH bars yet — connect a PlexyTrade companion.</div>
@@ -158,7 +160,7 @@
                 <div class="m1-table-wrap" id="m1-preview-table-wrap">
                     <table class="m1-table">
                         <thead>
-                            <tr><th>Time (UTC)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Vol</th></tr>
+                            <tr><th>Time (EAT)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Vol</th></tr>
                         </thead>
                         <tbody id="m1-preview-body"></tbody>
                     </table>
@@ -189,11 +191,14 @@
                 const r = await fetch('/api/ml_predictions/status');
                 const d = await r.json();
                 setPill(d.status, d.refresh_in_progress);
-                document.getElementById('meta-updated').textContent = d.generated_at || '—';
-                document.getElementById('meta-db-sync').textContent = d.meta?.db_max_last_updated || '—';
-                document.getElementById('meta-db-sync').title = 'clients_data max last_updated';
                 const mode = d.runtime_mode || d.meta?.runtime_mode || '';
                 const src = d.meta?.data_source || '';
+                document.getElementById('meta-updated').textContent = fmtReportEat(d.generated_at);
+                document.getElementById('meta-db-sync').textContent = fmtDbSyncEat(d.meta?.db_max_last_updated, mode, src);
+                document.getElementById('meta-db-sync').title = 'clients_data max last_updated (evaluations push)';
+                const m1Newest = d.meta?.m1_newest;
+                document.getElementById('meta-m1-newest').textContent = m1Newest ? fmtBarTs(m1Newest) : '—';
+                pollStatus._refreshing = !!d.refresh_in_progress;
                 document.getElementById('meta-source').textContent = mode || (src.includes('production') ? 'production' : src.includes('local') ? 'local' : '—');
                 document.getElementById('meta-source').title = src || mode;
                 document.getElementById('meta-trades').textContent = d.meta?.n_trades?.toLocaleString?.() ?? d.meta?.n_trades ?? '—';
@@ -226,14 +231,103 @@
 
         btnRefresh.addEventListener('click', async () => {
             btnRefresh.disabled = true;
-            await fetch('/api/ml_predictions/refresh', { method: 'POST' });
-            pollStatus();
-            pollM1Status();
+            pollStatus._lastReportAt = '';
+            try {
+                await fetch('/api/ml_predictions/refresh', { method: 'POST' });
+                for (let i = 0; i < 120; i++) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    await pollStatus();
+                    if (!pollStatus._refreshing) break;
+                }
+                await pollM1Status();
+                if (m1PreviewState.open && m1PreviewState.symbol) {
+                    await loadM1Preview(m1PreviewState.clientId, m1PreviewState.symbol);
+                }
+            } catch (e) {
+                setPill('error');
+            } finally {
+                btnRefresh.disabled = false;
+            }
         });
 
+        const TZ_EAT = 'Africa/Nairobi';
+
+        /** ML report timestamps — true EAT instants from now_eat() on the server. */
+        function fmtReportEat(value) {
+            if (value == null || value === '') return '—';
+            const s = String(value).trim();
+            if (/\sEAT$/i.test(s)) return s.replace(/\s*UTC\s*$/i, ' EAT');
+            const d = parseUtcInstant(s);
+            if (!d) return '—';
+            return formatInEat(d, true);
+        }
+
+        /**
+         * MT5 M1 bar unix seconds — UTC epoch whose UTC wall clock matches EAT trading time.
+         * Do not apply +3h; only read UTC date parts.
+         */
+        function fmtBarTs(ts) {
+            if (ts == null || ts === '') return '—';
+            const n = Number(ts);
+            if (!Number.isFinite(n)) return '—';
+            const d = new Date(n * 1000);
+            const pad = (x) => String(x).padStart(2, '0');
+            return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} `
+                + `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} EAT`;
+        }
+
+        /**
+         * clients_data last_updated — naive ISO from datetime.now() on the dashboard host.
+         * Local dev: wall clock is already EAT. Production (PythonAnywhere): wall clock is UTC → convert.
+         */
+        function fmtDbSyncEat(value, runtimeMode, dataSource) {
+            if (value == null || value === '') return '—';
+            const s = String(value).trim();
+            if (/\sEAT$/i.test(s)) return s;
+            const m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/);
+            if (!m) return s.slice(0, 19) + ' EAT';
+            const production = /production/i.test(String(runtimeMode || ''))
+                || /production|pythonanywhere|tradeopss\.com/i.test(String(dataSource || ''))
+                || /[zZ]$/.test(s)
+                || /[+-]\d{2}:\d{2}$/.test(s);
+            if (production) {
+                const d = parseUtcInstant(s);
+                return d ? formatInEat(d, false) : `${m[1]} ${m[2]} EAT`;
+            }
+            return `${m[1]} ${m[2]} EAT`;
+        }
+
+        function parseUtcInstant(value) {
+            const s = String(value).trim();
+            if (!s) return null;
+            if (/^\d+$/.test(s)) return new Date(parseInt(s, 10) * 1000);
+            const utcMatch = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})\s*UTC$/i);
+            if (utcMatch) return new Date(`${utcMatch[1]}T${utcMatch[2]}Z`);
+            const iso = s.includes('T') ? s : s.replace(' ', 'T');
+            if (!/[zZ]$/.test(iso) && !/[+-]\d{2}:?\d{2}$/.test(iso)) {
+                return new Date(iso + 'Z');
+            }
+            const d = new Date(iso);
+            return Number.isNaN(d.getTime()) ? null : d;
+        }
+
+        function formatInEat(d, withSeconds) {
+            const opts = {
+                timeZone: TZ_EAT,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            };
+            if (withSeconds) opts.second = '2-digit';
+            const formatted = new Intl.DateTimeFormat('sv-SE', opts).format(d);
+            return formatted.slice(0, withSeconds ? 19 : 16) + ' EAT';
+        }
+
         function fmtTs(ts) {
-            if (!ts) return '—';
-            return new Date(ts * 1000).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+            return fmtBarTs(ts);
         }
 
         function fmtNum(n, d) {
@@ -279,13 +373,17 @@
             m1PreviewState.symbol = symbol;
             setM1PreviewOpen(true);
             try {
-                const r = await fetch(`/api/ml/m1_bars?symbol=${encodeURIComponent(symbol)}&latest=15`);
+                const r = await fetch(`/api/ml/m1_bars?symbol=${encodeURIComponent(symbol)}&latest=15&t=${Date.now()}`);
                 const d = await r.json();
                 if (d.status !== 'success' || !d.bars?.length) {
                     body.innerHTML = '<tr><td colspan="6">No bars</td></tr>';
                     return;
                 }
-                body.innerHTML = d.bars.map(b => `
+                const bars = d.bars
+                    .slice()
+                    .sort((a, b) => a.time - b.time)
+                    .slice(-15);
+                body.innerHTML = bars.map(b => `
                     <tr>
                         <td>${fmtTs(b.time)}</td>
                         <td>${fmtNum(b.open)}</td>
@@ -343,8 +441,11 @@
                 }).join('');
                 document.getElementById('m1-latest-bar').textContent = fmtTs(globalNewest);
                 const stale = document.getElementById('m1-stale-hint');
+                const gapHint = document.getElementById('m1-gap-hint');
                 const ageSec = Math.floor(Date.now() / 1000) - globalNewest;
                 stale.style.display = ageSec > 300 ? '' : 'none';
+                const cov = d.coverage?.coverage_ratio;
+                gapHint.style.display = cov != null && cov < 0.85 ? '' : 'none';
                 tbody.querySelectorAll('.m1-btn').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -372,6 +473,7 @@
         m1Body.classList.add('open');
 
         pollStatus._lastReportAt = '';
+        pollStatus._refreshing = false;
         pollStatus();
         pollM1Status();
         const pollMs = 10000;
