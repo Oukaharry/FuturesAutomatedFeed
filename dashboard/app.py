@@ -8541,6 +8541,41 @@ def _should_skip_daily_summary_tracking(eat_dt):
     return False
 
 
+def _bot_session_scan_date(now_eat):
+    """UTC scan_date written when the ~02:30 EAT daily summary bot runs."""
+    from datetime import timezone as _tz
+
+    bot_eat = now_eat.replace(hour=2, minute=30, second=0, microsecond=0)
+    if now_eat.tzinfo is not None:
+        return bot_eat.astimezone(_tz.utc).strftime('%Y-%m-%d')
+    return (bot_eat - timedelta(hours=3)).strftime('%Y-%m-%d')
+
+
+def _should_flag_stale_trading_days(now_eat, *, force: bool = False) -> bool:
+    """
+    Stale weekday / downtime flags only after the daily Slack summary bot has posted.
+
+    Before ~03:00 EAT the bot has not finished (runs ~02:30) — e.g. Thu 01:00 must
+    not flag leftover Wed session markers. After the bot posts, stale days may flag.
+    """
+    if force:
+        return True
+    wd = now_eat.weekday()
+    if wd in (5, 6):
+        return False
+    if wd == 0 and now_eat.hour < 3:
+        return False
+    if now_eat.hour < 3:
+        return False
+    try:
+        from dashboard.database import get_quality_slack_posted_at
+
+        session_date = _bot_session_scan_date(now_eat)
+        return bool(get_quality_slack_posted_at(session_date))
+    except Exception:
+        return False
+
+
 DAILY_SUMMARY_TRACKER_SKIP_MSG = (
     "🛑 _No trading session to track (weekend or day after a non-trading day). "
     "Daily summary submission tracking resumes on the next trading day._"
@@ -8702,11 +8737,14 @@ def _get_daily_summary_payout_qa_resolved_set():
     )
 
 
-def run_quality_scan(target_client=None):
+def run_quality_scan(target_client=None, *, allow_stale_day_flags=None):
     """
     Automated quality scan: checks every client's data for SOP violations.
     Returns list of per-client scan results with issues and health scores.
     If target_client is given, only scan that one client.
+
+    Stale weekday / downtime checks are suppressed until the daily Slack summary
+    bot has posted (~02:30 EAT) unless allow_stale_day_flags=True.
     """
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from dashboard.database import (
@@ -8728,6 +8766,9 @@ def run_quality_scan(target_client=None):
         now_eat = datetime.now(_tz.utc).astimezone(_tz(_td(hours=3)))
     except Exception:
         now_eat = now
+
+    if allow_stale_day_flags is None:
+        allow_stale_day_flags = _should_flag_stale_trading_days(now_eat)
 
     for client_name in all_clients:
         profile = get_client_profile(client_name)
@@ -9278,7 +9319,13 @@ def run_quality_scan(target_client=None):
                     and (k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day'))
                     and not k.startswith('_')
                 ]
-                if (not new_row_strict_mode or has_account_num_local) and not _inactive_p1 and not _inactive_p2 and status_p1:
+                if (
+                    allow_stale_day_flags
+                    and (not new_row_strict_mode or has_account_num_local)
+                    and not _inactive_p1
+                    and not _inactive_p2
+                    and status_p1
+                ):
                     # Downtime/current-day markers should follow Kenyan day boundaries (midnight EAT).
                     _allowed_abbrs = _allowed_trading_day_abbrs(now_eat)
                     _allowed_human = '/'.join(sorted(_allowed_abbrs))

@@ -58,16 +58,9 @@ def run_scheduler():
                 _mark_ran('watermark', today)
                 time.sleep(60)
 
-            # 23:27 UTC (02:27 EAT) — Automated quality scan  [TEMP TEST]
-            if now.hour == 23 and now.minute == 27 and ran.get('quality_scan') != today:
-                logging.info("Running scheduled quality scan (TEST 02:27 EAT)...")
-                run_scheduled_quality_scan()
-                _mark_ran('quality_scan', today)
-                time.sleep(60)
-
-            # 23:30 UTC (02:30 EAT) — Post daily summary to Slack  [TEMP TEST]
+            # 23:30 UTC (02:30 EAT) — Quality scan (with stale-day flags) + daily summary to Slack
             if now.hour == 23 and now.minute == 30 and ran.get('slack_summary') != today:
-                logging.info("Posting daily quality summary to Slack (TEST 02:30 EAT)...")
+                logging.info("Posting daily quality summary to Slack (02:30 EAT)...")
                 post_slack_summary()
                 _mark_ran('slack_summary', today)
                 time.sleep(60)
@@ -87,13 +80,13 @@ def run_scheduler():
 
 
 # ── Quality Scan ─────────────────────────────────────────────────────
-def run_scheduled_quality_scan():
+def run_scheduled_quality_scan(*, allow_stale_day_flags=None):
     """Run the quality scan and save results — same as the API but without Flask context."""
     try:
         from dashboard.app import run_quality_scan
         from dashboard.database import save_quality_scan_results, log_action
 
-        results = run_quality_scan()
+        results = run_quality_scan(allow_stale_day_flags=allow_stale_day_flags)
         scan_date = datetime.now().strftime('%Y-%m-%d')
         save_quality_scan_results(scan_date, results)
 
@@ -516,6 +509,13 @@ def _build_daily_summary_text():
 def post_slack_summary():
     """Build and post the daily quality summary to Slack."""
     try:
+        from dashboard.database import record_quality_slack_post
+
+        date = datetime.now().strftime('%Y-%m-%d')
+        posted_at = datetime.utcnow().isoformat()
+        record_quality_slack_post(date, posted_at)
+        # Scan after bot anchor so stale-day / downtime flags apply in the Slack report.
+        run_scheduled_quality_scan(allow_stale_day_flags=True)
         text = _build_daily_summary_text()
         ok = send_slack_message(text)
         if ok:
