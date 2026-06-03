@@ -320,7 +320,7 @@ See **§3.4** (client-level).
 
 The **admin tracker** and **daily Slack-style summary** look for this check name and render a **downtime alert** section if present.
 
-In the **current** `dashboard/app.py`, **`run_quality_scan` does not append `Downtime detected`**. So under normal operation this section **never** triggers until a future implementation (or another service) writes that issue into saved scan results.
+`run_quality_scan` emits **`Downtime detected`** when Hedge Result / Hedge Day / Prop Day cells contain weekday markers other than the allowed set for today (Kenya EAT). A **post-summary rescan** runs when a trader saves or Slack-sends a daily summary so stale markers appear immediately.
 
 ---
 
