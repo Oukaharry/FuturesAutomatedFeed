@@ -123,7 +123,7 @@
         <span class="status-pill pill-running" id="status-pill">Loading…</span>
         <span class="item">Source: <strong id="meta-source" style="font-size:0.78rem;">—</strong></span>
         <span class="item">ML report: <strong id="meta-updated">—</strong></span>
-        <span class="item">Eval sync: <strong id="meta-db-sync">—</strong></span>
+        <span class="item">Eval push: <strong id="meta-db-sync">—</strong></span>
         <span class="item">M1 bar: <strong id="meta-m1-newest">—</strong></span>
         <span class="item">Closed: <strong id="meta-trades">—</strong></span>
         <span class="item">Live: <strong id="meta-active">—</strong></span>
@@ -197,7 +197,7 @@
                 const src = d.meta?.data_source || '';
                 document.getElementById('meta-updated').textContent = fmtReportEat(d.generated_at);
                 document.getElementById('meta-db-sync').textContent = fmtDbSyncEat(d.meta?.db_max_last_updated, mode, src);
-                document.getElementById('meta-db-sync').title = 'clients_data max last_updated (evaluations push)';
+                document.getElementById('meta-db-sync').title = 'Newest clients_data last_updated — updates when a companion pushes evaluations (not on ML report refresh)';
                 document.getElementById('meta-source').textContent = mode || (src.includes('production') ? 'production' : src.includes('local') ? 'local' : '—');
                 document.getElementById('meta-source').title = src || mode;
                 document.getElementById('meta-trades').textContent = d.meta?.n_trades?.toLocaleString?.() ?? d.meta?.n_trades ?? '—';

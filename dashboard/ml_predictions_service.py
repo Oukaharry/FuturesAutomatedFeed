@@ -392,6 +392,15 @@ def get_state() -> Dict[str, Any]:
             out["error"] = _state.get("error")
     elif not out["error"] and disk and disk.get("error"):
         out["error"] = disk.get("error")
+    # Live companion push time (independent of ML report cache age)
+    try:
+        fresh = _clients_data_freshness()
+        if fresh:
+            meta = dict(out.get("meta") or {})
+            meta.update(fresh)
+            out["meta"] = meta
+    except Exception:
+        pass
     return _sanitize_for_json(out)
 
 
