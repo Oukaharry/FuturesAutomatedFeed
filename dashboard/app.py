@@ -123,7 +123,7 @@ _ADMIN_TEAM_TIME_PENALTY = 999999
 
 
 def _compute_admin_health_score(admin_issues, pending_signoffs=0):
-    """Admin team health: penalize fees, downtime, sign-offs; max_out and payout QA excluded from score."""
+    """Admin ops health: penalize fees, downtime, sign-offs; max_out and payout QA excluded from score."""
     deduction = sum(
         _QUALITY_SEVERITY_WEIGHT.get(i.get('severity', 'low'), 2)
         for i in (admin_issues or [])
@@ -131,6 +131,24 @@ def _compute_admin_health_score(admin_issues, pending_signoffs=0):
     )
     deduction += int(pending_signoffs or 0) * _ADMIN_SIGNOFF_PENDING_PENALTY
     return max(0.0, round(100.0 - deduction, 1))
+
+
+def _compute_admin_team_composite_health(admin_health, roster, scan_by_client):
+    """
+    Team leaderboard health = mean(admin ops score + each roster trader's avg client health).
+    E.g. admin + 2 traders → (admin + trader1 + trader2) / 3.
+    """
+    parts = [float(admin_health if admin_health is not None else 100.0)]
+    for _trader, client_ids in sorted((roster or {}).items(), key=lambda x: (x[0] or '').lower()):
+        if not client_ids:
+            continue
+        health_sum = 0.0
+        for cid in client_ids:
+            row = scan_by_client.get(cid) or {}
+            _, hs = _trader_ranking_health_metrics(row.get('issues'))
+            health_sum += hs
+        parts.append(round(health_sum / len(client_ids), 1))
+    return round(sum(parts) / len(parts), 1)
 
 
 def _quality_scan_row_for_trader_client_quality_api(scan_row):
@@ -482,10 +500,17 @@ def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_tra
                 pass
     sent_map = {s['client_id']: s for s in submissions if s.get('client_id')}
 
+    from dashboard.database import get_quality_scan_results
+    scan_by_client = {
+        r.get('client_id'): r
+        for r in (get_quality_scan_results(date) or [])
+        if r.get('client_id')
+    }
+
     rows = []
     for a in admin_names:
         payload = compute_admin_tracker_payload(a, date) or {}
-        score = float(payload.get('health_score') or 0.0)
+        admin_health = float(payload.get('health_score') if payload.get('health_score') is not None else 100.0)
         roster = {}
         active_clients = []
         for client_id in all_clients:
@@ -511,6 +536,8 @@ def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_tra
         for t in roster:
             roster[t].sort()
 
+        score = _compute_admin_team_composite_health(admin_health, roster, scan_by_client)
+
         sign = payload.get('summary_signoff') or {}
         sign_required = int(sign.get('required_total') or 0)
         signoff_mins, signoff_label = _admin_avg_signoff_minutes_and_label(date, a, payload)
@@ -525,6 +552,7 @@ def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_tra
         row = {
             'admin_name': a,
             'team_name': _admin_team_display_name(a),
+            'admin_health': round(admin_health, 1),
             'score': round(score, 1),
             'health_score': round(score, 1),
             'clients': len(active_clients),
@@ -620,7 +648,7 @@ def _build_admin_teams_ranking_lines(date, all_clients, excluded_clients, exclud
 
     out = [
         _bold('ADMIN TEAMS'),
-        "_Ranked by health score first; ties broken by average time (sign-off, clearance, summaries)._",
+        "_Team health = average of admin ops score + each trader's client health. Ties broken by avg time._",
         "",
     ]
     for arow in ranked:
