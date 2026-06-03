@@ -53,6 +53,7 @@ _debounce_timer: Optional[threading.Timer] = None
 _refresh_queued = False
 _last_db_fingerprint: Optional[tuple] = None
 _last_scheduled_refresh_at: float = 0.0
+_legacy_rebuild_scheduled = False
 
 
 def _project_root() -> str:
@@ -132,6 +133,62 @@ def _report_needs_format_upgrade() -> bool:
     except OSError:
         return False
     return not report_has_preview_format(sample)
+
+
+def _invalidate_legacy_report_cache() -> None:
+    """Delete old full-history report so rebuild cannot leave us stuck on the placeholder."""
+    path = _cache_html_path()
+    if not path.is_file():
+        return
+    try:
+        sample = path.read_text(encoding="utf-8")[:80000]
+    except OSError:
+        sample = ""
+    if report_has_preview_format(sample):
+        return
+    try:
+        path.unlink(missing_ok=True)
+        _remove_legacy_closed_history_cache()
+        pkl = _cache_closed_trades_path()
+        if pkl.is_file():
+            pkl.unlink(missing_ok=True)
+        with _lock:
+            _state["html"] = ""
+            _state["closed_history_html"] = ""
+        logger.info("[ML] Removed legacy ML cache files before rebuild")
+    except OSError as e:
+        logger.warning("[ML] Could not remove legacy cache: %s", e)
+
+
+def _refresh_produced_valid_report() -> bool:
+    path = _cache_html_path()
+    if not path.is_file():
+        return False
+    try:
+        sample = path.read_text(encoding="utf-8")[:80000]
+    except OSError:
+        return False
+    if not report_has_preview_format(sample):
+        return False
+    _warm_memory_from_disk()
+    _heal_disk_meta()
+    return True
+
+
+def _schedule_legacy_rebuild_once() -> None:
+    global _legacy_rebuild_scheduled
+    if _legacy_rebuild_scheduled:
+        return
+    with _lock:
+        if _state.get("status") == "running":
+            return
+    _legacy_rebuild_scheduled = True
+    logger.info("[ML] Scheduling automatic legacy cache rebuild")
+    threading.Thread(
+        target=lambda: refresh_now(reason="format_upgrade"),
+        daemon=True,
+        name="ml-predictions-legacy-rebuild",
+    ).start()
 
 
 def _persist_closed_trades_snapshot(closed_df: Any) -> None:
@@ -498,7 +555,7 @@ def get_state() -> Dict[str, Any]:
             "watch_poll_sec": _state.get("watch_poll_sec", _watch_poll_sec()),
             "debounce_sec": _state.get("debounce_sec", _debounce_sec()),
             "last_duration_sec": _state.get("last_duration_sec"),
-            "has_html": bool(_state.get("html")),
+            "has_html": _has_displayable_report(),
             "runtime_mode": mode,
             "deployed": mode == "production",
             "uses_production": mode == "production",
@@ -510,8 +567,8 @@ def get_state() -> Dict[str, Any]:
 
     disk = _load_disk_cache()
     if disk:
-        if not out["has_html"] and _cache_html_path().is_file():
-            out["has_html"] = True
+        if not out["has_html"]:
+            out["has_html"] = _has_displayable_report()
         if out["status"] == "idle" and disk.get("status"):
             out["status"] = "ready" if disk.get("status") == "running" else disk["status"]
         if not out["generated_at"] and disk.get("generated_at"):
@@ -548,19 +605,47 @@ def get_state() -> Dict[str, Any]:
     return _sanitize_for_json(out)
 
 
+def _has_displayable_report() -> bool:
+    with _lock:
+        mem = _state.get("html") or ""
+    if mem and report_has_preview_format(mem):
+        return True
+    path = _cache_html_path()
+    if not path.is_file():
+        return False
+    try:
+        return report_has_preview_format(path.read_text(encoding="utf-8")[:80000])
+    except OSError:
+        return False
+
+
 def _legacy_report_placeholder() -> str:
     """Shown instead of an old full-history report.html so production never loads 46k rows."""
+    import html as html_mod
+
+    with _lock:
+        err = (_state.get("error") or "").strip()
+        running = _state.get("status") == "running"
+    err_block = ""
+    if err:
+        err_block = f"<p style='color:#f87171'><strong>Last error:</strong> {html_mod.escape(err)}</p>"
+    status_line = (
+        "<p><i class='fas fa-spinner fa-spin'></i> Rebuild in progress…</p>"
+        if running
+        else "<p>Click <strong>Refresh now</strong> on the toolbar if this does not clear in a few minutes.</p>"
+    )
     return (
         "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'/>"
+        "<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'/>"
         "<style>body{background:#070b14;color:#e2e8f0;font-family:system-ui,sans-serif;"
-        "padding:40px;max-width:520px;line-height:1.5}</style></head><body>"
+        "padding:40px;max-width:560px;line-height:1.5}</style></head><body>"
         "<h2 style='color:#60a5fa;margin-top:0'>Report needs rebuild</h2>"
-        "<p>This server still has an <strong>old cached ML report</strong> (full trade list). "
-        "It is not used so the page stays fast.</p>"
-        "<p>Click <strong>Refresh now</strong> on the toolbar above and wait until status is "
-        "<strong>Live</strong> and <strong>Updated</strong> shows today’s date.</p>"
-        "<p style='color:#94a3b8;font-size:0.9rem'>You should then see "
-        "<em>Showing 25 of …</em> and <em>See All History</em> (paginated), like on local.</p>"
+        "<p>Production still had an <strong>old cached report</strong> (full trade list). "
+        "A new report is being built with <strong>25-row preview</strong> and paginated history.</p>"
+        f"{status_line}"
+        f"{err_block}"
+        "<p style='color:#94a3b8;font-size:0.9rem'>When done: <em>Updated</em> shows today, "
+        "and you see <em>Showing 25 of …</em> like local.</p>"
         "</body></html>"
     )
 
@@ -578,6 +663,7 @@ def get_cached_html() -> str:
                 logger.warning("[ML] Could not read disk cache html: %s", e)
     if html and not report_has_preview_format(html):
         logger.warning("[ML] Refusing to serve legacy full-history report cache")
+        _schedule_legacy_rebuild_once()
         return _legacy_report_placeholder()
     return html
 
@@ -749,7 +835,8 @@ def run_refresh_once(*, reason: str = "subprocess") -> int:
         return 1
 
 
-def _run_subprocess_refresh(*, reason: str) -> None:
+def _run_subprocess_refresh(*, reason: str) -> bool:
+    """Run ML worker subprocess. Returns True if a v2 report is on disk."""
     t0 = time.time()
     _set_running()
     env = os.environ.copy()
@@ -765,8 +852,6 @@ def _run_subprocess_refresh(*, reason: str) -> None:
             capture_output=True,
             text=True,
         )
-        _warm_memory_from_disk()
-        _heal_disk_meta()
         if proc.returncode != 0:
             tail = ((proc.stderr or "") + "\n" + (proc.stdout or "")).strip()[-2000:]
             _set_error(
@@ -775,14 +860,25 @@ def _run_subprocess_refresh(*, reason: str) -> None:
                 time.time() - t0,
             )
             logger.error("[ML] Subprocess failed: %s", tail or "(no output)")
-        elif not _cache_html_path().is_file():
+            return False
+        if not _cache_html_path().is_file():
             _set_error("ML subprocess finished but report cache is missing", time.time() - t0)
+            return False
+        if not _refresh_produced_valid_report():
+            _set_error("ML subprocess finished but report is still legacy format", time.time() - t0)
+            return False
+        with _lock:
+            _state["status"] = "ready"
+            _state["error"] = None
+        return True
     except subprocess.TimeoutExpired:
         _set_error(f"ML refresh timed out after {_refresh_timeout_sec()}s", time.time() - t0)
         logger.error("[ML] Subprocess refresh timed out")
+        return False
     except Exception as e:
         logger.exception("[ML] Subprocess refresh failed")
         _set_error(str(e), time.time() - t0)
+        return False
 
 
 def refresh_now(*, reason: str = "manual") -> None:
@@ -793,10 +889,18 @@ def refresh_now(*, reason: str = "manual") -> None:
         logger.info("[ML] Refresh queued (%s): another refresh is in progress", reason)
         return
     try:
+        if _report_needs_format_upgrade():
+            _invalidate_legacy_report_cache()
+        used_subprocess = False
         if _use_subprocess_refresh():
-            _run_subprocess_refresh(reason=reason)
-        else:
-            run_refresh_once(reason=reason)
+            used_subprocess = True
+            if _run_subprocess_refresh(reason=reason):
+                return
+            logger.warning("[ML] Subprocess refresh failed (%s) — trying in-process", reason)
+            with _lock:
+                if _state.get("status") == "ready":
+                    _state["error"] = None
+        run_refresh_once(reason=f"{reason}_inprocess" if used_subprocess else reason)
     finally:
         _refresh_lock.release()
         follow_up = False

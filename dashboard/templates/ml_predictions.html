@@ -147,22 +147,31 @@
                 document.getElementById('meta-active').textContent = d.meta?.n_active ?? '—';
                 document.getElementById('meta-underwater').textContent = d.meta?.underwater_on_recommendation ?? '—';
                 const errEl = document.getElementById('meta-error');
-                if (d.error && d.status === 'error') {
+                if (d.error && (d.status === 'error' || d.report_format_legacy)) {
                     errEl.style.display = '';
                     errEl.textContent = d.error;
                 } else {
                     errEl.style.display = 'none';
                 }
-                if (d.has_html) {
+                const showReport = d.has_html && !d.report_format_legacy;
+                if (showReport) {
                     loading.style.display = 'none';
                     frame.style.display = 'block';
                     const stamp = d.generated_at || '';
-                    const fmtKey = (d.report_format_legacy ? 'legacy' : 'v2') + ':' + stamp;
-                    if (fmtKey !== pollStatus._lastReportAt || d.report_format_legacy) {
+                    const fmtKey = 'v2:' + stamp;
+                    if (fmtKey !== pollStatus._lastReportAt) {
                         pollStatus._lastReportAt = fmtKey;
                         frame.src = '/api/ml_predictions/report?t=' + Date.now();
                     }
-                } else if (!d.refresh_in_progress && d.status !== 'running') {
+                } else {
+                    loading.style.display = 'none';
+                    frame.style.display = 'block';
+                    frame.src = '/api/ml_predictions/report?t=' + Date.now();
+                    if (d.report_format_legacy && !d.refresh_in_progress && d.status !== 'running') {
+                        pollStatus._lastReportAt = '';
+                    }
+                }
+                if (!d.has_html && !d.refresh_in_progress && d.status !== 'running') {
                     loading.style.display = 'block';
                     frame.style.display = 'none';
                 }
