@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.6.5"
+APP_VERSION = "1.6.6"  # Auto-sync only; MT5 TimeCurrent vs Nairobi for ML timing
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -1668,6 +1668,7 @@ class TradeOpssAIApp:
         self.pusher = MT5DataPusher()
         self.auto_push_enabled = False
         self.auto_push_thread = None
+        self._auto_push_first_run = True
         self._push_lock = threading.Lock()
         self._push_in_progress = False
         self._push_pending = False
@@ -1956,13 +1957,13 @@ class TradeOpssAIApp:
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         toolbar.pack_propagate(False)
 
-        self.push_btn_live = self._ctk_button(toolbar, text="Push Data",
-                                              command=lambda: self.push_data(full_prop_refresh=True),
-                                              fg=self.C_SUCCESS, hover="#16a34a", width=90)
-        self.push_btn_live.pack(side="left", padx=(8, 4), pady=5)
-        self.auto_btn_live = self._ctk_button(toolbar, text="Auto-Push", command=self.toggle_auto_push,
-                                              fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=90)
-        self.auto_btn_live.pack(side="left", padx=(0, 8), pady=5)
+        self.auto_push_status_var = tk.StringVar(value="Sync: off (lookup client first)")
+        ctk.CTkLabel(
+            toolbar,
+            textvariable=self.auto_push_status_var,
+            font=("Segoe UI", 10),
+            text_color=self.C_TEXT_DIM,
+        ).pack(side="left", padx=(10, 8), pady=5)
 
         # Separator
         ctk.CTkFrame(toolbar, width=1, fg_color=self.C_BORDER).pack(side="left", fill="y", pady=6)
@@ -2478,6 +2479,8 @@ class TradeOpssAIApp:
                                 except Exception:
                                     pass
                             threading.Thread(target=_fetch_hedge_creds, daemon=True).start()
+                            self.root.after(400, self._auto_connect_mt5)
+                            self.root.after(2000, self.start_auto_push)
                         self.root.after(0, _on_success)
                     else:
                         error_msg = data.get("message", "Client not found")
@@ -2488,6 +2491,7 @@ class TradeOpssAIApp:
                             else:
                                 self.hierarchy_label.configure(foreground='#dc2626')
                             self.client_info = None
+                            self.stop_auto_push("client lookup failed")
                             self.log(f"❌ Lookup failed: {msg}", "ERROR")
                         self.root.after(0, _on_not_found)
                 else:
@@ -2504,6 +2508,7 @@ class TradeOpssAIApp:
                         else:
                             self.hierarchy_label.configure(foreground='#dc2626')
                         self.client_info = None
+                        self.stop_auto_push("client lookup failed")
                         self.log(f"❌ Lookup failed: {msg}", "ERROR")
                     self.root.after(0, _on_error)
                     
@@ -2551,6 +2556,7 @@ class TradeOpssAIApp:
             success, msg = self.pusher.connect_mt5(login, password, server)
             if success:
                 self.mt5_btn.configure(text="Disconnect MT5")
+                self.start_auto_push()
             self.log(msg, "INFO" if success else "ERROR")
 
     def _auto_connect_mt5(self):
@@ -2600,6 +2606,8 @@ class TradeOpssAIApp:
                 except Exception:
                     pass
                 self.log(("✅ " if success else "⚠ ") + msg, "INFO" if success else "ERROR")
+                if success:
+                    self.root.after(0, self.start_auto_push)
 
             self.root.after(0, _apply)
 
@@ -2724,12 +2732,10 @@ class TradeOpssAIApp:
         threading.Thread(target=_do_push, daemon=True).start()
 
     def push_data(self, full_prop_refresh=False):
-        """Push data to dashboard - NO API KEY REQUIRED.
+        """Push data to dashboard - NO API KEY REQUIRED (auto-sync only in v1.6.6+).
 
-        full_prop_refresh=True (manual Push button) synchronously re-scrapes prop
-        firm billing and blocks on the Tradovate prop-day fetch so MT5 data, firm
-        billing (fees/payouts) and prop-day trade values all go out in the same push.
-        Auto-push leaves this False and relies on cached/background-refreshed values.
+        full_prop_refresh=True on the first auto-sync run re-scrapes prop firm billing
+        and blocks on Tradovate prop-day fetch; later runs use cached billing.
         """
         dashboard_url = self.url_entry.get().strip().rstrip('/')
         email = self.client_email_entry.get().strip()
@@ -2755,14 +2761,8 @@ class TradeOpssAIApp:
                 return
             self._push_in_progress = True
         
-        # Guard checks passed — disable the button and run everything in a background thread
-        # so the UI stays responsive during MT5 calls and the HTTP round-trip.
-        if hasattr(self, 'push_btn_live') and self.push_btn_live:
-            try:
-                self.push_btn_live.configure(state="disabled")
-            except Exception:
-                pass
-        self.log(f"📤 Pushing {client_name}...")
+        self.log(f"📤 Auto-sync {client_name}...")
+        self._update_auto_push_status("Sync: pushing…")
         self.status_var.set("Pushing data...")
 
         def _do_push():
@@ -2781,13 +2781,48 @@ class TradeOpssAIApp:
                         self.root.after(0, lambda: self.push_data(full_prop_refresh=full_prop_refresh))
                     except Exception:
                         pass
-                elif hasattr(self, 'push_btn_live') and self.push_btn_live:
-                    try:
-                        self.root.after(0, lambda: self.push_btn_live.configure(state="normal"))
-                    except Exception:
-                        pass
+                else:
+                    self.root.after(0, lambda: self._update_auto_push_status("Sync: active"))
 
         threading.Thread(target=_do_push, daemon=True).start()
+
+    def _update_auto_push_status(self, text: str) -> None:
+        try:
+            if hasattr(self, "auto_push_status_var"):
+                self.auto_push_status_var.set(text)
+        except Exception:
+            pass
+
+    def start_auto_push(self) -> None:
+        """Start background auto-sync (no manual Push button in v1.6.6+)."""
+        if self.auto_push_enabled:
+            return
+        if not self.client_info:
+            self._update_auto_push_status("Sync: waiting for client lookup")
+            return
+
+        self.last_deal_count = 0
+        self.last_deal_ticket = 0
+        self._auto_push_first_run = True
+        self.auto_push_enabled = True
+        self.log(
+            "🔄 Auto-sync started — dashboard updates on new trades "
+            "(MT5 TimeCurrent vs Nairobi timezone on each push)"
+        )
+        self._update_auto_push_status("Sync: active (watching trades)")
+        self.auto_push_thread = threading.Thread(target=self.auto_push_loop, daemon=True)
+        self.auto_push_thread.start()
+
+    def stop_auto_push(self, reason: str = "") -> None:
+        """Stop background auto-sync."""
+        if not self.auto_push_enabled:
+            return
+        self.auto_push_enabled = False
+        msg = "Auto-sync stopped"
+        if reason:
+            msg += f" ({reason})"
+        self.log(msg)
+        self._update_auto_push_status("Sync: stopped")
 
     # Per-login cache for the 365-day farming history:
     #   { login_key: (fetched_at_epoch, [deals]) }
@@ -4448,42 +4483,6 @@ class TradeOpssAIApp:
         
         return discrepancies
         
-    def toggle_auto_push(self):
-        """Toggle automatic data pushing."""
-        if self.auto_push_enabled:
-            self.auto_push_enabled = False
-            try:
-                self.auto_btn.configure(text="Auto-Push")
-            except Exception:
-                pass
-            try:
-                self.auto_btn_live.configure(text="Auto-Push")
-            except Exception:
-                pass
-            self.log("Auto-push stopped")
-        else:
-            if not self.client_info:
-                messagebox.showerror("Error", "Please lookup the client first")
-                return
-            
-            # Initialize state
-            self.last_deal_count = 0
-            self.last_deal_ticket = 0
-            
-            self.auto_push_enabled = True
-            try:
-                self.auto_btn.configure(text="Stop Auto-Push")
-            except Exception:
-                pass
-            try:
-                self.auto_btn_live.configure(text="Stop Auto-Push")
-            except Exception:
-                pass
-
-            self.log("Smart Auto-push started (Checking for new trades...)")
-            self.auto_push_thread = threading.Thread(target=self.auto_push_loop, daemon=True)
-            self.auto_push_thread.start()
-
     def check_and_push_update(self):
         """Check if new trades exist and push update if so."""
         if not self.auto_push_enabled: return
@@ -4506,20 +4505,25 @@ class TradeOpssAIApp:
             if current_ticket is None:
                 self.log("⚠️ Auto-push: last deal has no ticket ID")
 
-            # First check — initialize state and push once
+            # First check — initialize state and push once (full billing refresh first time)
             if self.last_deal_count == 0:
-                 self.last_deal_count = current_count
-                 self.last_deal_ticket = current_ticket
-                 self.log(f"🔍 Auto-push scan: {current_count} deals, last ticket: {current_ticket}")
-                 self.push_data()
-                 return
-
-            if current_count > self.last_deal_count or current_ticket != self.last_deal_ticket:
-                self.log(f"⚡ New trade! Deals: {self.last_deal_count}→{current_count} | Ticket: {current_ticket}")
-                
                 self.last_deal_count = current_count
                 self.last_deal_ticket = current_ticket
-                
+                self.log(f"🔍 Auto-sync scan: {current_count} deals, last ticket: {current_ticket}")
+                full = bool(getattr(self, "_auto_push_first_run", False))
+                self._auto_push_first_run = False
+                self.push_data(full_prop_refresh=full)
+                return
+
+            if current_count > self.last_deal_count or current_ticket != self.last_deal_ticket:
+                self.log(
+                    f"⚡ New trade — auto-sync "
+                    f"(deals {self.last_deal_count}→{current_count}, ticket {current_ticket})"
+                )
+
+                self.last_deal_count = current_count
+                self.last_deal_ticket = current_ticket
+
                 self.push_data()
                 
         except Exception as e:
