@@ -1951,12 +1951,14 @@ class TradeOpssAIApp:
         self._live_view.grid_rowconfigure(2, weight=1)   # live activity + log
         self._live_view.grid_columnconfigure(0, weight=1)
 
-        # ── Row 0: Compact toolbar (Push + Auto-Trade in one strip) ──
+        # ── Row 0: Compact toolbar (Auto-Push + Auto-Trade) ──
         toolbar = ctk.CTkFrame(self._live_view, fg_color=self.C_BG_SEC, corner_radius=8,
                                border_width=1, border_color=self.C_BORDER, height=38)
         toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         toolbar.pack_propagate(False)
 
+        self.push_btn_live = None  # manual push removed; auto-sync only
+        self.auto_btn_live = None
         self.auto_push_status_var = tk.StringVar(value="Sync: off (lookup client first)")
         ctk.CTkLabel(
             toolbar,
