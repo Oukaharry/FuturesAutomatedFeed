@@ -78,6 +78,10 @@ def _cache_closed_history_path() -> Path:
     return _cache_dir() / "closed_history.html"
 
 
+def _cache_closed_trades_path() -> Path:
+    return _cache_dir() / "closed_trades.pkl"
+
+
 def _cache_meta_path() -> Path:
     return _cache_dir() / "meta.json"
 
@@ -100,6 +104,67 @@ def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
     _atomic_write_text(path, json.dumps(payload, default=str))
 
 
+def _remove_legacy_closed_history_cache() -> None:
+    """Old deploys wrote a multi-MB closed_history.html; drop it so API won't serve it."""
+    for path in (_cache_closed_history_path(),):
+        try:
+            if path.is_file():
+                path.unlink()
+                logger.info("[ML] Removed legacy cache %s", path)
+        except OSError as e:
+            logger.warning("[ML] Could not remove legacy cache %s: %s", path, e)
+
+
+def report_has_preview_format(html: str) -> bool:
+    from research.ml_html_report import ML_REPORT_FORMAT_MARKER
+
+    if not html:
+        return False
+    return ML_REPORT_FORMAT_MARKER in html or "history-preview-wrap" in html
+
+
+def _report_needs_format_upgrade() -> bool:
+    path = _cache_html_path()
+    if not path.is_file():
+        return False
+    try:
+        sample = path.read_text(encoding="utf-8")[:80000]
+    except OSError:
+        return False
+    return not report_has_preview_format(sample)
+
+
+def _persist_closed_trades_snapshot(closed_df: Any) -> None:
+    import pandas as pd
+
+    path = _cache_closed_trades_path()
+    try:
+        if closed_df is None or not isinstance(closed_df, pd.DataFrame) or closed_df.empty:
+            if path.is_file():
+                path.unlink()
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".pkl.tmp")
+        closed_df.to_pickle(tmp)
+        os.replace(tmp, path)
+        logger.info("[ML] Wrote closed trades snapshot (%s rows, %s bytes)", len(closed_df), path.stat().st_size)
+    except Exception as e:
+        logger.warning("[ML] Could not write closed trades snapshot: %s", e)
+
+
+def _load_closed_trades_snapshot() -> Any:
+    import pandas as pd
+
+    path = _cache_closed_trades_path()
+    if not path.is_file():
+        return pd.DataFrame()
+    try:
+        return pd.read_pickle(path)
+    except Exception as e:
+        logger.warning("[ML] Could not read closed trades snapshot: %s", e)
+        return pd.DataFrame()
+
+
 def _persist_cache(
     html: str,
     meta: Dict[str, Any],
@@ -108,6 +173,7 @@ def _persist_cache(
 ) -> None:
     try:
         _atomic_write_text(_cache_html_path(), html)
+        _remove_legacy_closed_history_cache()
         if closed_history_html:
             _atomic_write_text(_cache_closed_history_path(), closed_history_html)
         _atomic_write_json(
@@ -335,24 +401,19 @@ def _warm_memory_from_disk() -> None:
             return
     if not html:
         return
-    closed_hist = ""
-    ch_path = _cache_closed_history_path()
-    if ch_path.is_file():
-        try:
-            closed_hist = ch_path.read_text(encoding="utf-8")
-        except OSError:
-            closed_hist = ""
     disk = _load_disk_cache() or {}
     with _lock:
         if _state.get("html"):
             return
         _state["html"] = html
-        _state["closed_history_html"] = closed_hist
+        _state["closed_history_html"] = ""
         _state["meta"] = dict(disk.get("meta") or {})
         _state["generated_at"] = disk.get("generated_at")
         _state["error"] = disk.get("error")
         st = disk.get("status") or "ready"
         _state["status"] = "ready" if st == "running" and html else st
+    if report_has_preview_format(html) and _cache_closed_trades_path().is_file():
+        _remove_legacy_closed_history_cache()
 
 
 def _recover_stale_running(max_minutes: int = 5) -> None:
@@ -418,8 +479,12 @@ def _sanitize_for_json(obj: Any) -> Any:
 
 
 def get_state() -> Dict[str, Any]:
+    from research.eat_time import today_eat_date_str, today_eat_dow_name
+
     _recover_stale_running()
     mode = _ml_runtime_mode()
+    now_eat_date = today_eat_date_str()
+    now_eat_dow = today_eat_dow_name()
     with _lock:
         mem_status = _state["status"]
         out = {
@@ -439,6 +504,8 @@ def get_state() -> Dict[str, Any]:
             "uses_production": mode == "production",
             "cache_dir": str(_cache_dir()),
             "refresh_in_progress": mem_status == "running",
+            "now_eat_date": now_eat_date,
+            "now_eat_dow": now_eat_dow,
         }
 
     disk = _load_disk_cache()
@@ -460,23 +527,63 @@ def get_state() -> Dict[str, Any]:
             out["error"] = _state.get("error")
     elif not out["error"] and disk and disk.get("error"):
         out["error"] = disk.get("error")
+
+    meta = out.get("meta") or {}
+    build_date = str(meta.get("today_eat_at_build") or meta.get("today_eat") or "")[:10]
+    if not build_date and out.get("generated_at"):
+        build_date = str(out["generated_at"])[:10]
+    out["report_eat_date"] = build_date
+    out["report_eat_dow"] = meta.get("today_dow_at_build") or meta.get("today_dow_name")
+    out["report_stale"] = bool(build_date and build_date != now_eat_date)
+    html_for_fmt = ""
+    with _lock:
+        html_for_fmt = _state.get("html") or ""
+    if not html_for_fmt and _cache_html_path().is_file():
+        try:
+            html_for_fmt = _cache_html_path().read_text(encoding="utf-8")[:50000]
+        except OSError:
+            html_for_fmt = ""
+    out["report_format_legacy"] = bool(html_for_fmt) and not report_has_preview_format(html_for_fmt)
+    out["has_closed_trades_snapshot"] = _cache_closed_trades_path().is_file()
     return _sanitize_for_json(out)
 
 
+def _legacy_report_placeholder() -> str:
+    """Shown instead of an old full-history report.html so production never loads 46k rows."""
+    return (
+        "<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'/>"
+        "<style>body{background:#070b14;color:#e2e8f0;font-family:system-ui,sans-serif;"
+        "padding:40px;max-width:520px;line-height:1.5}</style></head><body>"
+        "<h2 style='color:#60a5fa;margin-top:0'>Report needs rebuild</h2>"
+        "<p>This server still has an <strong>old cached ML report</strong> (full trade list). "
+        "It is not used so the page stays fast.</p>"
+        "<p>Click <strong>Refresh now</strong> on the toolbar above and wait until status is "
+        "<strong>Live</strong> and <strong>Updated</strong> shows today’s date.</p>"
+        "<p style='color:#94a3b8;font-size:0.9rem'>You should then see "
+        "<em>Showing 25 of …</em> and <em>See All History</em> (paginated), like on local.</p>"
+        "</body></html>"
+    )
+
+
 def get_cached_html() -> str:
+    html = ""
     with _lock:
-        if _state.get("html"):
-            return _state["html"]
-    path = _cache_html_path()
-    if path.is_file():
-        try:
-            return path.read_text(encoding="utf-8")
-        except OSError as e:
-            logger.warning("[ML] Could not read disk cache html: %s", e)
-    return ""
+        html = _state.get("html") or ""
+    if not html:
+        path = _cache_html_path()
+        if path.is_file():
+            try:
+                html = path.read_text(encoding="utf-8")
+            except OSError as e:
+                logger.warning("[ML] Could not read disk cache html: %s", e)
+    if html and not report_has_preview_format(html):
+        logger.warning("[ML] Refusing to serve legacy full-history report cache")
+        return _legacy_report_placeholder()
+    return html
 
 
 def get_cached_closed_history_html() -> str:
+    """Legacy single-page HTML cache."""
     with _lock:
         if _state.get("closed_history_html"):
             return _state["closed_history_html"]
@@ -487,6 +594,22 @@ def get_cached_closed_history_html() -> str:
         except OSError as e:
             logger.warning("[ML] Could not read closed history cache: %s", e)
     return ""
+
+
+def get_closed_history_page_html(*, page: int = 1, per_page: int = 50) -> str:
+    from research.ml_html_report import CLOSED_HISTORY_PAGE_SIZE, render_closed_history_page_html
+
+    closed_df = _load_closed_trades_snapshot()
+    if closed_df is None or getattr(closed_df, "empty", True):
+        return (
+            "<p class='muted'>Paginated history is not ready yet. "
+            "Click <strong>Refresh now</strong> on the toolbar and wait for the report to finish building.</p>"
+        )
+    return render_closed_history_page_html(
+        closed_df,
+        page=page,
+        per_page=per_page or CLOSED_HISTORY_PAGE_SIZE,
+    )
 
 
 def _clients_data_freshness() -> Dict[str, Any]:
@@ -557,7 +680,7 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
 
     from research.trade_dataset import load_active_positions_df, load_all_round_trips
     from research.ml_analysis import run_full_analysis, render_ml_html_report
-    from research.ml_html_report import render_closed_history_full_html
+    from research.eat_time import today_eat_date_str, today_eat_dow_name
 
     df = load_all_round_trips(attach_positions=True)
     active = load_active_positions_df()
@@ -566,9 +689,10 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     closed_df = analysis.get("closed_trades")
     if closed_df is None:
         closed_df = analysis.get("df")
-    closed_history_html = render_closed_history_full_html(
-        closed_df if isinstance(closed_df, pd.DataFrame) else pd.DataFrame(),
-    )
+    if not isinstance(closed_df, pd.DataFrame):
+        closed_df = pd.DataFrame()
+    _persist_closed_trades_snapshot(closed_df)
+    _remove_legacy_closed_history_cache()
 
     html_out = render_ml_html_report(
         analysis,
@@ -591,10 +715,15 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
         "same_day_ok": br.get("same_day_ok"),
         "recommended_dow": br.get("recommended_dow"),
         "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "today_eat_at_build": today_eat_date_str(),
+        "today_dow_at_build": today_eat_dow_name(),
+        "today_eat": br.get("today_eat"),
+        "today_dow_name": br.get("today_dow_name"),
+        "report_format_version": 2,
         **_clients_data_freshness(),
     }
     duration = time.time() - t0
-    _set_result(html_out, meta, duration, closed_history_html=closed_history_html)
+    _set_result(html_out, meta, duration)
     logger.info(
         "[ML] Refresh done (%s) in %.1fs — %s trades, %s active",
         _ml_runtime_mode(),
@@ -700,6 +829,11 @@ def _interval_worker_loop() -> None:
     delay = _startup_delay_sec()
     if delay and _stop_event.wait(delay):
         return
+    if _report_needs_format_upgrade():
+        logger.info("[ML] Cached report uses legacy full-history layout — rebuilding")
+        refresh_now(reason="format_upgrade")
+    else:
+        refresh_now(reason="startup")
     while not _stop_event.is_set():
         refresh_now(reason="scheduled")
         if _stop_event.wait(_interval_sec()):
@@ -737,7 +871,11 @@ def _watch_worker_loop() -> None:
         return
 
     _last_db_fingerprint = _read_db_fingerprint()
-    refresh_now(reason="startup")
+    if _report_needs_format_upgrade():
+        logger.info("[ML] Cached report uses legacy full-history layout — rebuilding")
+        refresh_now(reason="format_upgrade")
+    else:
+        refresh_now(reason="startup")
     _last_db_fingerprint = _read_db_fingerprint()
     _last_scheduled_refresh_at = time.time()
 

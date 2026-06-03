@@ -3392,9 +3392,11 @@ def api_ml_predictions_report():
 def api_ml_predictions_closed_history():
     if request.session_user.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Forbidden"}), 403
-    from dashboard.ml_predictions_service import get_cached_closed_history_html, get_state
+    from dashboard.ml_predictions_service import get_closed_history_page_html, get_state
 
-    fragment = get_cached_closed_history_html()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 50, type=int)
+    fragment = get_closed_history_page_html(page=max(1, page), per_page=max(1, min(per_page, 200)))
     if not fragment:
         st = get_state()
         if st.get("status") == "running":

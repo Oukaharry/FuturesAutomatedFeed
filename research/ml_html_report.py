@@ -300,6 +300,9 @@ CLOSED_COLUMNS = [
 ]
 
 CLOSED_HISTORY_PREVIEW_ROWS = 25
+CLOSED_HISTORY_PAGE_SIZE = 50
+ML_REPORT_FORMAT_VERSION = 2
+ML_REPORT_FORMAT_MARKER = "ml-report-format:2"
 
 _HISTORY_TOGGLE_BTN_STYLE = (
     "background:linear-gradient(135deg,rgba(96,165,250,0.2),rgba(37,99,235,0.5));"
@@ -320,42 +323,63 @@ def _history_toggle_button(section_id: str, *, hide: bool = False) -> str:
 
 
 def _history_toggle_script() -> str:
-    return """
+    per_page = CLOSED_HISTORY_PAGE_SIZE
+    return f"""
     <script>
-    function mlToggleHistorySection(sectionId) {
+    function mlLoadHistoryPage(page) {{
+      const detail = document.getElementById('all-clients-data-full-detail');
+      if (!detail) return;
+      detail.innerHTML = '<p class="muted"><i class="fas fa-spinner fa-spin"></i> Loading page…</p>';
+      const url = '/api/ml_predictions/closed_history?page=' + page + '&per_page={per_page}';
+      fetch(url, {{ credentials: 'same-origin' }})
+        .then(function(r) {{
+          if (!r.ok) throw new Error('load failed');
+          return r.text();
+        }})
+        .then(function(html) {{
+          detail.innerHTML = html;
+        }})
+        .catch(function() {{
+          detail.innerHTML = '<p class="muted">Could not load history. Use Refresh report on the toolbar.</p>';
+        }});
+    }}
+    function mlToggleHistorySection(sectionId) {{
       const detail = document.getElementById(sectionId + '-full-detail');
       const btn = document.getElementById(sectionId + '-toggle-btn');
       if (!detail || !btn) return;
-      if (detail.style.display === 'none') {
-        if (detail.dataset.lazy === '1' && detail.dataset.loaded !== '1') {
+      if (detail.style.display === 'none') {{
+        if (detail.dataset.lazy === '1' && detail.dataset.loaded !== '1') {{
           btn.disabled = true;
           btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…';
-          fetch('/api/ml_predictions/closed_history', { credentials: 'same-origin' })
-            .then(function(r) {
+          detail.style.display = '';
+          const url = '/api/ml_predictions/closed_history?page=1&per_page={per_page}';
+          fetch(url, {{ credentials: 'same-origin' }})
+            .then(function(r) {{
               if (!r.ok) throw new Error('load failed');
               return r.text();
-            })
-            .then(function(html) {
+            }})
+            .then(function(html) {{
               detail.innerHTML = html;
               detail.dataset.loaded = '1';
-              detail.style.display = '';
               btn.disabled = false;
               btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide History';
-            })
-            .catch(function() {
+            }})
+            .catch(function() {{
+              detail.style.display = 'none';
+              detail.dataset.loaded = '0';
               btn.disabled = false;
               btn.innerHTML = '<i class="fas fa-eye"></i> See All History';
-              alert('Could not load full history. Use Refresh report on the toolbar.');
-            });
+              alert('Could not load history. Use Refresh report on the toolbar.');
+            }});
           return;
-        }
+        }}
         detail.style.display = '';
         btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide History';
-      } else {
+      }} else {{
         detail.style.display = 'none';
         btn.innerHTML = '<i class="fas fa-eye"></i> See All History';
-      }
-    }
+      }}
+    }}
     </script>
     """
 
@@ -394,22 +418,61 @@ def _render_firm_groups_html(
     return f'<div class="firm-groups">{"".join(blocks)}</div>'
 
 
+def _closed_columns_for_df(closed_df: pd.DataFrame, columns: Optional[List[Tuple[str, str]]] = None) -> List[Tuple[str, str]]:
+    cols = columns or CLOSED_COLUMNS
+    return [c for c in cols if closed_df is None or c[0] in getattr(closed_df, "columns", [])] or list(CLOSED_COLUMNS)
+
+
+def render_closed_history_page_html(
+    closed_df: pd.DataFrame,
+    *,
+    page: int = 1,
+    per_page: int = CLOSED_HISTORY_PAGE_SIZE,
+    columns: Optional[List[Tuple[str, str]]] = None,
+    bar_col: str = "net_pnl",
+) -> str:
+    """Paginated flat closed-trade table (See All History)."""
+    if closed_df is None or closed_df.empty:
+        return "<p class='muted'>No rows.</p>"
+    closed_cols = _closed_columns_for_df(closed_df, columns)
+    total = len(closed_df)
+    per_page = max(1, int(per_page))
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(int(page), total_pages))
+    start = (page - 1) * per_page
+    end = min(start + per_page, total)
+    slice_df = closed_df.iloc[start:end]
+    table = _table_from_records(
+        _df_records(slice_df),
+        closed_cols,
+        max_rows=per_page + 1,
+        bar_col=bar_col,
+    )
+    prev_disabled = "disabled" if page <= 1 else ""
+    next_disabled = "disabled" if page >= total_pages else ""
+    return f"""
+    <div class="history-pager">
+      <button type="button" class="history-page-btn" onclick="mlLoadHistoryPage({page - 1})" {prev_disabled}>
+        <i class="fas fa-chevron-left"></i> Prev
+      </button>
+      <span class="history-page-info">Page <strong>{page}</strong> of <strong>{total_pages}</strong>
+        · rows {start + 1:,}–{end:,} of {total:,}</span>
+      <button type="button" class="history-page-btn" onclick="mlLoadHistoryPage({page + 1})" {next_disabled}>
+        Next <i class="fas fa-chevron-right"></i>
+      </button>
+    </div>
+    <div class="history-page-table">{table}</div>
+    """
+
+
 def render_closed_history_full_html(
     closed_df: pd.DataFrame,
     *,
     columns: Optional[List[Tuple[str, str]]] = None,
     bar_col: str = "net_pnl",
 ) -> str:
-    """Firm-grouped closed trade tables (loaded on demand from ML report)."""
-    cols = columns or CLOSED_COLUMNS
-    closed_cols = [c for c in cols if closed_df is None or c[0] in getattr(closed_df, "columns", [])]
-    if closed_df is None or closed_df.empty:
-        return "<p class='muted'>No rows.</p>"
-    return _render_firm_groups_html(
-        closed_df,
-        closed_cols or CLOSED_COLUMNS,
-        bar_col=bar_col,
-    )
+    """Legacy full dump — prefer paginated render_closed_history_page_html."""
+    return render_closed_history_page_html(closed_df, page=1, per_page=CLOSED_HISTORY_PAGE_SIZE, columns=columns, bar_col=bar_col)
 
 
 def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
@@ -465,12 +528,14 @@ def _render_alerts(analysis: Dict[str, Any]) -> str:
             f"All accounts should share one calendar day. Target: <strong>{html.escape(str(br.get('recommended_dow')))}</strong>.</div>"
         )
     else:
-        udate = br.get("unified_entry_date") or br.get("today_eat", "")
-        udow = br.get("today_dow_name", br.get("recommended_dow", ""))
+        entry_date = br.get("unified_entry_date") or br.get("today_eat", "")
+        cal_today = br.get("today_eat", "")
+        cal_dow = br.get("today_dow_name", "—")
         alerts.append(
             f"<div class='alert alert-ok'><strong>Same-day aligned (EAT)</strong> — "
-            f"<strong>{html.escape(str(udow))}</strong> "
-            f"<code>{html.escape(str(udate))}</code>.</div>"
+            f"live entry day <code>{html.escape(str(entry_date))}</code> · "
+            f"calendar today <strong>{html.escape(str(cal_dow))}</strong> "
+            f"<code>{html.escape(str(cal_today))}</code>.</div>"
         )
 
     for v in br.get("direction_violations") or []:
@@ -635,6 +700,12 @@ def _report_styles() -> str:
     .history-preview-wrap { overflow-x: auto; margin-bottom: 8px; }
     .history-full-detail { margin-top: 12px; }
     .history-toggle-btn:disabled { opacity: 0.6; cursor: wait; }
+    .history-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 12px; }
+    .history-page-info { color: var(--muted); font-size: 0.85rem; }
+    .history-page-btn { background: var(--panel2); border: 1px solid var(--border); color: var(--accent);
+      padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.82rem; }
+    .history-page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .history-page-table { overflow-x: auto; }
     @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
     """
 
@@ -756,7 +827,8 @@ def render_ml_html_report(
   {fa_link}
   <style>{_report_styles()}</style>
 </head>
-<body>
+<body data-ml-report-format="{ML_REPORT_FORMAT_VERSION}">
+  <!-- {ML_REPORT_FORMAT_MARKER} -->
   <header class="hero">
     <div class="wrap" style="padding-top:0;padding-bottom:0">
       <h1>{html.escape(title)}</h1>
