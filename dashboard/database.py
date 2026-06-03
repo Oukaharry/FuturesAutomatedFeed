@@ -1310,6 +1310,27 @@ def _ensure_quality_bot_tables():
         conn.commit()
 
 
+def get_quality_slack_posted_at(scan_date: str) -> Optional[str]:
+    """Return posted_at for a scan_date if the daily summary bot has run, else None."""
+    if not scan_date:
+        return None
+    try:
+        _ensure_quality_bot_tables()
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT posted_at FROM quality_slack_posts WHERE scan_date = ?',
+                (scan_date,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            posted = row.get('posted_at') if isinstance(row, dict) else row[0]
+            return str(posted).strip() or None
+    except Exception:
+        return None
+
+
 def record_quality_slack_post(scan_date: str, posted_at: str):
     """Record when the Slack quality bot posted for a scan_date (idempotent).
 
