@@ -123,7 +123,7 @@
         <span class="status-pill pill-running" id="status-pill">Loading…</span>
         <span class="item">Source: <strong id="meta-source" style="font-size:0.78rem;">—</strong></span>
         <span class="item">ML report: <strong id="meta-updated">—</strong></span>
-        <span class="item">Eval sync: <strong id="meta-db-sync">—</strong></span>
+        <span class="item">Eval push: <strong id="meta-db-sync">—</strong></span>
         <span class="item">M1 bar: <strong id="meta-m1-newest">—</strong></span>
         <span class="item">Closed: <strong id="meta-trades">—</strong></span>
         <span class="item">Live: <strong id="meta-active">—</strong></span>
@@ -190,19 +190,21 @@
             try {
                 const r = await fetch('/api/ml_predictions/status');
                 const d = await r.json();
+                pollStatus._last = d;
+                pollStatus._refreshing = !!d.refresh_in_progress;
                 setPill(d.status, d.refresh_in_progress);
                 const mode = d.runtime_mode || d.meta?.runtime_mode || '';
                 const src = d.meta?.data_source || '';
                 document.getElementById('meta-updated').textContent = fmtReportEat(d.generated_at);
                 document.getElementById('meta-db-sync').textContent = fmtDbSyncEat(d.meta?.db_max_last_updated, mode, src);
-                document.getElementById('meta-db-sync').title = 'clients_data max last_updated (evaluations push)';
+                document.getElementById('meta-db-sync').title = 'Newest clients_data last_updated — updates when a companion pushes evaluations (not on ML report refresh)';
                 document.getElementById('meta-source').textContent = mode || (src.includes('production') ? 'production' : src.includes('local') ? 'local' : '—');
                 document.getElementById('meta-source').title = src || mode;
                 document.getElementById('meta-trades').textContent = d.meta?.n_trades?.toLocaleString?.() ?? d.meta?.n_trades ?? '—';
                 document.getElementById('meta-active').textContent = d.meta?.n_active ?? '—';
                 document.getElementById('meta-underwater').textContent = d.meta?.underwater_on_recommendation ?? '—';
                 const errEl = document.getElementById('meta-error');
-                if (d.error && d.status === 'error') {
+                if (d.error) {
                     errEl.style.display = '';
                     errEl.textContent = d.error;
                 } else {
@@ -226,11 +228,37 @@
             }
         }
 
+        async function waitForReportRefresh(maxWaitMs) {
+            const before = pollStatus._lastReportAt || '';
+            const limit = maxWaitMs || 240000;
+            const step = 2000;
+            for (let elapsed = 0; elapsed < limit; elapsed += step) {
+                await new Promise(r => setTimeout(r, step));
+                await pollStatus();
+                const d = pollStatus._last;
+                if (!d) continue;
+                if (!d.refresh_in_progress && d.status !== 'running') {
+                    if (d.generated_at && d.generated_at !== before) {
+                        pollStatus._lastReportAt = '';
+                        await pollStatus();
+                    }
+                    return;
+                }
+            }
+            await pollStatus();
+        }
+
         btnRefresh.addEventListener('click', async () => {
             btnRefresh.disabled = true;
-            await fetch('/api/ml_predictions/refresh', { method: 'POST' });
-            pollStatus();
-            pollM1Status();
+            try {
+                await fetch('/api/ml_predictions/refresh', { method: 'POST' });
+                await waitForReportRefresh();
+                await pollM1Status();
+            } catch (e) {
+                setPill('error');
+            } finally {
+                btnRefresh.disabled = false;
+            }
         });
 
         const TZ_EAT = 'Africa/Nairobi';
@@ -457,6 +485,8 @@
         m1Body.classList.add('open');
 
         pollStatus._lastReportAt = '';
+        pollStatus._last = null;
+        pollStatus._refreshing = false;
         pollStatus();
         pollM1Status();
         const pollMs = 10000;

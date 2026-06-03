@@ -3427,7 +3427,7 @@ def api_ml_predictions_refresh():
         return jsonify({"status": "error", "message": "Forbidden"}), 403
     from dashboard.ml_predictions_service import get_state, refresh_now
     st = get_state()
-    if st.get("status") == "running":
+    if st.get("refresh_in_progress"):
         return jsonify({"status": "running", "message": "Refresh already in progress"})
     threading.Thread(
         target=lambda: refresh_now(reason="manual"),
