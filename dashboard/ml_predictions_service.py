@@ -33,6 +33,7 @@ _lock = threading.Lock()
 _state: Dict[str, Any] = {
     "status": "idle",
     "html": "",
+    "closed_history_html": "",
     "meta": {},
     "error": None,
     "generated_at": None,
@@ -67,6 +68,10 @@ def _cache_html_path() -> Path:
     return _cache_dir() / "report.html"
 
 
+def _cache_closed_history_path() -> Path:
+    return _cache_dir() / "closed_history.html"
+
+
 def _cache_meta_path() -> Path:
     return _cache_dir() / "meta.json"
 
@@ -89,9 +94,16 @@ def _atomic_write_json(path: Path, payload: Dict[str, Any]) -> None:
     _atomic_write_text(path, json.dumps(payload, default=str))
 
 
-def _persist_cache(html: str, meta: Dict[str, Any]) -> None:
+def _persist_cache(
+    html: str,
+    meta: Dict[str, Any],
+    *,
+    closed_history_html: str = "",
+) -> None:
     try:
         _atomic_write_text(_cache_html_path(), html)
+        if closed_history_html:
+            _atomic_write_text(_cache_closed_history_path(), closed_history_html)
         _atomic_write_json(
             _cache_meta_path(),
             {
@@ -231,11 +243,19 @@ def _warm_memory_from_disk() -> None:
             return
     if not html:
         return
+    closed_hist = ""
+    ch_path = _cache_closed_history_path()
+    if ch_path.is_file():
+        try:
+            closed_hist = ch_path.read_text(encoding="utf-8")
+        except OSError:
+            closed_hist = ""
     disk = _load_disk_cache() or {}
     with _lock:
         if _state.get("html"):
             return
         _state["html"] = html
+        _state["closed_history_html"] = closed_hist
         _state["meta"] = dict(disk.get("meta") or {})
         _state["generated_at"] = disk.get("generated_at")
         _state["error"] = disk.get("error")
@@ -361,6 +381,19 @@ def get_cached_html() -> str:
     return ""
 
 
+def get_cached_closed_history_html() -> str:
+    with _lock:
+        if _state.get("closed_history_html"):
+            return _state["closed_history_html"]
+    path = _cache_closed_history_path()
+    if path.is_file():
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError as e:
+            logger.warning("[ML] Could not read closed history cache: %s", e)
+    return ""
+
+
 def _clients_data_freshness() -> Dict[str, Any]:
     from dashboard.database import get_direct_connection
 
@@ -386,16 +419,23 @@ def _set_running() -> None:
         _state["error"] = None
 
 
-def _set_result(html: str, meta: Dict[str, Any], duration_sec: float) -> None:
+def _set_result(
+    html: str,
+    meta: Dict[str, Any],
+    duration_sec: float,
+    *,
+    closed_history_html: str = "",
+) -> None:
     with _lock:
         _state["status"] = "ready"
         _state["html"] = html
+        _state["closed_history_html"] = closed_history_html
         _state["meta"] = meta
         _state["error"] = None
         _state["generated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _state["last_duration_sec"] = round(duration_sec, 1)
         _state["refresh_interval_sec"] = _interval_sec()
-    _persist_cache(html, meta)
+    _persist_cache(html, meta, closed_history_html=closed_history_html)
 
 
 def _set_error(msg: str, duration_sec: Optional[float] = None) -> None:
@@ -411,12 +451,22 @@ def _set_error(msg: str, duration_sec: Optional[float] = None) -> None:
 
 
 def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
+    import pandas as pd
+
     from research.trade_dataset import load_active_positions_df, load_all_round_trips
     from research.ml_analysis import run_full_analysis, render_ml_html_report
+    from research.ml_html_report import render_closed_history_full_html
 
     df = load_all_round_trips(attach_positions=True)
     active = load_active_positions_df()
     analysis = run_full_analysis(df, active_df=active)
+
+    closed_df = analysis.get("closed_trades")
+    if closed_df is None:
+        closed_df = analysis.get("df")
+    closed_history_html = render_closed_history_full_html(
+        closed_df if isinstance(closed_df, pd.DataFrame) else pd.DataFrame(),
+    )
 
     html_out = render_ml_html_report(
         analysis,
@@ -442,7 +492,7 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
         **_clients_data_freshness(),
     }
     duration = time.time() - t0
-    _set_result(html_out, meta, duration)
+    _set_result(html_out, meta, duration, closed_history_html=closed_history_html)
     logger.info(
         "[ML] Refresh done (%s) in %.1fs — %s trades, %s active",
         _ml_runtime_mode(),

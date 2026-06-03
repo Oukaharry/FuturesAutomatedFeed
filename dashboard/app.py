@@ -3387,6 +3387,35 @@ def api_ml_predictions_report():
     return html_body, 200, headers
 
 
+@app.route('/api/ml_predictions/closed_history')
+@require_session
+def api_ml_predictions_closed_history():
+    if request.session_user.get('user_type') != 'super_admin':
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+    from dashboard.ml_predictions_service import get_cached_closed_history_html, get_state
+
+    fragment = get_cached_closed_history_html()
+    if not fragment:
+        st = get_state()
+        if st.get("status") == "running":
+            return (
+                "<p class='muted'>Full history is still building… try again shortly.</p>",
+                202,
+                {"Content-Type": "text/html; charset=utf-8"},
+            )
+        return (
+            "<p class='muted'>Full history not available. Click Refresh report on the toolbar.</p>",
+            503,
+            {"Content-Type": "text/html; charset=utf-8"},
+        )
+    headers = {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+    }
+    return fragment, 200, headers
+
+
 @app.route('/api/ml_predictions/refresh', methods=['POST'])
 @require_session
 def api_ml_predictions_refresh():

@@ -197,51 +197,76 @@ def _render_trades_by_firm(
     bar_col: Optional[str] = None,
     max_rows_per_firm: Optional[int] = None,
     section_class: str = "",
-) -> str:
+    preview_rows: Optional[int] = None,
+    lazy_full_history: bool = False,
+) -> Tuple[str, bool]:
+    """Return (section HTML, whether lazy-load toggle script is needed)."""
     if df is None or df.empty:
-        return f"""
+        return (
+            f"""
         <section id="{section_id}" class="panel section-major">
           <h2>{html.escape(title)}</h2>
           <p class="muted">{html.escape(subtitle)}</p>
           <p class="muted">No rows.</p>
         </section>
-        """
+        """,
+            False,
+        )
 
-    firm_col = "_sort_firm" if "_sort_firm" in df.columns else "prop_firm"
-    firms = sorted(df[firm_col].fillna("Unknown").unique())
-
-    blocks: List[str] = []
     total = len(df)
-    for firm in firms:
-        grp = df[df[firm_col] == firm]
-        if max_rows_per_firm:
-            display = grp.head(max_rows_per_firm)
-            trunc_note = f" (showing {len(display):,} of {len(grp):,})" if len(display) < len(grp) else ""
-        else:
-            display = grp
-            trunc_note = ""
-
-        records = _df_records(display)
-        table = _table_from_records(records, columns, max_rows=len(records) + 1, bar_col=bar_col)
-        blocks.append(f"""
-        <details class="firm-block" open>
-          <summary class="firm-summary">
-            <span class="firm-name">{html.escape(str(firm))}</span>
-            {_firm_summary_row(grp)}
-            {f'<span class="trunc-note">{html.escape(trunc_note.strip())}</span>' if trunc_note else ''}
-          </summary>
-          <div class="firm-table-wrap">{table}</div>
-        </details>
-        """)
+    use_preview = (
+        preview_rows is not None
+        and preview_rows > 0
+        and total > preview_rows
+        and lazy_full_history
+    )
 
     extra = f" {section_class}" if section_class else ""
-    return f"""
+    sort_note = "sorted by prop firm → phase (CH1, FD2, …) → client"
+
+    if use_preview:
+        preview_df = df.head(preview_rows)
+        preview_table = _table_from_records(
+            _df_records(preview_df),
+            columns,
+            max_rows=preview_rows + 1,
+            bar_col=bar_col,
+        )
+        header_row = f"""
+      <div class="section-head-row">
+        <div>
+          <h2>{html.escape(title)}</h2>
+          <p class="muted">{html.escape(subtitle)} · <strong>{total:,}</strong> rows · {sort_note}</p>
+          <p class="muted preview-note">Showing <strong>{preview_rows}</strong> of <strong>{total:,}</strong> — use See All History for the full list.</p>
+        </div>
+        {_history_toggle_button(section_id)}
+      </div>
+        """
+        body = f"""
+      {header_row}
+      <div class="history-preview-wrap">{preview_table}</div>
+      <div id="{section_id}-full-detail" class="history-full-detail" style="display:none" data-lazy="1" data-loaded="0"></div>
+        """
+        return (
+            f"""
+    <section id="{section_id}" class="panel section-major{extra}">
+      {body}
+    </section>
+    """,
+            True,
+        )
+
+    firm_html = _render_firm_groups_html(df, columns, bar_col=bar_col, max_rows_per_firm=max_rows_per_firm)
+    return (
+        f"""
     <section id="{section_id}" class="panel section-major{extra}">
       <h2>{html.escape(title)}</h2>
-      <p class="muted">{html.escape(subtitle)} · <strong>{total:,}</strong> rows · sorted by prop firm → phase (CH1, FD2, …) → client</p>
-      <div class="firm-groups">{''.join(blocks)}</div>
+      <p class="muted">{html.escape(subtitle)} · <strong>{total:,}</strong> rows · {sort_note}</p>
+      {firm_html}
     </section>
-    """
+    """,
+        False,
+    )
 
 
 LIVE_COLUMNS = [
@@ -273,6 +298,118 @@ CLOSED_COLUMNS = [
     ("volume", "Vol"),
     ("net_pnl", "Net P/L"),
 ]
+
+CLOSED_HISTORY_PREVIEW_ROWS = 25
+
+_HISTORY_TOGGLE_BTN_STYLE = (
+    "background:linear-gradient(135deg,rgba(96,165,250,0.2),rgba(37,99,235,0.5));"
+    "border:1px solid rgba(96,165,250,0.4);color:#60a5fa;padding:6px 16px;"
+    "border-radius:6px;font-weight:600;cursor:pointer;font-size:0.85rem;"
+)
+
+
+def _history_toggle_button(section_id: str, *, hide: bool = False) -> str:
+    label = "Hide History" if hide else "See All History"
+    icon = "fa-eye-slash" if hide else "fa-eye"
+    return (
+        f'<button type="button" id="{section_id}-toggle-btn" class="history-toggle-btn" '
+        f'style="{_HISTORY_TOGGLE_BTN_STYLE}" '
+        f'onclick="mlToggleHistorySection(\'{section_id}\')">'
+        f'<i class="fas {icon}"></i> {label}</button>'
+    )
+
+
+def _history_toggle_script() -> str:
+    return """
+    <script>
+    function mlToggleHistorySection(sectionId) {
+      const detail = document.getElementById(sectionId + '-full-detail');
+      const btn = document.getElementById(sectionId + '-toggle-btn');
+      if (!detail || !btn) return;
+      if (detail.style.display === 'none') {
+        if (detail.dataset.lazy === '1' && detail.dataset.loaded !== '1') {
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…';
+          fetch('/api/ml_predictions/closed_history', { credentials: 'same-origin' })
+            .then(function(r) {
+              if (!r.ok) throw new Error('load failed');
+              return r.text();
+            })
+            .then(function(html) {
+              detail.innerHTML = html;
+              detail.dataset.loaded = '1';
+              detail.style.display = '';
+              btn.disabled = false;
+              btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide History';
+            })
+            .catch(function() {
+              btn.disabled = false;
+              btn.innerHTML = '<i class="fas fa-eye"></i> See All History';
+              alert('Could not load full history. Use Refresh report on the toolbar.');
+            });
+          return;
+        }
+        detail.style.display = '';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide History';
+      } else {
+        detail.style.display = 'none';
+        btn.innerHTML = '<i class="fas fa-eye"></i> See All History';
+      }
+    }
+    </script>
+    """
+
+
+def _render_firm_groups_html(
+    df: pd.DataFrame,
+    columns: List[Tuple[str, str]],
+    *,
+    bar_col: Optional[str] = None,
+    max_rows_per_firm: Optional[int] = None,
+) -> str:
+    firm_col = "_sort_firm" if "_sort_firm" in df.columns else "prop_firm"
+    firms = sorted(df[firm_col].fillna("Unknown").unique())
+    blocks: List[str] = []
+    for firm in firms:
+        grp = df[df[firm_col] == firm]
+        if max_rows_per_firm:
+            display = grp.head(max_rows_per_firm)
+            trunc_note = f" (showing {len(display):,} of {len(grp):,})" if len(display) < len(grp) else ""
+        else:
+            display = grp
+            trunc_note = ""
+
+        records = _df_records(display)
+        table = _table_from_records(records, columns, max_rows=len(records) + 1, bar_col=bar_col)
+        blocks.append(f"""
+        <details class="firm-block" open>
+          <summary class="firm-summary">
+            <span class="firm-name">{html.escape(str(firm))}</span>
+            {_firm_summary_row(grp)}
+            {f'<span class="trunc-note">{html.escape(trunc_note.strip())}</span>' if trunc_note else ''}
+          </summary>
+          <div class="firm-table-wrap">{table}</div>
+        </details>
+        """)
+    return f'<div class="firm-groups">{"".join(blocks)}</div>'
+
+
+def render_closed_history_full_html(
+    closed_df: pd.DataFrame,
+    *,
+    columns: Optional[List[Tuple[str, str]]] = None,
+    bar_col: str = "net_pnl",
+) -> str:
+    """Firm-grouped closed trade tables (loaded on demand from ML report)."""
+    cols = columns or CLOSED_COLUMNS
+    closed_cols = [c for c in cols if closed_df is None or c[0] in getattr(closed_df, "columns", [])]
+    if closed_df is None or closed_df.empty:
+        return "<p class='muted'>No rows.</p>"
+    return _render_firm_groups_html(
+        closed_df,
+        closed_cols or CLOSED_COLUMNS,
+        bar_col=bar_col,
+    )
 
 
 def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
@@ -491,6 +628,13 @@ def _report_styles() -> str:
     .rec-value { display: block; font-size: 1.05rem; font-weight: 600; }
     pre.report { background: #0a0e18; padding: 12px; border-radius: 8px; font-size: 0.75rem; color: var(--muted); overflow-x: auto; }
     footer { margin-top: 24px; color: var(--muted); font-size: 0.8rem; }
+    .section-head-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px 20px; margin-bottom: 12px; }
+    .section-head-row h2 { margin: 0 0 6px; }
+    .section-head-row .muted { margin: 0 0 4px; }
+    .preview-note { font-size: 0.82rem; color: var(--warn); }
+    .history-preview-wrap { overflow-x: auto; margin-bottom: 8px; }
+    .history-full-detail { margin-top: 12px; }
+    .history-toggle-btn:disabled { opacity: 0.6; cursor: wait; }
     @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
     """
 
@@ -514,7 +658,7 @@ def render_ml_html_report(
     live_cols = [c for c in LIVE_COLUMNS if active_df is None or c[0] in getattr(active_df, "columns", [])]
     closed_cols = [c for c in CLOSED_COLUMNS if closed_df is None or c[0] in getattr(closed_df, "columns", [])]
 
-    live_section = _render_trades_by_firm(
+    live_section, _ = _render_trades_by_firm(
         active_df if isinstance(active_df, pd.DataFrame) else pd.DataFrame(),
         section_id="live-trades",
         title="Live trades",
@@ -523,15 +667,18 @@ def render_ml_html_report(
         section_class="live",
     )
 
-    closed_section = _render_trades_by_firm(
+    closed_section, need_history_script = _render_trades_by_firm(
         closed_df if isinstance(closed_df, pd.DataFrame) else pd.DataFrame(),
         section_id="all-clients-data",
-        title="All clients — full closed trade history",
+        title="All clients — closed trade history",
         subtitle="Every stored round-trip — CH1 / FD2 / FA badges match blueprint comments",
         columns=closed_cols or CLOSED_COLUMNS,
         bar_col="net_pnl",
         section_class="closed",
+        preview_rows=CLOSED_HISTORY_PREVIEW_ROWS,
+        lazy_full_history=True,
     )
+    history_script = _history_toggle_script() if need_history_script else ""
 
     phase_legend = """
     <div class="legend-phases">
@@ -594,12 +741,19 @@ def render_ml_html_report(
     </section>
     """
 
+    fa_link = (
+        '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>'
+        if history_script
+        else ""
+    )
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>{html.escape(title)}</title>
+  {fa_link}
   <style>{_report_styles()}</style>
 </head>
 <body>
@@ -622,6 +776,7 @@ def render_ml_html_report(
     {rec_html}
     {live_section}
     {closed_section}
+    {history_script}
     <footer>Not trading advice. One direction per prop account; same entry day across clients.
       <br/>{html.escape(str(analysis.get('timing_note') or ''))}
     </footer>
