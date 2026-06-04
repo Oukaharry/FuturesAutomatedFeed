@@ -66,20 +66,28 @@ def load_active_positions_df(client_id: Optional[str] = None) -> pd.DataFrame:
     """
     Flatten all open MT5 positions (active trades) with parsed prop account + phase.
     Uses real sl/tp from the live position snapshot.
+    Applies the same per-client MT5→EAT timestamp correction as closed round-trips.
     """
     parser = MT5CommentParser()
     rows: List[dict] = []
-    now = datetime.now()
+    now_utc = datetime.utcnow()
 
-    for cid, positions in load_clients_positions(client_id).items():
+    positions_map = load_clients_positions(client_id)
+    deals_map = load_clients_deals(client_id)
+    identity_map = load_clients_identity(client_id)
+
+    for cid, positions in positions_map.items():
+        corr = _utc_correction_for_client(
+            cid, deals_map.get(cid, []), identity_map.get(cid, {})
+        )
         for p in positions or []:
             if not isinstance(p, dict):
                 continue
             comment = str(p.get("comment") or "")
             parsed = parser.parse(comment)
-            entry_ts = _timestamp_from_deal(p, correction_sec=0)
+            entry_ts = _timestamp_from_deal(p, correction_sec=corr)
             entry_dt = (
-                entry_ts.to_pydatetime().replace(tzinfo=None) if entry_ts is not None else now
+                entry_ts.to_pydatetime().replace(tzinfo=None) if entry_ts is not None else now_utc
             )
             open_px = float(p.get("price_open") or p.get("price_current") or 0)
             sl = float(p.get("sl") or 0)
