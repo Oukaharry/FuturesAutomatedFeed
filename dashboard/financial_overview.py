@@ -159,6 +159,131 @@ def parse_currency(value_str):
     except ValueError:
         return 0.0
 
+
+P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
+FUNDED_HEDGE_COLS = [
+    'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
+    'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
+]
+
+
+def _date_in_range(dt, start_date=None, end_date=None):
+    """Return True if dt falls within [start_date, end_date] (inclusive by calendar day)."""
+    if not dt:
+        return False
+    d = dt.date() if hasattr(dt, 'date') else dt
+    if start_date and d < start_date.date():
+        return False
+    if end_date and d > end_date.date():
+        return False
+    return True
+
+
+def _eval_start_date(ev):
+    return (
+        parse_date(ev.get('Date Started'))
+        or parse_date(ev.get('Date Purchased'))
+        or parse_date(ev.get('Date'))
+    )
+
+
+def _eval_purchase_date(ev):
+    return (
+        parse_date(ev.get('Date Purchased'))
+        or parse_date(ev.get('Date Started'))
+        or parse_date(ev.get('Date'))
+    )
+
+
+def _eval_activation_date(ev):
+    return (
+        parse_date(ev.get('Date Started.1'))
+        or parse_date(ev.get('Date Purchased'))
+        or parse_date(ev.get('Date Started'))
+        or parse_date(ev.get('Date'))
+    )
+
+
+def _eval_in_status_cohort(ev, start_date=None, end_date=None):
+    """Account status/count metrics: cohort by eval start/purchase date when a range is set."""
+    if not start_date and not end_date:
+        return True
+    eval_date = _eval_start_date(ev)
+    if not eval_date:
+        return True
+    return _date_in_range(eval_date, start_date, end_date)
+
+
+def _event_in_period(event_date, start_date=None, end_date=None):
+    if not start_date and not end_date:
+        return True
+    return bool(event_date and _date_in_range(event_date, start_date, end_date))
+
+
+def _sum_payouts_for_period(ev, start_date=None, end_date=None):
+    """Sum payouts using the same rules as get_payouts_history (requires Date N)."""
+    total = 0.0
+    for i in range(1, 10):
+        amt = parse_currency(ev.get(f'Payout {i}'))
+        if amt <= 0:
+            continue
+        payout_date = parse_date(ev.get(f'Date {i}'))
+        if not payout_date:
+            continue
+        if start_date or end_date:
+            if not _date_in_range(payout_date, start_date, end_date):
+                continue
+        total += amt
+    return total
+
+
+def _fees_for_period(ev, start_date=None, end_date=None):
+    fee = parse_currency(ev.get('Fee'))
+    activation_fee = parse_currency(ev.get('Activation Fee'))
+    if not start_date and not end_date:
+        return fee, activation_fee
+    counted_fee = 0.0
+    counted_act = 0.0
+    purchase_d = _eval_purchase_date(ev)
+    if fee and purchase_d and _date_in_range(purchase_d, start_date, end_date):
+        counted_fee = fee
+    act_d = _eval_activation_date(ev)
+    if activation_fee and act_d and _date_in_range(act_d, start_date, end_date):
+        counted_act = activation_fee
+    return counted_fee, counted_act
+
+
+def _hedge_farming_for_period(ev, start_date=None, end_date=None,
+                              p1_cols=None, funded_cols=None):
+    p1_cols = p1_cols or P1_HEDGE_COLS
+    funded_cols = funded_cols or FUNDED_HEDGE_COLS
+
+    status_p1 = str(ev.get('Status P1', '')).strip()
+    status_funded = str(ev.get('Status', '')).strip()
+
+    p1_hedges = sum(parse_currency(ev.get(col)) for col in p1_cols)
+    funded_hedges = sum(parse_currency(ev.get(col)) for col in funded_cols)
+    farming_raw = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
+
+    hedge_results = 0.0
+    farming_results = 0.0
+
+    if status_p1:
+        p1_d = parse_date(ev.get('Date Ended')) or parse_date(ev.get('Date Started'))
+        if p1_hedges and _event_in_period(p1_d, start_date, end_date):
+            hedge_results += p1_hedges
+
+    if status_funded:
+        fd_d = parse_date(ev.get('Date Ended.1')) or parse_date(ev.get('Date Started.1'))
+        if funded_hedges and _event_in_period(fd_d, start_date, end_date):
+            hedge_results += funded_hedges
+        farm_d = parse_date(ev.get('Date Ended.1')) or parse_date(ev.get('Date Ended'))
+        if farming_raw and _event_in_period(farm_d, start_date, end_date):
+            farming_results = farming_raw
+
+    return hedge_results, farming_results
+
+
 def clear_financial_cache():
     """Invalidate the financial overview cache."""
     _overview_cache.clear()
@@ -282,11 +407,6 @@ def calculate_all_financials(profile_filter=None, start_date=None, end_date=None
     
     from collections import defaultdict
     deposits_daily = defaultdict(float)
-    
-    # Constants
-    P1_HEDGE_COLS = ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']
-    FUNDED_HEDGE_COLS = ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                         'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']
 
     for client_id, data in clients_data.items():
         if not data: continue
@@ -303,19 +423,32 @@ def calculate_all_financials(profile_filter=None, start_date=None, end_date=None
         for ev in evaluations:
             if not isinstance(ev, dict):
                 continue
-            # Date filtering
-            if start_date or end_date:
-                eval_date = parse_date(ev.get('Date Started')) or parse_date(ev.get('Date Purchased')) or parse_date(ev.get('Date'))
-                if eval_date:
-                    if start_date and eval_date.date() < start_date.date():
-                        continue
-                    if end_date and eval_date.date() > end_date.date():
-                        continue
+
+            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
+            date_started = parse_date(ev.get('Date Started'))
+            date_ended = parse_date(ev.get('Date Ended'))
+            date_started_funded = parse_date(ev.get('Date Started.1'))
+            date_ended_funded = parse_date(ev.get('Date Ended.1'))
+            base_date = date_purchased or date_started or datetime.now()
+
+            fee, activation_fee = _fees_for_period(ev, start_date, end_date)
+            payouts = _sum_payouts_for_period(ev, start_date, end_date)
+            hedge_results, farming_results = _hedge_farming_for_period(
+                ev, start_date, end_date, P1_HEDGE_COLS, FUNDED_HEDGE_COLS
+            )
+            in_status_cohort = _eval_in_status_cohort(ev, start_date, end_date)
+
             # Prop Firm Overview Logic
             raw_prop_firm = ev.get('Prop Firm')
             if raw_prop_firm and raw_prop_firm != "-" and str(raw_prop_firm).lower() != "prop firm":
                 prop_firm = prop_firm_stats_parent(normalize_prop_firm_name(raw_prop_firm))
                 if not prop_firm:
+                    continue
+
+                has_financial = (
+                    fee or activation_fee or payouts or hedge_results or farming_results
+                )
+                if not has_financial and not in_status_cohort:
                     continue
                 
                 if prop_firm not in overview:
@@ -335,34 +468,9 @@ def calculate_all_financials(profile_filter=None, start_date=None, end_date=None
                         "earliest_date": None,
                         "clients": set()
                     }
-                
-                # Financials for Overview
-                fee = parse_currency(ev.get('Fee'))
-                activation_fee = parse_currency(ev.get('Activation Fee'))
-                
-                payouts = 0.0
-                for i in range(1, 10):
-                    payouts += parse_currency(ev.get(f'Payout {i}'))
-                
-                p1_hedges = sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS)
-                funded_hedges = sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
-                
-                farming_results = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
-                
-                # Status Logic
+
                 status_p1 = str(ev.get('Status P1', '')).strip()
                 status_funded = str(ev.get('Status', '')).strip()
-                
-                # Only count hedge/farming for rows with a populated status
-                # so accounts without hedging activity don't contribute phantom values.
-                hedge_results = 0.0
-                if status_p1:
-                    hedge_results += p1_hedges
-                if status_funded:
-                    hedge_results += funded_hedges
-                if not status_funded:
-                    farming_results = 0.0
-                
                 is_p1_fail = status_p1 == 'Fail'
                 is_funded_fail = status_funded == 'Fail'
                 is_funded_completed = status_funded == 'Completed'
@@ -376,88 +484,90 @@ def calculate_all_financials(profile_filter=None, start_date=None, end_date=None
                 target["total_payouts"] += payouts
                 target["hedge_results"] += hedge_results
                 target["farming_results"] += farming_results
-                target["account_count"] += 1
-                target["clients"].add(client_id)
-                
-                if is_in_progress: target["active_accounts"] += 1
-                if is_passed_p1: target["passed_accounts"] += 1
-                if is_p1_fail or is_funded_fail: target["failed_accounts"] += 1
-                if is_p1_fail or is_funded_ended: target["ended_count"] += 1
-                
-                # Duration Logic for EV/Day
-                duration = 0
-                if is_p1_fail:
-                    s_d = parse_date(ev.get('Date Started'))
-                    e_d = parse_date(ev.get('Date Ended'))
-                    if s_d and e_d: duration = (e_d - s_d).days
-                elif is_funded_ended:
-                    # Duration is total time from start of eval to end of funded account
-                    s_d = parse_date(ev.get('Date Started'))
-                    e_d = parse_date(ev.get('Date Ended.1'))
-                    if s_d and e_d: duration = (e_d - s_d).days
-                    # Fallback if funded dates are missing but it ended
-                    elif s_d: 
-                        # Try P1 end date if Funded end date missing? Unlikely for "Ended" status
-                        pass
-                
-                if duration > 0:
-                    target["total_duration_days"] += duration
-                
-                # Overview Earliest Date
-                d_str = ev.get('Date Started') or ev.get('Date')
-                if d_str:
-                    d_obj = parse_date(d_str)
-                    if d_obj:
-                         if target["earliest_date"] is None or d_obj < target["earliest_date"]:
-                             target["earliest_date"] = d_obj
+                if in_status_cohort:
+                    target["account_count"] += 1
+                    target["clients"].add(client_id)
+                    if is_in_progress:
+                        target["active_accounts"] += 1
+                    if is_passed_p1:
+                        target["passed_accounts"] += 1
+                    if is_p1_fail or is_funded_fail:
+                        target["failed_accounts"] += 1
+                    if is_p1_fail or is_funded_ended:
+                        target["ended_count"] += 1
+
+                    duration = 0
+                    if is_p1_fail:
+                        s_d = parse_date(ev.get('Date Started'))
+                        e_d = parse_date(ev.get('Date Ended'))
+                        if s_d and e_d:
+                            duration = (e_d - s_d).days
+                    elif is_funded_ended:
+                        s_d = parse_date(ev.get('Date Started'))
+                        e_d = parse_date(ev.get('Date Ended.1'))
+                        if s_d and e_d:
+                            duration = (e_d - s_d).days
+
+                    if duration > 0:
+                        target["total_duration_days"] += duration
+
+                    d_str = ev.get('Date Started') or ev.get('Date')
+                    if d_str:
+                        d_obj = parse_date(d_str)
+                        if d_obj:
+                            if target["earliest_date"] is None or d_obj < target["earliest_date"]:
+                                target["earliest_date"] = d_obj
 
             # Time Series Logic
-            # Dates
-            date_purchased = parse_date(ev.get('Date Purchased') or ev.get('Date'))
-            date_started = parse_date(ev.get('Date Started'))
-            date_ended = parse_date(ev.get('Date Ended'))
-            date_started_funded = parse_date(ev.get('Date Started.1'))
-            date_ended_funded = parse_date(ev.get('Date Ended.1'))
-            base_date = date_purchased or date_started or datetime.now()
+            def _ts_include(event_date):
+                return _event_in_period(event_date, start_date, end_date)
 
-            # 1. Fees
-            fee = parse_currency(ev.get('Fee'))
-            act_fee = parse_currency(ev.get('Activation Fee'))
-            total_fee = fee + act_fee
-            if total_fee > 0:
-                fee_date = date_purchased or base_date
-                ts_fees.append((fee_date, total_fee))
-                ts_net_profit.append((fee_date, -total_fee)) # Cost
+            # 1. Fees (challenge fee vs activation fee may fall on different dates)
+            if fee > 0:
+                challenge_fee_date = date_purchased or base_date
+                if _ts_include(challenge_fee_date):
+                    ts_fees.append((challenge_fee_date, fee))
+                    ts_net_profit.append((challenge_fee_date, -fee))
+            if activation_fee > 0:
+                activation_fee_date = date_started_funded or date_purchased or base_date
+                if _ts_include(activation_fee_date):
+                    ts_fees.append((activation_fee_date, activation_fee))
+                    ts_net_profit.append((activation_fee_date, -activation_fee))
 
-            # 2. Payouts
+            # 2. Payouts (require Date N — same rule as Payout History)
             for i in range(1, 10):
-                d_str = ev.get(f'Date {i}')
                 amt = parse_currency(ev.get(f'Payout {i}'))
-                if amt > 0:
-                    d = parse_date(d_str)
-                    final_d = d or base_date
-                    ts_payouts.append((final_d, amt))
-                    ts_net_profit.append((final_d, amt))
+                if amt <= 0:
+                    continue
+                d = parse_date(ev.get(f'Date {i}'))
+                if not d:
+                    continue
+                if _ts_include(d):
+                    ts_payouts.append((d, amt))
+                    ts_net_profit.append((d, amt))
             
             # 3. Hedge Results
             p1_profit = sum(parse_currency(ev.get(c)) for c in P1_HEDGE_COLS)
             if p1_profit != 0:
                 d = date_ended or date_started or base_date
-                ts_hedge.append((d, p1_profit))
-                ts_net_profit.append((d, p1_profit))
+                if _ts_include(d):
+                    ts_hedge.append((d, p1_profit))
+                    ts_net_profit.append((d, p1_profit))
             
             fd_profit = sum(parse_currency(ev.get(c)) for c in FUNDED_HEDGE_COLS)
             if fd_profit != 0:
                 d = date_ended_funded or date_started_funded or base_date
-                ts_hedge.append((d, fd_profit))
-                ts_net_profit.append((d, fd_profit))
+                if _ts_include(d):
+                    ts_hedge.append((d, fd_profit))
+                    ts_net_profit.append((d, fd_profit))
 
             # 4. Farming Results
             farming_calc = sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
             if farming_calc != 0:
                 d = date_ended_funded or date_ended or base_date
-                ts_farming.append((d, farming_calc))
-                ts_net_profit.append((d, farming_calc))
+                if _ts_include(d):
+                    ts_farming.append((d, farming_calc))
+                    ts_net_profit.append((d, farming_calc))
 
         # --- 2. Process Deals (Deposits) ---
         deals_json = data.get('deals', '[]')
@@ -1211,12 +1321,8 @@ def calculate_propfirm_overview(profile_filter=None):
             fee = parse_currency(eval_data.get('Fee'))
             activation_fee = parse_currency(eval_data.get('Activation Fee'))
             
-            # Payouts (INFLOW)
-            payouts = 0.0
-            for i in range(1, 10):
-                key = f'Payout {i}'
-                if key in eval_data:
-                    payouts += parse_currency(eval_data.get(key))
+            # Payouts (INFLOW) — dated payouts only, matching Payout History
+            payouts = _sum_payouts_for_period(eval_data)
             
             # Hedge Results (PROFIT/LOSS)
             p1_hedges = sum(parse_currency(eval_data.get(col)) for col in P1_HEDGE_COLS)
@@ -1660,17 +1766,18 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
         for ev in evaluations:
             if not isinstance(ev, dict):
                 continue
-            # Date filtering
-            if start_date or end_date:
-                eval_date = parse_date(ev.get('Date Started')) or parse_date(ev.get('Date Purchased')) or parse_date(ev.get('Date'))
-                if eval_date:
-                    if start_date and eval_date.date() < start_date.date():
-                        continue
-                    if end_date and eval_date.date() > end_date.date():
-                        continue
             # Skip hidden firms for BEF view
             if _is_firm_hidden(ev.get('Prop Firm')):
                 continue
+
+            in_status_cohort = _eval_in_status_cohort(ev, start_date, end_date)
+            fee, act_fee = _fees_for_period(ev, start_date, end_date)
+            c_stats['fees'] += fee + act_fee
+            c_stats['payouts'] += _sum_payouts_for_period(ev, start_date, end_date)
+
+            if not in_status_cohort:
+                continue
+
             # Status logic expanded
             status_p1_raw = str(ev.get('Status P1') or '').strip()
             status_funded_raw = str(ev.get('Status') or '').strip()
@@ -1692,15 +1799,6 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
                 e_d = parse_date(ev.get('Date Ended.1') if (is_funded_fail or is_funded_completed) else ev.get('Date Ended'))
                 if s_d and e_d:
                     c_stats['total_duration_days'] += max(0, (e_d - s_d).days)
-
-            # Fees — collected here as fallback; overridden below by cashflow_inprogress if available
-            fee = parse_currency(ev.get('Fee'))
-            act_fee = parse_currency(ev.get('Activation Fee'))
-            c_stats['fees'] += (fee + act_fee)
-            
-            # Payouts
-            for i in range(1, 10):
-                c_stats['payouts'] += parse_currency(ev.get(f'Payout {i}'))
             
         # Use stored cashflow_inprogress for hedge/farming/fees (matches Net Profit In Progress display)
         # For BEF view, skip stored totals (they include all firms) — use per-eval sums instead
@@ -1754,22 +1852,15 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
             if stored_cf.get('payouts') is not None:
                 c_stats['payouts'] = stored_cf.get('payouts', 0.0)
         else:
-            # Fallback: recalculate from evaluation columns
+            # Fallback: recalculate from evaluation columns (respects date range when set)
             for ev in evaluations:
                 if not isinstance(ev, dict):
                     continue
                 if _is_firm_hidden(ev.get('Prop Firm')):
                     continue
-                status_p1 = str(ev.get('Status P1') or '').strip()
-                status_funded = str(ev.get('Status') or '').strip()
-                if status_p1:
-                    for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
-                        c_stats['hedge_profit'] += parse_currency(ev.get(col))
-                if status_funded:
-                    for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 
-                                'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                        c_stats['hedge_profit'] += parse_currency(ev.get(col))
-                    c_stats['farming_profit'] += sum(parse_currency(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
+                hedge_part, farming_part = _hedge_farming_for_period(ev, start_date, end_date)
+                c_stats['hedge_profit'] += hedge_part
+                c_stats['farming_profit'] += farming_part
             
         # 2. Deposits — use MT5 account deposits (current + historical), matching MT5 Accounts Overview
         acct = data.get('account', {})
