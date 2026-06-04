@@ -1140,6 +1140,7 @@
                     document.getElementById('date-btn-latest').classList.add('active');
                     loadResults();
                     loadSummaryStatus();
+                    loadAdminTracker();
                 } else {
                     showToast('error', 'Scan failed', data.message || 'Unknown error');
                 }
