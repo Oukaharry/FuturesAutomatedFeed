@@ -21,6 +21,7 @@ import hashlib
 import re
 from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
+from dashboard.push_policy import is_client_push_blocked, push_blocked_message
 
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client,
@@ -5245,6 +5246,14 @@ def api_client_push():
     trader_id = client_info['trader']
     client_id = client_info['client']
 
+    existing_data = get_client_data(client_id) or {}
+    if is_client_push_blocked(client_id, existing_data.get('identity')):
+        app.logger.warning("Push blocked for %s (email=%s)", client_id, email)
+        return jsonify({
+            "status": "blocked",
+            "message": push_blocked_message(client_id),
+        }), 403
+
     # Trader Companion version (for audit/visibility; not trusted for auth)
     companion_version = (
         str(data.get('companion_version') or data.get('version') or request.headers.get('X-Companion-Version') or '').strip()
@@ -5266,7 +5275,7 @@ def api_client_push():
     mt5_account = data.get("account", {})
     
     # Get existing data to merge evaluations if needed
-    existing_data = get_client_data(client_id) or {}
+    # (existing_data loaded above for push-block check)
     
     # Only use new evaluations if explicitly provided and not empty
     # If "evaluations" key is missing or None, preserve existing data
@@ -7883,6 +7892,13 @@ def api_push_hedging_review():
     client_data = get_client_data(client_id)
     if not client_data:
         return jsonify({"status": "error", "message": "Client data not found"}), 404
+
+    if is_client_push_blocked(client_id, client_data.get('identity')):
+        app.logger.warning("Hedging review push blocked for %s (email=%s)", client_id, email)
+        return jsonify({
+            "status": "blocked",
+            "message": push_blocked_message(client_id),
+        }), 403
 
     if 'statistics' not in client_data:
         client_data['statistics'] = {}
