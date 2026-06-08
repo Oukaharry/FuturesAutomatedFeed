@@ -461,8 +461,10 @@ def predict_active_positions(
     timing: Dict[str, Any],
     historical: pd.DataFrame,
     business: Dict[str, Any],
+    *,
+    market_prediction: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
-    """Apply trained phase model + timing/direction rules to open positions."""
+    """Apply phase model + market ML bias (when trained) + timing rules to open positions."""
     if active is None or active.empty:
         return pd.DataFrame()
 
@@ -493,11 +495,23 @@ def predict_active_positions(
     hist_en = engineer_features(historical) if not historical.empty else pd.DataFrame()
     rec_sides = []
     statuses = []
+    rec_sources: List[str] = []
+    rec_confidences: List[float] = []
 
     viol_map = {
         (v["client_id"], v["account_number"]): v["recommended_side"]
         for v in business.get("direction_violations") or []
     }
+
+    mp = market_prediction or business.get("market_prediction") or {}
+    market_bias = str(mp.get("bias") or "")
+    market_conf = float(mp.get("confidence") or 0.0)
+    min_conf = float(mp.get("min_confidence") or 0.55)
+    use_market_ml = (
+        mp.get("trained")
+        and market_bias in ("BUY", "SELL")
+        and market_conf >= min_conf
+    )
 
     market_statuses: List[str] = []
 
@@ -513,9 +527,17 @@ def predict_active_positions(
         except (TypeError, ValueError):
             profit = 0.0
 
+        rec_source = "historical"
+        rec_conf = market_conf if use_market_ml else 0.0
+
         if key in viol_map:
             rec = viol_map[key]
             status = "FIX: mixed direction on account"
+            rec_source = "violation_fix"
+        elif use_market_ml:
+            rec = market_bias
+            status = "OK" if cur_side == str(rec) else "align direction"
+            rec_source = "market_ml"
         else:
             rec = str(pref) if str(pref) in ("BUY", "SELL") else cur_side
             if acct is not None and not (isinstance(acct, float) and pd.isna(acct)) and not hist_en.empty:
@@ -542,10 +564,16 @@ def predict_active_positions(
         rec_sides.append(rec)
         statuses.append(status)
         market_statuses.append(market_st)
+        rec_sources.append(rec_source)
+        rec_confidences.append(rec_conf)
 
     act["recommended_side"] = rec_sides
     act["rule_status"] = statuses
     act["market_status"] = market_statuses
+    act["rec_source"] = rec_sources
+    act["rec_confidence"] = rec_confidences
+    if use_market_ml:
+        act["market_bias"] = market_bias
     act["phase_group"] = act["effective_phase"]
     return act
 
@@ -554,14 +582,24 @@ def build_portfolio_recommendations(
     active_pred: pd.DataFrame,
     business: Dict[str, Any],
     timing: Dict[str, Any],
+    *,
+    market_prediction: Optional[Dict[str, Any]] = None,
+    market_backtest: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    mp = market_prediction or business.get("market_prediction") or {}
+    bt = market_backtest or business.get("market_backtest") or {}
+
     if active_pred is None or active_pred.empty:
         coord = business.get("recommended_dow") or coordinated_entry_dow_name()
+        mkt_side = mp.get("bias") if mp.get("trained") else "—"
         return {
             "trading_day": coord,
             "today_eat": business.get("today_eat", today_eat_date_str()),
             "today_dow_name": business.get("today_dow_name", today_eat_dow_name()),
             "best_historical_dow": business.get("best_historical_dow") or "—",
+            "market_bias": mkt_side,
+            "market_confidence": mp.get("confidence"),
+            "market_entry_window": mp.get("best_entry_window") or "—",
             "timezone": business.get("timezone", "Africa/Nairobi (EAT)"),
             "best_hour_window": "—",
             "portfolio_side": "—",
@@ -586,12 +624,23 @@ def build_portfolio_recommendations(
 
     best_hours = sorted(hour_scores.keys(), key=lambda h: hour_scores[h], reverse=True)[:3]
     if best_hours:
-        window = ", ".join(format_hour_eat(h) for h in best_hours)
+        hist_window = ", ".join(format_hour_eat(h) for h in best_hours)
     else:
-        window = "—"
+        hist_window = "—"
 
-    sides = active_pred["recommended_side"].value_counts()
-    port_side = sides.index[0] if len(sides) else "—"
+    mkt_window = mp.get("best_entry_window") or "—"
+    use_mkt = (
+        mp.get("trained")
+        and str(mp.get("bias") or "") in ("BUY", "SELL")
+        and float(mp.get("confidence") or 0) >= float(mp.get("min_confidence") or 0.55)
+    )
+    window = mkt_window if use_mkt and mkt_window != "—" else hist_window
+
+    if use_mkt:
+        port_side = str(mp.get("bias"))
+    else:
+        sides = active_pred["recommended_side"].value_counts()
+        port_side = sides.index[0] if len(sides) else "—"
     n_fix = int((active_pred["rule_status"].str.contains("FIX", na=False)).sum())
     n_against = 0
     if not active_pred.empty and "market_status" in active_pred.columns:
@@ -617,6 +666,11 @@ def build_portfolio_recommendations(
         "portfolio_side": str(port_side),
         "accounts_needing_fix": n_fix,
         "underwater_on_recommendation": n_against,
+        "market_bias": mp.get("bias") if mp.get("trained") else "—",
+        "market_confidence": mp.get("confidence"),
+        "market_entry_window": mkt_window,
+        "market_backtest_hit_rate": bt.get("hit_rate_confident"),
+        "rec_source": "market_ml" if use_mkt else "historical",
         "summary": (
             f"Active {len(active_pred)} legs across {active_pred['client_id'].nunique()} clients "
             f"(times in EAT). "
@@ -625,6 +679,13 @@ def build_portfolio_recommendations(
             f"Historical best weekday: {business.get('best_historical_dow') or '—'}. "
             f"Resolve {len(business.get('direction_violations') or [])} direction conflict(s); "
             f"{n_against} leg(s) underwater on recommended side."
+            + (
+                f" Market ML bias: {mp.get('bias')} "
+                f"({float(mp.get('confidence') or 0) * 100:.0f}% conf, backtest hit "
+                f"{float(bt.get('hit_rate_confident') or 0) * 100:.0f}%)."
+                if use_mkt and bt.get("hit_rate_confident") is not None
+                else (f" Market ML bias: {mp.get('bias')}." if use_mkt else "")
+            )
         ),
     }
 
@@ -633,6 +694,7 @@ def run_full_analysis(
     df: pd.DataFrame,
     *,
     active_df: Optional[pd.DataFrame] = None,
+    m1_bars: Optional[List[dict]] = None,
 ) -> Dict[str, Any]:
     closed = df[df.get("is_active", False) != True] if "is_active" in df.columns else df  # noqa: E712
     if closed.empty:
@@ -649,10 +711,41 @@ def run_full_analysis(
     timing = timing_tables_by_phase(enriched)
     buy_sell = buy_sell_summary(enriched)
 
+    market_ml: Dict[str, Any] = {}
+    market_prediction: Dict[str, Any] = {}
+    market_backtest: Dict[str, Any] = {}
+    market_model: Dict[str, Any] = {}
+    if m1_bars:
+        try:
+            from research.prediction_ml import run_market_pipeline
+
+            market_ml = run_market_pipeline(m1_bars)
+            market_prediction = dict(market_ml.get("prediction") or {})
+            market_backtest = dict(market_ml.get("backtest") or {})
+            mdl = market_ml.get("model") or {}
+            market_model = {
+                k: v
+                for k, v in mdl.items()
+                if k != "model"
+            }
+        except Exception as e:
+            market_prediction = {"trained": False, "reason": str(e)}
+            market_backtest = {"error": str(e)}
+
     active = active_df if active_df is not None else pd.DataFrame()
     business = analyze_business_rules(active, enriched, timing)
-    active_pred = predict_active_positions(active, ml, timing, enriched, business)
-    portfolio_recs = build_portfolio_recommendations(active_pred, business, timing)
+    business["market_prediction"] = market_prediction
+    business["market_backtest"] = market_backtest
+    active_pred = predict_active_positions(
+        active, ml, timing, enriched, business, market_prediction=market_prediction
+    )
+    portfolio_recs = build_portfolio_recommendations(
+        active_pred,
+        business,
+        timing,
+        market_prediction=market_prediction,
+        market_backtest=market_backtest,
+    )
 
     insight_tips: List[str] = []
     if business.get("active_count"):
@@ -675,6 +768,22 @@ def run_full_analysis(
             f"<strong>{uw}</strong> open leg(s) match recommended direction but float P/L is negative "
             "(market moved against the recommended side on the hedge book)."
         )
+    if market_prediction.get("trained"):
+        conf = float(market_prediction.get("confidence") or 0)
+        insight_tips.insert(
+            0,
+            f"<strong>Market ML</strong> — {market_prediction.get('bias')} "
+            f"({conf * 100:.0f}% confidence on 15m USTECH). "
+            f"Entry window (EAT): {market_prediction.get('best_entry_window') or '—'}. "
+            f"Backtest hit rate (confident signals): "
+            f"{float(market_backtest.get('hit_rate_confident') or 0) * 100:.1f}% "
+            f"over {market_backtest.get('n_signals', 0)} holdout bars."
+        )
+    elif m1_bars and market_prediction.get("reason"):
+        insight_tips.append(
+            f"Market ML unavailable: {market_prediction.get('reason')} "
+            "(using closed-trade historical bias for recommendations)."
+        )
 
     from research.phase_labels import sort_for_report
 
@@ -692,6 +801,10 @@ def run_full_analysis(
         "active_predictions": active_sorted,
         "closed_trades": closed_sorted,
         "portfolio_recommendations": portfolio_recs,
+        "market_prediction": market_prediction,
+        "market_backtest": market_backtest,
+        "market_model": market_model,
+        "market_meta": market_ml.get("meta") or {},
         "insight_tips": insight_tips,
         "generated_at": now_eat().strftime("%Y-%m-%d %H:%M:%S EAT"),
         "timing_meta": timing_meta,

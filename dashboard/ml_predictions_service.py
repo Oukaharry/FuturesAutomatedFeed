@@ -516,7 +516,12 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
 
     df = load_all_round_trips(attach_positions=True)
     active = load_active_positions_df()
-    analysis = run_full_analysis(df, active_df=active)
+    try:
+        m1_limit = max(50000, int(os.environ.get("ML_M1_BAR_LIMIT", "120000")))
+    except ValueError:
+        m1_limit = 120000
+    m1_bars = fetch_m1_bars_for_ml(symbol="USTECH", limit=m1_limit)
+    analysis = run_full_analysis(df, active_df=active, m1_bars=m1_bars)
 
     closed_df = analysis.get("closed_trades")
     if closed_df is None:
@@ -534,6 +539,9 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     ml = analysis.get("ml") or {}
     br = analysis.get("business_rules") or {}
     recs = analysis.get("portfolio_recommendations") or {}
+    mkt = analysis.get("market_prediction") or {}
+    mkt_bt = analysis.get("market_backtest") or {}
+    mkt_model = analysis.get("market_model") or {}
     meta = {
         "reason": reason,
         "data_source": source_line,
@@ -545,6 +553,13 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
         "underwater_on_recommendation": recs.get("underwater_on_recommendation", 0),
         "same_day_ok": br.get("same_day_ok"),
         "recommended_dow": br.get("recommended_dow"),
+        "market_bias": mkt.get("bias"),
+        "market_confidence": mkt.get("confidence"),
+        "market_trained": mkt.get("trained"),
+        "market_entry_window": mkt.get("best_entry_window") or recs.get("market_entry_window"),
+        "market_backtest_hit_rate": mkt_bt.get("hit_rate_confident"),
+        "market_model_accuracy": mkt_model.get("accuracy_test"),
+        "m1_bars_used": (analysis.get("market_meta") or {}).get("m1_bars"),
         "fetched_at": now_eat().strftime("%Y-%m-%d %H:%M:%S EAT"),
         **_clients_data_freshness(),
         **_m1_market_freshness(),
