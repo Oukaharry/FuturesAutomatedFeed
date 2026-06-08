@@ -126,11 +126,15 @@ def _table_from_records(
                 tds.append(f"<td>{format_hour_eat(val)}</td>")
             elif key in ("entry_time", "close_time"):
                 tds.append(f"<td class='num'>{_fmt_dt(val)}</td>")
-            elif key == "ml_confidence" and val != "":
+            elif key in ("ml_confidence", "rec_confidence") and val != "":
                 try:
                     tds.append(f"<td class='num'>{float(val) * 100:.0f}%</td>")
                 except (TypeError, ValueError):
                     tds.append(f"<td>—</td>")
+            elif key == "rec_source":
+                st = str(val or "historical")
+                cls = "status-ok" if st == "market_ml" else "status-warn" if st == "violation_fix" else ""
+                tds.append(f"<td><span class='status-pill {cls}'>{html.escape(st)}</span></td>")
             elif key == "rule_status":
                 st = str(val)
                 cls = "status-ok" if st == "OK" else "status-warn" if "align" in st.lower() else "status-bad"
@@ -277,6 +281,8 @@ LIVE_COLUMNS = [
     ("symbol", "Symbol"),
     ("side", "Dir"),
     ("recommended_side", "Recommend"),
+    ("rec_source", "Rec source"),
+    ("rec_confidence", "Conf"),
     ("entry_dow_name", "Entry day"),
     ("entry_hour", "Hour"),
     ("sl_dist", "SL"),
@@ -425,6 +431,10 @@ def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
     ml = analysis.get("ml") or {}
     acc = ml.get("accuracy_test")
     acc_s = f"{float(acc) * 100:.1f}%" if acc is not None else "—"
+    mkt = analysis.get("market_prediction") or {}
+    mkt_bias = mkt.get("bias", "—") if mkt.get("trained") else "—"
+    mkt_conf = mkt.get("confidence")
+    mkt_conf_s = f"{float(mkt_conf) * 100:.0f}%" if mkt_conf is not None and mkt.get("trained") else "—"
     n_closed = analysis.get("n_trades", 0)
     kpi_sub_day = (
         f"Today (EAT): {html.escape(str(today_dow))}"
@@ -436,6 +446,7 @@ def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
     <section class="kpi-grid">
       <div class="kpi"><span class="kpi-label">All clients (closed)</span><span class="kpi-value">{n_closed:,}</span><span class="kpi-sub">Round-trip history</span></div>
       <div class="kpi"><span class="kpi-label">Live trades</span><span class="kpi-value accent">{active_n}</span><span class="kpi-sub">{clients_n} clients · {accounts_n} accounts</span></div>
+      <div class="kpi"><span class="kpi-label">Market ML bias</span><span class="kpi-value accent">{html.escape(str(mkt_bias))}</span><span class="kpi-sub">Conf {html.escape(mkt_conf_s)} · 15m USTECH</span></div>
       <div class="kpi"><span class="kpi-label">Phase model accuracy</span><span class="kpi-value">{acc_s}</span><span class="kpi-sub">Time-ordered holdout</span></div>
       <div class="kpi"><span class="kpi-label">Same entry day</span><span class="kpi-value {'pos' if day_ok else 'warn'}">{'Yes' if day_ok else 'Split'}</span><span class="kpi-sub">{kpi_sub_day}</span></div>
       <div class="kpi"><span class="kpi-label">Direction conflicts</span><span class="kpi-value {'pos' if violations == 0 else 'neg'}">{violations}</span><span class="kpi-sub">Per prop account</span></div>
@@ -446,11 +457,78 @@ def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
 def _render_nav() -> str:
     return """
     <nav class="report-nav">
+      <a href="#market-ml">Market ML</a>
       <a href="#analytics">Analytics</a>
       <a href="#coordinated-plan">Plan</a>
       <a href="#live-trades">Live trades</a>
       <a href="#all-clients-data">All clients data</a>
     </nav>
+    """
+
+
+def _render_market_ml_section(analysis: Dict[str, Any]) -> str:
+    mkt = analysis.get("market_prediction") or {}
+    bt = analysis.get("market_backtest") or {}
+    mdl = analysis.get("market_model") or {}
+    meta = analysis.get("market_meta") or {}
+
+    if not mkt and not meta:
+        return ""
+
+    trained = mkt.get("trained")
+    bias = mkt.get("bias", "—")
+    conf = mkt.get("confidence")
+    conf_s = f"{float(conf) * 100:.1f}%" if conf is not None else "—"
+    acc = mdl.get("accuracy_test")
+    acc_s = f"{float(acc) * 100:.1f}%" if acc is not None else "—"
+    hit = bt.get("hit_rate_confident")
+    hit_s = f"{float(hit) * 100:.1f}%" if hit is not None else "—"
+    entry_win = mkt.get("best_entry_window") or "—"
+    session = mdl.get("session_hours_eat") or bt.get("session_eat") or "02:00–20:00 EAT"
+    reason = mkt.get("reason") or mdl.get("reason") or ""
+
+    hour_rows = bt.get("hour_stats") or []
+    hour_table = _table_from_records(
+        hour_rows,
+        [("hour", "Hour EAT"), ("n", "N"), ("hit_rate", "Hit rate"), ("avg_conf", "Avg conf")],
+        max_rows=24,
+        bar_col="hit_rate",
+    )
+
+    status_cls = "pos" if trained else "warn"
+    status_txt = "Live" if trained else "Fallback (historical bias)"
+
+    note = ""
+    if not trained and reason:
+        note = f"<p class='muted'>Market model not used for recommendations: {html.escape(str(reason))}</p>"
+
+    return f"""
+    <section id="market-ml" class="panel highlight">
+      <h2>Market ML — USTECH direction (15m multi-TF)</h2>
+      <p class="muted">
+        Trained on Plexy M1 bars resampled to 5m/15m/30m/1h/4h.
+        Session filter: <strong>{html.escape(str(session))}</strong>.
+        M1 bars loaded: <strong>{int(meta.get('m1_bars', 0) or 0):,}</strong>.
+        Forward horizon: <strong>{int(mdl.get('horizon_bars') or bt.get('horizon_bars') or 4)}</strong> × 15m bars.
+      </p>
+      <div class="rec-grid">
+        <div class="rec-item"><span class="rec-label">Status</span><span class="rec-value {status_cls}">{html.escape(status_txt)}</span></div>
+        <div class="rec-item"><span class="rec-label">Bias now</span><span class="rec-value accent">{html.escape(str(bias))}</span></div>
+        <div class="rec-item"><span class="rec-label">Confidence</span><span class="rec-value">{html.escape(conf_s)}</span></div>
+        <div class="rec-item"><span class="rec-label">Best entry (EAT)</span><span class="rec-value">{html.escape(str(entry_win))}</span></div>
+        <div class="rec-item"><span class="rec-label">Holdout accuracy</span><span class="rec-value">{html.escape(acc_s)}</span></div>
+        <div class="rec-item"><span class="rec-label">Backtest hit (conf.)</span><span class="rec-value">{html.escape(hit_s)}</span></div>
+        <div class="rec-item"><span class="rec-label">Confident signals</span><span class="rec-value">{int(bt.get('n_signals', 0) or 0)}</span></div>
+        <div class="rec-item"><span class="rec-label">Sim. net score</span><span class="rec-value">{int(bt.get('simulated_net_score', 0) or 0)}</span></div>
+      </div>
+      {note}
+      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:16px">Entry hour hit rates (02:00–20:00 EAT, holdout)</h3>
+      {hour_table}
+      <p class="muted" style="margin-top:10px">
+        When confidence ≥ 55%, <strong>Recommend</strong> on live trades follows this market bias
+        (not closed-trade phase preference). Violation accounts still use direction-fix rules.
+      </p>
+    </section>
     """
 
 
@@ -712,7 +790,9 @@ def render_ml_html_report(
             <div class="rec-item"><span class="rec-label">Today (EAT)</span><span class="rec-value">{html.escape(str(recs.get('today_dow_name', '—')))} · {html.escape(str(recs.get('today_eat', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Hist. best day</span><span class="rec-value">{html.escape(str(recs.get('best_historical_dow', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Entry window</span><span class="rec-value">{html.escape(str(recs.get('best_hour_window', '—')))}</span></div>
+            <div class="rec-item"><span class="rec-label">Market ML entry</span><span class="rec-value">{html.escape(str(recs.get('market_entry_window', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Direction bias</span><span class="rec-value">{html.escape(str(recs.get('portfolio_side', '—')))}</span></div>
+            <div class="rec-item"><span class="rec-label">Rec source</span><span class="rec-value">{html.escape(str(recs.get('rec_source', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Underwater on rec</span><span class="rec-value {'neg' if uw else ''}">{uw}</span></div>
             <div class="rec-item"><span class="rec-label">Fix accounts</span><span class="rec-value">{recs.get('accounts_needing_fix', 0)}</span></div>
           </div>
@@ -772,6 +852,7 @@ def render_ml_html_report(
     {phase_legend}
     {_render_kpi_cards(analysis)}
     {_render_alerts(analysis)}
+    {_render_market_ml_section(analysis)}
     {analytics}
     {rec_html}
     {live_section}
