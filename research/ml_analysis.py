@@ -14,15 +14,17 @@ from research.eat_time import (
     DOW_NAMES,
     TRADING_WEEKDAY_NAMES,
     coordinated_entry_dow_name,
+    entry_times_to_eat,
     format_hour_eat,
     is_trading_day_eat,
     is_trading_weekday_name,
     now_eat,
     today_eat_date_str,
     today_eat_dow_name,
-    to_eat_series,
     eat_dow_name,
 )
+from research.market_signals import EAT_ENTRY_END_HOUR, EAT_ENTRY_START_HOUR
+from research.trade_dataset import client_utc_correction_map
 
 
 def _phase_group(code: Any) -> str:
@@ -65,7 +67,13 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
             out[col] = pd.to_datetime(out[col], errors="coerce")
 
     if "entry_time" in out.columns:
-        entry_eat = to_eat_series(out["entry_time"])
+        corr_map = client_utc_correction_map()
+        corr_series = (
+            out["client_id"].map(corr_map).fillna(0).astype(int)
+            if "client_id" in out.columns
+            else pd.Series(0, index=out.index, dtype=int)
+        )
+        entry_eat = entry_times_to_eat(out["entry_time"], corr_series)
         out["entry_time_eat"] = entry_eat
         out["entry_hour"] = entry_eat.dt.hour.fillna(-1).astype(int)
         out["entry_dow"] = entry_eat.dt.dayofweek.fillna(-1).astype(int)
@@ -233,6 +241,35 @@ def train_phase_classifier(
     return result
 
 
+def _hour_stats_all_hours(sub: pd.DataFrame) -> pd.DataFrame:
+    """Exact entry counts for every EAT hour 00–23 (missing hours → n=0)."""
+    if sub.empty or "entry_hour" not in sub.columns:
+        return pd.DataFrame(
+            columns=["entry_hour", "n", "win_rate", "avg_pnl", "total_pnl", "bucket"]
+        )
+    valid = sub[sub["entry_hour"].between(0, 23)]
+    raw = (
+        valid.groupby("entry_hour")
+        .agg(
+            n=("net_pnl", "count"),
+            win_rate=("won", "mean"),
+            avg_pnl=("net_pnl", "mean"),
+            total_pnl=("net_pnl", "sum"),
+        )
+        .reset_index()
+    )
+    full = pd.DataFrame({"entry_hour": list(range(24))})
+    merged = full.merge(raw, on="entry_hour", how="left")
+    merged["n"] = merged["n"].fillna(0).astype(int)
+    merged["win_rate"] = merged["win_rate"].fillna(0.0)
+    merged["avg_pnl"] = merged["avg_pnl"].fillna(0.0)
+    merged["total_pnl"] = merged["total_pnl"].fillna(0.0)
+    merged["bucket"] = merged["entry_hour"].map(
+        lambda h: format_hour_eat(int(h)) if 0 <= int(h) <= 23 else "—"
+    )
+    return merged
+
+
 def timing_tables_by_phase(
     df: pd.DataFrame,
     min_trades: int = 15,
@@ -254,15 +291,32 @@ def timing_tables_by_phase(
         )
         by_dow = by_dow[by_dow["n"] >= max(5, min_trades // 3)].sort_values("avg_pnl", ascending=False)
 
-        by_hour = (
-            sub.groupby("entry_hour")
-            .agg(n=("net_pnl", "count"), win_rate=("won", "mean"), avg_pnl=("net_pnl", "mean"), total_pnl=("net_pnl", "sum"))
-            .reset_index()
+        by_hour_all = _hour_stats_all_hours(sub)
+        min_hour_n = max(5, min_trades // 5)
+        by_hour = by_hour_all[by_hour_all["n"] >= min_hour_n].sort_values("avg_pnl", ascending=False)
+
+        if "entry_hour" in sub.columns:
+            valid_hour = sub["entry_hour"].between(0, 23)
+            outside_mask = valid_hour & ~sub["entry_hour"].between(
+                EAT_ENTRY_START_HOUR, EAT_ENTRY_END_HOUR
+            )
+            outside_n = int(outside_mask.sum())
+            unknown_hour_n = int((~valid_hour).sum())
+        else:
+            outside_n = 0
+            unknown_hour_n = 0
+        outside_rows = (
+            by_hour_all[
+                (by_hour_all["entry_hour"] < EAT_ENTRY_START_HOUR)
+                | (by_hour_all["entry_hour"] > EAT_ENTRY_END_HOUR)
+            ]
+            .query("n > 0")
+            .sort_values("entry_hour")
         )
-        by_hour["bucket"] = by_hour["entry_hour"].map(
-            lambda h: format_hour_eat(h) if int(h) >= 0 else "—"
-        )
-        by_hour = by_hour[by_hour["n"] >= max(5, min_trades // 5)].sort_values("avg_pnl", ascending=False)
+        outside_by_hour = [
+            {"hour": int(r["entry_hour"]), "n": int(r["n"]), "bucket": r["bucket"]}
+            for _, r in outside_rows.iterrows()
+        ]
 
         by_side = (
             sub.groupby("side")
@@ -280,6 +334,10 @@ def timing_tables_by_phase(
             "n": len(sub),
             "by_dow": by_dow,
             "by_hour": by_hour,
+            "by_hour_all": by_hour_all,
+            "outside_entry_n": outside_n,
+            "unknown_hour_n": unknown_hour_n,
+            "outside_by_hour": outside_by_hour,
             "by_side": by_side,
             "best_dow": best_dow,
             "worst_dow": worst_dow,

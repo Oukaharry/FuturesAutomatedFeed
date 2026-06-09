@@ -9,9 +9,13 @@ import pandas as pd
 
 from research.eat_time import EAT, format_hour_eat, m1_bar_epoch_to_eat_ts
 
-# Trade entry window in Nairobi (EAT): 02:00 through 20:00 inclusive.
+# Market / ML session in Nairobi (EAT): 02:00 through 20:00 inclusive.
 EAT_SESSION_START_HOUR = 2
 EAT_SESSION_END_HOUR = 20
+
+# Reference desk entry band (for outside-window labels / timestamp validation only).
+EAT_ENTRY_START_HOUR = 2
+EAT_ENTRY_END_HOUR = 17
 
 TIMEFRAME_RULES: Dict[str, str] = {
     "5m": "5min",

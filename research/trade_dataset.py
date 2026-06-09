@@ -212,15 +212,40 @@ def load_clients_identity(client_id: Optional[str] = None) -> Dict[str, dict]:
     return out
 
 
+def client_utc_correction_map(client_id: Optional[str] = None) -> Dict[str, int]:
+    """Per-client deal timestamp correction (seconds) for EAT entry-hour bucketing."""
+    deals_map = load_clients_deals(client_id)
+    identity_map = load_clients_identity(client_id)
+    out: Dict[str, int] = {}
+    for cid, deals in deals_map.items():
+        out[cid] = _utc_correction_for_client(cid, deals or [], identity_map.get(cid, {}))
+    return out
+
+
 def _utc_correction_for_client(client_id: str, deals: List[dict], identity: dict) -> int:
+    """
+    Per-client seconds added to MT5 ``time_raw`` when building round-trip times.
+
+    Prefer companion ``mt5_timing`` when present, else dual-field inference. When a
+    non-zero correction buckets many entries outside 02:00–17:00 EAT, fall back to 0
+    (Plexy wall-clock digits = EAT) — inferred offsets are often wrong on mixed ISO/raw.
+    """
     timing = timing_for_client(identity)
+    correction: Optional[int] = None
     if timing.get("utc_correction_sec") is not None:
         try:
-            return int(timing["utc_correction_sec"])
+            correction = int(timing["utc_correction_sec"])
         except (TypeError, ValueError):
-            pass
-    correction, _ = infer_utc_correction_sec(deals)
-    return correction
+            correction = None
+    if correction is None:
+        correction, _ = infer_utc_correction_sec(deals)
+
+    if correction != 0 and deals:
+        off_corr = _entry_off_hours_rate(deals, client_id, correction)
+        off_zero = _entry_off_hours_rate(deals, client_id, 0)
+        if off_zero + 0.03 < off_corr:
+            return 0
+    return int(correction)
 
 
 def _deal_time_raw(deal: dict, *, correction_sec: int = 0) -> float:
@@ -352,6 +377,24 @@ def deals_to_round_trips(
     if df.empty:
         return df
     return df.sort_values("close_time").reset_index(drop=True)
+
+
+_ENTRY_OFF_MARGIN = 0.03
+_MIN_RT_FOR_OFF_CHECK = 10
+
+
+def _entry_off_hours_rate(deals: List[dict], client_id: str, correction_sec: int) -> float:
+    """Share of closed round-trips with entry outside 02:00–17:00 EAT (prop entry window)."""
+    from research.eat_time import entry_times_to_eat
+    from research.market_signals import EAT_ENTRY_END_HOUR, EAT_ENTRY_START_HOUR
+
+    rt = deals_to_round_trips(deals, client_id=client_id, utc_correction_sec=correction_sec)
+    if len(rt) < _MIN_RT_FOR_OFF_CHECK:
+        return 1.0
+    corr_series = pd.Series(int(correction_sec), index=rt.index, dtype=int)
+    hours = entry_times_to_eat(rt["entry_time"], corr_series).dt.hour
+    bad = ((hours < EAT_ENTRY_START_HOUR) | (hours > EAT_ENTRY_END_HOUR)).sum()
+    return float(bad) / len(hours)
 
 
 def load_all_round_trips(
