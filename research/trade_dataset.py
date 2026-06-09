@@ -8,7 +8,12 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from research.mt5_time import deal_instant_utc, infer_utc_correction_sec, timing_for_client
+from research.mt5_time import (
+    capture_push_timing_context,
+    deal_instant_utc,
+    infer_utc_correction_sec,
+    timing_for_client,
+)
 from trader_companion.mt5_comment_parser import MT5CommentParser
 
 
@@ -395,6 +400,64 @@ def _entry_off_hours_rate(deals: List[dict], client_id: str, correction_sec: int
     hours = entry_times_to_eat(rt["entry_time"], corr_series).dt.hour
     bad = ((hours < EAT_ENTRY_START_HOUR) | (hours > EAT_ENTRY_END_HOUR)).sum()
     return float(bad) / len(hours)
+
+
+def _mt5_timing_is_calibrated(timing: dict) -> bool:
+    return bool(timing) and timing.get("utc_correction_sec") is not None
+
+
+def _mt5_timing_has_live_probe(timing: dict) -> bool:
+    return (timing.get("calibration") or {}).get("method") == "timecurrent_vs_nairobi"
+
+
+def backfill_mt5_timing_for_all_clients(
+    client_id: Optional[str] = None,
+) -> Dict[str, int]:
+    """
+    Persist ``identity.mt5_timing`` for clients that only had runtime deal inference.
+
+    Keeps existing live TimeCurrent probes; fills missing calibration from deal history
+    so entry-hour bucketing uses stored offsets (target: 100% of clients with deals).
+    """
+    from dashboard.database import get_client_data, update_client_field
+
+    deals_map = load_clients_deals(client_id)
+    identity_map = load_clients_identity(client_id)
+    stats = {
+        "clients_with_deals": 0,
+        "already_calibrated": 0,
+        "backfilled": 0,
+        "failed": 0,
+    }
+
+    for cid, deals in deals_map.items():
+        if not deals:
+            continue
+        stats["clients_with_deals"] += 1
+        ident = dict(identity_map.get(cid) or {})
+        timing = timing_for_client(ident)
+        if _mt5_timing_is_calibrated(timing) and (
+            _mt5_timing_has_live_probe(timing) or (timing.get("calibration") or {}).get("method")
+        ):
+            stats["already_calibrated"] += 1
+            continue
+
+        try:
+            row = get_client_data(cid) or {}
+            account = row.get("account") if isinstance(row.get("account"), dict) else {}
+            ctx = capture_push_timing_context(
+                sample_deals=deals,
+                account=account or None,
+            )
+            ident["mt5_timing"] = ctx
+            if update_client_field(cid, "identity", ident):
+                stats["backfilled"] += 1
+            else:
+                stats["failed"] += 1
+        except Exception:
+            stats["failed"] += 1
+
+    return stats
 
 
 def load_all_round_trips(

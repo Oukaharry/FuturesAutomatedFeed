@@ -876,6 +876,8 @@ def _portfolio_timing_meta() -> Dict[str, Any]:
     """Summarize per-client UTC calibration used for entry-hour buckets."""
     from research.mt5_time import timing_for_client
     from research.trade_dataset import (
+        _mt5_timing_has_live_probe,
+        _mt5_timing_is_calibrated,
         _utc_correction_for_client,
         load_clients_deals,
         load_clients_identity,
@@ -884,13 +886,20 @@ def _portfolio_timing_meta() -> Dict[str, Any]:
     deals_map = load_clients_deals()
     identity_map = load_clients_identity()
     corrections: List[int] = []
-    stored = 0
+    calibrated = 0
+    live_probe = 0
+    deal_history = 0
     for cid, deals in deals_map.items():
         if not deals:
             continue
         ident = identity_map.get(cid, {})
-        if timing_for_client(ident):
-            stored += 1
+        timing = timing_for_client(ident)
+        if _mt5_timing_is_calibrated(timing):
+            calibrated += 1
+            if _mt5_timing_has_live_probe(timing):
+                live_probe += 1
+            else:
+                deal_history += 1
         corrections.append(_utc_correction_for_client(cid, deals, ident))
 
     if not corrections:
@@ -904,7 +913,9 @@ def _portfolio_timing_meta() -> Dict[str, Any]:
     uniq = sorted(set(corrections))
     meta: Dict[str, Any] = {
         "clients_with_deals": len(corrections),
-        "clients_with_stored_timing": stored,
+        "clients_with_stored_timing": calibrated,
+        "clients_live_probe": live_probe,
+        "clients_deal_history": deal_history,
         "correction_sec_min": min(uniq),
         "correction_sec_max": max(uniq),
         "correction_hours_range": f"{min(uniq) / 3600:+.1f}h … {max(uniq) / 3600:+.1f}h",
@@ -918,11 +929,23 @@ def _portfolio_timing_meta() -> Dict[str, Any]:
         note = (
             "Entry hours: East Africa Time (Africa/Nairobi, UTC+3). "
             f"Per-client calibration applied ({meta['correction_hours_range']}). "
-            "Uses MT5 TimeCurrent vs Nairobi when stored on push; otherwise inferred from deals. "
-            "Re-push from TradeopssAI (MT5 connected) for best accuracy."
         )
-    if stored < len(corrections):
-        note += f" {stored}/{len(corrections)} clients have mt5_timing (TimeCurrent probe) from a recent push."
+    total = len(corrections)
+    if total:
+        note += (
+            f" {calibrated}/{total} clients have entry-hour calibration stored"
+        )
+        if calibrated >= total:
+            if live_probe and deal_history:
+                note += f" ({live_probe} live MT5 TimeCurrent, {deal_history} from deal history)."
+            elif live_probe:
+                note += " (live MT5 TimeCurrent on push)."
+            else:
+                note += " (from deal history)."
+        else:
+            note += (
+                " — re-push from TradeopssAI (MT5 connected) for clients still missing timing."
+            )
     meta["note"] = note
     return meta
 

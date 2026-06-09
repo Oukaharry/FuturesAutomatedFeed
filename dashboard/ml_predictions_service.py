@@ -518,10 +518,22 @@ def _set_error(msg: str, duration_sec: Optional[float] = None) -> None:
 def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     import pandas as pd
 
-    from research.trade_dataset import load_active_positions_df, load_all_round_trips
+    from research.trade_dataset import (
+        backfill_mt5_timing_for_all_clients,
+        load_active_positions_df,
+        load_all_round_trips,
+    )
     from research.ml_analysis import run_full_analysis, render_ml_html_report
     from research.ml_html_report import render_closed_history_full_html
     from research.eat_time import now_eat
+
+    bf = backfill_mt5_timing_for_all_clients()
+    if bf.get("backfilled"):
+        logger.info(
+            "[ML] mt5_timing backfill: %s filled, %s already had calibration",
+            bf.get("backfilled"),
+            bf.get("already_calibrated"),
+        )
 
     df = load_all_round_trips(attach_positions=True)
     active = load_active_positions_df()
