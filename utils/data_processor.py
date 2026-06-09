@@ -33,6 +33,67 @@ def clean_float(val):
     except:
         return 0.0
 
+
+def compute_live_actual_hedging(account=None, hedging_review=None, historical_accounts=None):
+    """
+    Live MT5 hedging P&L from account balances minus prior activity.
+
+    Formula (matches dashboard JS):
+        combined_balance - (combined_deposits + combined_withdrawals) - prior_activity
+    """
+    account = account or {}
+    hr = hedging_review or {}
+    hist = historical_accounts if historical_accounts is not None else (hr.get('historical_accounts') or [])
+
+    deposits = clean_float(account.get('total_deposits') or hr.get('total_deposits'))
+    withdrawals = clean_float(account.get('total_withdrawals') or hr.get('total_withdrawals'))
+    balance = clean_float(account.get('balance') or hr.get('current_balance'))
+
+    hist_dep = hist_with = hist_bal = 0.0
+    prior_activity = clean_float(hr.get('current_mt5_prior_activity'))
+    for acc in hist:
+        hist_dep += clean_float(acc.get('deposits'))
+        hist_with += clean_float(acc.get('withdrawals'))
+        hist_bal += clean_float(acc.get('final_balance'))
+        prior_activity += clean_float(acc.get('prior_activity_profit'))
+
+    combined_dep = deposits + hist_dep
+    combined_with = withdrawals + hist_with
+    combined_bal = balance + hist_bal
+    return round(combined_bal - (combined_dep + combined_with) - prior_activity, 2)
+
+
+def sync_hedging_review_discrepancy(statistics, account=None):
+    """Recalculate actual_hedging_results, discrepancy, and net_profit from MT5 snapshot."""
+    if not statistics:
+        return statistics
+    hr = statistics.setdefault('hedging_review', {})
+    actual = compute_live_actual_hedging(account, hr)
+    hr['actual_hedging_results'] = actual
+
+    sheet_hr = hr.get('sheet_hedging_results')
+    if sheet_hr is None:
+        cf = statistics.get('cashflow_inprogress') or {}
+        sheet_hr = clean_float(cf.get('hedging_results')) + clean_float(cf.get('farming_results'))
+        hr['sheet_hedging_results'] = sheet_hr
+    else:
+        sheet_hr = clean_float(sheet_hr)
+
+    hr['discrepancy'] = round(actual - sheet_hr, 2)
+    disc = hr['discrepancy']
+    for section in ('profitability_completed', 'cashflow_inprogress'):
+        sec = statistics.get(section) or {}
+        sec['net_profit'] = round(
+            clean_float(sec.get('payouts'))
+            + clean_float(sec.get('hedging_results'))
+            + clean_float(sec.get('farming_results'))
+            - clean_float(sec.get('challenge_fees'))
+            + disc,
+            2,
+        )
+        statistics[section] = sec
+    return statistics
+
 # Canonical prop firm name mapping - single source of truth
 _FIRM_MAP = {
     "mffu": "My Funded Futures", "mffuflex": "My Funded Futures",
@@ -1073,13 +1134,16 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
         combined_deposits = deposits + hist_dep
         combined_withdrawals = withdrawals + hist_with
         combined_balance = balance + hist_bal
-        
-        # Calculate Actual Hedging Results using the Google Sheet formula:
-        # =IF(AND(B20<>"", B22<>""), B22-(B20-B21), "")
-        # Which is: Combined Balance - (Combined Deposits - Combined Withdrawals)
-        # Note: withdrawals are already negative, so we add them
+
+        # Include prior activity (current MT5 + historical accounts) in actual hedging
+        prior_activity = clean_float(stats["hedging_review"].get("current_mt5_prior_activity"))
+        if historical_accounts:
+            for acc in historical_accounts:
+                prior_activity += clean_float(acc.get("prior_activity_profit"))
+
+        # Combined Balance - net deposits - prior activity (withdrawals already negative)
         net_deposits = combined_deposits + combined_withdrawals
-        actual_hedging = combined_balance - net_deposits
+        actual_hedging = combined_balance - net_deposits - prior_activity
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
         
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
