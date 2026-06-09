@@ -127,8 +127,8 @@
         <span class="item">M1 bar: <strong id="meta-m1-newest">—</strong></span>
         <span class="item">Closed: <strong id="meta-trades">—</strong></span>
         <span class="item">Live: <strong id="meta-active">—</strong></span>
-        <span class="item">Market bias: <strong id="meta-market-bias">—</strong></span>
-        <span class="item">ML conf: <strong id="meta-market-conf">—</strong></span>
+        <span class="item">Forecast: <strong id="meta-market-bias">—</strong></span>
+        <span class="item">Window: <strong id="meta-forecast-window">—</strong></span>
         <span class="item">Underwater on rec: <strong id="meta-underwater">—</strong></span>
         <span class="item" id="meta-error" style="color:#f87171;display:none;"></span>
         <button type="button" class="btn-refresh" id="btn-refresh"><i class="fas fa-sync-alt"></i> Refresh now</button>
@@ -205,11 +205,9 @@
                 document.getElementById('meta-trades').textContent = d.meta?.n_trades?.toLocaleString?.() ?? d.meta?.n_trades ?? '—';
                 document.getElementById('meta-active').textContent = d.meta?.n_active ?? '—';
                 const mb = d.meta?.market_bias;
-                document.getElementById('meta-market-bias').textContent =
-                    d.meta?.market_trained && mb && mb !== '—' ? mb : '—';
-                const mc = d.meta?.market_confidence;
-                document.getElementById('meta-market-conf').textContent =
-                    mc != null && d.meta?.market_trained ? `${Math.round(mc * 100)}%` : '—';
+                document.getElementById('meta-market-bias').textContent = (mb && mb !== '—') ? mb : '—';
+                document.getElementById('meta-forecast-window').textContent =
+                    d.meta?.market_forecast_window || '—';
                 document.getElementById('meta-underwater').textContent = d.meta?.underwater_on_recommendation ?? '—';
                 const errEl = document.getElementById('meta-error');
                 if (d.error) {
