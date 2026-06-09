@@ -596,36 +596,65 @@ def _render_alerts(analysis: Dict[str, Any]) -> str:
     return "<section class='alerts'>" + "".join(alerts) + "</section>"
 
 
-def _render_timing_heatmap(block: Dict[str, Any], phase: str) -> str:
-    by_hour = block.get("by_hour")
-    if by_hour is None or (isinstance(by_hour, pd.DataFrame) and by_hour.empty):
+def _outside_hours_summary(block: Dict[str, Any]) -> str:
+    """Short off-session note (per-hour counts live in the heatmap cells)."""
+    outside_n = int(block.get("outside_entry_n") or 0)
+    unknown_n = int(block.get("unknown_hour_n") or 0)
+    if outside_n <= 0 and unknown_n <= 0:
         return ""
-    if isinstance(by_hour, pd.DataFrame):
-        hour_map = {int(r["entry_hour"]): float(r.get("avg_pnl", 0)) for _, r in by_hour.iterrows() if "entry_hour" in r}
-    else:
-        hour_map = {}
-    max_abs = max((abs(v) for v in hour_map.values()), default=1) or 1
+    bits = []
+    if outside_n > 0:
+        bits.append(f"{outside_n:,} off 02–17")
+    if unknown_n > 0:
+        bits.append(f"{unknown_n:,} unknown hour")
+    return " · " + " · ".join(bits)
+
+
+def _render_timing_heatmap(block: Dict[str, Any], phase: str) -> str:
+    by_hour_all = block.get("by_hour_all")
+    if by_hour_all is None or (isinstance(by_hour_all, pd.DataFrame) and by_hour_all.empty):
+        by_hour_all = block.get("by_hour")
+    if by_hour_all is None or (isinstance(by_hour_all, pd.DataFrame) and by_hour_all.empty):
+        return ""
+
+    hour_n: Dict[int, int] = {}
+    hour_avg: Dict[int, float] = {}
+    if isinstance(by_hour_all, pd.DataFrame):
+        for _, r in by_hour_all.iterrows():
+            if "entry_hour" not in r:
+                continue
+            h = int(r["entry_hour"])
+            hour_n[h] = int(r.get("n") or 0)
+            hour_avg[h] = float(r.get("avg_pnl") or 0)
+
+    max_abs = max((abs(v) for h, v in hour_avg.items() if hour_n.get(h, 0) > 0), default=1) or 1
     cells = []
     for h in range(24):
-        v = hour_map.get(h, 0)
-        if h not in hour_map:
-            cls = "heat-empty"
-            title = f"{format_hour_eat(h)} — no data"
-            cells.append(f'<div class="heat-cell {cls}" title="{html.escape(title)}">{h:02d}</div>')
-        else:
-            intensity = min(1.0, abs(v) / max_abs)
-            cls = "heat-pos" if v >= 0 else "heat-neg"
-            title = f"{format_hour_eat(h)} avg {_money(v)}"
+        n = hour_n.get(h, 0)
+        if n <= 0:
+            title = f"{format_hour_eat(h)} · 0 entries"
             cells.append(
-                f'<div class="heat-cell {cls}" style="opacity:{0.35 + intensity * 0.65:.2f}" title="{html.escape(title)}">{h:02d}</div>'
+                f'<div class="heat-cell heat-empty" title="{html.escape(title)}">'
+                f'<span class="heat-h">{h:02d}</span><span class="heat-n">0</span></div>'
             )
+            continue
+        v = hour_avg.get(h, 0.0)
+        intensity = min(1.0, abs(v) / max_abs)
+        cls = "heat-pos" if v >= 0 else "heat-neg"
+        title = f"{format_hour_eat(h)} · {n:,} entries · avg {_money(v)}"
+        cells.append(
+            f'<div class="heat-cell {cls}" style="opacity:{0.35 + intensity * 0.65:.2f}" '
+            f'title="{html.escape(title)}">'
+            f'<span class="heat-h">{h:02d}</span><span class="heat-n">{n:,}</span></div>'
+        )
 
     badge = phase
+    outside_note = _outside_hours_summary(block)
     return f"""
     <div class="phase-card">
       <div class="phase-head">
         {_phase_badge_html(badge, phase)}
-        <span class="phase-meta">{block.get('n', 0):,} closed · prefer <strong>{html.escape(str(block.get('prefer_side', '?')))}</strong> · hours EAT (Nairobi)</span>
+        <span class="phase-meta">{block.get('n', 0):,} closed · entry EAT · <strong>{html.escape(str(block.get('prefer_side', '?')))}</strong>{outside_note}</span>
       </div>
       <div class="heat-row">{''.join(cells)}</div>
       <div class="phase-tables grid-2">
@@ -729,7 +758,10 @@ def _report_styles() -> str:
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .phase-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
     .heat-row { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; margin-bottom: 14px; }
-    .heat-cell { font-size: 0.55rem; text-align: center; padding: 6px 0; border-radius: 4px; background: var(--border); }
+    .heat-cell { font-size: 0.55rem; text-align: center; padding: 4px 0 5px; border-radius: 4px; background: var(--border); line-height: 1.15; }
+    .heat-cell .heat-h { display: block; font-weight: 600; }
+    .heat-cell .heat-n { display: block; font-size: 0.48rem; color: inherit; opacity: 0.92; }
+    .heat-cell.heat-empty .heat-n { opacity: 0.45; }
     .heat-cell.heat-pos { background: var(--pos); color: #042f1a; }
     .heat-cell.heat-neg { background: var(--neg); color: #3f0a0a; }
     .rec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
@@ -846,7 +878,7 @@ def render_ml_html_report(
       {_table_from_records(_df_records(bs.get('overall')), [('side','Side'),('n','N'),('win_rate','WR'),('avg_pnl','Avg'),('total','Total')], bar_col='avg_pnl')}
       <h3 style="color:var(--muted);font-size:0.9rem">By phase badge group</h3>
       {_table_from_records(_df_records(bs.get('by_phase_side')), [('phase_group','Group'),('side','Side'),('n','N'),('win_rate','WR'),('avg_pnl','Avg')], bar_col='avg_pnl')}
-      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:20px">Hour heatmaps (closed)</h3>
+      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:20px">Entry hour heatmaps (EAT)</h3>
       {phase_cards}
       <h3 style="color:var(--muted);font-size:0.9rem;margin-top:16px">Classifier holdout</h3>
       <pre class="report">{html.escape(str(ml.get('report', '')))}</pre>

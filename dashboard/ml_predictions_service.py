@@ -38,7 +38,7 @@ _state: Dict[str, Any] = {
     "error": None,
     "generated_at": None,
     "started_at": None,
-    "refresh_interval_sec": 300,
+    "refresh_interval_sec": 900,
     "last_duration_sec": None,
 }
 
@@ -213,7 +213,7 @@ def _interval_sec() -> int:
             return max(60, int(explicit))
         except ValueError:
             pass
-    return 120 if _ml_runtime_mode() == "production" else 300
+    return 120 if _ml_runtime_mode() == "production" else 900
 
 
 def _heal_disk_meta() -> None:
@@ -405,10 +405,19 @@ def get_state() -> Dict[str, Any]:
 
 
 def get_cached_html() -> str:
+    """Serve in-memory report; reload from disk when a subprocess/CLI refresh wrote a newer file."""
+    path = _cache_html_path()
+    disk = _load_disk_cache() or {}
+    disk_ga = disk.get("generated_at")
+    with _lock:
+        mem_ga = _state.get("generated_at")
+    if path.is_file() and disk_ga and disk_ga != mem_ga:
+        _reload_cache_from_disk(force=True)
+    elif path.is_file() and not _state.get("html"):
+        _reload_cache_from_disk(force=False)
     with _lock:
         if _state.get("html"):
             return _state["html"]
-    path = _cache_html_path()
     if path.is_file():
         try:
             return path.read_text(encoding="utf-8")
@@ -509,10 +518,22 @@ def _set_error(msg: str, duration_sec: Optional[float] = None) -> None:
 def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     import pandas as pd
 
-    from research.trade_dataset import load_active_positions_df, load_all_round_trips
+    from research.trade_dataset import (
+        backfill_mt5_timing_for_all_clients,
+        load_active_positions_df,
+        load_all_round_trips,
+    )
     from research.ml_analysis import run_full_analysis, render_ml_html_report
     from research.ml_html_report import render_closed_history_full_html
     from research.eat_time import now_eat
+
+    bf = backfill_mt5_timing_for_all_clients()
+    if bf.get("backfilled"):
+        logger.info(
+            "[ML] mt5_timing backfill: %s filled, %s already had calibration",
+            bf.get("backfilled"),
+            bf.get("already_calibrated"),
+        )
 
     df = load_all_round_trips(attach_positions=True)
     active = load_active_positions_df()

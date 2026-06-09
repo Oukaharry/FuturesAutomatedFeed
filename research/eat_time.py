@@ -69,6 +69,36 @@ def to_eat_series(series: pd.Series) -> pd.Series:
     return s.dt.tz_convert(EAT)
 
 
+def entry_times_to_eat(
+    entry_time: pd.Series,
+    utc_correction_sec: pd.Series,
+) -> pd.Series:
+    """
+    Map stored round-trip entry_time → true EAT for hour heatmaps.
+
+    Plexy MT5 (utc_correction_sec == 0): naive entry_time wall clock is already
+    EAT — do not add +3h (that wrongly buckets 21:00 trades into 00:00 EAT).
+
+    Calibrated clients: naive entry_time is UTC after per-client correction →
+    localize UTC then convert to EAT.
+    """
+    naive = pd.to_datetime(entry_time, errors="coerce")
+    out = pd.Series(pd.NaT, index=naive.index, dtype="datetime64[ns, Africa/Nairobi]")
+    corr = pd.to_numeric(utc_correction_sec, errors="coerce").fillna(0).astype(int)
+    mask_zero = corr == 0
+    if mask_zero.any():
+        sub = naive.loc[mask_zero]
+        out.loc[mask_zero] = sub.dt.tz_localize(
+            EAT, ambiguous=True, nonexistent="shift_forward"
+        )
+    if (~mask_zero).any():
+        sub = naive.loc[~mask_zero]
+        out.loc[~mask_zero] = sub.dt.tz_localize(
+            "UTC", ambiguous=True, nonexistent="shift_forward"
+        ).dt.tz_convert(EAT)
+    return out
+
+
 def eat_dow_name(series_eat: pd.Series) -> pd.Series:
     """Day-of-week name from EAT-localized timestamps."""
     dow = series_eat.dt.dayofweek
