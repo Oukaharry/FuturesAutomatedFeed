@@ -770,10 +770,11 @@ def run_full_analysis(
             or (market_prediction.get("window") or {}).get("hold_display")
             or "—"
         )
+        mwin = market_prediction.get("momentum_window") or range_s
         insight_tips.insert(
             0,
-            f"<strong>{market_prediction.get('bias')} now</strong> — enter anytime while this bias is live. "
-            f"Expected hold: <strong>{hold_s}</strong>. "
+            f"<strong>{market_prediction.get('bias')} momentum</strong> — active 15m window: "
+            f"<strong>{mwin}</strong>. Expected hold: <strong>{hold_s}</strong>. "
             f"{market_prediction.get('momentum_note', '')}"
         )
     elif m1_bars and market_prediction.get("reason"):

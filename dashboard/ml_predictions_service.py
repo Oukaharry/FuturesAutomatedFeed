@@ -672,6 +672,28 @@ def _run_subprocess_refresh(*, reason: str) -> None:
         _set_error(str(e), time.time() - t0)
 
 
+_m1_live_refresh_last: float = 0.0
+_m1_live_refresh_lock = threading.Lock()
+
+
+def schedule_refresh_on_m1_live(*, min_interval_sec: int = 90) -> None:
+    """Debounced ML report rebuild after companion live M1 pushes."""
+    global _m1_live_refresh_last
+    now = time.time()
+    with _m1_live_refresh_lock:
+        if now - _m1_live_refresh_last < min_interval_sec:
+            return
+        _m1_live_refresh_last = now
+
+    def _run() -> None:
+        try:
+            refresh_now(reason="m1_live")
+        except Exception as exc:
+            logger.warning("[ML] M1-triggered refresh failed: %s", exc)
+
+    threading.Thread(target=_run, daemon=True, name="ml-m1-live-refresh").start()
+
+
 def refresh_now(*, reason: str = "manual") -> None:
     if not _refresh_lock.acquire(blocking=False):
         logger.info("[ML] Refresh skipped (%s): another refresh is in progress", reason)

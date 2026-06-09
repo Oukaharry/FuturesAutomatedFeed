@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.6.8"  # Apex per-payout blueprint (Payout 1-4 distinct TP) + shared farming
+APP_VERSION = "1.6.8"  # M1 sync restarts on localhost/production switch; Apex payout blueprint
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -2312,6 +2312,7 @@ class TradeOpssAIApp:
                     self.url_entry.insert(0, self.url_values[selection])
                     self.log("Switched to Localhost")
                     self.status_var.set("Target: Localhost (Dev)")
+                    self._restart_m1_sync_for_target()
                 else:
                     messagebox.showerror("Access Denied", "Incorrect password.")
                     if CTK_AVAILABLE:
@@ -2325,6 +2326,7 @@ class TradeOpssAIApp:
                 self.url_entry.insert(0, self.url_values[selection])
                 self.log("Switched to Production")
                 self.status_var.set("Target: Production")
+                self._restart_m1_sync_for_target()
 
         if CTK_AVAILABLE:
             self.url_selector.configure(command=lambda _: on_target_change())
@@ -2596,6 +2598,16 @@ class TradeOpssAIApp:
             self.log(f"📡 M1 feed failed: {exc}", "WARN")
             print(f"[MT5Feed] failed: {exc}")
 
+        self._start_m1_dashboard_sync()
+
+    def _restart_m1_sync_for_target(self) -> None:
+        """Point M1 bar sync at the newly selected dashboard URL (localhost vs production)."""
+        try:
+            from trader_companion.m1_bars_sync import stop_m1_dashboard_sync
+
+            stop_m1_dashboard_sync()
+        except Exception:
+            pass
         self._start_m1_dashboard_sync()
 
     def _start_m1_dashboard_sync(self) -> None:

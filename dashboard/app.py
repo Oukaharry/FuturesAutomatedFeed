@@ -5728,6 +5728,16 @@ def api_client_m1_bars_push():
         storage_id, symbol, phase, written, len(bars), client_info["client"],
     )
     stats = get_m1_bar_stats(storage_id, symbol)
+
+    # Debounced ML refresh when live bars arrive (updates momentum forecast on localhost/prod).
+    if phase == "live" and written:
+        try:
+            from dashboard import ml_predictions_service as _ml_svc
+
+            _ml_svc.schedule_refresh_on_m1_live()
+        except Exception:
+            pass
+
     return jsonify({
         "status": "success",
         "written": written,
@@ -5744,8 +5754,17 @@ def api_ml_m1_bars_status():
     """Super admin: summary of stored M1 bars per client/symbol."""
     if request.session_user.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Forbidden"}), 403
+    from research.eat_time import m1_bar_age_seconds
+
     summaries = list_m1_bar_summaries()
+    for s in summaries:
+        newest = s.get("newest")
+        s["newest_age_sec"] = m1_bar_age_seconds(newest) if newest else None
     coverage = get_m1_coverage_stats(M1_MARKET_CLIENT_ID, "USTECH")
+    cov_newest = coverage.get("newest")
+    if cov_newest:
+        coverage = dict(coverage)
+        coverage["newest_age_sec"] = m1_bar_age_seconds(cov_newest)
     return jsonify({
         "status": "success",
         "summaries": summaries,

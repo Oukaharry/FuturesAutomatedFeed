@@ -394,6 +394,18 @@
             return fmtBarTs(ts);
         }
 
+        /** Age of MT5 M1 bar_time in seconds (Plexy: UTC wall clock digits = EAT). */
+        function barTimeAgeSec(ts) {
+            const n = Number(ts);
+            if (!Number.isFinite(n)) return null;
+            const d = new Date(n * 1000);
+            const eatUtcMs = Date.UTC(
+                d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(),
+                d.getUTCHours() - 3, d.getUTCMinutes(), d.getUTCSeconds()
+            );
+            return Math.max(0, Math.floor((Date.now() - eatUtcMs) / 1000));
+        }
+
         function fmtNum(n, d) {
             if (n == null || Number.isNaN(n)) return '—';
             return Number(n).toFixed(d == null ? 2 : d);
@@ -507,8 +519,13 @@
                 document.getElementById('meta-m1-newest').textContent = fmtTs(globalNewest);
                 const stale = document.getElementById('m1-stale-hint');
                 const gapHint = document.getElementById('m1-gap-hint');
-                const ageSec = Math.floor(Date.now() / 1000) - globalNewest;
-                stale.style.display = ageSec > 300 ? '' : 'none';
+                const covAge = d.coverage?.newest_age_sec;
+                const sumAge = summaries.reduce((best, s) => {
+                    const a = s.newest_age_sec;
+                    return a != null && (best == null || a < best) ? a : best;
+                }, null);
+                const ageSec = covAge != null ? covAge : (sumAge != null ? sumAge : barTimeAgeSec(globalNewest));
+                stale.style.display = ageSec != null && ageSec > 300 ? '' : 'none';
                 const cov = d.coverage?.coverage_ratio;
                 gapHint.style.display = cov != null && cov < 0.85 ? '' : 'none';
                 tbody.querySelectorAll('.m1-btn').forEach(btn => {
@@ -595,7 +612,7 @@
         pollM1Status();
         const pollMs = 10000;
         setInterval(pollStatus, pollMs);
-        setInterval(pollM1Status, 30000);
+        setInterval(pollM1Status, 15000);
     </script>
 </body>
 </html>
