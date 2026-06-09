@@ -1315,18 +1315,29 @@ class PropFirmManager:
                             "mt5_sl_points": 107
                         }
                     },
-                    "funded_trade1": {
+                    "payout1_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 200,
+                            "tradovate_tp_ticks": 250,
                             "tradovate_sl_ticks": 100,
                             "mt5_volume": 0,
                             "mt5_tp_points": 21,
                             "mt5_sl_points": 54
                         }
                     },
-                    "funded_trade2": {
+                    "payout1_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 250,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 21,
+                            "mt5_sl_points": 54
+                        }
+                    },
+                    "payout2_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
@@ -1334,10 +1345,21 @@ class PropFirmManager:
                             "tradovate_sl_ticks": 100,
                             "mt5_volume": 0,
                             "mt5_tp_points": 21,
-                            "mt5_sl_points": 29
+                            "mt5_sl_points": 54
                         }
                     },
-                    "funded_trade3": {
+                    "payout2_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 100,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 21,
+                            "mt5_sl_points": 54
+                        }
+                    },
+                    "payout3_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
@@ -1345,10 +1367,10 @@ class PropFirmManager:
                             "tradovate_sl_ticks": 100,
                             "mt5_volume": 0,
                             "mt5_tp_points": 21,
-                            "mt5_sl_points": 42
+                            "mt5_sl_points": 54
                         }
                     },
-                    "funded_trade4": {
+                    "payout3_trade2": {
                         "50k": {
                             "tradovate_symbol": "NQM6",
                             "tradovate_qty": 2,
@@ -1356,7 +1378,29 @@ class PropFirmManager:
                             "tradovate_sl_ticks": 100,
                             "mt5_volume": 0,
                             "mt5_tp_points": 21,
-                            "mt5_sl_points": 42
+                            "mt5_sl_points": 54
+                        }
+                    },
+                    "payout4_trade1": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 150,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 21,
+                            "mt5_sl_points": 54
+                        }
+                    },
+                    "payout4_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQM6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 150,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 21,
+                            "mt5_sl_points": 54
                         }
                     },
                     "farming": {
@@ -2076,7 +2120,14 @@ class PropFirmManager:
         },
         "Apex": {
             "Challenge": ["challenge_trade1", "challenge_trade2"],
-            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            # Each payout is its own race to its profit target. "Funded" is an
+            # alias for Payout 1 (the entry point right after the challenge) so
+            # live phase detection — which only reports "Funded" — defaults to it.
+            "Funded":    ["payout1_trade1", "payout1_trade2"],
+            "Payout 1":  ["payout1_trade1", "payout1_trade2"],
+            "Payout 2":  ["payout2_trade1", "payout2_trade2"],
+            "Payout 3":  ["payout3_trade1", "payout3_trade2"],
+            "Payout 4":  ["payout4_trade1", "payout4_trade2"],
             "Farming":   ["farming"],
         },
         "Top One Futures": {
@@ -2108,9 +2159,13 @@ class PropFirmManager:
                      "Farming": "Farming", "Double Dip": "Double Dip",
                      "Payout 1": "Funded", "Payout 2": "Funded",
                      "Payout 3": "Funded", "Payout 4": "Funded"}
-        phase_key_group = phase_map.get(current_phase, current_phase)
-
         firm_orders = self._PHASE_TRADE_ORDER.get(firm_code, {})
+        # Prefer the firm's own phase key (e.g. Apex's per-payout groups); only
+        # collapse Payout→Funded for firms that don't define per-payout orders.
+        if current_phase in firm_orders:
+            phase_key_group = current_phase
+        else:
+            phase_key_group = phase_map.get(current_phase, current_phase)
         trade_keys = firm_orders.get(phase_key_group, [])
 
         if not trade_keys:
@@ -2192,9 +2247,11 @@ class PropFirmManager:
                      "Farming": "Farming", "Double Dip": "Double Dip",
                      "Payout 1": "Funded", "Payout 2": "Funded",
                      "Payout 3": "Funded", "Payout 4": "Funded"}
-        phase_group = phase_map.get(current_phase, current_phase)
-
         firm_orders = self._PHASE_TRADE_ORDER.get(firm_code, {})
+        if current_phase in firm_orders:
+            phase_group = current_phase
+        else:
+            phase_group = phase_map.get(current_phase, current_phase)
         trade_keys = firm_orders.get(phase_group, [])
 
         cumulative = 0.0

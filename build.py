@@ -17,7 +17,9 @@ def get_version():
     with open(TRADER_APP, 'r', encoding='utf-8') as f:
         for line in f:
             if line.strip().startswith('APP_VERSION'):
-                return line.split('=')[1].strip().replace('"', '').replace("'", "")
+                value = line.split('=', 1)[1]
+                value = value.split('#', 1)[0]  # drop inline comment
+                return value.strip().replace('"', '').replace("'", "")
     return '1.0.0'
 
 VERSION = get_version()
@@ -82,5 +84,5 @@ try:
     subprocess.run(cmd, check=True)
     print(f"\nBuild SUCCESS! output: dist/{BUILD_NAME}.exe")
 except subprocess.CalledProcessError as e:
-    print(f"\n❌ Build FAILED: {e}")
+    print(f"\nBuild FAILED: {e}")
     sys.exit(1)

@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.6.7"  # Plexy USTECH M1 sync (shared store), internal gap fill, ML timing
+APP_VERSION = "1.6.8"  # Apex per-payout blueprint (Payout 1-4 distinct TP) + shared farming
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -177,6 +177,7 @@ def short_mt5_comment(
 
         challenge_trade1..4         -> _CH1.._CH4
         funded_trade1..4            -> _FD1.._FD4
+        payoutN_trade1..2 (Apex)    -> _FD1.._FD2
         funded_trade_doubledip_1..4 -> _DD1.._DD4
         farming                     -> _FA
         anything else / empty       -> _UNK
@@ -199,6 +200,11 @@ def short_mt5_comment(
         phase_abbr = f"_CH{n}" if n.isdigit() else "_CH1"
     elif pk.startswith("funded_trade"):
         n = pk[len("funded_trade"):]
+        phase_abbr = f"_FD{n}" if n.isdigit() else "_FD1"
+    elif pk.startswith("payout") and "_trade" in pk:
+        # Apex per-payout funded trades (payoutN_tradeM) round-trip as funded
+        # legs so the connector's _FD\d+ parser still recognises them.
+        n = pk.split("_trade")[-1].strip()
         phase_abbr = f"_FD{n}" if n.isdigit() else "_FD1"
     elif pk == "farming":
         # Connector's writer also supports "_FA_DDMMYY", but its own
@@ -4966,6 +4972,11 @@ class TradeOpssAIApp:
         if pk.startswith("funded_trade_doubledip_"):
             suf = pk.replace("funded_trade_doubledip_", "").strip() or "1"
             return f"DD{suf}"
+        if pk.startswith("payout") and "_trade" in pk:
+            # e.g. payout2_trade1 -> P2-1
+            payout_n = pk.replace("payout", "").split("_trade")[0] or "1"
+            trade_n = pk.split("_trade")[-1].strip() or "1"
+            return f"P{payout_n}-{trade_n}"
         if pk.startswith("funded_trade"):
             suf = pk.replace("funded_trade", "").strip() or "1"
             return f"FD{suf}"
@@ -5005,9 +5016,13 @@ class TradeOpssAIApp:
                      "Farming": "Farming", "Double Dip": "Double Dip",
                      "Payout 1": "Funded", "Payout 2": "Funded",
                      "Payout 3": "Funded", "Payout 4": "Funded"}
-        phase_group = phase_map.get(effective_phase, effective_phase)
-
         firm_orders = self.prop_firm_mgr._PHASE_TRADE_ORDER.get(firm_code, {})
+        # Prefer the firm's own phase key (e.g. Apex per-payout groups); only
+        # collapse Payout→Funded for firms without per-payout trade orders.
+        if effective_phase in firm_orders:
+            phase_group = effective_phase
+        else:
+            phase_group = phase_map.get(effective_phase, effective_phase)
         trade_keys = firm_orders.get(phase_group, [])
 
         if not trade_keys:
