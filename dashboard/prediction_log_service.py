@@ -79,7 +79,9 @@ def record_prediction(
                     prediction.get("entry_price"),
                     win.get("start_eat"),
                     win.get("valid_through_eat") or win.get("end_eat"),
-                    prediction.get("expected_hold") or prediction.get("best_entry_window"),
+                    prediction.get("momentum_window")
+                    or prediction.get("expected_hold")
+                    or prediction.get("best_entry_window"),
                     json.dumps(prediction.get("horizons") or []),
                     json.dumps(prediction.get("votes") or {}),
                 ),

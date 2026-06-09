@@ -512,19 +512,38 @@ def _render_market_ml_section(analysis: Dict[str, Any]) -> str:
     if not ready and reason:
         note = f"<p class='muted'>{html.escape(str(reason))}</p>"
 
+    windows_today = mkt.get("windows_today") or win.get("windows_today") or []
+    w_rows = [
+        {
+            "range": w.get("range_display"),
+            "move_pct": w.get("move_pct"),
+            "bars": w.get("bars"),
+            "active": "yes" if w.get("active") else "",
+        }
+        for w in windows_today
+    ]
+    w_table = _table_from_records(
+        w_rows,
+        [("range", "15m regime (EAT / UTC+3)"), ("move_pct", "Move %"), ("bars", "Bars"), ("active", "Live")],
+        max_rows=12,
+        bar_col="move_pct",
+    ) if w_rows else "<p class='muted'>No 30m+ momentum regimes detected yet today.</p>"
+
     return f"""
     <section id="market-ml" class="panel highlight">
-      <h2>Momentum forecast — USTECH (M1 tick data)</h2>
+      <h2>Momentum forecast — USTECH (M1 → 15m)</h2>
       <p class="muted">
-        Multi-timeframe momentum vote (5m / 15m / 30m / 1h) on <strong>{int(meta.get('m1_bars', 0) or 0):,}</strong> M1 bars.
-        Session 02:00–20:00 EAT. Bias is live <strong>now</strong> — enter anytime; expected hold comes from M1 persistence (not a fixed 4h slot).
+        M1 ticks resampled to <strong>15m</strong> bars; sustained BUY/SELL regimes segmented for today&apos;s session
+        (<strong>{int(meta.get('m1_bars', 0) or 0):,}</strong> M1 bars, 02:00–20:00 EAT / UTC+3).
+        Signal = active regime window (e.g. 05:00 – now BUY), not a point-in-time guess.
       </p>
       <div class="rec-grid">
         <div class="rec-item"><span class="rec-label">Bias NOW</span><span class="rec-value accent">{html.escape(str(bias))}</span></div>
         <div class="rec-item"><span class="rec-label">Now (EAT)</span><span class="rec-value">{html.escape(str(mkt.get('now_eat') or win.get('now_eat_display') or '—'))}</span></div>
         <div class="rec-item"><span class="rec-label">Status</span><span class="rec-value {status_cls}">{html.escape(status_txt)}</span></div>
         <div class="rec-item"><span class="rec-label">Strength</span><span class="rec-value">{html.escape(strength_s)}</span></div>
-        <div class="rec-item"><span class="rec-label">Expected hold</span><span class="rec-value accent">{html.escape(str(range_s))}</span></div>
+        <div class="rec-item"><span class="rec-label">Momentum window</span><span class="rec-value accent">{html.escape(str(mkt.get('momentum_window') or range_s))}</span></div>
+        <div class="rec-item"><span class="rec-label">Expected hold</span><span class="rec-value">{html.escape(str(range_s))}</span></div>
         <div class="rec-item"><span class="rec-label">Estimate to</span><span class="rec-value">{html.escape(str(win.get('valid_through_display') or '—'))}</span></div>
         <div class="rec-item"><span class="rec-label">Last M1 bar</span><span class="rec-value">{html.escape(str(win.get('last_bar_eat') or '—'))}</span></div>
         <div class="rec-item"><span class="rec-label">TF votes</span><span class="rec-value">{html.escape(vote_s)}</span></div>
@@ -533,11 +552,13 @@ def _render_market_ml_section(analysis: Dict[str, Any]) -> str:
         <strong>{html.escape(str(entry_note))}</strong>
       </p>
       {note}
-      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:16px">How long this bias tends to hold (historical M1)</h3>
+      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:16px">Today&apos;s 15m momentum regimes (M1 resample)</h3>
+      {w_table}
+      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:16px">How long similar regimes held (historical M1)</h3>
       {h_table}
       <p class="muted" style="margin-top:10px">
-        <strong>Recommend</strong> = momentum bias right now. Enter {html.escape(str(bias))} anytime — no fixed time slot.
-        Expected hold is how long similar momentum kept direction in the past (10m–4h table above).
+        <strong>Recommend</strong> = trade with the active 15m regime ({html.escape(str(bias))}).
+        Window start/end are from M1→15m structure (EMA + slope), aligned to EAT (UTC+3).
       </p>
     </section>
     """

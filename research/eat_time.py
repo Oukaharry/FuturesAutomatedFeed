@@ -124,3 +124,14 @@ def eat_hour_from_m1_index(ts: pd.Timestamp) -> int:
         return int(ts.hour)
     eat = ts.tz_convert(EAT)
     return int(eat.hour)
+
+
+def m1_bar_age_seconds(bar_time: int) -> Optional[int]:
+    """Seconds since an MT5 M1 bar_time (Plexy UTC-wall-clock = EAT trading time)."""
+    if not bar_time:
+        return None
+    try:
+        eat = m1_bar_epoch_to_eat(int(bar_time))
+        return max(0, int((now_eat() - eat).total_seconds()))
+    except (TypeError, ValueError, OSError):
+        return None
