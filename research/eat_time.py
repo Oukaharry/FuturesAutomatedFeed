@@ -97,3 +97,30 @@ def format_hour_eat(h: object) -> str:
     except (TypeError, ValueError):
         pass
     return "—"
+
+
+def m1_bar_epoch_to_eat(bar_time: int) -> datetime:
+    """
+    Plexy MT5 M1 bar_time: Unix epoch whose UTC wall-clock digits match EAT trading time.
+    (Same convention as fmtBarTs in ml_predictions.html — do NOT add +3h on convert.)
+    """
+    from datetime import timezone as tz
+
+    dt = datetime.fromtimestamp(int(bar_time), tz=tz.utc)
+    return datetime(
+        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+        tzinfo=EAT,
+    )
+
+
+def m1_bar_epoch_to_eat_ts(bar_time: int) -> pd.Timestamp:
+    eat = m1_bar_epoch_to_eat(bar_time)
+    return pd.Timestamp(eat)
+
+
+def eat_hour_from_m1_index(ts: pd.Timestamp) -> int:
+    """EAT hour from an M1 bar index (handles both true-EAT and legacy UTC+3 indexes)."""
+    if ts.tzinfo is None:
+        return int(ts.hour)
+    eat = ts.tz_convert(EAT)
+    return int(eat.hour)

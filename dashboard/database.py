@@ -285,6 +285,28 @@ def init_database():
                 CREATE INDEX IF NOT EXISTS idx_m1_bars_client_symbol_time
                 ON m1_bars (client_id, symbol, bar_time DESC)
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS momentum_predictions (
+                    id              SERIAL PRIMARY KEY,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    symbol          TEXT NOT NULL DEFAULT 'USTECH',
+                    bias            TEXT NOT NULL,
+                    strength        DOUBLE PRECISION,
+                    entry_price     DOUBLE PRECISION,
+                    window_start    TIMESTAMPTZ,
+                    window_end      TIMESTAMPTZ,
+                    window_label    TEXT,
+                    horizons_json   TEXT,
+                    votes_json      TEXT,
+                    verified_json   TEXT,
+                    verified_at     TIMESTAMPTZ,
+                    overall_correct BOOLEAN
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_momentum_pred_created
+                ON momentum_predictions (created_at DESC)
+            """)
             conn.commit()
         try:
             migrate_m1_bars_to_market_store()

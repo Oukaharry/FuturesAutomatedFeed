@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from research.eat_time import EAT, format_hour_eat
+from research.eat_time import EAT, format_hour_eat, m1_bar_epoch_to_eat_ts
 
 # Trade entry window in Nairobi (EAT): 02:00 through 20:00 inclusive.
 EAT_SESSION_START_HOUR = 2
@@ -48,8 +48,10 @@ def bars_list_to_m1_df(bars: List[dict]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows).sort_values("bar_time").drop_duplicates("bar_time", keep="last")
-    df["datetime"] = pd.to_datetime(df["bar_time"], unit="s", utc=True)
-    return df.set_index("datetime").sort_index()
+    # Plexy MT5: unix UTC wall clock = EAT trading time (see fmtBarTs in ml_predictions.html)
+    eat_index = [m1_bar_epoch_to_eat_ts(int(t)) for t in df["bar_time"]]
+    df.index = pd.DatetimeIndex(eat_index, name="datetime")
+    return df.sort_index()
 
 
 def resample_ohlc(m1: pd.DataFrame, rule: str) -> pd.DataFrame:
