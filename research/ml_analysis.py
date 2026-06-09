@@ -506,12 +506,7 @@ def predict_active_positions(
     mp = market_prediction or business.get("market_prediction") or {}
     market_bias = str(mp.get("bias") or "")
     market_conf = float(mp.get("confidence") or 0.0)
-    min_conf = float(mp.get("min_confidence") or 0.55)
-    use_market_ml = (
-        mp.get("trained")
-        and market_bias in ("BUY", "SELL")
-        and market_conf >= min_conf
-    )
+    use_market_ml = bool(mp.get("use_for_recommendations")) and market_bias in ("BUY", "SELL")
 
     market_statuses: List[str] = []
 
@@ -537,7 +532,7 @@ def predict_active_positions(
         elif use_market_ml:
             rec = market_bias
             status = "OK" if cur_side == str(rec) else "align direction"
-            rec_source = "market_ml"
+            rec_source = "momentum_forecast"
         else:
             rec = str(pref) if str(pref) in ("BUY", "SELL") else cur_side
             if acct is not None and not (isinstance(acct, float) and pd.isna(acct)) and not hist_en.empty:
@@ -628,12 +623,8 @@ def build_portfolio_recommendations(
     else:
         hist_window = "—"
 
-    mkt_window = mp.get("best_entry_window") or "—"
-    use_mkt = (
-        mp.get("trained")
-        and str(mp.get("bias") or "") in ("BUY", "SELL")
-        and float(mp.get("confidence") or 0) >= float(mp.get("min_confidence") or 0.55)
-    )
+    mkt_window = mp.get("best_entry_window") or (mp.get("window") or {}).get("range_display") or "—"
+    use_mkt = bool(mp.get("use_for_recommendations")) and str(mp.get("bias") or "") in ("BUY", "SELL")
     window = mkt_window if use_mkt and mkt_window != "—" else hist_window
 
     if use_mkt:
@@ -670,7 +661,9 @@ def build_portfolio_recommendations(
         "market_confidence": mp.get("confidence"),
         "market_entry_window": mkt_window,
         "market_backtest_hit_rate": bt.get("hit_rate_confident"),
-        "rec_source": "market_ml" if use_mkt else "historical",
+        "rec_source": "momentum_forecast" if use_mkt else "historical",
+        "forecast_window": mkt_window,
+        "forecast_entry_note": mp.get("entry_note") or (mp.get("window") or {}).get("entry_note", ""),
         "summary": (
             f"Active {len(active_pred)} legs across {active_pred['client_id'].nunique()} clients "
             f"(times in EAT). "
@@ -680,11 +673,9 @@ def build_portfolio_recommendations(
             f"Resolve {len(business.get('direction_violations') or [])} direction conflict(s); "
             f"{n_against} leg(s) underwater on recommended side."
             + (
-                f" Market ML bias: {mp.get('bias')} "
-                f"({float(mp.get('confidence') or 0) * 100:.0f}% conf, backtest hit "
-                f"{float(bt.get('hit_rate_confident') or 0) * 100:.0f}%)."
-                if use_mkt and bt.get("hit_rate_confident") is not None
-                else (f" Market ML bias: {mp.get('bias')}." if use_mkt else "")
+                f" Momentum forecast: {mp.get('bias')} · window {mkt_window}."
+                if use_mkt
+                else ""
             )
         ),
     }
@@ -711,6 +702,8 @@ def run_full_analysis(
     timing = timing_tables_by_phase(enriched)
     buy_sell = buy_sell_summary(enriched)
 
+    active = active_df if active_df is not None else pd.DataFrame()
+
     market_ml: Dict[str, Any] = {}
     market_prediction: Dict[str, Any] = {}
     market_backtest: Dict[str, Any] = {}
@@ -719,7 +712,7 @@ def run_full_analysis(
         try:
             from research.prediction_ml import run_market_pipeline
 
-            market_ml = run_market_pipeline(m1_bars)
+            market_ml = run_market_pipeline(m1_bars, active_df=active)
             market_prediction = dict(market_ml.get("prediction") or {})
             market_backtest = dict(market_ml.get("backtest") or {})
             mdl = market_ml.get("model") or {}
@@ -732,7 +725,6 @@ def run_full_analysis(
             market_prediction = {"trained": False, "reason": str(e)}
             market_backtest = {"error": str(e)}
 
-    active = active_df if active_df is not None else pd.DataFrame()
     business = analyze_business_rules(active, enriched, timing)
     business["market_prediction"] = market_prediction
     business["market_backtest"] = market_backtest
@@ -768,16 +760,23 @@ def run_full_analysis(
             f"<strong>{uw}</strong> open leg(s) match recommended direction but float P/L is negative "
             "(market moved against the recommended side on the hedge book)."
         )
-    if market_prediction.get("trained"):
+    if market_prediction.get("ready") or market_prediction.get("use_for_recommendations"):
         conf = float(market_prediction.get("confidence") or 0)
+        win = (market_prediction.get("window") or {})
+        range_s = market_prediction.get("best_entry_window") or win.get("range_display") or "—"
+        horizons = market_prediction.get("horizons") or market_backtest.get("horizons") or []
+        h_lines = ", ".join(
+            f"{h.get('label', '?')} {h.get('persistence_pct', '?')}%"
+            for h in horizons
+            if h.get("persistence_pct") is not None
+        )
         insight_tips.insert(
             0,
-            f"<strong>Market ML</strong> — {market_prediction.get('bias')} "
-            f"({conf * 100:.0f}% confidence on 15m USTECH). "
-            f"Entry window (EAT): {market_prediction.get('best_entry_window') or '—'}. "
-            f"Backtest hit rate (confident signals): "
-            f"{float(market_backtest.get('hit_rate_confident') or 0) * 100:.1f}% "
-            f"over {market_backtest.get('n_signals', 0)} holdout bars."
+            f"<strong>Momentum forecast</strong> — {market_prediction.get('bias')} "
+            f"from <strong>{range_s}</strong>. "
+            f"Enter {market_prediction.get('bias')} any time inside that window. "
+            f"Historical persistence: {h_lines or 'building…'}. "
+            f"{market_prediction.get('momentum_note', '')}"
         )
     elif m1_bars and market_prediction.get("reason"):
         insight_tips.append(
@@ -805,6 +804,8 @@ def run_full_analysis(
         "market_backtest": market_backtest,
         "market_model": market_model,
         "market_meta": market_ml.get("meta") or {},
+        "market_momentum": market_ml.get("momentum") or {},
+        "market_forecast": market_ml.get("forecast") or {},
         "insight_tips": insight_tips,
         "generated_at": now_eat().strftime("%Y-%m-%d %H:%M:%S EAT"),
         "timing_meta": timing_meta,

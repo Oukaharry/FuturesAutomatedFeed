@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -220,3 +220,108 @@ def format_entry_window(hours: List[int]) -> str:
     if not hours:
         return "—"
     return ", ".join(format_hour_eat(h) for h in sorted(hours))
+
+
+def compute_intraday_momentum(m1: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Short-horizon direction from latest M1 (catches morning reversals the 15m model misses).
+    Uses last 15 / 30 / 60 minutes of closes inside EAT session.
+    """
+    empty: Dict[str, Any] = {
+        "bias": "NEUTRAL",
+        "strength": 0.0,
+        "ret_15m_pct": 0.0,
+        "ret_30m_pct": 0.0,
+        "ret_60m_pct": 0.0,
+        "ema5m_cross": 0,
+        "note": "no data",
+    }
+    if m1.empty or len(m1) < 20:
+        return empty
+
+    c = m1["close"].astype(float)
+    last = float(c.iloc[-1])
+
+    def _ret(n: int) -> float:
+        if len(c) <= n:
+            return 0.0
+        base = float(c.iloc[-1 - n])
+        return (last / base - 1.0) if base > 0 else 0.0
+
+    r15 = _ret(15)
+    r30 = _ret(30)
+    r60 = _ret(min(60, len(c) - 1))
+
+    ohlc5 = resample_ohlc(m1.tail(max(120, len(m1))), "5min")
+    ema_cross = 0
+    if len(ohlc5) >= 21:
+        ema9 = _ema(ohlc5["close"], 9)
+        ema21 = _ema(ohlc5["close"], 21)
+        ema_cross = 1 if float(ema9.iloc[-1]) > float(ema21.iloc[-1]) else -1
+
+    # Weight recent moves; 5m EMA tie-break
+    score = r15 * 3.0 + r30 * 2.0 + r60 * 1.0 + ema_cross * 0.0005
+    threshold = 0.0004  # ~0.04% composite move
+
+    if score > threshold:
+        bias = "BUY"
+    elif score < -threshold:
+        bias = "SELL"
+    else:
+        bias = "NEUTRAL"
+
+    strength = min(1.0, abs(score) / max(threshold * 3, 1e-9))
+
+    return {
+        "bias": bias,
+        "strength": round(strength, 4),
+        "ret_15m_pct": round(r15 * 100, 4),
+        "ret_30m_pct": round(r30 * 100, 4),
+        "ret_60m_pct": round(r60 * 100, 4),
+        "ema5m_cross": ema_cross,
+        "note": f"15m {r15 * 100:+.3f}% · 30m {r30 * 100:+.3f}% · 5m EMA {'bull' if ema_cross > 0 else 'bear'}",
+    }
+
+
+def live_book_contradiction(active_df: pd.DataFrame, bias: str) -> Dict[str, Any]:
+    """
+    Detect when open float P/L clearly disagrees with the recommended side.
+    E.g. SELL rec but BUY legs winning and SELL legs losing → market moved up.
+    """
+    out: Dict[str, Any] = {"contradicts": False, "suggested_side": None, "note": ""}
+    if active_df is None or active_df.empty or bias not in ("BUY", "SELL"):
+        return out
+
+    side_col = "side" if "side" in active_df.columns else None
+    pnl_col = "profit" if "profit" in active_df.columns else "net_pnl" if "net_pnl" in active_df.columns else None
+    if not side_col or not pnl_col:
+        return out
+
+    opp = "BUY" if bias == "SELL" else "SELL"
+    aligned = active_df[active_df[side_col].astype(str).str.upper() == bias]
+    misaligned = active_df[active_df[side_col].astype(str).str.upper() == opp]
+    if aligned.empty or misaligned.empty:
+        return out
+
+    try:
+        aligned_pnl = float(aligned[pnl_col].astype(float).sum())
+        misaligned_pnl = float(misaligned[pnl_col].astype(float).sum())
+        aligned_losing = int((aligned[pnl_col].astype(float) < 0).sum())
+        misaligned_winning = int((misaligned[pnl_col].astype(float) > 0).sum())
+    except (TypeError, ValueError):
+        return out
+
+    if (
+        aligned_losing >= 2
+        and misaligned_winning >= 2
+        and aligned_pnl < 0
+        and misaligned_pnl > 0
+        and misaligned_pnl > abs(aligned_pnl) * 0.5
+    ):
+        out["contradicts"] = True
+        out["suggested_side"] = opp
+        out["note"] = (
+            f"Live book: {bias} legs ${aligned_pnl:,.0f} ({aligned_losing} underwater) vs "
+            f"{opp} legs ${misaligned_pnl:,.0f} ({misaligned_winning} winning) — market likely {opp}."
+        )
+    return out
