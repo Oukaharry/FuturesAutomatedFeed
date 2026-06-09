@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from research.eat_time import EAT, now_eat
+from research.eat_time import EAT, eat_hour_from_m1_index, now_eat
 from research.market_signals import (
     EAT_SESSION_END_HOUR,
     EAT_SESSION_START_HOUR,
@@ -24,8 +24,10 @@ from research.market_signals import (
 
 # Forecast horizons the user asked for (minutes)
 FORECAST_HORIZONS_MIN: Tuple[int, ...] = (10, 20, 60, 180, 240)
-DEFAULT_WINDOW_MIN = 240  # 4 hours — primary entry window
+MAX_HOLD_MIN = 240  # longest horizon we measure — not a fixed entry window
 MIN_MOVE_BPS = 3.0  # 0.03% min move to count as "held direction"
+MIN_PERSISTENCE_PCT = 50.0
+MIN_PERSISTENCE_SAMPLES = 15
 
 
 def _min_move_pct() -> float:
@@ -35,11 +37,11 @@ def _min_move_pct() -> float:
         return MIN_MOVE_BPS / 10000.0
 
 
-def _default_window_min() -> int:
+def _min_persistence_pct() -> float:
     try:
-        return max(60, int(os.environ.get("ML_MOMENTUM_WINDOW_MIN", str(DEFAULT_WINDOW_MIN))))
+        return float(os.environ.get("ML_MOMENTUM_MIN_PERSIST_PCT", str(MIN_PERSISTENCE_PCT)))
     except ValueError:
-        return DEFAULT_WINDOW_MIN
+        return MIN_PERSISTENCE_PCT
 
 
 def _session_end_today_eat(now_local: pd.Timestamp) -> pd.Timestamp:
@@ -52,12 +54,16 @@ def _session_end_today_eat(now_local: pd.Timestamp) -> pd.Timestamp:
 
 
 def _fmt_eat(ts: pd.Timestamp) -> str:
-    return ts.tz_convert(EAT).strftime("%H:%M EAT")
+    if ts.tzinfo is None:
+        ts = ts.tz_localize(EAT)
+    else:
+        ts = ts.tz_convert(EAT)
+    return ts.strftime("%H:%M EAT")
 
 
 def _fmt_eat_range(start: pd.Timestamp, end: pd.Timestamp) -> str:
-    s = start.tz_convert(EAT)
-    e = end.tz_convert(EAT)
+    s = start.tz_convert(EAT) if start.tzinfo else start.tz_localize(EAT)
+    e = end.tz_convert(EAT) if end.tzinfo else end.tz_localize(EAT)
     if s.date() == e.date():
         return f"{s.strftime('%H:%M')} – {e.strftime('%H:%M EAT')}"
     return f"{s.strftime('%Y-%m-%d %H:%M')} – {e.strftime('%Y-%m-%d %H:%M EAT')}"
@@ -200,7 +206,7 @@ def measure_horizon_persistence(
 
     for i in sample_indices:
         t0 = times[i]
-        hour = t0.tz_convert(EAT).hour
+        hour = eat_hour_from_m1_index(t0)
         if hour < EAT_SESSION_START_HOUR or hour > EAT_SESSION_END_HOUR:
             continue
 
@@ -243,59 +249,89 @@ def _horizon_label(minutes: int) -> str:
     return f"{minutes} min"
 
 
+def _pick_expected_hold(horizons: List[Dict[str, Any]]) -> Tuple[int, Optional[float], str]:
+    """
+    Longest horizon (10m…4h) where historical persistence meets threshold.
+    Not a fixed 4h — driven by M1 backtest on similar momentum.
+    """
+    min_pct = _min_persistence_pct()
+    min_n = MIN_PERSISTENCE_SAMPLES
+
+    qualified = [
+        h for h in horizons
+        if h.get("persistence_pct") is not None
+        and int(h.get("n", 0)) >= min_n
+        and float(h["persistence_pct"]) >= min_pct
+    ]
+    if qualified:
+        best = max(qualified, key=lambda x: int(x["minutes"]))
+        mins = int(best["minutes"])
+        return mins, float(best["persistence_pct"]), _horizon_label(mins)
+
+    any_h = [
+        h for h in horizons
+        if h.get("persistence_pct") is not None and int(h.get("n", 0)) >= min_n
+    ]
+    if any_h:
+        best = max(any_h, key=lambda x: (float(x["persistence_pct"]), int(x["minutes"])))
+        mins = int(best["minutes"])
+        return mins, float(best["persistence_pct"]), _horizon_label(mins)
+
+    return 20, None, "20 min"
+
+
 def build_forecast_window(
     m1: pd.DataFrame,
     state: Dict[str, Any],
     horizons: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """Primary entry window: now → now + 4h (capped at 20:00 EAT)."""
-    window_min = _default_window_min()
-    now = now_eat()
-    now_ts = pd.Timestamp(now)
+    """
+    Live bias is NOW — enter anytime while momentum holds.
+    Expected hold duration comes from persistence table (not a fixed 4h block).
+    """
+    now_ts = pd.Timestamp(now_eat())
 
+    last_bar_eat = None
     if not m1.empty:
-        last_bar = m1.index[-1].tz_convert(EAT)
-        # Anchor to latest M1 bar if fresher than clock
-        if last_bar > now_ts - pd.Timedelta(minutes=2):
-            now_ts = last_bar
-
-    session_end = _session_end_today_eat(now_ts)
-    raw_end = now_ts + pd.Timedelta(minutes=window_min)
-    end_ts = min(raw_end, session_end)
-
-    if end_ts <= now_ts:
-        end_ts = now_ts + pd.Timedelta(minutes=30)
+        last_bar = m1.index[-1]
+        last_bar_eat = last_bar.tz_convert(EAT) if last_bar.tzinfo else last_bar.tz_localize(EAT)
 
     bias = str(state.get("bias") or "—")
-    range_str = _fmt_eat_range(now_ts, end_ts)
-    duration_min = int((end_ts - now_ts).total_seconds() / 60)
+    hold_min, hold_pct, hold_label = _pick_expected_hold(horizons)
 
-    # Best supported horizon = longest where persistence >= 50% with enough samples
-    best_h = window_min
-    for h in reversed(FORECAST_HORIZONS_MIN):
-        row = next((x for x in horizons if x["minutes"] == h), None)
-        if row and row.get("persistence_pct") is not None and row["n"] >= 20:
-            if row["persistence_pct"] >= 50.0:
-                best_h = h
-                break
+    session_end = _session_end_today_eat(now_ts)
+    valid_through = min(now_ts + pd.Timedelta(minutes=hold_min), session_end)
+
+    now_display = _fmt_eat(now_ts)
+    hold_display = f"~{hold_label}"
+    if hold_pct is not None:
+        hold_display += f" ({hold_pct:.0f}% held on M1 history)"
 
     entry_note = ""
     if bias in ("BUY", "SELL"):
+        pct_bit = f" Similar momentum held {hold_label} in {hold_pct:.0f}% of cases." if hold_pct else ""
         entry_note = (
-            f"Enter {bias} any time from {_fmt_eat(now_ts)} until {_fmt_eat(end_ts)} "
-            f"({duration_min // 60}h {duration_min % 60}m window). "
-            f"Momentum measured on live M1 — enter inside the window."
+            f"{bias} now at {now_display} — enter {bias} anytime while this bias is shown; "
+            f"no fixed entry slot.{pct_bit} Refresh updates bias as M1 moves."
         )
 
     return {
         "start_eat": now_ts.isoformat(),
-        "end_eat": end_ts.isoformat(),
-        "start_display": _fmt_eat(now_ts),
-        "end_display": _fmt_eat(end_ts),
-        "range_display": range_str,
-        "duration_minutes": duration_min,
-        "primary_horizon_min": best_h,
+        "valid_through_eat": valid_through.isoformat(),
+        "now_eat_display": now_display,
+        "valid_through_display": _fmt_eat(valid_through),
+        "expected_hold_minutes": hold_min,
+        "expected_hold_label": hold_label,
+        "expected_hold_pct": hold_pct,
+        "hold_display": hold_display,
+        # compat aliases (no longer a fixed “08:00–12:00 entry window”)
+        "range_display": hold_display,
+        "best_entry_window": hold_display,
+        "primary_horizon_min": hold_min,
         "entry_note": entry_note,
+        "bias_now": bias,
+        "last_bar_eat": _fmt_eat(last_bar_eat) if last_bar_eat is not None else None,
+        "duration_minutes": hold_min,
     }
 
 
@@ -319,24 +355,33 @@ def run_momentum_forecast(m1_bars: List[dict]) -> Dict[str, Any]:
     horizons = measure_horizon_persistence(m1, bias)
     window = build_forecast_window(m1, state, horizons)
 
-    # Pick persistence at primary 4h horizon for display confidence
-    h4 = next((h for h in horizons if h["minutes"] == DEFAULT_WINDOW_MIN), {})
-    conf = (h4.get("persistence_pct") or 0) / 100.0 if h4.get("persistence_pct") else state.get("strength", 0)
+    # Confidence from persistence at the chosen hold horizon (not fixed 4h)
+    h_row = next((h for h in horizons if h["minutes"] == window.get("expected_hold_minutes")), {})
+    conf_pct = h_row.get("persistence_pct") or window.get("expected_hold_pct")
+    conf = (conf_pct or 0) / 100.0 if conf_pct else state.get("strength", 0)
+
+    last_close = float(m1["close"].iloc[-1]) if not m1.empty else None
 
     prediction = {
         "ready": True,
         "trained": True,  # compat with existing UI keys
         "bias": bias,
+        "bias_now": bias,
+        "now_eat": window.get("now_eat_display"),
+        "expected_hold": window.get("hold_display"),
+        "expected_hold_minutes": window.get("expected_hold_minutes"),
         "strength": state.get("strength"),
         "confidence": round(float(conf), 3),
         "use_for_recommendations": True,
         "rec_source": "momentum_forecast",
         "window": window,
         "horizons": horizons,
-        "best_entry_window": window.get("range_display", "—"),
+        "best_entry_window": window.get("hold_display", "—"),
         "entry_note": window.get("entry_note", ""),
         "momentum_note": state.get("note", ""),
         "votes": state.get("votes", {}),
+        "entry_price": last_close,
+        "last_bar_eat": window.get("last_bar_eat"),
     }
 
     return {

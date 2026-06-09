@@ -623,7 +623,12 @@ def build_portfolio_recommendations(
     else:
         hist_window = "—"
 
-    mkt_window = mp.get("best_entry_window") or (mp.get("window") or {}).get("range_display") or "—"
+    mkt_window = (
+        mp.get("expected_hold")
+        or mp.get("best_entry_window")
+        or (mp.get("window") or {}).get("hold_display")
+        or "—"
+    )
     use_mkt = bool(mp.get("use_for_recommendations")) and str(mp.get("bias") or "") in ("BUY", "SELL")
     window = mkt_window if use_mkt and mkt_window != "—" else hist_window
 
@@ -662,7 +667,7 @@ def build_portfolio_recommendations(
         "market_entry_window": mkt_window,
         "market_backtest_hit_rate": bt.get("hit_rate_confident"),
         "rec_source": "momentum_forecast" if use_mkt else "historical",
-        "forecast_window": mkt_window,
+        "forecast_hold": mkt_window,
         "forecast_entry_note": mp.get("entry_note") or (mp.get("window") or {}).get("entry_note", ""),
         "summary": (
             f"Active {len(active_pred)} legs across {active_pred['client_id'].nunique()} clients "
@@ -672,11 +677,7 @@ def build_portfolio_recommendations(
             f"Historical best weekday: {business.get('best_historical_dow') or '—'}. "
             f"Resolve {len(business.get('direction_violations') or [])} direction conflict(s); "
             f"{n_against} leg(s) underwater on recommended side."
-            + (
-                f" Momentum forecast: {mp.get('bias')} · window {mkt_window}."
-                if use_mkt
-                else ""
-            )
+            + (f" Momentum: {mp.get('bias')} now — expected hold {mkt_window}." if use_mkt else "")
         ),
     }
 
@@ -764,18 +765,15 @@ def run_full_analysis(
         conf = float(market_prediction.get("confidence") or 0)
         win = (market_prediction.get("window") or {})
         range_s = market_prediction.get("best_entry_window") or win.get("range_display") or "—"
-        horizons = market_prediction.get("horizons") or market_backtest.get("horizons") or []
-        h_lines = ", ".join(
-            f"{h.get('label', '?')} {h.get('persistence_pct', '?')}%"
-            for h in horizons
-            if h.get("persistence_pct") is not None
+        hold_s = (
+            market_prediction.get("expected_hold")
+            or (market_prediction.get("window") or {}).get("hold_display")
+            or "—"
         )
         insight_tips.insert(
             0,
-            f"<strong>Momentum forecast</strong> — {market_prediction.get('bias')} "
-            f"from <strong>{range_s}</strong>. "
-            f"Enter {market_prediction.get('bias')} any time inside that window. "
-            f"Historical persistence: {h_lines or 'building…'}. "
+            f"<strong>{market_prediction.get('bias')} now</strong> — enter anytime while this bias is live. "
+            f"Expected hold: <strong>{hold_s}</strong>. "
             f"{market_prediction.get('momentum_note', '')}"
         )
     elif m1_bars and market_prediction.get("reason"):

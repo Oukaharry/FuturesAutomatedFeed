@@ -100,6 +100,31 @@
         }
         .m1-preview-head:hover .m1-preview-title { color: #c4b5fd; }
         .m1-empty { padding: 14px 0; color: #64748b; font-size: 0.82rem; }
+        .btn-log {
+            background: rgba(167,139,250,0.15); color: #c4b5fd; border: 1px solid rgba(167,139,250,0.35);
+            padding: 8px 14px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem;
+        }
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 2000;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: #0a0f1e; border: 1px solid #162040; border-radius: 14px; max-width: 920px;
+            width: 100%; max-height: 85vh; overflow: hidden; display: flex; flex-direction: column;
+        }
+        .modal-head {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 20px; border-bottom: 1px solid #162040;
+        }
+        .modal-head h2 { margin: 0; font-size: 1rem; color: #c4b5fd; }
+        .modal-close { background: none; border: none; color: #94a3b8; font-size: 1.4rem; cursor: pointer; }
+        .modal-stats { padding: 12px 20px; color: #64748b; font-size: 0.82rem; border-bottom: 1px solid #162040; }
+        .modal-body { overflow: auto; padding: 0 20px 20px; }
+        .log-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+        .log-table th, .log-table td { padding: 8px 10px; border-bottom: 1px solid #162040; text-align: left; }
+        .log-table th { color: #64748b; position: sticky; top: 0; background: #0a0f1e; }
+        .tag-win { color: #4ade80; } .tag-loss { color: #f87171; } .tag-pend { color: #fbbf24; }
     </style>
 </head>
 <body>
@@ -128,10 +153,32 @@
         <span class="item">Closed: <strong id="meta-trades">—</strong></span>
         <span class="item">Live: <strong id="meta-active">—</strong></span>
         <span class="item">Forecast: <strong id="meta-market-bias">—</strong></span>
-        <span class="item">Window: <strong id="meta-forecast-window">—</strong></span>
+        <span class="item">Expected hold: <strong id="meta-forecast-window">—</strong></span>
         <span class="item">Underwater on rec: <strong id="meta-underwater">—</strong></span>
         <span class="item" id="meta-error" style="color:#f87171;display:none;"></span>
+        <button type="button" class="btn-log" id="btn-pred-log"><i class="fas fa-clipboard-list"></i> Prediction log</button>
         <button type="button" class="btn-refresh" id="btn-refresh"><i class="fas fa-sync-alt"></i> Refresh now</button>
+    </div>
+
+    <div class="modal-overlay" id="pred-log-modal">
+        <div class="modal-box">
+            <div class="modal-head">
+                <h2><i class="fas fa-clipboard-check"></i> Momentum prediction log</h2>
+                <button type="button" class="modal-close" id="pred-log-close">&times;</button>
+            </div>
+            <div class="modal-stats" id="pred-log-stats">Loading…</div>
+            <div class="modal-body">
+                <table class="log-table">
+                    <thead>
+                        <tr>
+                            <th>Time (EAT)</th><th>Bias</th><th>Expected hold</th><th>Entry px</th>
+                            <th>Strength</th><th>Outcome</th><th>Horizons verified</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pred-log-body"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <div class="m1-panel" id="m1-panel">
@@ -207,7 +254,7 @@
                 const mb = d.meta?.market_bias;
                 document.getElementById('meta-market-bias').textContent = (mb && mb !== '—') ? mb : '—';
                 document.getElementById('meta-forecast-window').textContent =
-                    d.meta?.market_forecast_window || '—';
+                    d.meta?.market_expected_hold || d.meta?.market_forecast_window || '—';
                 document.getElementById('meta-underwater').textContent = d.meta?.underwater_on_recommendation ?? '—';
                 const errEl = document.getElementById('meta-error');
                 if (d.error) {
@@ -489,6 +536,57 @@
         });
         m1Head.classList.add('open');
         m1Body.classList.add('open');
+
+        const predModal = document.getElementById('pred-log-modal');
+        async function loadPredictionLog() {
+            const body = document.getElementById('pred-log-body');
+            const stats = document.getElementById('pred-log-stats');
+            body.innerHTML = '<tr><td colspan="7">Loading…</td></tr>';
+            try {
+                const r = await fetch('/api/ml_predictions/log?limit=50');
+                const d = await r.json();
+                const st = d.stats || {};
+                stats.textContent = `Recorded: ${st.total ?? 0} · Verified: ${st.verified ?? 0} · `
+                    + `Wins: ${st.wins ?? 0} · Losses: ${st.losses ?? 0}`;
+                const rows = d.predictions || [];
+                if (!rows.length) {
+                    body.innerHTML = '<tr><td colspan="7">No predictions recorded yet — refresh the report to log the next forecast.</td></tr>';
+                    return;
+                }
+                body.innerHTML = rows.map(p => {
+                    let outcome = '<span class="tag-pend">pending</span>';
+                    if (p.verified_at) {
+                        outcome = p.overall_correct
+                            ? '<span class="tag-win">correct</span>'
+                            : '<span class="tag-loss">wrong</span>';
+                    }
+                    const v = p.verified;
+                    let hDetail = '—';
+                    if (v && v.checks) {
+                        hDetail = v.checks.filter(c => c.scored).map(c =>
+                            `${c.label}: ${c.correct ? '✓' : '✗'} (${c.return_pct > 0 ? '+' : ''}${c.return_pct}%)`
+                        ).join(', ') || '—';
+                    }
+                    return `<tr>
+                        <td>${p.created_at || '—'}</td>
+                        <td><strong>${p.bias || '—'}</strong></td>
+                        <td>${p.window_label || '—'}</td>
+                        <td>${p.entry_price != null ? Number(p.entry_price).toFixed(2) : '—'}</td>
+                        <td>${p.strength != null ? Math.round(p.strength * 100) + '%' : '—'}</td>
+                        <td>${outcome}</td>
+                        <td>${hDetail}</td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                body.innerHTML = '<tr><td colspan="7">Failed to load log.</td></tr>';
+            }
+        }
+        document.getElementById('btn-pred-log').addEventListener('click', () => {
+            predModal.classList.add('open');
+            loadPredictionLog();
+        });
+        document.getElementById('pred-log-close').addEventListener('click', () => predModal.classList.remove('open'));
+        predModal.addEventListener('click', (e) => { if (e.target === predModal) predModal.classList.remove('open'); });
 
         pollStatus._lastReportAt = '';
         pollStatus._last = null;

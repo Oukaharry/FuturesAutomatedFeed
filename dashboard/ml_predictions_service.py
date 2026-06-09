@@ -523,6 +523,21 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     m1_bars = fetch_m1_bars_for_ml(symbol="USTECH", limit=m1_limit)
     analysis = run_full_analysis(df, active_df=active, m1_bars=m1_bars)
 
+    meta_extra: Dict[str, Any] = {}
+    try:
+        from dashboard.prediction_log_service import (
+            record_prediction,
+            verify_pending_predictions,
+        )
+
+        mkt_pred = analysis.get("market_prediction") or {}
+        verify_pending_predictions(m1_bars)
+        pred_id = record_prediction(mkt_pred, symbol="USTECH")
+        if pred_id:
+            meta_extra["last_prediction_id"] = pred_id
+    except Exception as e:
+        logger.warning("[ML] Prediction log skipped: %s", e)
+
     closed_df = analysis.get("closed_trades")
     if closed_df is None:
         closed_df = analysis.get("df")
@@ -557,13 +572,15 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
         "market_confidence": mkt.get("confidence"),
         "market_trained": mkt.get("ready") or mkt.get("trained"),
         "market_use_for_rec": mkt.get("use_for_recommendations"),
-        "market_forecast_window": mkt.get("best_entry_window") or (mkt.get("window") or {}).get("range_display"),
+        "market_forecast_window": mkt.get("expected_hold") or mkt.get("best_entry_window") or (mkt.get("window") or {}).get("hold_display"),
+        "market_expected_hold": mkt.get("expected_hold") or (mkt.get("window") or {}).get("hold_display"),
         "market_momentum": (analysis.get("market_momentum") or {}).get("bias") if isinstance(analysis.get("market_momentum"), dict) else None,
         "market_entry_window": mkt.get("best_entry_window") or recs.get("market_entry_window"),
         "market_backtest_hit_rate": mkt_bt.get("hit_rate_confident"),
         "market_model_accuracy": mkt_model.get("accuracy_test"),
         "m1_bars_used": (analysis.get("market_meta") or {}).get("m1_bars"),
         "fetched_at": now_eat().strftime("%Y-%m-%d %H:%M:%S EAT"),
+        **meta_extra,
         **_clients_data_freshness(),
         **_m1_market_freshness(),
     }

@@ -447,7 +447,7 @@ def _render_kpi_cards(analysis: Dict[str, Any]) -> str:
     <section class="kpi-grid">
       <div class="kpi"><span class="kpi-label">All clients (closed)</span><span class="kpi-value">{n_closed:,}</span><span class="kpi-sub">Round-trip history</span></div>
       <div class="kpi"><span class="kpi-label">Live trades</span><span class="kpi-value accent">{active_n}</span><span class="kpi-sub">{clients_n} clients · {accounts_n} accounts</span></div>
-      <div class="kpi"><span class="kpi-label">Momentum forecast</span><span class="kpi-value accent">{html.escape(str(mkt_bias))}</span><span class="kpi-sub">{html.escape(str((analysis.get('market_prediction') or {}).get('best_entry_window') or '—'))}</span></div>
+      <div class="kpi"><span class="kpi-label">Momentum forecast</span><span class="kpi-value accent">{html.escape(str(mkt_bias))}</span><span class="kpi-sub">{html.escape(str((analysis.get('market_prediction') or {}).get('expected_hold') or (analysis.get('market_prediction') or {}).get('best_entry_window') or '—'))}</span></div>
       <div class="kpi"><span class="kpi-label">Phase model accuracy</span><span class="kpi-value">{acc_s}</span><span class="kpi-sub">Time-ordered holdout</span></div>
       <div class="kpi"><span class="kpi-label">Same entry day</span><span class="kpi-value {'pos' if day_ok else 'warn'}">{'Yes' if day_ok else 'Split'}</span><span class="kpi-sub">{kpi_sub_day}</span></div>
       <div class="kpi"><span class="kpi-label">Direction conflicts</span><span class="kpi-value {'pos' if violations == 0 else 'neg'}">{violations}</span><span class="kpi-sub">Per prop account</span></div>
@@ -479,7 +479,7 @@ def _render_market_ml_section(analysis: Dict[str, Any]) -> str:
     ready = mkt.get("ready") or mkt.get("use_for_recommendations")
     bias = mkt.get("bias", "—")
     win = mkt.get("window") or fc.get("window") or {}
-    range_s = win.get("range_display") or mkt.get("best_entry_window") or "—"
+    range_s = win.get("hold_display") or mkt.get("expected_hold") or mkt.get("best_entry_window") or "—"
     entry_note = mkt.get("entry_note") or win.get("entry_note") or ""
     strength = state.get("strength")
     strength_s = f"{float(strength) * 100:.0f}%" if strength is not None else "—"
@@ -517,25 +517,27 @@ def _render_market_ml_section(analysis: Dict[str, Any]) -> str:
       <h2>Momentum forecast — USTECH (M1 tick data)</h2>
       <p class="muted">
         Multi-timeframe momentum vote (5m / 15m / 30m / 1h) on <strong>{int(meta.get('m1_bars', 0) or 0):,}</strong> M1 bars.
-        Session 02:00–20:00 EAT. Not a guess — measured persistence when momentum looked like today.
+        Session 02:00–20:00 EAT. Bias is live <strong>now</strong> — enter anytime; expected hold comes from M1 persistence (not a fixed 4h slot).
       </p>
       <div class="rec-grid">
+        <div class="rec-item"><span class="rec-label">Bias NOW</span><span class="rec-value accent">{html.escape(str(bias))}</span></div>
+        <div class="rec-item"><span class="rec-label">Now (EAT)</span><span class="rec-value">{html.escape(str(mkt.get('now_eat') or win.get('now_eat_display') or '—'))}</span></div>
         <div class="rec-item"><span class="rec-label">Status</span><span class="rec-value {status_cls}">{html.escape(status_txt)}</span></div>
-        <div class="rec-item"><span class="rec-label">Momentum</span><span class="rec-value accent">{html.escape(str(bias))}</span></div>
         <div class="rec-item"><span class="rec-label">Strength</span><span class="rec-value">{html.escape(strength_s)}</span></div>
-        <div class="rec-item"><span class="rec-label">Entry window</span><span class="rec-value accent">{html.escape(str(range_s))}</span></div>
+        <div class="rec-item"><span class="rec-label">Expected hold</span><span class="rec-value accent">{html.escape(str(range_s))}</span></div>
+        <div class="rec-item"><span class="rec-label">Estimate to</span><span class="rec-value">{html.escape(str(win.get('valid_through_display') or '—'))}</span></div>
+        <div class="rec-item"><span class="rec-label">Last M1 bar</span><span class="rec-value">{html.escape(str(win.get('last_bar_eat') or '—'))}</span></div>
         <div class="rec-item"><span class="rec-label">TF votes</span><span class="rec-value">{html.escape(vote_s)}</span></div>
-        <div class="rec-item"><span class="rec-label">Window length</span><span class="rec-value">{int(win.get('duration_minutes') or 240)} min</span></div>
       </div>
       <p class="muted" style="margin-top:8px;font-size:0.95rem">
         <strong>{html.escape(str(entry_note))}</strong>
       </p>
       {note}
-      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:16px">How long momentum tends to hold (historical M1)</h3>
+      <h3 style="color:var(--muted);font-size:0.9rem;margin-top:16px">How long this bias tends to hold (historical M1)</h3>
       {h_table}
       <p class="muted" style="margin-top:10px">
-        <strong>Recommend</strong> on live trades = momentum bias above.
-        Enter anytime between the window times — e.g. 11:45–15:45 EAT for a 4-hour {html.escape(str(bias))} window.
+        <strong>Recommend</strong> = momentum bias right now. Enter {html.escape(str(bias))} anytime — no fixed time slot.
+        Expected hold is how long similar momentum kept direction in the past (10m–4h table above).
       </p>
     </section>
     """
@@ -799,7 +801,7 @@ def render_ml_html_report(
             <div class="rec-item"><span class="rec-label">Today (EAT)</span><span class="rec-value">{html.escape(str(recs.get('today_dow_name', '—')))} · {html.escape(str(recs.get('today_eat', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Hist. best day</span><span class="rec-value">{html.escape(str(recs.get('best_historical_dow', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Entry window</span><span class="rec-value">{html.escape(str(recs.get('best_hour_window', '—')))}</span></div>
-            <div class="rec-item"><span class="rec-label">Forecast window</span><span class="rec-value accent">{html.escape(str(recs.get('forecast_window') or recs.get('market_entry_window', '—')))}</span></div>
+            <div class="rec-item"><span class="rec-label">Expected hold</span><span class="rec-value accent">{html.escape(str(recs.get('forecast_hold') or recs.get('market_entry_window', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Direction bias</span><span class="rec-value">{html.escape(str(recs.get('portfolio_side', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Rec source</span><span class="rec-value">{html.escape(str(recs.get('rec_source', '—')))}</span></div>
             <div class="rec-item"><span class="rec-label">Underwater on rec</span><span class="rec-value {'neg' if uw else ''}">{uw}</span></div>
