@@ -3448,20 +3448,6 @@ def api_ml_predictions_refresh():
     return jsonify({"status": "started"})
 
 
-@app.route('/api/ml_predictions/log')
-@require_session
-def api_ml_predictions_log():
-    if request.session_user.get('user_type') != 'super_admin':
-        return jsonify({"status": "error", "message": "Forbidden"}), 403
-    from dashboard.prediction_log_service import list_predictions, prediction_stats
-    limit = min(100, max(1, int(request.args.get("limit", 50))))
-    return jsonify({
-        "status": "success",
-        "predictions": list_predictions(limit=limit),
-        "stats": prediction_stats(),
-    })
-
-
 @app.route('/admin/<admin_name>')
 @require_session
 def admin_dashboard(admin_name):

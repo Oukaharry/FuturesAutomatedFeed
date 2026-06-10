@@ -545,19 +545,6 @@ def _execute_refresh(*, reason: str, source_line: str, t0: float) -> None:
     analysis = run_full_analysis(df, active_df=active, m1_bars=m1_bars)
 
     meta_extra: Dict[str, Any] = {}
-    try:
-        from dashboard.prediction_log_service import (
-            record_prediction,
-            verify_pending_predictions,
-        )
-
-        mkt_pred = analysis.get("market_prediction") or {}
-        verify_pending_predictions(m1_bars)
-        pred_id = record_prediction(mkt_pred, symbol="USTECH")
-        if pred_id:
-            meta_extra["last_prediction_id"] = pred_id
-    except Exception as e:
-        logger.warning("[ML] Prediction log skipped: %s", e)
 
     closed_df = analysis.get("closed_trades")
     if closed_df is None:
