@@ -5734,6 +5734,64 @@ def api_client_m1_bars_push():
     })
 
 
+@app.route('/api/client/ml_insights', methods=['GET'])
+@limiter.limit("60 per minute")
+def api_client_ml_insights():
+    """Trade-history ML insights for the desktop companion AI.
+
+    Exposes the portfolio-level intelligence already computed by the ML
+    predictions worker (RandomForest phase model on closed round trips +
+    momentum bias from shared M1 bars) so the companion can blend it with
+    its local ML/DL direction model in real time.
+
+    Auth: registered client email (same as the other /api/client routes).
+    """
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"status": "error", "message": "Email required"}), 400
+    client_info = get_client_by_email(email)
+    if not client_info:
+        return jsonify({"status": "error", "message": "Email not registered"}), 404
+
+    try:
+        from dashboard.ml_predictions_service import get_state
+        from dashboard.prediction_log_service import prediction_stats
+        state = get_state()
+        meta = state.get("meta") or {}
+        try:
+            live = prediction_stats()
+        except Exception:
+            live = {}
+        return jsonify({
+            "status": "success",
+            "generated_at": state.get("generated_at"),
+            "portfolio": {
+                "n_trades": meta.get("n_trades"),
+                "phase_model_accuracy": meta.get("ml_accuracy"),
+                "recommended_dow": meta.get("recommended_dow"),
+                "same_day_ok": meta.get("same_day_ok"),
+                "direction_violations": meta.get("direction_violations"),
+            },
+            "market": {
+                "bias": meta.get("market_bias"),
+                "confidence": meta.get("market_confidence"),
+                "momentum": meta.get("market_momentum"),
+                "entry_window": meta.get("market_entry_window"),
+                "forecast_window": meta.get("market_forecast_window"),
+                "expected_hold": meta.get("market_expected_hold"),
+            },
+            "live_predictions": {
+                "total": live.get("total"),
+                "verified": live.get("verified"),
+                "wins": live.get("wins"),
+                "losses": live.get("losses"),
+            },
+        })
+    except Exception as exc:
+        app.logger.error("[MLInsights] failed: %s", exc)
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
 @app.route('/api/ml/m1_bars/status', methods=['GET'])
 @require_session
 def api_ml_m1_bars_status():

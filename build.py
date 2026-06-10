@@ -71,6 +71,7 @@ cmd = [
     '--collect-all=MetaTrader5',
     '--collect-all=numpy',
     '--collect-all=selenium',
+    '--collect-all=sklearn',  # ML/DL direction engine (signals/ml_direction.py)
     '--hidden-import=selenium',
     '--hidden-import=dotenv',
     '--hidden-import=psutil',

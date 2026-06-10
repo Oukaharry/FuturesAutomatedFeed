@@ -24,7 +24,11 @@ from typing import Any, Dict, Optional, Set
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_SEC = 60
-DEFAULT_BAR_COUNT = 300
+# 2 days of M1 bars. Indicators need ~110, but deeper consumers (ML feature
+# warmup, research) ask for more — keeping the cache deep means those reads
+# are served instantly instead of falling through to the MT5 API. Memory cost
+# is trivial (~250 KB per symbol); the poll is a local IPC call, not network.
+DEFAULT_BAR_COUNT = 2880
 DEFAULT_SYMBOL_CANDIDATES = (
     "USTECH",   # PlexyTrade API name (history UI may show "ustech")
     "USTEC",

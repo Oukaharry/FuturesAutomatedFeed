@@ -27,6 +27,9 @@ def copy_rates_from_pos_cached(symbol: str, timeframe: int, start_pos: int, coun
     Drop-in for mt5.copy_rates_from_pos with M1 cache when feed is running.
 
     Only caches start_pos==0 and TIMEFRAME_M1. Other timeframes hit MT5 directly.
+    The cache is used only when it can FULLY satisfy the request — a caller
+    asking for more bars than the cache holds goes straight to MT5 instead of
+    silently receiving a truncated set.
     """
     if start_pos != 0:
         return _copy_rates_from_pos(symbol, timeframe, start_pos, count)
@@ -38,8 +41,12 @@ def copy_rates_from_pos_cached(symbol: str, timeframe: int, start_pos: int, coun
             feed = get_market_feed()
             if feed.is_running:
                 cached = feed.get_rates(symbol, count)
-                if cached is not None and len(cached) > 0:
+                if cached is not None and len(cached) >= count:
                     return cached
+                if cached is not None:
+                    logger.debug(
+                        "M1 cache too shallow for %s (%s < %s) — fetching from MT5",
+                        symbol, len(cached), count)
         except Exception as exc:
             logger.debug("M1 cache miss for %s: %s", symbol, exc)
 

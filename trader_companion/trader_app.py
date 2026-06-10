@@ -23,6 +23,7 @@ RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
 RELEASE_DISABLE_PUSH_BILLING = True
+RELEASE_DISABLE_M1_DASHBOARD_PUSH = True  # local M1 feed stays on (indicators/ML)
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -228,7 +229,7 @@ def short_mt5_comment(
 
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Dict
 import re
 import random
@@ -422,6 +423,19 @@ except ImportError:
     except ImportError:
         SIGNALS_AVAILABLE = False
         get_rsi_signal = None
+
+# ML + deep-learning direction engine (gradient boosting + neural net).
+# Optional: requires scikit-learn; the AI degrades gracefully without it.
+try:
+    from trader_companion.signals import ml_direction as ml_direction_engine
+    ML_DIRECTION_AVAILABLE = ml_direction_engine.SKLEARN_AVAILABLE
+except ImportError:
+    try:
+        from signals import ml_direction as ml_direction_engine
+        ML_DIRECTION_AVAILABLE = ml_direction_engine.SKLEARN_AVAILABLE
+    except ImportError:
+        ml_direction_engine = None
+        ML_DIRECTION_AVAILABLE = False
 
 try:
     import pytz
@@ -1706,6 +1720,11 @@ class TradeOpssAIApp:
         self._auto_trade_stop = threading.Event()
         self._auto_trade_scheduled_dt = None
 
+        # AI decision monitor — real-time trace of every AI decision
+        self._ai_events = deque(maxlen=500)
+        self._ai_monitor_win = None
+        self._ai_monitor_text = None
+
         # Trading engine state
         self.trading_api = None
         self.tradovate_account = None
@@ -1984,8 +2003,11 @@ class TradeOpssAIApp:
         toolbar.pack_propagate(False)
 
         self.push_btn_live = None  # manual push removed; auto-sync only
-        self.auto_btn_live = None
-        self.auto_push_status_var = tk.StringVar(value="Sync: off (lookup client first)")
+        self.auto_btn_live = self._ctk_button(toolbar, text="▶ Auto-Push",
+                                              command=self.toggle_auto_push,
+                                              fg=self.C_ACCENT, hover=self.C_ACCENT_HV, width=100)
+        self.auto_btn_live.pack(side="left", padx=(8, 4), pady=5)
+        self.auto_push_status_var = tk.StringVar(value="Sync: off — press Auto-Push to start")
         ctk.CTkLabel(
             toolbar,
             textvariable=self.auto_push_status_var,
@@ -2002,18 +2024,21 @@ class TradeOpssAIApp:
         self.auto_trade_btn.pack(side="left", padx=(8, 4), pady=5)
 
         self.auto_trade_immediate_var = tk.BooleanVar(value=False)
-        self.auto_trade_signal_var = tk.BooleanVar(value=False)
         if CTK_AVAILABLE:
             ctk.CTkCheckBox(toolbar, text="Now", variable=self.auto_trade_immediate_var,
                             font=("Segoe UI", 9), text_color=self.C_TEXT_DIM,
                             fg_color=self.C_ACCENT, border_color=self.C_BORDER,
                             hover_color=self.C_ACCENT_HV, width=40,
                             checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
-            ctk.CTkCheckBox(toolbar, text="Actual Signal", variable=self.auto_trade_signal_var,
-                            font=("Segoe UI", 9), text_color=self.C_TEXT_DIM,
-                            fg_color="#f59e0b", border_color=self.C_BORDER,
-                            hover_color="#d97706", width=90,
-                            checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
+            # "Actual Signal" checkbox removed — directions ALWAYS come from
+            # the AI (ML/DL) now; there is no random/coin-flip mode anymore.
+            ctk.CTkLabel(toolbar, text="🧠 AI signals",
+                         font=("Segoe UI", 9), text_color="#f59e0b").pack(side="left", padx=(0, 6), pady=5)
+
+        self.ai_monitor_btn = self._ctk_button(toolbar, text="🧠 AI Monitor",
+                                               command=self._open_ai_monitor,
+                                               fg="#1e293b", hover="#334155", width=100)
+        self.ai_monitor_btn.pack(side="right", padx=(4, 8), pady=5)
 
         self.auto_trade_status_var = tk.StringVar(value="Off")
         ctk.CTkLabel(toolbar, textvariable=self.auto_trade_status_var,
@@ -2519,7 +2544,10 @@ class TradeOpssAIApp:
                                     pass
                             threading.Thread(target=_fetch_hedge_creds, daemon=True).start()
                             self.root.after(400, self._auto_connect_mt5)
-                            self.root.after(2000, self.start_auto_push)
+                            # Auto-push is OFF by default — user starts it
+                            # with the toolbar Auto-Push toggle.
+                            self.root.after(2000, lambda: self._update_auto_push_status(
+                                "Sync: off — press Auto-Push to start"))
                         self.root.after(0, _on_success)
                     else:
                         error_msg = data.get("message", "Client not found")
@@ -2598,6 +2626,14 @@ class TradeOpssAIApp:
             self.log(f"📡 M1 feed failed: {exc}", "WARN")
             print(f"[MT5Feed] failed: {exc}")
 
+        # Warm the local ML/DL direction model in the background so the AI
+        # is ready before the first auto-trade fires.
+        if ML_DIRECTION_AVAILABLE and ml_direction_engine is not None:
+            try:
+                ml_direction_engine.ensure_trained_async("ustech", log_fn=self._ml_log)
+            except Exception:
+                pass
+
         self._start_m1_dashboard_sync()
 
     def _restart_m1_sync_for_target(self) -> None:
@@ -2612,6 +2648,9 @@ class TradeOpssAIApp:
 
     def _start_m1_dashboard_sync(self) -> None:
         """Push shared Plexy USTECH M1 OHLC to dashboard (gap + backfill + live)."""
+        if RELEASE_DISABLE_M1_DASHBOARD_PUSH:
+            self.log("📊 M1 dashboard push disabled — bars stay local (feed/indicators/ML unaffected)", "INFO")
+            return
         try:
             url = self.url_entry.get().strip().rstrip("/")
             email = self.client_email_entry.get().strip().lower()
@@ -2669,7 +2708,6 @@ class TradeOpssAIApp:
             if success:
                 self.mt5_btn.configure(text="Disconnect MT5")
                 self._start_m1_feed_after_mt5_connect()
-                self.start_auto_push()
                 self._log_market_feed_status()
             self.log(msg, "INFO" if success else "ERROR")
 
@@ -2720,7 +2758,6 @@ class TradeOpssAIApp:
             self.log(("✅ " if success else "⚠ ") + msg, "INFO" if success else "ERROR")
             if success:
                 self._start_m1_feed_after_mt5_connect()
-                self.start_auto_push()
                 self._log_market_feed_status()
 
         self.root.after(0, _connect_on_ui)
@@ -2905,8 +2942,35 @@ class TradeOpssAIApp:
         except Exception:
             pass
 
+    def _update_auto_push_button(self) -> None:
+        """Sync the toolbar Auto-Push toggle with the current state."""
+        btn = getattr(self, "auto_btn_live", None)
+        if not btn:
+            return
+        try:
+            if self.auto_push_enabled:
+                btn.configure(text="⏹ Stop Push")
+                if CTK_AVAILABLE:
+                    btn.configure(fg_color='#dc2626', hover_color='#b91c1c')
+            else:
+                btn.configure(text="▶ Auto-Push")
+                if CTK_AVAILABLE:
+                    btn.configure(fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
+        except Exception:
+            pass
+
+    def toggle_auto_push(self):
+        """Manual toolbar toggle for the background auto-sync."""
+        if self.auto_push_enabled:
+            self.stop_auto_push("manual toggle")
+        else:
+            if not self.client_info:
+                messagebox.showerror("Error", "Please lookup the client first")
+                return
+            self.start_auto_push()
+
     def start_auto_push(self) -> None:
-        """Start background auto-sync (no manual Push button in v1.6.6+)."""
+        """Start background auto-sync (manual: toolbar Auto-Push toggle only)."""
         if self.auto_push_enabled:
             return
         if not self.client_info:
@@ -2922,6 +2986,7 @@ class TradeOpssAIApp:
             "(MT5 TimeCurrent vs Nairobi timezone on each push)"
         )
         self._update_auto_push_status("Sync: active (watching trades)")
+        self._update_auto_push_button()
         self.auto_push_thread = threading.Thread(target=self.auto_push_loop, daemon=True)
         self.auto_push_thread.start()
 
@@ -2935,6 +3000,7 @@ class TradeOpssAIApp:
             msg += f" ({reason})"
         self.log(msg)
         self._update_auto_push_status("Sync: stopped")
+        self._update_auto_push_button()
 
     # Per-login cache for the 365-day farming history:
     #   { login_key: (fetched_at_epoch, [deals]) }
@@ -5017,6 +5083,10 @@ class TradeOpssAIApp:
         # If day was found in a different phase's fields, correct the phase
         effective_phase = matched_phase if matched_phase else current_phase
         if matched_phase and matched_phase != current_phase:
+            _acct = str(ev.get("Account #.1") or ev.get("Account #") or "?").strip()
+            self._ai_trace("WARN", f"{_acct}: phase correction — detected "
+                                   f"'{current_phase}' but placeholder found in "
+                                   f"'{matched_phase}' columns")
             self.log(f"📅 Phase correction: detected '{current_phase}' but day "
                      f"placeholder found in '{matched_phase}' fields")
 
@@ -5058,6 +5128,10 @@ class TradeOpssAIApp:
                 pass
         key_idx = min(day_idx, len(trade_keys) - 1)
         resolved_key = trade_keys[key_idx]
+        _acct = str(ev.get("Account #.1") or ev.get("Account #") or "?").strip()
+        self._ai_trace("BLUEPRINT",
+                       f"{_acct}: day cell {day_idx + 1} ({day_name}) in "
+                       f"'{effective_phase}' [{firm_code}] → blueprint {resolved_key}")
         return resolved_key, day_idx, day_name
 
     # Day-name abbreviations that traders use as placeholders
@@ -5188,9 +5262,32 @@ class TradeOpssAIApp:
         # Build ordered list: detected phase first, then all others as fallback
         primary_fields = self._get_phase_fields(current_phase)
         search_order = [(current_phase, primary_fields)]
+        has_funded_acct = bool((ev.get("Account #.1", "") or "").strip())
         for phase_name, field_list in self._ALL_PHASE_FIELD_SETS:
-            if field_list != primary_fields:
-                search_order.append((phase_name, field_list))
+            if field_list == primary_fields:
+                continue
+            # GUARD: an account that has moved past the challenge (it has a
+            # funded account number) must NEVER fall back to the Challenge
+            # columns.  A stale day placeholder left over in a challenge cell
+            # would otherwise "phase-correct" the account back to the
+            # challenge blueprint and the trade would fire with the wrong
+            # TP/SL (observed live on Tradeify: funded trade 1 firing with
+            # challenge 102/200 ticks instead of funded 540/200).
+            if phase_name == "Challenge" and has_funded_acct and current_phase != "Challenge":
+                stale = [f for f in field_list
+                         if self._parse_day_token(ev.get(f)) is not None]
+                if stale:
+                    acct = str(ev.get("Account #.1") or ev.get("Account #") or "?").strip()
+                    msg = (f"⚠ {acct}: stale challenge placeholder in '{stale[0]}' "
+                           f"IGNORED — account is funded; challenge columns are "
+                           f"no longer tradeable (would have used wrong TP/SL)")
+                    self._ai_trace("WARN", msg)
+                    try:
+                        self.root.after(0, lambda m=msg: self.log(m, "WARN"))
+                    except Exception:
+                        pass
+                continue
+            search_order.append((phase_name, field_list))
 
         for phase_name, fields in search_order:
             best_past = None     # (index, name, day_num) — most-recent past
@@ -5763,24 +5860,22 @@ class TradeOpssAIApp:
             self.trades_count_var.set("[ 0 ]")
             return
 
-        # Daily bias per prop firm (persisted, resets each day)
-        # JSON often has "Prop Firm": null — ev.get("Prop Firm", "Unknown") is still None;
-        # normalize so bias + row rendering never crash mid-loop.
+        # AI (ML/DL) drives the suggested direction for every firm.
+        # Render immediately with the last known AI signal, then refresh it in
+        # the background (model prediction + dashboard insights can take a
+        # moment) and restyle the row buttons once the fresh signal lands.
         firms_seen = set()
         for ev in evaluations:
             pf = ev.get("Prop Firm")
             nm = str(pf).strip() if pf is not None else ""
             firms_seen.add(nm or "Unknown")
-        firm_bias = self._get_daily_bias(firms_seen)
+        last_sig = getattr(self, "_last_ai_signal", None) or "buy"
+        firm_bias = {f: last_sig for f in firms_seen}
         # Store for auto-trade compatibility
         self._auto_trade_firm_sides = firm_bias
+        self._refresh_ai_direction_async(firms_seen)
 
-        # Log bias
-        bias_parts = []
-        for f, s in sorted(firm_bias.items()):
-            arrow = "▲" if s == "buy" else "▼"
-            bias_parts.append(f"{arrow} {f}: {s.upper()}")
-        self.log(f"Direction bias: {', '.join(bias_parts)}")
+        self.log(f"🧠 Direction: {last_sig.upper()} (last AI signal) — refreshing from ML/DL…")
         self.log(f"Rendering {len(evaluations)} active trade row(s)…")
 
         for idx, ev in enumerate(evaluations):
@@ -6854,14 +6949,10 @@ class TradeOpssAIApp:
                 self.log("⚠ Connect MT5 first for hedging mode auto-trade", "WARN")
                 return
 
-        # Validation: signal mode needs MT5 for price data
-        if self.auto_trade_signal_var.get():
-            if not SIGNALS_AVAILABLE:
-                self.log("⚠ Signal indicators not available — install required packages", "WARN")
-                return
-            if not self._ensure_mt5_for_signals():
-                self.log("⚠ Connect MT5 first for Actual Signal mode (indicators need price data)", "WARN")
-                return
+        # Validation: AI signals need MT5 for price data (ML training + indicators)
+        if not self._ensure_mt5_for_signals():
+            self.log("⚠ Connect MT5 first — the AI needs price data for ML/DL signals", "WARN")
+            return
 
         EAT = timezone(timedelta(hours=3))  # East Africa Time (UTC+3)
         now_eat = datetime.now(EAT)
@@ -6888,29 +6979,14 @@ class TradeOpssAIApp:
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
 
-        use_signal = self.auto_trade_signal_var.get() and SIGNALS_AVAILABLE
-        self._auto_trade_use_signal = use_signal
+        # Directions ALWAYS come from the AI (ML/DL → indicator fallback),
+        # computed fresh at execution time so the signal reflects the market
+        # at the actual entry — never from a random/daily coin flip.
+        self._auto_trade_use_signal = True
+        self._auto_trade_firm_sides = {}  # filled at execution by the AI
+        self.auto_trade_firms_var.set("  🧠  Directions from AI (ML/DL) at execution")
 
-        if use_signal:
-            # Direction will be determined by indicator signals at execution time
-            self._auto_trade_firm_sides = {}  # filled at execution
-            self.auto_trade_firms_var.set("  📊  Directions from indicator signals")
-        else:
-            # Daily bias per prop firm (persisted, resets each day)
-            firms_in_rows = set()
-            for rd in self._active_trade_rows:
-                firm_name = rd["eval"].get("Prop Firm", rd["firm_code"])
-                firms_in_rows.add(firm_name)
-            self._auto_trade_firm_sides = self._get_daily_bias(firms_in_rows)
-
-            # Build display string
-            dir_lines = []
-            for firm, s in self._auto_trade_firm_sides.items():
-                arrow = "▲" if s == "buy" else "▼"
-                dir_lines.append(f"  {arrow} {s.upper():4s}  {firm}")
-            self.auto_trade_firms_var.set("\n".join(dir_lines))
-
-        mode_label = "indicator signals" if use_signal else "random dirs per firm"
+        mode_label = "AI (ML/DL) signals"
         time_str = scheduled_eat.strftime("%I:%M %p EAT")
         self.auto_trade_btn.configure(text="⏹  Stop Auto-Trade")
         if CTK_AVAILABLE:
@@ -6921,11 +6997,7 @@ class TradeOpssAIApp:
         else:
             self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
             self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
-        if not use_signal:
-            for firm, s in self._auto_trade_firm_sides.items():
-                self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
-        else:
-            self.log("   📊 Directions will be generated from indicators at execution time")
+        self.log("   🧠 Directions will be generated by the AI (ML/DL) at execution time")
 
         # Start background countdown / executor thread
         self.auto_trade_thread = threading.Thread(
@@ -6980,12 +7052,22 @@ class TradeOpssAIApp:
             # Sleep 1 second between checks
             self._auto_trade_stop.wait(timeout=1)
 
+    # ── Entry staggering (risk spreading) ──────────────────────────────
+    # Never fire all trades at the exact same second: each firm thread
+    # starts with its own offset, and accounts within a firm are spaced
+    # by a random gap. All waits are stop-aware (Stop button interrupts).
+    AUTO_TRADE_FIRM_STAGGER_BASE_SEC = 15   # firm i starts ~i*15s after firm 0
+    AUTO_TRADE_FIRM_STAGGER_JITTER_SEC = 10  # plus 0-10s random jitter
+    AUTO_TRADE_ACCOUNT_SPACING_SEC = (20, 60)  # random gap between accounts in a firm
+
     def _auto_execute_all_trades(self):
         """Execute trades for ALL loaded rows, parallel across prop firms.
 
         Each prop firm has its own Chrome instance opened during initialization.
         Trades for different firms run in parallel threads (one thread per firm),
         while trades for the same firm run sequentially within that thread.
+        Entries are deliberately staggered (per-firm offset + per-account gap)
+        so positions open at different times and risk is spread.
         """
         firm_sides = getattr(self, '_auto_trade_firm_sides', {})
         use_signal = getattr(self, '_auto_trade_use_signal', False)
@@ -7146,7 +7228,7 @@ class TradeOpssAIApp:
         total_success = threading.Lock()
         counters = {"success": 0, "fail": 0, "skipped": len(skipped_rows) + margin_skipped}
 
-        def _execute_firm_trades(firm_name, firm_rows):
+        def _execute_firm_trades(firm_name, firm_rows, stagger_offset=0.0):
             """Execute all trades for one firm sequentially on its own Chrome."""
             # Platform follows the resolved blueprint code (first row's
             # firm_code), not a substring of the dashboard label.
@@ -7161,9 +7243,24 @@ class TradeOpssAIApp:
                         counters["fail"] += 1
                 return
 
-            for row_data in firm_rows:
+            # ── Stagger this firm's start so firms never fire together ──
+            if stagger_offset > 0:
+                self.root.after(0, lambda fn=firm_name, d=stagger_offset: self.log(
+                    f"⏳ {fn}: staggered start in {d:.0f}s (risk spreading)"))
+                if self._auto_trade_stop.wait(timeout=stagger_offset):
+                    return  # auto-trade stopped during the wait
+
+            for row_idx, row_data in enumerate(firm_rows):
                 if self._auto_trade_stop.is_set():
                     break
+
+                # ── Space accounts within the firm (risk spreading) ──
+                if row_idx > 0:
+                    gap = random.uniform(*self.AUTO_TRADE_ACCOUNT_SPACING_SEC)
+                    self.root.after(0, lambda fn=firm_name, g=gap: self.log(
+                        f"⏳ {fn}: next account in {g:.0f}s (risk spreading)"))
+                    if self._auto_trade_stop.wait(timeout=gap):
+                        break
 
                 firm_code = row_data["firm_code"]
                 phase_key = row_data["phase_key"]
@@ -7277,9 +7374,10 @@ class TradeOpssAIApp:
                 # we can clear it after the broker leg fills.
                 day_field = self._find_day_field_name(auto_ev, row_data.get("current_phase", ""))
 
-                # Determine direction: signal-based or random bias
+                # Determine direction — AI signal only, NEVER random.
                 if use_signal:
-                    # Lazy-compute signal once per firm
+                    # Lazy-compute signal once per firm (only cached when valid
+                    # so a temporary data outage can recover on the next row)
                     if firm_name not in firm_sides:
                         config_tmp = None
                         if self.prop_firm_mgr:
@@ -7287,10 +7385,21 @@ class TradeOpssAIApp:
                                 firm_code, phase_key, acct_size)
                         mt5_sym = (config_tmp or {}).get("mt5_symbol", "ustech")
                         sig = self._get_signal_direction(mt5_sym)
-                        firm_sides[firm_name] = sig
-                        self.root.after(0, lambda fn=firm_name, s=sig, sym=mt5_sym:
-                            self.log(f"   📊 {fn} ({sym}) → signal: {s.upper()}"))
-                side = firm_sides.get(firm_name, random.choice(["buy", "sell"]))
+                        if sig in ("buy", "sell"):
+                            firm_sides[firm_name] = sig
+                            self._ai_trace("SIGNAL", f"{firm_name}: AI direction locked → {sig.upper()}")
+                            self.root.after(0, lambda fn=firm_name, s=sig, sym=mt5_sym:
+                                self.log(f"   📊 {fn} ({sym}) → signal: {s.upper()}"))
+                side = firm_sides.get(firm_name)
+                if side not in ("buy", "sell"):
+                    # No data-driven signal — refuse to guess; skip this account.
+                    self._ai_trace("WARN", f"{acct_num}: NO AI signal available — "
+                                           f"trade skipped (no random entries)")
+                    self.root.after(0, lambda an=acct_num: self.log(
+                        f"⛔ {an}: no data-driven signal — trade skipped (no random)", "WARN"))
+                    with total_success:
+                        counters["fail"] += 1
+                    continue
 
                 config = None
                 if self.prop_firm_mgr:
@@ -7312,6 +7421,9 @@ class TradeOpssAIApp:
                 _bp_sl = config.get("tradovate_sl_ticks", config.get("topstepx_sl_ticks", "?"))
                 _an, _fc, _pk, _sz = acct_num, firm_code, phase_key, acct_size
                 _bs, _bq, _bt, _bsl = trado_sym, trado_qty, _bp_tp, _bp_sl
+                self._ai_trace("BLUEPRINT",
+                               f"{acct_num}: EXECUTING with {firm_code}/{phase_key}/{acct_size} "
+                               f"→ {trado_sym} qty={trado_qty} TP={_bp_tp}t SL={_bp_sl}t")
                 self.root.after(0, lambda an=_an, fc=_fc, pk=_pk, sz=_sz, bs=_bs, bq=_bq, bt=_bt, bsl=_bsl:
                     self.log(f"📋 {an}: blueprint {fc}/{pk}/{sz} → "
                              f"{bs} qty={bq} TP={bt}t SL={bsl}t"))
@@ -7439,6 +7551,9 @@ class TradeOpssAIApp:
                     if isinstance(order_result, dict) and order_result.get("success") is False:
                         raise Exception(order_result.get("message") or "Broker reported unsuccessful order")
 
+                    self._ai_trace("TRADE",
+                                   f"{acct_num}: {platform} {side.upper()} {trado_qty} {trado_sym} "
+                                   f"FILLED (TP={trado_tp}t SL={trado_sl}t)")
                     self.root.after(0, lambda an=acct_num, fc=firm_code, sd=side, sym=trado_sym, qty=trado_qty:
                         self.log(f"✅ {platform} {sd.upper()} {qty} {sym} → {an} ({fc})"))
 
@@ -7464,6 +7579,9 @@ class TradeOpssAIApp:
                             mt5_api.buy_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
                         else:
                             mt5_api.sell_market(mt5_sym, mt5_vol, sl=mt5_sl, tp=mt5_tp, comment=comment)
+                        self._ai_trace("TRADE",
+                                       f"{acct_num}: MT5 hedge {hedge_side.upper()} {mt5_vol} {mt5_sym} "
+                                       f"(TP={mt5_tp}pts SL={mt5_sl}pts)")
                         self.root.after(0, lambda an=acct_num, hs=hedge_side, vol=mt5_vol, sym=mt5_sym, cmt=comment:
                             self.log(f"✅ MT5 hedge {hs.upper()} {vol} {sym} comment:{cmt} → {an}"))
 
@@ -7494,23 +7612,25 @@ class TradeOpssAIApp:
                             if remaining > 0 else "All trades complete ✓")
                     self.root.after(0, _remove)
 
-                    # Small delay between trades on the same account
-                    time.sleep(2)
-
                 except Exception as e:
                     with total_success:
                         counters["fail"] += 1
+                    self._ai_trace("WARN", f"{acct_num}: trade FAILED — {e}")
                     self.root.after(0, lambda an=acct_num, err=str(e):
                         self.log(f"❌ Auto-trade failed for {an}: {err}", "ERROR"))
 
         def _dispatch_parallel():
             num_firms = len(rows_by_firm)
             self.root.after(0, lambda n=num_firms: self.log(
-                f"⚡ Dispatching trades across {n} firm(s) in parallel..."))
+                f"⚡ Dispatching trades across {n} firm(s) — staggered entries (risk spreading)..."))
             with ThreadPoolExecutor(max_workers=num_firms) as executor:
                 futures = {
-                    executor.submit(_execute_firm_trades, firm, firm_rows): firm
-                    for firm, firm_rows in rows_by_firm.items()
+                    executor.submit(
+                        _execute_firm_trades, firm, firm_rows,
+                        idx * self.AUTO_TRADE_FIRM_STAGGER_BASE_SEC
+                        + random.uniform(0, self.AUTO_TRADE_FIRM_STAGGER_JITTER_SEC),
+                    ): firm
+                    for idx, (firm, firm_rows) in enumerate(rows_by_firm.items())
                 }
                 for future in as_completed(futures):
                     firm = futures[future]
@@ -9486,55 +9606,55 @@ class TradeOpssAIApp:
 
     # ============ Daily Bias Persistence ============
 
-    def _get_daily_bias(self, firms):
-        """Get or create today's direction bias per prop firm.
-        Persisted to trader_bias.json so it survives app restarts.
-        Resets automatically on a new calendar day (EAT)."""
-        from datetime import datetime, timedelta, timezone
-        EAT = timezone(timedelta(hours=3))
-        today_str = datetime.now(EAT).strftime("%Y-%m-%d")
+    def _refresh_ai_direction_async(self, firms):
+        """Compute the AI (ML/DL) direction in the background and restyle rows.
 
-        bias_path = os.path.join(os.path.dirname(__file__), "trader_bias.json")
-        saved = {}
-        if os.path.exists(bias_path):
+        Replaces the old daily coin-flip bias: the suggested BUY/SELL on every
+        Active Trades row comes from _get_signal_direction (local ML/DL
+        ensemble → indicator vote), never from random.
+        """
+        def _worker():
             try:
-                with open(bias_path, 'r') as f:
-                    saved = json.load(f)
+                sig = self._get_signal_direction("ustech")
             except Exception:
-                saved = {}
+                return
+            if sig not in ("buy", "sell"):
+                return
 
-        # Reset if date changed
-        if saved.get("date") != today_str:
-            saved = {"date": today_str, "firms": {}}
+            def _apply(s=sig, fs=set(firms)):
+                self._last_ai_signal = s
+                self._auto_trade_firm_sides = {f: s for f in fs}
+                for rd in list(self._active_trade_rows):
+                    self._style_direction_buttons(rd, s)
+            self.root.after(0, _apply)
 
-        firm_bias = saved.get("firms", {})
-        changed = False
-        # Assign in a deterministic order so balancing is reproducible
-        for firm in sorted(firms):
-            if firm not in firm_bias:
-                # Diversify: pick the direction held by FEWER existing firms.
-                # This prevents every firm from coincidentally landing on BUY.
-                buys = sum(1 for d in firm_bias.values() if d == "buy")
-                sells = sum(1 for d in firm_bias.values() if d == "sell")
-                if buys > sells:
-                    firm_bias[firm] = "sell"
-                elif sells > buys:
-                    firm_bias[firm] = "buy"
+        threading.Thread(target=_worker, name="ai-direction", daemon=True).start()
+
+    def _style_direction_buttons(self, row_data, bias):
+        """Re-color a row's BUY/SELL buttons to highlight the AI direction."""
+        buy_btn = row_data.get("buy_btn")
+        sell_btn = row_data.get("sell_btn")
+        if not buy_btn or not sell_btn:
+            return
+        try:
+            if CTK_AVAILABLE:
+                if bias == "buy":
+                    buy_btn.configure(fg_color="#052E16", border_color="#16A34A",
+                                      text_color="#4ADE80", hover_color="#14532D")
+                    sell_btn.configure(fg_color="#0A0F1A", border_color="#1A1A2E",
+                                       text_color="#2A3040", hover_color="#0A0F1A")
                 else:
-                    # Tie (or first firm) — random
-                    firm_bias[firm] = random.choice(["buy", "sell"])
-                changed = True
-
-        if changed or saved.get("date") != today_str:
-            saved["date"] = today_str
-            saved["firms"] = firm_bias
-            try:
-                with open(bias_path, 'w') as f:
-                    json.dump(saved, f, indent=2)
-            except Exception:
-                pass
-
-        return {f: firm_bias.get(f, "buy") for f in firms}
+                    buy_btn.configure(fg_color="#0A0F1A", border_color="#1A1A2E",
+                                      text_color="#2A3040", hover_color="#0A0F1A")
+                    sell_btn.configure(fg_color="#2D0A0A", border_color="#DC2626",
+                                       text_color="#F87171", hover_color="#450A0A")
+            else:
+                buy_btn.configure(bg='#052E16' if bias == 'buy' else '#0A0F1A',
+                                  fg='#4ADE80' if bias == 'buy' else '#2A3040')
+                sell_btn.configure(bg='#2D0A0A' if bias == 'sell' else '#0A0F1A',
+                                   fg='#F87171' if bias == 'sell' else '#2A3040')
+        except Exception:
+            pass
 
     # ============ Indicator-Based Signal ============
 
@@ -9579,16 +9699,40 @@ class TradeOpssAIApp:
         cls._SIGNAL_INDICATORS = indicators
         return indicators
 
-    def _get_signal_direction(self, mt5_symbol, timeframe=None, num_indicators=3):
-        """Generate a trade direction by polling a random subset of indicators.
-        
-        Picks `num_indicators` random indicators, queries each on the given
-        MT5 symbol, and uses majority vote to decide buy vs sell.
-        Falls back to random if no indicators produce a signal.
+    # ── Layer 3 fallback: classic indicator vote ──────────────────────
+
+    def _momentum_tiebreak(self, mt5_symbol, timeframe):
+        """Deterministic data-driven tie-break: direction of the last 8-bar move.
+
+        Returns "buy"/"sell" from real price data, or None if no data (or the
+        move is exactly flat). NEVER random.
+        """
+        try:
+            rates = mt5.copy_rates_from_pos(mt5_symbol, timeframe, 0, 9)
+            if rates is not None and len(rates) >= 2:
+                first = float(rates[0][4])
+                last = float(rates[-1][4])
+                if last > first:
+                    return "buy"
+                if last < first:
+                    return "sell"
+        except Exception:
+            pass
+        return None
+
+    def _get_indicator_vote_direction(self, mt5_symbol, timeframe=None, num_indicators=None,
+                                      tiebreak=None):
+        """Trade direction from a majority vote of ALL available indicators.
+
+        Every indicator is polled (deterministic — no random subset). Ties are
+        broken by real data only: own price momentum first, then the dashboard
+        advisory hint. Returns None when no data-driven decision is possible —
+        the caller must treat that as "do not trade", never guess.
         """
         if not MT5_AVAILABLE:
-            self.root.after(0, lambda: self.log("⚠ MetaTrader5 import unavailable — using random direction", "WARN"))
-            return random.choice(["buy", "sell"])
+            self._ai_trace("WARN", f"{mt5_symbol}: MetaTrader5 unavailable — NO signal (no random)")
+            self.root.after(0, lambda: self.log("⚠ MetaTrader5 import unavailable — no signal", "WARN"))
+            return None
         mt5_mod = mt5
         if timeframe is None:
             timeframe = mt5_mod.TIMEFRAME_M5
@@ -9597,8 +9741,23 @@ class TradeOpssAIApp:
         if not mt5_mod.terminal_info():
             self._ensure_mt5_for_signals()
             if not mt5_mod.terminal_info():
-                self.root.after(0, lambda: self.log("⚠ MT5 not connected — using random direction", "WARN"))
-                return random.choice(["buy", "sell"])
+                self._ai_trace("WARN", f"{mt5_symbol}: MT5 not connected — NO signal (no random)")
+                self.root.after(0, lambda: self.log("⚠ MT5 not connected — no signal", "WARN"))
+                return None
+
+        # MT5 symbol names are case-sensitive: 'ustech' fetches NOTHING while
+        # 'USTECH' works — resolve to the broker's exact name before polling.
+        try:
+            for _cand in (str(mt5_symbol), str(mt5_symbol).upper(),
+                          str(mt5_symbol).lower(), str(mt5_symbol).capitalize()):
+                if mt5_mod.symbol_info(_cand) is not None:
+                    if _cand != mt5_symbol:
+                        self._ai_trace("DIAG", f"symbol '{mt5_symbol}' resolved to "
+                                               f"MT5 name '{_cand}'")
+                    mt5_symbol = _cand
+                    break
+        except Exception:
+            pass
 
         try:
             from trader_companion.mt5_market_feed import get_market_feed, start_mt5_market_feed
@@ -9611,13 +9770,14 @@ class TradeOpssAIApp:
 
         indicators = self._get_indicator_map()
         if not indicators:
-            self.root.after(0, lambda: self.log("⚠ No signal indicators available — using random", "WARN"))
-            return random.choice(["buy", "sell"])
+            self._ai_trace("WARN", f"{mt5_symbol}: no indicators available — NO signal (no random)")
+            self.root.after(0, lambda: self.log("⚠ No signal indicators available — no signal", "WARN"))
+            return None
 
-        # Pick a random subset
-        available = list(indicators.keys())
-        pick_count = min(num_indicators, len(available))
-        chosen = random.sample(available, pick_count)
+        # Poll EVERY indicator in a stable order — intentional, reproducible.
+        chosen = sorted(indicators.keys())
+        if num_indicators:
+            chosen = chosen[:num_indicators]
 
         buy_votes = 0
         sell_votes = 0
@@ -9639,21 +9799,498 @@ class TradeOpssAIApp:
                     details.append(f"{name}=SELL")
                 else:
                     details.append(f"{name}={sig}")
-            except Exception as e:
+            except Exception:
                 details.append(f"{name}=err")
 
-        detail_str = ", ".join(details)
+        detail_str = f"{buy_votes}B/{sell_votes}S [" + ", ".join(details) + "]"
         if buy_votes > sell_votes:
             direction = "buy"
         elif sell_votes > buy_votes:
             direction = "sell"
         else:
-            direction = random.choice(["buy", "sell"])
-            detail_str += " (tie→random)"
+            # Tie — resolve with DATA only, never a coin flip.
+            direction = self._momentum_tiebreak(mt5_symbol, timeframe)
+            if direction:
+                detail_str += " (tie→price momentum)"
+            elif tiebreak in ("buy", "sell"):
+                direction = tiebreak
+                detail_str += " (tie→dashboard bias)"
+            else:
+                self._ai_trace("WARN", f"{mt5_symbol}: dead tie with no tie-break data — "
+                                       f"NO signal (no random)")
+                self.root.after(0, lambda d=detail_str:
+                    self.log(f"   📊 Signal vote: {d} → NO SIGNAL (dead tie, no data)", "WARN"))
+                return None
 
+        self._ai_trace("VOTE", f"{mt5_symbol}: {detail_str} → {direction.upper()}")
         self.root.after(0, lambda d=detail_str, dir=direction:
             self.log(f"   📊 Signal vote: {d} → {dir.upper()}"))
         return direction
+
+    # ── AI Decision Monitor — real-time window into the AI's reasoning ──
+
+    AI_TRACE_COLORS = {
+        "SIGNAL":    "#00D4FF",  # final direction decisions
+        "ML":        "#4ADE80",  # local ML/DL ensemble layer
+        "INSIGHT":   "#fbbf24",  # dashboard trade-history ML (advisory)
+        "VOTE":      "#a78bfa",  # indicator vote fallback
+        "BLUEPRINT": "#60a5fa",  # phase/blueprint resolution (TP/SL source)
+        "TRADE":     "#34d399",  # orders fired
+        "WARN":      "#f87171",  # anomalies / guards
+        "DIAG":      "#2dd4bf",  # on-demand diagnostics (raw indicator values)
+    }
+
+    def _run_ai_diagnostics(self):
+        """Probe every AI input LIVE and trace raw values to the monitor.
+
+        Answers "what is the AI actually seeing right now?": MT5 connection,
+        symbol resolution, bar freshness, every indicator's raw computed
+        value, ML model state + prediction, and dashboard insight health.
+        Runs in a background thread; results stream into the monitor as DIAG.
+        """
+        def _fmt(v):
+            if isinstance(v, float):
+                return f"{v:.2f}"
+            if isinstance(v, (tuple, list)):
+                return "(" + ", ".join(_fmt(x) for x in v) + ")"
+            try:
+                import numpy as _np
+                if isinstance(v, _np.floating):
+                    return f"{float(v):.2f}"
+            except Exception:
+                pass
+            return str(v)
+
+        def _worker():
+            def t(msg):
+                self._ai_trace("DIAG", msg)
+
+            t("──── diagnostics started ────")
+
+            # 1. MT5 connection
+            if not MT5_AVAILABLE:
+                t("MT5: module not installed — indicators and ML CANNOT run")
+                return
+            try:
+                ti = mt5.terminal_info()
+                if not ti:
+                    t("MT5: NOT CONNECTED — connect MT5 first, then re-run")
+                    return
+                ai = mt5.account_info()
+                t(f"MT5: connected={ti.connected} login={getattr(ai, 'login', '?')} "
+                  f"server={getattr(ai, 'server', '?')}")
+            except Exception as e:
+                t(f"MT5: error — {e}")
+                return
+
+            # 2. Symbol resolution (case matters: 'ustech' fetches nothing)
+            raw_sym = "ustech"
+            resolved = None
+            for cand in (raw_sym.upper(), raw_sym, raw_sym.capitalize()):
+                try:
+                    if mt5.symbol_info(cand) is not None:
+                        resolved = cand
+                        break
+                except Exception:
+                    pass
+            if not resolved:
+                t(f"symbol: could NOT resolve '{raw_sym}' on this broker — no data possible")
+                return
+            t(f"symbol: '{raw_sym}' → MT5 '{resolved}'")
+
+            # 3. Bar freshness
+            tf = mt5.TIMEFRAME_M5
+            try:
+                rates = mt5.copy_rates_from_pos(resolved, tf, 0, 2)
+            except Exception as e:
+                rates = None
+                t(f"bars: fetch error — {e}")
+            if rates is None or len(rates) == 0:
+                t("bars: NO M5 data returned — indicators will all be neutral")
+                return
+            last = rates[-1]
+            age = int(time.time() - int(last[0]))
+            t(f"bars: last M5 close={float(last[4]):.2f}, bar opened {age}s ago")
+
+            # 4. Every indicator's raw computed value
+            indicators = self._get_indicator_map()
+            if not indicators:
+                t("indicators: NONE available (import failure?)")
+            for name in sorted(indicators.keys()):
+                func = indicators[name][0]
+                try:
+                    out = func(resolved, tf, return_value=True)
+                    t(f"indicator {name}: {_fmt(out)}")
+                except TypeError:
+                    try:
+                        t(f"indicator {name}: signal={_fmt(func(resolved, tf))}")
+                    except Exception as e:
+                        t(f"indicator {name}: ERROR — {e}")
+                except Exception as e:
+                    t(f"indicator {name}: ERROR — {e}")
+
+            # 5. ML/DL ensemble state
+            if ML_DIRECTION_AVAILABLE and ml_direction_engine is not None:
+                try:
+                    b = ml_direction_engine.get_cached_bundle(raw_sym, 5)
+                    if b:
+                        wf = b.get("walk_forward") or {}
+                        mins = int((time.time() - b["trained_at"]) / 60)
+                        t(f"ML model: trained {mins}min ago, n={b.get('n_labeled')}, "
+                          f"wf_acc={wf.get('accuracy')} gated={wf.get('gated_accuracy')}")
+                    else:
+                        t("ML model: not trained yet — training starts automatically; "
+                          "AI uses indicator vote meanwhile")
+                    pred = ml_direction_engine.get_ml_direction(raw_sym, 5)
+                    if pred.get("ready"):
+                        t(f"ML prediction: {str(pred.get('direction')).upper()} "
+                          f"p_up={pred.get('probability')} conf={pred.get('confidence')} "
+                          f"(gate {pred.get('confidence_threshold')})")
+                    else:
+                        t(f"ML prediction: not ready ({pred.get('reason')})")
+                except Exception as e:
+                    t(f"ML: error — {e}")
+            else:
+                t("ML: scikit-learn unavailable — ensemble disabled, indicator vote only")
+
+            # 6. Dashboard insights health
+            ins = self._get_dashboard_ml_insights()
+            if ins:
+                mkt = ins.get("market") or {}
+                port = ins.get("portfolio") or {}
+                t(f"dashboard: reachable — bias={mkt.get('bias')} "
+                  f"conf={mkt.get('confidence')} n_trades={port.get('n_trades')}")
+            else:
+                t("dashboard: insights UNAVAILABLE (check URL / email / network) — "
+                  "advisory layer inactive")
+
+            t("──── diagnostics complete ────")
+
+        threading.Thread(target=_worker, name="ai-diagnostics", daemon=True).start()
+
+    def _ml_log(self, message: str) -> None:
+        """Route ML training progress to both the app log and the AI monitor."""
+        self._ai_trace("ML", message.replace("🧠 ", ""))
+        try:
+            self.root.after(0, lambda m=message: self.log(m))
+        except Exception:
+            pass
+
+    def _ai_trace(self, category: str, message: str) -> None:
+        """Record one AI decision event and stream it to the monitor window.
+
+        Safe to call from any thread; widget updates hop to the UI thread.
+        """
+        ts = datetime.now().strftime("%H:%M:%S")
+        self._ai_events.append((ts, category, message))
+
+        def _append():
+            self._ai_monitor_update_status(category, message)
+            txt = self._ai_monitor_text
+            win = self._ai_monitor_win
+            if not txt or not win:
+                return
+            try:
+                if not win.winfo_exists():
+                    return
+                self._ai_monitor_insert(txt, ts, category, message)
+                if getattr(self, "_ai_autoscroll_var", None) is None or \
+                        self._ai_autoscroll_var.get():
+                    txt.see("end")
+            except Exception:
+                pass
+
+        try:
+            self.root.after(0, _append)
+        except Exception:
+            pass
+
+    @classmethod
+    def _ai_monitor_insert(cls, txt, ts, category, message):
+        """Insert one formatted trace line (badge style) into the text widget."""
+        txt.configure(state="normal")
+        txt.insert("end", f" {ts}  ", "dim")
+        txt.insert("end", f" {category:^9} ", f"badge_{category}")
+        txt.insert("end", f"  {message}\n", f"msg_{category}")
+        txt.configure(state="disabled")
+
+    def _ai_monitor_update_status(self, category: str, message: str) -> None:
+        """Refresh the status cards at the top of the monitor."""
+        vars_map = getattr(self, "_ai_status_vars", None)
+        if not vars_map:
+            return
+        try:
+            short = message if len(message) <= 64 else message[:61] + "…"
+            if category == "ML":
+                vars_map["model"].set(short)
+            elif category == "SIGNAL":
+                vars_map["signal"].set(short)
+            elif category == "INSIGHT":
+                vars_map["insight"].set(short)
+            elif category in ("TRADE", "WARN"):
+                vars_map["last_event"].set(f"[{category}] {short}")
+            vars_map["events"].set(f"{len(self._ai_events)} events")
+        except Exception:
+            pass
+
+    def _open_ai_monitor(self):
+        """Open (or focus) the real-time AI Decision Monitor window."""
+        if self._ai_monitor_win:
+            try:
+                if self._ai_monitor_win.winfo_exists():
+                    self._ai_monitor_win.lift()
+                    self._ai_monitor_win.focus_force()
+                    return
+            except Exception:
+                pass
+
+        BG = "#070D1A"
+        PANEL = "#0B1426"
+        BORDER = "#1B2A45"
+
+        win = tk.Toplevel(self.root)
+        win.title("AI Decision Monitor")
+        win.geometry("1020x560")
+        win.configure(bg=BG)
+        win.minsize(760, 380)
+
+        # ── Header ──
+        header = tk.Frame(win, bg=BG)
+        header.pack(fill="x", padx=14, pady=(12, 8))
+        tk.Label(header, text="🧠", bg=BG, fg="#00D4FF",
+                 font=("Segoe UI Emoji", 14)).pack(side="left")
+        tk.Label(header, text="AI DECISION MONITOR", bg=BG, fg="#E2E8F0",
+                 font=("Consolas", 13, "bold")).pack(side="left", padx=(6, 2))
+        tk.Label(header, text="· live", bg=BG, fg="#4ADE80",
+                 font=("Consolas", 10)).pack(side="left", padx=(4, 0))
+
+        self._ai_autoscroll_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(header, text="Auto-scroll", variable=self._ai_autoscroll_var,
+                       bg=BG, fg="#6B8DAD", selectcolor=PANEL,
+                       activebackground=BG, activeforeground="#E2E8F0",
+                       font=("Consolas", 9), relief="flat",
+                       highlightthickness=0).pack(side="right", padx=(8, 0))
+        tk.Button(header, text="  Clear  ", command=self._clear_ai_monitor,
+                  bg=PANEL, fg="#E2E8F0", activebackground=BORDER,
+                  activeforeground="#FFFFFF", relief="flat",
+                  font=("Consolas", 9), cursor="hand2").pack(side="right")
+        tk.Button(header, text="  ⚙ Run Diagnostics  ", command=self._run_ai_diagnostics,
+                  bg="#0E2A26", fg="#2dd4bf", activebackground="#134E4A",
+                  activeforeground="#5EEAD4", relief="flat",
+                  font=("Consolas", 9, "bold"), cursor="hand2").pack(side="right", padx=(0, 8))
+
+        # ── Status cards ──
+        self._ai_status_vars = {
+            "model":      tk.StringVar(value="waiting for first model report…"),
+            "signal":     tk.StringVar(value="no signal requested yet"),
+            "insight":    tk.StringVar(value="no dashboard insight yet"),
+            "last_event": tk.StringVar(value="—"),
+            "events":     tk.StringVar(value=f"{len(self._ai_events)} events"),
+        }
+        cards = tk.Frame(win, bg=BG)
+        cards.pack(fill="x", padx=14, pady=(0, 10))
+        card_defs = [
+            ("ML MODEL",          "model",   "#4ADE80"),
+            ("LAST AI SIGNAL",    "signal",  "#00D4FF"),
+            ("DASHBOARD ADVISORY", "insight", "#fbbf24"),
+            ("LAST TRADE / ALERT", "last_event", "#f87171"),
+        ]
+        for i, (caption, key, accent) in enumerate(card_defs):
+            card = tk.Frame(cards, bg=PANEL, highlightbackground=BORDER,
+                            highlightthickness=1)
+            card.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0))
+            cards.grid_columnconfigure(i, weight=1)
+            tk.Label(card, text=caption, bg=PANEL, fg=accent,
+                     font=("Consolas", 8, "bold"), anchor="w").pack(
+                fill="x", padx=10, pady=(7, 1))
+            tk.Label(card, textvariable=self._ai_status_vars[key], bg=PANEL,
+                     fg="#CBD5E1", font=("Consolas", 9), anchor="w",
+                     justify="left", wraplength=300).pack(
+                fill="x", padx=10, pady=(0, 8))
+
+        # ── Legend ──
+        legend = tk.Frame(win, bg=BG)
+        legend.pack(fill="x", padx=14, pady=(0, 6))
+        for cat, color in self.AI_TRACE_COLORS.items():
+            chip = tk.Label(legend, text=f" {cat} ", bg=color, fg="#0A0F1A",
+                            font=("Consolas", 8, "bold"))
+            chip.pack(side="left", padx=(0, 4))
+        tk.Label(legend, textvariable=self._ai_status_vars["events"], bg=BG,
+                 fg="#6B8DAD", font=("Consolas", 9)).pack(side="right")
+
+        # ── Trace area ──
+        body = tk.Frame(win, bg=BORDER, padx=1, pady=1)
+        body.pack(fill="both", expand=True, padx=14, pady=(0, 14))
+        inner = tk.Frame(body, bg=PANEL)
+        inner.pack(fill="both", expand=True)
+        scroll = tk.Scrollbar(inner, troughcolor=PANEL)
+        scroll.pack(side="right", fill="y")
+        txt = tk.Text(inner, bg=PANEL, fg="#CBD5E1", font=("Consolas", 9),
+                      relief="flat", wrap="word", state="disabled",
+                      yscrollcommand=scroll.set, insertbackground="#E2E8F0",
+                      spacing1=2, spacing3=2, padx=8, pady=6)
+        txt.pack(side="left", fill="both", expand=True)
+        scroll.config(command=txt.yview)
+
+        txt.tag_configure("dim", foreground="#5B7290")
+        for cat, color in self.AI_TRACE_COLORS.items():
+            txt.tag_configure(f"badge_{cat}", background=color,
+                              foreground="#0A0F1A",
+                              font=("Consolas", 8, "bold"))
+            txt.tag_configure(f"msg_{cat}", foreground="#CBD5E1")
+        # Warnings stand out in the message body too
+        txt.tag_configure("msg_WARN", foreground="#FCA5A5")
+        txt.tag_configure("msg_SIGNAL", foreground="#7DD3FC")
+        txt.tag_configure("msg_TRADE", foreground="#6EE7B7")
+
+        self._ai_monitor_win = win
+        self._ai_monitor_text = txt
+
+        # Replay everything recorded so far (also refresh the status cards)
+        try:
+            for ts, cat, msg in list(self._ai_events):
+                self._ai_monitor_insert(txt, ts, cat, msg)
+                self._ai_monitor_update_status(cat, msg)
+            txt.see("end")
+        except Exception:
+            pass
+
+    def _clear_ai_monitor(self):
+        self._ai_events.clear()
+        txt = self._ai_monitor_text
+        try:
+            if txt and self._ai_monitor_win and self._ai_monitor_win.winfo_exists():
+                txt.configure(state="normal")
+                txt.delete("1.0", "end")
+                txt.configure(state="disabled")
+                if getattr(self, "_ai_status_vars", None):
+                    self._ai_status_vars["events"].set("0 events")
+        except Exception:
+            pass
+
+    # ── Layer 2: dashboard trade-history ML insights ──────────────────
+
+    _ML_INSIGHTS_TTL = 300  # seconds
+    _ml_insights_cache = None  # {"ts": float, "data": dict}
+
+    def _get_dashboard_ml_insights(self):
+        """Fetch portfolio/trade-history ML insights from the dashboard API.
+
+        Cached for 5 minutes (the server worker refreshes every 2–5 min).
+        Returns the insights dict or None on any failure — the AI works
+        without it, just with one less layer of intelligence.
+        """
+        now = time.time()
+        cached = self.__class__._ml_insights_cache
+        if cached and now - cached["ts"] < self._ML_INSIGHTS_TTL:
+            return cached["data"]
+        try:
+            dashboard_url = self.url_entry.get().strip().rstrip('/')
+            email = self.client_email_entry.get().strip().lower()
+            if not dashboard_url or not email:
+                return None
+            resp = requests.get(
+                f"{dashboard_url}/api/client/ml_insights",
+                params={"email": email}, timeout=15,
+            )
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            if data.get("status") != "success":
+                return None
+            self.__class__._ml_insights_cache = {"ts": now, "data": data}
+            return data
+        except Exception:
+            return None
+
+    # ── The AI: layered ML/DL + portfolio intelligence ─────────────────
+
+    def _get_signal_direction(self, mt5_symbol, timeframe=None, num_indicators=None):
+        """Decide the trade direction — the companion's own signal is FINAL.
+
+        1. Local ML/DL ensemble (gradient boosting + deep neural net trained
+           on this machine's MT5 bars, walk-forward validated, gated on
+           confidence) — final word when confident.
+        2. Indicator vote over ALL indicators — final word when the ML model
+           isn't ready or isn't confident.
+
+        Dashboard trade-history ML insights are ADVISORY ONLY: they annotate
+        the log (agree/disagree) and break indicator-vote ties, but they
+        never decide or override the companion's signal.
+
+        Returns "buy"/"sell", or None when no data-driven decision exists —
+        there is NO random fallback anywhere; callers must skip the trade.
+        """
+        symbol = str(mt5_symbol or "ustech")
+
+        # Advisory input — dashboard trade-history ML (never decides)
+        insights = self._get_dashboard_ml_insights()
+        mkt = (insights or {}).get("market") or {}
+        port = (insights or {}).get("portfolio") or {}
+        dash_bias = str(mkt.get("bias") or "").lower()
+        dash_dir = dash_bias if dash_bias in ("buy", "sell") else None
+        dash_conf = float(mkt.get("confidence") or 0.0)
+        self._ai_trace("INSIGHT",
+                       f"dashboard trade-history ML: bias={dash_bias or 'none'} "
+                       f"conf={dash_conf:.2f} n_trades={port.get('n_trades')} "
+                       f"(advisory only — never decides)")
+
+        # Layer 1 — local ML/DL ensemble (FINAL when confident)
+        ml = None
+        if ML_DIRECTION_AVAILABLE and ml_direction_engine is not None:
+            try:
+                ml = ml_direction_engine.get_ml_direction(symbol)
+                if not (ml or {}).get("ready"):
+                    # First run: don't fall back while training is in flight —
+                    # kick it off and WAIT so the decision comes from ML/DL.
+                    ml_direction_engine.ensure_trained_async(symbol, log_fn=self._ml_log)
+                    if ml_direction_engine.is_training(symbol):
+                        self._ai_trace("ML", f"{symbol}: training in progress — waiting "
+                                             f"up to 90s so the ML/DL decides (not the fallback)")
+                        if ml_direction_engine.wait_for_model(symbol, timeout_sec=90):
+                            ml = ml_direction_engine.get_ml_direction(symbol)
+            except Exception:
+                ml = None
+        ml_dir = (ml or {}).get("direction") if (ml or {}).get("ready") else None
+        ml_conf = float((ml or {}).get("confidence") or 0.0)
+
+        if (ml or {}).get("ready"):
+            wf0 = (ml or {}).get("walk_forward") or {}
+            lean = str((ml or {}).get("lean", "?")).upper()
+            verdict = (f"ACT {str((ml or {}).get('direction')).upper()}"
+                       if ml_dir in ("buy", "sell")
+                       else f"lean {lean} below {(ml or {}).get('confidence_threshold')} gate — not acted on")
+            self._ai_trace("ML",
+                           f"{symbol}: GBM(trees) p_up={(ml or {}).get('gbm_probability')} | "
+                           f"DL(MLP 64x32 deep net) p_up={(ml or {}).get('dl_probability')} | "
+                           f"ensemble={(ml or {}).get('probability')} conf={ml_conf:.2f} "
+                           f"→ {verdict} | wf_acc={wf0.get('accuracy')} "
+                           f"gated={wf0.get('gated_accuracy')} n={(ml or {}).get('n_labeled')}")
+        else:
+            self._ai_trace("ML", f"{symbol}: model not ready "
+                                 f"({(ml or {}).get('reason', 'sklearn unavailable')})")
+
+        if ml_dir in ("buy", "sell"):
+            if dash_dir is None:
+                note = "no dashboard bias"
+            elif dash_dir == ml_dir:
+                note = f"dashboard ML agrees (conf {dash_conf:.2f})"
+            else:
+                note = f"dashboard ML disagrees (conf {dash_conf:.2f}) — advisory only"
+            wf = (ml or {}).get("walk_forward") or {}
+            self._ai_trace("SIGNAL", f"{symbol}: {ml_dir.upper()} — local ML/DL is final ({note})")
+            self.root.after(0, lambda d=ml_dir, n=note, c=ml_conf,
+                            a=wf.get("gated_accuracy") or wf.get("accuracy"):
+                self.log(f"   🧠 AI signal → {d.upper()} [local ML/DL, {n}] conf={c:.2f} wf_acc={a}"))
+            return ml_dir
+
+        # Layer 2 — indicator vote (companion, final); dashboard only breaks ties
+        ml_note = (f"ML leans {str((ml or {}).get('lean', '?')).upper()} but below gate"
+                   if (ml or {}).get("ready") else "ML not ready")
+        self._ai_trace("SIGNAL", f"{symbol}: {ml_note} → indicator vote decides "
+                                 f"(dashboard bias '{dash_bias or 'none'}' breaks ties only)")
+        return self._get_indicator_vote_direction(
+            symbol, timeframe, num_indicators, tiebreak=dash_dir)
 
     # ============ Version History & Rollback ============
 
