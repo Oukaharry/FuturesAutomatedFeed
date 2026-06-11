@@ -47,6 +47,7 @@ _refresh_lock = threading.Lock()
 _worker_started = False
 _stop_event = threading.Event()
 _leader_lock_handle = None  # keeps flock open for process lifetime (Linux/PA)
+_cross_worker_refresh_handle = None  # held for duration of subprocess refresh
 
 
 def _project_root() -> str:
@@ -81,6 +82,21 @@ def _leader_lock_path() -> Path:
     override = (os.environ.get("ML_CACHE_DIR") or "").strip()
     base = Path(override) if override else Path(_project_root()) / "dashboard" / "instance" / "ml_cache"
     return base / ".ml_worker_leader.lock"
+
+
+def _ml_cache_base() -> Path:
+    override = (os.environ.get("ML_CACHE_DIR") or "").strip()
+    if override:
+        return Path(override)
+    return Path(_project_root()) / "dashboard" / "instance" / "ml_cache"
+
+
+def _cross_worker_refresh_lock_path() -> Path:
+    return _ml_cache_base() / ".ml_worker_refresh.lock"
+
+
+def _m1_live_debounce_path() -> Path:
+    return _ml_cache_base() / ".ml_m1_live_debounce"
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -213,7 +229,26 @@ def _interval_sec() -> int:
             return max(60, int(explicit))
         except ValueError:
             pass
-    return 120 if _ml_runtime_mode() == "production" else 900
+    # Production default 10m — 120s was hammering Postgres alongside uWSGI traffic.
+    return 600 if _ml_runtime_mode() == "production" else 900
+
+
+def _refresh_on_m1_live_enabled() -> bool:
+    """Live M1 pushes can trigger ML rebuild; off by default on production."""
+    return _env_bool(
+        "ML_REFRESH_ON_M1_LIVE",
+        default=_ml_runtime_mode() != "production",
+    )
+
+
+def _m1_live_refresh_interval_sec() -> int:
+    explicit = (os.environ.get("ML_M1_LIVE_REFRESH_SEC") or "").strip()
+    if explicit:
+        try:
+            return max(300, int(explicit))
+        except ValueError:
+            pass
+    return 600
 
 
 def _heal_disk_meta() -> None:
@@ -683,18 +718,89 @@ def _run_subprocess_refresh(*, reason: str) -> None:
         _set_error(str(e), time.time() - t0)
 
 
-_m1_live_refresh_last: float = 0.0
-_m1_live_refresh_lock = threading.Lock()
-
-
-def schedule_refresh_on_m1_live(*, min_interval_sec: int = 90) -> None:
-    """Debounced ML report rebuild after companion live M1 pushes."""
-    global _m1_live_refresh_last
+def _cross_worker_m1_debounce_ok(min_interval_sec: int) -> bool:
+    """Shared debounce across uWSGI workers (in-process timer alone is per-worker)."""
+    path = _m1_live_debounce_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     now = time.time()
-    with _m1_live_refresh_lock:
-        if now - _m1_live_refresh_last < min_interval_sec:
-            return
-        _m1_live_refresh_last = now
+    try:
+        import fcntl
+
+        with open(path, "a+", encoding="utf-8") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            fh.seek(0)
+            raw = fh.read().strip()
+            try:
+                last = float(raw) if raw else 0.0
+            except ValueError:
+                last = 0.0
+            if now - last < min_interval_sec:
+                return False
+            fh.seek(0)
+            fh.truncate()
+            fh.write(str(now))
+            fh.flush()
+            return True
+    except ImportError:
+        return True
+    except OSError as exc:
+        logger.warning("[ML] M1 debounce lock failed: %s", exc)
+        return False
+
+
+def _try_acquire_cross_worker_refresh() -> bool:
+    """Only one uWSGI worker may run a subprocess refresh at a time."""
+    global _cross_worker_refresh_handle
+    if os.environ.get("ML_CROSS_WORKER_REFRESH_LOCK", "").strip().lower() in (
+        "0",
+        "false",
+        "no",
+    ):
+        return True
+    lock_path = _cross_worker_refresh_lock_path()
+    try:
+        import fcntl
+
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(lock_path, "a+", encoding="utf-8")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _cross_worker_refresh_handle = fh
+        return True
+    except OSError:
+        return False
+    except ImportError:
+        return True
+
+
+def _release_cross_worker_refresh() -> None:
+    global _cross_worker_refresh_handle
+    fh = _cross_worker_refresh_handle
+    _cross_worker_refresh_handle = None
+    if fh is None:
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+    try:
+        fh.close()
+    except Exception:
+        pass
+
+
+def schedule_refresh_on_m1_live(*, min_interval_sec: int | None = None) -> None:
+    """Debounced ML report rebuild after companion live M1 pushes."""
+    if not _refresh_on_m1_live_enabled():
+        return
+    interval = (
+        _m1_live_refresh_interval_sec()
+        if min_interval_sec is None
+        else max(300, min_interval_sec)
+    )
+    if not _cross_worker_m1_debounce_ok(interval):
+        return
 
     def _run() -> None:
         try:
@@ -709,12 +815,22 @@ def refresh_now(*, reason: str = "manual") -> None:
     if not _refresh_lock.acquire(blocking=False):
         logger.info("[ML] Refresh skipped (%s): another refresh is in progress", reason)
         return
+    cross_worker = False
     try:
         if _use_subprocess_refresh():
+            if not _try_acquire_cross_worker_refresh():
+                logger.info(
+                    "[ML] Refresh skipped (%s): another worker is refreshing",
+                    reason,
+                )
+                return
+            cross_worker = True
             _run_subprocess_refresh(reason=reason)
             return
         run_refresh_once(reason=reason)
     finally:
+        if cross_worker:
+            _release_cross_worker_refresh()
         _refresh_lock.release()
 
 

@@ -76,7 +76,7 @@ def _default_pool_min() -> int:
 def _default_pool_max() -> int:
     if os.environ.get("ML_REFRESH_SUBPROCESS") == "1":
         return 1
-    return 2 if _is_low_connection_postgres() else 10
+    return 3 if _is_low_connection_postgres() else 10
 
 
 _pool_min = max(0, int(os.environ.get("DB_POOL_MIN", str(_default_pool_min()))))
