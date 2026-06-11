@@ -217,6 +217,29 @@ def load_clients_identity(client_id: Optional[str] = None) -> Dict[str, dict]:
     return out
 
 
+def load_clients_account(client_id: Optional[str] = None) -> Dict[str, dict]:
+    import json as _json
+
+    from dashboard.database import get_direct_connection
+
+    out: Dict[str, dict] = {}
+    with get_direct_connection() as conn:
+        if client_id:
+            row = conn.execute(
+                "SELECT client_id, account FROM clients_data WHERE client_id = ?",
+                (client_id,),
+            ).fetchone()
+            rows = [row] if row else []
+        else:
+            rows = conn.execute("SELECT client_id, account FROM clients_data").fetchall()
+        for row in rows:
+            cid = row["client_id"]
+            raw = row["account"]
+            account = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+            out[cid] = account if isinstance(account, dict) else {}
+    return out
+
+
 def client_utc_correction_map(client_id: Optional[str] = None) -> Dict[str, int]:
     """Per-client deal timestamp correction (seconds) for EAT entry-hour bucketing."""
     deals_map = load_clients_deals(client_id)
@@ -419,10 +442,11 @@ def backfill_mt5_timing_for_all_clients(
     Keeps existing live TimeCurrent probes; fills missing calibration from deal history
     so entry-hour bucketing uses stored offsets (target: 100% of clients with deals).
     """
-    from dashboard.database import get_client_data, update_client_field
+    from dashboard.database import update_client_field
 
     deals_map = load_clients_deals(client_id)
     identity_map = load_clients_identity(client_id)
+    account_map = load_clients_account(client_id)
     stats = {
         "clients_with_deals": 0,
         "already_calibrated": 0,
@@ -443,8 +467,7 @@ def backfill_mt5_timing_for_all_clients(
             continue
 
         try:
-            row = get_client_data(cid) or {}
-            account = row.get("account") if isinstance(row.get("account"), dict) else {}
+            account = account_map.get(cid) or {}
             ctx = capture_push_timing_context(
                 sample_deals=deals,
                 account=account or None,

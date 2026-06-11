@@ -1058,14 +1058,15 @@ _stats_tab_cache_refreshing = set()
 # Initialize connection pool and log startup state
 # Note: before_first_request was removed in Flask 2.4+. Call init directly at startup.
 def _init_database_pool():
-    """Initialize database connection pool on app startup."""
+    """Warm the connection pool on startup (non-fatal if Postgres is at limit)."""
     try:
         from dashboard.database import _init_pool
         _init_pool()
         logging.info("[STARTUP] Database connection pool initialized")
     except Exception as e:
-        logging.error(f"[STARTUP ERROR] Failed to initialize DB pool: {e}")
-        raise
+        # Do not raise: uWSGI import would fail for every worker and block reload
+        # recovery when slots are temporarily exhausted. Pool lazy-inits on demand.
+        logging.error("[STARTUP ERROR] Failed to initialize DB pool: %s", e)
 
 # Initialize on module load (runs before first request)
 _init_database_pool()
