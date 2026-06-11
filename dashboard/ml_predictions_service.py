@@ -645,7 +645,7 @@ def _run_subprocess_refresh(*, reason: str) -> None:
     env = os.environ.copy()
     env.setdefault("ML_RF_N_JOBS", "1")
     env.setdefault("ML_REFRESH_SUBPROCESS", "1")
-    env.setdefault("DB_POOL_MIN", "1")
+    env.setdefault("DB_POOL_MIN", "0")
     env.setdefault("DB_POOL_MAX", "1")
     cmd = [_subprocess_python(), "-m", "dashboard.ml_refresh_worker", "--reason", reason]
     logger.info("[ML] Spawning subprocess refresh: %s", " ".join(cmd))

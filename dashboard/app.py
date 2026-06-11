@@ -846,13 +846,19 @@ except ImportError:
 except Exception as e:
     logging.error(f"Failed to start Watermark Scheduler: {e}")
 
-try:
-    from dashboard.ml_predictions_service import start_ml_predictions_worker
-    start_ml_predictions_worker()
-except ImportError:
-    logging.warning("Could not start ML predictions worker (ImportError).")
-except Exception as e:
-    logging.error(f"Failed to start ML predictions worker: {e}")
+def _bg_start_ml_worker():
+    """Defer ML worker so uWSGI workers finish loading before subprocess DB use."""
+    import time
+    time.sleep(45)
+    try:
+        from dashboard.ml_predictions_service import start_ml_predictions_worker
+        start_ml_predictions_worker()
+    except ImportError:
+        logging.warning("Could not start ML predictions worker (ImportError).")
+    except Exception as e:
+        logging.error("Failed to start ML predictions worker: %s", e)
+
+threading.Thread(target=_bg_start_ml_worker, daemon=True, name="ml-worker-bootstrap").start()
 
 from logging.handlers import RotatingFileHandler
 
@@ -1055,21 +1061,8 @@ _stats_tab_cache = {}   # {sheet_url: (fetched_at_epoch, push_xlsx_notes)}
 _STATS_TAB_TTL = 300    # seconds
 _stats_tab_cache_refreshing = set()
 
-# Initialize connection pool and log startup state
-# Note: before_first_request was removed in Flask 2.4+. Call init directly at startup.
-def _init_database_pool():
-    """Warm the connection pool on startup (non-fatal if Postgres is at limit)."""
-    try:
-        from dashboard.database import _init_pool
-        _init_pool()
-        logging.info("[STARTUP] Database connection pool initialized")
-    except Exception as e:
-        # Do not raise: uWSGI import would fail for every worker and block reload
-        # recovery when slots are temporarily exhausted. Pool lazy-inits on demand.
-        logging.error("[STARTUP ERROR] Failed to initialize DB pool: %s", e)
-
-# Initialize on module load (runs before first request)
-_init_database_pool()
+# Connection pool lazy-inits on first get_connection() — no import-time warm-up
+# (each uWSGI worker importing app would otherwise open connections × workers).
 
 # Initialize Hierarchy from Config
 hierarchy = SYSTEM_HIERARCHY
@@ -3077,11 +3070,6 @@ def init_admin_password():
     set_admin_password('kwok_admin', kwok_password)
     print("kwok_admin password set/updated")
 
-# Run initialization
-init_database()
-
-init_admin_password()
-
 def provision_hierarchy_passwords():
     """Auto-create or reset user_credentials with default password for hierarchy users."""
     default_pw = 'Test@123'
@@ -3111,25 +3099,34 @@ def provision_hierarchy_passwords():
     if created or reset:
         print(f"[AUTH] Provisioned {created} new, reset {reset} existing users to default password")
 
-# Check DB integrity before provisioning (catches corrupt DB on startup)
-try:
-    _db_ok, _db_msg = check_and_repair_database()
-    if not _db_ok:
-        print(f"[STARTUP] WARNING: DB integrity check/repair failed: {_db_msg}")
-    else:
-        print(f"[STARTUP] {_db_msg}")
-except Exception as _db_exc:
-    print(f"[STARTUP] WARNING: DB check raised: {_db_exc}")
-
-# Run password provisioning in background thread so it doesn't block WSGI startup
-def _bg_provision():
+# DB schema, admin passwords, and hierarchy provisioning — background only.
+# Running these at import time opens many connections per uWSGI worker at reload.
+def _bg_startup_db():
+    import time
+    time.sleep(3)
+    try:
+        init_database()
+    except Exception as exc:
+        print(f"[STARTUP] WARNING: init_database failed: {exc}")
+    try:
+        init_admin_password()
+    except Exception as exc:
+        print(f"[STARTUP] WARNING: init_admin_password failed: {exc}")
+    try:
+        _db_ok, _db_msg = check_and_repair_database()
+        if not _db_ok:
+            print(f"[STARTUP] WARNING: DB integrity check failed: {_db_msg}")
+        else:
+            print(f"[STARTUP] {_db_msg}")
+    except Exception as exc:
+        print(f"[STARTUP] WARNING: DB check raised: {exc}")
     try:
         provision_hierarchy_passwords()
-    except Exception as _prov_exc:
-        print(f"[STARTUP] WARNING: provision_hierarchy_passwords failed: {_prov_exc}")
+    except Exception as exc:
+        print(f"[STARTUP] WARNING: provision_hierarchy_passwords failed: {exc}")
 
-threading.Thread(target=_bg_provision, daemon=True).start()
-print("[STARTUP] Background provisioning thread started, continuing module load...")
+threading.Thread(target=_bg_startup_db, daemon=True, name="db-startup").start()
+print("[STARTUP] Background DB startup thread scheduled, continuing module load...")
 
 # ============ Authentication Decorators ============
 
