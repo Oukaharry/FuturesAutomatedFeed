@@ -9,31 +9,85 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; }
-        body { margin: 0; background: #01030a; color: #e2e8f0; font-family: Inter, system-ui, sans-serif; min-height: 100vh; padding: 0 16px 24px; }
+        body { margin: 0; background: #01030a; color: #e2e8f0; font-family: Inter, 'Plus Jakarta Sans', system-ui, sans-serif; min-height: 100vh; padding: 0 16px 24px; }
         .modern-nav {
-            background: #07091a; border: 1px solid #162040; border-radius: 14px; padding: 0 24px; height: 64px;
-            display: flex; justify-content: center; align-items: center; margin-bottom: 16px;
-            position: sticky; top: 0; z-index: 1000;
+            background: #07091a;
+            border: 1px solid #162040;
+            border-top: 1px solid #1e3060;
+            border-radius: 14px;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 28px rgba(1,3,10,0.8), 0 1px 0 rgba(30,58,138,0.22);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
-        .nav-links { display: flex; gap: 4px; align-items: center; }
+        .nav-links {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            background: none;
+            padding: 0;
+            border: none;
+        }
         .tab-btn {
-            color: #7898be; text-decoration: none; font-weight: 600; font-size: 0.78rem;
-            padding: 7px 13px; border-radius: 7px; border-bottom: 2px solid transparent;
-            display: flex; align-items: center; gap: 6px;
+            color: #7898be;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            transition: color 0.15s ease, background 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            border-radius: 7px;
+            border-bottom: 2px solid transparent;
+            background: transparent;
+            letter-spacing: 0.01em;
         }
+        .tab-btn i { font-size: 0.82rem; opacity: 0.7; transition: opacity 0.15s ease, color 0.15s ease; }
         .tab-btn:hover { color: #e8eeff; background: rgba(30,48,96,0.22); }
-        .tab-btn.active { color: #a78bfa; border-bottom-color: #a78bfa; }
-        .nav-btn-key, .nav-btn-logout {
-            display: flex; align-items: center; justify-content: center; padding: 8px 11px;
-            border-radius: 8px; text-decoration: none;
+        .tab-btn:hover i { opacity: 1; }
+        .tab-btn.tab-dq { color: #4ade80; }
+        .tab-btn.tab-dq i { color: #4ade80; opacity: 0.85; }
+        .tab-btn.tab-ml.active {
+            color: #a78bfa;
+            border-bottom: 2px solid #a78bfa;
+            background: transparent;
+            box-shadow: 0 3px 12px rgba(1,3,10,0.5), inset 0 1px 0 rgba(100,140,220,0.15);
+            font-weight: 600;
         }
-        .nav-btn-key { border: 1px solid rgba(251,191,36,0.28); background: rgba(251,191,36,0.07); margin-right: 8px; }
-        .nav-btn-key i { color: #fbbf24; }
-        .nav-btn-logout { border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.07); }
-        .nav-btn-logout i { color: #ef4444; }
-        .brand { position: absolute; left: 24px; top: 50%; transform: translateY(-50%); }
-        .brand img { width: 90px; height: auto; }
-        .nav-right { position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; }
+        .tab-btn.tab-ml.active i { opacity: 1; color: #a78bfa; }
+        .nav-btn-key {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(251,191,36,0.28);
+            background: rgba(251,191,36,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-key i { color: #fbbf24; font-size: 0.9rem; }
+        .nav-btn-key:hover { background: rgba(251,191,36,0.14); border-color: rgba(251,191,36,0.5); box-shadow: 0 0 14px rgba(251,191,36,0.18); }
+        .nav-btn-logout {
+            display: flex; align-items: center; justify-content: center;
+            padding: 8px 11px; border-radius: 8px;
+            border: 1px solid rgba(239,68,68,0.25);
+            background: rgba(239,68,68,0.07);
+            text-decoration: none; transition: all 0.18s ease;
+        }
+        .nav-btn-logout i { color: #ef4444; font-size: 0.9rem; }
+        .nav-btn-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(239,68,68,0.5); box-shadow: 0 0 14px rgba(239,68,68,0.18); }
+        @media (max-width: 768px) {
+            .modern-nav { height: auto !important; flex-wrap: wrap; padding: 10px 12px; gap: 6px; justify-content: center; margin-bottom: 16px; }
+            .modern-nav .brand { position: static !important; transform: none !important; width: 100%; display: flex; justify-content: center; }
+            .modern-nav .brand img { width: 70px !important; }
+            .nav-links { flex-wrap: wrap; justify-content: center; gap: 4px; }
+            .tab-btn { font-size: 0.78rem !important; padding: 6px 9px !important; }
+        }
         .status-bar {
             display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center;
             background: #090f1e; border: 1px solid #162040; border-radius: 12px; padding: 14px 18px; margin-bottom: 14px;
@@ -104,16 +158,19 @@
 </head>
 <body>
     <nav class="modern-nav">
-        <div class="brand">
-            <a href="/super_admin"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss"></a>
+        <div class="brand" style="position: absolute; left: 24px; top: 50%; transform: translateY(-50%); z-index: 200;">
+            <a href="{{ home_url }}" style="display:block;line-height:0;"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="TradeOpss" style="width: 100px; height: auto; object-fit: contain;"></a>
         </div>
         <div class="nav-links">
-            <a href="/super_admin" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
+            <a href="{{ home_url }}" class="tab-btn"><i class="fas fa-th-large"></i> Dashboard</a>
             <a href="/financial_overview" class="tab-btn"><i class="fas fa-coins"></i> Prop Firms</a>
-            <a href="/quality_dashboard" class="tab-btn"><i class="fas fa-clipboard-check"></i> Data Quality</a>
-            <a href="/ml_predictions" class="tab-btn active"><i class="fas fa-brain"></i> ML Predictions</a>
+            <a href="/payout_history" class="tab-btn"><i class="fas fa-history"></i> Payouts</a>
+            <a href="/client_performance" class="tab-btn"><i class="fas fa-users"></i> Clients</a>
+            <a href="/trader_performance" class="tab-btn"><i class="fas fa-chart-line"></i> Traders</a>
+            <a href="/quality_dashboard" class="tab-btn tab-dq"><i class="fas fa-clipboard-check"></i> Data Quality</a>
+            <a href="/ml_predictions" class="tab-btn tab-ml active"><i class="fas fa-brain"></i> ML Predictions</a>
         </div>
-        <div class="nav-right">
+        <div style="position: absolute; right: 24px; top: 50%; transform: translateY(-50%); display: flex; gap: 8px; align-items: center;">
             <a href="/change-password" class="nav-btn-key" title="Change Password"><i class="fas fa-key"></i></a>
             <a href="/logout" class="nav-btn-logout" title="Logout"><i class="fas fa-right-from-bracket"></i></a>
         </div>
