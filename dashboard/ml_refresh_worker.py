@@ -33,7 +33,7 @@ def main() -> int:
     os.environ.setdefault("ML_RF_N_JOBS", "1")
     # Subprocess must not open a large pool on top of uWSGI workers.
     os.environ.setdefault("ML_REFRESH_SUBPROCESS", "1")
-    os.environ.setdefault("DB_POOL_MIN", "1")
+    os.environ.setdefault("DB_POOL_MIN", "0")
     os.environ.setdefault("DB_POOL_MAX", "1")
 
     from dashboard.ml_predictions_service import run_refresh_once

@@ -13,6 +13,8 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 from contextlib import contextmanager
@@ -65,38 +67,77 @@ def _is_low_connection_postgres() -> bool:
     return "pythonanywhere" in host or "postgres.pythonanywhere-services.com" in host
 
 
+def _default_pool_min() -> int:
+    if os.environ.get("ML_REFRESH_SUBPROCESS") == "1":
+        return 0
+    return 0 if _is_low_connection_postgres() else 1
+
+
 def _default_pool_max() -> int:
     if os.environ.get("ML_REFRESH_SUBPROCESS") == "1":
         return 1
-    return 3 if _is_low_connection_postgres() else 10
+    return 2 if _is_low_connection_postgres() else 10
 
 
-_pool_min = max(1, int(os.environ.get("DB_POOL_MIN", "1")))
-_pool_max = max(_pool_min, int(os.environ.get("DB_POOL_MAX", str(_default_pool_max()))))
+_pool_min = max(0, int(os.environ.get("DB_POOL_MIN", str(_default_pool_min()))))
+_pool_max = max(max(_pool_min, 1), int(os.environ.get("DB_POOL_MAX", str(_default_pool_max()))))
 _db_connect_timeout = max(5, int(os.environ.get("DB_CONNECT_TIMEOUT", "5")))
 _connection_pool = None
+_pool_lock = threading.Lock()
 
-def _init_pool():
-    """Initialize the connection pool on first use."""
+def _init_pool() -> bool:
+    """Initialize the connection pool on first use (never raises)."""
     global _connection_pool
-    if _connection_pool is None:
+    if _connection_pool is not None:
+        return True
+    with _pool_lock:
+        if _connection_pool is not None:
+            return True
         try:
-            _connection_pool = psycopg2.pool.SimpleConnectionPool(
-                _pool_min,
-                _pool_max,
-                DATABASE_URL,
-                connect_timeout=_db_connect_timeout
-            )
+            # minconn=0: no connections opened at pool creation (critical on PythonAnywhere).
+            if _pool_min == 0:
+                _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                    0,
+                    _pool_max,
+                    DATABASE_URL,
+                    connect_timeout=_db_connect_timeout,
+                )
+            else:
+                _connection_pool = psycopg2.pool.SimpleConnectionPool(
+                    _pool_min,
+                    _pool_max,
+                    DATABASE_URL,
+                    connect_timeout=_db_connect_timeout,
+                )
             logger.info("[DB] Connection pool initialized (%s-%s connections)", _pool_min, _pool_max)
+            return True
         except Exception as e:
-            logger.error(f"[DB] Failed to initialize connection pool: {e}")
-            raise
+            logger.error("[DB] Failed to initialize connection pool: %s", e)
+            return False
 
 def _get_pooled_connection():
-    """Get a connection from the pool (creates pool on first call)."""
-    if _connection_pool is None:
-        _init_pool()
-    return _connection_pool.getconn()
+    """Get a connection from the pool (creates pool on first call, retries on slot exhaustion)."""
+    last_err = None
+    for attempt in range(6):
+        if _connection_pool is None and not _init_pool():
+            last_err = psycopg2.OperationalError("connection pool unavailable")
+            time.sleep(min(2 ** attempt, 10))
+            continue
+        try:
+            return _connection_pool.getconn()
+        except psycopg2.OperationalError as e:
+            last_err = e
+            if "remaining connection slots" in str(e):
+                reset_connection_pool()
+                time.sleep(min(2 ** attempt, 10))
+                continue
+            raise
+        except psycopg2.pool.PoolError as e:
+            last_err = e
+            time.sleep(min(2 ** attempt, 10))
+    if last_err:
+        raise last_err
+    raise psycopg2.OperationalError("Could not obtain database connection from pool")
 
 def _return_pooled_connection(conn):
     """Return a connection to the pool (discard broken connections)."""
@@ -2932,5 +2973,5 @@ def prune_m1_bars_older_than(client_id: str, symbol: str, cutoff_time: int) -> i
         return deleted or 0
 
 
-# Initialize database on import
-init_database()
+# Schema/connectivity checks run from app startup (background thread), not on import.
+# Import-time DB calls multiplied by uWSGI workers exhaust Postgres connection slots.
