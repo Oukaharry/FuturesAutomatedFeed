@@ -16,6 +16,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from contextlib import contextmanager
+from urllib.parse import urlparse
 try:
     from dotenv import load_dotenv  # type: ignore
 except Exception:  # pragma: no cover
@@ -51,11 +52,27 @@ def _normalize_identifier(value: str) -> str:
 
 # ─── Connection Pooling ─────────────────────────────────────────────
 # Reuse connections instead of creating new ones (prevents exhaustion).
-# On hosts with low max_connections (e.g. PythonAnywhere managed Postgres),
-# min=5 at pool init can fail with "remaining connection slots are reserved...".
-# Override via DB_POOL_MIN / DB_POOL_MAX (integers, min >= 1).
+# PythonAnywhere managed Postgres allows ~20 connections total; with 3 uWSGI
+# workers each process needs its own small pool (not 10×3). Override via
+# DB_POOL_MIN / DB_POOL_MAX (integers, min >= 1).
+
+
+def _is_low_connection_postgres() -> bool:
+    """True when hosted Postgres has a small max_connections budget."""
+    if os.environ.get("PYTHONANYWHERE_SITE"):
+        return True
+    host = (urlparse(DATABASE_URL).hostname or "").lower()
+    return "pythonanywhere" in host or "postgres.pythonanywhere-services.com" in host
+
+
+def _default_pool_max() -> int:
+    if os.environ.get("ML_REFRESH_SUBPROCESS") == "1":
+        return 1
+    return 3 if _is_low_connection_postgres() else 10
+
+
 _pool_min = max(1, int(os.environ.get("DB_POOL_MIN", "1")))
-_pool_max = max(_pool_min, int(os.environ.get("DB_POOL_MAX", "10")))
+_pool_max = max(_pool_min, int(os.environ.get("DB_POOL_MAX", str(_default_pool_max()))))
 _db_connect_timeout = max(5, int(os.environ.get("DB_CONNECT_TIMEOUT", "5")))
 _connection_pool = None
 
@@ -82,11 +99,23 @@ def _get_pooled_connection():
     return _connection_pool.getconn()
 
 def _return_pooled_connection(conn):
-    """Return a connection to the pool."""
+    """Return a connection to the pool (discard broken connections)."""
     if _connection_pool is not None:
-        _connection_pool.putconn(conn)
+        try:
+            if conn.closed:
+                _connection_pool.putconn(conn, close=True)
+            else:
+                _connection_pool.putconn(conn)
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
     else:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def reset_connection_pool():
@@ -166,7 +195,9 @@ class _PgConnWrapper:
         self._conn.rollback()
 
     def close(self):
-        self._conn.close()
+        # get_connection() returns the raw connection to the pool in its finally
+        # block; closing here would leak pool slots or double-close.
+        pass
 
 
 @contextmanager
@@ -1109,69 +1140,70 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
             print(f"Error saving client data: {e}")
             return False
 
-def get_client_data(client_id: str) -> dict:
-    """Get client data from database."""
-    norm_id = _normalize_identifier(client_id)
+def _lookup_client_data_row(client_id: str, norm_id: str):
+    """
+    Find a clients_data row. Returns (row, legacy_id_to_rename).
+    Rename is deferred so callers never nest pool connections.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
         row = None
-        # 1) Exact match (as provided)
         if client_id:
             cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
             row = cursor.fetchone()
-        # 2) Exact match (normalized)
         if row is None and norm_id and norm_id != client_id:
             cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (norm_id,))
             row = cursor.fetchone()
-        # 3) Trimmed match (repairs legacy rows with trailing spaces)
+        legacy_rename = None
         if row is None and norm_id:
             cursor.execute('SELECT * FROM clients_data WHERE btrim(client_id) = ? LIMIT 1', (norm_id,))
             row = cursor.fetchone()
-            # If we found a legacy row keyed by a whitespace-variant client_id, attempt a safe rename
-            try:
-                if row and row.get('client_id') and row.get('client_id') != norm_id:
-                    legacy_id = row.get('client_id')
-                    # Only rename if the normalized id doesn't already exist
-                    cursor.execute('SELECT 1 AS ok FROM clients_data WHERE client_id = ? LIMIT 1', (norm_id,))
-                    exists = cursor.fetchone() is not None
-                    if not exists:
-                        # Commit current read txn before performing rename in a new txn
-                        conn.commit()
-                        rename_client_in_db(legacy_id, norm_id)
-                        # Reload after rename
-                        with get_connection() as conn2:
-                            cur2 = conn2.cursor()
-                            cur2.execute('SELECT * FROM clients_data WHERE client_id = ?', (norm_id,))
-                            row = cur2.fetchone()
-            except Exception:
-                # If repair fails, still return the legacy row we found (read-only)
-                pass
-        
-        if row:
-            try:
-                identity = json.loads(row['identity'] or '{}') or {}
-            except Exception:
-                identity = {}
-            return {
-                'deals': json.loads(row['deals']),
-                'positions': json.loads(row['positions']),
-                'account': json.loads(row['account']),
-                'evaluations': json.loads(row['evaluations']),
-                'statistics': json.loads(row['statistics']),
-                'dropdown_options': json.loads(row['dropdown_options']),
-                'identity': identity,
-                'sheet_url': identity.get('sheet_url') if isinstance(identity, dict) else None,
-                'last_updated': row['last_updated'],
-                'hedge_accounts': json.loads(row.get('hedge_accounts') or '[]'),
-                'prop_accounts': json.loads(row.get('prop_accounts') or '[]'),
-                'vps_accounts': json.loads(row.get('vps_accounts') or '[]'),
-                'payment_info': json.loads(row.get('payment_info') or '[]'),
-                'payment_address': json.loads(row.get('payment_address') or '{}'),
-                'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
-                'firm_billing': json.loads(row.get('firm_billing') or '{}'),
-            }
-        
-        return None
+            if row and row.get('client_id') and row.get('client_id') != norm_id:
+                cursor.execute('SELECT 1 AS ok FROM clients_data WHERE client_id = ? LIMIT 1', (norm_id,))
+                if cursor.fetchone() is None:
+                    legacy_rename = row.get('client_id')
+        return row, legacy_rename
+
+
+def get_client_data(client_id: str) -> dict:
+    """Get client data from database."""
+    norm_id = _normalize_identifier(client_id)
+    row, legacy_id = _lookup_client_data_row(client_id, norm_id)
+    if legacy_id:
+        try:
+            rename_client_in_db(legacy_id, norm_id)
+            with get_connection() as conn:
+                cur = conn.cursor()
+                cur.execute('SELECT * FROM clients_data WHERE client_id = ?', (norm_id,))
+                row = cur.fetchone()
+        except Exception:
+            pass
+
+    if row:
+        try:
+            identity = json.loads(row['identity'] or '{}') or {}
+        except Exception:
+            identity = {}
+        return {
+            'deals': json.loads(row['deals']),
+            'positions': json.loads(row['positions']),
+            'account': json.loads(row['account']),
+            'evaluations': json.loads(row['evaluations']),
+            'statistics': json.loads(row['statistics']),
+            'dropdown_options': json.loads(row['dropdown_options']),
+            'identity': identity,
+            'sheet_url': identity.get('sheet_url') if isinstance(identity, dict) else None,
+            'last_updated': row['last_updated'],
+            'hedge_accounts': json.loads(row.get('hedge_accounts') or '[]'),
+            'prop_accounts': json.loads(row.get('prop_accounts') or '[]'),
+            'vps_accounts': json.loads(row.get('vps_accounts') or '[]'),
+            'payment_info': json.loads(row.get('payment_info') or '[]'),
+            'payment_address': json.loads(row.get('payment_address') or '{}'),
+            'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
+            'firm_billing': json.loads(row.get('firm_billing') or '{}'),
+        }
+
+    return None
 
 def get_all_clients() -> dict:
     """Get all client data in a single query (avoids N+1 pattern)."""
