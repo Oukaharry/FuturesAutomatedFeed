@@ -45,6 +45,59 @@ def is_trading_day_eat() -> bool:
     return now_eat().weekday() < 5
 
 
+def next_trading_weekday(value: datetime) -> int:
+    """Return the next trading weekday index (Mon=0..Sun=6) after the given date.
+
+    Friday rolls to Monday, and Saturday/Sunday also roll to Monday.
+    """
+    try:
+        dt = pd.Timestamp(value).to_pydatetime()
+    except Exception:
+        dt = value
+    wd = dt.weekday()
+    if wd < 4:
+        return wd + 1
+    return 0
+
+
+def has_day_placeholder_for_weekday(ev: dict, weekday: int) -> bool:
+    """Return True when an evaluation contains a day placeholder for the given weekday.
+
+    If the evaluation has no day placeholders at all, it is left untouched so
+    already-traded rows are not falsely dropped.
+    """
+    import re
+
+    day_abbrevs = {
+        "mon": 0, "monday": 0,
+        "tue": 1, "tues": 1, "tuesday": 1,
+        "wed": 2, "weds": 2, "wednesday": 2,
+        "thu": 3, "thur": 3, "thurs": 3, "thursday": 3,
+        "fri": 4, "friday": 4,
+        "sat": 5, "saturday": 5,
+        "sun": 6, "sunday": 6,
+    }
+
+    fields = [f"Hedge Result {i}" for i in range(1, 6)]
+    fields += [f"Hedge Result {i}.1" for i in range(1, 8)]
+    fields += [f"Hedge Day {i}" for i in range(1, 35)]
+
+    found_any = False
+    for field in fields:
+        value = ev.get(field)
+        if value is None:
+            continue
+        text = str(value).strip().lower()
+        if not text:
+            continue
+        for token in re.split(r"[\s\-/,:;\.]+", text):
+            if token in day_abbrevs:
+                found_any = True
+                if day_abbrevs[token] == weekday:
+                    return True
+    return False if found_any else True
+
+
 def coordinated_entry_dow_name() -> str:
     """
     Actionable coordinated entry day in EAT.

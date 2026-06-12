@@ -347,7 +347,7 @@ def get_config(env=None):
 
 ### `config/hierarchy.py`
 
-_452 loc · 0 classes · 24 functions · 2 imports_
+_499 loc · 0 classes · 25 functions · 2 imports_
 
 **Imports**
 
@@ -422,8 +422,17 @@ def load_hierarchy():
                             # Keep assigned_trader on the client object for frontend/UI use
                             client_copy = dict(client)
                             traders_map[key]['clients'].append(client_copy)
+                        # Traders with no clients yet (assigned_traders on disk)
+                        for trader_name in admin_data.get('assigned_traders', []):
+                            key = (trader_name or '').strip()
+                            if key and key not in traders_map:
+                                tr_email = trader_registry.get(key, {}).get('email', '')
+                                traders_map[key] = {'email': tr_email, 'clients': []}
                         # Preserve all original admin fields (email, slack_user_id, etc.)
-                        preserved = {k: v for k, v in admin_data.items() if k != 'clients'}
+                        preserved = {
+                            k: v for k, v in admin_data.items()
+                            if k not in ('clients', 'assigned_traders')
+                        }
                         preserved['traders'] = traders_map
                         new_admins[admin_name] = preserved
                     data['admins'] = new_admins
@@ -472,25 +481,52 @@ def _to_flat_format(hierarchy_data)
 
 1. Imports <code>copy</code> (lazy import inside the function).
 2. Assigns <code>out</code> = <code>copy.deepcopy(hierarchy_data)</code>.
-3. <b>for</b> <code>(admin_name, admin_data)</code> in <code>out.get('admins', {}).items()</code>: iterates.
-4. <b>return</b> <code>out</code>.
+3. Assigns <code>trader_registry</code> = <code>out.get('traders')</code>.
+4. <b>if</b> <code>not isinstance(trader_registry, dict)</code>: branches conditionally.
+5. Assigns <code>out['traders']</code> = <code>trader_registry</code>.
+6. <b>for</b> <code>(admin_name, admin_data)</code> in <code>out.get('admins', {}).items()</code>: iterates.
+7. <b>return</b> <code>out</code>.
 
 ```python
 def _to_flat_format(hierarchy_data):
     """Convert in-memory nested format back to flat format for disk persistence."""
     import copy
     out = copy.deepcopy(hierarchy_data)
+    trader_registry = out.get('traders')
+    if not isinstance(trader_registry, dict):
+        trader_registry = {}
+    out['traders'] = trader_registry
+
     for admin_name, admin_data in out.get('admins', {}).items():
         if 'traders' in admin_data and 'clients' not in admin_data:
             flat_clients = []
+            assigned_traders = []
             for trader_name, trader_data in admin_data['traders'].items():
-                for client in trader_data.get('clients', []):
+                tname = (trader_name or '').strip()
+                if tname:
+                    assigned_traders.append(tname)
+                    em = (trader_data or {}).get('email', '') or ''
+                    entry = trader_registry.setdefault(tname, {})
+                    if em:
+                        entry['email'] = em
+                    elif 'email' not in entry:
+                        entry['email'] = ''
+                for client in (trader_data or {}).get('clients', []):
                     c = dict(client)
+                    # Normalize client name to prevent invisible mismatch bugs (trailing spaces/NBSP).
+                    nm = str(c.get('name', '') or '')
+                    nm = nm.replace('\u00A0', ' ').replace('\u200B', '').replace('\u200C', '').replace('\u200D', '')
+                    nm = ' '.join(nm.split()).strip()
+                    c['name'] = nm
                     c['assigned_trader'] = trader_name
                     flat_clients.append(c)
-            # Preserve non-traders keys (email, slack_user_id, etc.)
-            preserved = {k: v for k, v in admin_data.items() if k != 'traders'}
-            out['admins'][admin_name] = {**preserved, 'clients': flat_clients}
+            preserved = {
+                k: v for k, v in admin_data.items()
+                if k not in ('traders', 'assigned_traders')
+            }
+            preserved['assigned_traders'] = sorted(set(assigned_traders), key=lambda s: s.lower())
+            preserved['clients'] = flat_clients
+            out['admins'][admin_name] = preserved
     return out
 ```
 
@@ -735,6 +771,34 @@ def update_client_category(admin_name, trader_name, client_name, category):
     return False
 ```
 
+#### `find_trader_admin`
+
+```python
+def find_trader_admin(trader_name)
+```
+> Return admin name if *trader_name* is assigned under any admin (including empty lanes).
+
+**What it does, step by step:**
+
+1. Calls <code>reload_hierarchy(...)</code> for its side effect.
+2. Assigns <code>name</code> = <code>(trader_name or '').strip()</code>.
+3. <b>if</b> <code>not name</code>: branches conditionally.
+4. <b>for</b> <code>(admin_name, admin_data)</code> in <code>SYSTEM_HIERARCHY.get('admins', {}).items()</code>: iterates.
+5. <b>return</b> <code>None</code>.
+
+```python
+def find_trader_admin(trader_name):
+    """Return admin name if *trader_name* is assigned under any admin (including empty lanes)."""
+    reload_hierarchy()
+    name = (trader_name or '').strip()
+    if not name:
+        return None
+    for admin_name, admin_data in SYSTEM_HIERARCHY.get('admins', {}).items():
+        if name in admin_data.get('traders', {}):
+            return admin_name
+    return None
+```
+
 #### `add_trader`
 
 ```python
@@ -742,14 +806,17 @@ def add_trader(admin_name, trader_name, email='')
 ```
 **What it does, step by step:**
 
-1. <b>if</b> <code>admin_name in SYSTEM_HIERARCHY['admins']</code>: branches conditionally.
-2. <b>return</b> <code>False</code>.
+1. Calls <code>reload_hierarchy(...)</code> for its side effect.
+2. <b>if</b> <code>admin_name in SYSTEM_HIERARCHY['admins']</code>: branches conditionally.
+3. <b>return</b> <code>False</code>.
 
 ```python
 def add_trader(admin_name, trader_name, email=""):
+    reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
-        if trader_name not in SYSTEM_HIERARCHY["admins"][admin_name]["traders"]:
-            SYSTEM_HIERARCHY["admins"][admin_name]["traders"][trader_name] = {
+        traders = SYSTEM_HIERARCHY["admins"][admin_name].setdefault("traders", {})
+        if trader_name not in traders:
+            traders[trader_name] = {
                 "email": email,
                 "clients": []
             }
@@ -1209,7 +1276,7 @@ _1 loc · 0 classes · 0 functions · 0 imports_
 
 ### `utils/data_processor.py`
 
-_1349 loc · 0 classes · 14 functions · 8 imports_
+_1368 loc · 0 classes · 15 functions · 8 imports_
 
 **Imports**
 
@@ -1228,6 +1295,11 @@ import re
 
 ```python
 _FIRM_MAP = {'mffu': 'My Funded Futures', 'mffuflex': 'My Funded Futures', 'myfundedfutures': 'My Funded Futures', 'myfundedfx': 'My Funded Futures',...
+```
+_Mapping or set literal — a lookup table referenced elsewhere in the module._
+
+```python
+_PROP_FIRM_STATS_PARENT = {'TopStep RTP': 'Topstep'}
 ```
 _Mapping or set literal — a lookup table referenced elsewhere in the module._
 
@@ -1293,10 +1365,31 @@ def normalize_prop_firm(name):
     if "fundednext" in key:
         return "FundedNext"
     if "topstep" in key:
+        if "rtp" in key:
+            return "TopStep RTP"
         return "Topstep"
     if "fundingtick" in key:
         return "Funding Ticks"
     return original
+```
+
+#### `prop_firm_stats_parent`
+
+```python
+def prop_firm_stats_parent(name)
+```
+> Map child prop firm labels to parent for aggregate statistics.
+
+**What it does, step by step:**
+
+1. Assigns <code>canonical</code> = <code>normalize_prop_firm(name)</code>.
+2. <b>return</b> <code>_PROP_FIRM_STATS_PARENT.get(canonical, canonical)</code>.
+
+```python
+def prop_firm_stats_parent(name):
+    """Map child prop firm labels to parent for aggregate statistics."""
+    canonical = normalize_prop_firm(name)
+    return _PROP_FIRM_STATS_PARENT.get(canonical, canonical)
 ```
 
 #### `normalize_account_size`
@@ -2143,8 +2236,12 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
 
     for ev in evaluations:
+        # Soft-deleted rows are kept for audit/history but must not contribute
+        # to stats, cashflow totals, or firm breakdowns.
+        if isinstance(ev, dict) and ev.get('_deleted'):
+            continue
         try:
-            firm = normalize_prop_firm(ev.get('Prop Firm', 'Unknown'))
+            firm = prop_firm_stats_parent(ev.get('Prop Firm', 'Unknown'))
             status_p1 = str(ev.get('Status P1', '')).strip()
             # Support both 'Status' and 'Status Funded' column names (sheet variant)
             status_funded = str(ev.get('Status') or ev.get('Status Funded', '')).strip()
@@ -2592,8 +2689,8 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Other'},
-        'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$200,000'},
+        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Other'},
+        'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }
     
