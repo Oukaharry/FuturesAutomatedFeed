@@ -6883,36 +6883,7 @@ def api_kyc_accounts():
         result.append({"name": name, "eval_count": len(evals), "is_current": name == client_id})
     return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1, "is_primary": is_kyc_primary(client_id)})
 
-@app.route('/api/kyc/portfolio', methods=['GET'])
-@require_session
-def api_kyc_portfolio():
-    """Get combined portfolio stats across all KYC-linked accounts.
-    Reads directly from stored statistics (same as client Stats tab) for consistency.
-    """
-    session_user = request.session_user
-    user_type = session_user.get('user_type')
-    user_id = session_user.get('user_identifier', '')
-    client_id = request.args.get('client_id', '')
-    
-    is_bef = user_type == 'bef_admin'
-
-    # Determine which client to query
-    if user_type in ('super_admin', 'bef_admin', 'kwok_admin', 'admin', 'trader'):
-        if not client_id:
-            return jsonify({"status": "error", "message": "client_id required"}), 400
-    elif user_type == 'client':
-        client_id = client_id or user_id
-        if client_id != user_id:
-            return jsonify({"status": "error", "message": "Access denied"}), 403
-    else:
-        return jsonify({"status": "error", "message": "Access denied"}), 403
-    
-    if not is_kyc_primary(client_id):
-        return jsonify({"status": "error", "message": "Not a primary KYC account"}), 403
-    
-    from_date = request.args.get('from', '')
-    to_date = request.args.get('to', '')
-    
+def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef):
     accounts = get_all_kyc_accounts(client_id)
     from dashboard.financial_overview import parse_currency, get_client_profile as _gcp
     
@@ -6978,6 +6949,7 @@ def api_kyc_portfolio():
     }
     per_account = []
     all_payouts = []
+    all_fees = []
     by_prop_firm = {}
 
     for name in accounts:
@@ -7095,10 +7067,28 @@ def api_kyc_portfolio():
 
         per_account.append(acc_stats)
 
-        # Collect individual payout records and prop firm breakdown from evals
+        # Collect individual payout/fee records and prop firm breakdown from evals
         for ev in all_evals:
             prop_firm = str(ev.get('Prop Firm') or 'Unknown').strip() or 'Unknown'
             account_num = str(ev.get('Account #') or ev.get('Account #.1') or '-').strip()
+
+            if eval_in_period(ev):
+                challenge_fee = parse_currency(ev.get('Fee'))
+                activation_fee = parse_currency(ev.get('Activation Fee'))
+                total_fee = challenge_fee + activation_fee
+                if total_fee != 0:
+                    date_raw = str(ev.get('Date Purchased') or ev.get('Date Started') or '').strip()
+                    parsed_date = parse_date_safe(date_raw)
+                    all_fees.append({
+                        "client": name,
+                        "prop_firm": prop_firm,
+                        "account": account_num,
+                        "date_purchased": format_display_date(date_raw) if date_raw else '-',
+                        "challenge_fee": round(challenge_fee, 2),
+                        "activation_fee": round(activation_fee, 2),
+                        "total_fee": round(total_fee, 2),
+                        "_sort_date": parsed_date.isoformat() if parsed_date else "0000-00-00",
+                    })
 
             for i in range(1, 10):
                 pval = parse_currency(ev.get(f'Payout {i}'))
@@ -7164,15 +7154,120 @@ def api_kyc_portfolio():
     for p in all_payouts:
         p.pop("_sort_date", None)
 
-    return jsonify({
-        "status": "success",
+    all_fees.sort(key=lambda x: x.get("_sort_date", "0000-00-00"), reverse=True)
+    for row in all_fees:
+        row.pop("_sort_date", None)
+
+    return {
         "primary": client_id,
         "totals": totals,
         "accounts": per_account,
         "payouts": all_payouts,
+        "fee_records": all_fees,
         "by_prop_firm": prop_firm_list,
-        "period": {"from": from_date, "to": to_date}
-    })
+        "period": {"from": from_date, "to": to_date},
+    }
+
+
+def _resolve_kyc_portfolio_client_id(session_user):
+    user_type = session_user.get('user_type')
+    user_id = session_user.get('user_identifier', '')
+    client_id = request.args.get('client_id', '')
+
+    if user_type in ('super_admin', 'bef_admin', 'kwok_admin', 'admin', 'trader'):
+        if not client_id:
+            return None, (jsonify({"status": "error", "message": "client_id required"}), 400)
+    elif user_type == 'client':
+        client_id = client_id or user_id
+        if client_id != user_id:
+            return None, (jsonify({"status": "error", "message": "Access denied"}), 403)
+    else:
+        return None, (jsonify({"status": "error", "message": "Access denied"}), 403)
+
+    if not is_kyc_primary(client_id):
+        return None, (jsonify({"status": "error", "message": "Not a primary KYC account"}), 403)
+
+    return client_id, None
+
+
+@app.route('/api/kyc/portfolio', methods=['GET'])
+@require_session
+def api_kyc_portfolio():
+    """Get combined portfolio stats across all KYC-linked accounts.
+    Reads directly from stored statistics (same as client Stats tab) for consistency.
+    """
+    client_id, err = _resolve_kyc_portfolio_client_id(request.session_user)
+    if err:
+        return err
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    is_bef = request.session_user.get('user_type') == 'bef_admin'
+    payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef)
+    return jsonify({"status": "success", **payload})
+
+
+@app.route('/api/kyc/portfolio/export_fees_csv', methods=['GET'])
+@require_session
+def api_kyc_portfolio_export_fees_csv():
+    """CSV export of challenge fees across a KYC portfolio for the selected period."""
+    import csv
+    import io
+
+    from flask import Response
+
+    client_id, err = _resolve_kyc_portfolio_client_id(request.session_user)
+    if err:
+        return err
+
+    from_date = request.args.get('from', '')
+    to_date = request.args.get('to', '')
+    is_bef = request.session_user.get('user_type') == 'bef_admin'
+    payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef)
+
+    period = payload.get("period") or {}
+    period_label = "All time"
+    if period.get("from") or period.get("to"):
+        period_label = f"{period.get('from') or '…'} to {period.get('to') or '…'}"
+
+    totals = payload.get("totals") or {}
+    fee_records = payload.get("fee_records") or []
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["KYC Portfolio Challenge Fees"])
+    writer.writerow(["Primary", client_id])
+    writer.writerow(["Period", period_label])
+    writer.writerow(["Total Challenge Fees", round(totals.get("total_fees", 0) or 0, 2)])
+    writer.writerow([])
+    writer.writerow([
+        "Account", "Prop Firm", "Account #", "Date Purchased",
+        "Challenge Fee", "Activation Fee", "Total Fee",
+    ])
+    for row in fee_records:
+        writer.writerow([
+            row.get("client", ""),
+            row.get("prop_firm", ""),
+            row.get("account", ""),
+            row.get("date_purchased", ""),
+            row.get("challenge_fee", 0),
+            row.get("activation_fee", 0),
+            row.get("total_fee", 0),
+        ])
+
+    if payload.get("accounts"):
+        writer.writerow([])
+        writer.writerow(["--- Per-account summary ---"])
+        writer.writerow(["Account", "Total Fees"])
+        for acc in payload["accounts"]:
+            writer.writerow([acc.get("name", ""), acc.get("fees", 0)])
+
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', client_id)
+    resp = Response(output.getvalue(), mimetype='text/csv')
+    resp.headers['Content-Disposition'] = (
+        f'attachment; filename={safe_name}_kyc_challenge_fees.csv'
+    )
+    return resp
 
 # ============ Admin/Trader/Client Management ============
 
