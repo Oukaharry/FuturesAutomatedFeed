@@ -1631,6 +1631,61 @@
             gap: 10px;
         }
 
+        .kyc-filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        /* Override global button { width: 100% } from style.css */
+        .kyc-filter-bar button {
+            width: auto !important;
+            flex: 0 0 auto;
+            box-shadow: none;
+            letter-spacing: 0.03em;
+            font-size: 0.78rem;
+        }
+        .kyc-filter-bar .kyc-apply-btn {
+            padding: 8px 18px !important;
+            background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-weight: 700 !important;
+        }
+        .kyc-filter-bar .kyc-apply-btn:hover {
+            transform: none;
+            filter: brightness(1.08);
+            box-shadow: none;
+        }
+        .kyc-date-preset-btn {
+            padding: 6px 12px !important;
+            font-size: 0.7rem !important;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            color: #7898be !important;
+            background: rgba(10, 15, 30, 0.8) !important;
+            border: 1px solid #1a2848 !important;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .kyc-date-preset-btn:hover {
+            transform: none;
+            background: rgba(30, 58, 138, 0.2) !important;
+            color: #e0eaff !important;
+            border-color: rgba(100, 150, 240, 0.3) !important;
+            box-shadow: none;
+        }
+        .kyc-quick-presets {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            flex-wrap: nowrap;
+            margin-left: auto;
+        }
+
         /* Filter / toolbar bars */
         .filter-bar {
             display: flex;
@@ -2757,11 +2812,11 @@
         <!-- KYC Portfolio Tab (Primary KYC clients only) -->
         <div id="kyc-portfolio" class="tab-content">
             <div class="card" style="margin-top: 20px; background: linear-gradient(180deg, #060d1e 0%, #030710 100%) !important; border: 1px solid #162040 !important;">
-                <div class="section-header" style="margin-bottom:20px;">
+                <div class="section-header" style="margin-bottom:20px; flex-direction:column; align-items:stretch;">
                     <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; letter-spacing:-0.01em;">
                         <i class="fas fa-users"></i> Combined KYC Portfolio
                     </h3>
-                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div class="kyc-filter-bar">
                         <div style="display:flex; align-items:center; gap:6px;">
                             <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">From</label>
                             <input type="date" id="kyc-date-from" style="padding:6px 10px; font-size:0.85rem;">
@@ -2770,12 +2825,17 @@
                             <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">To</label>
                             <input type="date" id="kyc-date-to" style="padding:6px 10px; font-size:0.85rem;">
                         </div>
-                        <button onclick="loadKycPortfolio()" style="background:linear-gradient(135deg,#7c3aed,#a78bfa); border:none; color:#fff; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                        <button type="button" class="kyc-apply-btn" onclick="loadKycPortfolio()">
                             <i class="fas fa-filter"></i> Apply
                         </button>
-                        <button onclick="resetKycPeriod()" style="background:rgba(255,255,255,0.08); border:1px solid #475569; color:#94a3b8; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:0.85rem;">
-                            All Time
-                        </button>
+                        <div class="kyc-quick-presets">
+                            <span style="font-size:0.65rem; color:#64748b; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; margin-right:4px; white-space:nowrap;">Quick:</span>
+                            <button type="button" onclick="setKycDatePreset('thisMonth')" class="kyc-date-preset-btn">This Month</button>
+                            <button type="button" onclick="setKycDatePreset('lastMonth')" class="kyc-date-preset-btn">Last Month</button>
+                            <button type="button" onclick="setKycDatePreset('last90')" class="kyc-date-preset-btn">Last 90d</button>
+                            <button type="button" onclick="setKycDatePreset('ytd')" class="kyc-date-preset-btn">YTD</button>
+                            <button type="button" onclick="setKycDatePreset('all')" class="kyc-date-preset-btn">All Time</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -2792,7 +2852,11 @@
                         <div id="kyc-total-payouts" style="font-size:1.8rem; font-weight:800; color:#34d399;">$0.00</div>
                     </div>
                     <!-- Challenge Fees -->
-                    <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); padding: 16px; border-radius: 12px; text-align:center;">
+                    <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(127, 29, 29, 0.6) 100%); border: 1px solid rgba(248, 113, 113, 0.4); padding: 16px; border-radius: 12px; text-align:center; position:relative;">
+                        <button type="button" onclick="exportKycChallengeFeesCsv()" title="Export challenge fees CSV for selected period"
+                                style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.25); border:1px solid rgba(248,113,113,0.35); color:#fecaca; width:30px; height:30px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                            <i class="fas fa-download" style="font-size:0.8rem;"></i>
+                        </button>
                         <div style="font-size:0.75rem; color:#fca5a5; font-weight:700; letter-spacing:0.05em; margin-bottom:4px;">CHALLENGE FEES</div>
                         <div id="kyc-total-fees" style="font-size:1.8rem; font-weight:800; color:#f87171;">$0.00</div>
                     </div>
@@ -3103,6 +3167,7 @@
                 .then(r => r.json())
                 .then(data => {
                     if (data.status !== 'success') return;
+                    window._kycPortfolioData = data;
                     const t = data.totals;
                     const fmt = v => '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     
@@ -3208,9 +3273,49 @@
                 .catch(() => {});
         }
         function resetKycPeriod() {
-            document.getElementById('kyc-date-from').value = '';
-            document.getElementById('kyc-date-to').value = '';
+            setKycDatePreset('all');
+        }
+        function setKycDatePreset(preset) {
+            const now = new Date();
+            const fromEl = document.getElementById('kyc-date-from');
+            const toEl = document.getElementById('kyc-date-to');
+            const fmt = d => d.toISOString().split('T')[0];
+
+            switch (preset) {
+                case 'thisMonth':
+                    fromEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+                    toEl.value = fmt(now);
+                    break;
+                case 'lastMonth':
+                    fromEl.value = fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+                    toEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 0));
+                    break;
+                case 'last90': {
+                    const d90 = new Date(now);
+                    d90.setDate(d90.getDate() - 90);
+                    fromEl.value = fmt(d90);
+                    toEl.value = fmt(now);
+                    break;
+                }
+                case 'ytd':
+                    fromEl.value = fmt(new Date(now.getFullYear(), 0, 1));
+                    toEl.value = fmt(now);
+                    break;
+                case 'all':
+                default:
+                    fromEl.value = '';
+                    toEl.value = '';
+                    break;
+            }
             loadKycPortfolio();
+        }
+        function exportKycChallengeFeesCsv() {
+            const fromDate = document.getElementById('kyc-date-from').value;
+            const toDate = document.getElementById('kyc-date-to').value;
+            let url = `/api/kyc/portfolio/export_fees_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
+            if (fromDate) url += `&from=${encodeURIComponent(fromDate)}`;
+            if (toDate) url += `&to=${encodeURIComponent(toDate)}`;
+            window.location.href = url;
         }
         function toggleKycPayouts() {
             const section = document.getElementById('kyc-payouts-section');
