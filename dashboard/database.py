@@ -1089,7 +1089,9 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                         'prop_accounts': json.loads(row.get('prop_accounts') or '[]'),
                         'vps_accounts': json.loads(row.get('vps_accounts') or '[]'),
                         'payment_info': json.loads(row.get('payment_info') or '[]'),
+                        'payment_address': json.loads(row.get('payment_address') or '{}'),
                         'mt5_credentials': json.loads(row.get('mt5_credentials') or '{}'),
+                        'firm_billing': json.loads(row.get('firm_billing') or '{}'),
                     }
                 
                 # Merge existing data with new data (new data takes precedence)
