@@ -6038,6 +6038,23 @@
             currentData.payment_address[key] = value;
         }
 
+        function syncPaymentAddressFromDom() {
+            if (!currentData.payment_address) currentData.payment_address = {};
+            const mapping = [
+                ['payment-address',  'address'],
+                ['payment-address2', 'address2'],
+                ['payment-city',     'city'],
+                ['payment-state',    'state'],
+                ['payment-zip',      'zip'],
+                ['payment-country',  'country'],
+                ['payment-phone',    'phone_number'],
+            ];
+            mapping.forEach(([id, key]) => {
+                const el = document.getElementById(id);
+                if (el) currentData.payment_address[key] = el.value;
+            });
+        }
+
         function updatePaymentField(index, key, value) {
             if (!currentData.payment_info) return;
             currentData.payment_info[index][key] = value;
@@ -6052,6 +6069,7 @@
         }
 
         function savePaymentSection() {
+            syncPaymentAddressFromDom();
             paymentEditMode = false;
             document.getElementById('payment-edit-btn').style.display = '';
             document.getElementById('payment-save-btn').style.display = 'none';
