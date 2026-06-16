@@ -6883,8 +6883,123 @@ def api_kyc_accounts():
         result.append({"name": name, "eval_count": len(evals), "is_current": name == client_id})
     return jsonify({"status": "success", "accounts": result, "has_kyc_links": len(result) > 1, "is_primary": is_kyc_primary(client_id)})
 
-def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef):
-    accounts = get_all_kyc_accounts(client_id)
+
+# Primary KYC clients with split admin teams (bonus calc). Keys are normalized client names.
+# Portfolio scope = KYC-linked accounts plus any hierarchy clients under these admins.
+_KYC_PORTFOLIO_TEAM_ADMINS = {
+    'joe hicken': ('Vivian Miano', 'Marion Nyika'),
+    'tyler turner': ('Shila Orori', 'Joy Ndua'),
+}
+
+
+def _get_kyc_client_admin_name(client_name):
+    """Resolve the managing admin for a KYC portfolio account."""
+    location = _find_client_in_hierarchy(client_name)
+    if location:
+        return (location[0] or '').strip()
+    profile = get_client_profile(client_name)
+    if profile:
+        return (profile.get('admin') or '').strip()
+    try:
+        cdata = get_client_data(client_name) or {}
+        identity = cdata.get('identity') if isinstance(cdata, dict) else {}
+        if isinstance(identity, dict):
+            return (identity.get('admin') or identity.get('parent_admin') or '').strip()
+    except Exception:
+        pass
+    return ''
+
+
+def _kyc_admin_display_label(admin_name):
+    """First name for team-filter buttons (e.g. Vivian Miano -> Vivian)."""
+    parts = str(admin_name or '').strip().split()
+    return parts[0] if parts else str(admin_name or '').strip()
+
+
+def _hierarchy_clients_under_admin(admin_name):
+    """All client names assigned to an admin in hierarchy."""
+    target = _normalized_client_key(admin_name)
+    if not target:
+        return []
+    for adm_name, admin_data in (SYSTEM_HIERARCHY.get('admins', {}) or {}).items():
+        if _normalized_client_key(adm_name) != target:
+            continue
+        clients = []
+        for trader_data in (admin_data.get('traders', {}) or {}).values():
+            for client in (trader_data.get('clients', []) or []):
+                name = client.get('name') if isinstance(client, dict) else client
+                if name:
+                    nm = ' '.join(str(name).split()).strip()
+                    if nm:
+                        clients.append(nm)
+        return clients
+    return []
+
+
+def _get_kyc_portfolio_team_admins(client_id):
+    """Admins that form the team split for a primary KYC portfolio."""
+    configured = _KYC_PORTFOLIO_TEAM_ADMINS.get(_normalized_client_key(client_id))
+    if configured:
+        return list(configured)
+    admins = {}
+    for name in get_all_kyc_accounts(client_id):
+        admin_name = _get_kyc_client_admin_name(name)
+        if admin_name:
+            admins[_normalized_client_key(admin_name)] = admin_name
+    return sorted(admins.values(), key=lambda s: s.lower())
+
+
+def _get_kyc_portfolio_team_filters(client_id):
+    """Team filter buttons for a primary KYC portfolio."""
+    filters = []
+    seen = set()
+    for admin_name in _get_kyc_portfolio_team_admins(client_id):
+        key = _normalized_client_key(admin_name)
+        if key and key not in seen:
+            seen.add(key)
+            filters.append({
+                'key': key,
+                'name': admin_name,
+                'label': _kyc_admin_display_label(admin_name),
+            })
+    return sorted(filters, key=lambda row: row['label'].lower())
+
+
+def _get_kyc_portfolio_account_names(client_id, admin_filter=None):
+    """Accounts in scope for a KYC portfolio (optionally filtered to one admin team)."""
+    team_admins = _get_kyc_portfolio_team_admins(client_id)
+    has_team_config = _normalized_client_key(client_id) in _KYC_PORTFOLIO_TEAM_ADMINS
+
+    accounts = []
+    seen = set()
+    if has_team_config:
+        for name in get_all_kyc_accounts(client_id):
+            nk = _normalized_client_key(name)
+            if nk and nk not in seen:
+                seen.add(nk)
+                accounts.append(name)
+        for admin_name in team_admins:
+            for name in _hierarchy_clients_under_admin(admin_name):
+                nk = _normalized_client_key(name)
+                if nk and nk not in seen:
+                    seen.add(nk)
+                    accounts.append(name)
+    else:
+        accounts = list(get_all_kyc_accounts(client_id))
+
+    if admin_filter:
+        filter_key = _normalized_client_key(admin_filter)
+        if filter_key:
+            accounts = [
+                name for name in accounts
+                if _normalized_client_key(_get_kyc_client_admin_name(name)) == filter_key
+            ]
+    return accounts
+
+
+def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_filter=None):
+    team_filters = _get_kyc_portfolio_team_filters(client_id)
+    accounts = _get_kyc_portfolio_account_names(client_id, admin_filter)
     from dashboard.financial_overview import parse_currency, get_client_profile as _gcp
     
     def parse_date_safe(val):
@@ -7158,6 +7273,14 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef):
     for row in all_fees:
         row.pop("_sort_date", None)
 
+    active_admin_filter = ''
+    if admin_filter:
+        filter_key = _normalized_client_key(admin_filter)
+        for team in team_filters:
+            if team.get('key') == filter_key:
+                active_admin_filter = team.get('name', '')
+                break
+
     return {
         "primary": client_id,
         "totals": totals,
@@ -7166,6 +7289,8 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef):
         "fee_records": all_fees,
         "by_prop_firm": prop_firm_list,
         "period": {"from": from_date, "to": to_date},
+        "team_filters": team_filters,
+        "admin_filter": active_admin_filter,
     }
 
 
@@ -7202,8 +7327,9 @@ def api_kyc_portfolio():
 
     from_date = request.args.get('from', '')
     to_date = request.args.get('to', '')
+    admin_filter = request.args.get('admin', '').strip()
     is_bef = request.session_user.get('user_type') == 'bef_admin'
-    payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef)
+    payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_filter or None)
     return jsonify({"status": "success", **payload})
 
 
@@ -7222,8 +7348,9 @@ def api_kyc_portfolio_export_fees_csv():
 
     from_date = request.args.get('from', '')
     to_date = request.args.get('to', '')
+    admin_filter = request.args.get('admin', '').strip()
     is_bef = request.session_user.get('user_type') == 'bef_admin'
-    payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef)
+    payload = _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_filter or None)
 
     period = payload.get("period") or {}
     period_label = "All time"

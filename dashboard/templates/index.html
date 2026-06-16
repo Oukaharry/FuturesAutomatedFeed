@@ -1685,6 +1685,75 @@
             flex-wrap: nowrap;
             margin-left: auto;
         }
+        .kyc-portfolio-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+        .kyc-team-filter-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: nowrap;
+            margin-top: 0;
+            margin-left: auto;
+            padding: 8px 14px;
+            background: rgba(88, 28, 135, 0.12);
+            border: 1px solid rgba(192, 132, 252, 0.22);
+            border-radius: 10px;
+            width: fit-content;
+            max-width: 100%;
+            flex-shrink: 0;
+        }
+        .kyc-team-filter-bar .kyc-team-label {
+            font-size: 0.65rem;
+            color: #a78bfa;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            flex: 0 0 auto;
+        }
+        #kyc-team-filter-buttons {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+            flex: 0 0 auto;
+        }
+        /* Override global button { width: 100% } from style.css */
+        .kyc-team-filter-bar button {
+            width: auto !important;
+            flex: 0 0 auto;
+            box-shadow: none;
+        }
+        .kyc-team-filter-btn {
+            padding: 6px 14px !important;
+            font-size: 0.72rem !important;
+            font-weight: 700;
+            color: #c4b5fd !important;
+            background: rgba(15, 23, 42, 0.85) !important;
+            border: 1px solid rgba(167, 139, 250, 0.35) !important;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+            min-width: 0;
+        }
+        .kyc-team-filter-btn:hover {
+            background: rgba(124, 58, 237, 0.25) !important;
+            color: #ede9fe !important;
+            border-color: rgba(192, 132, 252, 0.55) !important;
+        }
+        .kyc-team-filter-btn.active {
+            color: #fbbf24 !important;
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.45), rgba(88, 28, 135, 0.65)) !important;
+            border-color: rgba(251, 191, 36, 0.55) !important;
+            box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.15);
+        }
 
         /* Filter / toolbar bars */
         .filter-bar {
@@ -2813,9 +2882,15 @@
         <div id="kyc-portfolio" class="tab-content">
             <div class="card" style="margin-top: 20px; background: linear-gradient(180deg, #060d1e 0%, #030710 100%) !important; border: 1px solid #162040 !important;">
                 <div class="section-header" style="margin-bottom:20px; flex-direction:column; align-items:stretch;">
-                    <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; letter-spacing:-0.01em;">
-                        <i class="fas fa-users"></i> Combined KYC Portfolio
-                    </h3>
+                    <div class="kyc-portfolio-header-row">
+                        <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; letter-spacing:-0.01em;">
+                            <i class="fas fa-users"></i> Combined KYC Portfolio
+                        </h3>
+                        <div id="kyc-team-filter-bar" class="kyc-team-filter-bar" style="display:none;">
+                            <span class="kyc-team-label">Admin Team:</span>
+                            <div id="kyc-team-filter-buttons"></div>
+                        </div>
+                    </div>
                     <div class="kyc-filter-bar">
                         <div style="display:flex; align-items:center; gap:6px;">
                             <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">From</label>
@@ -3118,6 +3193,32 @@
         // ── KYC Account Switcher ──────────────────────────────────────────
         let kycAccounts = [];
         let isKycPrimary = false;
+        let kycAdminFilter = '';
+        function renderKycTeamFilters(teamFilters, activeAdmin) {
+            const bar = document.getElementById('kyc-team-filter-bar');
+            const buttons = document.getElementById('kyc-team-filter-buttons');
+            if (!bar || !buttons) return;
+
+            if (!teamFilters || teamFilters.length < 1) {
+                bar.style.display = 'none';
+                buttons.innerHTML = '';
+                return;
+            }
+
+            bar.style.display = 'flex';
+            const activeKey = String(activeAdmin || '').trim().toLowerCase();
+            const isCombined = !activeKey;
+            const teamBtns = teamFilters.map(team => {
+                const teamKey = String(team.name || '').trim().toLowerCase();
+                const isActive = !isCombined && teamKey === activeKey;
+                return `<button type="button" class="kyc-team-filter-btn${isActive ? ' active' : ''}" onclick="setKycAdminFilter('${team.name.replace(/'/g, "\\'")}')">${team.label}</button>`;
+            }).join('');
+            buttons.innerHTML = teamBtns + `<button type="button" class="kyc-team-filter-btn${isCombined ? ' active' : ''}" onclick="setKycAdminFilter('')">Combined</button>`;
+        }
+        function setKycAdminFilter(adminName) {
+            kycAdminFilter = adminName || '';
+            loadKycPortfolio();
+        }
         function initKycSwitcher() {
             if (!CLIENT_ID) return;
             fetch(`/api/kyc/accounts?client_id=${encodeURIComponent(CLIENT_ID)}`)
@@ -3162,12 +3263,19 @@
             let url = `/api/kyc/portfolio?client_id=${encodeURIComponent(CLIENT_ID)}`;
             if (fromDate) url += `&from=${fromDate}`;
             if (toDate) url += `&to=${toDate}`;
+            if (kycAdminFilter) url += `&admin=${encodeURIComponent(kycAdminFilter)}`;
             
             fetch(url)
                 .then(r => r.json())
                 .then(data => {
                     if (data.status !== 'success') return;
                     window._kycPortfolioData = data;
+                    renderKycTeamFilters(data.team_filters || [], data.admin_filter || kycAdminFilter);
+                    if (data.admin_filter) {
+                        kycAdminFilter = data.admin_filter;
+                    } else if (!kycAdminFilter) {
+                        kycAdminFilter = '';
+                    }
                     const t = data.totals;
                     const fmt = v => '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                     
@@ -3315,6 +3423,7 @@
             let url = `/api/kyc/portfolio/export_fees_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
             if (fromDate) url += `&from=${encodeURIComponent(fromDate)}`;
             if (toDate) url += `&to=${encodeURIComponent(toDate)}`;
+            if (kycAdminFilter) url += `&admin=${encodeURIComponent(kycAdminFilter)}`;
             window.location.href = url;
         }
         function toggleKycPayouts() {
