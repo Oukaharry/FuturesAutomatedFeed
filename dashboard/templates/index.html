@@ -1685,16 +1685,28 @@
             flex-wrap: nowrap;
             margin-left: auto;
         }
+        .kyc-portfolio-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
         .kyc-team-filter-bar {
             display: flex;
             align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 14px;
-            padding: 10px 14px;
+            gap: 10px;
+            flex-wrap: nowrap;
+            margin-top: 0;
+            margin-left: auto;
+            padding: 8px 14px;
             background: rgba(88, 28, 135, 0.12);
             border: 1px solid rgba(192, 132, 252, 0.22);
             border-radius: 10px;
+            width: fit-content;
+            max-width: 100%;
+            flex-shrink: 0;
         }
         .kyc-team-filter-bar .kyc-team-label {
             font-size: 0.65rem;
@@ -1702,20 +1714,34 @@
             font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
-            margin-right: 4px;
             white-space: nowrap;
+            flex: 0 0 auto;
+        }
+        #kyc-team-filter-buttons {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+            flex: 0 0 auto;
+        }
+        /* Override global button { width: 100% } from style.css */
+        .kyc-team-filter-bar button {
+            width: auto !important;
+            flex: 0 0 auto;
+            box-shadow: none;
         }
         .kyc-team-filter-btn {
-            padding: 7px 16px !important;
-            font-size: 0.78rem !important;
+            padding: 6px 14px !important;
+            font-size: 0.72rem !important;
             font-weight: 700;
             color: #c4b5fd !important;
             background: rgba(15, 23, 42, 0.85) !important;
             border: 1px solid rgba(167, 139, 250, 0.35) !important;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
             white-space: nowrap;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
+            min-width: 0;
         }
         .kyc-team-filter-btn:hover {
             background: rgba(124, 58, 237, 0.25) !important;
@@ -2856,12 +2882,14 @@
         <div id="kyc-portfolio" class="tab-content">
             <div class="card" style="margin-top: 20px; background: linear-gradient(180deg, #060d1e 0%, #030710 100%) !important; border: 1px solid #162040 !important;">
                 <div class="section-header" style="margin-bottom:20px; flex-direction:column; align-items:stretch;">
-                    <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; letter-spacing:-0.01em;">
-                        <i class="fas fa-users"></i> Combined KYC Portfolio
-                    </h3>
-                    <div id="kyc-team-filter-bar" class="kyc-team-filter-bar" style="display:none;">
-                        <span class="kyc-team-label">Admin Team:</span>
-                        <div id="kyc-team-filter-buttons" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+                    <div class="kyc-portfolio-header-row">
+                        <h3 style="color: #c084fc; margin: 0; display:flex; align-items:center; gap:10px; font-family:'Plus Jakarta Sans',sans-serif; font-weight:700; letter-spacing:-0.01em;">
+                            <i class="fas fa-users"></i> Combined KYC Portfolio
+                        </h3>
+                        <div id="kyc-team-filter-bar" class="kyc-team-filter-bar" style="display:none;">
+                            <span class="kyc-team-label">Admin Team:</span>
+                            <div id="kyc-team-filter-buttons"></div>
+                        </div>
                     </div>
                     <div class="kyc-filter-bar">
                         <div style="display:flex; align-items:center; gap:6px;">
