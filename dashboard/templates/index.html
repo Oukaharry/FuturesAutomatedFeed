@@ -836,8 +836,8 @@
             top: 36px !important; /* Below Row 1 (36px) */
             z-index: 1050 !important; /* Higher than data cells, lower than group header */
             background: var(--card-bg, #090f1e) !important;
-            width: 200px;
-            min-width: 200px;
+            width: 283px;
+            min-width: 283px;
             border-right: 1px solid rgba(255,255,255,0.08);
         }
 
@@ -865,12 +865,12 @@
            orange gradient, so it blends with its neighbours when scrolling. */
         #evaluations-table thead tr:nth-child(2) th.sticky-funded-acct-header {
             position: sticky !important;
-            left: 290px !important; /* After # (50) + Trash (40) + Prop Firm (200) */
+            left: 373px !important; /* After # (50) + Trash (40) + Prop Firm (200) */
             top: 36px !important;   /* Below Row 1 (36px) */
             z-index: 1050 !important; /* Above data cells, like Prop Firm sub-header */
             background: var(--card-bg, #090f1e) !important;
-            width: 200px;
-            min-width: 200px;
+            width: 283px;
+            min-width: 283px;
             border-right: 1px solid rgba(255,255,255,0.08);
             box-shadow: inset 0 1px 0 rgba(251,191,36,0.08), 0 1px 0 rgba(255,255,255,0.06);
         }
@@ -880,7 +880,7 @@
            the per-row-status overrides further down re-tint to match the row. */
         #evaluations-table tbody td.sticky-col-4 {
             position: sticky !important;
-            left: 386.67px !important;
+            left: 497.33px !important;
             z-index: 100 !important; /* Lower than headers, same tier as sticky-col-3 */
             background-color: var(--card-bg, #090f1e) !important;
             border-right: 1px solid rgba(255,255,255,0.08);
@@ -3775,7 +3775,6 @@
         });
 
         // ============ Table Scroll Functions ============
-        const tableContainer = document.getElementById('eval-table-container');
         
         // Section column positions - will be calculated after table renders
         let sectionPositions = {
@@ -3787,7 +3786,95 @@
         
         let activeSectionId = 'scroll-btn-info';
         let manualScrollTarget = null;
-        let manualScrollTimeout = null;
+        let manualScrollRafId = null;
+
+        function getEvalTableContainer() {
+            return document.getElementById('eval-table-container');
+        }
+
+        function getStickyScrollOffset() {
+            return document.querySelector('.client-view') ? 250 : 290;
+        }
+
+        function cancelManualScrollAnimation() {
+            if (manualScrollRafId) {
+                cancelAnimationFrame(manualScrollRafId);
+                manualScrollRafId = null;
+            }
+        }
+
+        // Calculate section scroll positions from layout (always measured at scrollLeft=0)
+        function calculateSectionPositions() {
+            const table = document.getElementById('evaluations-table');
+            const container = getEvalTableContainer();
+            if (!table || !container) return;
+
+            const headerRow = table.querySelector('thead tr:nth-child(2)');
+            if (!headerRow) return;
+
+            const stickyWidth = getStickyScrollOffset();
+
+            const getPos = (th) => {
+                if (!th) return 0;
+                let left = 0;
+                for (let cell = headerRow.firstElementChild; cell && cell !== th; cell = cell.nextElementSibling) {
+                    left += cell.offsetWidth || 0;
+                }
+                return Math.max(0, left - stickyWidth);
+            };
+
+            const infoTh = headerRow.querySelector('th.sticky-prop-firm-col')
+                || headerRow.querySelector('th.sub-header-blue');
+            const evalTh = headerRow.querySelector('th.sub-header-green');
+            const fundedTh = headerRow.querySelector('th.sticky-funded-acct-header');
+            const farmTh = headerRow.querySelector('th.sub-header-purple');
+
+            sectionPositions['eval-info'] = getPos(infoTh);
+            sectionPositions['eval-phase'] = getPos(evalTh);
+            sectionPositions['funded-phase'] = getPos(fundedTh);
+            sectionPositions['farming-phase'] = getPos(farmTh);
+        }
+
+        function animateTableScrollTo(targetLeft, onDone) {
+            const container = getEvalTableContainer();
+            if (!container) {
+                if (onDone) onDone();
+                return;
+            }
+
+            cancelManualScrollAnimation();
+
+            const scrollMax = Math.max(0, container.scrollWidth - container.clientWidth);
+            const target = Math.max(0, Math.min(targetLeft, scrollMax));
+            const startLeft = container.scrollLeft;
+            const distance = target - startLeft;
+
+            if (Math.abs(distance) < 2) {
+                container.scrollLeft = target;
+                if (onDone) onDone();
+                return;
+            }
+
+            const duration = Math.min(700, Math.max(280, Math.abs(distance) * 0.12));
+            const startTime = performance.now();
+
+            const step = (now) => {
+                const elapsed = now - startTime;
+                const t = Math.min(1, elapsed / duration);
+                const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                container.scrollLeft = startLeft + distance * eased;
+
+                if (t < 1) {
+                    manualScrollRafId = requestAnimationFrame(step);
+                } else {
+                    manualScrollRafId = null;
+                    container.scrollLeft = target;
+                    if (onDone) onDone();
+                }
+            };
+
+            manualScrollRafId = requestAnimationFrame(step);
+        }
 
         const SECTION_TO_BTN = {
             'eval-info': 'scroll-btn-info',
@@ -3823,31 +3910,6 @@
             }
         };
 
-        // Calculate actual section positions based on rendered sub-header cells
-        function calculateSectionPositions() {
-            const table = document.getElementById('evaluations-table');
-            if (!table || !tableContainer) return;
-
-            // Sticky columns width: # (50px) + trash (40px) + prop firm (180px) = 270px
-            // Subtract so the section's first column lands exactly at the right edge of sticky cols
-            const STICKY_WIDTH = 300;
-
-            const infoTh = table.querySelector('thead tr:nth-child(2) th.sub-header-blue:not(.sticky-prop-firm-col)');
-            const evalTh = table.querySelector('thead tr:nth-child(2) th.sub-header-green');
-            const fundedTh = table.querySelector('thead tr:nth-child(2) th.sub-header-orange');
-            const farmTh = table.querySelector('thead tr:nth-child(2) th.sub-header-purple');
-
-            const getPos = (th) => {
-                if (!th) return 0;
-                return Math.max(0, th.offsetLeft - STICKY_WIDTH);
-            };
-
-            sectionPositions['eval-info'] = getPos(infoTh);
-            sectionPositions['eval-phase'] = getPos(evalTh);
-            sectionPositions['funded-phase'] = getPos(fundedTh);
-            sectionPositions['farming-phase'] = getPos(farmTh);
-        }
-
         function setActiveSection(btnId) {
             activeSectionId = btnId;
 
@@ -3867,26 +3929,30 @@
         }
         
         function scrollTableBy(amount) {
-            if (tableContainer) {
-                tableContainer.scrollBy({ left: amount, behavior: 'smooth' });
+            const container = getEvalTableContainer();
+            if (container) {
+                container.scrollBy({ left: amount, behavior: 'smooth' });
             }
         }
         
         function scrollTableTo(position) {
-            if (!tableContainer) return;
+            const container = getEvalTableContainer();
+            if (!container) return;
             if (position === 'start') {
-                tableContainer.scrollTo({ left: 0, behavior: 'smooth' });
+                container.scrollTo({ left: 0, behavior: 'smooth' });
             } else if (position === 'end') {
-                tableContainer.scrollTo({ left: tableContainer.scrollWidth, behavior: 'smooth' });
+                container.scrollTo({ left: container.scrollWidth, behavior: 'smooth' });
             }
         }
         
         function scrollToSection(section) {
-            if (!tableContainer) return;
+            const container = getEvalTableContainer();
+            if (!container) return;
 
             calculateSectionPositions();
 
-            const targetLeft = sectionPositions[section];
+            const scrollMax = Math.max(0, container.scrollWidth - container.clientWidth);
+            const targetLeft = Math.max(0, Math.min(sectionPositions[section] ?? 0, scrollMax));
             const btnId = SECTION_TO_BTN[section];
 
             if (btnId) {
@@ -3894,37 +3960,29 @@
                 setActiveSection(btnId);
             }
 
-            tableContainer.scrollTo({
-                left: targetLeft,
-                behavior: 'smooth'
-            });
-
-            clearTimeout(manualScrollTimeout);
-            manualScrollTimeout = setTimeout(() => {
+            animateTableScrollTo(targetLeft, () => {
                 manualScrollTarget = null;
                 updateScrollIndicator();
-            }, 450);
+            });
         }
         
         // Update scroll position indicator and shadow classes
         function updateScrollIndicator() {
-            if (!tableContainer) return;
+            const container = getEvalTableContainer();
+            if (!container) return;
             
-            const scrollLeft = tableContainer.scrollLeft;
-            const scrollMax = tableContainer.scrollWidth - tableContainer.clientWidth;
+            const scrollLeft = container.scrollLeft;
+            const scrollMax = container.scrollWidth - container.clientWidth;
             
-            tableContainer.classList.toggle('can-scroll-left', scrollLeft > 10);
-            tableContainer.classList.toggle('can-scroll-right', scrollLeft < scrollMax - 10);
+            container.classList.toggle('can-scroll-left', scrollLeft > 10);
+            container.classList.toggle('can-scroll-right', scrollLeft < scrollMax - 10);
 
-            if (manualScrollTarget) {
-                const targetLeft = sectionPositions[manualScrollTarget] ?? 0;
-                const closeEnough = Math.abs(scrollLeft - targetLeft) < 8;
-
-                if (!closeEnough) {
-                    return;
+            if (manualScrollTarget || manualScrollRafId) {
+                const pinnedBtn = SECTION_TO_BTN[manualScrollTarget];
+                if (pinnedBtn) {
+                    setActiveSection(pinnedBtn);
                 }
-
-                manualScrollTarget = null;
+                return;
             }
 
             let nextActiveBtn = 'scroll-btn-info';
@@ -3943,8 +4001,11 @@
         }
 
         // Initialize scroll listener
-        if (tableContainer) {
-            tableContainer.addEventListener('scroll', updateScrollIndicator);
+        (function initEvalTableScroll() {
+            const container = getEvalTableContainer();
+            if (!container) return;
+
+            container.addEventListener('scroll', updateScrollIndicator);
             
             setTimeout(() => {
                 calculateSectionPositions();
@@ -3960,7 +4021,7 @@
                 calculateSectionPositions();
                 updateScrollIndicator();
             });
-        }
+        })();
 
         // Keyboard shortcuts for scrolling
         document.addEventListener('keydown', function(e) {
