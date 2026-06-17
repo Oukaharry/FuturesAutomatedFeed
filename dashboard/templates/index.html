@@ -5332,13 +5332,9 @@
                     const histAccts = s.hedging_review.historical_accounts || [];
                     historicalDep = 0; historicalWith = 0; historicalBal = 0;
                     histAccts.forEach(a => { historicalDep += a.deposits || 0; historicalWith += a.withdrawals || 0; historicalBal += a.final_balance || 0; });
-                    const combinedDep = mt5Dep + historicalDep;
-                    const combinedWith = mt5With + historicalWith;
-                    const combinedBal = mt5Bal + historicalBal;
-                    // Compute total prior activity to subtract from profits
+                    // Discrepancy uses current MT5 only — historical accounts are display-only
                     totalPriorActivity = (s.hedging_review.current_mt5_prior_activity || 0);
-                    histAccts.forEach(a => { totalPriorActivity += a.prior_activity_profit || 0; });
-                    liveActualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity;
+                    liveActualHedging = mt5Bal - (mt5Dep + mt5With) - totalPriorActivity;
                     const _mt5HasData = (mt5Dep !== 0 || mt5Bal !== 0);
                     // Match /api/update_data: server keeps hedging_review.actual_hedging_results + discrepancy
                     // in sync with the sheet. Recomputing "actual" from data.account here often disagrees with
@@ -6466,13 +6462,9 @@
                 if (wInput) wInput.value = withdrawals;
             }
             
-            // Include historical accounts in the computation (same as MT5 Accounts Overview)
-            const combinedDep = deposits + historicalDep;
-            const combinedWith = withdrawals + historicalWith;
-            const combinedBal = balance + historicalBal;
-            
-            // Formula: Actual Hedging Results = Combined Balance - (Combined Deposits + Combined Withdrawals) - Prior Activity
-            const actualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity;
+            // Discrepancy uses current MT5 only — historical accounts are display-only
+            const priorActivity = totalPriorActivity || 0;
+            const actualHedging = balance - (deposits + withdrawals) - priorActivity;
             liveActualHedging = actualHedging;
             const discrepancy = actualHedging - sheetHedgingResults;
             
@@ -6495,11 +6487,9 @@
                 if (wInput) wInput.value = withdrawals;
             }
             
-            // Include historical accounts (same as MT5 Accounts Overview)
-            const combinedDep = deposits + historicalDep;
-            const combinedWith = withdrawals + historicalWith;
-            const combinedBal = balance + historicalBal;
-            const actualHedging = combinedBal - (combinedDep + combinedWith) - totalPriorActivity;
+            // Discrepancy uses current MT5 only — historical accounts are display-only
+            const priorActivity = totalPriorActivity || 0;
+            const actualHedging = balance - (deposits + withdrawals) - priorActivity;
             const discrepancy = actualHedging - sheetHedgingResults;
             
             try {

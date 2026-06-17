@@ -1614,9 +1614,13 @@ _MT5_HEDGING_REVIEW_PRESERVE_KEYS = (
 )
 
 
-def merge_statistics_hedging_review_preserve_mt5(existing_hr, merged_statistics, account=None):
+def merge_statistics_hedging_review_preserve_mt5(existing_hr, merged_statistics, account=None, recalc_discrepancy=True):
     """Mutates merged_statistics: refresh sheet_* from calculate_statistics, preserve MT5 snapshot."""
-    from utils.data_processor import sync_hedging_review_discrepancy
+    from utils.data_processor import (
+        apply_discrepancy_to_net_profit,
+        enrich_mt5_account_from_hr,
+        sync_hedging_review_discrepancy,
+    )
 
     existing_hr = existing_hr or {}
     fresh_hr = merged_statistics.get('hedging_review') or {}
@@ -1625,7 +1629,15 @@ def merge_statistics_hedging_review_preserve_mt5(existing_hr, merged_statistics,
         if key in existing_hr and existing_hr.get(key) is not None:
             merged_hr[key] = existing_hr[key]
     merged_statistics['hedging_review'] = merged_hr
-    sync_hedging_review_discrepancy(merged_statistics, account=account)
+    account = enrich_mt5_account_from_hr(account, merged_hr)
+
+    if recalc_discrepancy:
+        sync_hedging_review_discrepancy(merged_statistics, account=account)
+    else:
+        for key in ('actual_hedging_results', 'discrepancy'):
+            if key in existing_hr and existing_hr.get(key) is not None:
+                merged_hr[key] = existing_hr[key]
+        apply_discrepancy_to_net_profit(merged_statistics)
 
 
 def _changed_fields_touch_hedge(user_changed):
@@ -12622,9 +12634,16 @@ def update_data():
                 _dashboard_log_hedge_edit(client_id, user_changed, evaluations)
 
                 # Recalculate statistics so they reflect latest evaluation changes
-                from utils.data_processor import calculate_statistics
-                existing_mt5 = existing_data.get('account') or data.get('account')
+                from utils.data_processor import (
+                    calculate_statistics,
+                    enrich_mt5_account_from_hr,
+                    user_changes_require_discrepancy_recalc,
+                )
                 existing_hr_stats = existing_data.get('statistics', {}).get('hedging_review', {})
+                existing_mt5 = enrich_mt5_account_from_hr(
+                    existing_data.get('account') or data.get('account'),
+                    existing_hr_stats,
+                )
                 existing_hist = existing_hr_stats.get('historical_accounts')
 
                 merged_statistics = calculate_statistics(
@@ -12633,8 +12652,14 @@ def update_data():
                 )
 
                 existing_hr_for_merge = existing_data.get('statistics', {}).get('hedging_review', {})
+                recalc_discrepancy = user_changes_require_discrepancy_recalc(
+                    user_changed, existing_evals, evaluations
+                )
                 merge_statistics_hedging_review_preserve_mt5(
-                    existing_hr_for_merge, merged_statistics, account=existing_mt5
+                    existing_hr_for_merge,
+                    merged_statistics,
+                    account=existing_mt5,
+                    recalc_discrepancy=recalc_discrepancy,
                 )
                 merged_hr = merged_statistics.get('hedging_review', {})
                 app.logger.info(

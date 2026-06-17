@@ -1,10 +1,10 @@
 """
-Repair stale hedging_review.actual_hedging_results / discrepancy when prior MT5
-PnL was saved but stats were not recalculated.
+Repair inflated hedging_review.actual_hedging_results / discrepancy when historical
+closed accounts were wrongly included in the discrepancy formula.
 
 Usage:
   python scripts/repair_hedging_prior_activity.py
-  python scripts/repair_hedging_prior_activity.py "Oliver MFFU KYC (Lau)"
+  python scripts/repair_hedging_prior_activity.py Reece
   python scripts/repair_hedging_prior_activity.py --dry-run
 """
 import json
@@ -25,32 +25,19 @@ if os.path.isfile(_env_path):
                 os.environ.setdefault(k.strip(), v.strip())
 
 from dashboard.database import get_all_clients, get_client_data, save_client_data
-from utils.data_processor import compute_live_actual_hedging, sync_hedging_review_discrepancy
-
-
-def _has_prior_activity(hr):
-    if not hr:
-        return False
-    if hr.get("current_mt5_prior_activity"):
-        return True
-    for acc in hr.get("historical_accounts") or []:
-        if acc.get("prior_activity_profit"):
-            return True
-    return False
+from utils.data_processor import hedging_discrepancy_is_stale, sync_hedging_review_discrepancy
 
 
 def repair_client(client_id, dry_run=False):
     data = get_client_data(client_id) or {}
     stats = data.get("statistics") or {}
     hr = stats.get("hedging_review") or {}
-    if not _has_prior_activity(hr):
+    if not hedging_discrepancy_is_stale(stats, data.get("account")):
         return None
 
     before_actual = hr.get("actual_hedging_results")
     before_disc = hr.get("discrepancy")
-    expected = compute_live_actual_hedging(data.get("account"), hr)
-    if round(float(before_actual or 0), 2) == round(expected, 2):
-        return None
+    before_net = (stats.get("cashflow_inprogress") or {}).get("net_profit")
 
     sync_hedging_review_discrepancy(stats, account=data.get("account"))
     data["statistics"] = stats
@@ -63,6 +50,8 @@ def repair_client(client_id, dry_run=False):
         "after_actual": hr.get("actual_hedging_results"),
         "before_discrepancy": before_disc,
         "after_discrepancy": hr.get("discrepancy"),
+        "before_net": before_net,
+        "after_net": (stats.get("cashflow_inprogress") or {}).get("net_profit"),
     }
 
 
