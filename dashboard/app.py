@@ -67,22 +67,6 @@ from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 # Firms hidden from BEF admin (normalised: lowercase, no spaces)
 BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
 
-# Admin tracker: max simultaneous active evaluation rows per normalized prop firm key.
-ADMIN_PROP_MAX_ACTIVE_ACCOUNTS = {
-    'mffu': 3,
-    'tradeday': 3,
-    'alphafutures': 3,
-    'apex': 10,
-}
-ADMIN_PROP_MAX_ACTIVE_DEFAULT = 5
-ADMIN_PROP_DISPLAY_NAME = {
-    'mffu': 'My Funded Futures',
-    'tradeday': 'TradeDay',
-    'alphafutures': 'Alpha Futures',
-    'apex': 'Apex Trader Funding',
-    'toponefutures': 'Top One Futures',
-}
-
 # QA-gated: trader daily summary item 4 — any prop firm with payouts-eligible count >= 1 (super_admin resolve)
 QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE = 'Daily summary: payouts eligible >=1-QA'
 # Older scan key; still honored when reading qa_resolutions so existing clears keep working.
@@ -115,7 +99,6 @@ def _trader_ranking_health_metrics(issues):
 
 
 _ADMIN_HEALTH_ISSUE_TYPES_EXCLUDED_FROM_SCORE = frozenset({
-    'max_out',
     'daily_summary_payout_qa',
 })
 _ADMIN_SIGNOFF_PENDING_PENALTY = 5
@@ -124,7 +107,7 @@ _ADMIN_TEAM_TIME_PENALTY = 999999
 
 
 def _compute_admin_health_score(admin_issues, pending_signoffs=0):
-    """Admin ops health: penalize fees, downtime, sign-offs; max_out and payout QA excluded from score."""
+    """Admin ops health: penalize fees, downtime, sign-offs; payout QA excluded from score."""
     deduction = sum(
         _QUALITY_SEVERITY_WEIGHT.get(i.get('severity', 'low'), 2)
         for i in (admin_issues or [])
@@ -700,94 +683,11 @@ def _client_excluded_from_super_admin_stats(client_id, display_name, excluded):
     return False
 
 
-def _norm_prop_firm_max_out_key(raw):
-    """Normalize Prop Firm strings for admin max-out / prop slot counts."""
-    s = str(raw or '').strip().lower().replace(' ', '').replace('_', '')
-    if not s:
-        return ''
-    if 'myfunded' in s or s.startswith('mffu') or 'mffu' in s:
-        return 'mffu'
-    if s in ('toponefutures', 'topone', 'tpo'):
-        return 'toponefutures'
-    if s in ('tradeday', 'trade-day'):
-        return 'tradeday'
-    if s in ('topsteprtp', 'topstep-rtp') or 'topsteprtp' in s:
-        return 'topstep'
-    if 'topstep' in s:
-        return 'topstep'
-    if 'apex' in s:
-        return 'apex'
-    if s == 'alphafutures' or ('alpha' in s and 'future' in s):
-        return 'alphafutures'
-    return s
-
-
-def _admin_prop_max_active_expected(pf_key):
-    return ADMIN_PROP_MAX_ACTIVE_ACCOUNTS.get(pf_key, ADMIN_PROP_MAX_ACTIVE_DEFAULT)
-
-
-def _admin_prop_display_name(pf_key):
-    return ADMIN_PROP_DISPLAY_NAME.get(pf_key, pf_key)
-
-
-_QUALITY_MAX_OUT_EXCLUSIONS_KEY = 'quality_max_out_exclusions'
-
-# Prop firms that can appear in max-out checks beyond ADMIN_PROP_* (normalized keys).
-_MAX_OUT_EXTRA_PROP_KEYS = frozenset[str]({
-    'fundednext', 'topstep', 'lucid', 'tradeify', 'fundednextplus',
-})
-
-
-def _prop_firm_dropdown_options_max_out():
-    """{key, label} for max-out exclusion UI (keys match _norm_prop_firm_max_out_key output)."""
-    keys = set(ADMIN_PROP_MAX_ACTIVE_ACCOUNTS.keys()) | set(ADMIN_PROP_DISPLAY_NAME.keys()) | set(_MAX_OUT_EXTRA_PROP_KEYS)
-    opts = []
-    for k in sorted(keys):
-        label = ADMIN_PROP_DISPLAY_NAME.get(k)
-        if not label:
-            label = k[:1].upper() + k[1:] if k else k
-        opts.append({'key': k, 'label': label})
-    return opts
-
-
-def _load_max_out_exclusions():
-    """Saved triplets (admin, client_id, prop_firm_key) — skip max-out flags for that combo."""
-    from dashboard.database import get_setting
-    try:
-        raw = json.loads(get_setting(_QUALITY_MAX_OUT_EXCLUSIONS_KEY) or '[]')
-    except (TypeError, ValueError):
-        raw = []
-    out = []
-    for i, x in enumerate(raw):
-        if not isinstance(x, dict):
-            continue
-        admin = str(x.get('admin') or '').strip()
-        cid = str(x.get('client_id') or '').strip()
-        pfk = _norm_prop_firm_max_out_key(x.get('prop_firm_key') or x.get('prop_firm') or '')
-        if not admin or not cid or not pfk:
-            continue
-        eid = str(x.get('id') or '').strip() or f'maxout-ex-{i}'
-        out.append({'id': eid, 'admin': admin, 'client_id': cid, 'prop_firm_key': pfk})
-    return out
-
-
-def _max_out_triplet_excluded(admin_name, client_id, pf_key, exclusion_list):
-    a = str(admin_name or '').strip().lower()
-    cid = str(client_id or '').strip()
-    pk = str(pf_key or '').strip().lower()
-    if not exclusion_list:
-        return False
-    for ex in exclusion_list:
-        if str(ex.get('admin') or '').strip().lower() == a and ex.get('client_id') == cid and ex.get('prop_firm_key') == pk:
-            return True
-    return False
-
-
 def _max_out_row_is_live_numeric_account(ev):
     """True if this row's account id looks like funded/live (digits-only), not eval (prefix + suffix).
 
     Eval rows typically store firm-prefixed ids (e.g. MFFU80594). Live funded broker accounts are numeric only.
-    When a trader is live on one account they are not running multiple eval slots; skip underfilled max-out in that case.
+    Quality scan skips sheet SOP checks for these rows.
 
     Handles JSON numeric types (e.g. 1838060 stored as float) and comma-formatted strings.
     Funded-phase Account # in the UI is stored as Account #.1; eval Account # may be empty for live rows.
@@ -10221,19 +10121,15 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from dashboard.database import (
         get_quality_scan_results,
-        get_client_data,
         get_daily_checklists,
         get_summary_status_for_date,
         get_setting,
     )
-    from dashboard.notes_service import get_client_notes
     import json as _json
 
     # Exclusions mirror the Daily Summary Tracker rules
     excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
     excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
-    _mffu_skip_admins = {'joy ndua', 'marion nyika'}
-    max_out_exclusions = _load_max_out_exclusions()
 
     # Build admin client roster from hierarchy profiles
     clients = []
@@ -10269,15 +10165,6 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
         if extra and isinstance(extra, dict):
             rec.update(extra)
         admin_issues.append(rec)
-
-    _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
-    _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
-    def _is_row_active(ev):
-        sp1 = str(ev.get('Status P1', '') or '').strip().lower()
-        sp2 = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip().lower()
-        if 'delete' in sp1 or 'delete' in sp2:
-            return False
-        return (not any(t in sp1 for t in _inactive_tokens_p1)) and (not any(t in sp2 for t in _inactive_tokens_p2))
 
     fee_issue_checks = {'Empty Fee', 'Empty Activation Fee', 'Alpha Futures: missing Activation Fee'}
     for c in clients:
@@ -10334,81 +10221,6 @@ def compute_admin_tracker_payload(admin_name: str, date: str):
                         'submitted_at': iss.get('submitted_at'),
                     },
                 )
-
-        # Prop firm max-out counts
-        try:
-            cdata = get_client_data(cid) or {}
-            identity = cdata.get('identity', {}) if isinstance(cdata, dict) else {}
-            if isinstance(identity, dict) and str(identity.get('active_status') or '').lower() == 'inactive':
-                continue
-            evals = [ev for ev in (cdata.get('evaluations') or []) if isinstance(ev, dict) and not ev.get('_deleted')]
-
-            # Inject cell notes so we can suppress "excess accounts" when the extra rows are explained via notes.
-            try:
-                notes_by_row = get_client_notes(cid) or {}
-                for _i, _ev in enumerate(evals):
-                    if _i in notes_by_row:
-                        _ev['_notes'] = notes_by_row[_i]
-            except Exception:
-                pass
-
-            pf_rows = {}  # pf_key -> list[{idx, has_note}]
-            for idx, ev in enumerate(evals):
-                if not _is_row_active(ev):
-                    continue
-                pf_key = _norm_prop_firm_max_out_key(ev.get('Prop Firm'))
-                if not pf_key:
-                    continue
-                # Exception: for these two admins, do not flag any MFFU max-out / excess-account issues.
-                if pf_key == 'mffu' and str(admin_name or '').strip().lower() in _mffu_skip_admins:
-                    continue
-                # Excess-account suppression requires a note STRICTLY on the Status P1 cell.
-                has_note = False
-                cell_notes = ev.get('_notes') or {}
-                if isinstance(cell_notes, dict):
-                    sp1_note = cell_notes.get('Status P1')
-                    if sp1_note is not None and str(sp1_note).strip():
-                        has_note = True
-                pf_rows.setdefault(pf_key, []).append({'idx': idx, 'has_note': has_note})
-
-            for pf_key, rows in sorted(pf_rows.items()):
-                if _max_out_triplet_excluded(admin_name, cid, pf_key, max_out_exclusions):
-                    continue
-                count = len(rows)
-                expected = _admin_prop_max_active_expected(pf_key)
-                if count == 0:
-                    continue
-                if count != expected:
-                    human = _admin_prop_display_name(pf_key)
-                    if count < expected:
-                        skip_underfilled = (
-                            count == 1
-                            and _max_out_row_is_live_numeric_account(evals[rows[0]['idx']])
-                        )
-                        if not skip_underfilled:
-                            _add_issue(
-                                'max_out',
-                                cid,
-                                trader,
-                                'medium',
-                                f"{human}: {expected - count} needed (expected {expected}, has {count})",
-                                extra={'prop_firm': human, 'expected': expected, 'count': count}
-                            )
-                    else:
-                        excess = count - expected
-                        noted = sum(1 for r in rows if r.get('has_note'))
-                        if noted < excess:
-                            missing_notes = excess - noted
-                            _add_issue(
-                                'max_out',
-                                cid,
-                                trader,
-                                'medium',
-                                f"{human}: too many accounts (expected {expected}, has {count}) — {missing_notes} excess row(s) missing note",
-                                extra={'prop_firm': human, 'expected': expected, 'count': count, 'excess': excess, 'excess_missing_notes': missing_notes}
-                            )
-        except Exception:
-            pass
 
     # Admin summary sign-off (only required after trader submitted)
     trader_submissions = get_summary_status_for_date(date) or []
@@ -10488,7 +10300,6 @@ def api_admin_tracker():
         from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
         from dashboard.database import (
             get_quality_scan_results,
-            get_client_data,
             get_daily_checklists,
             get_summary_status_for_date,
             get_setting,
@@ -10499,7 +10310,6 @@ def api_admin_tracker():
             # Exclusions mirror the Daily Summary Tracker rules
             excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
             excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
-            max_out_exclusions = _load_max_out_exclusions()
 
             # Build admin client roster from hierarchy profiles
             clients = []
@@ -10538,15 +10348,6 @@ def api_admin_tracker():
                 if extra and isinstance(extra, dict):
                     rec.update(extra)
                 admin_issues.append(rec)
-
-            _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
-            _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
-            def _is_row_active(ev):
-                sp1 = str(ev.get('Status P1', '') or '').strip().lower()
-                sp2 = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip().lower()
-                if 'delete' in sp1 or 'delete' in sp2:
-                    return False
-                return (not any(t in sp1 for t in _inactive_tokens_p1)) and (not any(t in sp2 for t in _inactive_tokens_p2))
 
             fee_issue_checks = {'Empty Fee', 'Empty Activation Fee', 'Alpha Futures: missing Activation Fee'}
             for c in clients:
@@ -10603,83 +10404,6 @@ def api_admin_tracker():
                                 'submitted_at': iss.get('submitted_at'),
                             },
                         )
-
-                # Prop firm max-out counts
-                try:
-                    cdata = get_client_data(cid) or {}
-                    identity = cdata.get('identity', {}) if isinstance(cdata, dict) else {}
-                    if isinstance(identity, dict) and str(identity.get('active_status') or '').lower() == 'inactive':
-                        continue
-                    evals = [ev for ev in (cdata.get('evaluations') or []) if isinstance(ev, dict) and not ev.get('_deleted')]
-
-                    # Inject cell notes so we can suppress "excess accounts" when the extra rows are explained via notes.
-                    # (Matches how run_quality_scan injects notes.)
-                    try:
-                        notes_by_row = get_client_notes(cid) or {}
-                        for _i, _ev in enumerate(evals):
-                            if _i in notes_by_row:
-                                _ev['_notes'] = notes_by_row[_i]
-                    except Exception:
-                        pass
-
-                    pf_rows = {}  # pf_key -> list[{idx, has_note}]
-                    for idx, ev in enumerate(evals):
-                        if not _is_row_active(ev):
-                            continue
-                        pf_key = _norm_prop_firm_max_out_key(ev.get('Prop Firm'))
-                        if not pf_key:
-                            continue
-                        # Excess-account suppression requires a note STRICTLY on the Status P1 cell.
-                        # Notes on other cells are not accepted for this purpose.
-                        has_note = False
-                        cell_notes = ev.get('_notes') or {}
-                        if isinstance(cell_notes, dict):
-                            sp1_note = cell_notes.get('Status P1')
-                            if sp1_note is not None and str(sp1_note).strip():
-                                has_note = True
-                        pf_rows.setdefault(pf_key, []).append({'idx': idx, 'has_note': has_note})
-
-                    for pf_key, rows in sorted(pf_rows.items()):
-                        if _max_out_triplet_excluded(admin_name, cid, pf_key, max_out_exclusions):
-                            continue
-                        count = len(rows)
-                        expected = _admin_prop_max_active_expected(pf_key)
-                        if count == 0:
-                            continue
-                        if count != expected:
-                            human = _admin_prop_display_name(pf_key)
-                            if count < expected:
-                                skip_underfilled = (
-                                    count == 1
-                                    and _max_out_row_is_live_numeric_account(evals[rows[0]['idx']])
-                                )
-                                if not skip_underfilled:
-                                    _add_issue(
-                                        'max_out',
-                                        cid,
-                                        trader,
-                                        'medium',
-                                        f"{human}: {expected - count} needed (expected {expected}, has {count})",
-                                        extra={'prop_firm': human, 'expected': expected, 'count': count}
-                                    )
-                            else:
-                                # Excess accounts are allowed ONLY when the extra rows have notes.
-                                # If N accounts exceed the required count, we require at least N rows
-                                # to have a note (cell note or Notes column). Otherwise, flag.
-                                excess = count - expected
-                                noted = sum(1 for r in rows if r.get('has_note'))
-                                if noted < excess:
-                                    missing_notes = excess - noted
-                                    _add_issue(
-                                        'max_out',
-                                        cid,
-                                        trader,
-                                        'medium',
-                                        f"{human}: too many accounts (expected {expected}, has {count}) — {missing_notes} excess row(s) missing note",
-                                        extra={'prop_firm': human, 'expected': expected, 'count': count, 'excess': excess, 'excess_missing_notes': missing_notes}
-                                    )
-                except Exception:
-                    pass
 
             # Admin summary sign-off (only required after a summary has been sent "upstream")
             # In your workflow: trader sends summary → admin reviews → admin confirms accurate & sent to client.
@@ -11241,95 +10965,6 @@ def api_summary_tracker_exclude():
                get_remote_address(), f'{action} {exclude_type}: {name}')
 
     return jsonify({'status': 'success', 'excluded': sorted(current)})
-
-
-@app.route('/api/quality/max_out_exclusions', methods=['GET', 'POST', 'DELETE'])
-@require_role('super_admin')
-def api_quality_max_out_exclusions():
-    """Manage admin+client+prop-firm triplets excluded from Admin Tracker max-out checks."""
-    from dashboard.database import get_setting, set_setting
-    import uuid as _uuid
-
-    if request.method == 'GET':
-        exclusions = list(_load_max_out_exclusions())
-        for ex in exclusions:
-            ex['prop_firm_label'] = _admin_prop_display_name(ex['prop_firm_key'])
-        admins = sorted(SYSTEM_HIERARCHY.get('admins', {}).keys(), key=lambda s: str(s).lower())
-        client_rows = []
-        for admin in SYSTEM_HIERARCHY.get('admins', {}):
-            ad = SYSTEM_HIERARCHY['admins'][admin]
-            for trader_name, trader_data in (ad.get('traders') or {}).items():
-                for client in trader_data.get('clients') or []:
-                    if not isinstance(client, dict):
-                        continue
-                    nm = (client.get('name') or '').strip()
-                    if nm:
-                        client_rows.append({
-                            'client_id': nm,
-                            'admin': admin,
-                            'trader': trader_name,
-                        })
-        client_rows.sort(key=lambda r: (str(r['admin']).lower(), str(r['client_id']).lower()))
-        return jsonify({
-            'status': 'success',
-            'exclusions': exclusions,
-            'admins': admins,
-            'clients': client_rows,
-            'prop_firms': _prop_firm_dropdown_options_max_out(),
-        })
-
-    data = request.get_json(silent=True) or {}
-    user_id = request.session_user.get('user_identifier', '')
-
-    if request.method == 'POST':
-        admin = (data.get('admin') or '').strip()
-        cid = (data.get('client_id') or '').strip()
-        pf_raw = (data.get('prop_firm_key') or data.get('prop_firm') or '').strip()
-        pfk = _norm_prop_firm_max_out_key(pf_raw)
-        if not admin or not cid or not pfk:
-            return jsonify({'status': 'error', 'message': 'admin, client_id, and prop_firm_key are required'}), 400
-        profile = get_client_profile(cid) or {}
-        if str(profile.get('admin') or '').strip().lower() != admin.lower():
-            return jsonify({'status': 'error', 'message': 'Selected client is not assigned to the selected admin'}), 400
-        cur = _load_max_out_exclusions()
-        if _max_out_triplet_excluded(admin, cid, pfk, cur):
-            return jsonify({'status': 'error', 'message': 'This exclusion already exists'}), 400
-        cur.append({
-            'id': str(_uuid.uuid4()),
-            'admin': admin,
-            'client_id': cid,
-            'prop_firm_key': pfk,
-        })
-        set_setting(_QUALITY_MAX_OUT_EXCLUSIONS_KEY, json.dumps(cur), updated_by=user_id)
-        log_action(
-            'MAX_OUT_EXCLUSION_ADD',
-            'super_admin',
-            user_id,
-            get_remote_address(),
-            f'admin={admin} client={cid} prop_firm_key={pfk}',
-        )
-        for ex in cur:
-            ex['prop_firm_label'] = _admin_prop_display_name(ex['prop_firm_key'])
-        return jsonify({'status': 'success', 'exclusions': cur})
-
-    eid = (data.get('id') or '').strip()
-    if not eid:
-        return jsonify({'status': 'error', 'message': 'id required'}), 400
-    cur = _load_max_out_exclusions()
-    new_list = [x for x in cur if str(x.get('id')) != eid]
-    if len(new_list) == len(cur):
-        return jsonify({'status': 'error', 'message': 'Exclusion not found'}), 404
-    set_setting(_QUALITY_MAX_OUT_EXCLUSIONS_KEY, json.dumps(new_list), updated_by=user_id)
-    log_action(
-        'MAX_OUT_EXCLUSION_REMOVE',
-        'super_admin',
-        user_id,
-        get_remote_address(),
-        f'id={eid}',
-    )
-    for ex in new_list:
-        ex['prop_firm_label'] = _admin_prop_display_name(ex['prop_firm_key'])
-    return jsonify({'status': 'success', 'exclusions': new_list})
 
 
 @app.route('/api/quality/trade_count_toggle', methods=['POST'])
