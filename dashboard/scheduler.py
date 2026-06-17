@@ -172,6 +172,7 @@ def _build_daily_summary_text():
     from dashboard.app import (
         _trader_ranking_health_metrics,
         _should_skip_daily_summary_tracking,
+        _client_daily_summary_not_expected,
         DAILY_SUMMARY_TRACKER_SKIP_MSG,
     )
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
@@ -185,6 +186,9 @@ def _build_daily_summary_text():
 
     scan_results = get_quality_scan_results(date)
     checklists = get_daily_checklists(date)
+    scan_by_client = {
+        r.get('client_id'): r for r in (scan_results or []) if r.get('client_id')
+    }
     # Apply the Daily Summary Tracker exclusions to the Slack report as well.
     # This keeps the bot report consistent with the tracker UI exclusions.
     try:
@@ -205,6 +209,19 @@ def _build_daily_summary_text():
         trader = (prof.get('trader') or '') or 'Unassigned'
         if trader in excluded_traders:
             continue
+        try:
+            from dashboard.database import get_client_data as _gcd_slack
+            cdata = _gcd_slack(client_name) or {}
+            if isinstance(cdata.get('identity'), dict) and cdata['identity'].get('active_status') == 'inactive':
+                continue
+            if _client_daily_summary_not_expected(
+                client_name,
+                scan_row=scan_by_client.get(client_name),
+                cdata=cdata,
+            ):
+                continue
+        except Exception:
+            pass
         filtered_clients.append(client_name)
 
     total_clients = len(filtered_clients)
@@ -321,6 +338,12 @@ def _build_daily_summary_text():
                     if cdata and isinstance(cdata.get('identity'), dict):
                         if cdata['identity'].get('active_status') == 'inactive':
                             continue
+                    if _client_daily_summary_not_expected(
+                        client_name,
+                        scan_row=scan_by_client.get(client_name),
+                        cdata=cdata,
+                    ):
+                        continue
                 except Exception:
                     pass
                 total_by_trader[trader] = total_by_trader.get(trader, 0) + 1
@@ -412,6 +435,12 @@ def _build_daily_summary_text():
                 if cdata and isinstance(cdata.get('identity'), dict):
                     if cdata['identity'].get('active_status') == 'inactive':
                         continue
+                if _client_daily_summary_not_expected(
+                    client_name,
+                    scan_row=scan_by_client.get(client_name),
+                    cdata=cdata,
+                ):
+                    continue
             except Exception:
                 pass
             tracked_total += 1
