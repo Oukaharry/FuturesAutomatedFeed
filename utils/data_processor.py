@@ -34,20 +34,28 @@ def clean_float(val):
         return 0.0
 
 
-def compute_live_actual_hedging(account=None, hedging_review=None, historical_accounts=None):
+def compute_live_actual_hedging(account=None, hedging_review=None, historical_accounts=None, include_historical=False):
     """
     Live MT5 hedging P&L from account balances minus prior activity.
 
     Formula (matches dashboard JS):
         combined_balance - (combined_deposits + combined_withdrawals) - prior_activity
+
+  By default uses the **current** MT5 account only. Closed historical accounts are
+    excluded from discrepancy / net profit so they cannot inflate client projections.
+    Pass include_historical=True only for combined overview display.
     """
     account = account or {}
     hr = hedging_review or {}
-    hist = historical_accounts if historical_accounts is not None else (hr.get('historical_accounts') or [])
+    if include_historical:
+        hist = historical_accounts if historical_accounts is not None else (hr.get('historical_accounts') or [])
+    else:
+        hist = []
 
-    deposits = clean_float(account.get('total_deposits') or hr.get('total_deposits'))
-    withdrawals = clean_float(account.get('total_withdrawals') or hr.get('total_withdrawals'))
-    balance = clean_float(account.get('balance') or hr.get('current_balance'))
+    snap = resolve_mt5_snapshot(account, hr)
+    deposits = snap['deposits']
+    withdrawals = snap['withdrawals']
+    balance = snap['balance']
 
     hist_dep = hist_with = hist_bal = 0.0
     prior_activity = clean_float(hr.get('current_mt5_prior_activity'))
@@ -63,24 +71,44 @@ def compute_live_actual_hedging(account=None, hedging_review=None, historical_ac
     return round(combined_bal - (combined_dep + combined_with) - prior_activity, 2)
 
 
-def sync_hedging_review_discrepancy(statistics, account=None):
-    """Recalculate actual_hedging_results, discrepancy, and net_profit from MT5 snapshot."""
+def resolve_mt5_snapshot(account=None, hedging_review=None):
+    """Merge MT5 balance/deposits/withdrawals from account blob and hedging_review."""
+    account = account or {}
+    hr = hedging_review or {}
+    return {
+        'balance': clean_float(account.get('balance') or hr.get('current_balance')),
+        'deposits': clean_float(account.get('total_deposits') or hr.get('total_deposits')),
+        'withdrawals': clean_float(account.get('total_withdrawals') or hr.get('total_withdrawals')),
+    }
+
+
+def enrich_mt5_account_from_hr(account=None, hedging_review=None):
+    """Return account dict with deposits/withdrawals/balance filled from hedging_review when missing."""
+    account = dict(account or {})
+    snap = resolve_mt5_snapshot(account, hedging_review)
+    if not clean_float(account.get('balance')) and snap['balance']:
+        account['balance'] = snap['balance']
+    if not clean_float(account.get('total_deposits')) and snap['deposits']:
+        account['total_deposits'] = snap['deposits']
+    if not clean_float(account.get('total_withdrawals')) and snap['withdrawals']:
+        account['total_withdrawals'] = snap['withdrawals']
+    return account
+
+
+def _sync_historical_account_totals(hr):
+    """Keep aggregate historical_* fields aligned with historical_accounts list."""
+    hist = hr.get('historical_accounts') or []
+    hr['historical_deposits'] = round(sum(clean_float(a.get('deposits')) for a in hist), 2)
+    hr['historical_withdrawals'] = round(sum(clean_float(a.get('withdrawals')) for a in hist), 2)
+    hr['historical_balance'] = round(sum(clean_float(a.get('final_balance')) for a in hist), 2)
+
+
+def apply_discrepancy_to_net_profit(statistics):
+    """Apply hedging_review.discrepancy to net_profit on both cashflow sections."""
     if not statistics:
         return statistics
-    hr = statistics.setdefault('hedging_review', {})
-    actual = compute_live_actual_hedging(account, hr)
-    hr['actual_hedging_results'] = actual
-
-    sheet_hr = hr.get('sheet_hedging_results')
-    if sheet_hr is None:
-        cf = statistics.get('cashflow_inprogress') or {}
-        sheet_hr = clean_float(cf.get('hedging_results')) + clean_float(cf.get('farming_results'))
-        hr['sheet_hedging_results'] = sheet_hr
-    else:
-        sheet_hr = clean_float(sheet_hr)
-
-    hr['discrepancy'] = round(actual - sheet_hr, 2)
-    disc = hr['discrepancy']
+    hr = statistics.get('hedging_review') or {}
+    disc = clean_float(hr.get('discrepancy'))
     for section in ('profitability_completed', 'cashflow_inprogress'):
         sec = statistics.get(section) or {}
         sec['net_profit'] = round(
@@ -93,6 +121,100 @@ def sync_hedging_review_discrepancy(statistics, account=None):
         )
         statistics[section] = sec
     return statistics
+
+
+def hedging_discrepancy_is_stale(statistics, account=None):
+    """
+    True when stored actual_hedging_results disagrees with current-MT5-only formula.
+    Detects inflated values where historical closed accounts were wrongly included.
+    """
+    if not statistics:
+        return False
+    hr = statistics.get('hedging_review') or {}
+    if not hr.get('total_deposits') and not hr.get('current_balance'):
+        return False
+    account = enrich_mt5_account_from_hr(account, hr)
+    expected = compute_live_actual_hedging(account, hr, include_historical=False)
+    stored = clean_float(hr.get('actual_hedging_results'))
+    return abs(stored - expected) > 0.01
+
+
+_WEEKDAY_LABELS = frozenset({
+    'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
+    'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN',
+})
+
+
+def _is_weekday_or_empty_label(value):
+    v = str(value or '').strip().upper()
+    if not v or v in ('-', '0', 'NAN'):
+        return True
+    return v in _WEEKDAY_LABELS
+
+
+def field_change_affects_discrepancy(field, old_val, new_val):
+    """Whether an evaluation cell edit should trigger MT5 discrepancy recalculation."""
+    if not field or field.startswith('_'):
+        return False
+    if field.startswith('Prop Day') or field.startswith('Prop Progress'):
+        return False
+    if field in (
+        'Prop Firm', 'Account #', 'Account #.1', 'Status', 'Status P1',
+        'Date Started', 'Date Ended', 'Date Purchased',
+    ):
+        return False
+    if field.startswith('Hedge Day') and 'Progress' not in field:
+        if _is_weekday_or_empty_label(old_val) and _is_weekday_or_empty_label(new_val):
+            return False
+        if abs(parse_currency(old_val)) > 0.005 or abs(parse_currency(new_val)) > 0.005:
+            return True
+        return False
+    if field.startswith('Hedge Result') or field.startswith('Payout'):
+        return True
+    if field.startswith('Date ') and field[5:6].isdigit():
+        return True
+    if field in ('Fee', 'Activation Fee', 'Account Size'):
+        return True
+    return False
+
+
+def user_changes_require_discrepancy_recalc(user_changed, existing_evals, new_evals):
+    """True when explicit user edits should refresh MT5 discrepancy / net profit."""
+    if not user_changed:
+        return False
+    for idx_str, fields in user_changed.items():
+        try:
+            idx = int(idx_str)
+        except (TypeError, ValueError):
+            continue
+        old_ev = existing_evals[idx] if 0 <= idx < len(existing_evals) else {}
+        new_ev = new_evals[idx] if 0 <= idx < len(new_evals) else {}
+        for field in fields or []:
+            if field_change_affects_discrepancy(field, old_ev.get(field), new_ev.get(field)):
+                return True
+    return False
+
+
+def sync_hedging_review_discrepancy(statistics, account=None):
+    """Recalculate actual_hedging_results, discrepancy, and net_profit from MT5 snapshot."""
+    if not statistics:
+        return statistics
+    hr = statistics.setdefault('hedging_review', {})
+    _sync_historical_account_totals(hr)
+    account = enrich_mt5_account_from_hr(account, hr)
+    actual = compute_live_actual_hedging(account, hr, include_historical=False)
+    hr['actual_hedging_results'] = actual
+
+    sheet_hr = hr.get('sheet_hedging_results')
+    if sheet_hr is None:
+        cf = statistics.get('cashflow_inprogress') or {}
+        sheet_hr = clean_float(cf.get('hedging_results')) + clean_float(cf.get('farming_results'))
+        hr['sheet_hedging_results'] = sheet_hr
+    else:
+        sheet_hr = clean_float(sheet_hr)
+
+    hr['discrepancy'] = round(actual - sheet_hr, 2)
+    return apply_discrepancy_to_net_profit(statistics)
 
 # Canonical prop firm name mapping - single source of truth
 _FIRM_MAP = {
@@ -1107,50 +1229,39 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     debug_log = []
     
     if mt5_account:
-        # Handle both dict (serialized) and object
-        if isinstance(mt5_account, dict):
-            balance = float(mt5_account.get('balance', 0.0) or 0.0)
-            deposits = float(mt5_account.get('total_deposits', 0.0) or 0.0)
-            withdrawals = float(mt5_account.get('total_withdrawals', 0.0) or 0.0)
-        else:
-            balance = float(getattr(mt5_account, 'balance', 0.0) or 0.0)
-            deposits = float(getattr(mt5_account, 'total_deposits', 0.0) or 0.0)
-            withdrawals = float(getattr(mt5_account, 'total_withdrawals', 0.0) or 0.0)
+        snap = resolve_mt5_snapshot(
+            mt5_account if isinstance(mt5_account, dict) else {},
+            stats["hedging_review"],
+        )
+        balance = snap['balance']
+        deposits = snap['deposits']
+        withdrawals = snap['withdrawals']
         
         stats["hedging_review"]["current_balance"] = balance
         stats["hedging_review"]["total_deposits"] = deposits
         stats["hedging_review"]["total_withdrawals"] = withdrawals
         
-        # Include historical MT5 accounts in the calculation
-        hist_dep = 0.0
-        hist_with = 0.0
-        hist_bal = 0.0
+        # Store historical MT5 accounts for overview display (not used in discrepancy / net profit).
         if historical_accounts:
-            for acc in historical_accounts:
-                hist_dep += float(acc.get('deposits', 0) or 0)
-                hist_with += float(acc.get('withdrawals', 0) or 0)
-                hist_bal += float(acc.get('final_balance', 0) or 0)
-        
-        combined_deposits = deposits + hist_dep
-        combined_withdrawals = withdrawals + hist_with
-        combined_balance = balance + hist_bal
+            stats["hedging_review"]["historical_accounts"] = historical_accounts
+            hist_dep = sum(float(acc.get('deposits', 0) or 0) for acc in historical_accounts)
+            hist_with = sum(float(acc.get('withdrawals', 0) or 0) for acc in historical_accounts)
+            hist_bal = sum(float(acc.get('final_balance', 0) or 0) for acc in historical_accounts)
+            stats["hedging_review"]["historical_deposits"] = round(hist_dep, 2)
+            stats["hedging_review"]["historical_withdrawals"] = round(hist_with, 2)
+            stats["hedging_review"]["historical_balance"] = round(hist_bal, 2)
 
-        # Include prior activity (current MT5 + historical accounts) in actual hedging
-        prior_activity = clean_float(stats["hedging_review"].get("current_mt5_prior_activity"))
-        if historical_accounts:
-            for acc in historical_accounts:
-                prior_activity += clean_float(acc.get("prior_activity_profit"))
-
-        # Combined Balance - net deposits - prior activity (withdrawals already negative)
-        net_deposits = combined_deposits + combined_withdrawals
-        actual_hedging = combined_balance - net_deposits - prior_activity
+        actual_hedging = compute_live_actual_hedging(
+            mt5_account if isinstance(mt5_account, dict) else {},
+            stats["hedging_review"],
+            include_historical=False,
+        )
         stats["hedging_review"]["actual_hedging_results"] = actual_hedging
-        
+
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         if historical_accounts:
-            debug_log.append(f"Historical: deposits=${hist_dep:.2f}, withdrawals=${hist_with:.2f}, balance=${hist_bal:.2f}")
-            debug_log.append(f"Combined: deposits=${combined_deposits:.2f}, withdrawals=${combined_withdrawals:.2f}, balance=${combined_balance:.2f}")
-        debug_log.append(f"Calculated: net_deposits=${net_deposits:.2f}, actual_hedging=${actual_hedging:.2f}")
+            debug_log.append(f"Historical (display only): deposits=${hist_dep:.2f}, withdrawals=${hist_with:.2f}, balance=${hist_bal:.2f}")
+        debug_log.append(f"Calculated: actual_hedging=${actual_hedging:.2f} (current MT5 only)")
         has_mt5_data = True
     else:
         debug_log.append("MT5 Account: NONE")
