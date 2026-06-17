@@ -86,6 +86,29 @@ def _issues_for_trader_client_quality_views(issues):
     return [i for i in (issues or []) if i.get('check') not in skip]
 
 
+def _client_daily_summary_not_expected(client_id=None, issues=None, cdata=None, scan_row=None):
+    """
+    True for new/enrolled clients with no evaluation sheet yet.
+    Daily summary is not required; missing send must not penalize traders or rankings.
+    """
+    if scan_row is not None:
+        issues = scan_row.get('issues')
+    if issues is not None:
+        substantive = [i for i in (issues or []) if (i.get('check') or '') != 'Scan error']
+        if substantive and all((i.get('check') or '') == 'No evaluations' for i in substantive):
+            return True
+    if cdata is None and client_id:
+        try:
+            cdata = get_client_data(client_id) or {}
+        except Exception:
+            cdata = {}
+    if isinstance(cdata, dict):
+        evs = cdata.get('evaluations')
+        if evs is not None and not evs:
+            return True
+    return False
+
+
 _QUALITY_SEVERITY_WEIGHT = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'warning': 3, 'info': 0}
 
 
@@ -100,6 +123,7 @@ def _trader_ranking_health_metrics(issues):
 
 _ADMIN_HEALTH_ISSUE_TYPES_EXCLUDED_FROM_SCORE = frozenset({
     'daily_summary_payout_qa',
+    'no_evaluations',
 })
 _ADMIN_SIGNOFF_PENDING_PENALTY = 5
 # Penalty when a timing metric is missing or incomplete (sorts last in time tie-breaks).
@@ -107,7 +131,7 @@ _ADMIN_TEAM_TIME_PENALTY = 999999
 
 
 def _compute_admin_health_score(admin_issues, pending_signoffs=0):
-    """Admin ops health: penalize fees, downtime, sign-offs; payout QA excluded from score."""
+    """Admin ops health: penalize fees, downtime, sign-offs; payout QA and no-eval alerts excluded from score."""
     deduction = sum(
         _QUALITY_SEVERITY_WEIGHT.get(i.get('severity', 'low'), 2)
         for i in (admin_issues or [])
@@ -512,6 +536,12 @@ def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_tra
                 from dashboard.database import get_client_data as _gcd
                 cdata = _gcd(client_id) or {}
                 if isinstance(cdata.get('identity'), dict) and str(cdata['identity'].get('active_status') or '').lower() == 'inactive':
+                    continue
+                if _client_daily_summary_not_expected(
+                    client_id,
+                    scan_row=scan_by_client.get(client_id),
+                    cdata=cdata,
+                ):
                     continue
             except Exception:
                 pass
@@ -10620,6 +10650,13 @@ def api_summary_status():
     sent_map = {s['client_id']: s for s in submissions}
     all_clients = hierarchy_get_all_clients()
 
+    from dashboard.database import get_quality_scan_results
+    scan_by_client = {
+        r.get('client_id'): r
+        for r in (get_quality_scan_results(date) or [])
+        if r.get('client_id')
+    }
+
     # Load exclusion settings
     excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
     excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
@@ -10644,6 +10681,12 @@ def api_summary_status():
             if cdata and isinstance(cdata.get('identity'), dict):
                 if cdata['identity'].get('active_status') == 'inactive':
                     continue
+            if _client_daily_summary_not_expected(
+                client_name,
+                scan_row=scan_by_client.get(client_name),
+                cdata=cdata,
+            ):
+                continue
         except Exception:
             pass
 
@@ -10660,10 +10703,10 @@ def api_summary_status():
         else:
             traders[trader]['not_sent'].append(client_name)
     # Issue-clearance speed (from morning scan baseline → all clients at 0 issues)
-    from dashboard.database import get_trader_issue_resolution_minutes, get_quality_scan_results
+    from dashboard.database import get_trader_issue_resolution_minutes
     scan_date = date
     scan_by_trader = {}
-    for row in get_quality_scan_results(scan_date) or []:
+    for row in scan_by_client.values():
         t = (row.get('trader') or '') or 'Unassigned'
         ti, hs = _trader_ranking_health_metrics(row.get('issues'))
         if t not in scan_by_trader:
@@ -10889,6 +10932,13 @@ def api_trader_summary_status():
         excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
         excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
 
+        from dashboard.database import get_quality_scan_results
+        scan_by_client = {
+            r.get('client_id'): r
+            for r in (get_quality_scan_results(date) or [])
+            if r.get('client_id')
+        }
+
         clients_payload = []
         for nm in _clients_for_trader(trader_name):
             if nm in excluded_clients:
@@ -10898,6 +10948,12 @@ def api_trader_summary_status():
                 if cdata and isinstance(cdata.get('identity'), dict):
                     if cdata['identity'].get('active_status') == 'inactive':
                         continue
+                if _client_daily_summary_not_expected(
+                    nm,
+                    scan_row=scan_by_client.get(nm),
+                    cdata=cdata,
+                ):
+                    continue
             except Exception:
                 pass
             if nm in sent_map:
@@ -11464,6 +11520,13 @@ def api_daily_summary():
         excluded_traders = set(_json_mod.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
         excluded_clients = set(_json_mod.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
 
+        from dashboard.database import get_quality_scan_results
+        scan_by_client = {
+            r.get('client_id'): r
+            for r in (get_quality_scan_results(date) or [])
+            if r.get('client_id')
+        }
+
         # Build per-trader summary submission data
         tracker_traders = {}  # trader -> {sent: [{client_id, time}], total: int}
         tracked_total = 0
@@ -11477,6 +11540,12 @@ def api_daily_summary():
                 if cdata and isinstance(cdata.get('identity'), dict):
                     if cdata['identity'].get('active_status') == 'inactive':
                         continue
+                if _client_daily_summary_not_expected(
+                    client_name,
+                    scan_row=scan_by_client.get(client_name),
+                    cdata=cdata,
+                ):
+                    continue
             except Exception:
                 pass
             tracked_total += 1
