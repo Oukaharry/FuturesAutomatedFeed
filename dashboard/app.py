@@ -4172,6 +4172,7 @@ def get_profit_splits():
 
     from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
+    from dashboard.database import db_concurrent_workers
     from utils.data_processor import parse_currency
     from concurrent.futures import ThreadPoolExecutor
 
@@ -4318,7 +4319,7 @@ def get_profit_splits():
             print(f"[profit_splits] error for {client_id}: {_exc}\n{traceback.format_exc()}")
             return None
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=db_concurrent_workers(6)) as pool:
         futures = [pool.submit(_compute_one, cid, d) for cid, d in clients_data.items()]
         for f in futures:
             r = f.result()
@@ -4354,6 +4355,7 @@ def get_avg_profit_splits():
 
     from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
+    from dashboard.database import db_concurrent_workers
     from concurrent.futures import ThreadPoolExecutor
 
     clients_data = _get_cached_clients()
@@ -4425,7 +4427,7 @@ def get_avg_profit_splits():
             print(f"[avg_profit_splits] error for {client_id}: {_exc}\n{traceback.format_exc()}")
             return None
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=db_concurrent_workers(6)) as pool:
         futures = [pool.submit(_compute_one, cid, d) for cid, d in clients_data.items()]
         for f in futures:
             r = f.result()

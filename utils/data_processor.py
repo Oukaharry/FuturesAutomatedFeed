@@ -1315,6 +1315,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             stats["hedging_review"]["historical_balance"] = round(hist_bal, 2)
 
         hr_snap = stats["hedging_review"]
+        debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
+        if historical_accounts:
+            debug_log.append(f"Historical (display only): deposits=${hist_dep:.2f}, withdrawals=${hist_with:.2f}, balance=${hist_bal:.2f}")
+
         if mt5_funding_is_known(hr_snap, mt5_account):
             actual_hedging = compute_live_actual_hedging(
                 mt5_account if isinstance(mt5_account, dict) else {},
@@ -1322,16 +1326,12 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
                 include_historical=False,
             )
             stats["hedging_review"]["actual_hedging_results"] = actual_hedging
+            debug_log.append(f"Calculated: actual_hedging=${actual_hedging:.2f} (current MT5 only)")
         else:
             debug_log.append(
                 "MT5 funding unknown (no deposits/withdrawals/prior) — "
                 "skipping balance-as-profit actual_hedging calculation"
             )
-
-        debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
-        if historical_accounts:
-            debug_log.append(f"Historical (display only): deposits=${hist_dep:.2f}, withdrawals=${hist_with:.2f}, balance=${hist_bal:.2f}")
-        debug_log.append(f"Calculated: actual_hedging=${actual_hedging:.2f} (current MT5 only)")
         has_mt5_data = True
     else:
         debug_log.append("MT5 Account: NONE")
