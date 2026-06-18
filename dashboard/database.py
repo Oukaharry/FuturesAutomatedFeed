@@ -1129,6 +1129,7 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False) -> boo
                 "tradeday": "TradeDay", "tradeify": "Tradeify",
                 "alphafutures": "Alpha Futures",
                 "toponefutures": "Top One Futures", "topone": "Top One Futures",
+                "fundedfuturesfamily": "Funded Futures Family", "fff": "Funded Futures Family",
             }
             for ev in clean_evaluations:
                 if isinstance(ev, dict) and ev.get('Prop Firm'):

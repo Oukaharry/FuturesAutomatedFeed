@@ -919,6 +919,8 @@
             const getBrandColor = (firmName) => {
                 const v = (firmName || '').toLowerCase().replace(/[^a-z]/g, '');
                 if (v.includes('myfunded') || v.includes('mffu')) return '#FFD700'; // Gold
+                if (v.includes('fundedfuturesfamily') || v === 'fff') return '#7C3AED'; // Violet
+                if (v.includes('fundingtick')) return '#ffcc99'; // Peach/Orange
                 if (v.includes('funding')) return '#ffcc99'; // Peach/Orange
                 if (v.includes('tradeday')) return '#FFFFFF'; // White
                 if (v.includes('topstep')) return '#FFFF00'; // Yellow

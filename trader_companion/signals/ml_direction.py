@@ -797,8 +797,8 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
     walk_forward}. ``ready=False`` means no fresh model — caller should use
     its fallback and call ``ensure_trained_async`` to warm the cache.
 
-    ``trend_direction`` (buy/sell from closed-bar trend) prevents reversal
-    entries: tick nudges and confident signals must align with the trend.
+    ``trend_direction`` tags aligned vs reversal for the learning blend;
+    it no longer suppresses the raw ML lean.
     """
     bundle = get_cached_bundle(symbol, timeframe_minutes)
     if not bundle:
@@ -854,34 +854,26 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
     p_up, ens_weights = _weighted_ensemble_p_up(p_gbm, p_mlp, p_et, volatile)
     p_dl = p_mlp
 
-    # Tick momentum nudge — only when it agrees with the prevailing trend
-    # (short bounces in a downtrend must not flip the signal to BUY).
+    # Tick momentum nudge — applied to raw ensemble (shown in reversal leg).
     tick_nudge = 0.0
-    counter_trend = False
     if tick_feats.get("ready"):
         mom = float(tick_feats.get("momentum_pts") or 0.0)
-        mom_buy = mom > 0
-        mom_sell = mom < 0
-        trend = (trend_direction or "").strip().lower()
-        mom_ok = (
-            not trend
-            or (trend == "buy" and mom_buy)
-            or (trend == "sell" and mom_sell)
-        )
-        if abs(mom) >= 0.5 and mom_ok:
-            tick_nudge = min(0.06, abs(mom) / 50.0)  # smaller nudge — trend is king
-            if mom_buy:
+        if abs(mom) >= 0.5:
+            tick_nudge = min(0.08, abs(mom) / 45.0)
+            if mom > 0:
                 p_up = min(1.0, p_up + tick_nudge)
             else:
                 p_up = max(0.0, p_up - tick_nudge)
-        elif abs(mom) >= 0.5 and trend in ("buy", "sell"):
-            counter_trend = True
 
     conf = max(p_up, 1.0 - p_up)
     lean = "buy" if p_up >= 0.5 else "sell"
 
-    if trend_direction in ("buy", "sell") and lean != trend_direction:
-        counter_trend = True
+    aligned_with_trend = (
+        trend_direction in ("buy", "sell") and lean == trend_direction
+    )
+    counter_trend = (
+        trend_direction in ("buy", "sell") and lean != trend_direction
+    )
 
     threshold = CONFIDENCE_THRESHOLD
     live_stats = None
@@ -893,20 +885,13 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
         except Exception:
             pass
     threshold_base = threshold
-    # Volatile markets — relax gate only when aligned with trend (no reversal entries)
-    if volatile and not counter_trend:
+    if volatile:
         threshold = max(0.52, threshold - VOLATILE_GATE_RELAX)
         if tick_feats.get("ready"):
             mom = float(tick_feats.get("momentum_pts") or 0.0)
-            trend = (trend_direction or "").strip().lower()
-            aligned = (
-                not trend
-                or (trend == "buy" and mom > 0 and lean == "buy")
-                or (trend == "sell" and mom < 0 and lean == "sell")
-            )
-            if aligned:
+            if abs(mom) >= 0.5:
                 threshold = max(0.50, threshold - 0.02)
-    direction = lean if conf >= threshold and not counter_trend else "neutral"
+    direction = lean if conf >= threshold else "neutral"
 
     # Journal this prediction so it can be verified against the actual
     # market move + TP/SL simulation (deduped per closed bar).
@@ -919,6 +904,7 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
                 p_up=p_up, confidence=conf, lean=lean, direction=direction,
                 horizon_min=HORIZON_BARS * timeframe_minutes,
                 vote_score_input=vote_seen,
+                trend_direction=trend_direction,
             )
         except Exception:
             pass
@@ -941,6 +927,7 @@ def get_ml_direction(symbol: str = "ustech", timeframe_minutes: int = 5,
         "tick_features": tick_feats,
         "tick_nudge": round(tick_nudge, 4),
         "counter_trend": counter_trend,
+        "aligned_with_trend": aligned_with_trend,
         "trend_direction": trend_direction,
         "vote_score_input": round(vote_seen, 3) if vote_seen is not None
                             and not np.isnan(vote_seen) else None,

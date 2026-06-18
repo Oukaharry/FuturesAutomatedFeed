@@ -39,7 +39,7 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-DEFAULT_SYMBOL = os.getenv("TRADOVATE_SYMBOL") or "MNQM6"
+DEFAULT_SYMBOL = os.getenv("TRADOVATE_SYMBOL") or "MNQU6"
 DEFAULT_TP = os.getenv("TRADOVATE_TAKEPROFIT_TICKS")
 DEFAULT_SL = os.getenv("TRADOVATE_STOPLOSS_TICKS")
 
@@ -3077,7 +3077,7 @@ class TradovateAccount:
         """Place an order via the Tradovate REST API (no Selenium UI clicking).
         
         Args:
-            symbol:     Contract symbol e.g. "NQM6", "ESM6"
+            symbol:     Contract symbol e.g. "NQU6", "ESU6"
             side:       "Buy" or "Sell"
             qty:        Number of contracts (int)
             order_type: "Market", "Limit", "Stop", "StopLimit", "MIT"

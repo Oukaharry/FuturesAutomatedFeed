@@ -65,7 +65,7 @@ from dashboard.notes_service import (
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
 # Firms hidden from BEF admin (normalised: lowercase, no spaces)
-BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
+BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff'}
 
 # QA-gated: trader daily summary item 4 — any prop firm with payouts-eligible count >= 1 (super_admin resolve)
 QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE = 'Daily summary: payouts eligible >=1-QA'
@@ -1791,7 +1791,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             if not c: return None
             
             # Known prefixes logic - moved to TOP priority
-            known_prefixes = ['MFFU', 'AFAD', 'V2', 'FNFT', 'TDFY', 'ELTD', 'TDF']
+            known_prefixes = ['MFFU', 'AFAD', 'V2', 'FNFT', 'TDFY', 'ELTD', 'TDF', 'FFFF', 'FFFU', 'FDFM', 'FFFA']
             c_upper = c.upper()
             found_prefix = None
             for kp in known_prefixes:
@@ -2279,7 +2279,11 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                                 'ELTD': ['TRADEDAY', 'ELTD'],
                                 'TDF': ['TRADEDAY', 'TDF', 'TRADEIFY'],
                                 'FTDF': ['TRADEDAY', 'TDF', 'TRADEIFY'],
-                                'TPOF': ['TOPONEFUTURES', 'TOP ONE', 'TPOF']
+                                'TPOF': ['TOPONEFUTURES', 'TOP ONE', 'TPOF'],
+                                'FFFF': ['FUNDED FUTURES FAMILY', 'FFFF', 'FFF'],
+                                'FFFU': ['FUNDED FUTURES FAMILY', 'FFFU', 'FFF'],
+                                'FDFM': ['FUNDED FUTURES FAMILY', 'FDFM', 'FFF'],
+                                'FFFA': ['FUNDED FUTURES FAMILY', 'FFFA', 'FFF'],
                             }
                             if prefix_part in mapping:
                                 valid_keywords = mapping[prefix_part]
@@ -2615,6 +2619,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                      elif 'V2' in guesser or 'V2' in session_comments.upper(): p_firm = 'Topstep'
                      elif 'FN' in guesser or 'FNFT' in session_comments.upper(): p_firm = 'FundedNext'
                      elif 'AF' in guesser or 'AFAD' in session_comments.upper(): p_firm = 'Alpha Futures'
+                     elif any(x in guesser for x in ('FFFF', 'FFFU', 'FDFM', 'FFFA')) or any(x in session_comments.upper() for x in ('FFFF', 'FFFU', 'FDFM', 'FFFA')): p_firm = 'Funded Futures Family'
                      else: p_firm = 'Unknown Firm'
                 
                 # 2. Account Number (Use the one from the evaluation record if possible for consistency)
@@ -7025,7 +7030,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
 
         all_evals = [ev for ev in cdata.get('evaluations', []) if isinstance(ev, dict)]
 
-        # BEF admin: exclude hidden prop firms (Lucid, Apex, TradeDay, TopOneFutures)
+        # BEF admin: exclude hidden prop firms (Lucid, Apex, TradeDay, TopOneFutures, Funded Futures Family)
         if is_bef:
             all_evals = [ev for ev in all_evals
                          if str(ev.get('Prop Firm') or '').strip().lower().replace(' ', '') not in BEF_HIDDEN_FIRMS]

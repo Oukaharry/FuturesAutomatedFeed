@@ -42,6 +42,8 @@ except ImportError:
             prediction_tracker = None
 
 TICK_POINT = 0.25
+DEFAULT_TP_POINTS = 250 * TICK_POINT   # 62.5 pts — typical CH blueprint
+DEFAULT_SL_POINTS = 100 * TICK_POINT   # 25.0 pts
 SIM_INTERVAL_MIN = 15          # replay an entry every 15 minutes
 MAX_WALK_MIN = 240             # stop TP/SL walk after 4 hours
 MAX_JOURNAL = 3000
@@ -338,12 +340,30 @@ def trend_at_time(m5_bars, entry_ts: int) -> Optional[str]:
     return None
 
 
+def ensure_mt5() -> bool:
+    """Ensure the MT5 terminal session is ready for copy_* calls."""
+    if not MT5_AVAILABLE:
+        return False
+    try:
+        if mt5.terminal_info():
+            return True
+        return bool(mt5.initialize())
+    except Exception:
+        return False
+
+
 def _resolve_symbol(symbol: str) -> Optional[str]:
     if not MT5_AVAILABLE:
         return None
+    ensure_mt5()
     for cand in (symbol, symbol.upper(), symbol.lower(), symbol.capitalize()):
         try:
-            if mt5.symbol_info(cand) is not None:
+            info = mt5.symbol_info(cand)
+            if info is not None:
+                try:
+                    mt5.symbol_select(cand, True)
+                except Exception:
+                    pass
                 return cand
         except Exception:
             pass
@@ -788,6 +808,10 @@ def _close_trade(trade: Dict, close: Dict) -> Dict[str, Any]:
         "mae_points": round(trade.get("mae", 0), 2),
         "ai_lean": trade["direction"],
         "walk_mode": trade.get("walk_mode", "m1"),
+        "tp_points": tp_pts,
+        "sl_points": sl_pts,
+        "tp_level": trade.get("tp_level"),
+        "sl_level": trade.get("sl_level"),
     }
     return row
 
@@ -1062,6 +1086,8 @@ def get_simulated_trade_history(include_open: bool = True,
                     "lost": False,
                     "closed": False,
                     "ai_lean": t["direction"],
+                    "tp_points": t.get("tp_points"),
+                    "sl_points": t.get("sl_points"),
                     "tp_level": t.get("tp_level"),
                     "sl_level": t.get("sl_level"),
                 })
@@ -1129,3 +1155,306 @@ def load_persisted_history() -> None:
 
 
 load_persisted_history()
+
+
+# ── Historical Strategy Tester (replay over days/months/year) ─────────────
+
+HISTORICAL_PERIODS: Dict[str, int] = {
+    "live": 0,
+    "7d": 7,
+    "30d": 30,
+    "90d": 90,
+    "365d": 365,
+}
+
+HISTORICAL_PERIOD_LABELS = {
+    "live": "Live (today batch)",
+    "7d": "Last 7 days",
+    "30d": "Last 30 days",
+    "90d": "Last 90 days",
+    "365d": "Last 1 year",
+}
+
+MAX_HISTORICAL_TRADES = 4000
+M1_CHUNK_DAYS = 28
+M5_WARMUP_DAYS = 12
+
+_last_historical: Dict[str, Any] = {}
+
+_DEFAULT_BACKTEST_PLAN: Dict[str, Any] = {
+    "plan_id": "default:ch1:ustech",
+    "acct_num": "BACKTEST",
+    "firm_code": "FN",
+    "phase_key": "CH1",
+    "mt5_symbol": "ustech",
+    "tp_ticks": 250,
+    "sl_ticks": 100,
+    "tp_points": DEFAULT_TP_POINTS,
+    "sl_points": DEFAULT_SL_POINTS,
+    "expected_min": expected_duration_min(DEFAULT_TP_POINTS, DEFAULT_SL_POINTS),
+}
+
+
+def interval_for_days(days: int) -> int:
+    """Entry spacing — wider for long lookbacks to keep runtime reasonable."""
+    if days <= 7:
+        return 15
+    if days <= 30:
+        return 15
+    if days <= 90:
+        return 30
+    return 60
+
+
+def fetch_rates_range(symbol: str, timeframe, from_ts: int, to_ts: int):
+    """MT5 OHLC range in server-wall time."""
+    if not MT5_AVAILABLE or to_ts <= from_ts:
+        return None
+    sym = _resolve_symbol(symbol)
+    if not sym:
+        return None
+    try:
+        dt_from = _mt5_wall_dt(from_ts)
+        dt_to = _mt5_wall_dt(to_ts + 60)
+        return mt5.copy_rates_range(sym, timeframe, dt_from, dt_to)
+    except Exception:
+        return None
+
+
+def _dedupe_rates(rates):
+    if rates is None or len(rates) == 0:
+        return rates
+    by_t: Dict[int, Any] = {}
+    for r in rates:
+        by_t[int(r[0])] = r
+    import numpy as np
+    return np.array([by_t[k] for k in sorted(by_t)])
+
+
+def fetch_rates_range_chunked(symbol: str, timeframe, from_ts: int, to_ts: int,
+                              chunk_days: int = M1_CHUNK_DAYS):
+    """Fetch long histories in monthly chunks (MT5 bar limits)."""
+    if to_ts <= from_ts:
+        return None
+    chunks = []
+    t = from_ts
+    step = chunk_days * 86400
+    while t < to_ts:
+        t_end = min(to_ts, t + step)
+        part = fetch_rates_range(symbol, timeframe, t, t_end)
+        if part is not None and len(part):
+            chunks.append(part)
+        t = t_end + 60
+    if not chunks:
+        return None
+    if len(chunks) == 1:
+        return chunks[0]
+    import numpy as np
+    merged = np.concatenate(chunks)
+    return _dedupe_rates(merged)
+
+
+def fetch_m1_m5_historical(symbol: str, from_ts: int, to_ts: int):
+    """M1 + M5 for a historical window (M5 includes warmup for EMA trend)."""
+    sym = _resolve_symbol(symbol)
+    if not sym:
+        return None, None, sym
+    m1 = fetch_rates_range_chunked(sym, mt5.TIMEFRAME_M1, from_ts, to_ts)
+    m5_from = from_ts - M5_WARMUP_DAYS * 86400
+    m5 = fetch_rates_range_chunked(sym, mt5.TIMEFRAME_M5, m5_from, to_ts)
+    return m1, m5, sym
+
+
+def historical_entry_slots(m1_bars, from_ts: int, to_ts: int,
+                           interval_min: int = SIM_INTERVAL_MIN) -> List[Tuple[int, float]]:
+    """(entry_ts, m1_close) on interval boundaries across a date range."""
+    if m1_bars is None or len(m1_bars) < interval_min + 2:
+        return []
+    step = interval_min * 60
+    t = from_ts - (from_ts % step) + step
+    end_t = to_ts - step
+    slots: List[Tuple[int, float]] = []
+    bar_i = 0
+    n = len(m1_bars)
+    while t <= end_t:
+        price = None
+        while bar_i < n and int(m1_bars[bar_i][0]) <= t:
+            price = float(m1_bars[bar_i][4])
+            bar_i += 1
+        if price is not None and t >= from_ts:
+            slots.append((t, price))
+        t += step
+    return slots
+
+
+def _historical_trade_row(plan: Dict, entry_ts: int, entry_price: float,
+                          direction: str, walk: Dict, seq: int,
+                          days_label: str) -> Dict[str, Any]:
+    tp_pts = float(plan["tp_points"])
+    sl_pts = float(plan["sl_points"])
+    pseudo = {
+        "trade_id": f"H{days_label}-T{seq}",
+        "batch": days_label,
+        "plan_id": plan.get("plan_id"),
+        "acct_num": plan.get("acct_num", "?"),
+        "firm_code": plan.get("firm_code", ""),
+        "phase_key": plan.get("phase_key", ""),
+        "symbol": plan.get("mt5_symbol", "ustech"),
+        "direction": direction,
+        "entry_ts": entry_ts,
+        "entry_price": entry_price,
+        "tp_points": tp_pts,
+        "sl_points": sl_pts,
+        "tp_ticks": plan.get("tp_ticks"),
+        "sl_ticks": plan.get("sl_ticks"),
+        "mfe": walk.get("mfe_points", 0),
+        "mae": walk.get("mae_points", 0),
+        "walk_mode": walk.get("walk_mode", "m1"),
+    }
+    oc = walk.get("outcome") or "none"
+    if oc in ("tp", "sl"):
+        close = {
+            "outcome": oc,
+            "exit_ts": walk["exit_ts"],
+            "exit_price": walk["exit_price"],
+        }
+    else:
+        exit_ts = walk.get("exit_ts") or (entry_ts + MAX_WALK_MIN * 60)
+        close = {"outcome": "timeout", "exit_ts": exit_ts, "exit_price": entry_price}
+    row = _close_trade(pseudo, close)
+    row["tp_points"] = tp_pts
+    row["sl_points"] = sl_pts
+    row["tp_level"] = walk.get("tp_level")
+    row["sl_level"] = walk.get("sl_level")
+    row["historical"] = True
+    row["period"] = days_label
+    return row
+
+
+def run_historical_backtest(
+    plans: Optional[List[Dict[str, Any]]] = None,
+    symbol: str = "ustech",
+    days_back: int = 30,
+    interval_min: Optional[int] = None,
+    direction_fn: Optional[Callable[[Dict], Optional[str]]] = None,
+    max_trades: int = MAX_HISTORICAL_TRADES,
+    log_fn: Optional[Callable[[str], None]] = None,
+) -> Dict[str, Any]:
+    """Replay trader blueprints across historical M1 — tick chart on drill-down."""
+    global _last_historical
+    use_plans = list(plans) if plans else [_DEFAULT_BACKTEST_PLAN]
+    if not use_plans:
+        use_plans = [_DEFAULT_BACKTEST_PLAN]
+
+    days_back = max(1, int(days_back))
+    period_key = f"{days_back}d"
+    if interval_min is None:
+        interval_min = interval_for_days(days_back)
+
+    to_ts = _mt5_now_ts()
+    from_ts = to_ts - days_back * 86400
+
+    if log_fn:
+        log_fn(f"historical backtest: loading M1/M5 for last {days_back}d…")
+
+    m1, m5, sym = fetch_m1_m5_historical(symbol, from_ts, to_ts)
+    if m1 is None or len(m1) < 60:
+        err = {"error": "connect MT5 — need M1 history for the selected period",
+               "trades": [], "stats": {}}
+        _last_historical = err
+        return err
+
+    slots = historical_entry_slots(m1, from_ts, to_ts, interval_min)
+    if not slots:
+        err = {"error": "no entry slots in range", "trades": [], "stats": {}}
+        _last_historical = err
+        return err
+
+    est = len(slots) * len(use_plans)
+    stride = 1
+    if est > max_trades:
+        stride = max(1, int(est / max_trades) + 1)
+        if log_fn:
+            log_fn(f"historical: {est} potential entries — sampling every {stride} slot(s)")
+
+    trades: List[Dict[str, Any]] = []
+    seq = 0
+    skipped_trend = 0
+    for i, (entry_ts, entry_price) in enumerate(slots):
+        if i % stride:
+            continue
+        for plan in use_plans:
+            direction = None
+            if direction_fn:
+                try:
+                    direction = direction_fn(plan)
+                except Exception:
+                    direction = None
+            if direction not in ("buy", "sell"):
+                direction = trend_at_time(m5, entry_ts) if m5 is not None else None
+            if direction not in ("buy", "sell"):
+                skipped_trend += 1
+                continue
+
+            tp_pts = float(plan["tp_points"])
+            sl_pts = float(plan["sl_points"])
+            walk = walk_tp_sl(
+                entry_ts, entry_price, direction, tp_pts, sl_pts,
+                m1, ticks=None, symbol=sym or symbol)
+            seq += 1
+            trades.append(_historical_trade_row(
+                plan, entry_ts, entry_price, direction, walk, seq, period_key))
+
+            if log_fn and seq % 250 == 0:
+                log_fn(f"historical backtest: simulated {seq} trades…")
+
+            if len(trades) >= max_trades:
+                break
+        if len(trades) >= max_trades:
+            break
+
+    tp_n = sum(1 for t in trades if t.get("won"))
+    sl_n = sum(1 for t in trades if t.get("lost"))
+    to_n = sum(1 for t in trades if t.get("outcome") == "timeout")
+    closed = tp_n + sl_n
+    total_pnl = sum(float(t.get("net_profit") or 0) for t in trades)
+
+    stats = {
+        "period_key": period_key,
+        "period_label": HISTORICAL_PERIOD_LABELS.get(period_key, f"Last {days_back}d"),
+        "days_back": days_back,
+        "from_ts": from_ts,
+        "to_ts": to_ts,
+        "from_str": _fmt_ts(from_ts),
+        "to_str": _fmt_ts(to_ts),
+        "interval_min": interval_min,
+        "n_trades": len(trades),
+        "n_plans": len(use_plans),
+        "n_slots": len(slots),
+        "stride": stride,
+        "tp": tp_n,
+        "sl": sl_n,
+        "timeout": to_n,
+        "win_rate": round(tp_n / closed, 3) if closed else 0.0,
+        "total_pnl_pts": round(total_pnl, 1),
+        "skipped_no_trend": skipped_trend,
+        "walk_mode": "m1",
+        "symbol": sym,
+    }
+
+    trades.sort(key=lambda r: r.get("entry_time") or 0, reverse=True)
+
+    if log_fn:
+        log_fn(
+            f"historical {stats['period_label']} DONE — {len(trades)} trades "
+            f"({tp_n} TP / {sl_n} SL / {to_n} timeout) · "
+            f"win {stats['win_rate']:.0%} · Σ {total_pnl:+.0f} sim pts · "
+            f"entry every {interval_min}min")
+
+    result = {"trades": trades, "stats": stats, "plans": use_plans}
+    _last_historical = result
+    return result
+
+
+def get_last_historical() -> Dict[str, Any]:
+    return dict(_last_historical)

@@ -59,7 +59,7 @@ except ImportError:
     PROP_FIRM_MANAGER_AVAILABLE = False
     logging.warning("PropFirmManager not available - blueprint validation disabled")
 
-DEFAULT_SYMBOL = os.getenv("TOPSTEPX_SYMBOL") or "MNQM25"
+DEFAULT_SYMBOL = os.getenv("TOPSTEPX_SYMBOL") or "MNQU26"
 DEFAULT_TP = os.getenv("TOPSTEPX_TAKEPROFIT_TICKS")
 DEFAULT_SL = os.getenv("TOPSTEPX_STOPLOSS_TICKS")
 
@@ -1872,7 +1872,7 @@ class TopStepXAccount:
                                 self.logger.info(f"[POST-TRADE] Actual executed symbol: '{executed_symbol}'")
 
                                 # Critical verification
-                                if symbol.upper() in ['NQM25', 'NQM26'] and executed_symbol:
+                                if symbol.upper() in ['NQM25', 'NQM26', 'NQU6', 'NQU26'] and executed_symbol:
                                     if 'MNQ' in executed_symbol.upper() and symbol.upper() not in executed_symbol.upper():
                                         self.logger.error(f"🚨 CRITICAL MISMATCH DETECTED:")
                                         self.logger.error(f"   Requested: {symbol} (full contract)")
@@ -3940,10 +3940,10 @@ class TopStepXAccount:
                         
                         # Match logic (streamlined)
                         matched = False
-                        if symbol.upper() in ['NQM6', 'NQM25', 'NQM26']:
-                            matched = (opt_symbol == 'NQM25' or opt_symbol == 'NQM26') and 'MICRO' not in opt_desc
-                        elif symbol.upper() in ['MNQM6', 'MNQM25', 'MNQM26']:
-                            matched = (opt_symbol == 'MNQM25' or opt_symbol == 'MNQM26') and 'MICRO' in opt_desc
+                        if symbol.upper() in ['NQM6', 'NQM25', 'NQM26', 'NQU6', 'NQU26']:
+                            matched = (opt_symbol in ('NQU26', 'NQM26', 'NQM25')) and 'MICRO' not in opt_desc
+                        elif symbol.upper() in ['MNQM6', 'MNQM25', 'MNQM26', 'MNQU6', 'MNQU26']:
+                            matched = (opt_symbol in ('MNQU26', 'MNQM26', 'MNQM25')) and 'MICRO' in opt_desc
                         elif symbol.upper() in ['NQH6', 'NQH25', 'NQH26']:
                             matched = (opt_symbol == 'NQH25' or opt_symbol == 'NQH26') and 'MICRO' not in opt_desc
                         elif symbol.upper() in ['MNQH6', 'MNQH25', 'MNQH26']:
@@ -3996,10 +3996,10 @@ class TopStepXAccount:
             # Final verification (streamlined)
             success = False
             if final_value:
-                if symbol.upper() in ['NQM6', 'NQM25', 'NQM26']:
-                    success = 'NQM25' in final_value.upper() or 'NQM26' in final_value.upper()
-                elif symbol.upper() in ['MNQM6', 'MNQM25', 'MNQM26']:
-                    success = 'MNQM25' in final_value.upper() or 'MNQM26' in final_value.upper()
+                if symbol.upper() in ['NQM6', 'NQM25', 'NQM26', 'NQU6', 'NQU26']:
+                    success = any(x in final_value.upper() for x in ('NQU26', 'NQM26', 'NQM25'))
+                elif symbol.upper() in ['MNQM6', 'MNQM25', 'MNQM26', 'MNQU6', 'MNQU26']:
+                    success = any(x in final_value.upper() for x in ('MNQU26', 'MNQM26', 'MNQM25'))
                 elif symbol.upper() in ['NQH6', 'NQH25', 'NQH26']:
                     success = 'NQH25' in final_value.upper() or 'NQH26' in final_value.upper()
                 elif symbol.upper() in ['MNQH6', 'MNQH25', 'MNQH26']:

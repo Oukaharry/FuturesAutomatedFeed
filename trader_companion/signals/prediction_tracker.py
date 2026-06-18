@@ -94,7 +94,8 @@ def record(symbol: str, *, bar_time: int, price: float, p_up: float,
            tp_points: float = DEFAULT_TP_POINTS,
            sl_points: float = DEFAULT_SL_POINTS,
            horizon_min: int = DEFAULT_HORIZON_MIN,
-           vote_score_input: Optional[float] = None) -> bool:
+           vote_score_input: Optional[float] = None,
+           trend_direction: Optional[str] = None) -> bool:
     """Journal one prediction. Deduped per closed bar — repeat calls on the
     same bar (e.g. the 60s diagnostics probe) are ignored."""
     key = symbol.lower()
@@ -116,6 +117,7 @@ def record(symbol: str, *, bar_time: int, price: float, p_up: float,
             "sl_points": float(sl_points),
             "horizon_min": int(horizon_min),
             "vote_score_input": vote_score_input,
+            "trend_direction": (trend_direction or "").strip().lower() or None,
             "verified": False,
         })
         del recs[:-MAX_RECORDS]
@@ -321,6 +323,67 @@ def get_stats(symbol: str = "ustech", window: int = STATS_WINDOW) -> Dict[str, A
         "avg_signed_move": round(sum(r["signed_move"] for r in recent) / n, 2),
         "avg_mfe": round(sum(r["mfe_points"] for r in recent) / n, 2),
         "avg_mae": round(sum(r["mae_points"] for r in recent) / n, 2),
+    }
+
+
+# Default blend when the journal has not split trend vs reversal yet.
+DEFAULT_W_TREND = 0.65
+DEFAULT_W_REVERSAL = 0.35
+REGIME_MIN_SAMPLES = 5
+
+
+def get_regime_blend_weights(symbol: str = "ustech",
+                             window: int = STATS_WINDOW) -> Dict[str, Any]:
+    """Learning equation — adaptive weights for trend vs reversal legs.
+
+    Uses Laplace-smoothed accuracy of verified predictions that were
+    *aligned* with the prevailing trend vs those that were *counter-trend*.
+    When the two legs disagree at decision time, the historically stronger
+    regime receives extra weight until the blend converges.
+    """
+    key = symbol.lower()
+    with _lock:
+        _load(symbol)
+        verified = [r for r in _records.get(key, []) if r.get("verified")]
+    live = [r for r in verified if not r.get("simulated")]
+    sim = [r for r in verified if r.get("simulated")]
+    pool = live if len(live) >= 10 else live + sim
+    recent = pool[-window:]
+
+    aligned = [r for r in recent
+               if r.get("trend_direction") in ("buy", "sell")
+               and r.get("lean") == r["trend_direction"]]
+    reversal = [r for r in recent
+                if r.get("trend_direction") in ("buy", "sell")
+                and r.get("lean") in ("buy", "sell")
+                and r["lean"] != r["trend_direction"]]
+
+    n_a, n_r = len(aligned), len(reversal)
+    correct_a = sum(1 for r in aligned if r.get("correct"))
+    correct_r = sum(1 for r in reversal if r.get("correct"))
+
+    # Beta(2,2) Laplace smoothing — stable with small samples
+    trend_acc = (correct_a + 2) / (n_a + 4) if n_a else 0.5
+    reversal_acc = (correct_r + 2) / (n_r + 4) if n_r else 0.5
+
+    if n_a + n_r < REGIME_MIN_SAMPLES:
+        w_trend = DEFAULT_W_TREND
+        w_reversal = DEFAULT_W_REVERSAL
+        source = "default"
+    else:
+        total = trend_acc + reversal_acc
+        w_trend = trend_acc / total if total > 0 else DEFAULT_W_TREND
+        w_reversal = 1.0 - w_trend
+        source = "learned"
+
+    return {
+        "w_trend": round(w_trend, 4),
+        "w_reversal": round(w_reversal, 4),
+        "trend_acc": round(trend_acc, 3),
+        "reversal_acc": round(reversal_acc, 3),
+        "n_trend": n_a,
+        "n_reversal": n_r,
+        "source": source,
     }
 
 

@@ -780,6 +780,8 @@ def normalize_prop_firm_name(name):
         "mff": "My Funded Futures",
         "mffu": "My Funded Futures",
         "mffuflex": "My Funded Futures",
+        "fundedfuturesfamily": "Funded Futures Family",
+        "fff": "Funded Futures Family",
         "fundednextlegacyaccount": "FundedNext (Legacy)", # Keep distinct if wanted, or merge to FundedNext
     }
     
@@ -1692,7 +1694,7 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
     Optionally filters by start_date and end_date (datetime objects).
     """
     # BEF hidden firms — evaluations from these firms are excluded for BEF view
-    BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures'}
+    BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff'}
     is_bef = profile_filter and profile_filter.upper() == 'BEF'
 
     def _is_firm_hidden(firm_name):

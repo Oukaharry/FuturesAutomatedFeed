@@ -241,6 +241,7 @@ _FIRM_MAP = {
     "takeprofittrader": "Take Profit Trader",
     "lucid": "Lucid",
     "toponefutures": "Top One Futures", "topone": "Top One Futures",
+    "fundedfuturesfamily": "Funded Futures Family", "fff": "Funded Futures Family",
 }
 
 # Child variants stored on their own row but rolled into the parent for stats / limits.
@@ -268,6 +269,8 @@ def normalize_prop_firm(name):
         return "Topstep"
     if "fundingtick" in key:
         return "Funding Ticks"
+    if "fundedfuturesfamily" in key or key == "fff":
+        return "Funded Futures Family"
     return original
 
 
@@ -1397,7 +1400,7 @@ def extract_unique_values(data):
     """
     # Default options (baseline)
     options = {
-        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Other'},
+        'Prop Firm': {'My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Top One Futures', 'Funded Futures Family', 'Other'},
         'Account Size': {'$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'},
         'Status': {'Active', 'Passed', 'Breached', 'Closed', 'Payout'}
     }
