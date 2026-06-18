@@ -6077,7 +6077,17 @@ def api_get_watermark_history(client_id):
                     if live_net is None:
                         live_net = stored_stats.get('profitability_completed', {}).get('net_profit')
                 if live_net is not None:
-                    save_daily_profit(client_id, live_net, today_str, source='live')
+                    # Do not overwrite a sane auto watermark with an inflated live snapshot.
+                    history = get_watermark_history(client_id, days=3)
+                    yesterday = (__import__('datetime').datetime.now() - __import__('datetime').timedelta(days=1)).strftime('%Y-%m-%d')
+                    prev_entry = next((h for h in history if h['date'] == yesterday), None)
+                    if prev_entry and float(live_net) - float(prev_entry['profit']) > 50000:
+                        logging.warning(
+                            f"Skipping live watermark for {client_id}: "
+                            f"${live_net} vs yesterday ${prev_entry['profit']} (>50k jump)"
+                        )
+                    else:
+                        save_daily_profit(client_id, live_net, today_str, source='live')
         except Exception as snap_err:
             logging.warning(f"Live watermark snapshot failed for {client_id}: {snap_err}")
 
@@ -8077,9 +8087,19 @@ def api_push_hedging_review():
     if 'hedging_review' not in client_data['statistics']:
         client_data['statistics']['hedging_review'] = {}
 
+    from utils.data_processor import clean_float, sync_hedging_review_discrepancy
+
     hr = client_data['statistics']['hedging_review']
-    hr['total_deposits'] = float(data.get('total_deposits', hr.get('total_deposits', 0)))
-    hr['total_withdrawals'] = float(data.get('total_withdrawals', hr.get('total_withdrawals', 0)))
+    incoming_dep = data.get('total_deposits')
+    incoming_with = data.get('total_withdrawals')
+    if incoming_dep is not None and clean_float(incoming_dep):
+        hr['total_deposits'] = float(incoming_dep)
+    elif hr.get('total_deposits') is None:
+        hr['total_deposits'] = float(incoming_dep or 0)
+    if incoming_with is not None and clean_float(incoming_with):
+        hr['total_withdrawals'] = float(incoming_with)
+    elif hr.get('total_withdrawals') is None:
+        hr['total_withdrawals'] = float(incoming_with or 0)
     hr['current_balance'] = float(data.get('current_balance', hr.get('current_balance', 0)))
 
     # Auto-negate withdrawals if entered as positive
@@ -8093,7 +8113,6 @@ def api_push_hedging_review():
     client_data['account']['total_deposits'] = hr['total_deposits']
     client_data['account']['total_withdrawals'] = hr['total_withdrawals']
 
-    from utils.data_processor import sync_hedging_review_discrepancy
     sync_hedging_review_discrepancy(client_data['statistics'], account=client_data.get('account'))
 
     save_client_data(client_id, client_data)

@@ -95,6 +95,45 @@ def enrich_mt5_account_from_hr(account=None, hedging_review=None):
     return account
 
 
+def mt5_funding_is_known(hr=None, account=None):
+    """True when deposits, withdrawals, or prior MT5 activity are recorded."""
+    hr = hr or {}
+    if clean_float(hr.get('current_mt5_prior_activity')):
+        return True
+    snap = resolve_mt5_snapshot(account, hr)
+    return bool(clean_float(snap['deposits']) or clean_float(snap['withdrawals']))
+
+
+def hedging_discrepancy_inflated_from_unfunded_balance(statistics, account=None):
+    """
+    True when MT5 balance was treated as hedging P&L because deposits/withdrawals/prior are all zero.
+    Equity alone cannot be converted to P&L without funding history.
+    """
+    if not statistics:
+        return False
+    hr = statistics.get('hedging_review') or {}
+    if mt5_funding_is_known(hr, account):
+        return False
+    account = enrich_mt5_account_from_hr(account, hr)
+    balance = clean_float(resolve_mt5_snapshot(account, hr)['balance'])
+    if balance <= 0:
+        return False
+    stored_actual = clean_float(hr.get('actual_hedging_results'))
+    return abs(stored_actual - balance) < 1.0
+
+
+def _sheet_base_net_profit(statistics):
+    """Net profit from sheet cashflow only (no MT5 discrepancy term)."""
+    cf = (statistics or {}).get('cashflow_inprogress') or {}
+    return round(
+        clean_float(cf.get('payouts'))
+        + clean_float(cf.get('hedging_results'))
+        + clean_float(cf.get('farming_results'))
+        - clean_float(cf.get('challenge_fees')),
+        2,
+    )
+
+
 def _sync_historical_account_totals(hr):
     """Keep aggregate historical_* fields aligned with historical_accounts list."""
     hist = hr.get('historical_accounts') or []
@@ -202,8 +241,8 @@ def sync_hedging_review_discrepancy(statistics, account=None):
     hr = statistics.setdefault('hedging_review', {})
     _sync_historical_account_totals(hr)
     account = enrich_mt5_account_from_hr(account, hr)
-    actual = compute_live_actual_hedging(account, hr, include_historical=False)
-    hr['actual_hedging_results'] = actual
+    snap = resolve_mt5_snapshot(account, hr)
+    balance = clean_float(snap['balance'])
 
     sheet_hr = hr.get('sheet_hedging_results')
     if sheet_hr is None:
@@ -213,6 +252,27 @@ def sync_hedging_review_discrepancy(statistics, account=None):
     else:
         sheet_hr = clean_float(sheet_hr)
 
+    old_actual = clean_float(hr.get('actual_hedging_results'))
+    old_disc = clean_float(hr.get('discrepancy'))
+    has_prior_snapshot = (
+        hr.get('discrepancy') is not None or hr.get('actual_hedging_results') is not None
+    )
+
+    # Without deposit/withdrawal/prior data, MT5 balance is equity — not hedging P&L.
+    if not mt5_funding_is_known(hr, account) and balance > 0:
+        if hedging_discrepancy_inflated_from_unfunded_balance(statistics, account):
+            return apply_discrepancy_to_net_profit(statistics)
+        if has_prior_snapshot and abs(old_actual - balance) > 1.0:
+            hr['actual_hedging_results'] = old_actual
+            hr['discrepancy'] = old_disc
+            return apply_discrepancy_to_net_profit(statistics)
+        if not has_prior_snapshot or (old_actual == 0 and old_disc == 0):
+            hr['actual_hedging_results'] = 0.0
+            hr['discrepancy'] = 0.0
+            return apply_discrepancy_to_net_profit(statistics)
+
+    actual = compute_live_actual_hedging(account, hr, include_historical=False)
+    hr['actual_hedging_results'] = actual
     hr['discrepancy'] = round(actual - sheet_hr, 2)
     return apply_discrepancy_to_net_profit(statistics)
 
@@ -1254,12 +1314,19 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             stats["hedging_review"]["historical_withdrawals"] = round(hist_with, 2)
             stats["hedging_review"]["historical_balance"] = round(hist_bal, 2)
 
-        actual_hedging = compute_live_actual_hedging(
-            mt5_account if isinstance(mt5_account, dict) else {},
-            stats["hedging_review"],
-            include_historical=False,
-        )
-        stats["hedging_review"]["actual_hedging_results"] = actual_hedging
+        hr_snap = stats["hedging_review"]
+        if mt5_funding_is_known(hr_snap, mt5_account):
+            actual_hedging = compute_live_actual_hedging(
+                mt5_account if isinstance(mt5_account, dict) else {},
+                hr_snap,
+                include_historical=False,
+            )
+            stats["hedging_review"]["actual_hedging_results"] = actual_hedging
+        else:
+            debug_log.append(
+                "MT5 funding unknown (no deposits/withdrawals/prior) — "
+                "skipping balance-as-profit actual_hedging calculation"
+            )
 
         debug_log.append(f"MT5 Account: balance=${balance:.2f}, deposits=${deposits:.2f}, withdrawals=${withdrawals:.2f}")
         if historical_accounts:
@@ -1365,7 +1432,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     # --- Calculate Discrepancy ONCE from the final authoritative values ---
     # This is the single source of truth displayed in the Hedging Review card.
     # Discrepancy = Actual Hedging Results (from MT5) - Sheet Hedging Results (from Google Sheet)
-    if mt5_account:
+    if mt5_account and mt5_funding_is_known(stats["hedging_review"], mt5_account):
         stats["hedging_review"]["discrepancy"] = (
             stats["hedging_review"]["actual_hedging_results"] -
             stats["hedging_review"]["sheet_hedging_results"]
