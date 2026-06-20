@@ -13008,18 +13008,26 @@ def get_waterlog_sheet_data():
       ?sheet_url=<url>  — fallback sheet URL for pre-import clients
     """
     try:
-        from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
+        from dashboard.watermark_service import (
+            compute_waterlog_from_db, compute_waterlog_daily_fallback, canonical_client_stats_net,
+        )
     except ImportError:
-        from watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
+        from watermark_service import (
+            compute_waterlog_from_db, compute_waterlog_daily_fallback, canonical_client_stats_net,
+        )
 
     try:
         client_id_param = request.args.get('client_id')
         sheet_url = request.args.get('sheet_url') or None
 
         db_waterlog = None
+        live_net = None
+        if client_id_param:
+            client_data = get_client_data(client_id_param)
+            live_net = canonical_client_stats_net(client_data)
         # ── 1. Try fully-offline DB computation ──────────────────────────────
         if client_id_param:
-            db_waterlog = compute_waterlog_from_db(client_id_param)
+            db_waterlog = compute_waterlog_from_db(client_id_param, _live_net=live_net)
             if db_waterlog is not None:
                 return jsonify({"status": "success", "data": db_waterlog})
 

@@ -454,7 +454,72 @@ def _override_maps_for_client(client_id, _bulk=None):
     )
 
 
-def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0, prev_period_net=0.0, _bulk=None):
+def canonical_client_stats_net(client_data) -> float | None:
+    """Dashboard Stats net: payouts + hedging + farming + discrepancy - challenge_fees."""
+    if not client_data or not isinstance(client_data, dict):
+        return None
+    stats = client_data.get('statistics') or {}
+    cf = stats.get('cashflow_inprogress') if isinstance(stats.get('cashflow_inprogress'), dict) else {}
+    hr = stats.get('hedging_review') if isinstance(stats.get('hedging_review'), dict) else {}
+    if not cf:
+        return None
+
+    def _money(v):
+        try:
+            if v is None:
+                return 0.0
+            s = str(v).replace('$', '').replace(',', '').strip()
+            return float(s) if s else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    return round(
+        _money(cf.get('payouts'))
+        + _money(cf.get('hedging_results'))
+        + _money(cf.get('farming_results'))
+        + _money(hr.get('discrepancy'))
+        - _money(cf.get('challenge_fees')),
+        2,
+    )
+
+
+def _daily_watermarks_unreliable(vals):
+    """
+    Detect months where a lone positive end-of-period snapshot contradicts
+    mostly-negative daily history (stale/inflated stats saved at midnight).
+    """
+    if len(vals) < 2:
+        return False
+    lo, hi = min(vals), max(vals)
+    if hi <= 0 or lo >= 0:
+        return False
+    if hi - lo < 2500:
+        return False
+    neg = sum(1 for v in vals if v < -50)
+    pos = sum(1 for v in vals if v > 50)
+    return vals[-1] > 0 and neg >= max(3, pos * 2)
+
+
+def _period_end_net_from_dailies(in_range, prev_period_net, *, period_complete, live_net=None):
+    """Period-end net for profit-share rows; rejects unreliable watermark spikes."""
+    if not in_range:
+        return float(prev_period_net or 0.0)
+    vals = [float(v) for (_, v) in in_range]
+    if not period_complete and live_net is not None:
+        return float(live_net)
+    if _daily_watermarks_unreliable(vals):
+        return min(vals)
+    return vals[-1]
+
+
+def _monthly_profit_split_amount(net_profit, last_net_at_split, split_pct):
+    effective_base = max(float(last_net_at_split or 0.0), 0.0)
+    if net_profit > effective_base and net_profit > 0:
+        return (net_profit - effective_base) * float(split_pct) / 100.0
+    return 0.0
+
+
+def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0, prev_period_net=0.0, _bulk=None, _live_net=None):
     """
     Build monthly Profit Share rows (21st → 20th) from daily_watermarks alone.
 
@@ -497,7 +562,13 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
 
         effective_end = min(month_end, today)
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
-        net_profit = in_range[-1][1] if in_range else prev_period_net
+        period_complete = effective_end >= month_end
+        net_profit = _period_end_net_from_dailies(
+            in_range,
+            prev_period_net,
+            period_complete=period_complete,
+            live_net=_live_net,
+        )
 
         monthly_np_key = _fmt_date(month_start)
         if monthly_np_key in np_overrides:
@@ -507,11 +578,7 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
         if monthly_np_key in spct_overrides:
             monthly_split_pct = spct_overrides[monthly_np_key]
 
-        effective_base = max(last_net_at_split, 0.0)
-        if net_profit > effective_base and net_profit > 0:
-            profit_split = (net_profit - effective_base) * monthly_split_pct / 100
-        else:
-            profit_split = 0.0
+        profit_split = _monthly_profit_split_amount(net_profit, last_net_at_split, monthly_split_pct)
 
         result.append({
             'from_date':    _fmt_date(month_start),
@@ -521,7 +588,7 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
             'split_pct':    monthly_split_pct,
         })
 
-        if effective_end >= month_end:
+        if period_complete:
             prev_period_net = net_profit
             if profit_split > 0:
                 last_net_at_split = net_profit
@@ -544,7 +611,7 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
     }
 
 
-def compute_waterlog_from_db(client_id, _bulk=None):
+def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
     """
     Computes the Profit Share History table entirely from DB data.
 
@@ -590,7 +657,7 @@ def compute_waterlog_from_db(client_id, _bulk=None):
     if not periods_with_vals:
         if not daily:
             return None
-        return _compute_waterlog_monthly_from_daily(client_id, daily, _bulk=_bulk)
+        return _compute_waterlog_monthly_from_daily(client_id, daily, _bulk=_bulk, _live_net=_live_net)
 
     TRANSITION_START = _date(2026, 2, 24)
     TRANSITION_END   = _date(2026, 3, 20)
@@ -726,9 +793,14 @@ def compute_waterlog_from_db(client_id, _bulk=None):
 
         effective_end = min(month_end, today)
 
-        # Net profit = latest daily watermark value up to effective_end
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
-        net_profit = in_range[-1][1] if in_range else prev_period_net
+        period_complete = effective_end >= month_end
+        net_profit = _period_end_net_from_dailies(
+            in_range,
+            prev_period_net,
+            period_complete=period_complete,
+            live_net=_live_net,
+        )
 
         # Apply net profit override for this monthly period
         monthly_np_key = _fmt_date(month_start)
@@ -740,11 +812,7 @@ def compute_waterlog_from_db(client_id, _bulk=None):
         if monthly_np_key in spct_overrides:
             monthly_split_pct = spct_overrides[monthly_np_key]
 
-        effective_base = max(last_net_at_split, 0.0)
-        if net_profit > effective_base and net_profit > 0:
-            profit_split = (net_profit - effective_base) * monthly_split_pct / 100
-        else:
-            profit_split = 0.0
+        profit_split = _monthly_profit_split_amount(net_profit, last_net_at_split, monthly_split_pct)
 
         result.append({
             'from_date':    _fmt_date(month_start),
@@ -755,7 +823,7 @@ def compute_waterlog_from_db(client_id, _bulk=None):
         })
 
         # Completed month: advance daily carry; baseline only moves when split was paid.
-        if effective_end >= month_end:
+        if period_complete:
             prev_period_net = net_profit
             if profit_split > 0:
                 last_net_at_split = net_profit
