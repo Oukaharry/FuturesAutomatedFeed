@@ -1,6 +1,16 @@
+from collections import defaultdict
 from dashboard.database import get_connection
 from datetime import datetime, timedelta
 import logging
+import threading
+import time
+
+_WATERLOG_TABLES_ENSURED = False
+_WATERLOG_TABLES_LOCK = threading.Lock()
+_BULK_CACHE = None
+_BULK_CACHE_AT = 0.0
+_BULK_CACHE_LOCK = threading.Lock()
+_BULK_CACHE_TTL = 90
 
 def save_daily_profit(client_id, net_profit, date_str=None, source='auto'):
     """
@@ -301,21 +311,150 @@ def get_client_split_pct(client_id):
     return 50
 
 
-def compute_waterlog_daily_fallback(client_id):
+def compute_waterlog_daily_fallback(client_id, _bulk=None):
     """
     Legacy entry point — delegates to monthly computation from daily watermarks.
     Kept for callers that still invoke this name directly.
     """
-    daily = get_all_daily_watermarks(client_id)
+    if _bulk is not None:
+        daily = list(_bulk['daily'].get(client_id, []))
+    else:
+        daily = get_all_daily_watermarks(client_id)
     if not daily:
         return None
-    result = _compute_waterlog_monthly_from_daily(client_id, daily)
+    result = _compute_waterlog_monthly_from_daily(client_id, daily, _bulk=_bulk)
     if result:
         result['_source'] = 'daily_watermarks_fallback'
     return result
 
 
-def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0, prev_period_net=0.0):
+def ensure_waterlog_override_tables():
+    """Create override tables once per process (not per client)."""
+    global _WATERLOG_TABLES_ENSURED
+    if _WATERLOG_TABLES_ENSURED:
+        return
+    with _WATERLOG_TABLES_LOCK:
+        if _WATERLOG_TABLES_ENSURED:
+            return
+        try:
+            with get_connection() as conn:
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS net_profit_overrides (
+                        client_id   TEXT NOT NULL,
+                        from_date   TEXT NOT NULL,
+                        amount      REAL NOT NULL,
+                        updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (client_id, from_date)
+                    )
+                ''')
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS split_pct_overrides (
+                        client_id   TEXT NOT NULL,
+                        from_date   TEXT NOT NULL,
+                        pct         REAL NOT NULL,
+                        updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (client_id, from_date)
+                    )
+                ''')
+                conn.execute('''
+                    CREATE TABLE IF NOT EXISTS profit_split_overrides (
+                        client_id   TEXT NOT NULL,
+                        from_date   TEXT NOT NULL,
+                        amount      REAL NOT NULL,
+                        updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (client_id, from_date)
+                    )
+                ''')
+                conn.commit()
+            _WATERLOG_TABLES_ENSURED = True
+        except Exception as e:
+            logging.error(f"Error ensuring waterlog override tables: {e}")
+
+
+def prefetch_waterlog_bulk(force_refresh=False):
+    """
+    Load waterlog periods, daily marks, and all overrides in one DB connection.
+    Used by super-admin profit split endpoints to avoid N×clients pool exhaustion.
+    """
+    global _BULK_CACHE, _BULK_CACHE_AT
+    now = time.time()
+    if (
+        not force_refresh
+        and _BULK_CACHE is not None
+        and (now - _BULK_CACHE_AT) < _BULK_CACHE_TTL
+    ):
+        return _BULK_CACHE
+
+    with _BULK_CACHE_LOCK:
+        if (
+            not force_refresh
+            and _BULK_CACHE is not None
+            and (time.time() - _BULK_CACHE_AT) < _BULK_CACHE_TTL
+        ):
+            return _BULK_CACHE
+
+        ensure_waterlog_override_tables()
+        bulk = {
+            'periods': defaultdict(list),
+            'daily': defaultdict(list),
+            'np_overrides': defaultdict(dict),
+            'spct_overrides': defaultdict(dict),
+            'ps_overrides': defaultdict(dict),
+        }
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    '''SELECT client_id, from_date, to_date, period_low, period_high, split_pct
+                       FROM waterlog_periods ORDER BY client_id, from_date ASC'''
+                )
+                for row in cursor.fetchall():
+                    bulk['periods'][row['client_id']].append(dict(row))
+
+                cursor.execute(
+                    'SELECT client_id, date, net_profit_complete FROM daily_watermarks ORDER BY client_id, date ASC'
+                )
+                for row in cursor.fetchall():
+                    try:
+                        d = datetime.strptime(row['date'], '%Y-%m-%d').date()
+                        bulk['daily'][row['client_id']].append((d, float(row['net_profit_complete'])))
+                    except Exception:
+                        pass
+
+                cursor.execute('SELECT client_id, from_date, amount FROM net_profit_overrides')
+                for row in cursor.fetchall():
+                    bulk['np_overrides'][row['client_id']][row['from_date']] = float(row['amount'])
+
+                cursor.execute('SELECT client_id, from_date, pct FROM split_pct_overrides')
+                for row in cursor.fetchall():
+                    bulk['spct_overrides'][row['client_id']][row['from_date']] = float(row['pct'])
+
+                cursor.execute('SELECT client_id, from_date, amount FROM profit_split_overrides')
+                for row in cursor.fetchall():
+                    bulk['ps_overrides'][row['client_id']][row['from_date']] = float(row['amount'])
+        except Exception as e:
+            logging.error(f"prefetch_waterlog_bulk failed: {e}")
+
+        _BULK_CACHE = bulk
+        _BULK_CACHE_AT = time.time()
+        return bulk
+
+
+def _override_maps_for_client(client_id, _bulk=None):
+    if _bulk is not None:
+        return (
+            dict(_bulk['np_overrides'].get(client_id, {})),
+            dict(_bulk['spct_overrides'].get(client_id, {})),
+            dict(_bulk['ps_overrides'].get(client_id, {})),
+        )
+    return (
+        get_net_profit_overrides(client_id),
+        get_split_pct_overrides(client_id),
+        get_profit_split_overrides(client_id),
+    )
+
+
+def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0, prev_period_net=0.0, _bulk=None):
     """
     Build monthly Profit Share rows (21st → 20th) from daily_watermarks alone.
 
@@ -344,8 +483,7 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
 
     TRANSITION_END = _date(2026, 3, 20)
     client_split_pct = get_client_split_pct(client_id)
-    np_overrides = get_net_profit_overrides(client_id)
-    spct_overrides = get_split_pct_overrides(client_id)
+    np_overrides, spct_overrides, ps_overrides = _override_maps_for_client(client_id, _bulk)
 
     result = []
     today = _dt.now().date()
@@ -392,12 +530,11 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
         if month_start > today:
             break
 
-    overrides = get_profit_split_overrides(client_id)
-    if overrides:
+    if ps_overrides:
         for period in result:
             key = period['from_date']
-            if key in overrides:
-                val = overrides[key]
+            if key in ps_overrides:
+                val = ps_overrides[key]
                 period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
                 period['profit_split_override'] = True
 
@@ -407,7 +544,7 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
     }
 
 
-def compute_waterlog_from_db(client_id):
+def compute_waterlog_from_db(client_id, _bulk=None):
     """
     Computes the Profit Share History table entirely from DB data.
 
@@ -442,14 +579,18 @@ def compute_waterlog_from_db(client_id):
         except ValueError:
             return 0.0
 
-    periods_with_vals = get_waterlog_periods_with_values(client_id)
-    daily = get_all_daily_watermarks(client_id)  # [(date_obj, float)]
+    if _bulk is not None:
+        periods_with_vals = list(_bulk['periods'].get(client_id, []))
+        daily = list(_bulk['daily'].get(client_id, []))
+    else:
+        periods_with_vals = get_waterlog_periods_with_values(client_id)
+        daily = get_all_daily_watermarks(client_id)
 
     # New clients: no imported sheet schedule — build monthly rows from daily data only.
     if not periods_with_vals:
         if not daily:
             return None
-        return _compute_waterlog_monthly_from_daily(client_id, daily)
+        return _compute_waterlog_monthly_from_daily(client_id, daily, _bulk=_bulk)
 
     TRANSITION_START = _date(2026, 2, 24)
     TRANSITION_END   = _date(2026, 3, 20)
@@ -465,11 +606,7 @@ def compute_waterlog_from_db(client_id):
     # CRITICAL: periods must be sorted oldest-first for correct HWM calculation
     periods_with_vals.sort(key=lambda p: p['from_date'])
 
-    # Load net profit overrides upfront so they feed into HWM / profit split calculation
-    np_overrides = get_net_profit_overrides(client_id)
-
-    # Load per-period split percentage overrides
-    spct_overrides = get_split_pct_overrides(client_id)
+    np_overrides, spct_overrides, ps_overrides = _override_maps_for_client(client_id, _bulk)
 
     result = []
     hwm_low = 0.0
@@ -631,13 +768,11 @@ def compute_waterlog_from_db(client_id):
     # Net profit overrides are now applied during HWM calculation above
     # (no post-processing needed)
 
-    # Apply any manual profit_split overrides (legacy — admin edits from the UI)
-    overrides = get_profit_split_overrides(client_id)
-    if overrides:
+    if ps_overrides:
         for period in result:
             key = period['from_date']
-            if key in overrides:
-                val = overrides[key]
+            if key in ps_overrides:
+                val = ps_overrides[key]
                 period['profit_split'] = f"${val:,.0f}" if val > 0 else '$0'
                 period['profit_split_override'] = True
 

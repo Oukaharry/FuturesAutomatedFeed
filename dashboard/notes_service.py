@@ -1,24 +1,21 @@
 from dashboard.database import get_connection
 import logging
 
-def get_client_notes(client_id):
+def get_client_notes(client_id, _conn=None):
     """
     Returns a dictionary of notes for a client.
     Format: { row_index: { column_key: note_content } }
     """
     try:
-        with get_connection() as conn:
-            cursor = conn.cursor()
+        def _run(cursor):
             cursor.execute('''
                 SELECT row_index, column_key, note_content 
                 FROM cell_notes 
                 WHERE client_id = ?
             ''', (client_id,))
             rows = cursor.fetchall()
-            
             notes = {}
             for row in rows:
-                # Handle both dict-like (Row) and tuple results
                 try:
                     rid = row['row_index']
                     col = row['column_key']
@@ -27,11 +24,16 @@ def get_client_notes(client_id):
                     rid = row[0]
                     col = row[1]
                     content = row[2]
-                
                 if rid not in notes:
                     notes[rid] = {}
                 notes[rid][col] = content
             return notes
+
+        if _conn is not None:
+            return _run(_conn.cursor())
+
+        with get_connection() as conn:
+            return _run(conn.cursor())
     except Exception as e:
         logging.error(f"Error fetching notes for {client_id}: {e}")
         return {}

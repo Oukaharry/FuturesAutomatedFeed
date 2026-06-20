@@ -77,7 +77,10 @@ def _default_pool_max() -> int:
     if os.environ.get("ML_REFRESH_SUBPROCESS") == "1":
         return 1
     # 3 uWSGI workers × 5 = 15 slots — under managed Postgres ~20 limit.
-    return 5 if _is_low_connection_postgres() else 10
+    if _is_low_connection_postgres():
+        return 5
+    # Local dev: one dashboard page load fires many parallel API calls.
+    return 20
 
 
 _pool_min = max(0, int(os.environ.get("DB_POOL_MIN", str(_default_pool_min()))))
@@ -86,6 +89,8 @@ POOL_MAX = _pool_max
 _db_connect_timeout = max(5, int(os.environ.get("DB_CONNECT_TIMEOUT", "5")))
 _connection_pool = None
 _pool_lock = threading.Lock()
+# Queue threads at checkout instead of thundering-herd PoolError retries.
+_pool_checkout_sem = threading.BoundedSemaphore(_pool_max)
 
 
 def db_concurrent_workers(cap: int = 6) -> int:
@@ -117,56 +122,68 @@ def _init_pool() -> bool:
             return False
 
 def _get_pooled_connection():
-    """Get a connection from the pool (creates pool on first call, retries on slot exhaustion)."""
+    """Get a connection from the pool (blocks until a checkout slot is free)."""
+    _pool_checkout_sem.acquire()
+    acquired = True
     last_err = None
-    for attempt in range(10):
-        if _connection_pool is None and not _init_pool():
-            last_err = psycopg2.OperationalError("connection pool unavailable")
-            time.sleep(min(0.05 * (2 ** attempt), 2.0))
-            continue
-        try:
-            return _connection_pool.getconn()
-        except psycopg2.OperationalError as e:
-            last_err = e
-            if "remaining connection slots" in str(e):
-                reset_connection_pool()
-                time.sleep(min(0.05 * (2 ** attempt), 2.0))
+    try:
+        for attempt in range(5):
+            if _connection_pool is None and not _init_pool():
+                last_err = psycopg2.OperationalError("connection pool unavailable")
+                time.sleep(min(0.05 * (2 ** attempt), 1.0))
                 continue
-            raise
-        except psycopg2.pool.PoolError as e:
-            last_err = e
-            if attempt == 0 or attempt == 9:
-                logger.warning(
-                    "[DB] Connection pool exhausted (attempt %s/10, max=%s): %s",
-                    attempt + 1, _pool_max, e,
-                )
-            time.sleep(min(0.05 * (2 ** attempt), 2.0))
-    if last_err:
-        raise last_err
-    raise psycopg2.OperationalError("Could not obtain database connection from pool")
+            try:
+                conn = _connection_pool.getconn()
+                acquired = False
+                return conn
+            except psycopg2.OperationalError as e:
+                last_err = e
+                if "remaining connection slots" in str(e):
+                    reset_connection_pool()
+                    time.sleep(min(0.05 * (2 ** attempt), 1.0))
+                    continue
+                raise
+            except psycopg2.pool.PoolError as e:
+                last_err = e
+                if attempt == 4:
+                    logger.warning(
+                        "[DB] Connection pool checkout failed after retries (max=%s): %s",
+                        _pool_max, e,
+                    )
+                time.sleep(min(0.05 * (2 ** attempt), 1.0))
+        if last_err:
+            raise last_err
+        raise psycopg2.OperationalError("Could not obtain database connection from pool")
+    finally:
+        if acquired:
+            _pool_checkout_sem.release()
+
 
 def _return_pooled_connection(conn):
     """Return a connection to the pool (discard broken connections)."""
-    if _connection_pool is not None:
-        try:
-            if conn.closed:
-                _connection_pool.putconn(conn, close=True)
-            else:
+    try:
+        if _connection_pool is not None:
+            try:
+                if conn.closed:
+                    _connection_pool.putconn(conn, close=True)
+                else:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    _connection_pool.putconn(conn)
+            except Exception:
                 try:
-                    conn.rollback()
+                    conn.close()
                 except Exception:
                     pass
-                _connection_pool.putconn(conn)
-        except Exception:
+        else:
             try:
                 conn.close()
             except Exception:
                 pass
-    else:
-        try:
-            conn.close()
-        except Exception:
-            pass
+    finally:
+        _pool_checkout_sem.release()
 
 
 def reset_connection_pool():
@@ -1201,13 +1218,12 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
     with get_connection() as conn:
         return _save(conn)
 
-def _lookup_client_data_row(client_id: str, norm_id: str):
+def _lookup_client_data_row(client_id: str, norm_id: str, _conn=None):
     """
     Find a clients_data row. Returns (row, legacy_id_to_rename).
     Rename is deferred so callers never nest pool connections.
     """
-    with get_connection() as conn:
-        cursor = conn.cursor()
+    def _query(cursor):
         row = None
         if client_id:
             cursor.execute('SELECT * FROM clients_data WHERE client_id = ?', (client_id,))
@@ -1225,12 +1241,18 @@ def _lookup_client_data_row(client_id: str, norm_id: str):
                     legacy_rename = row.get('client_id')
         return row, legacy_rename
 
+    if _conn is not None:
+        return _query(_conn.cursor())
 
-def get_client_data(client_id: str) -> dict:
+    with get_connection() as conn:
+        return _query(conn.cursor())
+
+
+def get_client_data(client_id: str, _conn=None) -> dict:
     """Get client data from database."""
     norm_id = _normalize_identifier(client_id)
-    row, legacy_id = _lookup_client_data_row(client_id, norm_id)
-    if legacy_id:
+    row, legacy_id = _lookup_client_data_row(client_id, norm_id, _conn=_conn)
+    if legacy_id and _conn is None:
         try:
             rename_client_in_db(legacy_id, norm_id)
             with get_connection() as conn:
@@ -2102,26 +2124,21 @@ def mark_qa_resolved(check_name: str, client_id: str, row_index: int, resolved_b
 
 # ============ Data History Management ============
 
-def get_client_activity(client_id: str) -> dict:
+def get_client_activity(client_id: str, _conn=None) -> dict:
     """Get last push time and last edit info for a client from data_history."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        # Last push (from companion app / MT5)
+    def _run(cursor):
         cursor.execute('''
             SELECT created_at, changed_by FROM data_history
             WHERE client_id = ? AND change_source = 'push'
             ORDER BY version DESC LIMIT 1
         ''', (client_id,))
         push_row = cursor.fetchone()
-
-        # Last manual edit (from dashboard)
         cursor.execute('''
             SELECT created_at, changed_by, changed_by_type FROM data_history
             WHERE client_id = ? AND change_source IN ('dashboard_edit', 'dashboard_delete')
             ORDER BY version DESC LIMIT 1
         ''', (client_id,))
         edit_row = cursor.fetchone()
-
         return {
             'last_push_at': push_row['created_at'] if push_row else None,
             'last_push_by': push_row['changed_by'] if push_row else None,
@@ -2129,6 +2146,39 @@ def get_client_activity(client_id: str) -> dict:
             'last_edit_by': edit_row['changed_by'] if edit_row else None,
             'last_edit_by_type': edit_row['changed_by_type'] if edit_row else None,
         }
+
+    if _conn is not None:
+        return _run(_conn.cursor())
+
+    with get_connection() as conn:
+        return _run(conn.cursor())
+
+
+def get_current_data_version(client_id: str, _conn=None) -> int:
+    """Latest committed data_history version for a client (0 if none)."""
+    def _run(cursor):
+        cursor.execute(
+            'SELECT MAX(version) as max_version FROM data_history WHERE client_id = ?',
+            (client_id,),
+        )
+        row = cursor.fetchone()
+        return int(row['max_version'] or 0) if row else 0
+
+    if _conn is not None:
+        return _run(_conn.cursor())
+
+    with get_connection() as conn:
+        return _run(conn.cursor())
+
+
+def fetch_client_page_enrichment(client_id: str, conn) -> dict:
+    """Notes + version + activity for /api/data on one open connection."""
+    from dashboard.notes_service import get_client_notes
+    return {
+        'notes': get_client_notes(client_id, _conn=conn),
+        'version': get_current_data_version(client_id, _conn=conn),
+        'activity': get_client_activity(client_id, _conn=conn),
+    }
 
 def get_next_version(client_id: str) -> int:
     """Get the next version number for a client's data history."""
