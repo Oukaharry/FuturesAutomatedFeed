@@ -3854,6 +3854,10 @@ def _delete_client_everywhere(client_name, admin_name='', trader_name=''):
     return bool(removed_hierarchy or deleted_kyc or deleted_credentials)
 
 
+_kyc_hierarchy_sync_at = 0.0
+_KYC_HIERARCHY_SYNC_SECS = 300
+
+
 def sync_kyc_links_into_hierarchy():
     """
     Ensure KYC-linked accounts are real hierarchy clients too.
@@ -4048,7 +4052,11 @@ def get_hierarchy():
     # Reload hierarchy to get latest changes from file
     from config.hierarchy import reload_hierarchy
     reload_hierarchy()
-    sync_kyc_links_into_hierarchy()
+    global _kyc_hierarchy_sync_at
+    if time.time() - _kyc_hierarchy_sync_at >= _KYC_HIERARCHY_SYNC_SECS:
+        if sync_kyc_links_into_hierarchy():
+            reload_hierarchy()
+        _kyc_hierarchy_sync_at = time.time()
     
     filtered = get_filtered_hierarchy(user_type, user_identifier)
     
@@ -4170,14 +4178,15 @@ def get_profit_splits():
     if session_user.get('user_type') == 'kwok_admin':
         profile_filter = 'ALL'
 
-    from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
+    from dashboard.watermark_service import (
+        compute_waterlog_from_db, compute_waterlog_daily_fallback, prefetch_waterlog_bulk,
+    )
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
-    from dashboard.database import db_concurrent_workers
     from utils.data_processor import parse_currency
-    from concurrent.futures import ThreadPoolExecutor
 
     clients_data = _get_cached_clients()
     excluded_sa = _get_super_admin_stats_excluded_set()
+    waterlog_bulk = prefetch_waterlog_bulk()
     results = []
 
     def _money_to_float(v):
@@ -4269,7 +4278,7 @@ def get_profit_splits():
                 latest_net = _live_in_progress_net(data.get('evaluations') or [])
 
             # Watermark DB rows are keyed by dashboard client_id, not display name.
-            wl = compute_waterlog_from_db(client_id) or compute_waterlog_daily_fallback(client_id)
+            wl = compute_waterlog_from_db(client_id, _bulk=waterlog_bulk) or compute_waterlog_daily_fallback(client_id, _bulk=waterlog_bulk)
             baseline = 0.0
             split_pct = 50
             if wl and wl.get('periods'):
@@ -4319,12 +4328,10 @@ def get_profit_splits():
             print(f"[profit_splits] error for {client_id}: {_exc}\n{traceback.format_exc()}")
             return None
 
-    with ThreadPoolExecutor(max_workers=db_concurrent_workers(6)) as pool:
-        futures = [pool.submit(_compute_one, cid, d) for cid, d in clients_data.items()]
-        for f in futures:
-            r = f.result()
-            if r is not None:
-                results.append(r)
+    for client_id, data in clients_data.items():
+        r = _compute_one(client_id, data)
+        if r is not None:
+            results.append(r)
 
     total = round(sum(r['profit_split_inprogress'] for r in results), 2)
     results.sort(key=lambda x: x['profit_split_inprogress'], reverse=True)
@@ -4353,13 +4360,14 @@ def get_avg_profit_splits():
     if session_user.get('user_type') == 'kwok_admin':
         profile_filter = 'ALL'
 
-    from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
+    from dashboard.watermark_service import (
+        compute_waterlog_from_db, compute_waterlog_daily_fallback, prefetch_waterlog_bulk,
+    )
     from dashboard.financial_overview import _get_cached_clients, get_client_profile
-    from dashboard.database import db_concurrent_workers
-    from concurrent.futures import ThreadPoolExecutor
 
     clients_data = _get_cached_clients()
     excluded_sa = _get_super_admin_stats_excluded_set()
+    waterlog_bulk = prefetch_waterlog_bulk()
     results = []
 
     def _money_to_float(v) -> float:
@@ -4383,7 +4391,7 @@ def get_avg_profit_splits():
             if _client_excluded_from_super_admin_stats(client_id, display_name, excluded_sa):
                 return None
 
-            wl = compute_waterlog_from_db(client_id) or compute_waterlog_daily_fallback(client_id)
+            wl = compute_waterlog_from_db(client_id, _bulk=waterlog_bulk) or compute_waterlog_daily_fallback(client_id, _bulk=waterlog_bulk)
             periods = (wl or {}).get('periods') or []
             if len(periods) < 2:
                 return {
@@ -4427,12 +4435,10 @@ def get_avg_profit_splits():
             print(f"[avg_profit_splits] error for {client_id}: {_exc}\n{traceback.format_exc()}")
             return None
 
-    with ThreadPoolExecutor(max_workers=db_concurrent_workers(6)) as pool:
-        futures = [pool.submit(_compute_one, cid, d) for cid, d in clients_data.items()]
-        for f in futures:
-            r = f.result()
-            if r is not None:
-                results.append(r)
+    for client_id, data in clients_data.items():
+        r = _compute_one(client_id, data)
+        if r is not None:
+            results.append(r)
 
     # Card total = sum of each client's average (modal still shows per-client averages)
     paid = [r for r in results if (r.get('paid_periods') or 0) > 0 and (r.get('periods_in_avg') or 0) > 0]
@@ -8386,37 +8392,35 @@ def get_data():
             log_action('ACCESS_DENIED', user_type, user_identifier, get_remote_address(), f"Tried to access: {client_id}", False)
             return jsonify({"status": "error", "message": "Access denied"}), 403
         
-        data = get_client_data(client_id)
-        if data is None:
-            return jsonify({"status": "error", "message": f"No data found for client '{client_id}'. The client may not exist or has no saved data yet."}), 404
+        data = None
+        try:
+            from dashboard.database import fetch_client_page_enrichment
+            with get_connection() as conn:
+                data = get_client_data(client_id, _conn=conn)
+                if data is None:
+                    return jsonify({"status": "error", "message": f"No data found for client '{client_id}'. The client may not exist or has no saved data yet."}), 404
+                page_meta = fetch_client_page_enrichment(client_id, conn)
+        except Exception as e:
+            logging.error(f"Error loading client data for {client_id}: {e}")
+            return jsonify({"status": "error", "message": "Database error loading client data"}), 503
 
         if data:
-            # Inject Visual Notes
             if 'evaluations' in data:
                 try:
-                    notes = get_client_notes(client_id)
-                    # notes is { row_index: { col: text } }
+                    notes = page_meta.get('notes') or {}
                     for i, ev in enumerate(data['evaluations']):
                         if i in notes:
                             ev['_notes'] = notes[i]
                 except Exception as e:
                     logging.error(f"Error injecting notes: {e}")
 
-            # Historical MT5 values are shown separately in the MT5 Accounts Overview table.
-            # The hedging_review values (deposits, withdrawals, balance, discrepancy) are
-            # served as-is from data_processor.py — single source of truth.
-            
             data['status'] = 'success'
-            # Include current version so frontend can detect stale refreshes
             try:
-                from dashboard.database import get_next_version
-                data['_version'] = get_next_version(client_id) - 1
+                data['_version'] = page_meta.get('version', 0)
             except Exception:
                 pass
-            # Include last activity info for dashboard display
             try:
-                from dashboard.database import get_client_activity
-                data['_activity'] = get_client_activity(client_id)
+                data['_activity'] = page_meta.get('activity') or {}
             except Exception:
                 pass
             return jsonify(data)
@@ -13004,18 +13008,26 @@ def get_waterlog_sheet_data():
       ?sheet_url=<url>  — fallback sheet URL for pre-import clients
     """
     try:
-        from dashboard.watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
+        from dashboard.watermark_service import (
+            compute_waterlog_from_db, compute_waterlog_daily_fallback, canonical_client_stats_net,
+        )
     except ImportError:
-        from watermark_service import compute_waterlog_from_db, compute_waterlog_daily_fallback
+        from watermark_service import (
+            compute_waterlog_from_db, compute_waterlog_daily_fallback, canonical_client_stats_net,
+        )
 
     try:
         client_id_param = request.args.get('client_id')
         sheet_url = request.args.get('sheet_url') or None
 
         db_waterlog = None
+        live_net = None
+        if client_id_param:
+            client_data = get_client_data(client_id_param)
+            live_net = canonical_client_stats_net(client_data)
         # ── 1. Try fully-offline DB computation ──────────────────────────────
         if client_id_param:
-            db_waterlog = compute_waterlog_from_db(client_id_param)
+            db_waterlog = compute_waterlog_from_db(client_id_param, _live_net=live_net)
             if db_waterlog is not None:
                 return jsonify({"status": "success", "data": db_waterlog})
 

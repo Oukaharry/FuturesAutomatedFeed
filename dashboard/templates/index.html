@@ -2851,7 +2851,7 @@
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                     </select>
-                    <button class="btn-danger" onclick="loadClientIssues()">
+                    <button class="btn-danger" onclick="loadClientIssues(true)">
                         <i class="fas fa-sync-alt" style="margin-right:4px;"></i> Refresh
                     </button>
                 </div>
@@ -4765,7 +4765,7 @@
 
         // --- Issues Tab Logic ---
         let _clientIssues = [];
-        function loadClientIssues() {
+        function loadClientIssues(forceRescan) {
             if (SHEET_EDIT_LOCKED) return;
             const clientId = '{{ client_id }}';
             if (!clientId) return;
@@ -4775,7 +4775,10 @@
             if (loading) loading.style.display = 'block';
             if (empty) empty.style.display = 'none';
             if (table) table.style.display = 'none';
-            fetch(`/api/quality/client/${encodeURIComponent(clientId)}?rescan=1`)
+            const url = forceRescan
+                ? `/api/quality/client/${encodeURIComponent(clientId)}?rescan=1`
+                : `/api/quality/client/${encodeURIComponent(clientId)}`;
+            fetch(url)
                 .then(r => r.json())
                 .then(data => {
                     if (loading) loading.style.display = 'none';
@@ -4791,6 +4794,10 @@
                             }
                         }
                         filterIssuesTable();
+                        // Background rescan after cached results render (avoids pool stampede on load).
+                        if (!forceRescan) {
+                            setTimeout(() => loadClientIssues(true), 3000);
+                        }
                     }
                 })
                 .catch(() => { if (loading) loading.style.display = 'none'; });
