@@ -9173,12 +9173,38 @@ def run_quality_scan(target_client=None):
                 has_funded_hedge_value_local = any(
                     abs(_parse_nonzero(ev.get(c))) > 1e-9 for c in _funded_hedge_result_cols
                 )
+                has_day_value_local = any(
+                    abs(_parse_nonzero(ev.get(f'Hedge Day {i}', ''))) > 1e-9
+                    or abs(_parse_nonzero(ev.get(f'Prop Day {i}', ''))) > 1e-9
+                    for i in range(1, 51)
+                )
+                has_hedge_text_marker = False
+                for c in _hedge_result_cols:
+                    raw = str(ev.get(c) or '').strip()
+                    if not raw or raw in ('-', '0', '0.00', '0.0'):
+                        continue
+                    if abs(_parse_nonzero(raw)) > 1e-9:
+                        continue
+                    if any(ch.isalpha() for ch in raw):
+                        has_hedge_text_marker = True
+                        break
+                has_both_phase_accounts = bool(acct_num_local and acct_num2_local)
 
                 # Live funded broker rows (digits-only Account #.1 / funded id): traders are not in eval workflow;
                 # skip sheet SOP flags except weekday-of-day tracking (and any client/global issues like downtime).
                 is_live_funded_numeric_row = _max_out_row_is_live_numeric_account(ev)
 
-                new_row_strict_mode = is_new_row and not has_hedge_value_local and not is_live_funded_numeric_row
+                # Exit strict "new row" gating once farming/prop-day P&L, hedge text markers
+                # (e.g. "FARM SECTION"), or both phase account numbers are present — not only
+                # numeric Hedge Result cells (farming rows often use Prop Day instead).
+                new_row_strict_mode = (
+                    is_new_row
+                    and not has_hedge_value_local
+                    and not has_day_value_local
+                    and not has_hedge_text_marker
+                    and not has_both_phase_accounts
+                    and not is_live_funded_numeric_row
+                )
 
                 # If the row is explicitly "not started" but hedge values already exist, flag.
                 #
@@ -9327,15 +9353,19 @@ def run_quality_scan(target_client=None):
                     except Exception:
                         _weekday_ok = False
 
-                    # Farming-phase weekday in Prop Day cells, eval + funded both "pass", hedges still empty:
-                    # treat as intentional workflow state — do not flag "not started".
+                    # Farming-phase weekday or prop-day P&L in Prop Day cells, eval + funded both "pass",
+                    # hedges still empty: treat as intentional workflow state — do not flag "not started".
                     _pass_propday_weekday_ok = False
                     if status_p1 == 'pass' and status_p2 == 'pass' and not has_hedge_value_local:
                         try:
                             for _i in range(1, 51):
-                                _c = f'Prop Day {_i}'
-                                _v = str(ev.get(_c, '') or '').strip().lower()
-                                if _v and any(tok in _v for tok in _weekday_tokens):
+                                _v = str(ev.get(f'Prop Day {_i}', '') or '').strip().lower()
+                                if not _v:
+                                    continue
+                                if any(tok in _v for tok in _weekday_tokens):
+                                    _pass_propday_weekday_ok = True
+                                    break
+                                if abs(_parse_nonzero(_v)) > 1e-9:
                                     _pass_propday_weekday_ok = True
                                     break
                         except Exception:
