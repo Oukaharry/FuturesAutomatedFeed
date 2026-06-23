@@ -18,7 +18,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.8.7"  # Default random firm bias; ML signals password-gated
+APP_VERSION = "1.8.9"  # Safe sheet-cell parsing for load trades; clearer auth errors
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -1935,7 +1935,14 @@ class TradeOpssAIApp:
                         self.root.after(0, lambda: self._login_fail(f"Access Denied: {msg}"))
                         return
                 else:
-                    self.root.after(0, lambda: self._login_fail(f"Server error ({response.status_code})"))
+                    msg = f"Server error ({response.status_code})"
+                    try:
+                        api_msg = response.json().get("message")
+                        if api_msg:
+                            msg = api_msg
+                    except Exception:
+                        pass
+                    self.root.after(0, lambda m=msg: self._login_fail(m))
                     return
             except requests.exceptions.ConnectionError:
                 self.root.after(0, lambda: self._login_fail("Cannot connect to server"))
@@ -2941,9 +2948,9 @@ class TradeOpssAIApp:
 
                 if all_evals and billing_by_acct:
                     for ev in all_evals:
-                        acct_challenge = (ev.get("Account #") or "").strip()
-                        acct_funded = (ev.get("Account #.1") or "").strip()
-                        existing_fee = (ev.get("Fee") or "").strip()
+                        acct_challenge = self._cell(ev.get("Account #"))
+                        acct_funded = self._cell(ev.get("Account #.1"))
+                        existing_fee = self._cell(ev.get("Fee"))
                         fee_filled = False
                         if existing_fee:
                             try:
@@ -2968,9 +2975,9 @@ class TradeOpssAIApp:
                         if matched:
                             billing_fee = f"${matched['amount']:.2f}"
                             ev["Fee"] = billing_fee
-                            if not (ev.get("Date Purchased") or "").strip() and matched["date"]:
+                            if not self._cell(ev.get("Date Purchased")) and matched["date"]:
                                 ev["Date Purchased"] = matched["date"]
-                            if not (ev.get("Date Started") or "").strip() and matched["date"]:
+                            if not self._cell(ev.get("Date Started")) and matched["date"]:
                                 ev["Date Started"] = matched["date"]
                             filled_count += 1
 
@@ -5111,7 +5118,7 @@ class TradeOpssAIApp:
         """Align dashboard Prop Firm with account prefix when they disagree."""
         if not self.prop_firm_mgr or not isinstance(ev, dict):
             return
-        acct = (ev.get("Account #.1") or ev.get("Account #") or "").strip()
+        acct = self._cell(ev.get("Account #.1") or ev.get("Account #"))
         if len(acct) < 4:
             return
         detected = self.prop_firm_mgr.detect_prop_firm(acct)
@@ -5187,18 +5194,18 @@ class TradeOpssAIApp:
 
     def _detect_eval_phase(self, ev):
         """Determine current phase display name and blueprint key for an evaluation."""
-        challenge_status = (ev.get("Status P1", "") or "").strip().lower()
-        funded_status = (ev.get("Status", "") or "").strip().lower()
-        has_funded_acct = bool((ev.get("Account #.1", "") or "").strip())
+        challenge_status = self._cell(ev.get("Status P1")).lower()
+        funded_status = self._cell(ev.get("Status")).lower()
+        has_funded_acct = bool(self._cell(ev.get("Account #.1")))
         passed_funded = self._has_passed_to_funded(ev)
 
         # Check if farming data exists — must have BOTH the farming marker
         # AND actual Hedge Day cell data for THIS account (not just sheet columns)
-        has_farming_marker = bool((ev.get("Prop Day 1", "") or "").strip())
+        has_farming_marker = bool(self._cell(ev.get("Prop Day 1")))
         has_hedge_day_data = False
         if has_farming_marker:
             for i in range(1, 35):
-                val = (ev.get(f"Hedge Day {i}", "") or "").strip()
+                val = self._cell(ev.get(f"Hedge Day {i}"))
                 if val and val not in ("—", "-"):
                     has_hedge_day_data = True
                     break
@@ -5404,14 +5411,14 @@ class TradeOpssAIApp:
 
     def _has_passed_to_funded(self, ev) -> bool:
         """True when the row has both challenge and funded account numbers."""
-        ch = (ev.get("Account #") or "").strip()
-        fu = (ev.get("Account #.1") or "").strip()
+        ch = self._cell(ev.get("Account #"))
+        fu = self._cell(ev.get("Account #.1"))
         return bool(ch and fu)
 
     def _primary_trade_account(self, ev) -> str:
         """Account number to trade — funded leg when challenge is already passed."""
-        ch = (ev.get("Account #") or "").strip()
-        fu = (ev.get("Account #.1") or "").strip()
+        ch = self._cell(ev.get("Account #"))
+        fu = self._cell(ev.get("Account #.1"))
         if self._has_passed_to_funded(ev):
             return fu
         return fu or ch or "—"
@@ -5430,17 +5437,25 @@ class TradeOpssAIApp:
         Example: row A has eval + funded (passed); row B still lists only the
         old eval account — row B must not appear in Active Trades.
         """
-        ch = (ev.get("Account #") or "").strip()
-        fu = (ev.get("Account #.1") or "").strip()
+        ch = self._cell(ev.get("Account #"))
+        fu = self._cell(ev.get("Account #.1"))
         if not ch or fu:
             return False
         for other in all_evals:
             if other is ev or other.get("_deleted"):
                 continue
-            if ((other.get("Account #") or "").strip() == ch
-                    and (other.get("Account #.1") or "").strip()):
+            if (self._cell(other.get("Account #")) == ch
+                    and self._cell(other.get("Account #.1"))):
                 return True
         return False
+
+    @staticmethod
+    def _cell(value, default=""):
+        """Sheet/JSON cell → stripped string (values may be int/float from DB import)."""
+        if value is None:
+            return default
+        s = str(value).strip()
+        return s if s else default
 
     @staticmethod
     def _acct_suffix(acct: str, n: int = 5) -> str:
@@ -5449,8 +5464,8 @@ class TradeOpssAIApp:
 
     def _is_funded_only_row(self, ev) -> bool:
         """Row lists only Account #.1 (funded leg) — no challenge number."""
-        ch = (ev.get("Account #") or "").strip()
-        fu = (ev.get("Account #.1") or "").strip()
+        ch = self._cell(ev.get("Account #"))
+        fu = self._cell(ev.get("Account #.1"))
         return bool(fu) and not ch
 
     def _on_funded_leg(self, ev) -> bool:
@@ -5459,13 +5474,13 @@ class TradeOpssAIApp:
 
     def _funded_leg_exhausted(self, ev) -> bool:
         """Funded hedge track finished — dollar results, no day placeholders left."""
-        if not (ev.get("Account #.1") or "").strip():
+        if not self._cell(ev.get("Account #.1")):
             return False
         fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
         placeholders = 0
         results = 0
         for f in fields:
-            val = (ev.get(f) or "").strip()
+            val = self._cell(ev.get(f))
             if not val or val in ("—", "-"):
                 continue
             if self._parse_day_token(val) is not None:
@@ -5485,8 +5500,8 @@ class TradeOpssAIApp:
         for ev in all_evals:
             if ev.get("_deleted"):
                 continue
-            ch = (ev.get("Account #") or "").strip()
-            fu = (ev.get("Account #.1") or "").strip()
+            ch = self._cell(ev.get("Account #"))
+            fu = self._cell(ev.get("Account #.1"))
             if ch and fu:
                 graduated_ch.add(ch)
                 graduated_ch.add(self._acct_suffix(ch))
@@ -5501,8 +5516,8 @@ class TradeOpssAIApp:
         The dashboard may still have a stale challenge-only row OR a completed
         funded row — only the current, tradeable leg should appear once.
         """
-        ch = (ev.get("Account #") or "").strip()
-        fu = (ev.get("Account #.1") or "").strip()
+        ch = self._cell(ev.get("Account #"))
+        fu = self._cell(ev.get("Account #.1"))
 
         if self._on_funded_leg(ev) and self._funded_leg_exhausted(ev):
             return True
@@ -5556,7 +5571,7 @@ class TradeOpssAIApp:
         """Funded-stage rows: only Account #.1 columns, must have today's slot."""
         if self._funded_leg_exhausted(ev):
             return False
-        funded_st = (ev.get("Status") or "").strip().lower()
+        funded_st = self._cell(ev.get("Status")).lower()
         if funded_st and any(kw in funded_st for kw in (
                 "complete", "completed", "paid", "payout", "closed",
                 *self._INACTIVE_KEYWORDS)):
@@ -5653,7 +5668,7 @@ class TradeOpssAIApp:
         # Build ordered list: detected phase first, then all others as fallback
         primary_fields = self._get_phase_fields(current_phase)
         search_order = [(current_phase, primary_fields)]
-        has_funded_acct = bool((ev.get("Account #.1", "") or "").strip())
+        has_funded_acct = bool(self._cell(ev.get("Account #.1")))
         for phase_name, field_list in self._ALL_PHASE_FIELD_SETS:
             if field_list == primary_fields:
                 continue
@@ -5721,7 +5736,7 @@ class TradeOpssAIApp:
             current_phase = "Funded"
             primary_fields = self._get_phase_fields(current_phase)
             search_order = [(current_phase, primary_fields)]
-        has_funded_acct = bool((ev.get("Account #.1", "") or "").strip())
+        has_funded_acct = bool(self._cell(ev.get("Account #.1")))
         for phase_name, field_list in self._ALL_PHASE_FIELD_SETS:
             if field_list == primary_fields:
                 continue
@@ -6173,10 +6188,10 @@ class TradeOpssAIApp:
         
         Uses substring matching so 'Fail', 'Failed', 'Breached' etc. all caught.
         """
-        p1 = (ev.get("Status P1", "") or "").strip().lower()
-        funded = (ev.get("Status", "") or "").strip().lower()
-        has_funded_acct = bool((ev.get("Account #.1", "") or "").strip())
-        has_challenge_acct = bool((ev.get("Account #", "") or "").strip())
+        p1 = self._cell(ev.get("Status P1")).lower()
+        funded = self._cell(ev.get("Status")).lower()
+        has_funded_acct = bool(self._cell(ev.get("Account #.1")))
+        has_challenge_acct = bool(self._cell(ev.get("Account #")))
 
         p1_inactive = any(kw in p1 for kw in self._INACTIVE_KEYWORDS) if p1 else False
         funded_inactive = any(kw in funded for kw in (*self._INACTIVE_KEYWORDS, "complete")) if funded else False
@@ -6267,11 +6282,11 @@ class TradeOpssAIApp:
             for ev in evaluations:
                 if ev.get("_deleted"):
                     continue
-                a1 = (ev.get("Account #.1") or "").strip().lower()
-                a0 = (ev.get("Account #") or "").strip().lower()
+                a1 = self._cell(ev.get("Account #.1")).lower()
+                a0 = self._cell(ev.get("Account #")).lower()
                 if acct_lower not in (a1, a0):
                     continue
-                cur = str(ev.get(field_name, "") or "").strip()
+                cur = self._cell(ev.get(field_name))
                 # Only mark cells that still hold a day-name token. Skip empty
                 # cells and skip cells that already contain a real value.
                 if self._parse_day_token(cur) is None:
@@ -6339,8 +6354,8 @@ class TradeOpssAIApp:
             for ev in data.get("evaluations", []):
                 if ev.get("_deleted"):
                     continue
-                acct1 = (ev.get("Account #.1", "") or "").strip()
-                acct0 = (ev.get("Account #", "") or "").strip()
+                acct1 = self._cell(ev.get("Account #.1"))
+                acct0 = self._cell(ev.get("Account #"))
                 primary = self._primary_trade_account(ev)
                 if acct_num == primary:
                     pass
@@ -6429,12 +6444,12 @@ class TradeOpssAIApp:
                         continue
 
                     # Must have at least one account number
-                    if not (ev.get("Account #", "") or "").strip() and not (ev.get("Account #.1", "") or "").strip():
+                    if not self._cell(ev.get("Account #")) and not self._cell(ev.get("Account #.1")):
                         skipped_count += 1
                         continue
 
                     # Dual-account rows must have a funded account to trade
-                    if self._has_passed_to_funded(ev) and not (ev.get("Account #.1", "") or "").strip():
+                    if self._has_passed_to_funded(ev) and not self._cell(ev.get("Account #.1")):
                         skipped_dual += 1
                         continue
 
@@ -6500,11 +6515,11 @@ class TradeOpssAIApp:
                 client_name = ((data.get("identity") or {}).get("client") or "").strip().lower()
                 chosen_hedge = None
                 for hedge in hedge_accounts:
-                    if str(hedge.get("platform") or "").strip().upper() != "MT5":
+                    if self._cell(hedge.get("platform")).upper() != "MT5":
                         continue
-                    if not ((hedge.get("login") or "").strip() and (hedge.get("password") or "").strip() and (hedge.get("server") or "").strip()):
+                    if not (self._cell(hedge.get("login")) and self._cell(hedge.get("password")) and self._cell(hedge.get("server"))):
                         continue
-                    hedge_name = str(hedge.get("name") or "").strip().lower()
+                    hedge_name = self._cell(hedge.get("name")).lower()
                     if client_name and hedge_name == client_name:
                         chosen_hedge = hedge
                         break
@@ -6512,14 +6527,14 @@ class TradeOpssAIApp:
                         chosen_hedge = hedge
 
                 if chosen_hedge:
-                    mt5_login = (chosen_hedge.get("login") or "").strip()
-                    mt5_pass = (chosen_hedge.get("password") or "").strip()
-                    mt5_server = (chosen_hedge.get("server") or "").strip()
+                    mt5_login = self._cell(chosen_hedge.get("login"))
+                    mt5_pass = self._cell(chosen_hedge.get("password"))
+                    mt5_server = self._cell(chosen_hedge.get("server"))
                 else:
                     mt5_creds = data.get("mt5_credentials") or {}
-                    mt5_login = (mt5_creds.get("login") or "").strip()
-                    mt5_pass = (mt5_creds.get("password") or "").strip()
-                    mt5_server = (mt5_creds.get("server") or "").strip()
+                    mt5_login = self._cell(mt5_creds.get("login"))
+                    mt5_pass = self._cell(mt5_creds.get("password"))
+                    mt5_server = self._cell(mt5_creds.get("server"))
 
                 if mt5_login and mt5_pass and mt5_server:
                     def _fill_mt5(login=mt5_login, pwd=mt5_pass, srv=mt5_server):
@@ -6612,7 +6627,7 @@ class TradeOpssAIApp:
                 firm_code = self._resolve_firm_code(prop_firm_name)
                 acct_num = self._primary_trade_account(ev)
                 if self._has_passed_to_funded(ev):
-                    ch = (ev.get("Account #") or "").strip()
+                    ch = self._cell(ev.get("Account #"))
                     fu = acct_num
                     self.log(
                         f"   📌 Lifecycle row → funded {fu[-8:] if len(fu) > 8 else fu} only "
@@ -7213,9 +7228,9 @@ class TradeOpssAIApp:
                 # ── Auto-status: set "In Progress" when trade goes out ──
                 _ev = row_data.get("eval")
                 if _ev:
-                    _has_funded = bool((_ev.get("Account #.1") or "").strip())
+                    _has_funded = bool(self._cell(_ev.get("Account #.1")))
                     _sf = "Status" if _has_funded else "Status P1"
-                    _cur = (_ev.get(_sf) or "").strip().lower()
+                    _cur = self._cell(_ev.get(_sf)).lower()
                     if not _cur or _cur in ("not started", "in progress", ""):
                         _ev[_sf] = "In Progress"
                         self.log(f"🔄 Auto-status: {acct_num} → {_sf}='In Progress'")
@@ -8499,9 +8514,9 @@ class TradeOpssAIApp:
                     if not RELEASE_DISABLE_AUTO_STATUS_UPDATES:
                         _ev = row_data.get("eval")
                         if _ev:
-                            _has_funded = bool((row_data.get("eval", {}).get("Account #.1") or "").strip())
+                            _has_funded = bool(self._cell(row_data.get("eval", {}).get("Account #.1")))
                             _sf = "Status" if _has_funded else "Status P1"
-                            _cur = (_ev.get(_sf) or "").strip().lower()
+                            _cur = self._cell(_ev.get(_sf)).lower()
                             # Only set In Progress if status is empty, Not Started, or already In Progress
                             if not _cur or _cur in ("not started", "in progress", ""):
                                 _ev[_sf] = "In Progress"
@@ -9613,10 +9628,10 @@ class TradeOpssAIApp:
                 if ev_canonical != canonical_firm and ev_firm != firm_name:
                     continue
 
-                acct_challenge = (ev.get("Account #") or "").strip()
-                acct_funded = (ev.get("Account #.1") or "").strip()
-                existing_fee = (ev.get("Fee") or "").strip()
-                existing_date = (ev.get("Date Purchased") or "").strip()
+                acct_challenge = self._cell(ev.get("Account #"))
+                acct_funded = self._cell(ev.get("Account #.1"))
+                existing_fee = self._cell(ev.get("Fee"))
+                existing_date = self._cell(ev.get("Date Purchased"))
 
                 fee_filled = False
                 if existing_fee:
@@ -9657,7 +9672,7 @@ class TradeOpssAIApp:
 
                 # Fallback: match by Account Size when Account # is empty
                 if not matched and billing_by_size:
-                    ev_size_str = (ev.get("Account Size") or "").strip()
+                    ev_size_str = self._cell(ev.get("Account Size"))
                     import re as _re
                     size_match = _re.search(r'(\d[\d,]*)', ev_size_str.replace(",", ""))
                     if size_match:
@@ -9676,7 +9691,7 @@ class TradeOpssAIApp:
                         ev["Date Purchased"] = matched["date"]
                         changes.append(f"DatePurchased={matched['date']}")
                     # Also set Date Started from billing date when empty
-                    existing_start = (ev.get("Date Started") or "").strip()
+                    existing_start = self._cell(ev.get("Date Started"))
                     if not existing_start and matched["date"]:
                         ev["Date Started"] = matched["date"]
                         changes.append(f"DateStarted={matched['date']}")
@@ -9964,10 +9979,10 @@ class TradeOpssAIApp:
             if not ev or ev.get("_deleted"):
                 continue
 
-            acct_challenge = (ev.get("Account #") or "").strip()
-            acct_funded = (ev.get("Account #.1") or "").strip()
-            current_p1 = (ev.get("Status P1") or "").strip().lower()
-            current_status = (ev.get("Status") or "").strip().lower()
+            acct_challenge = self._cell(ev.get("Account #"))
+            acct_funded = self._cell(ev.get("Account #.1"))
+            current_p1 = self._cell(ev.get("Status P1")).lower()
+            current_status = self._cell(ev.get("Status")).lower()
 
             # Determine which account and field to check
             has_funded = bool(acct_funded)
@@ -10204,10 +10219,10 @@ class TradeOpssAIApp:
                 if not firm_match:
                     continue
 
-                acct_challenge = (ev.get("Account #") or "").strip()
-                acct_funded = (ev.get("Account #.1") or "").strip()
-                current_status_p1 = (ev.get("Status P1") or "").strip().lower()
-                current_status = (ev.get("Status") or "").strip().lower()
+                acct_challenge = self._cell(ev.get("Account #"))
+                acct_funded = self._cell(ev.get("Account #.1"))
+                current_status_p1 = self._cell(ev.get("Status P1")).lower()
+                current_status = self._cell(ev.get("Status")).lower()
 
                 self.root.after(0, lambda ac=acct_challenge, af=acct_funded, sp=current_status_p1, s=current_status:
                     self.log(f"🔍 Breach eval: Acct#='{ac}' Acct#.1='{af}' P1='{sp}' Status='{s}'"))
@@ -10236,7 +10251,7 @@ class TradeOpssAIApp:
 
                 if not matched_info:
                     # Fallback: match by Account Size to any mapping entry
-                    ev_size_str = (ev.get("Account Size") or "").strip()
+                    ev_size_str = self._cell(ev.get("Account Size"))
                     import re as _re
                     size_match = _re.search(r'(\d[\d,]*)', ev_size_str.replace(",", ""))
                     if size_match:

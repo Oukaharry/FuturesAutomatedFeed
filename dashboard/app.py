@@ -4949,8 +4949,8 @@ def api_client_data():
         # Mark each evaluation with is_active using the same logic as data_processor
         evaluations = client_data.get("evaluations", [])
         for ev in evaluations:
-            status_p1 = (ev.get("Status P1") or "").strip()
-            status_funded = (ev.get("Status") or "").strip()
+            status_p1 = str(ev.get("Status P1") or "").strip()
+            status_funded = str(ev.get("Status") or "").strip()
             is_p1_fail = status_p1 == "Fail"
             is_funded_fail = status_funded == "Fail"
             is_funded_completed = status_funded == "Completed"
