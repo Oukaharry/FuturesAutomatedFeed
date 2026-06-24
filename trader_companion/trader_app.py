@@ -5133,7 +5133,7 @@ class TradeOpssAIApp:
     _FAILED_STATUSES = {"fail", "failed", "breach", "delete", "deleted", "closed", "sl", "ended", "lost"}
 
     # Keywords for substring matching (catches "Fail", "Failed", "Breached", etc.)
-    _INACTIVE_KEYWORDS = ("fail", "breach", "delete", "closed", "sl", "ended", "lost")
+    _INACTIVE_KEYWORDS = ("fail", "breach", "delete", "closed", "ended", "lost")
 
     # ── Funded-phase starting balance map ─────────────────────────────
     # Some prop firms reset the funded balance to a value that differs from

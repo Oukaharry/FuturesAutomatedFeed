@@ -21,6 +21,7 @@ import hashlib
 import re
 from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
+from dashboard.eval_status import is_eval_phase_failed, is_funded_phase_ended
 from dashboard.push_policy import is_client_push_blocked, push_blocked_message
 
 from config.hierarchy import (
@@ -2482,10 +2483,9 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 # --- Active account check: skip inactive evals for farming ---
                 _s_p1 = str(best_eval.get('Status P1', '')).lower()
                 _s_funded = str(best_eval.get('Status', '') or best_eval.get('Status Funded', '')).lower()
-                _inactive_kw = ('fail', 'breach', 'sl', 'closed', 'delete')
                 _is_inactive = (
-                    any(kw in _s_p1 for kw in _inactive_kw) or
-                    any(kw in _s_funded for kw in (*_inactive_kw, 'complete'))
+                    is_eval_phase_failed(_s_p1) or
+                    is_funded_phase_ended(_s_funded)
                 )
                 if _is_inactive:
                     match_log.append(f"   ⏩ Skipping FA for inactive eval row {row_num} (P1='{_s_p1}', Funded='{_s_funded}')")
@@ -5008,9 +5008,9 @@ def api_client_data():
         for ev in evaluations:
             status_p1 = str(ev.get("Status P1") or "").strip()
             status_funded = str(ev.get("Status") or "").strip()
-            is_p1_fail = status_p1 == "Fail"
-            is_funded_fail = status_funded == "Fail"
-            is_funded_completed = status_funded == "Completed"
+            is_p1_fail = is_eval_phase_failed(status_p1)
+            is_funded_fail = is_eval_phase_failed(status_funded)
+            is_funded_completed = 'complete' in str(status_funded).strip().lower()
             is_funded_ended = is_funded_fail or is_funded_completed
             ev["_is_active"] = not is_p1_fail and not is_funded_ended
 
@@ -8912,9 +8912,7 @@ def _eval_row_needs_hedge_or_prop_tabs(ev):
     status_p2 = str(ev.get('Status', '') or ev.get('Status Funded', '') or '').strip().lower()
     if 'delete' in status_p1 or 'delete' in status_p2:
         return False
-    _inactive_p1 = ('fail', 'breach', 'delete', 'closed', 'sl')
-    _inactive_p2 = ('fail', 'breach', 'delete', 'closed', 'sl', 'complete', 'completed')
-    if any(t in status_p1 for t in _inactive_p1) or any(t in status_p2 for t in _inactive_p2):
+    if is_eval_phase_failed(status_p1) or is_funded_phase_ended(status_p2):
         return False
     if _max_out_row_is_live_numeric_account(ev):
         return True
@@ -9172,9 +9170,7 @@ def run_quality_scan(target_client=None):
                     continue
                 # Match the dashboard's "Active Only" filter semantics:
                 # treat rows as inactive if either phase status indicates a terminal/closed state.
-                _inactive_tokens_p1 = ('fail', 'breach', 'closed', 'sl')
-                _inactive_tokens_p2 = ('fail', 'breach', 'closed', 'sl', 'complete', 'completed')
-                is_active = (not any(t in status_p1 for t in _inactive_tokens_p1)) and (not any(t in status_p2 for t in _inactive_tokens_p2))
+                is_active = (not is_eval_phase_failed(status_p1)) and (not is_funded_phase_ended(status_p2))
 
                 prop_firm = str(ev.get('Prop Firm', '') or '').strip()
                 acct_size = str(ev.get('Account Size', '') or '').strip()
@@ -9593,8 +9589,8 @@ def run_quality_scan(target_client=None):
                 # Any other weekday token (e.g. yesterday still in a cell) → Downtime detected.
                 # Rows that only hold P&L numbers in those columns (no weekday letters) skip the
                 # "must show current day" rule when at least one such cell is non-zero currency.
-                _inactive_p1 = any(k in status_p1 for k in ('fail', 'breach', 'delete', 'closed', 'sl'))
-                _inactive_p2 = any(k in status_p2 for k in ('fail', 'breach', 'delete', 'closed', 'sl', 'complete'))
+                _inactive_p1 = is_eval_phase_failed(status_p1)
+                _inactive_p2 = is_funded_phase_ended(status_p2)
                 _day_columns = [
                     k for k in ev.keys()
                     if isinstance(k, str)

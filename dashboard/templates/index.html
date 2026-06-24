@@ -4092,6 +4092,24 @@
             const n = parseFloat(String(v).replace(/[$,]/g, '').trim());
             return isNaN(n) ? 0 : n;
         }
+
+        /** Hit TP1–10 / Hit SL1–10 = in-progress, not terminal failure. */
+        function isHitTpSlStatus(status) {
+            const v = String(status || '').trim().toLowerCase();
+            return /^hit (tp|sl)\d+$/.test(v);
+        }
+        function isTerminalEvalStatus(status, includeComplete = false) {
+            const v = String(status || '').trim().toLowerCase();
+            if (!v || v === '-' || v === 'not started' || v === 'in progress') return false;
+            if (isHitTpSlStatus(v)) return false;
+            if (v.includes('delete')) return true;
+            if (v.includes('fail')) return true;
+            if (v.includes('breach')) return true;
+            if (v.includes('closed')) return true;
+            if (includeComplete && v.includes('complete')) return true;
+            return false;
+        }
+
         function computeHedgeNet(ev) {
             const hr1 = ev['Hedge Result 1'];
             if (hr1 == null || String(hr1).trim() === '') return '';
@@ -4463,12 +4481,10 @@
                             // If Eval is explicitly failed/closed, hide it.
                             // Note: 'deleted' status text is intentionally NOT hidden — rows marked deleted by status should
                             // remain visible so superadmins can identify and review them before physically deleting.
-                            if (statusP1.includes('fail') || statusP1.includes('breach') || statusP1.includes('closed') || statusP1.includes('sl')) return;
+                            if (isTerminalEvalStatus(statusP1)) return;
                             
                             // 2. Check Funded Phase Status
-                            // If Funded is explicitly failed/closed/completed, hide it.
-                            // Note: 'deleted' status text is intentionally NOT hidden (see above).
-                            if (statusFunded.includes('fail') || statusFunded.includes('breach') || statusFunded.includes('closed') || statusFunded.includes('sl') || statusFunded.includes('complete')) return;
+                            if (isTerminalEvalStatus(statusFunded, true)) return;
                             
                             // 3. Special Case: Eval Completed but Funded Not Started (or just created)
                             // If P1 is completed, we rely on Funded status.
@@ -4536,14 +4552,13 @@
                     const s2 = (getVal('Status') || '').toString().toLowerCase();
 
                     // Priority Logic: Fail > Deleted > Complete > TP/Progress > Not Started > Pass
-                    if (s1.includes('fail') || s1.includes('breach') || s1.includes('sl') ||
-                        s2.includes('fail') || s2.includes('breach') || s2.includes('sl')) {
+                    if (isTerminalEvalStatus(s1) || isTerminalEvalStatus(s2)) {
                         row.classList.add('row-fail');
-                    } else if (s2.includes('delete') || s2.includes('closed') || s1.includes('delete')) {
+                    } else if (s2.includes('delete') || s1.includes('delete')) {
                         row.classList.add('row-deleted');
                     } else if (s2.includes('complete')) {
                         row.classList.add('row-complete');
-                    } else if (s2.includes('tp') || s2.includes('payout') || s2.includes('progress') || s1.includes('tp')) {
+                    } else if (isHitTpSlStatus(s1) || isHitTpSlStatus(s2) || s2.includes('tp') || s2.includes('payout') || s2.includes('progress') || s1.includes('tp')) {
                         // TP1/Progress -> Orange
                         row.classList.add('row-tp');
                     } else if (s1.includes('progress')) {
@@ -5092,7 +5107,7 @@
                 f.evals++;
                 const st = String(ev['Status P1']||'').toLowerCase();
                 const st2 = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
-                if (['fail','breach','sl'].some(k=>st.includes(k)||st2.includes(k))) f.failed++;
+                if (isTerminalEvalStatus(st) || isTerminalEvalStatus(st2)) f.failed++;
                 else if (['complete','funded','payout','live'].some(k=>st.includes(k)||st2.includes(k))) f.passed++;
                 else if (st) f.active++;
                 f.fees += pc(ev['Fee']) + pc(ev['Activation Fee']);
@@ -5256,8 +5271,8 @@
                             const sfL = status_funded.toLowerCase();
 
                             const is_deleted = sp1L.includes('deleted') || sfL.includes('deleted');
-                            const is_p1_fail = statusHas(sp1L, ['fail', 'breach', 'sl', 'closed']);
-                            const is_funded_fail = statusHas(sfL, ['fail', 'breach', 'sl', 'closed']);
+                            const is_p1_fail = isTerminalEvalStatus(sp1L);
+                            const is_funded_fail = isTerminalEvalStatus(sfL);
                             const is_funded_completed = sfL.includes('complete');
                             const is_funded_ended = is_funded_fail || is_funded_completed;
 
@@ -6920,8 +6935,8 @@
             if (type === 'Status' || type === 'Status P1') {
                 const v = (value || '').toLowerCase();
                 if (v.includes('active') || v.includes('pass') || v.includes('funded')) colorStyle = "color: #27ae60;"; // Greenish
-                else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) colorStyle = "color: #c0392b;"; // Red
-                else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) colorStyle = "color: #f39c12;"; // Orange
+                else if (isTerminalEvalStatus(v)) colorStyle = "color: #c0392b;"; // Red
+                else if (isHitTpSlStatus(v) || v.includes('tp') || v.includes('payout') || v.includes('progress')) colorStyle = "color: #f39c12;"; // Orange
                 else if (v.includes('complete')) colorStyle = "color: #8e44ad;"; // Purple
                 else if (v.includes('not started') || v.includes('ready')) colorStyle = "color: #3b82f6;"; // Blue
             } else if (type === 'Prop Firm') {
@@ -6952,9 +6967,9 @@
                     const v = (opt || '').toLowerCase();
                     if (v.includes('active') || v.includes('pass') || v.includes('funded')) {
                         itemStyle = "color: #27ae60; font-weight: 500;"; // Greenish
-                    } else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) {
+                    } else if (isTerminalEvalStatus(v)) {
                         itemStyle = "color: #c0392b; font-weight: 500;"; // Red
-                    } else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) {
+                    } else if (isHitTpSlStatus(v) || v.includes('tp') || v.includes('payout') || v.includes('progress')) {
                         itemStyle = "color: #f39c12; font-weight: 500;"; // Orange
                     } else if (v.includes('complete')) {
                         itemStyle = "color: #8e44ad; font-weight: 500;"; // Purple
@@ -7063,8 +7078,8 @@
                             const v = value.toLowerCase();
                             let color = "";
                             if (v.includes('active') || v.includes('pass') || v.includes('funded')) color = "#27ae60";
-                            else if (v.includes('fail') || v.includes('breach') || v.includes('closed') || v.includes('sl')) color = "#c0392b";
-                            else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) color = "#f39c12";
+                            else if (isTerminalEvalStatus(v, key === 'Status')) color = "#c0392b";
+                            else if (isHitTpSlStatus(v) || v.includes('tp') || v.includes('payout') || v.includes('progress')) color = "#f39c12";
                             else if (v.includes('complete')) color = "#8e44ad";
                             else if (v.includes('not started') || v.includes('ready')) color = "#3b82f6"; // Blue
                             
@@ -7095,9 +7110,9 @@
                                     
                                     // Re-evaluating just based on the new value is usually fine for immediate feedback.
                                     if (v.includes('delete')) row.classList.add('row-deleted');
-                                    else if (v.includes('fail') || v.includes('breach') || v.includes('sl') || v.includes('closed')) row.classList.add('row-fail');
+                                    else if (isTerminalEvalStatus(v, key === 'Status')) row.classList.add('row-fail');
                                     else if (v.includes('complete')) row.classList.add('row-complete');
-                                    else if (v.includes('tp') || v.includes('payout') || v.includes('progress')) row.classList.add('row-tp');
+                                    else if (isHitTpSlStatus(v) || v.includes('tp') || v.includes('payout') || v.includes('progress')) row.classList.add('row-tp');
                                     else if (v.includes('not started') || v.includes('ready')) row.classList.add('row-not-started');
                                     else if (v.includes('pass') || v.includes('active') || v.includes('funded')) row.classList.add('row-pass');
                                 }
@@ -7419,9 +7434,7 @@
             // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
             const showActiveOnly = document.getElementById('activeFilter').checked;
             if (showActiveOnly && (key === 'Status' || key === 'Status P1')) {
-                const v = (value || '').toLowerCase();
-                const inactiveKeywords = ['fail', 'breach', 'sl', 'closed', 'delete', 'complete'];
-                if (inactiveKeywords.some(kw => v.includes(kw))) {
+                if (isTerminalEvalStatus(value, key === 'Status')) {
                     renderEvaluationsTable();
                 }
             }
@@ -7541,8 +7554,8 @@
                 if (!pf && !sz) return;
 
                 const sp1 = (ev['Status P1'] || '').trim().toLowerCase();
-                const isActive = sp1 && !['fail','breach','sl','completed','complete'].includes(sp1);
-                const isClosed = ['fail','breach','sl','completed','complete'].includes(sp1);
+                const isActive = sp1 && !isTerminalEvalStatus(sp1);
+                const isClosed = isTerminalEvalStatus(sp1);
 
                 if (!sp1 && (pf || sz))
                     warnings.push({ row, msg: 'Status P1 is blank' });

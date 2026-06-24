@@ -6,6 +6,9 @@ from io import StringIO
 import io
 import math
 import re
+
+from dashboard.eval_status import is_eval_phase_failed, is_funded_phase_ended
+
 try:
     import openpyxl
     OPENPYXL_AVAILABLE = True
@@ -1083,10 +1086,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             
             # Normalize status lifecycle buckets (case-insensitive, tolerant of variants)
             is_deleted = ('deleted' in status_p1_lower) or ('deleted' in status_funded_lower)
-            is_p1_fail = any(k in status_p1_lower for k in ('fail', 'breach', 'sl', 'closed'))
-            is_funded_fail = any(k in status_funded_lower for k in ('fail', 'breach', 'sl', 'closed'))
-            is_funded_completed = ('complete' in status_funded_lower)
-            is_funded_ended = is_funded_fail or is_funded_completed
+            is_p1_fail = is_eval_phase_failed(status_p1)
+            is_funded_fail = is_eval_phase_failed(status_funded)
+            is_funded_completed = 'complete' in status_funded_lower
+            is_funded_ended = is_funded_phase_ended(status_funded)
             is_in_progress = (not is_deleted) and (not is_p1_fail) and (not is_funded_ended)
 
             # === CASHFLOW - IN PROGRESS (stored key name; meaning = whole client / all accounts) ===
