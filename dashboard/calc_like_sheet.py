@@ -48,7 +48,7 @@ def calc_row_values(row):
     
     total_hedge = hedge_p1 + hedge_funded + hedge_days
     
-    payouts = sum(parse_val(row.get(f'Payout {i}', 0)) for i in range(1, 5))
+    payouts = sum(parse_val(row.get(f'Payout {i}', 0)) for i in range(1, 9))
     farm = parse_val(row.get('Farming Net', 0))
     
     return fee, total_hedge, payouts, farm

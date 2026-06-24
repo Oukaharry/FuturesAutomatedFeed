@@ -1384,6 +1384,7 @@ def normalize_evaluations(evaluations):
 DASHBOARD_OWNED_EVAL_KEYS = frozenset({
     'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
     'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+    'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
     'Fee', 'Activation Fee',
     'Status', 'Status Funded', 'Status P1',
     'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
@@ -1578,7 +1579,7 @@ def recalculate_hedge_nets(evaluations):
         activation_fee = _num(ev.get('Activation Fee'))
 
         if status == 'Completed':
-            sum_payouts = sum(_num(ev.get(f'Payout {i}')) for i in range(1, 7))
+            sum_payouts = sum(_num(ev.get(f'Payout {i}')) for i in range(1, 9))
             sum_days = sum(_num(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
             ev['Hedge Net.1'] = sum_payouts + sum_funded + sum_phase1 - fee - activation_fee + sum_days
         elif status == 'Fail':
@@ -4290,7 +4291,7 @@ def get_profit_splits():
             h_days = round(sum(parse_currency(ev.get(c)) for c in _HEDGE_DAY_COLS), 2)
             fee = parse_currency(ev.get('Fee'))
             act = parse_currency(ev.get('Activation Fee'))
-            payouts = round(sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 7)), 2)
+            payouts = round(sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 9)), 2)
             row_hedge = round(p1 + fd, 2)
             row_farm = h_days  # pure sum of Hedge Day cols — matches sheet
             cf_pay = round(cf_pay + payouts, 2)
@@ -8633,6 +8634,8 @@ def export_client_csv():
         'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
         'Payout 1', 'Date 1', 'Payout 2', 'Date 2',
         'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
+        'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+        'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
     ] + [f'Prop Day {i}' for i in range(1, 35)] \
       + [f'Prop Progress {i}' for i in range(1, 35)] \
       + [f'Hedge Day {i}' for i in range(1, 35)]
@@ -8733,7 +8736,8 @@ def _get_row_dates(ev):
     """Extract all parseable dates from an evaluation row."""
     fields = ['Date Purchased', 'Date Started', 'Date Ended',
               'Date Started.1', 'Date Ended.1',
-              'Date 1', 'Date 2', 'Date 3', 'Date 4']
+              'Date 1', 'Date 2', 'Date 3', 'Date 4',
+              'Date 5', 'Date 6', 'Date 7', 'Date 8']
     dates = []
     for f in fields:
         d = _parse_date_str(ev.get(f, ''))
@@ -12385,6 +12389,7 @@ def update_data():
                 PAYOUT_KEYS = {
                     'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
                     'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+                    'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
                 }
                 PROTECTED_KEYS = PUSH_SOURCED_KEYS | PAYOUT_KEYS
 
