@@ -1402,6 +1402,9 @@ def _evaluation_row_merge_key(ev):
     """
     if not isinstance(ev, dict):
         return None
+    create_id = (ev.get('_create_id') or '').strip()
+    if create_id:
+        return ('_create_id', create_id)
     firm = (ev.get('Prop Firm') or '').strip().lower().replace(' ', '').replace('_', '')
     a0 = (ev.get('Account #') or '').strip().lower()
     a1 = (ev.get('Account #.1') or '').strip().lower()
@@ -1429,6 +1432,60 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
                 except (ValueError, TypeError):
                     pass
             merged[key] = existing_val
+
+
+def _find_dashboard_new_eval_rows(existing_evals, incoming_evals):
+    """Detect evaluation rows the dashboard is trying to add (CREATE).
+
+    Length-only matching fails when another save lands between refresh and CREATE,
+    which previously caused new rows to vanish silently.
+    """
+    existing = [e for e in (existing_evals or []) if isinstance(e, dict)]
+    incoming = [e for e in (incoming_evals or []) if isinstance(e, dict)]
+    existing_create_ids = {
+        str(e.get('_create_id')) for e in existing if e.get('_create_id')
+    }
+    existing_markers = {
+        str(e.get('_row_added_at')) for e in existing if e.get('_row_added_at')
+    }
+    existing_keys = {
+        k for k in (_evaluation_row_merge_key(e) for e in existing) if k
+    }
+
+    found = []
+    seen = set()
+
+    def _remember(row):
+        tok = (
+            (row.get('_create_id') and f"id:{row['_create_id']}")
+            or (row.get('_row_added_at') and f"at:{row['_row_added_at']}")
+            or (_evaluation_row_merge_key(row) and f"mk:{_evaluation_row_merge_key(row)}")
+            or f"anon:{len(found)}"
+        )
+        if tok in seen:
+            return False
+        seen.add(tok)
+        found.append(row)
+        return True
+
+    if len(incoming) > len(existing):
+        for row in incoming[len(existing):]:
+            _remember(row)
+
+    for row in incoming:
+        cid = row.get('_create_id')
+        if cid and str(cid) not in existing_create_ids:
+            _remember(row)
+            continue
+        marker = row.get('_row_added_at')
+        if marker and str(marker) not in existing_markers:
+            _remember(row)
+            continue
+        mk = _evaluation_row_merge_key(row)
+        if mk and mk not in existing_keys:
+            _remember(row)
+
+    return found
 
 
 def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fields=None):
@@ -12257,12 +12314,15 @@ def update_data():
                 if action_type == 'CREATE':
                     # Evaluations-tab "Add Account" only — hedge/prop/VPS saves must
                     # use UPDATE so we never append a phantom evaluation row.
-                    if len(evaluations) > len(existing_evals):
+                    new_rows = _find_dashboard_new_eval_rows(existing_evals, evaluations)
+                    if new_rows:
+                        import uuid as _uuid
                         now_iso = datetime.utcnow().isoformat()
-                        new_rows = evaluations[len(existing_evals):]
                         for _r in new_rows:
                             if isinstance(_r, dict) and '_row_added_at' not in _r:
                                 _r['_row_added_at'] = now_iso
+                            if isinstance(_r, dict) and not _r.get('_create_id'):
+                                _r['_create_id'] = str(_uuid.uuid4())
                             if isinstance(_r, dict):
                                 if not str(_r.get('Status P1') or '').strip():
                                     _r['Status P1'] = 'Not Started'
@@ -12280,9 +12340,22 @@ def update_data():
                             "Status": "-",
                         }
                         new_row['_row_added_at'] = datetime.utcnow().isoformat()
+                        import uuid as _uuid
+                        new_row['_create_id'] = str(_uuid.uuid4())
                         evaluations.append(new_row)
                     else:
-                        evaluations = normalize_evaluations(existing_evals)
+                        log_action(
+                            'CREATE_ROW_MISSED', user_type, user_identifier,
+                            get_remote_address(),
+                            f'{client_id}: CREATE had no detectable new rows '
+                            f'(incoming={len(evaluations or [])}, existing={len(existing_evals or [])})',
+                            False,
+                        )
+                        return jsonify({
+                            "status": "error",
+                            "message": "Could not add the new row — the page may be out of date. "
+                                       "Please refresh and try again.",
+                        }), 409
                     existing_evals = existing_data.get("evaluations", [])
                 elif action_type not in ('DELETE', 'ROLLBACK'):
                     # General safety check: block saves that would drop eval count

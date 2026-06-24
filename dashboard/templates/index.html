@@ -3533,6 +3533,9 @@
         }
         /** When a save is in flight, queue the next requested save (preserves CREATE/DELETE). */
         let _pendingEvalSaveAfterFlight = null; // { action, description } | null
+        /** Rows added via + Add that are not yet confirmed in DB (survive refresh/save races). */
+        let _pendingNewRowIds = new Set();
+        let _pendingNewRowsById = new Map();
         let _statsRenderDebounce = null; // Debounce stats recompute while editing evals
         let _lastSavedVersion = null;   // Version from last successful save
         let _pendingSaveCallback = null; // Optional callback(bool) after saveData completes
@@ -4185,7 +4188,11 @@
                         return;
                     }
 
+                    const pendingNewRows = _collectPendingNewRows(currentData.evaluations);
                     currentData = data;
+                    if (_pendingNewRowIds.size > 0 && currentData.evaluations) {
+                        currentData.evaluations = _reappendPendingNewRows(currentData.evaluations, pendingNewRows);
+                    }
                     dataLoaded = true; // mark data as ready
 
                     // Super-admin only: show Trader Companion version (if present)
@@ -4301,7 +4308,13 @@
                                         _lastSavedVersion = null;
                                     }
                                     if (d2.status === 'error') return;
+                                    const pendingAfterRecalc = _collectPendingNewRows(currentData.evaluations);
                                     currentData = d2;
+                                    if (_pendingNewRowIds.size > 0 && currentData.evaluations) {
+                                        currentData.evaluations = _reappendPendingNewRows(
+                                            currentData.evaluations, pendingAfterRecalc
+                                        );
+                                    }
                                     if (currentData.evaluations) {
                                         currentData.evaluations.forEach(ev => {
                                             const pf = (ev['Prop Firm'] || '').toLowerCase().replace(/[\s_]/g, '');
@@ -7415,34 +7428,54 @@
         }
 
         function addAccount() {
+            isEditing = true;
+            const createId = _newRowCreateId();
             const newRow = {
                 "Prop Firm": "My Funded Futures",
                 "Account Size": "$50,000",
                 "Date Purchased": "",
                 "Fee": "0",
                 "Status P1": "Not Started",
-                "Status": "-"
+                "Status": "-",
+                "_row_added_at": new Date().toISOString(),
+                "_create_id": createId,
             };
-            // Refresh data from server first to prevent stale overwrites,
-            // then append the new account and save.
+            _trackPendingNewRow(newRow);
+
+            const activeFilterCb = document.getElementById('activeFilter');
+            if (activeFilterCb && activeFilterCb.checked) {
+                activeFilterCb.checked = false;
+            }
+
+            const finishAdd = (evals) => {
+                if (!currentData.evaluations) currentData.evaluations = [];
+                const have = new Set(
+                    currentData.evaluations.map((r) => r && r._create_id).filter(Boolean).map(String)
+                );
+                if (!have.has(String(createId))) {
+                    currentData.evaluations.push({ ...newRow });
+                }
+                _trackPendingNewRow(currentData.evaluations[currentData.evaluations.length - 1]);
+                renderEvaluationsTable();
+                saveData('CREATE', 'Added new evaluation account');
+            };
+
+            // Refresh evaluations from server first, but keep unsaved pending rows.
             const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}`;
             fetch(url)
                 .then(r => r.json())
                 .then(freshData => {
                     if (freshData && freshData.evaluations) {
-                        currentData = freshData;
+                        const pending = _collectPendingNewRows(currentData.evaluations);
+                        currentData.evaluations = _reappendPendingNewRows(freshData.evaluations, pending);
+                        if (freshData.statistics) currentData.statistics = freshData.statistics;
+                        if (freshData.last_updated) currentData.last_updated = freshData.last_updated;
+                        if (freshData._version != null) currentData._version = freshData._version;
                     }
-                    if (!currentData.evaluations) currentData.evaluations = [];
-                    currentData.evaluations.push({ ...newRow });
-                    renderEvaluationsTable();
-                    saveData('CREATE', 'Added new evaluation account');
+                    finishAdd();
                 })
                 .catch(() => {
-                    // If refresh fails, still add — backend safety check will protect
-                    if (!currentData.evaluations) currentData.evaluations = [];
-                    currentData.evaluations.push({ ...newRow });
-                    renderEvaluationsTable();
-                    saveData('CREATE', 'Added new evaluation account');
+                    finishAdd();
                 });
         }
 
@@ -7560,6 +7593,76 @@
                         try { inp.setSelectionRange(snap.start, snap.end); } catch (e) { /* ignore */ }
                     }
                     return;
+                }
+            }
+        }
+
+        function _newRowCreateId() {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                return crypto.randomUUID();
+            }
+            return 'cr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+        }
+
+        function _trackPendingNewRow(row) {
+            if (!row || !row._create_id) return;
+            const cid = String(row._create_id);
+            _pendingNewRowIds.add(cid);
+            _pendingNewRowsById.set(cid, { ...row });
+        }
+
+        function _collectPendingNewRows(evalList) {
+            const found = [];
+            const have = new Set();
+            for (const ev of evalList || []) {
+                if (!ev || ev._deleted) continue;
+                const cid = ev._create_id;
+                if (cid && _pendingNewRowIds.has(String(cid))) {
+                    const key = String(cid);
+                    if (!have.has(key)) {
+                        have.add(key);
+                        found.push(ev);
+                    }
+                }
+            }
+            for (const cid of _pendingNewRowIds) {
+                if (have.has(cid)) continue;
+                const cached = _pendingNewRowsById.get(cid);
+                if (cached) found.push({ ...cached });
+            }
+            return found;
+        }
+
+        function _reappendPendingNewRows(baseEvals, pendingRows) {
+            const merged = Array.isArray(baseEvals) ? baseEvals.slice() : [];
+            if (!pendingRows || !pendingRows.length) return merged;
+            const have = new Set(
+                merged.map((r) => r && r._create_id).filter(Boolean).map(String)
+            );
+            for (const row of pendingRows) {
+                const cid = row && row._create_id;
+                if (cid && !have.has(String(cid))) {
+                    merged.push({ ...row });
+                    have.add(String(cid));
+                }
+            }
+            return merged;
+        }
+
+        function _applyServerEvaluations(serverEvals) {
+            const pending = _collectPendingNewRows(currentData.evaluations);
+            let merged = mergeServerEvaluationsWithLocalEdits(serverEvals);
+            merged = _reappendPendingNewRows(merged, pending);
+            currentData.evaluations = merged;
+            return merged;
+        }
+
+        function _clearPendingNewRowsFromEvals(evals) {
+            for (const ev of evals || []) {
+                if (ev && ev._create_id) {
+                    const cid = String(ev._create_id);
+                    _pendingNewRowIds.delete(cid);
+                    _pendingNewRowsById.delete(cid);
                 }
             }
         }
@@ -7718,7 +7821,10 @@
                 // Apply server recomputation immediately (Hedge Net, sheet totals, discrepancy).
                 if (data.statistics) currentData.statistics = data.statistics;
                 if (data.evaluations && Array.isArray(data.evaluations)) {
-                    currentData.evaluations = mergeServerEvaluationsWithLocalEdits(data.evaluations);
+                    _applyServerEvaluations(data.evaluations);
+                    if (action === 'CREATE') {
+                        _clearPendingNewRowsFromEvals(data.evaluations);
+                    }
                     try {
                         renderEvaluationsTable(false);
                     } catch (e) {
