@@ -41,6 +41,8 @@ DASHBOARD_COLUMN_ORDER = [
     'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
     'Payout 1', 'Date 1', 'Payout 2', 'Date 2',
     'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
+    'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+    'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
     # ── FARMING PHASE ──
 ] + [f'Prop Day {i}' for i in range(1, 35)] \
   + [f'Prop Progress {i}' for i in range(1, 35)] \
@@ -53,7 +55,8 @@ KEY_COLUMNS = [
     'Date Started', 'Date Ended', 'Date Started.1', 'Date Ended.1',
     'Date Purchased',
     'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3',
-    'Payout 4', 'Date 4',
+    'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+    'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
     'Fee', 'Activation Fee',
 ]
 

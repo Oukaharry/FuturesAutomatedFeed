@@ -2490,7 +2490,7 @@
                             <!-- Scrolling Group Headers -->
                             <th colspan="4" class="group-header group-header-blue">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
-                            <th colspan="25" class="group-header group-header-orange">FUNDED PHASE</th>
+                            <th colspan="29" class="group-header group-header-orange">FUNDED PHASE</th>
                             <th colspan="35" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
                         <tr>
@@ -2538,6 +2538,10 @@
                             <th class="sub-header-orange">Date 5</th>
                             <th class="sub-header-orange">Payout 6</th>
                             <th class="sub-header-orange">Date 6</th>
+                            <th class="sub-header-orange">Payout 7</th>
+                            <th class="sub-header-orange">Date 7</th>
+                            <th class="sub-header-orange">Payout 8</th>
+                            <th class="sub-header-orange">Date 8</th>
 
                             <!-- FARMING PHASE (35-65 -> 35-125) -->
                             <!-- Dynamic Day Columns Header Script? No, hardcoded to 30 days now -->
@@ -2594,7 +2598,7 @@
                         </tr>
                     </thead>
                     <tbody id="evaluations-body">
-                        <tr class="eval-spinner-row"><td colspan="176"><div class="spinner-inner">
+                        <tr class="eval-spinner-row"><td colspan="180"><div class="spinner-inner">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                             Loading evaluations&hellip;
                         </div></td></tr>
@@ -4129,7 +4133,7 @@
              'Hedge Result 4.1','Hedge Result 5.1','Hedge Result 6','Hedge Result 7'
             ].forEach(k => fd += _numVal(ev[k]));
             if (status === 'Completed') {
-                let pay = 0; for (let i = 1; i <= 6; i++) pay += _numVal(ev['Payout ' + i]);
+                let pay = 0; for (let i = 1; i <= 8; i++) pay += _numVal(ev['Payout ' + i]);
                 let days = 0; for (let i = 1; i <= 50; i++) days += _numVal(ev['Hedge Day ' + i]);
                 return formatCurrencyValue(pay + fd + p1 - fee - actFee + days);
             }
@@ -4165,7 +4169,7 @@
 
             if (!CLIENT_ID) {
                 const evalBody = document.getElementById('evaluations-body');
-                if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">No client selected. Please log in again.</td></tr>`;
+                if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">No client selected. Please log in again.</td></tr>`;
                 return;
             }
 
@@ -4197,7 +4201,7 @@
                     if (data.status === 'error') {
                         if (!silent) {
                             const evalBody = document.getElementById('evaluations-body');
-                            if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
+                            if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">
                                 Error loading data: ${data.message || 'Unknown error'}.<br>
                                 <small style="color:#94a3b8;">Try refreshing the page or logging out and back in.</small>
                             </td></tr>`;
@@ -4261,7 +4265,7 @@
                     try { renderEvaluationsTable(resetPage); } catch(e) {
                         console.error('renderEvaluationsTable error:', e);
                         const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">
                             Render error: ${e.message}. Check console for details.
                         </td></tr>`;
                     }
@@ -4385,7 +4389,7 @@
                     // Only show fetch error if data hasn't loaded yet (don't overwrite rendered table)
                     if (!dataLoaded) {
                         const evalBody = document.getElementById('evaluations-body');
-                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="128" style="text-align:center;padding:30px;color:#f87171;">
+                        if (evalBody) evalBody.innerHTML = `<tr><td colspan="132" style="text-align:center;padding:30px;color:#f87171;">
                             Failed to load data: ${error.message}.<br>
                             <small style="color:#94a3b8;">Check your connection or try refreshing.</small>
                         </td></tr>`;
@@ -4395,7 +4399,7 @@
         }
 
         function evalSpinnerHTML() {
-            return `<tr class="eval-spinner-row"><td colspan="128"><div class="spinner-inner">
+            return `<tr class="eval-spinner-row"><td colspan="132"><div class="spinner-inner">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                 Loading evaluations&hellip;
             </div></td></tr>`;
@@ -4673,6 +4677,10 @@
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 5')), 'date', index, 'Date 5', SHEET_EDIT_LOCKED), 'Date 5')}
                         ${cell(getInputHtml(getVal('Payout 6'), 'text', index, 'Payout 6', SHEET_EDIT_LOCKED), 'Payout 6')}
                         ${cell(getInputHtml(formatDateForInput(getVal('Date 6')), 'date', index, 'Date 6', SHEET_EDIT_LOCKED), 'Date 6')}
+                        ${cell(getInputHtml(getVal('Payout 7'), 'text', index, 'Payout 7', SHEET_EDIT_LOCKED), 'Payout 7')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 7')), 'date', index, 'Date 7', SHEET_EDIT_LOCKED), 'Date 7')}
+                        ${cell(getInputHtml(getVal('Payout 8'), 'text', index, 'Payout 8', SHEET_EDIT_LOCKED), 'Payout 8')}
+                        ${cell(getInputHtml(formatDateForInput(getVal('Date 8')), 'date', index, 'Date 8', SHEET_EDIT_LOCKED), 'Date 8')}
 
                         ${generateDayColumns(ev, cell, index, currentRowNum, SHEET_EDIT_LOCKED)}
                     `;
@@ -4942,25 +4950,27 @@
                 'Hedge Net.1': 'AA',
                 'Payout 1': 'AB', 'Date 1': 'AC', 'Payout 2': 'AD', 'Date 2': 'AE',
                 'Payout 3': 'AF', 'Date 3': 'AG', 'Payout 4': 'AH', 'Date 4': 'AI',
-                'Payout 5': 'AJ', 'Date 5': 'AK', 'Payout 6': 'AL', 'Date 6': 'AM'
+                'Payout 5': 'AJ', 'Date 5': 'AK', 'Payout 6': 'AL', 'Date 6': 'AM',
+                'Payout 7': 'AN', 'Date 7': 'AO', 'Payout 8': 'AP', 'Date 8': 'AQ',
+                'Farming Net': 'AR'
             };
             if (map[key]) return map[key];
             
             // Generate dynamic farming columns
-            // Prop Day 1 starts at AO (41) after Farming Net (AN)
+            // Prop Day 1 starts at AS (45) after Farming Net (AR)
             if (key.startsWith('Prop Day ')) {
                 const day = parseInt(key.replace('Prop Day ', ''));
                 if (!isNaN(day)) {
-                    // Prop Day 1 = AO (41)
-                    // Prop Day 2 = AQ (43) ... (2 cols per day in sheet: Prop Day, Hedge Day)
-                    return getColLetter(41 + (day-1)*2);
+                    // Prop Day 1 = AS (45)
+                    // Prop Day 2 = AU (47) ... (2 cols per day in sheet: Prop Day, Hedge Day)
+                    return getColLetter(45 + (day-1)*2);
                 }
             }
              if (key.startsWith('Hedge Day ')) {
                 const day = parseInt(key.replace('Hedge Day ', ''));
                 if (!isNaN(day)) {
-                    // Hedge Day 1 = AP (42)
-                    return getColLetter(42 + (day-1)*2);
+                    // Hedge Day 1 = AT (46)
+                    return getColLetter(46 + (day-1)*2);
                 }
             }
             return null;
@@ -5285,7 +5295,7 @@
                             const fee = pcN(ev['Fee']);
                             const activation_fee = pcN(ev['Activation Fee']);
                             let payouts = 0;
-                            for (let pi = 1; pi <= 6; pi++) payouts = rnd2(payouts + pcN(ev['Payout ' + pi]));
+                            for (let pi = 1; pi <= 8; pi++) payouts = rnd2(payouts + pcN(ev['Payout ' + pi]));
 
                             // --- Cashflow in progress (API key name): every non-deleted account, active or ended ---
                             if (!is_deleted) {
@@ -5576,8 +5586,8 @@
                     if (isFirmHidden(propFirm)) return;
                     // Match payouts script preference: funded account first, then challenge account
                     const account = (ev['Account #.1'] || ev['Account #'] || '-').toString().trim();
-                    // Match payouts script: Payout 1..6
-                    for (let i = 1; i <= 6; i++) {
+                    // Match payouts script: Payout 1..8
+                    for (let i = 1; i <= 8; i++) {
                         const amt = parseCur(ev[`Payout ${i}`]);
                         const rawDate = (ev[`Date ${i}`] || '').toString().trim();
                         // Match payouts script inclusion rule:

@@ -467,7 +467,7 @@ def calculate_derived_metrics(df):
         status = str(row.get('Status') or row.get('Status Funded', ''))
         
         # Sums
-        sum_payouts = sum([get_val(row, c) for c in ['Payout 1', 'Payout 2', 'Payout 3', 'Payout 4', 'Payout 5', 'Payout 6']])
+        sum_payouts = sum(get_val(row, f'Payout {i}') for i in range(1, 9))
         
         sum_funded_hedge = sum([get_val(row, c) for c in [
             'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 
@@ -878,6 +878,7 @@ def fetch_evaluations(sheet_url):
                     'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
                     'Hedge Result 6', 'Hedge Result 7', 'Hedge Net.1',
                     'Payout 1', 'Date 1', 'Payout 2', 'Date 2', 'Payout 3', 'Date 3', 'Payout 4', 'Date 4', 'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
+                    'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
                     'Farming Net'
                 ]
                 for i in range(1, 51):
@@ -1064,7 +1065,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             fee = parse_currency(ev.get('Fee'))
             activation_fee = parse_currency(ev.get('Activation Fee'))
             farming_net = parse_currency(ev.get('Farming Net'))
-            payouts = round(sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 7)), 2)
+            payouts = round(sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 9)), 2)
             
             # For sheet_hedge_total tracking
             hedge_net = parse_currency(ev.get('Hedge Net')) + parse_currency(ev.get('Hedge Net.1'))
