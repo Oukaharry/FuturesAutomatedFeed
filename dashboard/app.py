@@ -5454,6 +5454,8 @@ def api_client_push():
             merge_statistics_hedging_review_preserve_mt5(
                 existing_hr, statistics, account=existing_data.get('account')
             )
+            from utils.data_processor import reapply_manual_fee_adjustments
+            reapply_manual_fee_adjustments(existing_data.get('statistics'), statistics)
 
             # Log the hedging review results
             hr = statistics.get('hedging_review', {})
@@ -8516,7 +8518,7 @@ def api_dashboard_recalculate_statistics():
         return jsonify({"status": "error", "message": "Access denied"}), 403
 
     try:
-        from utils.data_processor import calculate_statistics
+        from utils.data_processor import calculate_statistics, reapply_manual_fee_adjustments
         max_attempts = 6
         for attempt in range(max_attempts):
             client_data = get_client_data(client_id)
@@ -8529,10 +8531,12 @@ def api_dashboard_recalculate_statistics():
             existing_hr = client_data.get('statistics', {}).get('hedging_review', {}) or {}
             existing_hist = existing_hr.get('historical_accounts')
 
+            existing_stats = client_data.get('statistics') or {}
             new_stats = calculate_statistics(
                 evals, mt5_account=existing_mt5, historical_accounts=existing_hist
             )
             merge_statistics_hedging_review_preserve_mt5(existing_hr, new_stats, account=existing_mt5)
+            reapply_manual_fee_adjustments(existing_stats, new_stats)
 
             verify = get_client_data(client_id)
             if verify.get('last_updated') != ts_marker:
