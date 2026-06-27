@@ -4647,6 +4647,8 @@ def recalculate_all_stats():
             old_fees = client_data.get('statistics', {}).get('profitability_completed', {}).get('challenge_fees', 0)
             new_stats = calculate_statistics(evals, mt5_account=existing_mt5, historical_accounts=existing_hist)
             merge_statistics_hedging_review_preserve_mt5(existing_hr, new_stats, account=existing_mt5)
+            from utils.data_processor import reapply_manual_fee_adjustments
+            reapply_manual_fee_adjustments(client_data.get('statistics'), new_stats)
             new_fees = new_stats.get('profitability_completed', {}).get('challenge_fees', 0)
             save_client_data(client_id, {'evaluations': evals, 'statistics': new_stats})
             results.append({"client_id": client_id, "old_fees": old_fees, "new_fees": new_fees, "changed": abs(float(new_fees) - float(old_fees)) > 0.01})
@@ -12503,6 +12505,8 @@ def update_data():
                     account=existing_mt5,
                     recalc_discrepancy=recalc_discrepancy,
                 )
+                from utils.data_processor import reapply_manual_fee_adjustments
+                reapply_manual_fee_adjustments(existing_data.get('statistics'), merged_statistics)
                 merged_hr = merged_statistics.get('hedging_review', {})
                 app.logger.info(
                     "[HEDGE_SAVE] client=%s cashflow_hedge=%s cashflow_farm=%s sheet_hedge_total=%s actual_mt5=%s discrepancy=%s cf_net=%s",

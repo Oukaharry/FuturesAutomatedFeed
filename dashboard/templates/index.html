@@ -5366,6 +5366,22 @@
                         // "Net Profit In Progress -> Hedging Results" disagree with MT5 Profit by that gap.
                     }
 
+                    // Manual fee adjustments (inject_challenge_fee_adjustments.py) — always show
+                    // eval-derived fees minus adjustment so page-load recalc cannot revert the UI.
+                    const _feeAdjustments = s.manual_fee_adjustments || [];
+                    const _feeReduceTotal = _feeAdjustments.reduce((sum, a) => {
+                        const v = parseFloat(String((a && a.reduce_challenge_fees_by) || '').replace(/[^0-9.-]/g, '')) || 0;
+                        return sum + v;
+                    }, 0);
+                    if (_feeReduceTotal > 0) {
+                        const agAdj = aggregateCashflowFromEvals(data.evaluations, IS_BEF_ADMIN);
+                        const rnd2adj = (x) => Math.round((Number(x) || 0) * 100) / 100;
+                        if (!s.cashflow_inprogress) s.cashflow_inprogress = {};
+                        if (!s.profitability_completed) s.profitability_completed = {};
+                        s.cashflow_inprogress.challenge_fees = Math.max(0, rnd2adj(agAdj.cfFees - _feeReduceTotal));
+                        s.profitability_completed.challenge_fees = Math.max(0, rnd2adj(agAdj.pcFees - _feeReduceTotal));
+                    }
+
                     // Helper for safe rate formatting
                     const fmtRate = (val) => {
                         const n = parseFloat(val);
