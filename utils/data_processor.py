@@ -165,6 +165,38 @@ def apply_discrepancy_to_net_profit(statistics):
     return statistics
 
 
+def reapply_manual_fee_adjustments(existing_statistics, fresh_statistics):
+    """
+    After calculate_statistics(), restore manual challenge-fee reductions so dashboard
+    recalc / client push does not wipe inject_challenge_fee_adjustments.py changes.
+    """
+    if not fresh_statistics:
+        return fresh_statistics
+    existing_statistics = existing_statistics or {}
+    adjustments = existing_statistics.get('manual_fee_adjustments') or []
+    if not adjustments:
+        return fresh_statistics
+
+    total_reduce = sum(
+        clean_float(a.get('reduce_challenge_fees_by'))
+        for a in adjustments
+        if isinstance(a, dict)
+    )
+    if total_reduce <= 0:
+        fresh_statistics['manual_fee_adjustments'] = adjustments
+        return fresh_statistics
+
+    fresh_statistics['manual_fee_adjustments'] = adjustments
+    for section in ('profitability_completed', 'cashflow_inprogress'):
+        sec = fresh_statistics.setdefault(section, {})
+        sec['challenge_fees'] = round(
+            max(0.0, clean_float(sec.get('challenge_fees')) - total_reduce),
+            2,
+        )
+    apply_discrepancy_to_net_profit(fresh_statistics)
+    return fresh_statistics
+
+
 def hedging_discrepancy_is_stale(statistics, account=None):
     """
     True when stored actual_hedging_results disagrees with current-MT5-only formula.
