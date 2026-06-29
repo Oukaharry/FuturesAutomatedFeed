@@ -5425,6 +5425,11 @@
                     const _cfHedgeTotal = (cf.hedging_results || 0) + (cf.farming_results || 0) + (_discrepancy || 0);
                     const _pcHedgeTotal = (pc.hedging_results || 0) + (pc.farming_results || 0) + (_discrepancy || 0);
                     window._statsNetProfit = (cf.payouts || 0) + _cfHedgeTotal - (cf.challenge_fees || 0);
+                    const _evaluationsTotalNet = (s.evaluations_total_net !== undefined && s.evaluations_total_net !== null && s.evaluations_total_net !== '')
+                        ? (Number(s.evaluations_total_net) || 0)
+                        : null;
+                    window._evaluationsTotalNet = _evaluationsTotalNet;
+                    const _displayNetProfit = _evaluationsTotalNet !== null ? _evaluationsTotalNet : window._statsNetProfit;
                     const pcNetProfit = (pc.payouts || 0) + _pcHedgeTotal - (pc.challenge_fees || 0);
                     const _showHedgingActual = _mt5HasData || _hasServerActual;
                     // Preserve payouts visibility across re-renders
@@ -5470,7 +5475,7 @@
                                         <tr><td>Payouts</td><td class="text-right" style="color:#34d399;">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
                                         <tr><td>Hedging Results</td><td class="text-right" style="color:${_cfHedgeTotal >= 0 ? '#34d399' : '#f87171'};">${formatMoney(_cfHedgeTotal)}</td></tr>
                                         <tr><td>Challenge Fees</td><td class="text-right" style="color:#f87171;">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
-                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${window._statsNetProfit >= 0 ? '#34d399' : '#f87171'};">${formatMoney(window._statsNetProfit)}</strong></td></tr>
+                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${_displayNetProfit >= 0 ? '#34d399' : '#f87171'};">${formatMoney(_displayNetProfit)}</strong></td></tr>
                                     </table>
                                 </div>
                             </div>

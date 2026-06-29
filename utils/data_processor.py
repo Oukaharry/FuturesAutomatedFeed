@@ -1024,7 +1024,10 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             "sheet_hedging_component": 0.0,
             "sheet_farming_component": 0.0,
             "discrepancy": 0.0
-        }
+        },
+        # Sum of per-row eval P&L (payouts + hedges + hedge days − fees) for every
+        # non-_deleted row, including rows whose Status is "Deleted".
+        "evaluations_total_net": 0.0,
     }
 
     # If no evaluations and no MT5 data, return empty stats
@@ -1125,6 +1128,20 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             is_funded_ended = is_funded_phase_ended(status_funded)
             is_in_progress = (not is_deleted) and (not is_p1_fail) and (not is_funded_ended)
 
+            row_eval_net = round(
+                sum(parse_currency(ev.get(f'Payout {i}')) for i in range(1, 10))
+                + sum(parse_currency(ev.get(col)) for col in P1_HEDGE_COLS)
+                + sum(parse_currency(ev.get(col)) for col in FUNDED_HEDGE_COLS)
+                + sum(parse_currency(ev.get(col)) for col in HEDGE_DAY_COLS)
+                - fee
+                - activation_fee,
+                2,
+            )
+            stats["evaluations_total_net"] = round(
+                stats["evaluations_total_net"] + row_eval_net,
+                2,
+            )
+
             # === CASHFLOW - IN PROGRESS (stored key name; meaning = whole client / all accounts) ===
             # Sum payouts, fees, hedging, and farming across every non-deleted row — not lifecycle-active only.
             # Profitability – Completed remains the ended / inactive slice only.
@@ -1134,6 +1151,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
             #                    = P1 hedges (HR 1..5) + ALL funded hedges (HR 1.1..5.1 + HR 6..7)
             #   Farming Results  = SUM(AM:AM, AO:AO, AQ:AQ, ... DA:DA)
             #                    = Hedge Day 1..N only (no Hedge Result 6/7, no Farming Net override)
+            # Rows with Status "Deleted" are excluded here (sheet SUMIF) but still in evaluations_total_net.
             if not is_deleted:
                 row_hedging = round(p1_hedges + funded_hedges, 2)
                 row_farming = round(hedge_days, 2)
