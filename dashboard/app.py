@@ -28,10 +28,11 @@ from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client,
     update_admin_details, update_trader_details, update_client_details, update_client_category,
     get_client_by_email, get_user_by_email, get_client_profile,
+    find_trader_admin, set_trader_active_status, trader_is_active,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader,
     rename_admin, rename_trader, rename_client,
-    reassign_client_trader, save_hierarchy, reload_hierarchy, find_trader_admin,
+    reassign_client_trader, save_hierarchy, reload_hierarchy,
 )
 
 # Import database module for secure storage
@@ -46,7 +47,7 @@ from dashboard.database import (
     delete_other_sessions_for_user, list_sessions_public_for_user,
     create_user, verify_user_password, verify_client_login, update_user_password,
     delete_user_credential, update_user_email, rename_user_credential, rename_client_in_db,
-    get_user, list_users, deactivate_user, reset_user_password, user_exists,
+    get_user, list_users, deactivate_user, activate_user, reset_user_password, user_exists,
     record_login_attempt, is_account_locked,
     find_user_by_identifier, verify_user_by_identifier,
     # History management
@@ -3228,6 +3229,10 @@ def require_role(*allowed_roles):
             session_info = validate_session(session_token)
             if not session_info:
                 return jsonify({"status": "error", "message": "Invalid or expired session"}), 401
+
+            if not _session_principal_is_active(session_info):
+                delete_session(session_token)
+                return jsonify({"status": "error", "message": "Account deactivated"}), 403
             
             user_type = session_info.get('user_type')
             if user_type not in allowed_roles:
@@ -3258,9 +3263,29 @@ def require_session(f):
         if not session_info:
             return redirect(url_for('index'))
 
+        if not _session_principal_is_active(session_info):
+            delete_session(session_token)
+            return redirect(url_for('index'))
+
         request.session_user = session_info
         return f(*args, **kwargs)
     return decorated_function
+
+
+def _session_principal_is_active(session_info):
+    """Return False when a logged-in user was deactivated after session creation."""
+    user_type = session_info.get('user_type')
+    user_id = (session_info.get('user_identifier') or '').strip()
+    if user_type in ('super_admin', 'bef_admin', 'kwok_admin'):
+        return True
+    if user_type == 'trader':
+        return trader_is_active(user_id)
+    if user_type in ('admin', 'client'):
+        row = get_user(user_id, user_type)
+        if row is None:
+            return True
+        return bool(row.get('is_active', 1))
+    return True
 
 # ============ Web Routes ============
 
@@ -3710,6 +3735,9 @@ def trader_dashboard(trader_name):
     # Check if user is the correct trader
     if session_user.get('user_type') != 'trader' or session_user.get('user_identifier') != trader_name:
         return redirect('/')
+    if not trader_is_active(trader_name):
+        delete_session(request.cookies.get('session_token'))
+        return redirect('/')
     return render_template('trader_dashboard.html', trader_name=trader_name,
                            trader_email=trader_email, trader_admin=trader_admin,
                            is_super_admin=False)
@@ -4148,6 +4176,13 @@ def get_hierarchy():
     all_identities = get_all_client_identities()
     enriched = copy.deepcopy(filtered)
     for admin_data in enriched.get('admins', {}).values():
+        for trader_name, trader_data in (admin_data.get('traders') or {}).items():
+            lane_status = (trader_data or {}).get('active_status', 'active')
+            db_row = get_user(trader_name, 'trader')
+            if str(lane_status).lower() == 'inactive' or (db_row and not db_row.get('is_active', 1)):
+                trader_data['active_status'] = 'inactive'
+            else:
+                trader_data['active_status'] = 'active'
         for trader_data in admin_data.get('traders', {}).values():
             for client in trader_data.get('clients', []):
                 cname = client.get('name', '')
@@ -6353,6 +6388,10 @@ def unified_login():
     if not user:
         log_action('LOGIN_FAILED', 'unknown', identifier, client_ip, 'User not found', False)
         return jsonify({"status": "error", "message": "Email not found in system"}), 403
+
+    if user.get('user_type') == 'trader' and not user.get('is_active', 1):
+        log_action('LOGIN_FAILED', 'trader', user.get('username', identifier), client_ip, 'Trader deactivated', False)
+        return jsonify({"status": "error", "message": "This trader account has been deactivated. Contact your admin."}), 403
     
     user_type = user.get('user_type')
     username = user.get('username', identifier).strip()
@@ -6447,6 +6486,11 @@ def unified_login():
         log_action('LOGIN_FAILED', user_type, username, client_ip, 'Invalid password', False)
         return jsonify({"status": "error", "message": "Invalid password"}), 403
 
+    if user_type == 'trader' and not trader_is_active(username):
+        record_login_attempt(username, user_type, client_ip, False)
+        log_action('LOGIN_FAILED', user_type, username, client_ip, 'Trader deactivated', False)
+        return jsonify({"status": "error", "message": "This trader account has been deactivated. Contact your admin."}), 403
+    
     record_login_attempt(username, user_type, client_ip, True)
     log_action('LOGIN_SUCCESS', user_type, username, client_ip)
     
@@ -6773,6 +6817,66 @@ def api_deactivate_user():
         return jsonify({"status": "success", "message": f"User '{username}' deactivated"})
     
     return jsonify({"status": "error", "message": "User not found"}), 404
+
+
+@app.route('/api/admin/set_user_active', methods=['POST'])
+@require_role('super_admin')
+def api_set_user_active():
+    """
+    Activate/deactivate a user without removing them from hierarchy.
+    For traders: clients stay assigned; use assign_client_trader to reassign.
+    """
+    data = request.json or {}
+    username = (data.get('username') or '').strip()
+    user_type = (data.get('user_type') or '').strip()
+    active = bool(data.get('active', True))
+    admin_name = (data.get('admin') or '').strip()
+
+    if not username or user_type not in ('trader', 'admin', 'client'):
+        return jsonify({"status": "error", "message": "username and user_type (trader/admin/client) required"}), 400
+
+    session_user = request.session_user
+
+    if user_type == 'trader':
+        if not admin_name:
+            admin_name = find_trader_admin(username) or ''
+        if not admin_name:
+            return jsonify({"status": "error", "message": "Trader not found in hierarchy"}), 404
+        if active:
+            activate_user(username, 'trader')
+            set_trader_active_status(admin_name, username, 'active')
+        else:
+            deactivate_user(username, 'trader')
+            set_trader_active_status(admin_name, username, 'inactive')
+        log_action(
+            'SET_USER_ACTIVE', session_user.get('user_type'), session_user.get('user_identifier'),
+            get_remote_address(),
+            f"{'Activated' if active else 'Deactivated'} trader {username} under {admin_name}",
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Trader '{username}' {'activated' if active else 'deactivated'}",
+            "active": active,
+        })
+
+    if active:
+        ok = activate_user(username, user_type)
+    else:
+        ok = deactivate_user(username, user_type)
+
+    if not ok:
+        return jsonify({"status": "error", "message": "User not found in credentials"}), 404
+
+    log_action(
+        'SET_USER_ACTIVE', session_user.get('user_type'), session_user.get('user_identifier'),
+        get_remote_address(),
+        f"{'Activated' if active else 'Deactivated'} {user_type} {username}",
+    )
+    return jsonify({
+        "status": "success",
+        "message": f"{user_type.title()} '{username}' {'activated' if active else 'deactivated'}",
+        "active": active,
+    })
 
 # ============ Change Password Endpoint ============
 
@@ -8035,7 +8139,7 @@ def can_access_client(user_type, user_identifier, target_client):
                     if user_type == 'admin' and user_identifier == admin_name:
                         return True
                     if user_type == 'trader' and user_identifier == trader_name:
-                        return True
+                        return trader_is_active(trader_name)
     
     return False
 
@@ -8072,6 +8176,8 @@ def get_accessible_clients(user_type, user_identifier):
         return clients
     
     if user_type == 'trader':
+        if not trader_is_active(user_identifier):
+            return []
         # Trader can access only their clients
         for admin_data in hierarchy.get('admins', {}).values():
             trader_data = admin_data.get('traders', {}).get(user_identifier, {})

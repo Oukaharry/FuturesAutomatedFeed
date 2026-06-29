@@ -31,7 +31,8 @@ def load_hierarchy():
                             key = assigned
                             if key not in traders_map:
                                 tr_email = trader_registry.get(key, {}).get('email', '') if key else ''
-                                traders_map[key] = {'email': tr_email, 'clients': []}
+                                tr_active = trader_registry.get(key, {}).get('active_status', 'active') if key else 'active'
+                                traders_map[key] = {'email': tr_email, 'clients': [], 'active_status': tr_active}
                             # Keep assigned_trader on the client object for frontend/UI use
                             client_copy = dict(client)
                             traders_map[key]['clients'].append(client_copy)
@@ -40,7 +41,8 @@ def load_hierarchy():
                             key = (trader_name or '').strip()
                             if key and key not in traders_map:
                                 tr_email = trader_registry.get(key, {}).get('email', '')
-                                traders_map[key] = {'email': tr_email, 'clients': []}
+                                tr_active = trader_registry.get(key, {}).get('active_status', 'active')
+                                traders_map[key] = {'email': tr_email, 'clients': [], 'active_status': tr_active}
                         # Preserve all original admin fields (email, slack_user_id, etc.)
                         preserved = {
                             k: v for k, v in admin_data.items()
@@ -90,6 +92,9 @@ def _to_flat_format(hierarchy_data):
                         entry['email'] = em
                     elif 'email' not in entry:
                         entry['email'] = ''
+                    active = (trader_data or {}).get('active_status')
+                    if active:
+                        entry['active_status'] = active
                 for client in (trader_data or {}).get('clients', []):
                     c = dict(client)
                     # Normalize client name to prevent invisible mismatch bugs (trailing spaces/NBSP).
@@ -258,6 +263,59 @@ def find_trader_admin(trader_name):
     return None
 
 
+def set_trader_active_status(admin_name, trader_name, active_status):
+    """Mark a trader lane active/inactive without removing clients."""
+    reload_hierarchy()
+    admin_name = (admin_name or '').strip()
+    trader_name = (trader_name or '').strip()
+    status = 'inactive' if str(active_status or '').lower() == 'inactive' else 'active'
+    admin = SYSTEM_HIERARCHY.get('admins', {}).get(admin_name)
+    if not admin:
+        return False
+    traders = admin.get('traders', {})
+    if trader_name not in traders:
+        return False
+    traders[trader_name]['active_status'] = status
+    registry = SYSTEM_HIERARCHY.setdefault('traders', {})
+    if not isinstance(registry, dict):
+        registry = {}
+        SYSTEM_HIERARCHY['traders'] = registry
+    registry.setdefault(trader_name, {})['active_status'] = status
+    save_hierarchy(SYSTEM_HIERARCHY)
+    return True
+
+
+def trader_is_active(trader_name):
+    """False when trader is deactivated in hierarchy and/or user_credentials."""
+    name = (trader_name or '').strip()
+    if not name:
+        return False
+    reload_hierarchy()
+    registry = SYSTEM_HIERARCHY.get('traders', {}) or {}
+    found_lane = False
+    for admin_data in SYSTEM_HIERARCHY.get('admins', {}).values():
+        td = (admin_data.get('traders') or {}).get(name)
+        if td is None:
+            continue
+        found_lane = True
+        lane_status = (td.get('active_status') or registry.get(name, {}).get('active_status') or 'active')
+        if str(lane_status).lower() == 'inactive':
+            return False
+        break
+    if not found_lane:
+        reg_status = registry.get(name, {}).get('active_status')
+        if reg_status and str(reg_status).lower() == 'inactive':
+            return False
+    try:
+        from dashboard.database import get_user
+        row = get_user(name, 'trader')
+        if row is not None and not row.get('is_active', 1):
+            return False
+    except Exception:
+        pass
+    return True
+
+
 def add_trader(admin_name, trader_name, email=""):
     reload_hierarchy()
     if admin_name in SYSTEM_HIERARCHY["admins"]:
@@ -265,7 +323,8 @@ def add_trader(admin_name, trader_name, email=""):
         if trader_name not in traders:
             traders[trader_name] = {
                 "email": email,
-                "clients": []
+                "clients": [],
+                "active_status": "active",
             }
             save_hierarchy(SYSTEM_HIERARCHY)
             return True
@@ -471,6 +530,12 @@ def get_user_by_email(email):
         for trader_name, trader_data in admin_data["traders"].items():
             # Check Trader
             if trader_data.get("email", "").lower().strip() == email:
+                active_status = (
+                    trader_data.get('active_status')
+                    or SYSTEM_HIERARCHY.get('traders', {}).get(trader_name, {}).get('active_status')
+                    or 'active'
+                )
+                is_active = 0 if str(active_status).lower() == 'inactive' else 1
                 return {
                     "username": trader_name,
                     "user_type": "trader",
@@ -478,7 +543,7 @@ def get_user_by_email(email):
                     "parent_admin": admin_name,
                     "parent_trader": None,
                     "must_change_password": 0,
-                    "is_active": 1
+                    "is_active": is_active
                 }
                 
             # Check Clients
