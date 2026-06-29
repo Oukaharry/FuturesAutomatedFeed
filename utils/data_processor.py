@@ -198,11 +198,11 @@ def reapply_manual_fee_adjustments(existing_statistics, fresh_statistics):
         for a in adjustments
         if isinstance(a, dict)
     )
-    if total_reduce <= 0:
-        fresh_statistics['manual_fee_adjustments'] = adjustments
+    fresh_statistics['manual_fee_adjustments'] = adjustments
+    if total_reduce == 0:
         return fresh_statistics
 
-    fresh_statistics['manual_fee_adjustments'] = adjustments
+    # Positive reduce_by lowers fees; negative raise fees (eval_fees - reduce_by).
     for section in ('profitability_completed', 'cashflow_inprogress'):
         sec = fresh_statistics.setdefault(section, {})
         sec['challenge_fees'] = round(
