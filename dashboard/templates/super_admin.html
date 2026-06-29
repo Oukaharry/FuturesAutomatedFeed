@@ -1049,7 +1049,8 @@
                             Object.entries(hierarchyData.admins).forEach(([adminName, adminData]) => {
                                 Object.entries(adminData.traders || {}).forEach(([traderName, traderData]) => {
                                     let email = (traderData && traderData.email) ? traderData.email : '';
-                                    rows.push({ name: traderName, email: email, parent: adminName, url: '#', type: 'trader', admin: adminName });
+                                    const activeStatus = (traderData && traderData.active_status) ? traderData.active_status : 'active';
+                                    rows.push({ name: traderName, email: email, parent: adminName, url: '#', type: 'trader', admin: adminName, active_status: activeStatus });
                                 });
                             });
                         }
@@ -1139,6 +1140,11 @@
                              }
                          } else if (type === 'trader') {
                              if (isSuperAdmin) {
+                                 const traderInactive = (r.active_status || 'active') === 'inactive';
+                                 const toggleStyle = traderInactive
+                                     ? "color:#34d399; border:1px solid #065f46; background:rgba(6,95,70,0.25); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-right:5px;"
+                                     : "color:#f97316; border:1px solid #7c2d12; background:rgba(124,45,18,0.25); cursor:pointer; padding:4px 8px; border-radius:4px; font-weight:bold; margin-right:5px;";
+                                 btns += `<button onclick="setUserActive('${safeName}', 'trader', ${traderInactive}, '${(r.admin || '').replace(/'/g, "\\'")}')" style="${toggleStyle}" title="${traderInactive ? 'Restore login access' : 'Revoke login; keep clients for reassignment'}">${traderInactive ? 'Activate' : 'Deactivate'}</button>`;
                                  btns += `<button onclick="deleteUser('trader', '${safeName}', '${r.admin}')" style="${delStyle}">Del</button>`;
                                  btns += `<button onclick="openEditUserModal('trader', '${safeName}', '${safeEmail}', '${r.admin}')" style="${editStyle}">Edit</button>`;
                              }
@@ -1189,7 +1195,7 @@
                          html += `
                             <tr style="border-bottom: 1px solid #334155;">
                                 <td style="padding:10px; color:#f1f5f9;">
-                                    <div style="font-weight:bold; font-size:1rem;">${type === 'client' ? '<a href="' + r.url + '" style="color:#818cf8; text-decoration:none; font-weight:bold;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.name + '</a>' : r.name}</div>
+                                    <div style="font-weight:bold; font-size:1rem;">${type === 'client' ? '<a href="' + r.url + '" style="color:#818cf8; text-decoration:none; font-weight:bold;" onmouseover="this.style.textDecoration=\'underline\'" onmouseout="this.style.textDecoration=\'none\'">' + r.name + '</a>' : r.name}${(type === 'trader' && (r.active_status || 'active') === 'inactive') ? ' <span style="font-size:0.72rem; color:#f97316; border:1px solid #7c2d12; padding:1px 6px; border-radius:999px; margin-left:6px;">Inactive</span>' : ''}</div>
                                     <div style="font-size:0.85rem; color:#94a3b8; margin-top:2px; cursor:pointer;" 
                                          title="Click to Edit Email"
                                          onclick="openEditUserModal(${editArgs})">
@@ -1975,7 +1981,8 @@
                 if (!tradersMap[key]) {
                     tradersMap[key] = {
                         email: emailHint || registry[key]?.email || '',
-                        clients: []
+                        clients: [],
+                        active_status: registry[key]?.active_status || 'active',
                     };
                 } else if (emailHint && !tradersMap[key].email) {
                     tradersMap[key].email = emailHint;
@@ -1988,6 +1995,9 @@
                     if (!traderName) return;
                     const clients = Array.isArray(traderData?.clients) ? traderData.clients : (Array.isArray(traderData) ? traderData : []);
                     ensureTrader(traderName, traderData?.email || '');
+                    if (traderData?.active_status) {
+                        tradersMap[traderName].active_status = traderData.active_status;
+                    }
                     tradersMap[traderName].clients = clients.map(client => (typeof client === 'object' && client)
                         ? { ...client, assigned_trader: client.assigned_trader || traderName }
                         : { name: client, assigned_trader: traderName }
@@ -2639,6 +2649,7 @@
         window.openUserListModal = openUserListModal;
         window.closeUserListModal = closeUserListModal;
         window.resetUserPassword = resetUserPassword;
+        window.setUserActive = setUserActive;
         window.openSetPasswordModal = openSetPasswordModal;
         window.submitSetPassword = submitSetPassword;
 
@@ -2647,6 +2658,36 @@
             const name = document.getElementById('editUserOriginalName').value;
             const type = document.getElementById('editUserType').value;
             resetUserPassword(name, type);
+        }
+
+        async function setUserActive(name, userType, active, admin) {
+            const verb = active ? 'activate' : 'deactivate';
+            const extra = userType === 'trader' && !active
+                ? '\n\nTheir clients will stay in the hierarchy so you can reassign them to another trader.'
+                : '';
+            if (!confirm(`${active ? 'Activate' : 'Deactivate'} "${name}" (${userType})?${extra}`)) return;
+            try {
+                const res = await fetch('/api/admin/set_user_active', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        username: name,
+                        user_type: userType,
+                        active: !!active,
+                        admin: admin || undefined,
+                    }),
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    loadData();
+                    openUserListModal(userType);
+                } else {
+                    alert('Error: ' + (data.message || `Failed to ${verb}`));
+                }
+            } catch (e) {
+                alert('Network error: ' + e.message);
+            }
         }
 
         async function resetUserPassword(name, userType) {
