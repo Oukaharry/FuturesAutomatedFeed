@@ -5379,32 +5379,50 @@
                         // "Net Profit In Progress -> Hedging Results" disagree with MT5 Profit by that gap.
                     }
 
-                    // Manual fee adjustments — eval_fees - reduce_by (negative reduce_by raises fees).
+                    // Manual fee adjustments — prefer explicit targets, else eval_fees - reduce_by.
                     const _feeAdjustments = s.manual_fee_adjustments || [];
+                    const _lastFeeAdj = _feeAdjustments.length ? _feeAdjustments[_feeAdjustments.length - 1] : null;
+                    const _targetIp = _lastFeeAdj && _lastFeeAdj.target_ip_fees != null
+                        ? parseFloat(_lastFeeAdj.target_ip_fees) : null;
+                    const _targetPc = _lastFeeAdj && _lastFeeAdj.target_pc_fees != null
+                        ? parseFloat(_lastFeeAdj.target_pc_fees) : null;
                     const _feeReduceTotal = _feeAdjustments.reduce((sum, a) => {
                         const v = parseFloat(String((a && a.reduce_challenge_fees_by) || '').replace(/[^0-9.-]/g, '')) || 0;
                         return sum + v;
                     }, 0);
-                    if (_feeReduceTotal !== 0) {
+                    const _hasManualFeeAdj = _feeAdjustments.length > 0
+                        && ((_targetIp != null && !isNaN(_targetIp)) || _feeReduceTotal !== 0);
+
+                    let _displayChallengeFees;
+                    if (_hasManualFeeAdj) {
                         const agAdj = aggregateCashflowFromEvals(data.evaluations, IS_BEF_ADMIN);
                         const rnd2adj = (x) => Math.round((Number(x) || 0) * 100) / 100;
                         if (!s.cashflow_inprogress) s.cashflow_inprogress = {};
                         if (!s.profitability_completed) s.profitability_completed = {};
-                        s.cashflow_inprogress.challenge_fees = Math.max(0, rnd2adj(agAdj.cfFees - _feeReduceTotal));
-                        s.profitability_completed.challenge_fees = Math.max(0, rnd2adj(agAdj.pcFees - _feeReduceTotal));
+                        if (_targetIp != null && !isNaN(_targetIp)) {
+                            _displayChallengeFees = Math.max(0, _targetIp);
+                            s.cashflow_inprogress.challenge_fees = _displayChallengeFees;
+                            if (_targetPc != null && !isNaN(_targetPc)) {
+                                s.profitability_completed.challenge_fees = Math.max(0, _targetPc);
+                            }
+                        } else {
+                            _displayChallengeFees = Math.max(0, rnd2adj(agAdj.cfFees - _feeReduceTotal));
+                            s.cashflow_inprogress.challenge_fees = _displayChallengeFees;
+                            s.profitability_completed.challenge_fees = Math.max(0, rnd2adj(agAdj.pcFees - _feeReduceTotal));
+                        }
+                    } else {
+                        const _serverEvalFees = (s.evaluations_total_fees !== undefined && s.evaluations_total_fees !== null && s.evaluations_total_fees !== '')
+                            ? (Number(s.evaluations_total_fees) || 0)
+                            : null;
+                        _displayChallengeFees = _serverEvalFees !== null
+                            ? _serverEvalFees
+                            : computeEvaluationsTotalFeesFromEvals(data.evaluations, IS_BEF_ADMIN);
+                        if (_feeReduceTotal > 0) {
+                            _displayChallengeFees = Math.max(0, Math.round((_displayChallengeFees - _feeReduceTotal) * 100) / 100);
+                        }
+                        if (!s.cashflow_inprogress) s.cashflow_inprogress = {};
+                        s.cashflow_inprogress.challenge_fees = _displayChallengeFees;
                     }
-
-                    const _serverEvalFees = (s.evaluations_total_fees !== undefined && s.evaluations_total_fees !== null && s.evaluations_total_fees !== '')
-                        ? (Number(s.evaluations_total_fees) || 0)
-                        : null;
-                    let _displayChallengeFees = _serverEvalFees !== null
-                        ? _serverEvalFees
-                        : computeEvaluationsTotalFeesFromEvals(data.evaluations, IS_BEF_ADMIN);
-                    if (_feeReduceTotal > 0) {
-                        _displayChallengeFees = Math.max(0, Math.round((_displayChallengeFees - _feeReduceTotal) * 100) / 100);
-                    }
-                    if (!s.cashflow_inprogress) s.cashflow_inprogress = {};
-                    s.cashflow_inprogress.challenge_fees = _displayChallengeFees;
 
                     // Helper for safe rate formatting
                     const fmtRate = (val) => {

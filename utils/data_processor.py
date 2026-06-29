@@ -199,10 +199,26 @@ def reapply_manual_fee_adjustments(existing_statistics, fresh_statistics):
         if isinstance(a, dict)
     )
     fresh_statistics['manual_fee_adjustments'] = adjustments
+    latest = adjustments[-1] if adjustments else None
+    if isinstance(latest, dict):
+        target_ip = latest.get('target_ip_fees')
+        target_pc = latest.get('target_pc_fees')
+        if target_ip is not None or target_pc is not None:
+            if target_ip is not None:
+                fresh_statistics.setdefault('cashflow_inprogress', {})['challenge_fees'] = round(
+                    max(0.0, clean_float(target_ip)), 2
+                )
+            if target_pc is not None:
+                fresh_statistics.setdefault('profitability_completed', {})['challenge_fees'] = round(
+                    max(0.0, clean_float(target_pc)), 2
+                )
+            apply_discrepancy_to_net_profit(fresh_statistics)
+            return fresh_statistics
+
     if total_reduce == 0:
         return fresh_statistics
 
-    # Positive reduce_by lowers fees; negative raise fees (eval_fees - reduce_by).
+    # Fallback: eval_fees - reduce_by (positive lowers, negative raises).
     for section in ('profitability_completed', 'cashflow_inprogress'):
         sec = fresh_statistics.setdefault(section, {})
         sec['challenge_fees'] = round(
