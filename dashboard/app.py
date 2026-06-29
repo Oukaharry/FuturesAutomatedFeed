@@ -2856,7 +2856,17 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
     # 2. Within that phase, only process the LATEST DAY (ignore prior history for same phase).
     
     # Map: account_sig -> (max_timestamp, (phase_code, trade_number))
-    fnft_latest_phase_map = {} 
+    fnft_latest_phase_map = {}
+
+    # Accounts with a farming (FA) aggregate in THIS push — farming must win over
+    # stale FD/CH rows that happen to carry a newer timestamp in the same payload.
+    fnft_farming_accounts = set()
+    for agg in aggregated_data:
+        acc = str(agg.get('account_number', '')).upper()
+        if ('FNFT' in acc or 'FUNDEDNEXT' in acc) and agg.get('phase_code') == 'FA':
+            sig = get_account_signature(acc)
+            if sig:
+                fnft_farming_accounts.add(sig)
     
     # 1. Identify latest phase AND latest timestamp for that phase
     for agg in aggregated_data:
@@ -2884,9 +2894,15 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             this_combo = (agg.get('phase_code'), agg.get('trade_number'))
             this_ts = agg.get('timestamp') or 0
             this_phase_code = agg.get('phase_code', '')
-            
-            # Check 1: Is this the active phase?
-            if latest_combo and this_combo != latest_combo:
+
+            if sig in fnft_farming_accounts:
+                # Farming push for this account: keep FA rows, drop other phases.
+                if this_phase_code != 'FA':
+                    match_log.append(
+                        f"⏩ FNFT: Skipping {acc} {this_combo} — farming (FA) push active for account"
+                    )
+                    continue
+            elif latest_combo and this_combo != latest_combo:
                  match_log.append(f"⏩ FNFT: Skipping {acc} old phase {this_combo} (Active: {latest_combo})")
                  continue
             

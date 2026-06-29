@@ -82,7 +82,7 @@ Write-Host "Target local DB:" "$LocalUser@$LocalHost`:$LocalPort/$LocalDb" -Fore
 psql -U $LocalUser -h $LocalHost -p $LocalPort -d postgres -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$LocalDb' AND pid <> pg_backend_pid();"
 
 $exists = psql -U $LocalUser -h $LocalHost -p $LocalPort -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$LocalDb';"
-if ($exists.Trim() -eq "1") {
+if (("$(if ($exists) { $exists } else { '' })").Trim() -eq "1") {
     Write-Host "Renaming current '$LocalDb' to '$backupDb'..." -ForegroundColor Yellow
     psql -U $LocalUser -h $LocalHost -p $LocalPort -d postgres -v ON_ERROR_STOP=1 -c "ALTER DATABASE ""$LocalDb"" RENAME TO ""$backupDb"";"
 }
