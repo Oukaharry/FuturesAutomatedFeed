@@ -3035,8 +3035,9 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         # repopulate it from re-aggregated MT5 history.  The clear is lifted
         # automatically when the user types a new value back into the cell
         # (see /api/update_data handler).
+        # Farming (FA) companion pushes are intentional same-day writes and override clears.
         _ev_for_clear = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
-        if _ev_for_clear is not None:
+        if _ev_for_clear is not None and phase_code != 'FA':
             _cleared_set = set(_ev_for_clear.get('_cleared_fields') or [])
             if field_name in _cleared_set:
                 match_log.append(
@@ -3057,6 +3058,13 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         else:
             # Direct overwrite (Farming)
             evaluations[eval_idx][field_name] = net_profit
+            if _ev_for_clear is not None and field_name in set(_ev_for_clear.get('_cleared_fields') or []):
+                cleared = set(_ev_for_clear.get('_cleared_fields') or [])
+                cleared.discard(field_name)
+                if cleared:
+                    evaluations[eval_idx]['_cleared_fields'] = sorted(cleared)
+                else:
+                    evaluations[eval_idx].pop('_cleared_fields', None)
             updates_made += 1
             sig = get_account_signature(account_number)
             match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
@@ -12482,7 +12490,13 @@ def update_data():
                         if _has_non_blank_value(ev.get(key)):
                             cleared.discard(key)   # user typed a value back → resume push writes
                         else:
-                            cleared.add(key)       # user blanked the cell → freeze it
+                            old_val = existing_ev.get(key) if i < len(existing_evals) else None
+                            from utils.data_processor import _is_weekday_or_empty_label
+                            # Clearing a schedule placeholder (MONDAY etc.) is not a permanent push block.
+                            if key.startswith('Hedge Day') and _is_weekday_or_empty_label(old_val):
+                                cleared.discard(key)
+                            else:
+                                cleared.add(key)       # user blanked the cell → freeze it
                     if cleared:
                         ev['_cleared_fields'] = sorted(cleared)
                     elif '_cleared_fields' in ev:
