@@ -5099,6 +5099,18 @@
             return '#fbbf24';
         }
 
+        function computeEvaluationsTotalFeesFromEvals(evals, filterHiddenFirms) {
+            const pc = (v) => { try { return parseFloat(String(v || '').replace(/[$,]/g, '').trim()) || 0; } catch (e) { return 0; } };
+            let total = 0;
+            (evals || []).forEach(ev => {
+                if (ev && ev._deleted) return;
+                const name = String(ev['Prop Firm'] || '').trim() || 'Unknown';
+                if (filterHiddenFirms && isFirmHidden(name)) return;
+                total += pc(ev['Fee']) + pc(ev['Activation Fee']);
+            });
+            return Math.round(total * 100) / 100;
+        }
+
         function buildByPropFirmRows(data) {
             const evals = data.evaluations || [];
             const fb = {}; // Actual Fees / Actual Payouts columns hidden for now
@@ -5298,10 +5310,11 @@
                             for (let pi = 1; pi <= 8; pi++) payouts = rnd2(payouts + pcN(ev['Payout ' + pi]));
 
                             // --- Cashflow in progress (API key name): every non-deleted account, active or ended ---
+                            // Challenge fees: all rows (incl. Status "Deleted") — matches By Prop Firm fees column.
+                            cfFees = rnd2(cfFees + fee + activation_fee);
                             if (!is_deleted) {
                                 const row_hedging = rnd2(p1Hedges + fundedHedges);
                                 const row_farming = hedgeDays; // pure sum of Hedge Day cols — matches sheet
-                                cfFees = rnd2(cfFees + fee + activation_fee);
                                 cfHedge = rnd2(cfHedge + row_hedging);
                                 cfFarm = rnd2(cfFarm + row_farming);
                                 cfPay = rnd2(cfPay + payouts);
@@ -5382,6 +5395,18 @@
                         s.profitability_completed.challenge_fees = Math.max(0, rnd2adj(agAdj.pcFees - _feeReduceTotal));
                     }
 
+                    const _serverEvalFees = (s.evaluations_total_fees !== undefined && s.evaluations_total_fees !== null && s.evaluations_total_fees !== '')
+                        ? (Number(s.evaluations_total_fees) || 0)
+                        : null;
+                    let _displayChallengeFees = _serverEvalFees !== null
+                        ? _serverEvalFees
+                        : computeEvaluationsTotalFeesFromEvals(data.evaluations, IS_BEF_ADMIN);
+                    if (_feeReduceTotal > 0) {
+                        _displayChallengeFees = Math.max(0, Math.round((_displayChallengeFees - _feeReduceTotal) * 100) / 100);
+                    }
+                    if (!s.cashflow_inprogress) s.cashflow_inprogress = {};
+                    s.cashflow_inprogress.challenge_fees = _displayChallengeFees;
+
                     // Helper for safe rate formatting
                     const fmtRate = (val) => {
                         const n = parseFloat(val);
@@ -5424,12 +5449,7 @@
                     // Hedging total = hedging + farming + discrepancy (matches the 3-line breakdown shown in UI)
                     const _cfHedgeTotal = (cf.hedging_results || 0) + (cf.farming_results || 0) + (_discrepancy || 0);
                     const _pcHedgeTotal = (pc.hedging_results || 0) + (pc.farming_results || 0) + (_discrepancy || 0);
-                    window._statsNetProfit = (cf.payouts || 0) + _cfHedgeTotal - (cf.challenge_fees || 0);
-                    const _evaluationsTotalNet = (s.evaluations_total_net !== undefined && s.evaluations_total_net !== null && s.evaluations_total_net !== '')
-                        ? (Number(s.evaluations_total_net) || 0)
-                        : null;
-                    window._evaluationsTotalNet = _evaluationsTotalNet;
-                    const _displayNetProfit = _evaluationsTotalNet !== null ? _evaluationsTotalNet : window._statsNetProfit;
+                    window._statsNetProfit = (cf.payouts || 0) + _cfHedgeTotal - _displayChallengeFees;
                     const pcNetProfit = (pc.payouts || 0) + _pcHedgeTotal - (pc.challenge_fees || 0);
                     const _showHedgingActual = _mt5HasData || _hasServerActual;
                     // Preserve payouts visibility across re-renders
@@ -5474,8 +5494,8 @@
                                     <table class="summary-table">
                                         <tr><td>Payouts</td><td class="text-right" style="color:#34d399;">${formatMoney(s.cashflow_inprogress.payouts)}</td></tr>
                                         <tr><td>Hedging Results</td><td class="text-right" style="color:${_cfHedgeTotal >= 0 ? '#34d399' : '#f87171'};">${formatMoney(_cfHedgeTotal)}</td></tr>
-                                        <tr><td>Challenge Fees</td><td class="text-right" style="color:#f87171;">${formatMoney(-(s.cashflow_inprogress.challenge_fees || 0))}</td></tr>
-                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${_displayNetProfit >= 0 ? '#34d399' : '#f87171'};">${formatMoney(_displayNetProfit)}</strong></td></tr>
+                                        <tr><td>Challenge Fees</td><td class="text-right" style="color:#f87171;">${formatMoney(-_displayChallengeFees)}</td></tr>
+                                        <tr><td><strong>Net Profit</strong></td><td class="text-right"><strong style="color:${window._statsNetProfit >= 0 ? '#34d399' : '#f87171'};">${formatMoney(window._statsNetProfit)}</strong></td></tr>
                                     </table>
                                 </div>
                             </div>

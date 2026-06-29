@@ -8500,6 +8500,16 @@ def get_data():
                 except Exception as e:
                     logging.error(f"Error injecting notes: {e}")
 
+            try:
+                from utils.data_processor import compute_evaluations_total_fees
+                stats = data.setdefault('statistics', {})
+                fee_total = compute_evaluations_total_fees(data.get('evaluations'))
+                stats['evaluations_total_fees'] = fee_total
+                cf = stats.setdefault('cashflow_inprogress', {})
+                cf['challenge_fees'] = fee_total
+            except Exception as e:
+                logging.error(f"Error computing evaluations_total_fees for {client_id}: {e}")
+
             data['status'] = 'success'
             try:
                 data['_version'] = page_meta.get('version', 0)
