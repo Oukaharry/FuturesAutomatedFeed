@@ -4114,16 +4114,16 @@
             return false;
         }
 
-        /** Status P1 explicitly marked Deleted — sole source for deleted row styling and Active-filter pin. */
+        /** Status P1 explicitly marked Deleted — sole source for deleted row styling. */
         function isStatusP1Deleted(ev) {
             if (!ev) return false;
             const s1 = String(ev['Status P1'] || '').trim().toLowerCase();
             return s1.includes('delete');
         }
 
-        /** Whether the Active-only filter should hide this row (Status P1 Deleted rows always stay visible). */
+        /** Whether the Active-only filter should hide this row (same rules as Fail / ended). */
         function hidesFromActiveFilter(ev) {
-            if (isStatusP1Deleted(ev)) return false;
+            if (ev && ev._deleted) return true;
             const statusP1 = String(ev['Status P1'] || '').toLowerCase();
             const statusFunded = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
             if (isTerminalEvalStatus(statusP1)) return true;
@@ -4490,10 +4490,13 @@
                             if (evAccount === hlAccount) forceShow = true;
                         }
 
-                        // Filter Logic — deleted rows stay in Active view for superadmin purge/review
+                        // Filter Logic — hide ended / deleted / soft-deleted rows when Active only
                         if (showActiveOnly && !forceShow && hidesFromActiveFilter(ev)) {
                             return;
                         }
+
+                        // Skip soft-deleted rows (companion orphans) — hidden like Fail in Active view
+                        if (ev._deleted) return;
 
                         rowsToRender.push({ item: ev, originalIndex: index, rowNum: currentRowNum });
                     });
@@ -7494,17 +7497,10 @@
                 scheduleEvalSave();
             }
             
-            // Re-render when status moves in/out of Active view (deleted rows always stay visible)
+            // Re-render when status moves in/out of Active view
             const showActiveOnly = document.getElementById('activeFilter').checked;
-            if (showActiveOnly && key === 'Status P1') {
-                const valLower = String(value || '').toLowerCase();
-                if (valLower.includes('delete') || isStatusP1Deleted(currentData.evaluations[index])) {
-                    renderEvaluationsTable();
-                } else if (isTerminalEvalStatus(value, false)) {
-                    renderEvaluationsTable();
-                }
-            } else if (showActiveOnly && key === 'Status') {
-                if (isTerminalEvalStatus(value, true)) {
+            if (showActiveOnly && (key === 'Status' || key === 'Status P1')) {
+                if (isTerminalEvalStatus(value, key === 'Status')) {
                     renderEvaluationsTable();
                 }
             }
@@ -7612,7 +7608,7 @@
             const evals = currentData.evaluations || [];
             changedRows.forEach(idx => {
                 const ev = evals[idx];
-                if (!ev || isStatusP1Deleted(ev)) return;
+                if (!ev || ev._deleted || isStatusP1Deleted(ev)) return;
                 const row = idx + 1;
                 const pf = (ev['Prop Firm'] || '').trim();
                 const sz = (ev['Account Size'] || '').trim();
