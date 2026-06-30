@@ -41,6 +41,11 @@ dashboard/.scheduler_state.json
 dashboard/instance/ml_cache/
 trader_companion/trader_bias.json
 
+# Local companion ML tuning / journals (machine-specific; do not commit)
+trader_companion/signals/indicator_params_ustech_m5.json
+trader_companion/signals/*.jsonl
+scripts/_compare_matt_csv.py
+
 local-before-restore.dump
 
 # Local databases (large, contain real client data  never commit)

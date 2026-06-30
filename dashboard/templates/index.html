@@ -4114,6 +4114,23 @@
             return false;
         }
 
+        /** Status P1 explicitly marked Deleted — sole source for deleted row styling and Active-filter pin. */
+        function isStatusP1Deleted(ev) {
+            if (!ev) return false;
+            const s1 = String(ev['Status P1'] || '').trim().toLowerCase();
+            return s1.includes('delete');
+        }
+
+        /** Whether the Active-only filter should hide this row (Status P1 Deleted rows always stay visible). */
+        function hidesFromActiveFilter(ev) {
+            if (isStatusP1Deleted(ev)) return false;
+            const statusP1 = String(ev['Status P1'] || '').toLowerCase();
+            const statusFunded = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
+            if (isTerminalEvalStatus(statusP1)) return true;
+            if (isTerminalEvalStatus(statusFunded, true)) return true;
+            return false;
+        }
+
         function computeHedgeNet(ev) {
             const hr1 = ev['Hedge Result 1'];
             if (hr1 == null || String(hr1).trim() === '') return '';
@@ -4473,33 +4490,11 @@
                             if (evAccount === hlAccount) forceShow = true;
                         }
 
-                        // Filter Logic
-                        if (showActiveOnly && !forceShow) {
-                            const statusP1 = String(ev['Status P1'] || '').toLowerCase();
-                            const statusFunded = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
-                            
-                            // Hide soft-deleted rows
-                            if (ev._deleted) return;
-                            
-                            // 1. Check Eval Phase Status
-                            // If Eval is explicitly failed/closed, hide it.
-                            // Note: 'deleted' status text is intentionally NOT hidden — rows marked deleted by status should
-                            // remain visible so superadmins can identify and review them before physically deleting.
-                            if (isTerminalEvalStatus(statusP1)) return;
-                            
-                            // 2. Check Funded Phase Status
-                            if (isTerminalEvalStatus(statusFunded, true)) return;
-                            
-                            // 3. Special Case: Eval Completed but Funded Not Started (or just created)
-                            // If P1 is completed, we rely on Funded status.
-                            // If P1 is NOT completed, we rely on P1 status.
-                            // But wait, if P1 is Active, and Funded is Empty, it shows. Correct.
-                            // If P1 is Completed, and Funded is Active, it shows. Correct.
-                            // If P1 is Completed, and Funded is Fail, it hides. Correct.
+                        // Filter Logic — deleted rows stay in Active view for superadmin purge/review
+                        if (showActiveOnly && !forceShow && hidesFromActiveFilter(ev)) {
+                            return;
                         }
-                        
-                        // Add to list — skip soft-deleted rows always
-                        if (ev._deleted) return;
+
                         rowsToRender.push({ item: ev, originalIndex: index, rowNum: currentRowNum });
                     });
                 }
@@ -4555,11 +4550,11 @@
                     const s1 = (getVal('Status P1') || '').toString().toLowerCase();
                     const s2 = (getVal('Status') || '').toString().toLowerCase();
 
-                    // Priority Logic: Fail > Deleted > Complete > TP/Progress > Not Started > Pass
-                    if (isTerminalEvalStatus(s1) || isTerminalEvalStatus(s2)) {
-                        row.classList.add('row-fail');
-                    } else if (s2.includes('delete') || s1.includes('delete')) {
+                    // Priority Logic: Status P1 Deleted (red) > Fail > Complete > TP/Progress > Not Started > Pass
+                    if (isStatusP1Deleted(ev)) {
                         row.classList.add('row-deleted');
+                    } else if (isTerminalEvalStatus(s1) || isTerminalEvalStatus(s2)) {
+                        row.classList.add('row-fail');
                     } else if (s2.includes('complete')) {
                         row.classList.add('row-complete');
                     } else if (isHitTpSlStatus(s1) || isHitTpSlStatus(s2) || s2.includes('tp') || s2.includes('payout') || s2.includes('progress') || s1.includes('tp')) {
@@ -4631,7 +4626,7 @@
                         <td class="sticky-col-2" style="text-align:center;padding:2px;">
                              ${USER_TYPE === 'super_admin' ? `<button onclick="deleteEvaluation(${index})" 
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
-                                     title="Delete this row (super admin only)">🗑️</button>` : ''}
+                                     title="Permanently delete this row (super admin only)">🗑️</button>` : ''}
                         </td>
                         ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', SHEET_EDIT_LOCKED), 'Prop Firm')}
                         ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', SHEET_EDIT_LOCKED), 'Account Size')}
@@ -7177,7 +7172,7 @@
                                     // Let's implement a 'safe enough' version that just applies the class associated with the NEW value.
                                     
                                     // Re-evaluating just based on the new value is usually fine for immediate feedback.
-                                    if (v.includes('delete')) row.classList.add('row-deleted');
+                                    if (key === 'Status P1' && v.includes('delete')) row.classList.add('row-deleted');
                                     else if (isTerminalEvalStatus(v, key === 'Status')) row.classList.add('row-fail');
                                     else if (v.includes('complete')) row.classList.add('row-complete');
                                     else if (isHitTpSlStatus(v) || v.includes('tp') || v.includes('payout') || v.includes('progress')) row.classList.add('row-tp');
@@ -7499,10 +7494,17 @@
                 scheduleEvalSave();
             }
             
-            // Visual Update: If "Show Active Only" is checked and we changed a status to something inactive, re-render
+            // Re-render when status moves in/out of Active view (deleted rows always stay visible)
             const showActiveOnly = document.getElementById('activeFilter').checked;
-            if (showActiveOnly && (key === 'Status' || key === 'Status P1')) {
-                if (isTerminalEvalStatus(value, key === 'Status')) {
+            if (showActiveOnly && key === 'Status P1') {
+                const valLower = String(value || '').toLowerCase();
+                if (valLower.includes('delete') || isStatusP1Deleted(currentData.evaluations[index])) {
+                    renderEvaluationsTable();
+                } else if (isTerminalEvalStatus(value, false)) {
+                    renderEvaluationsTable();
+                }
+            } else if (showActiveOnly && key === 'Status') {
+                if (isTerminalEvalStatus(value, true)) {
                     renderEvaluationsTable();
                 }
             }
@@ -7568,26 +7570,21 @@
         async function deleteEvaluation(index) {
             const ev = currentData.evaluations[index];
             if (!ev) return;
-            
+
             const propFirm = ev['Prop Firm'] || 'Unknown';
             const accountSize = ev['Account Size'] || 'Unknown';
             const accountNum = ev['Account #'] || ev['Account #.1'] || '';
-            
-            const confirmMsg = `Delete this evaluation?\n\n` +
+
+            const confirmMsg = `Permanently delete this evaluation?\n\n` +
                 `Row ${index + 1}: ${propFirm} - ${accountSize}` +
                 (accountNum ? `\nAccount: ${accountNum}` : '') +
-                `\n\n⚠️ This will remove the row from the dashboard.`;
-            
+                `\n\nThis removes the row from the database. Use version history to recover if needed.`;
+
             if (!confirm(confirmMsg)) return;
 
-            // Soft delete: mark as _deleted instead of splicing
-            // This prevents any concurrent sync from restoring the row
-            currentData.evaluations[index]._deleted = true;
+            currentData.evaluations.splice(index, 1);
             renderEvaluationsTable();
-            
-            // Save — showSaveStatus is handled inside saveData on success/failure
-            const desc = `Deleted row ${index + 1} (${propFirm} ${accountSize})`;
-            saveData('DELETE', desc);
+            saveData('DELETE', `Deleted row ${index + 1} (${propFirm} ${accountSize})`);
         }
 
         // Retry queue for failed saves
@@ -7615,7 +7612,7 @@
             const evals = currentData.evaluations || [];
             changedRows.forEach(idx => {
                 const ev = evals[idx];
-                if (!ev || ev._deleted) return;
+                if (!ev || isStatusP1Deleted(ev)) return;
                 const row = idx + 1;
                 const pf = (ev['Prop Firm'] || '').trim();
                 const sz = (ev['Account Size'] || '').trim();
