@@ -5137,6 +5137,23 @@
                 for (let i=1;i<=50;i++) f.farming += pc(ev['Hedge Day '+i]);
                 for (let i=1;i<=9;i++) f.payouts += pc(ev['Payout '+i]);
             });
+            // Per-firm billing remainders (inject_challenge_fee_adjustments.py)
+            const _pfAdjList = (data.statistics && data.statistics.manual_fee_adjustments) || [];
+            const _pfAdjEntry = _pfAdjList.length ? _pfAdjList[_pfAdjList.length - 1] : null;
+            const _pfAdjMap = (_pfAdjEntry && _pfAdjEntry.prop_firm_adjustments) || {};
+            Object.entries(_pfAdjMap).forEach(([firmName, blob]) => {
+                if (!blob || typeof blob !== 'object') return;
+                const matchKey = Object.keys(firms).find(k => k.toLowerCase().replace(/[\s_]/g, '') === String(firmName).toLowerCase().replace(/[\s_]/g, ''))
+                    || (firms[firmName] ? firmName : null);
+                if (!matchKey || !firms[matchKey]) return;
+                const target = blob.target_fees;
+                const add = blob.add_fees;
+                if (target !== undefined && target !== null && String(target).trim() !== '') {
+                    firms[matchKey].fees = pc(target);
+                } else if (add !== undefined && add !== null && String(add).trim() !== '') {
+                    firms[matchKey].fees = Math.round((firms[matchKey].fees + pc(add)) * 100) / 100;
+                }
+            });
             const fmt = v => formatMoney(v);
             const rows = Object.entries(firms).sort((a,b)=>b[1].payouts-a[1].payouts);
             const tot = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
