@@ -153,6 +153,35 @@ def compute_evaluations_total_fees(evaluations):
     return total
 
 
+def compute_fees_by_prop_firm(evaluations):
+    """Sum Fee + Activation Fee per prop firm (matches Stats By Prop Firm fees column)."""
+    by_firm = {}
+    for ev in evaluations or []:
+        if not isinstance(ev, dict) or ev.get('_deleted'):
+            continue
+        firm = prop_firm_stats_parent(ev.get('Prop Firm', 'Unknown'))
+        by_firm[firm] = round(
+            by_firm.get(firm, 0.0)
+            + parse_currency(ev.get('Fee'))
+            + parse_currency(ev.get('Activation Fee')),
+            2,
+        )
+    return by_firm
+
+
+def get_manual_prop_firm_fee_adjustments(statistics):
+    """Return {canonical_firm: adjustment_dict} from latest manual_fee_adjustments entry."""
+    statistics = statistics or {}
+    adjustments = statistics.get('manual_fee_adjustments') or []
+    if not adjustments:
+        return {}
+    latest = adjustments[-1]
+    if not isinstance(latest, dict):
+        return {}
+    raw = latest.get('prop_firm_adjustments') or {}
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
 def _sync_historical_account_totals(hr):
     """Keep aggregate historical_* fields aligned with historical_accounts list."""
     hist = hr.get('historical_accounts') or []
