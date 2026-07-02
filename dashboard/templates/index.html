@@ -5160,6 +5160,15 @@
             rows.forEach(([,f])=>{ for(const k in tot) tot[k]+=f[k]; });
             // Use authoritative backend stats for totals (Stats tab overrides raw eval sums)
             const cf = (data.statistics && data.statistics.cashflow_inprogress) || {};
+            const _pfTargetIp = _pfAdjEntry && _pfAdjEntry.target_ip_fees;
+            if (_pfTargetIp !== undefined && _pfTargetIp !== null && String(_pfTargetIp).trim() !== '') {
+                tot.fees = pc(_pfTargetIp);
+            } else if (Object.keys(_pfAdjMap).length > 0) {
+                const _pfAddTotal = Object.values(_pfAdjMap).reduce((sum, blob) => {
+                    return sum + (blob && blob.add_fees != null ? pc(blob.add_fees) : 0);
+                }, 0);
+                if (_pfAddTotal) tot.fees = Math.round((tot.fees + _pfAddTotal) * 100) / 100;
+            }
             if (cf.hedging_results !== undefined || cf.farming_results !== undefined) {
                 tot.hedge = cf.hedging_results || 0;
                 tot.farming = cf.farming_results || 0;
