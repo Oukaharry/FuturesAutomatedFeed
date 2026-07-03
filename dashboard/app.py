@@ -1491,6 +1491,99 @@ def _find_dashboard_new_eval_rows(existing_evals, incoming_evals):
     return found
 
 
+def _eval_has_non_blank_value(v):
+    """Treat numeric 0 as a real value so protected fields are not blanked."""
+    if v is None:
+        return False
+    if isinstance(v, str):
+        return v.strip() not in ('', '-')
+    return True
+
+
+def merge_dashboard_update_evaluations(
+    existing_evals,
+    incoming_evals,
+    user_changed,
+    protected_keys,
+    push_sourced_keys,
+):
+    """Apply dashboard edits by row identity; never drop DB rows a stale browser omitted."""
+    from utils.data_processor import _is_weekday_or_empty_label
+
+    existing_evals = list(existing_evals or [])
+    incoming_evals = list(incoming_evals or [])
+    user_changed = user_changed or {}
+    protected_keys = set(protected_keys or ())
+    push_sourced_keys = set(push_sourced_keys or ())
+
+    key_to_idx = {}
+    for i, ex in enumerate(existing_evals):
+        if not isinstance(ex, dict):
+            continue
+        mk = _evaluation_row_merge_key(ex)
+        if mk is not None and mk not in key_to_idx:
+            key_to_idx[mk] = i
+
+    out = [dict(ex) if isinstance(ex, dict) else ex for ex in existing_evals]
+
+    for i, ev_in in enumerate(incoming_evals):
+        if not isinstance(ev_in, dict):
+            continue
+        mk = _evaluation_row_merge_key(ev_in)
+        idx = key_to_idx.get(mk) if mk is not None else None
+        if idx is None and i < len(out):
+            idx = i
+        if idx is None or idx >= len(out):
+            continue
+
+        explicitly_changed = user_changed.get(i, set())
+        existing_ev = existing_evals[idx] if isinstance(existing_evals[idx], dict) else {}
+        merged = dict(out[idx])
+
+        for k, v in ev_in.items():
+            if k.startswith('_'):
+                continue
+            if k in protected_keys:
+                continue
+            merged[k] = v
+
+        for key in protected_keys:
+            if key in explicitly_changed:
+                merged[key] = ev_in.get(key)
+                continue
+            existing_val = existing_ev.get(key)
+            incoming_val = ev_in.get(key)
+            if _eval_has_non_blank_value(existing_val) and not _eval_has_non_blank_value(incoming_val):
+                merged[key] = existing_val
+            elif key in ev_in:
+                merged[key] = incoming_val
+
+        for k, v in existing_ev.items():
+            if k.startswith('_') and k not in merged:
+                merged[k] = v
+
+        cleared = set(merged.get('_cleared_fields') or existing_ev.get('_cleared_fields') or [])
+        for key in explicitly_changed:
+            if key not in push_sourced_keys:
+                continue
+            if _eval_has_non_blank_value(merged.get(key)):
+                cleared.discard(key)
+            else:
+                old_val = existing_ev.get(key)
+                if key.startswith('Hedge Day') and _is_weekday_or_empty_label(old_val):
+                    cleared.discard(key)
+                else:
+                    cleared.add(key)
+        if cleared:
+            merged['_cleared_fields'] = sorted(cleared)
+        elif '_cleared_fields' in merged:
+            merged.pop('_cleared_fields', None)
+
+        out[idx] = merged
+
+    return out
+
+
 def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fields=None):
     """Merge incoming evaluation rows into the full stored list by row identity.
 
@@ -12519,6 +12612,27 @@ def update_data():
                                        f"but the database has {len(existing_evals)}. "
                                        f"Please refresh the page and try again."
                         }), 409
+                    base_version = data.get('base_version')
+                    if base_version is not None:
+                        try:
+                            base_version = int(base_version)
+                        except (TypeError, ValueError):
+                            base_version = None
+                    if base_version is not None:
+                        from dashboard.database import get_current_data_version
+                        current_ver = get_current_data_version(client_id)
+                        if base_version != current_ver:
+                            app.logger.warning(
+                                "[HEDGE_SAVE] client=%s version conflict base=%s current=%s",
+                                client_id, base_version, current_ver,
+                            )
+                            return jsonify({
+                                "status": "error",
+                                "message": "Your page is out of date (newer data was saved). "
+                                           "Please wait while we refresh.",
+                                "code": "version_conflict",
+                                "current_version": current_ver,
+                            }), 409
                 PUSH_SOURCED_KEYS = {
                     'Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3',
                     'Hedge Result 4', 'Hedge Result 5',
@@ -12566,58 +12680,20 @@ def update_data():
                                     client_id, idx, fk, ev_pay.get(fk),
                                 )
 
-                def _has_non_blank_value(v):
-                    """Treat numeric 0 as a real value so protected fields are not blanked."""
-                    if v is None:
-                        return False
-                    if isinstance(v, str):
-                        return v.strip() not in ('', '-')
-                    return True
-
-                for i, ev in enumerate(evaluations):
-                    explicitly_changed = user_changed.get(i, set())
-
-                    if i < len(existing_evals):
-                        existing_ev = existing_evals[i]
-                        
-                        # Preserve DB-only internal keys the frontend doesn't send
-                        for k, v in existing_ev.items():
-                            if k.startswith('_') and k not in ev:
-                                ev[k] = v
-                        
-                        for key in PROTECTED_KEYS:
-                            # If the user explicitly cleared this field, respect the clear
-                            if key in explicitly_changed:
-                                continue
-                            existing_val = existing_ev.get(key)
-                            incoming_val = ev.get(key)
-                            # Keep the existing (push-sourced) value when the frontend sends empty/missing
-                            if _has_non_blank_value(existing_val) and not _has_non_blank_value(incoming_val):
-                                ev[key] = existing_val
-
-                    # ── Track manual clears so MT5 push aggregator cannot resurrect them ──
-                    # When the user explicitly blanks a push-sourced field, record it in
-                    # `_cleared_fields`.  When they later type a real value back in,
-                    # remove the entry so push writes resume.
-                    cleared = set(ev.get('_cleared_fields') or [])
-                    for key in explicitly_changed:
-                        if key not in PUSH_SOURCED_KEYS:
-                            continue
-                        if _has_non_blank_value(ev.get(key)):
-                            cleared.discard(key)   # user typed a value back → resume push writes
-                        else:
-                            old_val = existing_ev.get(key) if i < len(existing_evals) else None
-                            from utils.data_processor import _is_weekday_or_empty_label
-                            # Clearing a schedule placeholder (MONDAY etc.) is not a permanent push block.
-                            if key.startswith('Hedge Day') and _is_weekday_or_empty_label(old_val):
-                                cleared.discard(key)
-                            else:
-                                cleared.add(key)       # user blanked the cell → freeze it
-                    if cleared:
-                        ev['_cleared_fields'] = sorted(cleared)
-                    elif '_cleared_fields' in ev:
-                        # remove empty list to keep payload lean
-                        ev.pop('_cleared_fields', None)
+                if action_type not in ('CREATE', 'DELETE', 'ROLLBACK'):
+                    if len(evaluations) < len(existing_evals):
+                        app.logger.warning(
+                            "[HEDGE_SAVE] client=%s stale_row_count incoming=%s existing=%s "
+                            "(merge by row identity, preserving omitted rows)",
+                            client_id, len(evaluations), len(existing_evals),
+                        )
+                    evaluations = merge_dashboard_update_evaluations(
+                        existing_evals,
+                        evaluations,
+                        user_changed,
+                        PROTECTED_KEYS,
+                        PUSH_SOURCED_KEYS,
+                    )
 
                 # Recalculate Hedge Net / Hedge Net.1 from current hedge results & statuses
                 evaluations = recalculate_hedge_nets(evaluations)

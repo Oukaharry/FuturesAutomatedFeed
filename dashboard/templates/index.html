@@ -3495,6 +3495,7 @@
         let histSortAsc = false; // false = newest first (default)
         let isEditing = false;
         let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
+        let _saveChangedFieldsSnapshot = null;  // Preserved until save response applied
         let _saveDebounceTimer = null;  // Debounce rapid edits into one save
         // Save policy: while cursor is inside a cell, NEVER save.
         // Only save after the user leaves the cell (blur / click outside).
@@ -4347,50 +4348,27 @@
                                         _lastSavedVersion = null;
                                     }
                                     if (d2.status === 'error') return;
-                                    const pendingAfterRecalc = _collectPendingNewRows(currentData.evaluations);
-                                    currentData = d2;
-                                    if (_pendingNewRowIds.size > 0 && currentData.evaluations) {
-                                        currentData.evaluations = _reappendPendingNewRows(
-                                            currentData.evaluations, pendingAfterRecalc
-                                        );
-                                    }
-                                    if (currentData.evaluations) {
-                                        currentData.evaluations.forEach(ev => {
-                                            const pf = (ev['Prop Firm'] || '').toLowerCase().replace(/[\s_]/g, '');
-                                            if (pf === 'mffu' || pf === 'mffuflex' || pf === 'myfundedfx') {
-                                                ev['Prop Firm'] = 'My Funded Futures';
-                                            } else if (pf === 'topstep' || pf === 'topstep' || pf === 'v2') {
-                                                ev['Prop Firm'] = 'Topstep';
-                                            } else if (pf === 'fundingticks' || pf === 'fundingtick') {
-                                                ev['Prop Firm'] = 'Funding Ticks';
-                                            } else if (pf === 'fundednext') {
-                                                ev['Prop Firm'] = 'FundedNext';
-                                            } else if (pf === 'tradeday') {
-                                                ev['Prop Firm'] = 'TradeDay';
-                                            } else if (pf === 'alphafutures') {
-                                                ev['Prop Firm'] = 'Alpha Futures';
-                                            } else if (pf === 'fundedfuturesfamily' || pf === 'fff') {
-                                                ev['Prop Firm'] = 'Funded Futures Family';
-                                            }
-                                        });
-                                    }
-                                    const lu = document.getElementById('last-updated');
-                                    if (lu) lu.textContent = d2.last_updated;
-                                    try { renderEvaluationsTable(false); } catch (e) {
-                                        console.error('renderEvaluationsTable error:', e);
-                                    }
-                                    try { renderStats(d2); } catch (e) { console.error('renderStats error:', e); }
-                                    try { renderPositions(d2); } catch (e) { console.error('renderPositions error:', e); }
-                                    try { renderHedgeAccounts(d2); } catch (e) { console.error('renderHedgeAccounts error:', e); }
-                                    try { renderPropAccounts(d2); } catch (e) { console.error('renderPropAccounts error:', e); }
-                                    try { renderMT5Credentials(d2); } catch (e) { console.error('renderMT5Credentials error:', e); }
-                                    try { renderVPSAccounts(d2); } catch (e) { console.error('renderVPSAccounts error:', e); }
-                                    try { renderPaymentInfo(d2); } catch (e) { console.error('renderPaymentInfo error:', e); }
-                                    try { renderHistory(d2); } catch (e) { console.error('renderHistory error:', e); }
-                                    try { renderActivityIndicators(d2); } catch (e) { console.error('renderActivityIndicators error:', e); }
+                                    // Recalc only persists statistics — do not replace evaluation rows.
+                                    if (d2.statistics) currentData.statistics = d2.statistics;
+                                    if (d2.last_updated) currentData.last_updated = d2.last_updated;
+                                    if (d2._version != null) currentData._version = d2._version;
+                                    if (d2._activity) currentData._activity = d2._activity;
                                     if (d2.dropdown_options) {
                                         Object.assign(dropdownOptions, d2.dropdown_options);
                                     }
+                                    const lu = document.getElementById('last-updated');
+                                    if (lu) lu.textContent = d2.last_updated;
+                                    try { renderStats(currentData); } catch (e) {
+                                        console.error('renderStats error:', e);
+                                    }
+                                    try { renderPositions(currentData); } catch (e) { console.error('renderPositions error:', e); }
+                                    try { renderHedgeAccounts(currentData); } catch (e) { console.error('renderHedgeAccounts error:', e); }
+                                    try { renderPropAccounts(currentData); } catch (e) { console.error('renderPropAccounts error:', e); }
+                                    try { renderMT5Credentials(currentData); } catch (e) { console.error('renderMT5Credentials error:', e); }
+                                    try { renderVPSAccounts(currentData); } catch (e) { console.error('renderVPSAccounts error:', e); }
+                                    try { renderPaymentInfo(currentData); } catch (e) { console.error('renderPaymentInfo error:', e); }
+                                    try { renderHistory(currentData); } catch (e) { console.error('renderHistory error:', e); }
+                                    try { renderActivityIndicators(currentData); } catch (e) { console.error('renderActivityIndicators error:', e); }
                                 });
                             })
                             .catch(err => {
@@ -4488,6 +4466,9 @@
                         if (hlAccount) {
                             const evAccount = String(ev['Account #'] || ev['Account #.1'] || '').trim();
                             if (evAccount === hlAccount) forceShow = true;
+                        }
+                        if (ev._create_id && _pendingNewRowIds.has(String(ev._create_id))) {
+                            forceShow = true;
                         }
 
                         // Filter Logic — hide ended / deleted / soft-deleted rows when Active only
@@ -7547,11 +7528,6 @@
             };
             _trackPendingNewRow(newRow);
 
-            const activeFilterCb = document.getElementById('activeFilter');
-            if (activeFilterCb && activeFilterCb.checked) {
-                activeFilterCb.checked = false;
-            }
-
             const finishAdd = (evals) => {
                 if (!currentData.evaluations) currentData.evaluations = [];
                 const have = new Set(
@@ -7772,8 +7748,9 @@
          * Re-apply any field names still listed in _changedFields from currentData before assign.
          */
         function mergeServerEvaluationsWithLocalEdits(serverEvals) {
+            const overlaySource = _saveChangedFieldsSnapshot || _changedFields;
             const overlay = {};
-            for (const [idxStr, fields] of Object.entries(_changedFields)) {
+            for (const [idxStr, fields] of Object.entries(overlaySource)) {
                 const idx = parseInt(idxStr, 10);
                 if (!Number.isFinite(idx) || !currentData.evaluations || !currentData.evaluations[idx]) continue;
                 const evLocal = currentData.evaluations[idx];
@@ -7887,7 +7864,14 @@
                     }
                     payload._changedFields = cf;
                 }
-                // Reset after including in payload
+                if (currentData._version != null && currentData._version !== '') {
+                    payload.base_version = currentData._version;
+                }
+                // Snapshot changed fields for post-save merge before clearing live tracker.
+                _saveChangedFieldsSnapshot = {};
+                for (const [idx, fields] of Object.entries(_changedFields)) {
+                    _saveChangedFieldsSnapshot[idx] = new Set(fields);
+                }
                 _changedFields = {};
                 bodyStr = JSON.stringify(payload);
             }
@@ -7901,8 +7885,14 @@
             })
             .then(response => {
                 if (response.status === 401) {
-                    // Session expired - redirect to login
                     throw new Error('SESSION_EXPIRED');
+                }
+                if (response.status === 409) {
+                    return response.json().then(err => {
+                        const e = new Error(err.message || 'Save conflict');
+                        e.httpStatus = 409;
+                        throw e;
+                    });
                 }
                 if (!response.ok) {
                     return response.json().then(err => {
@@ -7913,6 +7903,7 @@
             })
             .then(data => {
                 isSaving = false;
+                _saveChangedFieldsSnapshot = null;
                 if (data.version != null) _lastSavedVersion = data.version;
                 if (data._version != null) _lastSavedVersion = data._version;
 
@@ -8000,9 +7991,25 @@
                 isSaving = false;
                 
                 if (error.message === 'SESSION_EXPIRED') {
-                    // Session expired - show alert and redirect
+                    _saveChangedFieldsSnapshot = null;
                     alert('Your session has expired. Please log in again to continue.');
                     window.location.href = '/login';
+                    return;
+                }
+
+                if (error.httpStatus === 409) {
+                    _saveChangedFieldsSnapshot = null;
+                    isEditing = false;
+                    _pendingEvalRecalc = false;
+                    setEvaluationsRecalcIndicator(false);
+                    showSaveStatus('failed', error.message);
+                    updateDashboard(true);
+                    if (_pendingSaveCallback) { _pendingSaveCallback(false); _pendingSaveCallback = null; }
+                    if (_pendingEvalSaveAfterFlight) {
+                        const pending = _pendingEvalSaveAfterFlight;
+                        _pendingEvalSaveAfterFlight = null;
+                        setTimeout(() => { saveData(pending.action || 'UPDATE', pending.description || null); }, 500);
+                    }
                     return;
                 }
                 
@@ -8016,6 +8023,7 @@
                 }
                 
                 // All retries failed
+                _saveChangedFieldsSnapshot = null;
                 isEditing = false;
                 _pendingEvalRecalc = false;
                 setEvaluationsRecalcIndicator(false);
