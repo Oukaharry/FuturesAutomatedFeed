@@ -663,6 +663,57 @@
         let fullScanData = null;
         let currentFilter = 'all';
         let currentDateFilter = 'latest';
+        let allHierarchyTraders = [];
+
+        function collectTradersFromHierarchy(hierarchy) {
+            const names = new Set();
+            const admins = (hierarchy && hierarchy.admins) || {};
+
+            Object.values(admins).forEach(adminData => {
+                Object.keys((adminData && adminData.traders) || {}).forEach(name => {
+                    const n = String(name || '').trim();
+                    if (n) names.add(n);
+                });
+                ((adminData && adminData.assigned_traders) || []).forEach(name => {
+                    const n = String(name || '').trim();
+                    if (n) names.add(n);
+                });
+                // Restructured-on-disk shape if API ever returns it unconverted
+                ((adminData && adminData.clients) || []).forEach(client => {
+                    const n = String((client && client.assigned_trader) || '').trim();
+                    if (n && n.toLowerCase() !== 'unassigned') names.add(n);
+                });
+            });
+            return [...names].sort((a, b) => a.localeCompare(b));
+        }
+
+        function populateIssueTraderFilter(extraTraders) {
+            const traderFilter = document.getElementById('issue-trader-filter');
+            if (!traderFilter) return;
+            const prev = traderFilter.value || 'all';
+            const names = new Set(allHierarchyTraders);
+            (extraTraders || []).forEach(t => {
+                const n = String(t || '').trim();
+                if (n && n !== '-') names.add(n);
+            });
+            const sorted = [...names].sort((a, b) => a.localeCompare(b));
+            traderFilter.innerHTML = '<option value="all">All Traders</option>' +
+                sorted.map(t => `<option value="${t.replace(/"/g, '&quot;')}">${t}</option>`).join('');
+            traderFilter.value = (prev !== 'all' && names.has(prev)) ? prev : 'all';
+        }
+
+        async function loadHierarchyTraders() {
+            try {
+                const resp = await fetch('/api/hierarchy');
+                const data = await resp.json();
+                if (resp.ok && data && data.admins) {
+                    allHierarchyTraders = collectTradersFromHierarchy(data);
+                    populateIssueTraderFilter();
+                }
+            } catch (e) {
+                console.error('Failed to load hierarchy traders:', e);
+            }
+        }
 
         // Load existing results on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -671,6 +722,7 @@
             document.getElementById('date-end').value = today;
             const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
             document.getElementById('date-start').value = weekAgo;
+            loadHierarchyTraders();
             loadResults();
             loadChecklists();
             loadSummaryStatus();
@@ -1688,9 +1740,7 @@
             const typeFilter = document.getElementById('issue-type-filter');
             typeFilter.innerHTML = '<option value="all">All Issue Types</option>' +
                 [...typeSet].sort().map(t => `<option value="${t}">${t}</option>`).join('');
-            const traderFilter = document.getElementById('issue-trader-filter');
-            traderFilter.innerHTML = '<option value="all">All Traders</option>' +
-                [...traderSet].sort().map(t => `<option value="${t}">${t}</option>`).join('');
+            populateIssueTraderFilter([...traderSet]);
         }
 
         function sortIssuesBy(col) {
