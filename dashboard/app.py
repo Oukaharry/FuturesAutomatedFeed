@@ -1569,8 +1569,18 @@ def merge_dashboard_update_evaluations(
         if not isinstance(ex, dict):
             continue
         mk = _evaluation_row_merge_key(ex)
-        if mk is not None and mk not in key_to_idx:
+        if mk is None:
+            continue
+        if mk not in key_to_idx:
             key_to_idx[mk] = i
+        else:
+            # Prefer a LIVE row over a soft-deleted tombstone as the identity match
+            # target. Deleted rows linger in the DB but share the same identity
+            # (Prop Firm + Account # + Size) as their live replacement, so without
+            # this a hidden tombstone could receive (and thus swallow) a live edit.
+            _prev = existing_evals[key_to_idx[mk]]
+            if isinstance(_prev, dict) and _prev.get('_deleted') and not ex.get('_deleted'):
+                key_to_idx[mk] = i
 
     out = [dict(ex) if isinstance(ex, dict) else ex for ex in existing_evals]
 
@@ -1579,6 +1589,16 @@ def merge_dashboard_update_evaluations(
             continue
         mk = _evaluation_row_merge_key(ev_in)
         idx = key_to_idx.get(mk) if mk is not None else None
+        # Duplicate-row guard: several rows can share the same identity (same Prop
+        # Firm + Account # + Size). key_to_idx collapses them onto one occurrence,
+        # so another row with that identity would overwrite an earlier edit (edits
+        # appear to "revert"). When the row at this incoming position already has
+        # the same identity, align by position so each row (live or tombstone)
+        # keeps its own value on its own slot.
+        if mk is not None and i < len(existing_evals):
+            _ex_at_i = existing_evals[i]
+            if isinstance(_ex_at_i, dict) and _evaluation_row_merge_key(_ex_at_i) == mk:
+                idx = i
         if idx is None and i < len(out):
             idx = i
         if idx is None or idx >= len(out):
@@ -1651,8 +1671,17 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
         if not isinstance(ex, dict):
             continue
         mk = _evaluation_row_merge_key(ex)
-        if mk and mk not in key_to_idx:
+        if not mk:
+            continue
+        if mk not in key_to_idx:
             key_to_idx[mk] = i
+        else:
+            # Prefer a LIVE row over a soft-deleted tombstone as the match target
+            # (see merge_dashboard_update_evaluations) so a hidden deleted row can
+            # never swallow a live row's push update.
+            _prev = existing_evals[key_to_idx[mk]]
+            if isinstance(_prev, dict) and _prev.get('_deleted') and not ex.get('_deleted'):
+                key_to_idx[mk] = i
 
     out = []
     for ex in existing_evals:
@@ -1665,6 +1694,17 @@ def merge_evaluation_push_with_existing(existing_evals, incoming_evals, force_fi
             continue
         mk = _evaluation_row_merge_key(ev_in)
         idx = key_to_idx.get(mk) if mk else None
+        # Duplicate-row guard (see merge_dashboard_update_evaluations): when several
+        # rows share the same identity, key_to_idx collapses them onto one occurrence.
+        # If position i in existing already has the same identity, align by position
+        # so each row patches its own slot instead of clobbering. Pushes carry only
+        # live numeric rows (never tombstones), so skip deleted existing rows here:
+        # a live push row must never be aligned onto a soft-deleted tombstone.
+        if mk and i < len(existing_evals):
+            _ex_at_i = existing_evals[i]
+            if (isinstance(_ex_at_i, dict) and not _ex_at_i.get('_deleted')
+                    and _evaluation_row_merge_key(_ex_at_i) == mk):
+                idx = i
         if idx is None and mk is None and i < len(out):
             idx = i
         if idx is not None and idx < len(out):
