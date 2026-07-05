@@ -7853,6 +7853,17 @@
             if (!bodyStr) {
                 // Prepare payload with metadata (only on first attempt, retries reuse the same body)
                 const payload = { ...currentData };
+                // Strip heavy fields the server preserves from the DB anyway (deals, market
+                // data, aggregation caches). A dashboard edit only needs evaluations/statistics/
+                // identity — sending the full blob (thousands of MT5 deals + M1 bars) can exceed
+                // MAX_CONTENT_LENGTH (10MB) → 413 Request Entity Too Large → the edit is silently
+                // dropped and stale values (e.g. weekday markers) appear to "revert".
+                delete payload.deals;
+                delete payload.trade_history_deals;
+                delete payload.positions;
+                delete payload.m1_bars;
+                delete payload.aggregated_by_comment;
+                delete payload.comment_summary;
                 payload.action_type = action;
                 if (description) payload.change_description = description;
                 

@@ -1419,7 +1419,12 @@ def _evaluation_row_merge_key(ev):
 
 
 def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
-    """Preserve dashboard-owned fields from base_row onto merged (mutates merged)."""
+    """Preserve dashboard-owned fields from base_row onto merged (mutates merged).
+    
+    Also protects Hedge Result / Hedge Day / Prop Day columns containing weekday
+    markers from being overwritten by stale weekday markers from the trader app.
+    Numeric values (from MT5 matching) are allowed through.
+    """
     for key in DASHBOARD_OWNED_EVAL_KEYS:
         if key in force_fields:
             if key in incoming_row:
@@ -1435,6 +1440,49 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
                 except (ValueError, TypeError):
                     pass
             merged[key] = existing_val
+    
+    # Protect Hedge Result / Hedge Day / Prop Day weekday markers from stale push overwrites.
+    # If the DB has a weekday marker and the push is sending another weekday marker (not a
+    # numeric value from MT5 matching), preserve the DB value since it's more recent.
+    _day_keys = [k for k in merged.keys() if isinstance(k, str) and (
+        k.startswith('Hedge Result') or k.startswith('Hedge Day') or k.startswith('Prop Day')
+    ) and not k.startswith('_')]
+    
+    for key in _day_keys:
+        if key in force_fields:
+            continue
+        existing_val = base_row.get(key)
+        incoming_val = incoming_row.get(key)
+        merged_val = merged.get(key)
+        
+        if not existing_val or str(existing_val).strip() in ('', '-'):
+            continue
+        
+        # Check if both existing and incoming have weekday markers (not numeric P&L)
+        existing_has_weekday = bool(_weekday_abbrs_in_text(existing_val))
+        incoming_has_weekday = bool(_weekday_abbrs_in_text(incoming_val)) if incoming_val else False
+        
+        # If incoming is numeric (from MT5 matching), allow the update
+        incoming_is_numeric = False
+        if incoming_val:
+            try:
+                cleaned = str(incoming_val).replace('$', '').replace(',', '').strip()
+                if cleaned and cleaned not in ('-', '—', '–'):
+                    float(cleaned)
+                    incoming_is_numeric = True
+            except (ValueError, TypeError):
+                pass
+        
+        # Preserve DB value if: existing has weekday marker AND incoming also has weekday
+        # marker (stale data) OR incoming is blank/empty (push didn't include this field)
+        if existing_has_weekday:
+            if not incoming_val or str(incoming_val).strip() in ('', '-'):
+                # Push didn't include this field - preserve existing
+                merged[key] = existing_val
+            elif incoming_has_weekday and not incoming_is_numeric:
+                # Both have weekday markers but different values - preserve DB (more recent)
+                if str(existing_val).strip().lower() != str(incoming_val).strip().lower():
+                    merged[key] = existing_val
 
 
 def _find_dashboard_new_eval_rows(existing_evals, incoming_evals):
@@ -12851,7 +12899,11 @@ def update_data_with_api_key(data, identity, user_info):
     # Only overwrite if incoming evaluations list is NOT empty
     incoming_evals = data.get("evaluations")
     if incoming_evals and len(incoming_evals) > 0:
-        evaluations = incoming_evals
+        # Use proper merge to protect weekday markers from stale companion data
+        existing_evals = existing_data.get("evaluations", [])
+        force_fields = set(data.get('force_fields', []))
+        evaluations = merge_evaluation_push_with_existing(
+            existing_evals, incoming_evals, force_fields)
     else:
         # If incoming is empty or missing, preserve existing
         evaluations = existing_data.get("evaluations", [])
