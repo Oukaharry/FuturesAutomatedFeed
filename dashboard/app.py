@@ -1484,6 +1484,37 @@ def _apply_dashboard_owned_merge(merged, base_row, incoming_row, force_fields):
                 if str(existing_val).strip().lower() != str(incoming_val).strip().lower():
                     merged[key] = existing_val
 
+    # Preserve dashboard-entered numeric hedge/day/result values from stale companion pushes.
+    manual_locked = set(base_row.get('_manual_push_fields') or [])
+    _push_cell_keys = set()
+    for _row in (merged, base_row, incoming_row):
+        if not isinstance(_row, dict):
+            continue
+        for _k in _row:
+            if not isinstance(_k, str) or _k.startswith('_'):
+                continue
+            if (_k.startswith('Hedge Result') or _k.startswith('Hedge Day')
+                    or _k.startswith('Prop Day')):
+                _push_cell_keys.add(_k)
+    for key in _push_cell_keys:
+        if key in force_fields:
+            continue
+        existing_val = base_row.get(key)
+        if not existing_val or str(existing_val).strip() in ('', '-'):
+            continue
+        incoming_val = incoming_row.get(key)
+        if key in manual_locked:
+            merged[key] = existing_val
+            continue
+        if not _hedge_cell_currency_only(existing_val):
+            continue
+        if not incoming_val or str(incoming_val).strip() in ('', '-'):
+            merged[key] = existing_val
+            continue
+        if (_weekday_abbrs_in_text(incoming_val)
+                and not _hedge_cell_currency_only(incoming_val)):
+            merged[key] = existing_val
+
 
 def _find_dashboard_new_eval_rows(existing_evals, incoming_evals):
     """Detect evaluation rows the dashboard is trying to add (CREATE).
@@ -1604,7 +1635,9 @@ def merge_dashboard_update_evaluations(
         if idx is None or idx >= len(out):
             continue
 
-        explicitly_changed = user_changed.get(i, set())
+        explicitly_changed = set(user_changed.get(i, set()) or set())
+        if idx is not None and idx != i:
+            explicitly_changed |= set(user_changed.get(idx, set()) or set())
         existing_ev = existing_evals[idx] if isinstance(existing_evals[idx], dict) else {}
         merged = dict(out[idx])
 
@@ -1631,21 +1664,28 @@ def merge_dashboard_update_evaluations(
                 merged[k] = v
 
         cleared = set(merged.get('_cleared_fields') or existing_ev.get('_cleared_fields') or [])
+        manual = set(merged.get('_manual_push_fields') or existing_ev.get('_manual_push_fields') or [])
         for key in explicitly_changed:
             if key not in push_sourced_keys:
                 continue
             if _eval_has_non_blank_value(merged.get(key)):
                 cleared.discard(key)
+                manual.add(key)
             else:
                 old_val = existing_ev.get(key)
                 if key.startswith('Hedge Day') and _is_weekday_or_empty_label(old_val):
                     cleared.discard(key)
                 else:
                     cleared.add(key)
+                manual.discard(key)
         if cleared:
             merged['_cleared_fields'] = sorted(cleared)
         elif '_cleared_fields' in merged:
             merged.pop('_cleared_fields', None)
+        if manual:
+            merged['_manual_push_fields'] = sorted(manual)
+        elif '_manual_push_fields' in merged:
+            merged.pop('_manual_push_fields', None)
 
         out[idx] = merged
 
@@ -3221,9 +3261,10 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         _ev_for_clear = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
         if _ev_for_clear is not None and phase_code != 'FA':
             _cleared_set = set(_ev_for_clear.get('_cleared_fields') or [])
-            if field_name in _cleared_set:
+            _manual_set = set(_ev_for_clear.get('_manual_push_fields') or [])
+            if field_name in _cleared_set or field_name in _manual_set:
                 match_log.append(
-                    f"🚫 Skipped manually-cleared cell: Eval #{eval_idx} [{field_name}] "
+                    f"🚫 Skipped manually-edited cell: Eval #{eval_idx} [{field_name}] "
                     f"(would have been ${net_profit:.2f} from {account_number})"
                 )
                 continue
@@ -3240,13 +3281,19 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         else:
             # Direct overwrite (Farming)
             evaluations[eval_idx][field_name] = net_profit
-            if _ev_for_clear is not None and field_name in set(_ev_for_clear.get('_cleared_fields') or []):
+            if _ev_for_clear is not None:
                 cleared = set(_ev_for_clear.get('_cleared_fields') or [])
+                manual = set(_ev_for_clear.get('_manual_push_fields') or [])
                 cleared.discard(field_name)
+                manual.discard(field_name)
                 if cleared:
                     evaluations[eval_idx]['_cleared_fields'] = sorted(cleared)
                 else:
                     evaluations[eval_idx].pop('_cleared_fields', None)
+                if manual:
+                    evaluations[eval_idx]['_manual_push_fields'] = sorted(manual)
+                else:
+                    evaluations[eval_idx].pop('_manual_push_fields', None)
             updates_made += 1
             sig = get_account_signature(account_number)
             match_log.append(f"✅ {account_number} ({sig}) _{phase_code}{trade_number or ''} → [{field_name}] = ${net_profit:.2f}")
@@ -3254,6 +3301,15 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
             
     # Apply accumulated updates
     for (eval_idx, field_name), total_profit in accumulation_tracker.items():
+        _ev = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
+        if _ev is not None:
+            _skip = set(_ev.get('_cleared_fields') or []) | set(_ev.get('_manual_push_fields') or [])
+            if field_name in _skip:
+                match_log.append(
+                    f"🚫 Skipped manually-edited cell: Eval #{eval_idx} [{field_name}] "
+                    f"(accumulated push would have been ${total_profit:.2f})"
+                )
+                continue
         evaluations[eval_idx][field_name] = total_profit
         updates_made += 1
         # Log the final total update
