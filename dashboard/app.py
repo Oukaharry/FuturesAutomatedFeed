@@ -1579,6 +1579,22 @@ def _eval_has_non_blank_value(v):
     return True
 
 
+def _eval_push_field_blocked(ev, field_name, phase_code=''):
+    """True when MT5/companion push must not overwrite this eval cell.
+
+    Manual dashboard edits always win. Cleared cells block push except FA farming
+    (intentional same-day repopulation from the companion app).
+    """
+    if not isinstance(ev, dict) or not field_name:
+        return False
+    if field_name in set(ev.get('_manual_push_fields') or []):
+        return True
+    if phase_code != 'FA':
+        if field_name in set(ev.get('_cleared_fields') or []):
+            return True
+    return False
+
+
 def merge_dashboard_update_evaluations(
     existing_evals,
     incoming_evals,
@@ -1648,12 +1664,17 @@ def merge_dashboard_update_evaluations(
                 continue
             merged[k] = v
 
+        manual_existing = set(existing_ev.get('_manual_push_fields') or [])
+
         for key in protected_keys:
             if key in explicitly_changed:
                 merged[key] = ev_in.get(key)
                 continue
             existing_val = existing_ev.get(key)
             incoming_val = ev_in.get(key)
+            if key in manual_existing and _eval_has_non_blank_value(existing_val):
+                merged[key] = existing_val
+                continue
             if _eval_has_non_blank_value(existing_val) and not _eval_has_non_blank_value(incoming_val):
                 merged[key] = existing_val
             elif key in ev_in:
@@ -1673,7 +1694,8 @@ def merge_dashboard_update_evaluations(
                 manual.add(key)
             else:
                 old_val = existing_ev.get(key)
-                if key.startswith('Hedge Day') and _is_weekday_or_empty_label(old_val):
+                if ((key.startswith('Hedge Day') or key.startswith('Prop Day'))
+                        and _is_weekday_or_empty_label(old_val)):
                     cleared.discard(key)
                 else:
                     cleared.add(key)
@@ -2748,15 +2770,24 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
 
                 field_name = f'Hedge Day {slot}'
 
-                best_eval[field_name] = f'{last_profit:.2f}'
-                best_eval[f'_{field_name} Date'] = last_date
-                updates_made += 1
+                if _eval_push_field_blocked(best_eval, field_name, phase_code='FA'):
+                    match_log.append(
+                        f"🚫 Skipped manually-edited cell: Row {row_num} [{field_name}] "
+                        f"(FA push would have been ${last_profit:.2f})"
+                    )
+                    logging.info(
+                        f"[FA SKIP] row={row_num} manual lock on {field_name}"
+                    )
+                else:
+                    best_eval[field_name] = f'{last_profit:.2f}'
+                    best_eval[f'_{field_name} Date'] = last_date
+                    updates_made += 1
 
-                match_log.append(f"✅ 🌾 Row {row_num} | {field_name}: ${last_profit:.2f} ({last_date}) [day {slot} of {total_farming_days}]")
-                logging.info(
-                    f"[FA WRITE] row={row_num} account={acc_num} "
-                    f"total_farming_days={total_farming_days} → {field_name}=${last_profit:.2f} date={last_date}"
-                )
+                    match_log.append(f"✅ 🌾 Row {row_num} | {field_name}: ${last_profit:.2f} ({last_date}) [day {slot} of {total_farming_days}]")
+                    logging.info(
+                        f"[FA WRITE] row={row_num} account={acc_num} "
+                        f"total_farming_days={total_farming_days} → {field_name}=${last_profit:.2f} date={last_date}"
+                    )
 
                 # --- Write Prop Day values from Tradovate MNQ daily P&L ---
                 if tradovate_farming_days:
@@ -2767,7 +2798,14 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                             prop_slot = day_idx + 1
                             if prop_slot > 50:
                                 break
-                            best_eval[f'Prop Day {prop_slot}'] = f"{tv_day['net_pnl']:.2f}"
+                            prop_field = f'Prop Day {prop_slot}'
+                            if _eval_push_field_blocked(best_eval, prop_field, phase_code='FA'):
+                                match_log.append(
+                                    f"🚫 Skipped manually-edited cell: Row {row_num} [{prop_field}] "
+                                    f"(Tradovate push would have been ${tv_day['net_pnl']:.2f})"
+                                )
+                                continue
+                            best_eval[prop_field] = f"{tv_day['net_pnl']:.2f}"
                             prop_days_written += 1
                         if prop_days_written:
                             match_log.append(
@@ -3259,15 +3297,12 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
         # (see /api/update_data handler).
         # Farming (FA) companion pushes are intentional same-day writes and override clears.
         _ev_for_clear = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
-        if _ev_for_clear is not None and phase_code != 'FA':
-            _cleared_set = set(_ev_for_clear.get('_cleared_fields') or [])
-            _manual_set = set(_ev_for_clear.get('_manual_push_fields') or [])
-            if field_name in _cleared_set or field_name in _manual_set:
-                match_log.append(
-                    f"🚫 Skipped manually-edited cell: Eval #{eval_idx} [{field_name}] "
-                    f"(would have been ${net_profit:.2f} from {account_number})"
-                )
-                continue
+        if _ev_for_clear is not None and _eval_push_field_blocked(_ev_for_clear, field_name, phase_code):
+            match_log.append(
+                f"🚫 Skipped manually-edited cell: Eval #{eval_idx} [{field_name}] "
+                f"(would have been ${net_profit:.2f} from {account_number})"
+            )
+            continue
 
         if should_accumulate:
             # Add to accumulator (sums up multiple entries in SAME payload)
@@ -3302,14 +3337,12 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
     # Apply accumulated updates
     for (eval_idx, field_name), total_profit in accumulation_tracker.items():
         _ev = evaluations[eval_idx] if 0 <= eval_idx < len(evaluations) else None
-        if _ev is not None:
-            _skip = set(_ev.get('_cleared_fields') or []) | set(_ev.get('_manual_push_fields') or [])
-            if field_name in _skip:
-                match_log.append(
-                    f"🚫 Skipped manually-edited cell: Eval #{eval_idx} [{field_name}] "
-                    f"(accumulated push would have been ${total_profit:.2f})"
-                )
-                continue
+        if _ev is not None and _eval_push_field_blocked(_ev, field_name):
+            match_log.append(
+                f"🚫 Skipped manually-edited cell: Eval #{eval_idx} [{field_name}] "
+                f"(accumulated push would have been ${total_profit:.2f})"
+            )
+            continue
         evaluations[eval_idx][field_name] = total_profit
         updates_made += 1
         # Log the final total update
@@ -12818,7 +12851,8 @@ def update_data():
                     ev_pay = evaluations[idx]
                     if isinstance(ev_pay, dict):
                         for fk in sorted(flds):
-                            if fk.startswith('Hedge Result') or fk.startswith('Hedge Day'):
+                            if (fk.startswith('Hedge Result') or fk.startswith('Hedge Day')
+                                    or fk.startswith('Prop Day')):
                                 app.logger.info(
                                     "[HEDGE_SAVE] incoming_payload client=%s row=%s %s=%r",
                                     client_id, idx, fk, ev_pay.get(fk),
