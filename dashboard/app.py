@@ -1584,10 +1584,16 @@ def _eval_push_field_blocked(ev, field_name, phase_code=''):
 
     Manual dashboard edits always win. Cleared cells block push except FA farming
     (intentional same-day repopulation from the companion app).
+    Weekday placeholders (MON/TUESDAY/etc.) are not treated as manual locks —
+    companion numeric P&L should replace them.
     """
     if not isinstance(ev, dict) or not field_name:
         return False
+    existing = ev.get(field_name)
     if field_name in set(ev.get('_manual_push_fields') or []):
+        from utils.data_processor import _is_weekday_or_empty_label
+        if _is_weekday_or_empty_label(existing):
+            return False
         return True
     if phase_code != 'FA':
         if field_name in set(ev.get('_cleared_fields') or []):
@@ -1691,7 +1697,8 @@ def merge_dashboard_update_evaluations(
                 continue
             if _eval_has_non_blank_value(merged.get(key)):
                 cleared.discard(key)
-                manual.add(key)
+                if not _is_weekday_or_empty_label(merged.get(key)):
+                    manual.add(key)
             else:
                 old_val = existing_ev.get(key)
                 if ((key.startswith('Hedge Day') or key.startswith('Prop Day'))
