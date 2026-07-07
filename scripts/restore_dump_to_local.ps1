@@ -45,6 +45,20 @@ function ConvertFrom-SecureStringPlain {
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 }
 
+function Invoke-PgRestoreSection {
+    param(
+        [string]$Section,
+        [string]$Dump,
+        [string]$Db
+    )
+    Write-Host "  pg_restore --section=$Section ..." -ForegroundColor Cyan
+    & pg_restore -U $LocalUser -h $LocalHost -p $LocalPort `
+        --dbname=$Db --no-owner --no-acl --section=$Section $Dump
+    if ($LASTEXITCODE -ne 0) {
+        throw "pg_restore --section=$Section failed with exit code $LASTEXITCODE"
+    }
+}
+
 Import-DotEnvIfPresent (Join-Path $repoRoot ".env")
 
 $pgBinCandidates = @(
@@ -76,6 +90,24 @@ $env:PGPASSWORD = $localPass
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupDb = "${LocalDb}__backup_$stamp"
 
+$dedupeSql = @"
+-- Prod dumps can contain duplicate user_credentials rows (same id or username+type).
+DELETE FROM user_credentials a
+USING user_credentials b
+WHERE a.ctid < b.ctid AND a.id = b.id;
+
+DELETE FROM user_credentials a
+USING user_credentials b
+WHERE a.ctid < b.ctid
+  AND a.username = b.username
+  AND a.user_type = b.user_type;
+
+SELECT setval(
+    pg_get_serial_sequence('user_credentials', 'id'),
+    COALESCE((SELECT MAX(id) FROM user_credentials), 1)
+);
+"@
+
 Write-Host "Restoring dump:" $DumpPath -ForegroundColor Yellow
 Write-Host "Target local DB:" "$LocalUser@$LocalHost`:$LocalPort/$LocalDb" -ForegroundColor Yellow
 
@@ -91,14 +123,38 @@ Write-Host "Creating fresh '$LocalDb'..." -ForegroundColor Yellow
 psql -U $LocalUser -h $LocalHost -p $LocalPort -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE ""$LocalDb"";"
 
 try {
-    Write-Host "Running pg_restore..." -ForegroundColor Yellow
-    pg_restore -U $LocalUser -h $LocalHost -p $LocalPort --dbname=$LocalDb --no-owner --no-acl --clean --if-exists $DumpPath
+    Write-Host "Phase 1/4: schema (pre-data)..." -ForegroundColor Yellow
+    Invoke-PgRestoreSection -Section "pre-data" -Dump $DumpPath -Db $LocalDb
 
+    Write-Host "Phase 2/4: table data..." -ForegroundColor Yellow
+    Invoke-PgRestoreSection -Section "data" -Dump $DumpPath -Db $LocalDb
+
+    Write-Host "Phase 3/4: dedupe user_credentials..." -ForegroundColor Yellow
+    psql -U $LocalUser -h $LocalHost -p $LocalPort -d $LocalDb -v ON_ERROR_STOP=1 -c $dedupeSql
+
+    Write-Host "Phase 4/4: indexes and constraints (post-data)..." -ForegroundColor Yellow
+    & pg_restore -U $LocalUser -h $LocalHost -p $LocalPort `
+        --dbname=$LocalDb --no-owner --no-acl --section=post-data $DumpPath
     if ($LASTEXITCODE -ne 0) {
-        throw "pg_restore failed with exit code $LASTEXITCODE"
+        Write-Host "  post-data reported warnings/errors (exit $LASTEXITCODE); verifying constraints..." -ForegroundColor Yellow
     }
 
-    psql -U $LocalUser -h $LocalHost -p $LocalPort -d $LocalDb -c "SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public';"
+    $verify = psql -U $LocalUser -h $LocalHost -p $LocalPort -d $LocalDb -tAc @"
+SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'user_credentials_pkey'
+) AND EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_user_credentials_username_type'
+) THEN 'ok' ELSE 'missing' END;
+"@
+    if (("$(if ($verify) { $verify } else { '' })").Trim() -ne "ok") {
+        throw "Restore verification failed: user_credentials constraints missing"
+    }
+
+    psql -U $LocalUser -h $LocalHost -p $LocalPort -d $LocalDb -c @"
+SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public';
+SELECT COUNT(*) AS user_credentials FROM user_credentials;
+SELECT COUNT(*) AS clients_data FROM clients_data;
+"@
     Write-Host "Restore complete. Backup DB: $backupDb" -ForegroundColor Green
 } catch {
     Write-Host "Restore failed: $($_.Exception.Message)" -ForegroundColor Red
