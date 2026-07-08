@@ -6012,12 +6012,21 @@ def api_client_m1_bars_status():
 
 
 @app.route('/api/client/m1_bars', methods=['POST'])
-@limiter.limit("300 per minute")
+@limiter.limit("60 per minute")
 def api_client_m1_bars_push():
     """
     Upsert M1 OHLC bars from TradeOpssAI companion (shared Plexy USTECH store).
     Body: { email, symbol, bars, phase?, broker?, mt5_server? }
     """
+    from dashboard.database import slots_currently_exhausted
+
+    if slots_currently_exhausted():
+        return jsonify({
+            "status": "error",
+            "message": "database busy — retry later",
+            "retry_after_sec": 15,
+        }), 503
+
     data = request.json or {}
     email = (data.get("email") or "").strip().lower()
     symbol = (data.get("symbol") or "USTECH").strip().upper()
@@ -6049,14 +6058,23 @@ def api_client_m1_bars_push():
     try:
         written = upsert_m1_bars(storage_id, symbol, bars)
     except Exception as exc:
+        msg = str(exc).lower()
+        if "remaining connection slots" in msg or "slots exhausted" in msg or "cooling down" in msg:
+            app.logger.warning("[M1Bars] DB slots exhausted, rejecting push")
+            return jsonify({
+                "status": "error",
+                "message": "database busy — retry later",
+                "retry_after_sec": 15,
+            }), 503
         app.logger.error("[M1Bars] upsert failed: %s", exc)
         return jsonify({"status": "error", "message": str(exc)}), 500
 
-    # Rolling retention ~13 months
+    # Rolling retention ~13 months — skip under load (extra connection traffic)
     try:
         from datetime import datetime, timedelta, timezone
-        cutoff = int((datetime.now(timezone.utc) - timedelta(days=400)).timestamp())
-        prune_m1_bars_older_than(storage_id, symbol, cutoff)
+        if not slots_currently_exhausted():
+            cutoff = int((datetime.now(timezone.utc) - timedelta(days=400)).timestamp())
+            prune_m1_bars_older_than(storage_id, symbol, cutoff)
     except Exception:
         pass
 

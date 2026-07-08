@@ -76,9 +76,11 @@ def _default_pool_min() -> int:
 def _default_pool_max() -> int:
     if os.environ.get("ML_REFRESH_SUBPROCESS") == "1":
         return 1
-    # 3 uWSGI workers × 5 = 15 slots — under managed Postgres ~20 limit.
+    # PythonAnywhere managed Postgres is ~20 slots total. With 3 uWSGI workers,
+    # plus m1_bars / ML subprocess / dashboard polls, keep this tiny.
+    # 3 workers × 2 = 6 pooled + a few direct connections stays under the limit.
     if _is_low_connection_postgres():
-        return 5
+        return 2
     # Local dev: one dashboard page load fires many parallel API calls.
     return 20
 
@@ -91,6 +93,9 @@ _connection_pool = None
 _pool_lock = threading.Lock()
 # Queue threads at checkout instead of thundering-herd PoolError retries.
 _pool_checkout_sem = threading.BoundedSemaphore(_pool_max)
+# Avoid recreating the pool while Postgres is already out of slots (death spiral).
+_slot_exhaust_until = 0.0
+_SLOT_EXHAUST_COOLDOWN_SEC = 15.0
 
 
 def db_concurrent_workers(cap: int = 6) -> int:
@@ -103,9 +108,13 @@ def _init_pool() -> bool:
     global _connection_pool
     if _connection_pool is not None:
         return True
+    if _slots_exhausted():
+        return False
     with _pool_lock:
         if _connection_pool is not None:
             return True
+        if _slots_exhausted():
+            return False
         try:
             # ThreadedConnectionPool is required: endpoints use ThreadPoolExecutor.
             # minconn=0 avoids opening connections at pool creation (PythonAnywhere).
@@ -118,16 +127,43 @@ def _init_pool() -> bool:
             logger.info("[DB] Connection pool initialized (%s-%s connections)", _pool_min, _pool_max)
             return True
         except Exception as e:
+            msg = str(e).lower()
+            if "remaining connection slots" in msg or "too many connections" in msg:
+                _mark_slot_exhaustion()
             logger.error("[DB] Failed to initialize connection pool: %s", e)
             return False
 
+def _mark_slot_exhaustion():
+    """Backoff when Postgres refuses new connects (do not destroy the pool)."""
+    global _slot_exhaust_until
+    _slot_exhaust_until = time.time() + _SLOT_EXHAUST_COOLDOWN_SEC
+
+
+def _slots_exhausted() -> bool:
+    return time.time() < _slot_exhaust_until
+
+
+def slots_currently_exhausted() -> bool:
+    """Public: True while we are refusing new DB work after slot exhaustion."""
+    return _slots_exhausted()
+
+
 def _get_pooled_connection():
     """Get a connection from the pool (blocks until a checkout slot is free)."""
+    if _slots_exhausted():
+        raise psycopg2.OperationalError(
+            "database temporarily unavailable (connection slots exhausted — cooling down)"
+        )
     _pool_checkout_sem.acquire()
     acquired = True
     last_err = None
     try:
         for attempt in range(5):
+            if _slots_exhausted():
+                last_err = psycopg2.OperationalError(
+                    "database temporarily unavailable (connection slots exhausted — cooling down)"
+                )
+                break
             if _connection_pool is None and not _init_pool():
                 last_err = psycopg2.OperationalError("connection pool unavailable")
                 time.sleep(min(0.05 * (2 ** attempt), 1.0))
@@ -138,10 +174,19 @@ def _get_pooled_connection():
                 return conn
             except psycopg2.OperationalError as e:
                 last_err = e
-                if "remaining connection slots" in str(e):
-                    reset_connection_pool()
-                    time.sleep(min(0.05 * (2 ** attempt), 1.0))
-                    continue
+                msg = str(e).lower()
+                # NEVER reset/closeall the pool here. That orphans server-side
+                # backends and opens a brand-new pool under load → death spiral
+                # of "[DB] Connection pool initialized" while Postgres says slots
+                # are reserved for superuser only.
+                if "remaining connection slots" in msg or "too many connections" in msg:
+                    _mark_slot_exhaustion()
+                    logger.error(
+                        "[DB] Postgres out of connection slots — cooling down %ss "
+                        "(not resetting pool)",
+                        _SLOT_EXHAUST_COOLDOWN_SEC,
+                    )
+                    break
                 raise
             except psycopg2.pool.PoolError as e:
                 last_err = e
@@ -187,14 +232,22 @@ def _return_pooled_connection(conn):
 
 
 def reset_connection_pool():
-    """Close and discard the pool (e.g. after switching DATABASE_URL)."""
+    """Close and discard the pool (e.g. after switching DATABASE_URL).
+
+    Do NOT call this while Postgres is reporting connection-slot exhaustion —
+    closeall() + recreate under load makes the outage worse.
+    """
     global _connection_pool
-    if _connection_pool is not None:
-        try:
-            _connection_pool.closeall()
-        except Exception as e:
-            logger.warning("[DB] Error closing connection pool: %s", e)
-        _connection_pool = None
+    if _slots_exhausted():
+        logger.warning("[DB] Skipping pool reset during slot-exhaustion cooldown")
+        return
+    with _pool_lock:
+        if _connection_pool is not None:
+            try:
+                _connection_pool.closeall()
+            except Exception as e:
+                logger.warning("[DB] Error closing connection pool: %s", e)
+            _connection_pool = None
 
 
 def set_database_url(url: str) -> None:
@@ -319,7 +372,17 @@ def get_direct_connection():
     Use for CLI/cron/scripts so pool pre-allocation does not consume slots
     on small Postgres plans. Always closes the connection when done.
     """
-    raw = psycopg2.connect(DATABASE_URL, connect_timeout=_db_connect_timeout)
+    if _slots_exhausted():
+        raise psycopg2.OperationalError(
+            "database temporarily unavailable (connection slots exhausted — cooling down)"
+        )
+    try:
+        raw = psycopg2.connect(DATABASE_URL, connect_timeout=_db_connect_timeout)
+    except psycopg2.OperationalError as e:
+        msg = str(e).lower()
+        if "remaining connection slots" in msg or "too many connections" in msg:
+            _mark_slot_exhaustion()
+        raise
     raw.autocommit = False
     try:
         raw.rollback()
