@@ -6106,11 +6106,12 @@ def api_client_ml_insights():
 
     try:
         from dashboard.ml_predictions_service import get_state
-        from dashboard.prediction_log_service import prediction_stats
         state = get_state()
         meta = state.get("meta") or {}
+        live = {}
         try:
-            live = prediction_stats()
+            from dashboard.prediction_log_service import prediction_stats
+            live = prediction_stats() or {}
         except Exception:
             live = {}
         return jsonify({
@@ -8902,6 +8903,18 @@ def get_data():
                 data['_activity'] = page_meta.get('activity') or {}
             except Exception:
                 pass
+
+            # Full MT5 deal history (6000+ rows) is stored in clients_data.deals for stats/ML.
+            # Serializing it on every dashboard poll blocks uWSGI workers until harakiri (502/outage).
+            deals = data.get('deals')
+            if isinstance(deals, list):
+                data['deals_count'] = len(deals)
+            else:
+                data['deals_count'] = 0
+            include_deals = request.args.get('include_deals', '').lower() in ('1', 'true', 'yes')
+            if not include_deals:
+                data['deals'] = []
+
             return jsonify(data)
     
     # If no client specified, return empty

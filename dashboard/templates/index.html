@@ -2623,7 +2623,7 @@
                         <i class="fas fa-history" style="margin-right: 6px;"></i> Trade History
                         <span id="trade-history-count" style="font-size:0.8rem; color:#64748b; font-weight:400; margin-left:6px;"></span>
                     </h4>
-                    <button id="trade-history-toggle-btn" onclick="const s=document.getElementById('trade-history-detail'); if(s.style.display==='none'){s.style.display='';this.innerHTML='<i class=\'fas fa-eye-slash\'></i> Hide Trades';}else{s.style.display='none';this.innerHTML='<i class=\'fas fa-eye\'></i> See All Trades';}" style="background:linear-gradient(135deg,rgba(96,165,250,0.2),rgba(37,99,235,0.5)); border:1px solid rgba(96,165,250,0.4); color:#60a5fa; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
+                    <button id="trade-history-toggle-btn" onclick="toggleTradeHistoryDetail()" style="background:linear-gradient(135deg,rgba(96,165,250,0.2),rgba(37,99,235,0.5)); border:1px solid rgba(96,165,250,0.4); color:#60a5fa; padding:6px 16px; border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem;">
                         <i class="fas fa-eye"></i> See All Trades
                     </button>
                 </div>
@@ -6487,12 +6487,67 @@
         }
 
         function renderHistory(data) {
+            updateTradeHistoryCountLabel();
             const histBody = document.getElementById('history-body');
-            const noHistMsg = document.getElementById('no-history-msg');
-            const histTable = document.getElementById('history-table');
-            
-            histBody.innerHTML = '';
-            renderHistoryTable();
+            if (histBody) histBody.innerHTML = '';
+        }
+
+        function updateTradeHistoryCountLabel() {
+            const countEl = document.getElementById('trade-history-count');
+            if (!countEl || !currentData) return;
+            const n = Number(currentData.deals_count ?? (currentData.deals ? currentData.deals.length : 0)) || 0;
+            if (!n) {
+                countEl.textContent = '';
+                return;
+            }
+            const loaded = Array.isArray(currentData.deals) && currentData.deals.length > 0;
+            countEl.textContent = loaded ? `(${n} TRADES)` : `(${n} TRADES — click See All Trades to load)`;
+        }
+
+        function toggleTradeHistoryDetail() {
+            const panel = document.getElementById('trade-history-detail');
+            const btn = document.getElementById('trade-history-toggle-btn');
+            if (!panel || !btn) return;
+            const opening = panel.style.display === 'none';
+            if (!opening) {
+                panel.style.display = 'none';
+                btn.innerHTML = '<i class="fas fa-eye"></i> See All Trades';
+                return;
+            }
+            panel.style.display = '';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            loadTradeHistoryDeals().finally(() => {
+                btn.innerHTML = '<i class="fas fa-eye-slash"></i> Hide Trades';
+            });
+        }
+
+        function loadTradeHistoryDeals() {
+            if (!CLIENT_ID) return Promise.resolve();
+            if (Array.isArray(currentData.deals) && currentData.deals.length > 0) {
+                renderHistoryTable();
+                updateTradeHistoryCountLabel();
+                return Promise.resolve();
+            }
+            const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}&include_deals=1`;
+            return fetch(url)
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to load trade history');
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'error') throw new Error(data.message || 'Failed to load trade history');
+                    if (Array.isArray(data.deals)) currentData.deals = data.deals;
+                    if (data.deals_count != null) currentData.deals_count = data.deals_count;
+                    renderHistoryTable();
+                    updateTradeHistoryCountLabel();
+                })
+                .catch(err => {
+                    console.error('loadTradeHistoryDeals:', err);
+                    const histBody = document.getElementById('history-body');
+                    if (histBody) {
+                        histBody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:16px;color:#f87171;">${err.message || 'Could not load trade history'}</td></tr>`;
+                    }
+                });
         }
 
         function parseDealTime(raw) {
