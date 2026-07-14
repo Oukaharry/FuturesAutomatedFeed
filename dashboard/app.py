@@ -800,8 +800,9 @@ class UnbufferedFileHandler(logging.FileHandler):
         super().emit(record)
         self.stream.flush()
 
-# Path for the rolling 1-hour recent log
+# Path for the rolling recent log (kept to last 3 hours by background purger)
 _RECENT_LOG_PATH = 'dashboard/server_recent.log'
+_RECENT_LOG_HOURS = 3
 _RECENT_LOG_RE = re.compile(r'^\[((?:\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}:\d{2}(?:,\d+)?)\]')
 
 
@@ -839,7 +840,7 @@ class TraderStyleFormatter(logging.Formatter):
             msg = f"[{record.levelname}] {msg}"
         return f"[{stamp}] {msg}"
 
-def _purge_recent_log(log_path=_RECENT_LOG_PATH, hours=1):
+def _purge_recent_log(log_path=_RECENT_LOG_PATH, hours=_RECENT_LOG_HOURS):
     """Trim log_path in-place, keeping only entries from the last `hours` hours."""
     try:
         cutoff = datetime.now() - timedelta(hours=hours)
@@ -865,7 +866,7 @@ def _purge_recent_log(log_path=_RECENT_LOG_PATH, hours=1):
         pass
 
 def _start_recent_log_purger(log_path=_RECENT_LOG_PATH, interval_minutes=5):
-    """Daemon thread: prune entries older than 1 hour from the recent log every 5 minutes."""
+    """Daemon thread: prune entries older than 3 hours from the recent log every 5 minutes."""
     def _worker():
         while True:
             time.sleep(interval_minutes * 60)
@@ -885,7 +886,7 @@ logging.basicConfig(
         # Full log: rotating — max 10 MB, keep 3 backups (30 MB total max)
         RotatingFileHandler('dashboard/server.log', mode='a', encoding='utf-8',
                             maxBytes=10*1024*1024, backupCount=3),
-        # Recent log: cleared on restart, background thread keeps it to last 1 hour only
+        # Recent log: cleared on restart, background thread keeps it to last 3 hours only
         UnbufferedFileHandler(_RECENT_LOG_PATH, mode='w', encoding='utf-8'),
     ]
 )
