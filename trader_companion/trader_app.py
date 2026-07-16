@@ -12,13 +12,14 @@ if hasattr(sys, '_MEIPASS'):
 if hasattr(sys, '_MEIPASS'):
     sys.path.insert(0, sys._MEIPASS)
     sys.path.insert(0, os.path.join(sys._MEIPASS, 'utils'))
+    sys.path.insert(0, os.path.join(sys._MEIPASS, 'connectors'))
     # Add DLL search directory for bundled .pyd files (MetaTrader5 _core etc.)
     _mt5_dir = os.path.join(sys._MEIPASS, 'MetaTrader5')
     if os.path.isdir(_mt5_dir):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.8.9"  # Safe sheet-cell parsing for load trades; clearer auth errors
+APP_VERSION = "1.11.0"  # BlackArrow + AlphaTrader connectors, The5ers full-cushion SL
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -376,6 +377,36 @@ except Exception as _fn_err:
         _fn_err = _fn_err2
 _FUNDEDNEXT_IMPORT_ERROR = str(_fn_err) if not FUNDEDNEXT_AVAILABLE and '_fn_err' in dir() and _fn_err else None
 
+try:
+    from connectors.alphatrader_connector import AlphaTraderConnector
+    ALPHATRADER_AVAILABLE = True
+except Exception as _at_err:
+    try:
+        import sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'connectors'))
+        from alphatrader_connector import AlphaTraderConnector
+        ALPHATRADER_AVAILABLE = True
+        _at_err = None
+    except Exception as _at_err2:
+        ALPHATRADER_AVAILABLE = False
+        AlphaTraderConnector = None
+        _at_err = _at_err2
+_ALPHATRADER_IMPORT_ERROR = str(_at_err) if not ALPHATRADER_AVAILABLE and '_at_err' in dir() and _at_err else None
+
+try:
+    from connectors.blackarrow_connector import BlackArrowConnector
+    BLACKARROW_AVAILABLE = True
+except Exception as _ba_err:
+    try:
+        from blackarrow_connector import BlackArrowConnector
+        BLACKARROW_AVAILABLE = True
+        _ba_err = None
+    except Exception as _ba_err2:
+        BLACKARROW_AVAILABLE = False
+        BlackArrowConnector = None
+        _ba_err = _ba_err2
+_BLACKARROW_IMPORT_ERROR = str(_ba_err) if not BLACKARROW_AVAILABLE and '_ba_err' in dir() and _ba_err else None
+
 # CDP-based prop firm scrapers (Tradeify, Lucid Trading, TopStep dashboard, MFFU, FundedNext)
 try:
     from trader_companion.prop_firm_scrapers import (
@@ -600,6 +631,13 @@ def _to_topstepx_symbol(sym):
     return f"{root}{month}{str(candidate % 100).zfill(2)}"
 
 
+# mt5.initialize() must never run concurrently: two racing calls (UI auto-connect,
+# signal threads, margin worker) make one launch terminal64.exe while the other
+# attaches mid-startup → (-10003, "IPC initialize failed, Pipe server didn't
+# answer in 60 sec"). All initialize/login paths take this lock first.
+_MT5_INIT_LOCK = threading.Lock()
+
+
 class MT5DataPusher:
     """Handles MT5 data extraction and API pushing."""
     
@@ -615,15 +653,38 @@ class MT5DataPusher:
         if not MT5_AVAILABLE:
             err_detail = globals().get('_mt5_err', 'unknown')
             return False, f"MetaTrader5 module not installed.\n{err_detail}"
-        
+
+        with _MT5_INIT_LOCK:
+            return self._connect_mt5_locked(login, password, server, terminal_path)
+
+    def _connect_mt5_locked(self, login=None, password=None, server=None, terminal_path=None):
+        # Another thread may have finished connecting while we waited on the lock.
+        if self.connected and mt5.terminal_info():
+            return True, "Already connected to MT5"
+
         init_params = {}
         if terminal_path:
             init_params['path'] = terminal_path
-            
-        if not mt5.initialize(**init_params):
+
+        ok = mt5.initialize(**init_params)
+        if not ok:
             error = mt5.last_error()
-            return False, f"MT5 initialization failed: {error}"
-        
+            # -10003 IPC timeout usually means the terminal is mid-startup or the
+            # previous IPC pipe went stale — shut down and retry once.
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            time.sleep(2)
+            ok = mt5.initialize(**init_params)
+            if not ok:
+                error = mt5.last_error()
+                return False, (
+                    f"MT5 initialization failed: {error}\n"
+                    "Tips: start the MT5 terminal manually and let it load fully, "
+                    "kill any stuck terminal64.exe in Task Manager, and run MT5 "
+                    "and this app at the same privilege level (both normal or both admin).")
+
         if login and password and server:
             try:
                 login_int = int(login)
@@ -1744,6 +1805,7 @@ class TradeOpssAIApp:
         "Alpha Futures":    "#2980B9",
         "Top One Futures": "#0D9488",
         "Funded Futures Family": "#7C3AED",
+        "LucidMaxx":        "#8B5CF6",
     }
 
     PHASE_BADGE = {
@@ -1797,7 +1859,12 @@ class TradeOpssAIApp:
                 self.root.after(200, lambda: self.root.iconphoto(True, self._app_icon))
                 # Small logo for section headers (18x18)
                 _small = _sq.resize((18, 18), PILImage.LANCZOS)
-                self._section_logo = ImageTk.PhotoImage(_small)
+                if CTK_AVAILABLE:
+                    # CTkLabel needs CTkImage (scales correctly on HighDPI)
+                    self._section_logo = ctk.CTkImage(
+                        light_image=_small, dark_image=_small, size=(18, 18))
+                else:
+                    self._section_logo = ImageTk.PhotoImage(_small)
             else:
                 ico_path = os.path.join(_base, 'logo.ico')
                 if os.path.exists(ico_path):
@@ -1819,6 +1886,7 @@ class TradeOpssAIApp:
         self.auto_trade_enabled = False
         self.auto_trade_thread = None
         self._auto_trade_stop = threading.Event()
+        self._auto_trade_batch_event = threading.Event()
         self._auto_trade_scheduled_dt = None
         self._auto_trade_waiting_gate = False
 
@@ -2139,6 +2207,9 @@ class TradeOpssAIApp:
 
         self.auto_trade_immediate_var = tk.BooleanVar(value=False)
         self.ml_mode_var = tk.BooleanVar(value=False)
+        # Off = classic funded SL (balance − lock). On = split payout day for
+        # Tradeify only ($2k + profit cushion on trade 2+, per-leg signals).
+        self.funded_split_payout_var = tk.BooleanVar(value=False)
         if CTK_AVAILABLE:
             ctk.CTkCheckBox(toolbar, text="Now", variable=self.auto_trade_immediate_var,
                             font=("Segoe UI", 9), text_color=self.C_TEXT_DIM,
@@ -2150,6 +2221,11 @@ class TradeOpssAIApp:
                             font=("Segoe UI", 9), text_color="#f59e0b",
                             fg_color=self.C_ACCENT, border_color=self.C_BORDER,
                             hover_color=self.C_ACCENT_HV, width=90,
+                            checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
+            ctk.CTkCheckBox(toolbar, text="Split (Tradeify)", variable=self.funded_split_payout_var,
+                            font=("Segoe UI", 9), text_color="#a78bfa",
+                            fg_color=self.C_ACCENT, border_color=self.C_BORDER,
+                            hover_color=self.C_ACCENT_HV, width=95,
                             checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
             ctk.CTkLabel(toolbar, text="🎲 random/firm",
                          font=("Segoe UI", 9), text_color=self.C_TEXT_DIM).pack(side="left", padx=(0, 6), pady=5)
@@ -5046,6 +5122,8 @@ class TradeOpssAIApp:
         "Top One Futures": "Top One Futures",
         "Funded Futures Family": "Funded Futures Family",
         "FFF": "Funded Futures Family",
+        "Lucid": "Lucid",
+        "LucidMaxx": "LucidMaxx",
     }
 
     def _resolve_firm_code(self, prop_firm_name, default="MFFU_Flex"):
@@ -5097,6 +5175,8 @@ class TradeOpssAIApp:
             return "Funded Next"
         if "funded futures family" in norm or "fundedfuturesfamily" in compact or compact == "fff":
             return "Funded Futures Family"
+        if "lucidmaxx" in compact or "lucid maxx" in norm:
+            return "LucidMaxx"
 
         return default
 
@@ -5108,6 +5188,7 @@ class TradeOpssAIApp:
         "Tradeify": "Tradeify",
         "FundingTicks": "Funding Ticks",
         "Lucid": "Lucid",
+        "LucidMaxx": "LucidMaxx",
         "AlphaFutures": "Alpha Futures",
         "Funded Futures Family": "Funded Futures Family",
         "Apex": "Apex",
@@ -5157,6 +5238,7 @@ class TradeOpssAIApp:
         "AlphaFutures":     "ACCOUNT_SIZE",
         "Apex":             "ACCOUNT_SIZE",
         "Lucid":            "ACCOUNT_SIZE",
+        "LucidMaxx":        "ACCOUNT_SIZE",
         "Top One Futures":  "ACCOUNT_SIZE",
         "Funded Futures Family": "ACCOUNT_SIZE",
     }
@@ -5282,6 +5364,9 @@ class TradeOpssAIApp:
         # Normalize phase for _PHASE_TRADE_ORDER lookup
         phase_map = {"Challenge": "Challenge", "Funded": "Funded",
                      "Farming": "Farming", "Double Dip": "Double Dip",
+                     "Min Trading Days": "Min Trading Days",
+                     "Funded Phase": "Funded Phase",
+                     "Residual Phase": "Residual Phase", "Residual": "Residual Phase",
                      "Payout 1": "Funded", "Payout 2": "Funded",
                      "Payout 3": "Funded", "Payout 4": "Funded"}
         firm_orders = self.prop_firm_mgr._PHASE_TRADE_ORDER.get(firm_code, {})
@@ -5766,6 +5851,9 @@ class TradeOpssAIApp:
             return None, day_idx, day_name
         phase_map = {"Challenge": "Challenge", "Funded": "Funded",
                      "Farming": "Farming", "Double Dip": "Double Dip",
+                     "Min Trading Days": "Min Trading Days",
+                     "Funded Phase": "Funded Phase",
+                     "Residual Phase": "Residual Phase", "Residual": "Residual Phase",
                      "Payout 1": "Funded", "Payout 2": "Funded",
                      "Payout 3": "Funded", "Payout 4": "Funded"}
         firm_orders = self.prop_firm_mgr._PHASE_TRADE_ORDER.get(firm_code, {})
@@ -6885,42 +6973,62 @@ class TradeOpssAIApp:
         return self._estimate_mt5_order_margin(mt5_sym, mt5_vol, hedge_side)
 
     def _refresh_mt5_margin_after_scan(self):
-        """After SCAN: show MT5 free margin and estimated hedge margin for queued rows."""
+        """After SCAN: show MT5 free margin and estimated hedge margin for queued rows.
+
+        MT5 connect + per-row order_calc_margin are slow IPC calls, so all the
+        heavy work runs on a background thread — the Tk main loop must never
+        block (it froze the app right after scan when run inline).
+        """
         if self.hedge_mode_var.get() != "Hedging":
             self.mt5_free_margin_var.set("")
             return
+        if getattr(self, "_margin_refresh_running", False):
+            return
+        self._margin_refresh_running = True
+        self.mt5_free_margin_var.set("MT5 free: checking…")
+
         login = self.mt5_login.get().strip()
         pwd = self.mt5_password.get().strip()
         server = self.mt5_server.get().strip()
-        if login and pwd and server and not getattr(self.pusher, "connected", False):
-            try:
-                self.pusher.connect_mt5(login, pwd, server)
-            except Exception:
-                pass
-        free = self._get_mt5_free_margin()
         rows = list(self._active_trade_rows)
-        firm_sides = getattr(self, "_auto_trade_firm_sides", {}) or {}
-        est_total = 0.0
-        est_count = 0
-        for rd in rows:
-            firm = (rd.get("eval") or {}).get("Prop Firm", rd.get("firm_code", ""))
-            side = firm_sides.get(firm, "buy")
-            m = self._row_hedge_margin_estimate(rd, side)
-            if m is not None:
-                est_total += m
-                est_count += 1
-        if free is None:
-            self.mt5_free_margin_var.set("MT5 free: not connected")
-            self.log("⚠ MT5 free margin unavailable — connect MT5 to size hedges", "WARN")
-            return
-        label = f"MT5 free: ${free:,.0f}"
-        if est_count:
-            label += f"  ·  est. ${est_total:,.0f} ({est_count} hedges)"
-            if est_total > free:
-                label += "  ⚠ short"
-        self.mt5_free_margin_var.set(label)
-        self.log(f"💰 MT5 free margin ${free:,.2f}" +
-                 (f", est. ${est_total:,.2f} for {est_count} hedge(s)" if est_count else ""))
+        firm_sides = dict(getattr(self, "_auto_trade_firm_sides", {}) or {})
+
+        def _worker():
+            try:
+                if login and pwd and server and not getattr(self.pusher, "connected", False):
+                    try:
+                        self.pusher.connect_mt5(login, pwd, server)
+                    except Exception:
+                        pass
+                free = self._get_mt5_free_margin()
+                est_total = 0.0
+                est_count = 0
+                for rd in rows:
+                    firm = (rd.get("eval") or {}).get("Prop Firm", rd.get("firm_code", ""))
+                    side = firm_sides.get(firm, "buy")
+                    m = self._row_hedge_margin_estimate(rd, side)
+                    if m is not None:
+                        est_total += m
+                        est_count += 1
+
+                def _apply(free=free, est_total=est_total, est_count=est_count):
+                    if free is None:
+                        self.mt5_free_margin_var.set("MT5 free: not connected")
+                        self.log("⚠ MT5 free margin unavailable — connect MT5 to size hedges", "WARN")
+                        return
+                    label = f"MT5 free: ${free:,.0f}"
+                    if est_count:
+                        label += f"  ·  est. ${est_total:,.0f} ({est_count} hedges)"
+                        if est_total > free:
+                            label += "  ⚠ short"
+                    self.mt5_free_margin_var.set(label)
+                    self.log(f"💰 MT5 free margin ${free:,.2f}" +
+                             (f", est. ${est_total:,.2f} for {est_count} hedge(s)" if est_count else ""))
+                self.root.after(0, _apply)
+            finally:
+                self._margin_refresh_running = False
+
+        threading.Thread(target=_worker, name="mt5-margin-refresh", daemon=True).start()
 
     def _cap_rows_by_mt5_margin(self, rows_by_firm, firm_sides):
         """
@@ -7109,6 +7217,40 @@ class TradeOpssAIApp:
         mt5_tp = int(config.get("mt5_tp_points", mt5_tp) or mt5_tp)
         mt5_sl = int(config.get("mt5_sl_points", mt5_sl) or mt5_sl)
 
+        # ── Full-cushion dynamic SL ────────────────────────────────────────
+        # When sl_mode == "full_cushion" the SL is sized to consume the entire
+        # remaining drawdown buffer between current balance and the MLL floor.
+        #   SL_ticks = (current_balance - drawdown_floor) / (qty × tick_value)
+        # tick_value for NQ minis = $5; for MNQ micros = $0.50.
+        # Falls back to the blueprint's tradovate_sl_ticks if balance can't be read.
+        if config.get("sl_mode") == "full_cushion" and broker_account:
+            try:
+                _stats = broker_account.get_account_stats() if hasattr(broker_account, "get_account_stats") else {}
+                _bal_str = (_stats or {}).get("Balance", "")
+                _mll_str = (_stats or {}).get("MLL", "")
+                _sod_str = (_stats or {}).get("SODBalance", (_stats or {}).get("SOD Balance", ""))
+                _bal = float(_bal_str.replace("$", "").replace(",", "")) if _bal_str and _bal_str not in ("N/A", "Error", "") else None
+                _floor = None
+                if _mll_str and _mll_str not in ("N/A", "Error", ""):
+                    _floor = float(_mll_str.replace("$", "").replace(",", ""))
+                elif _sod_str and _sod_str not in ("N/A", "Error", ""):
+                    _sod = float(_sod_str.replace("$", "").replace(",", ""))
+                    _floor = _sod * (1.0 - 0.04)  # 4% EOD trailing drawdown
+                if _bal is not None and _floor is not None and _bal > _floor:
+                    _cushion = _bal - _floor
+                    _sym_upper = trado_sym.upper()
+                    _tick_val = 0.50 if "MNQ" in _sym_upper or "MES" in _sym_upper or "MGC" in _sym_upper else 5.0
+                    _dynamic_sl = int(_cushion / (trado_qty * _tick_val))
+                    if _dynamic_sl > 0:
+                        self.log(
+                            f"📐 Full-cushion SL: balance=${_bal:,.2f} floor=${_floor:,.2f} "
+                            f"cushion=${_cushion:,.2f} → SL={_dynamic_sl} ticks "
+                            f"(was {trado_sl})"
+                        )
+                        trado_sl = _dynamic_sl
+            except Exception as _fc_err:
+                self.log(f"⚠ full_cushion SL calc failed, using blueprint fallback ({trado_sl}t): {_fc_err}")
+
         # Confirm: phase + prop TP/SL (ticks), then MT5 TP/SL (points) when hedging
         trade_phase = (row_data.get("current_phase") or "").strip() or "Unknown"
         phase_bits = [trade_phase]
@@ -7193,6 +7335,18 @@ class TradeOpssAIApp:
                         order_result = broker_account.place_buy_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars, expected_account=acct_num)
                     else:
                         order_result = broker_account.place_sell_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars, expected_account=acct_num)
+                elif platform == "AlphaTrader":
+                    # Alpha Trader (futures.alphatrader.com) — ticks passed directly
+                    order_result = broker_account.place_order(
+                        trado_sym, side=side, qty=trado_qty,
+                        tp_ticks=trado_tp, sl_ticks=trado_sl,
+                    )
+                elif platform == "BlackArrow":
+                    # BlackArrow (web.blackarrowtrading.com) — ticks passed directly
+                    order_result = broker_account.place_order(
+                        trado_sym, side=side, qty=trado_qty,
+                        tp_ticks=trado_tp, sl_ticks=trado_sl,
+                    )
 
                 # Some broker implementations return a status dict instead of raising.
                 # Normalize failures so UI/logs don't report false fills.
@@ -7271,10 +7425,10 @@ class TradeOpssAIApp:
 
         Mirrors the connector's _compute_trade_adjustments routing exactly:
 
-          • Funded / Double Dip (phase_key.startswith("funded_trade")):
-            ONLY calculate_funded_sl — trade 1 = fixed $2,000 SL, trade 2+ =
-            balance − flat lock level (TopStep $0, MFFU $100, others
-            $50,000). Deliberately NO TP-by-stage / midnight / TMDL.
+          • Funded / Double Dip / Apex payout (funded phase keys):
+            ONLY calculate_funded_sl — trade 1 = fixed $2,000 SL; trade 2+ uses
+            classic (balance − lock) by default, or split ($2k + cushion) when
+            Split (Tradeify) is on — Tradeify accounts only.
           • Challenge / Farming (else): TP-by-stage → SL midnight-floor →
             SL TMDL cap (calculate_adjusted_tp is skipped for farming
             symbols, which use adjust_farming_tp_sl upstream).
@@ -7295,9 +7449,8 @@ class TradeOpssAIApp:
         sym = config.get("tradovate_symbol", "") or config.get("topstepx_symbol", "")
         tick_value = self.prop_firm_mgr.get_tick_value(sym) if sym else 5.0
 
-        # phase_key is funded_trade{n} or funded_trade_doubledip_{n} for the
-        # funded/double-dip phases (challenge_trade*/farming are excluded).
-        is_funded = (phase_key or "").startswith("funded_trade")
+        # Funded / double-dip / Apex payout keys use the funded SL rule only.
+        is_funded = self._is_funded_phase_key(phase_key)
 
         # Snapshot blueprint values BEFORE adjustment, for diff logging.
         _before_tp = config.get("tradovate_tp_ticks")
@@ -7390,15 +7543,16 @@ class TradeOpssAIApp:
                     audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
                           status="no_balance", target_account_id=target_account_id)
                 else:
-                    _m = _re.search(r'(\d+)$', phase_key or "")
-                    trade_index = int(_m.group(1)) if _m else 1
-                    # Flat lock level: distance the funded SL measures from
-                    # (TopStep $0, MFFU $100, others $50,000).
+                    trade_index = self._phase_trade_index(phase_key)
+                    # Flat lock level for profit-cushion math on trade 2+
                     threshold = self.prop_firm_mgr.get_lock_level(firm_code)
+                    sl_mode = self._funded_sl_mode(firm_code)
                     self.log(f"🧮 Funded SL {acct_num}: balance=${balance:,.2f} via {bal_src} | "
-                             f"trade_index={trade_index} lock_level=${threshold} tick_value={tick_value}")
+                             f"trade_index={trade_index} lock_level=${threshold} "
+                             f"mode={sl_mode} tick_value={tick_value}")
                     config = self.prop_firm_mgr.calculate_funded_sl(
-                        config, balance, threshold, trade_index, tick_value)
+                        config, balance, threshold, trade_index, tick_value,
+                        sl_mode=sl_mode)
                     audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
                           status="applied", balance=balance, balance_source=bal_src,
                           trade_index=trade_index, lock_level=threshold,
@@ -7746,6 +7900,7 @@ class TradeOpssAIApp:
         self._auto_trade_scheduled_dt = scheduled_eat
         self.auto_trade_enabled = True
         self._auto_trade_stop.clear()
+        self._auto_trade_side_lock_logged = set()
 
         self._auto_trade_use_signal = use_signal
         firms_in_rows = set()
@@ -7778,11 +7933,15 @@ class TradeOpssAIApp:
             self.auto_trade_status_var.set(f"Scheduled at {time_str} — {mode_label}")
             self.log(f"⏰ Auto-trade scheduled at {time_str} (+{offset_minutes}min random offset)")
         if use_signal:
-            self.log("   🧠 Directions from ML at execution (+ entry gate)")
-            self.log(
-                f"   ⏳ Will wait for: ≥{self.AUTO_TRADE_MIN_SIGNAL_PCT}% blend + ⚡VOL"
-                + (" + ★ consensus" if self.AUTO_TRADE_REQUIRE_CONSENSUS else "")
-                + (" + ML agree" if self.AUTO_TRADE_REQUIRE_READY else ""))
+            self.log("   🧠 Directions from ML at execution (+ phase-aware entry gate)")
+            if self._split_payout_mode_enabled():
+                self.log(
+                    "   ⏳ Split (Tradeify) ON — per-leg signals + cushion SL on "
+                    "Tradeify only; other firms use classic funded rules")
+            else:
+                self.log(
+                    "   ⏳ Classic funded — ≥68% + ⚡VOL or ≥72% · "
+                    "Challenge ≥58% (~1h)")
         else:
             for firm, s in self._auto_trade_firm_sides.items():
                 self.log(f"   {'▲' if s == 'buy' else '▼'} {firm} → {s.upper()}")
@@ -7808,6 +7967,7 @@ class TradeOpssAIApp:
         self.auto_trade_firms_var.set("")
         self._auto_trade_firm_sides = {}
         self._auto_trade_waiting_gate = False
+        self._auto_trade_side_lock_logged = set()
         self.log("⏹ Auto-trade cancelled")
 
     def _tick_auto_trade_countdown(self):
@@ -7821,83 +7981,297 @@ class TradeOpssAIApp:
         now = datetime.now(EAT)
         remaining = self._auto_trade_scheduled_dt - now
         if remaining.total_seconds() <= 0:
-            self.auto_trade_countdown_var.set("Executing now...")
+            queued = len(getattr(self, "_active_trade_rows", []) or [])
+            if queued:
+                self.auto_trade_countdown_var.set(
+                    f"{queued} trade{'s' if queued != 1 else ''} remaining")
+            else:
+                self.auto_trade_countdown_var.set("Executing now...")
             return
         hours, rem = divmod(int(remaining.total_seconds()), 3600)
         minutes, seconds = divmod(rem, 60)
         self.auto_trade_countdown_var.set(f"Starts in {hours}h {minutes}m {seconds}s")
         self.root.after(1000, self._tick_auto_trade_countdown)
 
+    def _complete_auto_trade(self):
+        """Natural completion when every queued trade has been taken."""
+        self.auto_trade_enabled = False
+        self._auto_trade_scheduled_dt = None
+        self._auto_trade_waiting_gate = False
+        self.auto_trade_btn.configure(text="▶  Start Auto-Trade")
+        if CTK_AVAILABLE:
+            self.auto_trade_btn.configure(fg_color=self.C_ACCENT, hover_color=self.C_ACCENT_HV)
+        self.auto_trade_status_var.set("All trades complete ✓")
+        self.auto_trade_countdown_var.set("")
+        self.auto_trade_firms_var.set("")
+        self._auto_trade_firm_sides = {}
+        self._auto_trade_side_lock_logged = set()
+        self.log("✅ Auto-trade finished — all queued trades taken")
+
+    def _build_acct_to_firm_lookup(self):
+        """Map account tokens (full, normalized, suffix) → prop firm display name."""
+        lookup = {}
+        for rd in (getattr(self, "_active_trade_rows", []) or []):
+            acct = str(rd.get("acct_num") or "").strip()
+            firm = (rd.get("eval") or {}).get("Prop Firm", rd.get("firm_code", ""))
+            if not acct or not firm:
+                continue
+            lookup[acct.lower()] = firm
+            norm = _normalize_acct_for_comment(acct)
+            if norm:
+                lookup[norm.lower()] = firm
+            m = re.search(r"(\d{5,})$", acct)
+            if m:
+                lookup[m.group(1)] = firm
+        for firm_name, mapping in (getattr(self, "_cached_acct_mappings", {}) or {}).items():
+            for key, info in (mapping or {}).items():
+                acct = str((info or {}).get("account") or key or "").strip()
+                if not acct:
+                    acct = str(key or "").strip()
+                if not acct:
+                    continue
+                lookup[acct.lower()] = firm_name
+                norm = _normalize_acct_for_comment(acct)
+                if norm:
+                    lookup[norm.lower()] = firm_name
+                m = re.search(r"(\d{5,})$", acct)
+                if m:
+                    lookup[m.group(1)] = firm_name
+        return lookup
+
+    def _firm_for_acct_token(self, token, lookup):
+        if not token or not lookup:
+            return None
+        t = str(token).strip().lower()
+        if t in lookup:
+            return lookup[t]
+        for key, firm in lookup.items():
+            if len(key) >= 5 and (t.endswith(key) or key.endswith(t)):
+                return firm
+        return None
+
+    def _detect_open_prop_sides_by_firm(self):
+        """Prop-firm direction from open broker legs (MT5 hedge is inverted).
+
+        Result is cached for a few seconds: the gate poll calls this from a
+        background thread, and the execute path re-calls it on the UI thread —
+        without the cache each call repeats slow broker REST requests and can
+        freeze the window.
+        """
+        now = time.time()
+        cached = getattr(self, "_open_prop_sides_cache", None)
+        if cached and (now - cached[0]) < 5.0:
+            return dict(cached[1])
+        out = {}
+        lookup = self._build_acct_to_firm_lookup()
+
+        if MT5_AVAILABLE and COMMENT_PARSER_AVAILABLE:
+            try:
+                import MetaTrader5 as mt5
+                if mt5.terminal_info():
+                    parser = MT5CommentParser()
+                    for pos in (mt5.positions_get() or []):
+                        comment = getattr(pos, "comment", "") or ""
+                        parsed = parser.parse(comment)
+                        if not parsed.is_valid:
+                            continue
+                        acct = parsed.account_number or ""
+                        firm = self._firm_for_acct_token(acct, lookup)
+                        if not firm:
+                            continue
+                        hedge = "buy" if pos.type == 0 else "sell"
+                        prop = "sell" if hedge == "buy" else "buy"
+                        if firm in out and out[firm] != prop:
+                            self.log(
+                                f"⚠ {firm}: mixed MT5 hedge directions — using {prop.upper()}",
+                                "WARN")
+                        out[firm] = prop
+            except Exception:
+                pass
+
+        for firm_name, conn in (self._broker_connections or {}).items():
+            broker = conn.get("account")
+            if not broker or not hasattr(broker, "get_positions_api"):
+                continue
+            try:
+                positions = broker.get_positions_api() or []
+                for p in positions:
+                    net = p.get("netPos", 0)
+                    if net == 0:
+                        continue
+                    prop = "buy" if net > 0 else "sell"
+                    if firm_name in out and out[firm_name] != prop:
+                        self.log(
+                            f"⚠ {firm_name}: mixed broker directions — using {prop.upper()}",
+                            "WARN")
+                    out[firm_name] = prop
+            except Exception:
+                pass
+        self._open_prop_sides_cache = (now, dict(out))
+        return out
+
+    def _sync_auto_trade_firm_sides(self):
+        """Merge session sides with open positions — no opposite trades on same firm."""
+        sides = dict(getattr(self, "_auto_trade_firm_sides", {}) or {})
+        open_sides = self._detect_open_prop_sides_by_firm()
+        logged = getattr(self, "_auto_trade_side_lock_logged", None) or set()
+        for firm, side in open_sides.items():
+            prev = sides.get(firm)
+            log_key = (firm, side)
+            if log_key not in logged:
+                if prev and prev != side:
+                    self.log(
+                        f"🔒 {firm}: open {side.upper()} position — only {side.upper()} "
+                        f"signals allowed (session had {prev.upper()})")
+                else:
+                    self.log(
+                        f"🔒 {firm}: open {side.upper()} position — direction locked")
+                logged.add(log_key)
+            sides[firm] = side
+        self._auto_trade_side_lock_logged = logged
+        self._auto_trade_firm_sides = sides
+        return sides
+
+    def _run_auto_trade_batch_and_wait(self):
+        """Dispatch one execute batch on the UI thread and block until it finishes."""
+        self._auto_trade_batch_event.clear()
+        self.root.after(0, lambda: self._auto_execute_all_trades(stop_when_done=False))
+        self._auto_trade_batch_event.wait(timeout=7200)
+
+    def _finish_auto_trade_batch(self, stop_when_done=False):
+        self._auto_trade_batch_event.set()
+        if stop_when_done:
+            self.root.after(0, self._complete_auto_trade)
+
     def _auto_trade_loop(self):
-        """Background thread: wait until scheduled time, then wait for gate, then execute."""
+        """Background thread: schedule, then keep scanning until all rows are traded."""
         from datetime import datetime, timedelta, timezone
         EAT = timezone(timedelta(hours=3))
 
         while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
             now = datetime.now(EAT)
             if now >= self._auto_trade_scheduled_dt:
-                if getattr(self, "_auto_trade_use_signal", False):
-                    self._auto_wait_for_gate_then_execute()
-                else:
-                    self.root.after(0, self._auto_execute_all_trades)
-                return
+                break
             self._auto_trade_stop.wait(timeout=1)
 
-    def _auto_trade_update_waiting_ui(self, gate_msg, dominant, volatile, consensus):
+        if not self.auto_trade_enabled or self._auto_trade_stop.is_set():
+            return
+
+        use_signal = getattr(self, "_auto_trade_use_signal", False)
+        self._sync_auto_trade_firm_sides()
+
+        while (self.auto_trade_enabled and not self._auto_trade_stop.is_set()
+               and self._active_trade_rows):
+            self._sync_auto_trade_firm_sides()
+            remaining = len(self._active_trade_rows)
+            self.root.after(0, lambda n=remaining: self.auto_trade_status_var.set(
+                f"Auto-trade active — {n} trade{'s' if n != 1 else ''} remaining"))
+
+            if use_signal:
+                if not self._auto_wait_for_gate_once():
+                    break
+            else:
+                self.root.after(0, lambda n=remaining: self.auto_trade_countdown_var.set(
+                    f"Executing batch — {n} remaining"))
+
+            if (not self.auto_trade_enabled or self._auto_trade_stop.is_set()
+                    or not self._active_trade_rows):
+                break
+
+            self._run_auto_trade_batch_and_wait()
+
+            if self._active_trade_rows and self.auto_trade_enabled:
+                left = len(self._active_trade_rows)
+                self.log(
+                    f"🔄 {left} trade(s) still queued — resuming signal watch…")
+                self._ai_trace("SIGNAL", f"auto-trade continuing — {left} rows left")
+                if self._auto_trade_stop.wait(timeout=10):
+                    break
+
+        if self.auto_trade_enabled and not self._auto_trade_stop.is_set():
+            self.root.after(0, self._complete_auto_trade)
+
+    def _auto_trade_update_waiting_ui(self, gate_msg, dominant, volatile, consensus,
+                                     rows_remaining=0):
         """Status line while auto-trade polls for entry conditions."""
         self._auto_trade_waiting_gate = True
         vol_tag = "⚡VOL ok" if volatile else "waiting ⚡VOL"
         cons_tag = "★ consensus" if consensus else "⏳ diverge"
         short = str(gate_msg or "")[:72]
+        rem = rows_remaining or len(getattr(self, "_active_trade_rows", []) or [])
         try:
-            self.auto_trade_status_var.set(f"Waiting for gate — {short}")
+            self.auto_trade_status_var.set(
+                f"Waiting for gate — {rem} left · {short}")
             self.auto_trade_countdown_var.set(
                 f"{dominant}% · {vol_tag} · {cons_tag} · Stop to cancel")
         except Exception:
             pass
 
-    def _auto_wait_for_gate_then_execute(self):
-        """Poll until ≥75% + VOL + ★ consensus (option B); no error popup."""
+    def _auto_wait_for_gate_once(self):
+        """Poll phase-aware gate until at least one pending row can enter. Returns False if stopped."""
         if not self.auto_trade_enabled or self._auto_trade_stop.is_set():
-            return
+            return False
+
+        rows = list(getattr(self, "_active_trade_rows", []) or [])
+        if not rows:
+            return False
+
+        tiers = sorted({
+            self._signal_tier_for_phase(
+                rd.get("phase_key"), rd.get("current_phase"),
+                firm_code=rd.get("firm_code"))
+            for rd in rows
+        } or {"funded"})
+        prof0 = self._get_signal_gate_profile(
+            self._permissive_signal_tier_from_rows(rows))
+        align_win = prof0.get("bar_align_window_sec")
 
         self.root.after(0, lambda: self.auto_trade_countdown_var.set(
             "Aligning to M5 bar close…"))
         self._ai_trace("SIGNAL", "auto-trade: waiting for M5 bar close before gate check")
-        self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
+        self._align_signal_to_bar_close(
+            stop_event=self._auto_trade_stop, align_window_sec=align_win)
         if self._auto_trade_stop.is_set() or not self.auto_trade_enabled:
-            return
+            return False
 
-        self.log("⏳ Auto-trade waiting for entry gate "
-                 f"(≥{self.AUTO_TRADE_MIN_SIGNAL_PCT}% + ⚡VOL"
-                 + (" + ★ consensus" if self.AUTO_TRADE_REQUIRE_CONSENSUS else "")
-                 + ")…")
-        self._ai_trace("SIGNAL", "auto-trade: polling gate until conditions met")
-
+        self.log(
+            f"⏳ Auto-trade waiting for phase-aware gate "
+            f"(tiers: {', '.join(tiers)} — challenge ≥58% within 1h, "
+            f"funded ≥68% intentional)…")
+        self._ai_trace("SIGNAL", "auto-trade: polling phase-aware gate until conditions met")
+        gate_started = time.time()
         last_logged = ""
+
         while self.auto_trade_enabled and not self._auto_trade_stop.is_set():
-            allowed, lean, dom, volatile, gate_msg = self._auto_trade_entry_allowed()
+            if not self._active_trade_rows:
+                self._auto_trade_waiting_gate = False
+                return False
+            elapsed = int(time.time() - gate_started)
+            allowed, lean, dom, volatile, gate_msg = self._auto_batch_gate_allowed(
+                elapsed_sec=elapsed)
             sig = getattr(self, "_signal_strength_state", None) or {}
             consensus = bool(sig.get("consensus"))
-            self.root.after(0, lambda m=gate_msg, d=dom, v=volatile, c=consensus:
-                            self._auto_trade_update_waiting_ui(m, d, v, c))
+            rem = len(self._active_trade_rows)
+            self.root.after(0, lambda m=gate_msg, d=dom, v=volatile, c=consensus, r=rem:
+                            self._auto_trade_update_waiting_ui(m, d, v, c, r))
             if allowed:
                 self._auto_trade_waiting_gate = False
                 self.root.after(0, lambda: self.auto_trade_countdown_var.set(
                     "Gate passed — executing…"))
                 self.log(f"✅ Auto-trade gate passed — {gate_msg}")
                 self._ai_trace("SIGNAL", f"auto-trade gate OK — {gate_msg}")
-                self.root.after(0, self._auto_execute_all_trades)
-                return
+                return True
             if gate_msg != last_logged:
                 last_logged = gate_msg
-                self.log(f"   ⏳ Gate: {gate_msg}")
+                self.log(f"   ⏳ Gate ({elapsed // 60}m): {gate_msg}")
                 self._ai_trace("SIGNAL", f"auto-trade waiting — {gate_msg}")
-            self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
+            self._align_signal_to_bar_close(
+                stop_event=self._auto_trade_stop, align_window_sec=align_win)
             if self._auto_trade_stop.wait(timeout=self.AUTO_TRADE_GATE_POLL_SEC):
                 break
 
         self._auto_trade_waiting_gate = False
+        return False
 
     # ── Entry staggering (risk spreading) ──────────────────────────────
     # Never fire all trades at the exact same second: each firm thread
@@ -7906,12 +8280,116 @@ class TradeOpssAIApp:
     AUTO_TRADE_FIRM_STAGGER_BASE_SEC = 15   # firm i starts ~i*15s after firm 0
     AUTO_TRADE_FIRM_STAGGER_JITTER_SEC = 10  # plus 0-10s random jitter
     AUTO_TRADE_ACCOUNT_SPACING_SEC = (20, 60)  # random gap between accounts in a firm
-    AUTO_TRADE_MIN_SIGNAL_PCT = 75            # blended BUY/SELL % required to enter
+    AUTO_TRADE_MIN_SIGNAL_PCT = 68            # default funded blend floor (challenge uses profile)
     BLEND_MIN_MARGIN_DIVERGE = 15             # min margin when trend/reversal disagree
-    AUTO_TRADE_REQUIRE_VOLATILE = True        # also require elevated tick/ATR vol
+    AUTO_TRADE_REQUIRE_VOLATILE = True        # funded default; challenge profile skips
     AUTO_TRADE_REQUIRE_CONSENSUS = True       # block diverge — trend + reversal must agree
-    AUTO_TRADE_REQUIRE_READY = True           # ★ highly recommended (consensus + ML match)
-    AUTO_TRADE_GATE_POLL_SEC = 10             # re-check interval while waiting for gate
+    AUTO_TRADE_REQUIRE_READY = True           # funded default; challenge uses lighter ML agree
+    AUTO_TRADE_GATE_POLL_SEC = 8              # re-check interval while waiting for gate
+    # Firms that honor the Split payout toolbar option (others stay classic).
+    SPLIT_PAYOUT_FIRM_CODES = frozenset({"Tradeify"})
+    # Phase-aware entry: challenge = small TP, fire within ~1h; funded = intentional but bounded
+    SIGNAL_GATE_PROFILES = {
+        "challenge": {
+            "min_blend_pct": 58,
+            "min_blend_relaxed": 54,
+            "require_volatile": False,
+            "require_consensus": True,
+            "require_ready": False,
+            "require_ml_agree": True,
+            "require_setup_fit": False,
+            "setup_fit_slack": 1.40,
+            "max_wait_sec": 3600,
+            "bar_align_window_sec": 45,
+            "min_decision_pct": 55,
+            "min_diverge_margin": 12,
+            "min_diverge_dominant": 52,
+            "volatile_bypass_blend": 0,
+        },
+        "funded": {
+            "min_blend_pct": 68,
+            "min_blend_relaxed": 64,
+            "require_volatile": True,
+            "require_consensus": True,
+            "require_ready": False,
+            "require_ml_agree": True,
+            "require_setup_fit": True,
+            "setup_fit_slack": 1.0,
+            "max_wait_sec": 5400,
+            "bar_align_window_sec": 90,
+            "min_decision_pct": 60,
+            "min_diverge_margin": 15,
+            "min_diverge_dominant": 55,
+            "volatile_bypass_blend": 72,
+        },
+        # First leg of a split payout day (e.g. Apex 2×$2,500 toward $5k)
+        "funded_split": {
+            "min_blend_pct": 62,
+            "min_blend_relaxed": 58,
+            "require_volatile": False,
+            "require_consensus": True,
+            "require_ready": False,
+            "require_ml_agree": True,
+            "require_setup_fit": True,
+            "setup_fit_slack": 1.25,
+            "max_wait_sec": 3600,
+            "bar_align_window_sec": 60,
+            "min_decision_pct": 58,
+            "min_diverge_margin": 13,
+            "min_diverge_dominant": 54,
+            "volatile_bypass_blend": 66,
+        },
+        # Second+ leg same day — SL widens to $2k + profit already banked
+        "funded_followup": {
+            "min_blend_pct": 60,
+            "min_blend_relaxed": 56,
+            "require_volatile": False,
+            "require_consensus": True,
+            "require_ready": False,
+            "require_ml_agree": True,
+            "require_setup_fit": False,
+            "setup_fit_slack": 1.70,
+            "max_wait_sec": 3600,
+            "bar_align_window_sec": 45,
+            "min_decision_pct": 56,
+            "min_diverge_margin": 12,
+            "min_diverge_dominant": 53,
+            "volatile_bypass_blend": 0,
+        },
+        # Single-shot large funded target (e.g. one trade for full $5k)
+        "funded_large": {
+            "min_blend_pct": 70,
+            "min_blend_relaxed": 66,
+            "require_volatile": True,
+            "require_consensus": True,
+            "require_ready": False,
+            "require_ml_agree": True,
+            "require_setup_fit": True,
+            "setup_fit_slack": 0.95,
+            "max_wait_sec": 5400,
+            "bar_align_window_sec": 90,
+            "min_decision_pct": 62,
+            "min_diverge_margin": 16,
+            "min_diverge_dominant": 56,
+            "volatile_bypass_blend": 74,
+        },
+        "farming": {
+            "min_blend_pct": 52,
+            "min_blend_relaxed": 50,
+            "require_volatile": False,
+            "require_consensus": False,
+            "require_ready": False,
+            "require_ml_agree": False,
+            "require_setup_fit": False,
+            "setup_fit_slack": 1.50,
+            "max_wait_sec": 3600,
+            "bar_align_window_sec": 45,
+            "min_decision_pct": 52,
+            "min_diverge_margin": 10,
+            "min_diverge_dominant": 50,
+            "volatile_bypass_blend": 0,
+        },
+    }
 
     # Signal timing: if the current M5 bar closes within this window, wait
     # for the close (+ buffer) before computing the signal so the decision
@@ -7919,14 +8397,146 @@ class TradeOpssAIApp:
     SIGNAL_BAR_ALIGN_WINDOW_SEC = 90
     SIGNAL_BAR_CLOSE_BUFFER_SEC = 2.0
 
-    def _align_signal_to_bar_close(self, timeframe_sec=300, stop_event=None):
+    def _is_funded_phase_key(self, phase_key=None):
+        """True for funded / double-dip / Apex payout trade keys."""
+        pk = (phase_key or "").lower().strip()
+        if pk.startswith("funded_trade"):
+            return True
+        return pk.startswith("payout") and "_trade" in pk
+
+    def _phase_trade_index(self, phase_key=None):
+        """1-based trade index from phase_key suffix (payout1_trade2 → 2)."""
+        pk = (phase_key or "").lower().strip()
+        if pk.startswith("payout") and "_trade" in pk:
+            suf = pk.split("_trade")[-1].strip()
+            return int(suf) if suf.isdigit() else 1
+        m = re.search(r"(\d+)$", pk)
+        return int(m.group(1)) if m else 1
+
+    def _config_tp_dollars(self, config):
+        """Blueprint Tradovate TP in dollars (None if unknown)."""
+        if not config:
+            return None
+        sym = (config.get("tradovate_symbol", "")
+               or config.get("topstepx_symbol", ""))
+        qty = int(config.get("tradovate_qty", 0)
+                   or config.get("topstepx_qty", 0) or 0)
+        tp = int(config.get("tradovate_tp_ticks", 0)
+                 or config.get("topstepx_tp_ticks", 0) or 0)
+        if qty <= 0 or tp <= 0:
+            return None
+        tick_val = 5.0
+        if self.prop_firm_mgr and sym:
+            try:
+                tick_val = self.prop_firm_mgr.get_tick_value(sym)
+            except Exception:
+                pass
+        return qty * tp * tick_val
+
+    def _signal_tier_for_phase(self, phase_key=None, current_phase=None,
+                               config=None, firm_code=None):
+        """Map blueprint phase → signal strictness tier."""
+        pk = (phase_key or "").lower().strip()
+        cp = (current_phase or "").lower().strip()
+        if pk == "farming" or "farming" in cp or "min trading days" in cp:
+            return "farming"
+        if pk.startswith("challenge") or cp in (
+                "challenge", "challenge phase", "evaluation", "eval"):
+            return "challenge"
+        is_funded = (
+            self._is_funded_phase_key(pk)
+            or pk.startswith("funded")
+            or "funded" in cp
+            or "residual" in cp
+            or pk.startswith("double_dip")
+            or "double dip" in cp
+        )
+        if not is_funded:
+            return "funded"
+
+        if not self._split_payout_applies(firm_code):
+            return "funded"
+
+        trade_idx = self._phase_trade_index(pk)
+        tp_d = self._config_tp_dollars(config)
+
+        # Second leg same payout day: wider SL ($2k + banked profit) — faster gate
+        if trade_idx >= 2:
+            return "funded_followup"
+        # Split payout (2× ~$2.5k) vs one-shot ~$5k
+        if tp_d is not None:
+            if tp_d >= 4000:
+                return "funded_large"
+            if tp_d <= 3200:
+                return "funded_split"
+        return "funded"
+
+    def _get_signal_gate_profile(self, tier=None, elapsed_sec=0):
+        """Per-phase gate thresholds; relax slightly after max_wait_sec."""
+        tier = tier or "funded"
+        base = dict(self.SIGNAL_GATE_PROFILES.get(
+            tier, self.SIGNAL_GATE_PROFILES["funded"]))
+        if elapsed_sec >= int(base.get("max_wait_sec") or 99999):
+            base["min_blend_pct"] = base.get(
+                "min_blend_relaxed", base["min_blend_pct"])
+            base["require_volatile"] = False
+            base["require_ready"] = False
+            if tier == "funded":
+                base["require_setup_fit"] = False
+            elif tier in ("funded_large", "funded_split"):
+                base["min_blend_pct"] = base.get(
+                    "min_blend_relaxed", base["min_blend_pct"])
+                base["require_volatile"] = False
+            base["relaxed"] = True
+        return base
+
+    def _signal_tier_rank(self, tier, firm_code=None):
+        """Lower rank = more permissive (fires earlier)."""
+        if self._split_payout_applies(firm_code):
+            order = {
+                "farming": 0,
+                "funded_followup": 1,
+                "funded_split": 2,
+                "challenge": 3,
+                "funded": 4,
+                "funded_large": 5,
+            }
+            return order.get(tier, 4)
+        order = {"farming": 0, "challenge": 1, "funded": 2}
+        return order.get(tier, 2)
+
+    def _permissive_signal_tier_from_rows(self, rows):
+        """Most permissive tier among loaded rows (fires earliest)."""
+        best = "funded"
+        best_rank = 99
+        for rd in rows or []:
+            fc = rd.get("firm_code")
+            config = None
+            if self.prop_firm_mgr:
+                try:
+                    config = self.prop_firm_mgr.get_strategy_config(
+                        fc, rd.get("phase_key"), rd.get("acct_size"))
+                except Exception:
+                    config = None
+            tier = self._signal_tier_for_phase(
+                rd.get("phase_key"), rd.get("current_phase"),
+                config=config, firm_code=fc)
+            rank = self._signal_tier_rank(tier, fc)
+            if rank < best_rank:
+                best, best_rank = tier, rank
+        return best
+
+    def _align_signal_to_bar_close(self, timeframe_sec=300, stop_event=None,
+                                   align_window_sec=None):
         """Wait (bounded) for the M5 bar close when it is imminent.
 
         Returns True if we waited. Far from the close, returns immediately —
         the bounded window keeps scheduled trades on time (max ~92s delay).
         """
+        window = (align_window_sec if align_window_sec is not None
+                  else self.SIGNAL_BAR_ALIGN_WINDOW_SEC)
         remaining = timeframe_sec - (time.time() % timeframe_sec)
-        if remaining > self.SIGNAL_BAR_ALIGN_WINDOW_SEC:
+        if remaining > window:
             return False
         wait = remaining + self.SIGNAL_BAR_CLOSE_BUFFER_SEC
         self._ai_trace("SIGNAL", f"timing: M5 bar closes in {remaining:.0f}s — "
@@ -7937,7 +8547,7 @@ class TradeOpssAIApp:
             time.sleep(wait)
         return True
 
-    def _auto_execute_all_trades(self):
+    def _auto_execute_all_trades(self, stop_when_done=True):
         """Execute trades for ALL loaded rows, parallel across prop firms.
 
         Each prop firm has its own Chrome instance opened during initialization.
@@ -7945,6 +8555,9 @@ class TradeOpssAIApp:
         while trades for the same firm run sequentially within that thread.
         Entries are deliberately staggered (per-firm offset + per-account gap)
         so positions open at different times and risk is spread.
+
+        When stop_when_done is False the outer auto-trade loop keeps running
+        until every row is taken (or the user clicks Stop).
         """
         firm_sides = dict(getattr(self, '_auto_trade_firm_sides', {}) or {})
         use_signal = getattr(self, '_auto_trade_use_signal', False)
@@ -7952,8 +8565,13 @@ class TradeOpssAIApp:
 
         if not rows:
             self.log("⚠ No trades to execute — list is empty")
-            self._stop_auto_trade()
+            self._finish_auto_trade_batch(stop_when_done=stop_when_done)
+            if stop_when_done:
+                self._stop_auto_trade()
             return
+
+        self._sync_auto_trade_firm_sides()
+        firm_sides = dict(getattr(self, '_auto_trade_firm_sides', {}) or {})
 
         self.log(f"🚀 Auto-executing {len(rows)} accounts (parallel per firm)...")
 
@@ -7965,11 +8583,11 @@ class TradeOpssAIApp:
             self.log(f"📊 Signal: {sig.get('label', '—')} ({sig.get('detail', '')})")
 
         if use_signal:
-            allowed, lean, dom, volatile, gate_msg = self._auto_trade_entry_allowed()
+            allowed, lean, dom, volatile, gate_msg = self._auto_batch_gate_allowed()
             if not allowed:
                 self.log(f"⛔ Auto-trade gate: {gate_msg}", "WARN")
                 self._ai_trace("WARN", f"auto-trade blocked at execute — {gate_msg}")
-                self._stop_auto_trade()
+                self._finish_auto_trade_batch(stop_when_done=stop_when_done)
                 return
             self.log(f"✅ Auto-trade gate passed — {gate_msg}")
         else:
@@ -7984,7 +8602,9 @@ class TradeOpssAIApp:
                 "Connect MT5 first, or switch to 'Broker Only' mode to skip MT5 hedging."
             )
             self.log("❌ Auto-trade aborted — MT5 not connected (Hedging mode requires MT5)")
-            self._stop_auto_trade()
+            self._finish_auto_trade_batch(stop_when_done=stop_when_done)
+            if stop_when_done:
+                self._stop_auto_trade()
             return
 
         # Group rows by firm so each firm's Chrome runs in its own thread
@@ -8094,8 +8714,10 @@ class TradeOpssAIApp:
             self.log(f"✅ {total_valid} account(s) validated, {len(skipped_rows)} skipped")
 
             if not rows_by_firm:
-                self.log("⚠ No valid accounts remain — aborting auto-trade")
-                self._stop_auto_trade()
+                self.log("⚠ No valid accounts remain — will retry when queue changes")
+                self._finish_auto_trade_batch(stop_when_done=stop_when_done)
+                if stop_when_done:
+                    self._stop_auto_trade()
                 return
 
         margin_skipped = 0
@@ -8121,7 +8743,9 @@ class TradeOpssAIApp:
                     f"MT5 free margin ({free_txt}) is not enough to open any hedges.",
                 )
                 self.log("❌ Auto-trade aborted — insufficient MT5 free margin", "ERROR")
-                self._stop_auto_trade()
+                self._finish_auto_trade_batch(stop_when_done=stop_when_done)
+                if stop_when_done:
+                    self._stop_auto_trade()
                 return
             self.root.after(0, self._refresh_mt5_margin_after_scan)
 
@@ -8142,6 +8766,9 @@ class TradeOpssAIApp:
                     with total_success:
                         counters["fail"] += 1
                 return
+
+            firm_locks = self._sync_auto_trade_firm_sides()
+            locked_side = firm_locks.get(firm_name)
 
             # ── Stagger this firm's start so firms never fire together ──
             if stagger_offset > 0:
@@ -8166,16 +8793,6 @@ class TradeOpssAIApp:
                 phase_key = row_data["phase_key"]
                 acct_size = row_data["acct_size"]
                 acct_num = row_data["acct_num"]
-
-                # Re-check auto gate before each account (score refreshes every 60s)
-                allowed, _lean, dom, _vol, gate_msg = self._auto_trade_entry_allowed()
-                if not allowed:
-                    self._ai_trace("WARN", f"{acct_num}: auto-trade skipped — {gate_msg}")
-                    self.root.after(0, lambda an=acct_num, gm=gate_msg: self.log(
-                        f"⛔ {an}: auto gate — {gm}", "WARN"))
-                    with total_success:
-                        counters["skipped"] += 1
-                    continue
 
                 # ── Resolve phase_key from day placeholder (primary source of truth) ──
                 auto_ev = row_data.get("eval", {})
@@ -8285,8 +8902,11 @@ class TradeOpssAIApp:
                 day_field = self._find_day_field_name(auto_ev, row_data.get("current_phase", ""))
 
                 # Direction: ML signals (opt-in) or daily random bias per firm.
+                # Open positions lock the firm to one prop direction only.
                 if use_signal:
-                    if firm_name not in firm_sides:
+                    if locked_side in ("buy", "sell"):
+                        firm_sides[firm_name] = locked_side
+                    elif firm_name not in firm_sides:
                         config_tmp = None
                         if self.prop_firm_mgr:
                             config_tmp = self.prop_firm_mgr.get_strategy_config(
@@ -8296,6 +8916,17 @@ class TradeOpssAIApp:
                         if self._auto_trade_stop.is_set():
                             break
                         sig = self._get_signal_direction(mt5_sym)
+                        req = firm_locks.get(firm_name)
+                        if req and sig in ("buy", "sell") and sig != req:
+                            self._ai_trace(
+                                "WARN",
+                                f"{firm_name}: signal {sig.upper()} ≠ locked {req.upper()} — skipped")
+                            self.root.after(0, lambda fn=firm_name, s=sig, r=req: self.log(
+                                f"⛔ {fn}: signal {s.upper()} but firm locked "
+                                f"{r.upper()} — batch skipped for this firm", "WARN"))
+                            with total_success:
+                                counters["skipped"] += len(firm_rows) - row_idx
+                            break
                         if sig in ("buy", "sell"):
                             firm_sides[firm_name] = sig
                             self._ai_trace("SIGNAL", f"{firm_name}: AI direction locked → {sig.upper()}")
@@ -8310,7 +8941,11 @@ class TradeOpssAIApp:
                             counters["fail"] += 1
                         continue
                 else:
-                    side = firm_sides.get(firm_name, random.choice(["buy", "sell"]))
+                    if locked_side in ("buy", "sell"):
+                        side = locked_side
+                    else:
+                        side = firm_sides.get(firm_name, random.choice(["buy", "sell"]))
+                        firm_sides[firm_name] = side
 
                 config = None
                 if self.prop_firm_mgr:
@@ -8323,10 +8958,26 @@ class TradeOpssAIApp:
                         counters["fail"] += 1
                     continue
 
-                # Phase distance advisory — log only, do not block auto-trade
+                if use_signal:
+                    _cp = row_data.get("current_phase", "")
+                    allowed, _lean, _dom, _vol, gate_msg = self._auto_trade_entry_allowed(
+                        phase_key=phase_key, config=config, current_phase=_cp,
+                        firm_code=firm_code)
+                    if not allowed:
+                        self._ai_trace("WARN", f"{acct_num}: auto-trade skipped — {gate_msg}")
+                        self.root.after(0, lambda an=acct_num, gm=gate_msg: self.log(
+                            f"⛔ {an}: auto gate — {gm}", "WARN"))
+                        with total_success:
+                            counters["skipped"] += 1
+                        continue
+
+                # Phase distance advisory — tier-aware; funded can block via gate above
                 _st = getattr(self, "_signal_strength_state", {}) or {}
+                _tier = self._signal_tier_for_phase(
+                    phase_key, row_data.get("current_phase"), config=config,
+                    firm_code=firm_code)
                 fit_ok, fit_detail = self._phase_setup_fit(
-                    config, _st.get("capacity"))
+                    config, _st.get("capacity"), tier=_tier)
                 if not fit_ok:
                     self._ai_trace("WARN",
                         f"{acct_num}: phase {phase_key} TP/SL may not fit "
@@ -8510,6 +9161,9 @@ class TradeOpssAIApp:
                     with total_success:
                         counters["success"] += 1
 
+                    self._auto_trade_firm_sides[firm_name] = side
+                    self._auto_trade_side_lock_logged.add((firm_name, side))
+
                     # ── Auto-status: set "In Progress" when trades go out ──
                     if not RELEASE_DISABLE_AUTO_STATUS_UPDATES:
                         _ev = row_data.get("eval")
@@ -8564,8 +9218,8 @@ class TradeOpssAIApp:
 
             # Final summary
             self.root.after(0, lambda s=counters["success"], f=counters["fail"], sk=counters["skipped"]:
-                self.log(f"🏁 Auto-trade complete: {s} succeeded, {f} failed, {sk} skipped (not on Tradovate)"))
-            self.root.after(0, self._stop_auto_trade)
+                self.log(f"🏁 Auto-trade batch: {s} succeeded, {f} failed, {sk} skipped"))
+            self._finish_auto_trade_batch(stop_when_done=stop_when_done)
 
         threading.Thread(target=_dispatch_parallel, daemon=True).start()
 
@@ -8840,6 +9494,25 @@ class TradeOpssAIApp:
                         return
                     account = TopStepXAccount(user, pwd)
                     account.login()
+                elif platform == "AlphaTrader":
+                    if not ALPHATRADER_AVAILABLE:
+                        err = _ALPHATRADER_IMPORT_ERROR or 'unknown reason'
+                        self.root.after(0, lambda: conn["status_var"].set("❌"))
+                        self.log(f"AlphaTrader import failed: {err}", "ERROR")
+                        self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
+                        return
+                    account = AlphaTraderConnector(email=user, password=pwd)
+                    account.connect()
+                elif platform == "BlackArrow":
+                    if not BLACKARROW_AVAILABLE:
+                        err = _BLACKARROW_IMPORT_ERROR or 'unknown reason'
+                        self.root.after(0, lambda: conn["status_var"].set("❌"))
+                        self.log(f"BlackArrow import failed: {err}", "ERROR")
+                        self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
+                        return
+                    account = BlackArrowConnector(email=user, password=pwd)
+                    account.connect()
+                    self.log("⚠ BlackArrow: if a 2FA code is requested, enter it manually in the browser window.")
                 else:
                     self.root.after(0, lambda: conn["status_var"].set("❌"))
                     self.log(f"Unknown platform: {platform}", "ERROR")
@@ -8850,7 +9523,7 @@ class TradeOpssAIApp:
                 # Also keep legacy references for backward compatibility
                 if platform == "Tradovate":
                     self.tradovate_account = account
-                else:
+                elif platform == "TopStepX":
                     self.topstepx_account = account
 
                 def _update_ui():
@@ -9232,6 +9905,9 @@ class TradeOpssAIApp:
                               "login_url": "https://dash.lucidtrading.com", "accounts_url": "https://dash.lucidtrading.com",
                               "cdp": True},
         "Lucid":             {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "LucidTradingAccount",
+                              "login_url": "https://dash.lucidtrading.com", "accounts_url": "https://dash.lucidtrading.com",
+                              "cdp": True},
+        "LucidMaxx":         {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "LucidTradingAccount",
                               "login_url": "https://dash.lucidtrading.com", "accounts_url": "https://dash.lucidtrading.com",
                               "cdp": True},
         "TopStep":           {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "TopStepAccount",
@@ -10450,6 +11126,10 @@ class TradeOpssAIApp:
         # 1. Literal heuristic — fast path, preserves prior behaviour.
         if "topstep" in name.lower():
             return "TopStepX"
+        if "blackarrow" in name.lower() or "the5ers" in name.lower() or "5ers" in name.lower():
+            return "BlackArrow"
+        if "alphafutures" in name.lower() or "alpha futures" in name.lower():
+            return "AlphaTrader"
 
         # 2. Resolve to a blueprint firm code.
         norm = name.lower().replace("_", " ").replace("-", " ").strip()
@@ -10531,7 +11211,11 @@ class TradeOpssAIApp:
         if login and pwd and server:
             try:
                 self.trading_api = MT5API(login, pwd, server)
-                if self.trading_api.connect():
+                # Same lock as pusher.connect_mt5 — concurrent mt5.initialize()
+                # calls cause -10003 IPC pipe timeouts.
+                with _MT5_INIT_LOCK:
+                    connected = self.trading_api.connect()
+                if connected:
                     return self.trading_api
             except Exception as e:
                 self.log(f"MT5 trading API connection failed: {e}", "ERROR")
@@ -10580,6 +11264,26 @@ class TradeOpssAIApp:
         """True when the user unlocked ML signal mode (password-gated checkbox)."""
         var = getattr(self, "ml_mode_var", None)
         return bool(var and var.get())
+
+    def _split_payout_mode_enabled(self):
+        """True when the Split (Tradeify) toolbar checkbox is checked."""
+        var = getattr(self, "funded_split_payout_var", None)
+        return bool(var and var.get())
+
+    def _split_payout_applies(self, firm_code=None):
+        """Split payout SL + signal tiers — Tradeify only, when checkbox is on."""
+        if not self._split_payout_mode_enabled():
+            return False
+        fc = self._resolve_firm_code(firm_code, default="") if firm_code else ""
+        return fc in self.SPLIT_PAYOUT_FIRM_CODES
+
+    def _funded_sl_mode(self, firm_code=None):
+        """PropFirmManager sl_mode string for calculate_funded_sl."""
+        if not self.prop_firm_mgr:
+            return "classic"
+        if self._split_payout_applies(firm_code):
+            return self.prop_firm_mgr.FUNDED_SL_MODE_SPLIT
+        return self.prop_firm_mgr.FUNDED_SL_MODE_CLASSIC
 
     def _toggle_ml_mode(self):
         """Enable ML signals only after password; default is random per firm."""
@@ -10842,7 +11546,7 @@ class TradeOpssAIApp:
         return {"atr": atr, "mfe_est": mfe_est, "mae_est": mae_est,
                 "source": source}
 
-    def _phase_setup_fit(self, config, capacity):
+    def _phase_setup_fit(self, config, capacity, tier=None, slack=None):
         """Does the CURRENT setup support this phase's TP/SL distances?
 
         TP must be within the market's typical favorable reach, and the SL
@@ -10850,6 +11554,10 @@ class TradeOpssAIApp:
         out before the move). Farming legs (micro MNQ feeders) are exempt —
         their far TP is strategic, not setup-driven. Returns (ok, detail).
         """
+        if slack is None and tier:
+            prof = self._get_signal_gate_profile(tier)
+            slack = float(prof.get("setup_fit_slack") or 1.0)
+        slack = float(slack or 1.0)
         try:
             sym = (config.get("tradovate_symbol", "")
                    or config.get("topstepx_symbol", "")).upper()
@@ -10867,12 +11575,13 @@ class TradeOpssAIApp:
             return False, "no market-reach data yet (no ATR / verified stats)"
         tp_pts = tp_ticks * self.SETUP_TICK_POINT
         sl_pts = sl_ticks * self.SETUP_TICK_POINT
-        tp_ok = tp_pts <= capacity["mfe_est"]
-        sl_ok = sl_pts >= capacity["mae_est"]
+        tp_ok = tp_pts <= capacity["mfe_est"] * slack
+        sl_ok = sl_pts >= capacity["mae_est"] / max(slack, 1.0)
         detail = (f"TP {tp_pts:.1f}pts vs reach {capacity['mfe_est']:.1f}pts "
                   f"{'OK' if tp_ok else 'TOO FAR'} | "
                   f"SL {sl_pts:.1f}pts vs noise {capacity['mae_est']:.1f}pts "
-                  f"{'OK' if sl_ok else 'TOO TIGHT'} [{capacity['source']}]")
+                  f"{'OK' if sl_ok else 'TOO TIGHT'} [{capacity['source']}]"
+                  + (f" slack×{slack:.2f}" if slack != 1.0 else ""))
         return tp_ok and sl_ok, detail
 
     def _leg_raw_to_pct(self, buy_raw: float, sell_raw: float):
@@ -11030,10 +11739,17 @@ class TradeOpssAIApp:
         lean = "buy" if buy_pct >= sell_pct else "sell"
         dominant = max(buy_pct, sell_pct)
 
+        rows = getattr(self, "_active_trade_rows", None) or []
+        tier = self._permissive_signal_tier_from_rows(rows)
+        prof = self._get_signal_gate_profile(tier)
+        min_dec = int(prof.get("min_decision_pct") or 60)
+        div_margin = int(prof.get("min_diverge_margin") or self.BLEND_MIN_MARGIN_DIVERGE)
+        div_dom = int(prof.get("min_diverge_dominant") or 55)
+
         decision = None
-        if consensus and dominant >= 60:
+        if consensus and dominant >= min_dec:
             decision = lean
-        elif margin >= self.BLEND_MIN_MARGIN_DIVERGE and dominant >= 55:
+        elif margin >= div_margin and dominant >= div_dom:
             decision = lean
 
         parts = []
@@ -11093,6 +11809,7 @@ class TradeOpssAIApp:
             "weights": weights,
             "w_trend": w_t,
             "w_reversal": w_r,
+            "signal_tier": tier,
         }
         if ready:
             state["label"] += " ★"
@@ -11148,8 +11865,10 @@ class TradeOpssAIApp:
         }
         return sig
 
-    def _auto_trade_entry_allowed(self):
-        """Auto-mode gate: ★ consensus + ≥75% blend + ⚡VOL (option B)."""
+    def _auto_trade_entry_allowed(self, phase_key=None, config=None,
+                                  current_phase=None, elapsed_sec=0,
+                                  firm_code=None):
+        """Phase-aware auto gate: challenge fires on smaller moves; funded needs intent."""
         sig = self._compute_signal_strength(max_age_sec=0)
         buy_pct = int(sig.get("buy_pct") or 50)
         sell_pct = int(sig.get("sell_pct") or 50)
@@ -11162,38 +11881,104 @@ class TradeOpssAIApp:
         margin = int(sig.get("blend_margin") or 0)
         legs = sig.get("legs") or {}
 
-        if self.AUTO_TRADE_REQUIRE_CONSENSUS and not consensus:
+        tier = self._signal_tier_for_phase(
+            phase_key, current_phase, config=config, firm_code=firm_code)
+        prof = self._get_signal_gate_profile(tier, elapsed_sec=elapsed_sec)
+        min_blend = int(prof.get("min_blend_pct") or self.AUTO_TRADE_MIN_SIGNAL_PCT)
+        tier_tag = tier + ("*" if prof.get("relaxed") else "")
+
+        if prof.get("require_consensus", self.AUTO_TRADE_REQUIRE_CONSENSUS) and not consensus:
             return False, lean, dominant, volatile, (
-                f"trend/reversal diverge — need ★ consensus "
+                f"[{tier_tag}] trend/reversal diverge — need consensus "
                 f"(trend B{legs.get('trend_buy_pct', '?')}/S{legs.get('trend_sell_pct', '?')} "
                 f"vs rev B{legs.get('rev_buy_pct', '?')}/S{legs.get('rev_sell_pct', '?')}, "
                 f"margin {margin}%)")
 
-        if dominant < self.AUTO_TRADE_MIN_SIGNAL_PCT:
+        if dominant < min_blend:
             return False, lean, dominant, volatile, (
-                f"blend {dominant}% below {self.AUTO_TRADE_MIN_SIGNAL_PCT}% "
-                f"(B{buy_pct}/S{sell_pct})")
-
-        if self.AUTO_TRADE_REQUIRE_VOLATILE and not volatile:
-            return False, lean, dominant, volatile, (
-                "volatility not elevated — waiting for ⚡VOL tape "
+                f"[{tier_tag}] blend {dominant}% below {min_blend}% "
                 f"(B{buy_pct}/S{sell_pct})")
 
         if not sig.get("decision"):
             return False, lean, dominant, volatile, (
-                f"no blend decision yet (B{buy_pct}/S{sell_pct})")
+                f"[{tier_tag}] no blend decision yet (B{buy_pct}/S{sell_pct})")
 
-        if self.AUTO_TRADE_REQUIRE_READY and not sig.get("ready"):
-            ml_dir = (ml.get("direction") or ml.get("lean") or "").lower()
+        vol_bypass = int(prof.get("volatile_bypass_blend") or 0)
+        need_vol = bool(prof.get("require_volatile", self.AUTO_TRADE_REQUIRE_VOLATILE))
+        if need_vol and not volatile and not (vol_bypass and dominant >= vol_bypass):
             return False, lean, dominant, volatile, (
-                f"waiting for ★ highly recommended — consensus + ML agree "
+                f"[{tier_tag}] waiting for ⚡VOL or ≥{vol_bypass}% blend "
+                f"(B{buy_pct}/S{sell_pct})")
+
+        ml_dir = (ml.get("direction") or ml.get("lean") or "").lower()
+        if prof.get("require_ml_agree") and ml.get("ready"):
+            if ml_dir not in ("buy", "sell") or ml_dir != lean:
+                return False, lean, dominant, volatile, (
+                    f"[{tier_tag}] ML {ml_dir or 'neutral'} ≠ blend {lean.upper()} "
+                    f"(B{buy_pct}/S{sell_pct})")
+
+        if prof.get("require_ready", self.AUTO_TRADE_REQUIRE_READY) and not sig.get("ready"):
+            return False, lean, dominant, volatile, (
+                f"[{tier_tag}] waiting for ★ highly recommended "
                 f"(blend {lean.upper()} B{buy_pct}/S{sell_pct}, ML {ml_dir or 'neutral'})")
 
+        if prof.get("require_setup_fit") and config:
+            cap = sig.get("capacity")
+            fit_ok, fit_detail = self._phase_setup_fit(
+                config, cap, tier=tier)
+            if not fit_ok:
+                return False, lean, dominant, volatile, (
+                    f"[{tier_tag}] TP/SL reach — {fit_detail}")
+
         w = sig.get("weights") or {}
+        vol_note = "⚡VOL" if volatile else "calm tape OK" if tier == "challenge" else "no-VOL bypass"
         return True, lean, dominant, volatile, (
-            f"entry OK — {lean.upper()} {dominant}% ★consensus "
+            f"[{tier_tag}] entry OK — {lean.upper()} {dominant}% consensus "
             f"wT={float(sig.get('w_trend') or 0):.0%} wR={float(sig.get('w_reversal') or 0):.0%} "
-            f"+ ⚡VOL | trend acc {w.get('trend_acc', '?')} rev {w.get('reversal_acc', '?')}")
+            f"+ {vol_note} | trend acc {w.get('trend_acc', '?')} rev {w.get('reversal_acc', '?')}")
+
+    def _auto_batch_gate_allowed(self, elapsed_sec=0):
+        """True when at least one loaded row passes its phase-specific gate."""
+        rows = list(getattr(self, "_active_trade_rows", []) or [])
+        locks = self._sync_auto_trade_firm_sides()
+        if not rows:
+            return self._auto_trade_entry_allowed(elapsed_sec=elapsed_sec)
+
+        best = None
+        direction_blocked = None
+        for rd in rows:
+            pk = rd.get("phase_key")
+            cp = rd.get("current_phase", "")
+            firm = (rd.get("eval") or {}).get("Prop Firm", rd.get("firm_code", ""))
+            config = None
+            if self.prop_firm_mgr:
+                try:
+                    config = self.prop_firm_mgr.get_strategy_config(
+                        rd["firm_code"], pk, rd["acct_size"])
+                except Exception:
+                    config = None
+            result = self._auto_trade_entry_allowed(
+                phase_key=pk, config=config, current_phase=cp,
+                elapsed_sec=elapsed_sec, firm_code=rd.get("firm_code"))
+            if not result[0]:
+                if best is None or result[2] > best[2]:
+                    best = result
+                continue
+            lean = result[1]
+            req = locks.get(firm)
+            if req and lean and req != lean:
+                direction_blocked = (
+                    f"{firm} locked {req.upper()} — signal is {lean.upper()} "
+                    f"({result[2]}%)")
+                if best is None or result[2] > best[2]:
+                    best = (False, lean, result[2], result[3],
+                            direction_blocked)
+                continue
+            return result
+        if direction_blocked and best and not best[0]:
+            return best
+        return best if best is not None else self._auto_trade_entry_allowed(
+            elapsed_sec=elapsed_sec)
 
     def _update_signal_strength_ui(self):
         """Update strength labels and button highlights — never disable buttons."""
@@ -11275,7 +12060,10 @@ class TradeOpssAIApp:
                         cfg = self.prop_firm_mgr.get_strategy_config(
                             rd["firm_code"], rd["phase_key"], rd["acct_size"])
                         if cfg and capacity:
-                            ok, _ = self._phase_setup_fit(cfg, capacity)
+                            tier = self._signal_tier_for_phase(
+                                rd["phase_key"], rd.get("current_phase"),
+                                config=cfg, firm_code=rd.get("firm_code"))
+                            ok, _ = self._phase_setup_fit(cfg, capacity, tier=tier)
                             fit_tag = " ✓" if ok else " ⚠"
                     row_txt += fit_tag
                     if ready:

@@ -766,6 +766,8 @@ def normalize_prop_firm_name(name):
         "blueguardian": "Blue Guardian",
         "fundedtradingplus": "Funded Trading Plus",
         "the5ers": "The 5%ers",
+        "5ers": "The 5%ers",
+        "the5%ers": "The 5%ers",
         "apextraderfunding": "Apex Trader Funding",
         "apextrader": "Apex Trader Funding",
         "uprofittrader": "UProfit",
@@ -782,6 +784,8 @@ def normalize_prop_firm_name(name):
         "mffuflex": "My Funded Futures",
         "fundedfuturesfamily": "Funded Futures Family",
         "fff": "Funded Futures Family",
+        "lucid": "Lucid",
+        "lucidmaxx": "LucidMaxx",
         "fundednextlegacyaccount": "FundedNext (Legacy)", # Keep distinct if wanted, or merge to FundedNext
     }
     
@@ -794,6 +798,8 @@ def normalize_prop_firm_name(name):
         return "My Funded Futures"
     if "fundednext" in normalized:
         return "FundedNext"
+    if "lucidmaxx" in normalized:
+        return "LucidMaxx"
         
     # Fallback: Just return original if no mapping found, but title cased
     return original
@@ -1694,7 +1700,7 @@ def get_client_performance_stats(profile_filter=None, start_date=None, end_date=
     Optionally filters by start_date and end_date (datetime objects).
     """
     # BEF hidden firms — evaluations from these firms are excluded for BEF view
-    BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff'}
+    BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff', 'the5ers', 'the5%ers'}
     is_bef = profile_filter and profile_filter.upper() == 'BEF'
 
     def _is_firm_hidden(firm_name):

@@ -3719,6 +3719,21 @@ class TradovateAccount:
 
             all_fills = self._api_fetch("/fill/list") or []
 
+            # /fill/list entries no longer carry accountId — map through the
+            # parent order (orders do carry accountId). Without this every
+            # fill fails the account match and the function returns [].
+            order_acct = {}
+            for o in (self._api_fetch("/order/list") or []):
+                oid = o.get('id')
+                if oid is not None:
+                    order_acct[oid] = o.get('accountId')
+
+            def _fill_account_id(f):
+                aid = f.get('accountId')
+                if aid is not None:
+                    return aid
+                return order_acct.get(f.get('orderId'))
+
             # Resolve unique contract IDs to names
             contract_cache = {}
             for f in all_fills:
@@ -3744,7 +3759,7 @@ class TradovateAccount:
                 # Find dates where this account had MNQ fills
                 mnq_dates = set()
                 for f in all_fills:
-                    if f.get('accountId') == aid and f.get('contractId') in mnq_contract_ids:
+                    if _fill_account_id(f) == aid and f.get('contractId') in mnq_contract_ids:
                         td = f.get('tradeDate', {})
                         date_str = f"{td.get('year', 0)}-{td.get('month', 1):02d}-{td.get('day', 1):02d}"
                         mnq_dates.add(date_str)

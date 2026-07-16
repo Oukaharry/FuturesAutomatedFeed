@@ -3154,8 +3154,8 @@
         const CAN_EDIT_NOTES = !IS_CLIENT && !IS_KWOK_ADMIN;
         // Firms hidden from BEF admin view
         // Precomputed normalized keys for O(1) Set lookup instead of O(n) array scan
-        const BEF_HIDDEN_FIRMS_SET = new Set(['lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff']);
-        const BEF_HIDDEN_FIRMS = ['Lucid', 'Apex', 'TradeDay', 'Top One Futures', 'Funded Futures Family']; // kept for iteration use
+        const BEF_HIDDEN_FIRMS_SET = new Set(['lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff', 'theers']);
+        const BEF_HIDDEN_FIRMS = ['Lucid', 'Apex', 'TradeDay', 'Top One Futures', 'Funded Futures Family', 'The 5%ers']; // kept for iteration use
         function isFirmHidden(firmName) {
             if (!IS_BEF_ADMIN) return false;
             const n = (firmName || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -4272,6 +4272,10 @@
                                 ev['Prop Firm'] = 'Alpha Futures';
                             } else if (pf === 'fundedfuturesfamily' || pf === 'fff') {
                                 ev['Prop Firm'] = 'Funded Futures Family';
+                            } else if (pf === 'lucidmaxx') {
+                                ev['Prop Firm'] = 'LucidMaxx';
+                            } else if (pf === 'lucid') {
+                                ev['Prop Firm'] = 'Lucid';
                             }
                         });
                     }
@@ -5258,7 +5262,7 @@
                         'fundingticks': 'Funding Ticks', 'fundingtick': 'Funding Ticks',
                         'fundednext': 'FundedNext',
                         'tradeday': 'TradeDay', 'tradeify': 'Tradeify',
-                        'alphafutures': 'Alpha Futures', 'lucid': 'Lucid',
+                        'alphafutures': 'Alpha Futures', 'lucid': 'Lucid', 'lucidmaxx': 'LucidMaxx',
                         'toponefutures': 'Top One Futures', 'topone': 'Top One Futures',
                         'fundedfuturesfamily': 'Funded Futures Family', 'fff': 'Funded Futures Family',
                     };
@@ -5929,7 +5933,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Other'
+                    'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -7048,7 +7052,7 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -7089,6 +7093,8 @@
                     return base + "background-color: #2563eb; color: white;";
                 } else if (v.includes('topone')) {
                     return base + "background-color: #0d9488; color: white;";
+                } else if (v === 'theers') {
+                    return base + "background-color: #1e1b4b; color: white;";
                 }
                 return "";
             };
@@ -8993,7 +8999,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections() {
             const d = {};

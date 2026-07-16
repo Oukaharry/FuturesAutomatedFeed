@@ -67,7 +67,7 @@ from dashboard.notes_service import (
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
 # Firms hidden from BEF admin (normalised: lowercase, no spaces)
-BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff'}
+BEF_HIDDEN_FIRMS = {'lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff', 'the5ers', 'the5%ers'}
 
 # QA-gated: trader daily summary item 4 — any prop firm with payouts-eligible count >= 1 (super_admin resolve)
 QA_CHECK_DAILY_SUMMARY_PAYOUT_ELIGIBLE = 'Daily summary: payouts eligible >=1-QA'

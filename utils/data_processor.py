@@ -388,6 +388,8 @@ _FIRM_MAP = {
     "blueguardian": "Blue Guardian",
     "fundedtradingplus": "Funded Trading Plus",
     "the5ers": "The 5%ers",
+    "5ers": "The 5%ers",
+    "the5%ers": "The 5%ers",
     "apextraderfunding": "Apex Trader Funding",
     "apextrader": "Apex Trader Funding",
     "uprofittrader": "UProfit", "uprofit": "UProfit",
@@ -396,6 +398,7 @@ _FIRM_MAP = {
     "elitetraderfunding": "Elite Trader Funding",
     "takeprofittrader": "Take Profit Trader",
     "lucid": "Lucid",
+    "lucidmaxx": "LucidMaxx",
     "toponefutures": "Top One Futures", "topone": "Top One Futures",
     "fundedfuturesfamily": "Funded Futures Family", "fff": "Funded Futures Family",
 }
@@ -427,6 +430,8 @@ def normalize_prop_firm(name):
         return "Funding Ticks"
     if "fundedfuturesfamily" in key or key == "fff":
         return "Funded Futures Family"
+    if "lucidmaxx" in key:
+        return "LucidMaxx"
     return original
 
 

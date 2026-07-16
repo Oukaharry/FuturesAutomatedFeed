@@ -59,6 +59,8 @@ class PropFirmManager:
         "Top One Futures": "Top One Futures",
         "Funded Futures Family": "Funded Futures Family",
         "FFF": "Funded Futures Family",
+        "The5ers": "The5ers",
+        "5ers": "The5ers",
     }
 
     def __init__(self):
@@ -911,11 +913,26 @@ class PropFirmManager:
                             "mt5_tp_points": 46,
                             "mt5_sl_points": 129
                         }
+                    },
+                    "farming": {
+                        "50k": {
+                            "tradovate_symbol": "MNQU6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 204,
+                            "tradovate_sl_ticks": 600,
+                            "mt5_volume": 3.2,
+                            "mt5_tp_points": 146,
+                            "mt5_sl_points": 55
+                        }
                     }
                 }
             },
             "AlphaFutures": {
                 "name": "AlphaFutures",
+                # Platform: Alpha Trader (futures.alphatrader.com) — migrated from Tradovate 2026.
+                # Connector: connectors/alphatrader_connector.py
+                # tradovate_symbol field is still used for symbol lookup; connector maps it to
+                # Alpha Trader contract_id (e.g. "NQU6" → "NQ", "MNQU6" → "MNQ").
                 "account_sizes": ["$50,000", "$100,000", "$150,000"],
                 "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase"],
                 "strategy_configs": {
@@ -1108,6 +1125,8 @@ class PropFirmManager:
             },
             "AlphaFutures GC": {
                 "name": "AlphaFutures GC",
+                # Platform: Alpha Trader (futures.alphatrader.com) — migrated from Tradovate 2026.
+                # Connector: connectors/alphatrader_connector.py  (GC → "GC" on CME_CO exchange)
                 "account_sizes": ["$50,000"],
                 "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase"],
                 "strategy_configs": {
@@ -1626,8 +1645,205 @@ class PropFirmManager:
                             "mt5_sl_points": 0,
                             "profit_target": 1000
                         }
+                    },
+                    "farming": {
+                        "50k": {
+                            "tradovate_symbol": "MNQU6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 204,
+                            "tradovate_sl_ticks": 600,
+                            "mt5_volume": 0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 204
+                        }
                     }
                 }
+            },
+            "The5ers": {
+                "name": "The5ers",
+                # Platform: BlackArrow only. No MT5/Tradovate connector exists.
+                # tradovate_symbol/qty used as canonical NQ placeholders.
+                # mt5_volume is 0 — no hedge leg on this firm.
+                "account_sizes": ["$50,000"],
+                "trading_phases": [
+                    "Challenge Phase",
+                    "Payout 1",
+                    "Payout 2",
+                    "Payout 3",
+                    "Payout 4",
+                    "Farming Phase",
+                ],
+                "compliance_rules": {
+                    # EOD trailing drawdown — anchors to all-time-high midnight balance.
+                    # 4% of that high-water mark = hard floor. Never resets downward.
+                    "drawdown_type":        "eod_trailing",
+                    "drawdown_pct":         0.04,
+                    # 40% consistency: no single trade > 40% of TOTAL profits earned (soft breach).
+                    # Soft = account stays live; keep trading until ratio drops to ≤40%.
+                    # Formula: if breach → new target = biggest_trade / 0.40.
+                    # Example: $1,600 trade → new target = $4,000.
+                    "consistency_pct":      0.40,
+                    "consistency_mode":     "soft",
+                    # Day Trade track: all positions MUST close ≥10 min before market close.
+                    # Cutoff = 4:50 PM CET (platform enforces 5:00 PM CET as EOD).
+                    "overnight_allowed":    False,
+                    "eod_cutoff_cet":       "16:50",  # "4:50 PM CET" per official FAQ
+                    "weekend_allowed":      False,     # both Day Trade and Swing
+                    # Inactivity: ≥1 trade per 14 calendar days or account is terminated.
+                    "inactivity_days":      14,
+                    # Copy trading: own accounts only; 25K/50K accounts; max combined $75K.
+                    # Cannot copy other traders or let others copy you.
+                    "copy_trading_allowed": True,
+                    "copy_trading_own_only": True,
+                    "copy_trading_max_combined": 75000,
+                    # News: trading during economic releases IS allowed (no restriction).
+                    "news_trading_allowed": True,
+                    # Evaluation profits do NOT carry over — funded account starts at $50K clean.
+                    "eval_profits_carry_over": False,
+                    # Max contract size per $50K account: 2 NQ minis OR 20 MNQ micros.
+                    "max_contracts_mini":   2,
+                    "max_contracts_micro":  20,
+                    "max_accounts":         5,
+                    # Scaling (funded only): every 10% profit milestone →
+                    #   +5% balance, +1 mini / +10 micros added to max. Cap: $500K.
+                    "scaling_profit_pct":   0.10,
+                    "scaling_balance_inc_pct": 0.05,
+                    "scaling_mini_inc":     1,
+                    "scaling_micro_inc":    10,
+                    "scaling_max_balance":  500000,
+                },
+                "strategy_configs": {
+                    # ── Challenge Phase ────────────────────────────────────────────
+                    # Target: $3,000 (+6% of $50K). Official max: 2 NQ minis.
+                    # 3 trades × 2 minis × 100 ticks × $5 = $1,000/trade → $3,000.
+                    # Each trade = 33.3% of $3K total — within the 40% consistency rule.
+                    # Can pass in 1 day (allowed per FAQ) if all 3 trades fit in a session.
+                    #
+                    # SL MODE: "full_cushion" — SL is set dynamically at trade time to
+                    # consume the ENTIRE remaining drawdown cushion:
+                    #   SL_ticks = (current_balance - drawdown_floor) / (qty × tick_value)
+                    #   drawdown_floor = MLL shown on platform  (or SOD_balance × 0.96)
+                    #   tick_value (NQ) = $5
+                    # Example progression:
+                    #   Start of day  → cushion=$2,000 → SL=200 ticks
+                    #   After +$1,000 → cushion=$3,000 → SL=300 ticks
+                    #   After +$2,000 → cushion=$4,000 → SL=400 ticks
+                    # tradovate_sl_ticks=200 is the fallback if balance can't be read.
+                    "challenge_trade1": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 100,
+                            "tradovate_sl_ticks": 200,
+                            "sl_mode":          "full_cushion",
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1000,
+                        }
+                    },
+                    "challenge_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 100,
+                            "tradovate_sl_ticks": 200,
+                            "sl_mode":          "full_cushion",
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1000,
+                        }
+                    },
+                    "challenge_trade3": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 100,
+                            "tradovate_sl_ticks": 200,
+                            "sl_mode":          "full_cushion",
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1000,
+                        }
+                    },
+                    # ── Payout 1 ───────────────────────────────────────────────────
+                    # Funded target = 4% of $50K = $2,000.
+                    # 4 trades for consistency: biggest single trade must be ≤40% of total.
+                    # 4 × 2 minis × 94 ticks × $5 = $940/trade → $3,760 total.
+                    # Biggest trade = $940 / $3,760 = 25% — compliant at trade 4.
+                    "funded_trade1": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 94,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 940,
+                        }
+                    },
+                    # ── Payout 2 ───────────────────────────────────────────────────
+                    # 2 minis × 120 ticks × $5 = $1,200/trade.
+                    # Keep each trade ≤ 40% of running cumulative profits.
+                    "funded_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 120,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1200,
+                        }
+                    },
+                    # ── Payout 3 ───────────────────────────────────────────────────
+                    "funded_trade3": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 120,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1200,
+                        }
+                    },
+                    # ── Payout 4+ ──────────────────────────────────────────────────
+                    "funded_trade4": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 120,
+                            "tradovate_sl_ticks": 100,
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 1200,
+                        }
+                    },
+                    # ── Farming (inactivity guard) ─────────────────────────────────
+                    # MNQ micros to keep the 14-day inactivity clock alive cheaply.
+                    # Max 20 MNQ — using only 2 keeps risk minimal.
+                    # 2 MNQ × 154 ticks × $0.50 = $154.
+                    "farming": {
+                        "50k": {
+                            "tradovate_symbol": "MNQU6",
+                            "tradovate_qty":    2,
+                            "tradovate_tp_ticks": 154,
+                            "tradovate_sl_ticks": 600,
+                            "mt5_volume":  0,
+                            "mt5_tp_points": 0,
+                            "mt5_sl_points": 0,
+                            "profit_target": 154,
+                        }
+                    },
+                },
             },
             "Funded Futures Family": {
                 "name": "Funded Futures Family",
@@ -1762,11 +1978,15 @@ class PropFirmManager:
             normalized_code = "Funded Next"
         elif firm_code in ("FFF", "Funded Futures Family", "FundedFuturesFamily"):
             normalized_code = "Funded Futures Family"
+        elif firm_code in ("5ers", "The5ers", "the5ers", "The 5ers"):
+            normalized_code = "The5ers"
         elif firm_code == "TopOneFutures":
             normalized_code = "Top One Futures"
         elif firm_code in ("MFFU", "My Funded Futures"):
             # Legacy alias — MFFU is no longer a separate blueprint
             normalized_code = "MFFU_Flex"
+        elif firm_code in ("Trade Day", "Trade day"):
+            normalized_code = "TradeDay"
 
         # Exact blueprint key — fast path.
         if normalized_code in self.firm_blueprints:
@@ -1850,9 +2070,11 @@ class PropFirmManager:
             self.logger.info(f"[DEBUG get_strategy_config] Found config: qty={config.get('tradovate_qty', 'N/A')}, volume={config.get('mt5_volume', 'N/A')}")
         
         if config:
-            config = config.copy()
+            config = self._ensure_mt5_hedge_config(
+                config.copy(), phase_key=phase_key,
+                firm_code=firm_info.get("name", firm_code))
             if 'mt5_volume' in config:
-                config['mt5_volume'] = round(config['mt5_volume'], 2)
+                config['mt5_volume'] = round(float(config['mt5_volume'] or 0), 2)
         
         return config
     
@@ -1895,6 +2117,8 @@ class PropFirmManager:
             "Top One Futures": "Top One Futures",
             "Funded Futures Family": "Funded Futures Family",
             "FFF": "Funded Futures Family",
+            "The5ers": "The5ers",
+            "5ers": "The5ers",
             "Other": "MFFU_Flex"  # Default fallback
         }
 
@@ -1940,12 +2164,7 @@ class PropFirmManager:
         
         if trading_phase == "Challenge Phase":
             if self.current_firm_code == "Top One Futures":
-                if balance_performance >= 5.0:
-                    phase_key = "challenge_trade3"
-                elif balance_performance >= 2.5:
-                    phase_key = "challenge_trade2"
-                else:
-                    phase_key = "challenge_trade1"
+                phase_key = "challenge_trade1"
             else:
                 phase_key = "challenge_trade2" if balance_performance >= 2.5 else "challenge_trade1"
         
@@ -2013,15 +2232,10 @@ class PropFirmManager:
                 else:
                     phase_key = "funded_trade_doubledip_4"
             elif self.current_firm_code == "Top One Futures":
-                # Top One Futures Double Dip Phase Logic (same structure as funded)
                 if balance_performance < 2.0:
                     phase_key = "funded_trade_doubledip_1"
-                elif balance_performance < 4.0:
-                    phase_key = "funded_trade_doubledip_2"
-                elif balance_performance < 6.0:
-                    phase_key = "funded_trade_doubledip_3"
                 else:
-                    phase_key = "funded_trade_doubledip_4"
+                    phase_key = "funded_trade_doubledip_2"
             else:
                 phase_key = "funded" # Fallback
 
@@ -2093,7 +2307,9 @@ class PropFirmManager:
 
                 if fallback:
                     self.logger.warning(f"No config for {self.current_firm_code}/{phase_key}, using MFFU_Flex {mffu_phase_key}")
-                    return fallback
+                    return self._ensure_mt5_hedge_config(
+                        dict(fallback), phase_key=phase_key,
+                        firm_code=self.current_firm_code or "")
                 else:
                     ultimate_fallback = {
                         "tradovate_symbol": "MNQU6",
@@ -2105,8 +2321,16 @@ class PropFirmManager:
                         "mt5_sl_points": 41
                     }
                     self.logger.error(f"No valid config, using ultimate fallback")
-                    return ultimate_fallback
-        
+                    return self._ensure_mt5_hedge_config(
+                        ultimate_fallback, phase_key=phase_key,
+                        firm_code=self.current_firm_code or "")
+
+        if config:
+            config = self._ensure_mt5_hedge_config(
+                dict(config), phase_key=phase_key,
+                firm_code=self.current_firm_code or "")
+            if 'mt5_volume' in config:
+                config['mt5_volume'] = round(float(config['mt5_volume'] or 0), 2)
         return config
     
     def get_prop_firm_account_sizes(self, firm_code=None):
@@ -2173,6 +2397,8 @@ class PropFirmManager:
         "TopStep": {
             "Challenge":  ["challenge_trade1", "challenge_trade2"],
             "Funded":     ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Double Dip": ["funded_trade_doubledip_1", "funded_trade_doubledip_2",
+                           "funded_trade_doubledip_3", "funded_trade_doubledip_4"],
             "Farming":    ["farming"],
         },
         "TopStep RTP": {
@@ -2189,6 +2415,7 @@ class PropFirmManager:
             "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3",
                           "challenge_trade4", "challenge_trade5"],
             "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3"],
+            "Farming":   ["farming"],
         },
         "AlphaFutures": {
             "Challenge": ["challenge_trade1", "challenge_trade2"],
@@ -2222,14 +2449,37 @@ class PropFirmManager:
             "Payout 4":  ["payout4_trade1", "payout4_trade2"],
             "Farming":   ["farming"],
         },
+        "The5ers": {
+            "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Payout 1":  ["funded_trade1"],
+            "Payout 2":  ["funded_trade2"],
+            "Payout 3":  ["funded_trade3"],
+            "Payout 4":  ["funded_trade4"],
+            "Farming":   ["farming"],
+        },
         "Top One Futures": {
-            "Challenge":  ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
-            "Funded":     ["funded_trade1", "funded_trade1_2", "funded_trade2", "funded_trade2_2",
-                           "funded_trade3", "funded_trade3_2", "funded_trade4", "funded_trade4_2"],
-            "Double Dip": ["funded_trade_doubledip_1", "funded_trade_doubledip_1_2",
-                           "funded_trade_doubledip_2", "funded_trade_doubledip_2_2",
-                           "funded_trade_doubledip_3", "funded_trade_doubledip_3_2",
-                           "funded_trade_doubledip_4", "funded_trade_doubledip_4_2"],
+            "Challenge": ["challenge_trade1"],
+            "Payout 1":  ["funded_trade1", "funded_trade1a", "funded_trade1b",
+                          "funded_trade1c", "funded_trade1d"],
+            "Payout 2":  ["funded_trade2", "funded_trade2a", "funded_trade2b"],
+            "Funded":    ["funded_trade1", "funded_trade1a", "funded_trade1b",
+                          "funded_trade1c", "funded_trade1d",
+                          "funded_trade2", "funded_trade2a", "funded_trade2b"],
+            "Double Dip Payout 1": [
+                "funded_trade_doubledip_1", "funded_trade_doubledip_1a",
+                "funded_trade_doubledip_1b", "funded_trade_doubledip_1c",
+                "funded_trade_doubledip_1d"],
+            "Double Dip Payout 2": [
+                "funded_trade_doubledip_2", "funded_trade_doubledip_2a",
+                "funded_trade_doubledip_2b"],
+            "Double Dip": [
+                "funded_trade_doubledip_1", "funded_trade_doubledip_1a",
+                "funded_trade_doubledip_1b", "funded_trade_doubledip_1c",
+                "funded_trade_doubledip_1d",
+                "funded_trade_doubledip_2", "funded_trade_doubledip_2a",
+                "funded_trade_doubledip_2b"],
+            "Farming": ["farming"],
         },
     }
 
@@ -2444,6 +2694,7 @@ class PropFirmManager:
     _HARD_STOP_THRESHOLDS: Dict[str, float] = {
         # MFFU / MFFU_Flex: detected dynamically (see adjust_farming_tp_sl)
         "TopStep":          0.0,     # Funded starts at $0; account blows at $0
+        "TopStep RTP":      0.0,
         "Funded Next":      50000.0,
         "FundingTicks":     50000.0,
         "TradeDay":         50000.0,
@@ -2466,6 +2717,7 @@ class PropFirmManager:
         "Funded Next":      {"Challenge": 3050, "Funded": 5200},
         "FundingTicks":     {"Challenge": 2540, "Funded": 5000},
         "TopStep":          {"Challenge": 3020, "Funded": 5400},
+        "TopStep RTP":      {"Challenge": 3020, "Funded": 5400},
         "Lucid":            {"Challenge": 3020, "Funded": 3400},
         "TradeDay":         {"Challenge": 3100, "Funded": 5000},
         "AlphaFutures":     {"Challenge": 4040, "Funded": 6000},
@@ -2619,6 +2871,81 @@ class PropFirmManager:
     _MT5_TP_BUFFER_POINTS = 4
     # Funded-account SL rule: trade 1 always risks exactly this many dollars.
     FUNDED_TRADE1_SL_DOLLARS = 2000.0
+    FUNDED_SL_MODE_CLASSIC = "classic"
+    FUNDED_SL_MODE_SPLIT = "split"
+
+    def _ensure_mt5_hedge_config(self, config: Dict, phase_key: str = "",
+                                 firm_code: str = "") -> Dict:
+        """Fill missing MT5 hedge fields from Tradovate / TopStepX legs."""
+        if not config:
+            return config
+
+        sym = (config.get("tradovate_symbol") or config.get("topstepx_symbol") or "")
+        sym_u = sym.upper()
+        if not sym_u or ("GC" in sym_u and "NQ" not in sym_u and "MNQ" not in sym_u):
+            return config
+
+        qty = float(config.get("tradovate_qty") or config.get("topstepx_qty") or 0)
+        tp = int(config.get("tradovate_tp_ticks") or config.get("topstepx_tp_ticks") or 0)
+        sl = int(config.get("tradovate_sl_ticks") or config.get("topstepx_sl_ticks") or 0)
+        if qty <= 0 or sl <= 0:
+            return config
+
+        tick = self.get_tick_value(sym)
+        prop_tp = qty * tp * tick
+        pk = (phase_key or "").lower()
+        is_farming = pk == "farming" or "MNQ" in sym_u
+        is_funded = ("funded" in pk or "payout" in pk or "doubledip" in pk)
+        is_challenge = "challenge" in pk
+        is_trade1 = any(x in pk for x in ("trade1", "payout1", "doubledip_1"))
+        is_trade4 = pk.endswith("trade4") or pk.endswith("_4")
+        is_last_funded = is_trade4 or (
+            pk.endswith("trade3") and firm_code in (
+                "Funded Next", "FundingTicks", "Tradeify", "Lucid"))
+
+        mtp = int(config.get("mt5_tp_points") or 0)
+        msl = int(config.get("mt5_sl_points") or 0)
+        vol = float(config.get("mt5_volume") or 0)
+
+        if mtp <= 0:
+            config["mt5_tp_points"] = self._sl_to_mt5_tp(sl)
+            mtp = int(config["mt5_tp_points"])
+
+        if msl <= 0:
+            if is_farming:
+                config["mt5_sl_points"] = 55
+            elif is_funded and is_trade1:
+                config["mt5_sl_points"] = 139 if sl >= 175 else 89
+            elif is_funded and is_trade4:
+                config["mt5_sl_points"] = 64 if sl >= 200 else 39
+            elif is_funded:
+                config["mt5_sl_points"] = 64 if sl >= 200 else max(39, mtp)
+            elif is_challenge:
+                config["mt5_sl_points"] = 30 if sl >= 200 else max(20, mtp - 10)
+            elif mtp <= 25:
+                config["mt5_sl_points"] = 54
+            else:
+                config["mt5_sl_points"] = max(self._MT5_MIN_POINTS, mtp)
+            msl = int(config["mt5_sl_points"])
+
+        if vol <= 0 and msl > 0:
+            if is_farming:
+                config["mt5_volume"] = 3.2
+            elif is_funded and is_trade1:
+                config["mt5_volume"] = round(self.FUNDED_TRADE1_SL_DOLLARS / msl, 1)
+            elif is_funded and is_last_funded:
+                config["mt5_volume"] = max(1.5, round(3.0 * prop_tp / 2400.0, 1))
+            elif is_funded:
+                config["mt5_volume"] = round(max(9.0, 18.0 * prop_tp / 2400.0), 1)
+            elif mtp <= 25 and msl >= 50:
+                config["mt5_volume"] = round(prop_tp / (2.0 * msl), 1)
+            elif qty <= 1:
+                config["mt5_volume"] = round(prop_tp / 290.0, 1)
+            else:
+                config["mt5_volume"] = round(prop_tp / 290.0, 1)
+
+        return config
+
     @staticmethod
     def _sl_to_mt5_tp(trado_sl_ticks: int) -> int:
         """Convert Tradovate SL ticks → MT5 TP points.
