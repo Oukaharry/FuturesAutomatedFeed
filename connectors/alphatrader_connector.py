@@ -66,14 +66,15 @@ TICK_SIZE: dict[str, float] = {
     "CL": 0.01,
 }
 
+# Exact names as they appear in the AlphaTrader CONTRACTS dropdown list
 CONTRACT_DISPLAY: dict[str, str] = {
-    "NQ":  "E-mini NASDAQ-100",
-    "MNQ": "E-mini Micro NASDAQ-100",
+    "NQ":  "E-mini NASDAQ",
+    "MNQ": "E-mini Micro NASDAQ",
     "ES":  "E-mini S&P 500",
     "MES": "E-mini Micro S&P 500",
     "GC":  "Gold",
     "MGC": "E-micro Gold",
-    "CL":  "Crude Oil",
+    "CL":  "E-mini Crude Oil",
     "RTY": "E-mini Russell 2000",
     "MYM": "E-mini Micro Dow",
     "YM":  "E-mini Dow",
@@ -460,77 +461,98 @@ class AlphaTraderConnector:
     def _switch_contract(self, contract_id: str):
         """
         Switch the active contract on the Order panel.
-        T4/AlphaTrader shows options as "XCME_Eq NQ (U26)" style — we match
-        by the short symbol (e.g. "NQ") rather than the full display name.
+        AlphaTrader uses a custom button-list dropdown — clicking the currently
+        selected contract button opens a list of names (e.g. "E-mini NASDAQ").
         Raises RuntimeError if the contract cannot be confirmed after switching.
         """
         driver = self._driver
-        # Match by short symbol in the selected-value element and in dropdown options
-        sym = contract_id.upper()  # e.g. "NQ"
+        sym        = contract_id.upper()           # e.g. "NQ"
+        target     = CONTRACT_DISPLAY.get(sym, sym) # e.g. "E-mini NASDAQ"
+        target_up  = target.upper()
         try:
-            # Already on this contract? (singleValue shows e.g. "XCME_Eq NQ (U26)")
-            cur_els = driver.find_elements(By.CSS_SELECTOR, '[class*="singleValue"]')
-            if cur_els and sym in cur_els[0].text.upper():
+            # ---- Check if already on this contract ----
+            # The active contract button sits in the ORDER panel header — look for
+            # a button/div whose text matches the target name.
+            def _current_contract_el():
+                """Return the element showing the current contract, or None."""
+                for sel in ('[class*="contractName"]', '[class*="contract-name"]',
+                            '[class*="selectedContract"]', '[class*="ContractSelector"]'):
+                    els = driver.find_elements(By.CSS_SELECTOR, sel)
+                    if els:
+                        return els[0]
+                return None
+
+            cur = _current_contract_el()
+            if cur and target_up in cur.text.upper():
                 logger.debug("_switch_contract: already on %s", sym)
                 return
 
-            # React-Select: the <input role="combobox"> is hidden until the container
-            # is clicked. Click the container div first to open the menu, then type.
-            containers = driver.find_elements(By.CSS_SELECTOR, '[class*="control"]')
-            container = next((c for c in containers if c.is_displayed() and c.size.get("height", 0) > 10), None)
-            if container:
-                container.click()
-                time.sleep(0.3)
+            # ---- Open the contracts dropdown ----
+            # Click whichever visible button currently shows the contract name
+            # (it has a chevron/caret next to it).
+            opened = False
+            for xpath in (
+                # button whose text contains the current contract or generic label
+                '//button[contains(@class,"contract") or contains(@class,"Contract")]',
+                # fallback: any button inside the ORDER panel header area
+                '//*[contains(@class,"orderPanel") or contains(@class,"order-panel")]//button',
+                # broader fallback: button with a chevron svg sibling
+                '//button[.//*[name()="svg"]]',
+            ):
+                btns = driver.find_elements(By.XPATH, xpath)
+                for b in btns:
+                    if b.is_displayed() and b.size.get("height", 0) > 10:
+                        b.click()
+                        time.sleep(0.4)
+                        opened = True
+                        break
+                if opened:
+                    break
 
-            combos = driver.find_elements(By.CSS_SELECTOR, 'input[role="combobox"]')
-            combo = next((c for c in combos if c.is_displayed()), None)
-            if combo is None and combos:
-                combo = combos[0]
-            if combo is None:
-                raise RuntimeError("AlphaTrader: contract dropdown input not found on page")
+            if not opened:
+                raise RuntimeError(
+                    "AlphaTrader: could not open the CONTRACTS dropdown — "
+                    "ORDER panel may not be active"
+                )
 
-            # Use JS to set value — bypasses interactability restrictions
-            driver.execute_script(
-                "arguments[0].value=''; arguments[0].dispatchEvent(new Event('input',{bubbles:true}));",
-                combo
-            )
-            combo.send_keys(sym)
-            time.sleep(0.6)
-
-            # Find option whose text contains the symbol (e.g. "NQ" in "XCME_Eq NQ (U26)")
-            # Try short-symbol match first, then full display-name fallback
-            full_name = CONTRACT_DISPLAY.get(sym, sym)
+            # ---- Wait for the list and click the target ----
+            time.sleep(0.3)
+            # Options are plain text items in a list — match by contains
             opts = driver.find_elements(
                 By.XPATH,
-                f'//*[contains(@id,"option") and '
-                f'(contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"{sym} ") or '
-                f'contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ")," {sym}(") or '
-                f'contains(normalize-space(),"{full_name}"))]'
+                f'//*[contains(translate(normalize-space(),'
+                f'"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"{target_up}")]'
+                f'[not(self::script)][not(self::style)]'
             )
-            if opts:
-                opts[0].click()
-            else:
-                # No matching option found — press Escape to close dropdown and raise
-                combo.send_keys(Keys.ESCAPE)
+            # Prefer clickable elements (li, button, div with cursor)
+            clickable = [o for o in opts if o.tag_name in ("li", "button", "a", "div") and o.is_displayed()]
+            chosen = clickable[0] if clickable else (opts[0] if opts else None)
+
+            if not chosen:
+                # Close menu and raise
+                driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
                 raise RuntimeError(
-                    f"AlphaTrader: contract '{sym}' not found in dropdown "
-                    f"(searched for '{sym}' / '{full_name}')"
+                    f"AlphaTrader: contract '{target}' not found in dropdown list"
                 )
+
+            chosen.click()
             time.sleep(0.5)
 
-            # Confirm the switch succeeded
-            cur_els = driver.find_elements(By.CSS_SELECTOR, '[class*="singleValue"]')
-            if cur_els and sym not in cur_els[0].text.upper():
-                raise RuntimeError(
-                    f"AlphaTrader: contract switch to '{sym}' failed — "
-                    f"platform still shows '{cur_els[0].text}'"
-                )
-
-            # Return to Order panel
+            # ---- Return to Order panel ----
             ob = driver.find_elements(By.XPATH, '//button[normalize-space()="Order"]')
             if ob:
                 ob[0].click()
             time.sleep(0.4)
+
+            # ---- Confirm the switch succeeded ----
+            cur = _current_contract_el()
+            if cur and target_up not in cur.text.upper():
+                raise RuntimeError(
+                    f"AlphaTrader: contract switch to '{sym}' failed — "
+                    f"platform still shows '{cur.text}'"
+                )
+            logger.info("AlphaTrader: switched to contract %s (%s)", sym, target)
+
         except RuntimeError:
             raise
         except Exception as e:
