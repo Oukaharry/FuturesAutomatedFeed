@@ -68,8 +68,8 @@ TICK_SIZE: dict[str, float] = {
 
 # Exact names as they appear in the AlphaTrader CONTRACTS dropdown list
 CONTRACT_DISPLAY: dict[str, str] = {
-    "NQ":  "E-mini NASDAQ",
-    "MNQ": "E-mini Micro NASDAQ",
+    "NQ":  "E-mini NASDAQ-100",
+    "MNQ": "E-mini Micro NASDAQ-100",
     "ES":  "E-mini S&P 500",
     "MES": "E-mini Micro S&P 500",
     "GC":  "Gold",
