@@ -246,17 +246,23 @@ class BlackArrowConnector:
         if use_bracket:
             self._configure_bracket(tp_ticks or 0, sl_ticks or 0)
 
-        btn_text = "Buy at Mkt" if side_lower == "buy" else "Sell at Mkt"
+        # BlackArrow ORDER panel shows dynamic text like "BUY +6 @ MARKET" / "SELL -6 @ MARKET".
+        # Use contains() so the quantity embedded in the label doesn't break matching.
+        # Also try ion-button (Ionic/Capacitor wrapper) and fallback to aria-label.
+        kw = "BUY" if side_lower == "buy" else "SELL"
         try:
-            btns = self._driver.find_elements(By.XPATH,
-                f'//button[normalize-space()="{btn_text}"]')
+            btns = self._driver.find_elements(
+                By.XPATH,
+                f'//button[contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"{kw}") '
+                f'and contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"MARKET")]'
+            )
             if not btns:
-                btns = self._driver.find_elements(By.XPATH,
-                    f'//button[contains(normalize-space(),"{btn_text}")]')
-            if btns:
-                btns[0].click()
+                # Fallback: ion-button via JS click helper
+                clicked = self._click_ionic_button(kw)
+                if not clicked:
+                    raise RuntimeError(f"BlackArrow: no '{kw} @ MARKET' button found — is the Order panel open?")
             else:
-                raise RuntimeError(f"BlackArrow: '{btn_text}' button not found — is the trading panel open?")
+                btns[0].click()
         except RuntimeError:
             raise
         except Exception as e:

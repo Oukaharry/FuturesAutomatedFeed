@@ -248,15 +248,22 @@ class AlphaTraderConnector:
         else:
             self._disable_bracket()
 
-        btn_text = "BUY" if side_lower == "buy" else "SELL"
+        # AlphaTrader ORDER panel shows dynamic text like "BUY +2 @ MARKET" / "SELL -2 @ MARKET".
+        # Use contains() so the quantity in the label doesn't break matching.
+        kw = "BUY" if side_lower == "buy" else "SELL"
         try:
-            btns = self._driver.find_elements(By.XPATH, f'//button[normalize-space()="{btn_text}"]')
+            btns = self._driver.find_elements(
+                By.XPATH,
+                f'//button[contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"{kw}") '
+                f'and contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"MARKET")]'
+            )
             if not btns:
-                btns = self._driver.find_elements(By.XPATH, f'//button[contains(text(),"{btn_text}")]')
+                # Fallback: exact match (some UI versions just show "BUY" / "SELL")
+                btns = self._driver.find_elements(By.XPATH, f'//button[normalize-space()="{kw}"]')
             if btns:
                 btns[0].click()
             else:
-                raise RuntimeError(f"AlphaTrader: {btn_text} button not found — is the Order panel open?")
+                raise RuntimeError(f"AlphaTrader: no '{kw} @ MARKET' button found — is the Order panel open?")
         except RuntimeError:
             raise
         except Exception as e:
