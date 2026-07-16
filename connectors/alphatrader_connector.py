@@ -474,16 +474,26 @@ class AlphaTraderConnector:
                 logger.debug("_switch_contract: already on %s", sym)
                 return
 
-            # Find the React-Select combobox
-            combos = driver.find_elements(By.CSS_SELECTOR, 'input[role="combobox"]')
-            combo = next((c for c in combos if c.size.get("height", 0) > 10), None)
-            if combo is None and combos:
-                combo = combos[-1]
-            if combo is None:
-                raise RuntimeError(f"AlphaTrader: contract dropdown not found on page")
+            # React-Select: the <input role="combobox"> is hidden until the container
+            # is clicked. Click the container div first to open the menu, then type.
+            containers = driver.find_elements(By.CSS_SELECTOR, '[class*="control"]')
+            container = next((c for c in containers if c.is_displayed() and c.size.get("height", 0) > 10), None)
+            if container:
+                container.click()
+                time.sleep(0.3)
 
-            combo.click()
-            combo.send_keys(Keys.CONTROL + "a")
+            combos = driver.find_elements(By.CSS_SELECTOR, 'input[role="combobox"]')
+            combo = next((c for c in combos if c.is_displayed()), None)
+            if combo is None and combos:
+                combo = combos[0]
+            if combo is None:
+                raise RuntimeError("AlphaTrader: contract dropdown input not found on page")
+
+            # Use JS to set value — bypasses interactability restrictions
+            driver.execute_script(
+                "arguments[0].value=''; arguments[0].dispatchEvent(new Event('input',{bubbles:true}));",
+                combo
+            )
             combo.send_keys(sym)
             time.sleep(0.6)
 
