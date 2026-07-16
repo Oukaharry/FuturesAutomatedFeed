@@ -1,24 +1,21 @@
-"""
-blackarrow_connector.py — Playwright-based connector for BlackArrow (Nelogica) trading platform.
+﻿"""
+blackarrow_connector.py — Selenium-based connector for BlackArrow (Nelogica) trading platform.
 
-Protocol notes (reverse-engineered via live session):
-  - Platform: https://web.blackarrowtrading.com/
-  - Transport: WSS + proprietary Hades binary protocol
-  - Order log format captured:
-      CreateNewOrder | strTicker=NQFUT|nExchangeID=77|fPrice=<price>|nQty=<qty>
-                     |nSide=buy|nOrderType=Market|dtValidity=<day> 16:00:00
-  - Bracket (OCO) orders: OrderOCOStrategyHadesReceiver, ooType 0=entry 1=TP 2=SL
-  - Bracket UI: Chart Trading Panel → <Custom> bracket dropdown → Gain (TP) + Loss (SL)
-    in Ticks / Cash / Percent units
-  - 2FA: 6-digit code emailed every new session — enter manually when prompted
+Platform: https://web.blackarrowtrading.com/
+Uses Selenium (system Chrome, same anti-detection approach as TradovateAccount).
+No Playwright — no "Test" / "Chrome is controlled by automation" banner.
+
+Login form selectors (live-verified):
+  Email:    input[type="email"]  or  input[placeholder*="mail" i]
+  Password: input[type="password"]
+  Submit:   button[type="submit"]  or  button text "Enter"
+
+Stats DOM (Nelogica/Hades UI):
+  Balance: leaf <nav *> node matching /^\$ [\d,]+\.\d{2}$/
+  Stats:   .info > span.key (label) + span.value (value)
 
 USAGE:
-    from connectors.blackarrow_connector import BlackArrowConnector
-    conn = BlackArrowConnector(
-        email="user@example.com",
-        password="secret",
-        account_id="2947168",    # numeric account ID shown on platform
-    )
+    conn = BlackArrowConnector(email="u@example.com", password="secret")
     conn.connect()
     conn.place_order("NQFUT", side="buy", qty=1, tp_ticks=50, sl_ticks=100)
     conn.close_all()
@@ -27,504 +24,207 @@ USAGE:
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import os
 import re
+import tempfile
 import time
 from typing import Optional
 
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+
 logger = logging.getLogger(__name__)
 
-# ------------------------------------------------------------------ #
-# Constants
-# ------------------------------------------------------------------ #
-BLACKARROW_URL = "https://web.blackarrowtrading.com/"
-DEFAULT_TIMEOUT_MS = 15_000       # Playwright timeout for most waits
-CONFIRM_TIMEOUT_MS = 8_000        # Shorter timeout for confirmation dialogs
-ORDER_SETTLE_S = 2.0              # Seconds to wait after placing an order
+BLACKARROW_URL   = "https://web.blackarrowtrading.com/"
+DEFAULT_WAIT     = 30     # seconds
+CONFIRM_WAIT     = 8      # seconds for confirmation dialogs
+ORDER_SETTLE     = 2.0    # seconds after placing an order
 
 
 class BlackArrowConnector:
     """
-    Controls the BlackArrow web trading platform via Playwright browser automation.
+    Selenium-based connector for web.blackarrowtrading.com.
 
-    All public methods are synchronous wrappers around async Playwright calls.
-    The browser is launched (or re-used) lazily on the first call to `connect()`.
+    Uses system Chrome with anti-detection flags (same as TradovateAccount)
+    so no automation banner appears and persistent login is preserved.
 
     Parameters
     ----------
     email : str
-        BlackArrow account email address.
+        BlackArrow account email.
     password : str
         BlackArrow account password.
     account_id : str
-        Numeric account ID shown in the platform (e.g. '2947168').
+        Numeric account ID shown on the platform (e.g. '2947168'). Optional.
     headless : bool
-        Run Chromium headless (default: False so the 2FA browser window stays visible).
+        Run Chrome headless. Default False (2FA needs a visible window).
     """
 
     def __init__(
         self,
-        email: str,
-        password: str,
-        account_id: str = "",
-        headless: bool = False,
+        email:      str,
+        password:   str,
+        account_id: str  = "",
+        headless:   bool = False,
     ):
-        self.email = email
-        self.password = password
+        self.email      = email
+        self.password   = password
         self.account_id = account_id
-        self.headless = headless
+        self.headless   = headless
 
-        self._playwright = None
-        self._browser = None
-        self._page = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._connected = False
+        self._driver:    Optional[webdriver.Chrome] = None
+        self._connected: bool = False
 
     # ================================================================== #
-    # Public synchronous API
+    # Public API
     # ================================================================== #
 
     def connect(self) -> bool:
-        """Launch browser, log in to BlackArrow, handle 2FA. Returns True on success."""
-        return self._run(self._async_connect())
-
-    def disconnect(self):
-        """Close the browser."""
-        self._run(self._async_disconnect())
-
-    def place_order(
-        self,
-        symbol: str,
-        side: str,              # "buy" or "sell"
-        qty: int = 1,
-        tp_ticks: Optional[int] = None,
-        sl_ticks: Optional[int] = None,
-    ) -> bool:
-        """
-        Place a market order on `symbol`.
-
-        If tp_ticks and sl_ticks are provided a bracket (OCO) order is placed
-        using the Chart Trading Panel's <Custom> bracket widget.
-
-        Parameters
-        ----------
-        symbol : str
-            Ticker as shown on the platform (e.g. 'NQFUT').
-        side : str
-            'buy' or 'sell'.
-        qty : int
-            Number of contracts.
-        tp_ticks : int | None
-            Take-profit distance in ticks. If None, no TP is set.
-        sl_ticks : int | None
-            Stop-loss distance in ticks. If None, no SL is set.
-        """
-        return self._run(self._async_place_order(symbol, side, qty, tp_ticks, sl_ticks))
-
-    def close_all(self, symbol: str = "NQFUT") -> bool:
-        """Close all open positions via the 'Close Position' button (if visible)."""
-        return self._run(self._async_close_all(symbol))
-
-    def get_account_balance(self) -> Optional[float]:
-        """Return the account balance shown in the platform header, or None."""
-        return self._run(self._async_get_balance())
-
-    def get_account_stats(self) -> dict:
-        """Return a dict with Balance, MLL, SOD Balance and DailyPnL for pre-flight / SL sizing."""
-        if self._page:
-            try:
-                return self._run(self._async_get_stats())
-            except Exception as e:
-                logger.warning("get_account_stats error: %s", e)
-        bal = self.get_account_balance()
-        return {"Balance": f"${bal:,.2f}" if bal is not None else "N/A"}
-
-    def is_connected(self) -> bool:
-        return self._connected
-
-    # ================================================================== #
-    # Async internals
-    # ================================================================== #
-
-    def _run(self, coro):
-        """Run an async coroutine on the connector's event loop."""
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-        return self._loop.run_until_complete(coro)
-
-    # ------------------------------------------------------------------ #
-    # Login / session management
-    # ------------------------------------------------------------------ #
-
-    async def _async_connect(self) -> bool:
-        from playwright.async_api import async_playwright
-
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        context = await self._browser.new_context()
-        self._page = await context.new_page()
-
-        logger.info("Navigating to BlackArrow…")
-        await self._page.goto(BLACKARROW_URL, timeout=DEFAULT_TIMEOUT_MS)
-
-        # Fill login form
-        await self._page.fill('input[type="email"], input[name="email"], input[placeholder*="mail" i]', self.email)
-        await self._page.fill('input[type="password"]', self.password)
-        await self._page.click('button[type="submit"], button:has-text("Log in"), button:has-text("Login")')
-
-        # Wait for 2FA dialog or main app
+        """Launch Chrome, navigate to BlackArrow, auto-login. Returns True on success."""
         try:
-            await self._page.wait_for_selector(
-                'input[placeholder*="code" i], input[maxlength="6"], [class*="otp" i], [class*="2fa" i]',
-                timeout=10_000,
-            )
-            # 2FA required — prompt the user to type the code directly in the browser
-            await self._get_2fa_code()
-            logger.info(
-                "BlackArrow: 2FA input detected. Waiting up to 120 s for the user "
-                "to enter the code manually in the browser window…"
-            )
-            # Wait for the 2FA input to disappear (user submitted the code)
-            try:
-                await self._page.wait_for_selector(
-                    'input[placeholder*="code" i], input[maxlength="6"], [class*="otp" i], [class*="2fa" i]',
-                    state="hidden",
-                    timeout=120_000,
-                )
-            except Exception:
-                logger.warning("2FA input still visible after 120 s — proceeding anyway.")
-        except Exception:
-            logger.debug("No 2FA dialog detected — assuming direct login.")
-
-        # Wait for the platform to be ready (price feed element)
-        try:
-            await self._page.wait_for_selector(
-                '[class*="chart"], [class*="Chart"], canvas', timeout=30_000
-            )
-            self._connected = True
-            logger.info("BlackArrow: logged in and platform ready.")
+            self._driver = self._init_driver()
         except Exception as e:
-            logger.error("BlackArrow: failed to reach platform after login: %s", e)
+            logger.error("BlackArrow: Chrome launch failed: %s", e)
+            return False
+
+        self._driver.get(BLACKARROW_URL)
+        wait = WebDriverWait(self._driver, DEFAULT_WAIT)
+
+        try:
+            # Wait for login form or already-logged-in platform
+            wait.until(lambda d: self._has_login_form(d) or self._platform_ready(d))
+
+            if self._has_login_form(self._driver):
+                logger.info("BlackArrow: filling login form...")
+                email_field = wait.until(EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, 'input[type="email"], input[placeholder*="mail" i], input[placeholder*="Email" i]')
+                ))
+                email_field.clear()
+                email_field.send_keys(self.email)
+
+                pwd_field = self._driver.find_element(By.CSS_SELECTOR, 'input[type="password"]')
+                pwd_field.clear()
+                pwd_field.send_keys(self.password)
+
+                # Submit — the button says "Enter" on BlackArrow
+                submit = self._driver.find_element(
+                    By.XPATH,
+                    '//button[@type="submit"] | //button[normalize-space()="Enter"] | //button[normalize-space()="Login"] | //button[normalize-space()="Log in"]'
+                )
+                submit.click()
+                logger.info("BlackArrow: login submitted.")
+
+                # Check for 2FA
+                try:
+                    WebDriverWait(self._driver, 10).until(lambda d:
+                        d.find_elements(By.CSS_SELECTOR,
+                            'input[placeholder*="code" i], input[maxlength="6"], [class*="otp" i], [class*="2fa" i]')
+                    )
+                    logger.warning(
+                        "BlackArrow: 2FA required — please enter the 6-digit code "
+                        "in the Chrome window that opened. Waiting up to 120 s..."
+                    )
+                    print("\n>>> BlackArrow 2FA: check your email and enter the code in the browser window. <<<\n")
+                    # Wait for 2FA form to disappear (user submitted)
+                    WebDriverWait(self._driver, 120).until(lambda d:
+                        not d.find_elements(By.CSS_SELECTOR,
+                            'input[placeholder*="code" i], input[maxlength="6"]')
+                    )
+                except Exception:
+                    logger.debug("No 2FA dialog detected — proceeding.")
+
+            # Wait for platform to fully load (canvas / chart area)
+            wait.until(lambda d: self._platform_ready(d))
+            self._connected = True
+            logger.info("BlackArrow: platform ready.")
+
+        except Exception as e:
+            logger.error("BlackArrow: login/platform load failed: %s", e)
             self._connected = False
 
         return self._connected
 
-    async def _get_2fa_code(self) -> Optional[str]:
-        """Log a clear message asking the user to enter the 2FA code manually."""
-        logger.warning(
-            "BlackArrow 2FA required — check your email and enter the 6-digit code "
-            "in the browser window. The browser is kept open for you to type it in."
-        )
-        print(
-            "\n>>> BlackArrow 2FA: Please check your email and enter the 6-digit code "
-            "in the browser window that opened. <<<\n"
-        )
-        # Return None — the caller will wait for the user to type the code directly
-        # into the browser (headless=False so the window is visible).
-        return None
-
-    async def _async_disconnect(self):
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+    def disconnect(self):
+        if self._driver:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+            self._driver = None
         self._connected = False
         logger.info("BlackArrow: disconnected.")
 
-    # ------------------------------------------------------------------ #
-    # Order placement
-    # ------------------------------------------------------------------ #
-
-    async def _async_place_order(
+    def place_order(
         self,
-        symbol: str,
-        side: str,
-        qty: int,
-        tp_ticks: Optional[int],
-        sl_ticks: Optional[int],
+        symbol:   str,
+        side:     str,
+        qty:      int            = 1,
+        tp_ticks: Optional[int] = None,
+        sl_ticks: Optional[int] = None,
     ) -> bool:
-        page = self._page
-        if page is None:
+        if not self._driver:
             logger.error("Not connected.")
             return False
 
-        side_lower = side.lower()
-        if side_lower not in ("buy", "sell"):
-            raise ValueError("side must be 'buy' or 'sell'")
+        side_lower  = side.lower()
+        use_bracket = (tp_ticks is not None) or (sl_ticks is not None)
+        logger.info("BlackArrow: placing %s %s qty=%d tp=%s sl=%s",
+                    side_lower, symbol, qty, tp_ticks, sl_ticks)
 
-        logger.info(
-            "Placing %s %s qty=%d tp=%s sl=%s", side_lower, symbol, qty, tp_ticks, sl_ticks
-        )
+        self._set_qty(qty)
 
-        use_bracket = tp_ticks is not None or sl_ticks is not None
-
-        # ---- Set quantity in the Chart Trading qty spinner ----
-        await self._set_qty(qty)
-
-        # ---- Configure bracket if needed ----
         if use_bracket:
-            await self._configure_bracket(
-                tp_ticks=tp_ticks or 0,
-                sl_ticks=sl_ticks or 0,
-            )
+            self._configure_bracket(tp_ticks or 0, sl_ticks or 0)
 
-        # ---- Click Buy/Sell at Market ----
         btn_text = "Buy at Mkt" if side_lower == "buy" else "Sell at Mkt"
-        await page.click(f'button:has-text("{btn_text}")', timeout=DEFAULT_TIMEOUT_MS)
+        try:
+            btns = self._driver.find_elements(By.XPATH,
+                f'//button[normalize-space()="{btn_text}"]')
+            if not btns:
+                btns = self._driver.find_elements(By.XPATH,
+                    f'//button[contains(normalize-space(),"{btn_text}")]')
+            if btns:
+                btns[0].click()
+            else:
+                logger.error("BlackArrow: '%s' button not found.", btn_text)
+                return False
+        except Exception as e:
+            logger.error("BlackArrow: order click failed: %s", e)
+            return False
 
-        # ---- Confirm dialog (if present) ----
-        await self._confirm_order_dialog()
-
-        await asyncio.sleep(ORDER_SETTLE_S)
-        logger.info("Order placement complete.")
+        self._confirm_order_dialog()
+        time.sleep(ORDER_SETTLE)
+        logger.info("BlackArrow: order complete.")
         return True
 
-    async def _set_qty(self, qty: int):
-        """Set the quantity in the Chart Trading Panel's quantity input."""
-        page = self._page
-        # The qty spinner is a number input next to the Buy/Sell buttons
-        # Try direct fill first, then keyboard approach
-        try:
-            await page.evaluate(
-                """(qty) => {
-                    // Find all number-like inputs in the trading panel
-                    const inputs = document.querySelectorAll('input[type="number"], input[class*="qty" i], input[class*="quantity" i]');
-                    for (const inp of inputs) {
-                        const rect = inp.getBoundingClientRect();
-                        if (rect.width > 20 && rect.height > 10) {
-                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-                            nativeInputValueSetter.call(inp, qty);
-                            inp.dispatchEvent(new Event('input', { bubbles: true }));
-                            inp.dispatchEvent(new Event('change', { bubbles: true }));
-                            break;
-                        }
-                    }
-                }""",
-                qty,
-            )
-        except Exception as e:
-            logger.warning("_set_qty evaluate failed: %s", e)
-
-    async def _configure_bracket(self, tp_ticks: int, sl_ticks: int):
-        """
-        Set the bracket TP and SL on the Chart Trading widget.
-
-        BlackArrow bracket UI:
-          - Dropdown at top of Chart Trading panel shows current bracket type
-          - Click it → select "<Custom>" to enable Gain/Loss inputs
-          - Gain = Take Profit (ticks), Loss = Stop Loss (ticks)
-          - Units radio: Ticks / Cash / Percent — we always use Ticks
-        """
-        page = self._page
-
-        # 1. Click the bracket dropdown to open it
-        try:
-            await page.click(
-                '[class*="bracket" i] [class*="dropdown" i], [class*="bracketType" i]',
-                timeout=5_000,
-            )
-            # Select <Custom>
-            await page.click('text="<Custom>"', timeout=5_000)
-        except Exception:
-            logger.debug("Bracket dropdown click fallback — trying direct JS approach")
-            # If dropdown is already on <Custom>, skip
-            pass
-
-        # 2. Ensure "Ticks" unit is selected
-        await self._select_bracket_unit("Ticks")
-
-        # 3. Set Gain (TP) and Loss (SL) values via JS (custom spinner components
-        #    are not standard <input> elements interactable via Playwright's fill)
-        await page.evaluate(
-            """([gain, loss]) => {
-                function setSpinner(element, value) {
-                    // Try as native input
-                    const nativeSet = Object.getOwnPropertyDescriptor(
-                        window.HTMLInputElement.prototype, 'value'
-                    )?.set;
-                    if (nativeSet) {
-                        nativeSet.call(element, value);
-                        element.dispatchEvent(new Event('input', { bubbles: true }));
-                        element.dispatchEvent(new Event('change', { bubbles: true }));
-                        return;
-                    }
-                    // Contenteditable fallback
-                    element.textContent = value;
-                    element.dispatchEvent(new InputEvent('input', { bubbles: true, data: String(value) }));
-                }
-
-                // The bracket body contains two spinner inputs: [0]=Gain, [1]=Loss
-                const bracketBody = document.querySelector(
-                    '[class*="graphic-order__bracket" i], [class*="bracket-body" i], [class*="bracketBody" i]'
-                );
-                if (!bracketBody) return;
-
-                const inputs = bracketBody.querySelectorAll('input');
-                if (inputs[0]) setSpinner(inputs[0], gain);
-                if (inputs[1]) setSpinner(inputs[1], loss);
-            }""",
-            [tp_ticks, sl_ticks],
-        )
-        logger.debug("Bracket configured: TP=%d ticks, SL=%d ticks", tp_ticks, sl_ticks)
-
-    async def _select_bracket_unit(self, unit: str):
-        """Select Ticks / Cash / Percent radio in the bracket widget."""
-        page = self._page
-        # Unit radios are labelled text nodes inside the bracket section
-        try:
-            await page.evaluate(
-                """(unit) => {
-                    const labels = document.querySelectorAll('[class*="bracket" i] label, [class*="graphic-order" i] label');
-                    for (const lbl of labels) {
-                        if (lbl.textContent.trim().toLowerCase() === unit.toLowerCase()) {
-                            lbl.click();
-                            return;
-                        }
-                    }
-                    // Fallback: click radio input associated with matching text
-                    const radios = document.querySelectorAll('[class*="bracket" i] input[type="radio"]');
-                    const texts = document.querySelectorAll('[class*="bracket" i] [class*="label" i]');
-                    for (let i = 0; i < texts.length; i++) {
-                        if (texts[i].textContent.trim().toLowerCase() === unit.toLowerCase() && radios[i]) {
-                            radios[i].click();
-                            return;
-                        }
-                    }
-                }""",
-                unit,
-            )
-        except Exception as e:
-            logger.debug("_select_bracket_unit error: %s", e)
-
-    async def _confirm_order_dialog(self):
-        """Click OK/Confirm on the order confirmation modal if it appears."""
-        page = self._page
-        try:
-            # Wait briefly for the confirmation dialog
-            ok_btn = await page.wait_for_selector(
-                'button:has-text("OK"), button:has-text("Confirm"), button:has-text("Yes")',
-                timeout=CONFIRM_TIMEOUT_MS,
-            )
-            if ok_btn:
-                await ok_btn.click()
-                logger.debug("Order confirmation dialog dismissed.")
-        except Exception:
-            logger.debug("No confirmation dialog appeared.")
-
-    # ------------------------------------------------------------------ #
-    # Position management
-    # ------------------------------------------------------------------ #
-
-    async def _async_close_all(self, symbol: str) -> bool:
-        """
-        Close all open positions for `symbol`.
-
-        BlackArrow shows a 'Close Position' button in the open positions panel
-        when a position is open. We click it and confirm.
-        """
-        page = self._page
-        if page is None:
-            logger.error("Not connected.")
+    def close_all(self, symbol: str = "NQFUT") -> bool:
+        if not self._driver:
             return False
-
-        try:
-            close_btn = await page.wait_for_selector(
-                'button:has-text("Close Position"), button:has-text("Close All")',
-                timeout=5_000,
-            )
-            if close_btn:
-                await close_btn.click()
-                await self._confirm_order_dialog()
-                await asyncio.sleep(ORDER_SETTLE_S)
-                logger.info("Close all positions sent for %s.", symbol)
-                return True
-        except Exception:
-            logger.info("No open position close button found — nothing to close.")
-
-        return False
-
-    # ------------------------------------------------------------------ #
-    # Account info
-    # ------------------------------------------------------------------ #
-
-    async def _async_get_balance(self) -> Optional[float]:
-        """
-        Scrape the account balance from the BlackArrow platform header.
-
-        The header shows "$ X.XX" as a text node beside the account name
-        (confirmed via live DOM inspection — Nelogica/Hades UI).
-
-        Returns the numeric balance, or None if it can't be parsed.
-        """
-        page = self._page
-        if page is None:
-            return None
-        try:
-            # The header balance is a leaf element containing "$ X.XX" inside the
-            # top navigation bar (sibling of the account selector dropdown).
-            text = await page.evaluate("""
-                () => {
-                    const els = document.querySelectorAll('nav *');
-                    for (const el of els) {
-                        if (el.children.length === 0) {
-                            const t = el.textContent.trim();
-                            if (/^\\$ [\\d,]+\\.\\d{2}$/.test(t)) return t;
-                        }
-                    }
-                    return null;
-                }
-            """)
-            if text:
-                num = re.sub(r"[^\d.]", "", text)
-                return float(num) if num else None
-        except Exception as e:
-            logger.warning("get_balance error: %s", e)
-        return None
-
-    async def _async_get_stats(self) -> dict:
-        """
-        Scrape Balance, MLL (Max Loss Limit / drawdown floor), SOD Balance and
-        daily P&L from the BlackArrow platform header.
-
-        The platform header shows labelled stat cards similar to Alpha Trader:
-          Balance / Equity / Daily P&L / MLL / SOD Balance
-
-        Returns a dict with string values (dollar-formatted), keyed consistently
-        with what trader_app.py expects for the full-cushion SL calculation:
-          "Balance", "MLL", "SOD Balance", "DailyPnL"
-        """
-        page = self._page
-        if page is None:
-            return {}
-
-        stats = {}
-
-        async def _scrape_stat(label_text: str) -> Optional[str]:
-            """
-            Scrape a stat value from the BlackArrow trading panel.
-
-            Confirmed DOM structure (Nelogica/Hades UI, live inspection):
-              <div class="info">
-                <span class="key">Daily PnL</span>
-                <span class="value variation-down">$ -200.00</span>
-              </div>
-
-            For MLL / SOD Balance: only visible on funded challenge accounts,
-            not on simulator accounts.  Label text may vary — we try several.
-            """
+        for label in ("Close Position", "Close All"):
             try:
-                container = page.locator(f'.info:has(span.key:has-text("{label_text}")):has(span.value)')
-                val_el = container.locator('span.value').first
-                text = await val_el.inner_text(timeout=3_000)
-                return text.strip() if text else None
+                btns = self._driver.find_elements(By.XPATH,
+                    f'//button[contains(normalize-space(),"{label}")]')
+                if btns and btns[0].is_enabled():
+                    btns[0].click()
+                    self._confirm_order_dialog()
+                    time.sleep(ORDER_SETTLE)
+                    logger.info("BlackArrow: %s clicked.", label)
+                    return True
             except Exception:
                 pass
-            return None
+        logger.info("BlackArrow: no open position found.")
+        return False
 
-        # -- Header balance ("$ X.XX" leaf node in the top nav bar) ----------
-        bal_text = await page.evaluate("""
-            () => {
+    def get_account_balance(self) -> Optional[float]:
+        if not self._driver:
+            return None
+        try:
+            text = self._driver.execute_script("""
                 const els = document.querySelectorAll('nav *');
                 for (const el of els) {
                     if (el.children.length === 0) {
@@ -533,18 +233,209 @@ class BlackArrowConnector:
                     }
                 }
                 return null;
-            }
-        """)
-        if bal_text:
-            stats["Balance"] = bal_text
+            """)
+            if text:
+                num = re.sub(r"[^\d.]", "", text)
+                return float(num) if num else None
+        except Exception as e:
+            logger.warning("get_account_balance: %s", e)
+        return None
 
-        # -- Trading panel stats (key/value pairs inside .info divs) ----------
+    def get_account_stats(self) -> dict:
+        if self._driver:
+            try:
+                return self._get_stats()
+            except Exception as e:
+                logger.warning("get_account_stats: %s", e)
+        bal = self.get_account_balance()
+        return {"Balance": f"${bal:,.2f}" if bal is not None else "N/A"}
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    # ================================================================== #
+    # Selenium helpers
+    # ================================================================== #
+
+    def _init_driver(self) -> webdriver.Chrome:
+        """Launch system Chrome with Tradovate-style anti-detection options."""
+        opts = Options()
+
+        # Persistent profile — keeps login + session alive between runs
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", self.email)
+        profile_dir = os.path.join(tempfile.gettempdir(), "blackarrow_profiles", safe)
+        os.makedirs(profile_dir, exist_ok=True)
+        opts.add_argument(f"--user-data-dir={profile_dir}")
+        logger.info("[CHROME] BlackArrow profile: %s", profile_dir)
+
+        if self.headless:
+            opts.add_argument("--headless=new")
+
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-crash-reporter")
+        opts.add_argument("--disable-logging")
+        opts.add_argument("--log-level=3")
+        opts.add_argument("--silent")
+        opts.add_argument("--disable-features=TranslateUI,MediaRouter")
+        opts.add_argument("--disable-component-update")
+        opts.add_argument("--disable-background-timer-throttling")
+        opts.add_argument("--disable-backgrounding-occluded-windows")
+        opts.add_argument("--disable-renderer-backgrounding")
+        opts.add_argument("--enable-features=NetworkService,NetworkServiceInProcess")
+        opts.add_argument("--disable-extensions")
+        opts.add_argument("--disable-plugins")
+        opts.add_argument("--disable-background-networking")
+        opts.add_argument("--disable-default-apps")
+        opts.add_argument("--disable-sync")
+        opts.add_argument("--window-size=1280,900")
+        opts.add_argument("--disable-software-rasterizer")
+
+        # Anti-detection — removes "Chrome is being controlled by automated software" banner
+        opts.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+        opts.add_experimental_option("useAutomationExtension", False)
+        opts.add_argument("--disable-blink-features=AutomationControlled")
+
+        opts.add_experimental_option("prefs", {
+            "profile.default_content_setting_values": {"popups": 2, "notifications": 2},
+            "profile.default_content_settings.images": 1,
+        })
+
+        driver = webdriver.Chrome(options=opts)
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+        )
+        return driver
+
+    def _has_login_form(self, driver: webdriver.Chrome) -> bool:
+        try:
+            return bool(driver.find_elements(By.CSS_SELECTOR, 'input[type="password"]'))
+        except Exception:
+            return False
+
+    def _platform_ready(self, driver: webdriver.Chrome) -> bool:
+        """Return True when the chart canvas or trading panel is visible."""
+        try:
+            return bool(
+                driver.find_elements(By.TAG_NAME, "canvas") or
+                driver.find_elements(By.CSS_SELECTOR, '[class*="chart" i], [class*="trading-panel" i]')
+            )
+        except Exception:
+            return False
+
+    def _set_qty(self, qty: int):
+        driver = self._driver
+        try:
+            driver.execute_script("""
+                (function(qty) {
+                    const inputs = document.querySelectorAll('input[type="number"], input[class*="qty" i], input[class*="quantity" i]');
+                    for (const inp of inputs) {
+                        const r = inp.getBoundingClientRect();
+                        if (r.width > 20 && r.height > 10) {
+                            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                            setter.call(inp, qty);
+                            inp.dispatchEvent(new Event('input',  { bubbles: true }));
+                            inp.dispatchEvent(new Event('change', { bubbles: true }));
+                            break;
+                        }
+                    }
+                })(arguments[0]);
+            """, qty)
+        except Exception as e:
+            logger.warning("_set_qty: %s", e)
+
+    def _configure_bracket(self, tp_ticks: int, sl_ticks: int):
+        driver = self._driver
+        try:
+            # Open bracket dropdown and select <Custom>
+            try:
+                dropdown = driver.find_elements(By.CSS_SELECTOR,
+                    '[class*="bracket" i] [class*="dropdown" i], [class*="bracketType" i]')
+                if dropdown:
+                    dropdown[0].click()
+                    time.sleep(0.3)
+                    custom = driver.find_elements(By.XPATH, '//*[normalize-space()="<Custom>"]')
+                    if custom:
+                        custom[0].click()
+                        time.sleep(0.3)
+            except Exception:
+                pass
+
+            # Select Ticks unit
+            try:
+                driver.execute_script("""
+                    const labels = document.querySelectorAll('[class*="bracket" i] label, [class*="graphic-order" i] label');
+                    for (const lbl of labels) {
+                        if (lbl.textContent.trim().toLowerCase() === 'ticks') { lbl.click(); return; }
+                    }
+                """)
+            except Exception:
+                pass
+
+            # Set TP (Gain) and SL (Loss) values
+            driver.execute_script("""
+                (function(gain, loss) {
+                    const bracket = document.querySelector(
+                        '[class*="graphic-order__bracket" i], [class*="bracket-body" i], [class*="bracketBody" i]'
+                    );
+                    if (!bracket) return;
+                    const inputs = bracket.querySelectorAll('input');
+                    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                    function sv(el, v) {
+                        setter.call(el, String(v));
+                        el.dispatchEvent(new Event('input',  { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    if (inputs[0]) sv(inputs[0], gain);
+                    if (inputs[1]) sv(inputs[1], loss);
+                })(arguments[0], arguments[1]);
+            """, tp_ticks, sl_ticks)
+        except Exception as e:
+            logger.warning("_configure_bracket: %s", e)
+
+    def _confirm_order_dialog(self):
+        """Click OK/Confirm on any order confirmation modal."""
+        try:
+            btns = WebDriverWait(self._driver, CONFIRM_WAIT).until(
+                EC.presence_of_all_elements_located((By.XPATH,
+                    '//button[normalize-space()="OK" or normalize-space()="Confirm" or normalize-space()="Yes"]'))
+            )
+            if btns:
+                btns[0].click()
+                logger.debug("Order confirmation dismissed.")
+        except Exception:
+            logger.debug("No confirmation dialog.")
+
+    def _get_stats(self) -> dict:
+        """Scrape Balance, MLL, SOD Balance and DailyPnL from the platform."""
+        driver = self._driver
+        if not driver:
+            return {}
+        stats = {}
+
+        # Balance from nav bar
+        try:
+            text = driver.execute_script("""
+                const els = document.querySelectorAll('nav *');
+                for (const el of els) {
+                    if (el.children.length === 0) {
+                        const t = el.textContent.trim();
+                        if (/^\\$ [\\d,]+\\.\\d{2}$/.test(t)) return t;
+                    }
+                }
+                return null;
+            """)
+            if text:
+                stats["Balance"] = text
+        except Exception:
+            pass
+
+        # Stats from .info > span.key + span.value pairs
         for label, key in (
             ("Daily PnL",    "DailyPnL"),
             ("Open PnL",     "OpenPnL"),
             ("Margin",       "Margin"),
-            # Challenge-account-only stats — label text unconfirmed on sim;
-            # try common Nelogica / The5ers naming conventions:
             ("MLL",          "MLL"),
             ("Max Loss",     "MLL"),
             ("Max Drawdown", "MLL"),
@@ -552,30 +443,40 @@ class BlackArrowConnector:
             ("SOD Balance",  "SOD Balance"),
             ("Start Balance","SOD Balance"),
         ):
-            val = await _scrape_stat(label)
-            if val and key not in stats:
-                stats[key] = val
+            if key in stats:
+                continue
+            try:
+                val = driver.execute_script("""
+                    (function(label) {
+                        const infos = document.querySelectorAll('.info');
+                        for (const info of infos) {
+                            const key = info.querySelector('span.key');
+                            const val = info.querySelector('span.value');
+                            if (key && val && key.textContent.trim() === label) {
+                                return val.textContent.trim();
+                            }
+                        }
+                        return null;
+                    })(arguments[0]);
+                """, label)
+                if val:
+                    stats[key] = val
+            except Exception:
+                pass
 
-        logger.debug("BlackArrow stats scraped: %s", stats)
+        logger.debug("BlackArrow stats: %s", stats)
         return stats
 
 
 # ================================================================== #
-# Convenience factory used by the trading engine
+# Factory
 # ================================================================== #
 
 def create_connector(config: dict) -> BlackArrowConnector:
-    """
-    Create a BlackArrowConnector from a config dict.
-
-    Expected keys:
-        email, password, account_id
-    Optional:
-        headless (bool)
-    """
     return BlackArrowConnector(
         email=config["email"],
         password=config["password"],
         account_id=config.get("account_id", ""),
         headless=config.get("headless", False),
     )
+ 
