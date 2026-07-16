@@ -233,9 +233,8 @@ class BlackArrowConnector:
         tp_ticks: Optional[int] = None,
         sl_ticks: Optional[int] = None,
     ) -> bool:
-        if not self._driver:
-            logger.error("Not connected.")
-            return False
+        if not self._driver or not self._connected:
+            raise RuntimeError("BlackArrow not connected — open the broker panel and click Connect first")
 
         side_lower  = side.lower()
         use_bracket = (tp_ticks is not None) or (sl_ticks is not None)
@@ -257,11 +256,11 @@ class BlackArrowConnector:
             if btns:
                 btns[0].click()
             else:
-                logger.error("BlackArrow: '%s' button not found.", btn_text)
-                return False
+                raise RuntimeError(f"BlackArrow: '{btn_text}' button not found — is the trading panel open?")
+        except RuntimeError:
+            raise
         except Exception as e:
-            logger.error("BlackArrow: order click failed: %s", e)
-            return False
+            raise RuntimeError(f"BlackArrow: order click failed: {e}") from e
 
         self._confirm_order_dialog()
         time.sleep(ORDER_SETTLE)

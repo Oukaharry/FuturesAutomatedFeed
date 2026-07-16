@@ -216,9 +216,8 @@ class AlphaTraderConnector:
         tp_ticks: Optional[int] = None,
         sl_ticks: Optional[int] = None,
     ) -> bool:
-        if not self._driver:
-            logger.error("Not connected.")
-            return False
+        if not self._driver or not self._connected:
+            raise RuntimeError("AlphaTrader not connected — open the broker panel and click Connect first")
 
         contract_id = _map_symbol(symbol)
         tick_size   = TICK_SIZE.get(contract_id, 0.25)
@@ -257,11 +256,11 @@ class AlphaTraderConnector:
             if btns:
                 btns[0].click()
             else:
-                logger.error("AlphaTrader: %s button not found.", btn_text)
-                return False
+                raise RuntimeError(f"AlphaTrader: {btn_text} button not found — is the Order panel open?")
+        except RuntimeError:
+            raise
         except Exception as e:
-            logger.error("AlphaTrader: order click failed: %s", e)
-            return False
+            raise RuntimeError(f"AlphaTrader: order click failed: {e}") from e
 
         time.sleep(ORDER_SETTLE)
         logger.info("AlphaTrader: order complete.")

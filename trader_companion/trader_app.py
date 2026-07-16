@@ -7350,9 +7350,12 @@ class TradeOpssAIApp:
                     )
 
                 # Some broker implementations return a status dict instead of raising.
-                # Normalize failures so UI/logs don't report false fills.
+                # AlphaTrader/BlackArrow return False (bool) on failure — catch that too.
+                # Normalize all failure modes so MT5 is never hedged against a missing fill.
                 if isinstance(order_result, dict) and order_result.get("success") is False:
                     raise Exception(order_result.get("message") or "Broker reported unsuccessful order")
+                if order_result is False:
+                    raise Exception(f"{platform} order failed — check broker window for details")
 
                 self.log(f"✅ {platform} filled {side.upper()} {trado_qty} {trado_sym} | TP:{trado_tp}t SL:{trado_sl}t | {acct_num}")
 
