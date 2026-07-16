@@ -9096,6 +9096,16 @@ class TradeOpssAIApp:
                             order_result = broker_account.buy_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
                         else:
                             order_result = broker_account.sell_market(trado_sym, trado_qty, tp=trado_tp, sl=trado_sl, expected_account=acct_num)
+                    elif platform == "AlphaTrader":
+                        order_result = broker_account.place_order(
+                            trado_sym, side=side, qty=trado_qty,
+                            tp_ticks=trado_tp, sl_ticks=trado_sl,
+                        )
+                    elif platform == "BlackArrow":
+                        order_result = broker_account.place_order(
+                            trado_sym, side=side, qty=trado_qty,
+                            tp_ticks=trado_tp, sl_ticks=trado_sl,
+                        )
                     elif platform == "TopStepX":
                         # Account is already selected upstream — don't re-open the slow
                         # dropdown here. place_*_order verifies the selector still matches
@@ -9127,6 +9137,8 @@ class TradeOpssAIApp:
                     # Convert broker-declared failures to exceptions so counters/logs are accurate.
                     if isinstance(order_result, dict) and order_result.get("success") is False:
                         raise Exception(order_result.get("message") or "Broker reported unsuccessful order")
+                    if order_result is False:
+                        raise Exception(f"{platform} order failed — check broker window for details")
 
                     self._ai_trace("TRADE",
                                    f"{acct_num}: {platform} {side.upper()} {trado_qty} {trado_sym} "
