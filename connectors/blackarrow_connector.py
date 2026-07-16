@@ -84,6 +84,54 @@ class BlackArrowConnector:
     # Public API
     # ================================================================== #
 
+    # ------------------------------------------------------------------ #
+    # Shadow-DOM helpers (BlackArrow is a Capacitor/Ionic app — inputs live
+    # inside ion-input shadow roots, not as regular <input> elements)
+    # ------------------------------------------------------------------ #
+
+    def _fill_ionic_input(self, nth: int, value: str) -> bool:
+        """
+        Fill the nth ion-input on the page by piercing its shadow DOM.
+        Returns True on success.
+        """
+        return bool(self._driver.execute_script("""
+            var ionInputs = document.querySelectorAll('ion-input');
+            var el = ionInputs[arguments[0]];
+            if (!el) return false;
+            // Try shadow root first (Ionic renders <input> inside shadow DOM)
+            var inp = el.shadowRoot ? el.shadowRoot.querySelector('input') : el.querySelector('input');
+            if (!inp) return false;
+            inp.focus();
+            var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+            setter.call(inp, arguments[1]);
+            inp.dispatchEvent(new Event('ionInput',  { bubbles: true }));
+            inp.dispatchEvent(new Event('input',     { bubbles: true }));
+            inp.dispatchEvent(new Event('change',    { bubbles: true }));
+            inp.dispatchEvent(new Event('ionChange', { bubbles: true }));
+            return true;
+        """, nth, value))
+
+    def _click_ionic_button(self, text: str) -> bool:
+        """Click an ion-button or regular button whose visible text matches."""
+        return bool(self._driver.execute_script("""
+            var text = arguments[0].toLowerCase().trim();
+            // ion-button
+            var ionBtns = document.querySelectorAll('ion-button');
+            for (var b of ionBtns) {
+                if (b.textContent.trim().toLowerCase() === text) { b.click(); return true; }
+            }
+            // regular button
+            var btns = document.querySelectorAll('button');
+            for (var b of btns) {
+                if (b.textContent.trim().toLowerCase() === text) { b.click(); return true; }
+            }
+            // partial match fallback
+            for (var b of ionBtns) {
+                if (b.textContent.toLowerCase().includes(text)) { b.click(); return true; }
+            }
+            return false;
+        """, text))
+
     def connect(self) -> bool:
         """Launch Chrome, navigate to BlackArrow, auto-login. Returns True on success."""
         try:
@@ -100,30 +148,51 @@ class BlackArrowConnector:
             wait.until(lambda d: self._has_login_form(d) or self._platform_ready(d))
 
             if self._has_login_form(self._driver):
-                logger.info("BlackArrow: filling login form...")
-                email_field = wait.until(EC.presence_of_element_located(
-                    (By.CSS_SELECTOR, 'input[type="email"], input[placeholder*="mail" i], input[placeholder*="Email" i]')
-                ))
-                email_field.clear()
-                email_field.send_keys(self.email)
+                logger.info("BlackArrow: filling login form (Ionic/Capacitor shadow DOM)...")
 
-                pwd_field = self._driver.find_element(By.CSS_SELECTOR, 'input[type="password"]')
-                pwd_field.clear()
-                pwd_field.send_keys(self.password)
+                # BlackArrow uses ion-input components — inputs are inside shadow roots.
+                # ion-input[0] = Email, ion-input[1] = Password
+                for attempt in range(3):
+                    ok_email = self._fill_ionic_input(0, self.email)
+                    ok_pass  = self._fill_ionic_input(1, self.password)
+                    if ok_email and ok_pass:
+                        break
+                    time.sleep(1)
 
-                # Submit — the button says "Enter" on BlackArrow
-                submit = self._driver.find_element(
-                    By.XPATH,
-                    '//button[@type="submit"] | //button[normalize-space()="Enter"] | //button[normalize-space()="Login"] | //button[normalize-space()="Log in"]'
-                )
-                submit.click()
-                logger.info("BlackArrow: login submitted.")
+                if not ok_email or not ok_pass:
+                    logger.warning("BlackArrow: ion-input fill failed, trying direct input selectors...")
+                    # Fallback: standard input selectors
+                    try:
+                        fields = self._driver.find_elements(By.CSS_SELECTOR, 'input')
+                        if len(fields) >= 2:
+                            fields[0].clear(); fields[0].send_keys(self.email)
+                            fields[1].clear(); fields[1].send_keys(self.password)
+                    except Exception as fe:
+                        logger.warning("BlackArrow: fallback input fill failed: %s", fe)
+
+                time.sleep(0.5)
+
+                # Click Enter / submit button
+                clicked = self._click_ionic_button("enter")
+                if not clicked:
+                    clicked = self._click_ionic_button("login")
+                if not clicked:
+                    # Last resort: find any submit button
+                    try:
+                        sub = self._driver.find_element(By.CSS_SELECTOR, 'button[type="submit"], ion-button')
+                        sub.click()
+                        clicked = True
+                    except Exception:
+                        pass
+                logger.info("BlackArrow: login submitted (clicked=%s).", clicked)
 
                 # Check for 2FA
                 try:
                     WebDriverWait(self._driver, 10).until(lambda d:
                         d.find_elements(By.CSS_SELECTOR,
                             'input[placeholder*="code" i], input[maxlength="6"], [class*="otp" i], [class*="2fa" i]')
+                        or d.find_elements(By.TAG_NAME, 'ion-input') and
+                           len(d.find_elements(By.TAG_NAME, 'ion-input')) == 1
                     )
                     logger.warning(
                         "BlackArrow: 2FA required — please enter the 6-digit code "
@@ -131,10 +200,7 @@ class BlackArrowConnector:
                     )
                     print("\n>>> BlackArrow 2FA: check your email and enter the code in the browser window. <<<\n")
                     # Wait for 2FA form to disappear (user submitted)
-                    WebDriverWait(self._driver, 120).until(lambda d:
-                        not d.find_elements(By.CSS_SELECTOR,
-                            'input[placeholder*="code" i], input[maxlength="6"]')
-                    )
+                    WebDriverWait(self._driver, 120).until(lambda d: self._platform_ready(d))
                 except Exception:
                     logger.debug("No 2FA dialog detected — proceeding.")
 
@@ -310,7 +376,11 @@ class BlackArrowConnector:
 
     def _has_login_form(self, driver: webdriver.Chrome) -> bool:
         try:
-            return bool(driver.find_elements(By.CSS_SELECTOR, 'input[type="password"]'))
+            # Regular inputs OR Ionic ion-input components (Nelogica/Capacitor app)
+            return bool(
+                driver.find_elements(By.CSS_SELECTOR, 'input[type="password"]') or
+                len(driver.find_elements(By.TAG_NAME, 'ion-input')) >= 2
+            )
         except Exception:
             return False
 
