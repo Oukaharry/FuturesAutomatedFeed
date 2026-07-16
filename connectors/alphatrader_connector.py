@@ -1,32 +1,13 @@
-"""
-alphatrader_connector.py — REST + Playwright connector for Alpha Futures' new platform.
+﻿"""
+alphatrader_connector.py — Selenium + REST connector for Alpha Futures' platform.
 
 Alpha Futures migrated from Tradovate to Alpha Trader (futures.alphatrader.com).
 
-Protocol (reverse-engineered 2026-07-16):
-  Auth:        POST https://apiv2.alphatrader.com/api/v1/auth/login/
-               → Firebase JWT (id_token, refresh_token, expires_in=3600)
-  T4 creds:    POST https://apiv2.alphatrader.com/api/v1/t4/credentials/token/
-               → JWT with {t4_firm, t4_app_license, t4_username, t4_password}
-  Orders:      wss://wss-sim.t4login.com/v1  (sim) / wss://wss.t4login.com/v1 (live)
-               Binary protobuf — order placement via Playwright UI clicks
-  Cancel-all:  POST https://apiv2.alphatrader.com/api/v1/t4/trading/cancel-all/
-  Accounts:    GET  https://apiv2.alphatrader.com/api/v1/t4/accounts/
-  Order hist:  GET  https://apiv2.alphatrader.com/api/v1/t4/orders/?account_id=<uuid>
-  Trades:      GET  https://apiv2.alphatrader.com/api/v1/t4/trades/
-
-Order schema (from order history GET):
-  account_name, unique_id (UUID), market_id ("XCME_Eq ES (U26)"),
-  exchange_id ("CME_Eq"), contract_id ("ES"), side ("buy"/"sell"),
-  order_type ("market"/"limit"/"stop_market"), order_link ("none"/"auto_oco_p"),
-  volume, filled_volume, price, limit_price, stop_price,
-  is_bracket (bool), parent_order_id, status
-
-Bracket orders (AutoOCO):
-  - TP: limit order, order_link="auto_oco_p"
-  - SL: stop_market order, order_link="auto_oco_p"
-  - UI fields: spinbutton[0]=TP price, spinbutton[1]=SL price (absolute prices, not ticks)
-  - To convert: tp_price = entry_price + (tp_ticks * tick_size)
+Auth:      POST https://apiv2.alphatrader.com/api/v1/auth/login/  -> Firebase JWT
+Browser:   Selenium (system Chrome, same anti-detection approach as TradovateAccount)
+Orders:    Selenium UI clicks on the T4-powered web platform
+Cancel:    POST https://apiv2.alphatrader.com/api/v1/t4/trading/cancel-all/
+Accounts:  GET  https://apiv2.alphatrader.com/api/v1/t4/accounts/
 
 USAGE:
     conn = AlphaTraderConnector(email="user@example.com", password="secret")
@@ -38,49 +19,46 @@ USAGE:
 
 from __future__ import annotations
 
-import asyncio
-import logging
-import re
-import time
-import json
 import base64
+import json
+import logging
+import os
+import re
+import tempfile
+import time
 from typing import Optional
 
 import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------ #
 # Constants
 # ------------------------------------------------------------------ #
-API_BASE = "https://apiv2.alphatrader.com/api/v1"
-PLATFORM_URL = "https://futures.alphatrader.com/"
-DEFAULT_TIMEOUT_MS = 15_000
-CONFIRM_TIMEOUT_MS = 8_000
-ORDER_SETTLE_S = 2.0
-TOKEN_REFRESH_BUFFER_S = 300   # Refresh token 5 min before expiry
+API_BASE      = "https://apiv2.alphatrader.com/api/v1"
+PLATFORM_URL  = "https://futures.alphatrader.com/"
+DEFAULT_WAIT  = 25      # seconds
+ORDER_SETTLE  = 2.0     # seconds after placing an order
+TOKEN_REFRESH = 300     # refresh token this many seconds before expiry
 
-# Tradovate symbol → Alpha Trader contract_id
+# Tradovate symbol -> Alpha Trader contract_id
 SYMBOL_MAP: dict[str, str] = {
-    # NQ (E-mini Nasdaq-100)
-    "NQ": "NQ", "NQU6": "NQ", "NQM6": "NQ", "NQH6": "NQ", "NQZ6": "NQ",
-    "NQU5": "NQ", "NQM5": "NQ", "NQH5": "NQ", "NQZ5": "NQ",
-    # MNQ (Micro E-mini Nasdaq-100)
-    "MNQ": "MNQ", "MNQU6": "MNQ", "MNQM6": "MNQ", "MNQH6": "MNQ", "MNQZ6": "MNQ",
-    "MNQU5": "MNQ", "MNQM5": "MNQ", "MNQH5": "MNQ", "MNQZ5": "MNQ",
-    # ES (E-mini S&P 500)
-    "ES": "ES", "ESU6": "ES", "ESM6": "ES", "ESH6": "ES", "ESZ6": "ES",
-    # MES (Micro E-mini S&P 500)
-    "MES": "MES", "MESU6": "MES", "MESM6": "MES",
-    # GC (Gold)
-    "GC": "GC", "GCM6": "GC", "GCQ6": "GC", "GCZ6": "GC",
-    # MGC (Micro Gold)
-    "MGC": "MGC", "MGCM6": "MGC", "MGCQ6": "MGC",
-    # CL (Crude Oil)
-    "CL": "CL", "CLM6": "CL", "CLN6": "CL",
+    "NQ": "NQ",   "NQU6": "NQ",  "NQM6": "NQ",  "NQH6": "NQ",  "NQZ6": "NQ",
+    "NQU5": "NQ", "NQM5": "NQ",  "NQH5": "NQ",  "NQZ5": "NQ",
+    "MNQ": "MNQ", "MNQU6": "MNQ","MNQM6": "MNQ","MNQH6": "MNQ","MNQZ6": "MNQ",
+    "ES":  "ES",  "ESU6": "ES",  "ESM6": "ES",  "ESH6": "ES",  "ESZ6": "ES",
+    "MES": "MES", "MESU6": "MES","MESM6": "MES",
+    "GC":  "GC",  "GCM6": "GC", "GCQ6": "GC",  "GCZ6": "GC",
+    "MGC": "MGC", "MGCM6": "MGC","MGCQ6": "MGC",
+    "CL":  "CL",  "CLM6": "CL", "CLN6": "CL",
 }
 
-# Tick size in index/commodity points per tick
 TICK_SIZE: dict[str, float] = {
     "NQ": 0.25, "MNQ": 0.25,
     "ES": 0.25, "MES": 0.25,
@@ -88,30 +66,23 @@ TICK_SIZE: dict[str, float] = {
     "CL": 0.01,
 }
 
-# Exchange id per contract
-EXCHANGE_MAP: dict[str, str] = {
-    "NQ": "CME_Eq", "MNQ": "CME_Eq",
-    "ES": "CME_Eq", "MES": "CME_Eq",
-    "GC": "CME_CO", "MGC": "CME_CO",
-    "CL": "NYMEX",
+CONTRACT_DISPLAY: dict[str, str] = {
+    "NQ":  "E-mini NASDAQ-100",
+    "MNQ": "E-mini Micro NASDAQ-100",
+    "ES":  "E-mini S&P 500",
+    "MES": "E-mini Micro S&P 500",
+    "GC":  "Gold",
+    "MGC": "E-micro Gold",
+    "CL":  "Crude Oil",
+    "RTY": "E-mini Russell 2000",
+    "MYM": "E-mini Micro Dow",
+    "YM":  "E-mini Dow",
 }
 
 
-def _map_symbol(tradovate_symbol: str) -> str:
-    """Map a Tradovate-style symbol (e.g. 'NQU6') to Alpha Trader contract_id ('NQ')."""
-    s = tradovate_symbol.strip().upper()
+def _map_symbol(sym: str) -> str:
+    s = sym.strip().upper()
     return SYMBOL_MAP.get(s, re.sub(r"[A-Z]\d+$", "", s) or s)
-
-
-def _decode_jwt_payload(token: str) -> dict:
-    """Decode JWT payload (no signature verification needed here)."""
-    try:
-        payload_b64 = token.split(".")[1]
-        # Add padding
-        payload_b64 += "=" * (4 - len(payload_b64) % 4)
-        return json.loads(base64.urlsafe_b64decode(payload_b64))
-    except Exception:
-        return {}
 
 
 # ================================================================== #
@@ -120,168 +91,252 @@ def _decode_jwt_payload(token: str) -> dict:
 
 class AlphaTraderConnector:
     """
-    Connector for Alpha Futures' trading platform at futures.alphatrader.com.
+    Selenium-based connector for futures.alphatrader.com.
 
-    Uses the Alpha Trader REST API for auth/account management and Playwright
-    browser automation for order placement (orders go to T4 WebSocket internally).
-
-    Parameters
-    ----------
-    email : str
-        Alpha Trader account email.
-    password : str
-        Alpha Trader account password.
-    headless : bool
-        Run Chromium headless. Default False (so you can watch orders execute).
+    Uses the same system-Chrome + anti-detection approach as TradovateAccount
+    so no "Test" / "Chrome is controlled by automation" banner appears.
+    REST API handles authentication and account lookups; Selenium handles
+    the order placement UI.
     """
 
     def __init__(self, email: str, password: str, headless: bool = False):
-        self.email = email
+        self.email    = email
         self.password = password
         self.headless = headless
 
-        # Auth state
-        self._id_token: Optional[str] = None
-        self._refresh_token: Optional[str] = None
-        self._token_exp: float = 0.0          # Unix timestamp of expiry
+        # Auth
+        self._id_token:      Optional[str]   = None
+        self._refresh_token: Optional[str]   = None
+        self._token_exp:     float           = 0.0
 
-        # Account state (populated after login)
-        self._account_uuid: Optional[str] = None   # DA43F344-... (T4 UUID)
-        self._account_name: Optional[str] = None   # ADVEV2026...
+        # Account
+        self._account_uuid: Optional[str] = None
+        self._account_name: Optional[str] = None
 
-        # Playwright
-        self._playwright = None
-        self._browser = None
-        self._page = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._connected = False
+        # Selenium
+        self._driver:    Optional[webdriver.Chrome] = None
+        self._connected: bool = False
 
     # ================================================================== #
-    # Public synchronous API
+    # Public API
     # ================================================================== #
 
     def connect(self) -> bool:
-        """Authenticate via REST API and launch the trading platform in a browser."""
-        return self._run(self._async_connect())
+        """Authenticate via REST, then open the platform in Chrome and log in."""
+        # 1. REST auth
+        try:
+            self._rest_login()
+        except Exception as e:
+            logger.error("Alpha Trader REST login failed: %s", e)
+            return False
+
+        # 2. Fetch account info
+        try:
+            accounts = self._rest_get_accounts() or []
+            if accounts:
+                default = next((a for a in accounts if a.get("is_default")), accounts[0])
+                self._account_uuid = default.get("account_id")
+                self._account_name = default.get("account_name")
+                logger.info("Alpha Trader: account %s (%s)", self._account_name, self._account_uuid)
+        except Exception as e:
+            logger.warning("Alpha Trader: account fetch failed: %s", e)
+
+        # 3. Launch Chrome
+        try:
+            self._driver = self._init_driver()
+        except Exception as e:
+            logger.error("Alpha Trader: Chrome launch failed: %s", e)
+            return False
+
+        # 4. Navigate and auto-login
+        try:
+            self._driver.get(PLATFORM_URL)
+            wait = WebDriverWait(self._driver, DEFAULT_WAIT)
+
+            # Wait for either the login form or the platform to be ready
+            wait.until(lambda d: "/signin" in d.current_url or self._platform_ready(d))
+
+            if "/signin" in self._driver.current_url:
+                logger.info("Alpha Trader: filling login form...")
+                email_field = wait.until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'input[placeholder="Email"]'))
+                )
+                email_field.clear()
+                email_field.send_keys(self.email)
+
+                pwd_field = self._driver.find_element(By.CSS_SELECTOR, 'input[placeholder="Password"]')
+                pwd_field.clear()
+                pwd_field.send_keys(self.password)
+
+                login_btn = self._driver.find_element(
+                    By.XPATH, '//button[normalize-space()="Login"]'
+                )
+                login_btn.click()
+                logger.info("Alpha Trader: login submitted, waiting for platform...")
+
+            # Wait for the dashboard (balance header)
+            wait.until(lambda d: self._platform_ready(d))
+            self._connected = True
+            logger.info("Alpha Trader: platform ready.")
+
+            # Read account name from DOM if not set via REST
+            if not self._account_name:
+                self._account_name = self._read_account_name()
+
+            # Open the Order panel
+            try:
+                order_btns = self._driver.find_elements(By.XPATH, '//button[normalize-space()="Order"]')
+                if order_btns:
+                    order_btns[0].click()
+                    time.sleep(0.5)
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.error("Alpha Trader: platform failed to load: %s", e)
+            self._connected = False
+
+        return self._connected
 
     def disconnect(self):
-        """Close the browser session."""
-        self._run(self._async_disconnect())
+        if self._driver:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+            self._driver = None
+        self._connected = False
+        logger.info("Alpha Trader: disconnected.")
 
     def place_order(
         self,
-        symbol: str,
-        side: str,
-        qty: int = 1,
+        symbol:   str,
+        side:     str,
+        qty:      int            = 1,
         tp_ticks: Optional[int] = None,
         sl_ticks: Optional[int] = None,
     ) -> bool:
-        """
-        Place a market order. If tp_ticks/sl_ticks are provided, an AutoOCO
-        bracket order is placed with TP and SL as absolute limit/stop prices.
+        if not self._driver:
+            logger.error("Not connected.")
+            return False
 
-        Parameters
-        ----------
-        symbol : str
-            Tradovate-style ticker ('NQU6', 'MNQU6') or Alpha Trader contract_id ('NQ').
-        side : str
-            'buy' or 'sell'.
-        qty : int
-            Number of contracts.
-        tp_ticks : int | None
-            Take-profit distance in ticks from fill price.
-        sl_ticks : int | None
-            Stop-loss distance in ticks from fill price.
-        """
-        return self._run(self._async_place_order(symbol, side, qty, tp_ticks, sl_ticks))
+        contract_id = _map_symbol(symbol)
+        tick_size   = TICK_SIZE.get(contract_id, 0.25)
+        side_lower  = side.lower()
+        use_bracket = (tp_ticks is not None) or (sl_ticks is not None)
+
+        logger.info("AlphaTrader: placing %s %s qty=%d tp=%s sl=%s",
+                    side_lower, contract_id, qty, tp_ticks, sl_ticks)
+
+        self._switch_contract(contract_id)
+        self._set_qty(qty)
+
+        if use_bracket:
+            entry = self._get_current_price(side_lower) or 0.0
+            tp_price: Optional[float] = None
+            sl_price: Optional[float] = None
+            if side_lower == "buy":
+                if tp_ticks: tp_price = entry + tp_ticks * tick_size
+                if sl_ticks: sl_price = entry - sl_ticks * tick_size
+            else:
+                if tp_ticks: tp_price = entry - tp_ticks * tick_size
+                if sl_ticks: sl_price = entry + sl_ticks * tick_size
+            if tp_price is not None:
+                tp_price = round(round(tp_price / tick_size) * tick_size, 4)
+            if sl_price is not None:
+                sl_price = round(round(sl_price / tick_size) * tick_size, 4)
+            self._configure_bracket(tp_price, sl_price)
+        else:
+            self._disable_bracket()
+
+        btn_text = "BUY" if side_lower == "buy" else "SELL"
+        try:
+            btns = self._driver.find_elements(By.XPATH, f'//button[normalize-space()="{btn_text}"]')
+            if not btns:
+                btns = self._driver.find_elements(By.XPATH, f'//button[contains(text(),"{btn_text}")]')
+            if btns:
+                btns[0].click()
+            else:
+                logger.error("AlphaTrader: %s button not found.", btn_text)
+                return False
+        except Exception as e:
+            logger.error("AlphaTrader: order click failed: %s", e)
+            return False
+
+        time.sleep(ORDER_SETTLE)
+        logger.info("AlphaTrader: order complete.")
+        return True
 
     def close_all(self, symbol: str = "NQ") -> bool:
-        """Close all open positions for the given symbol via UI button."""
-        return self._run(self._async_close_all(symbol))
+        if not self._driver:
+            return False
+        self._switch_contract(_map_symbol(symbol))
+        for label in ("CLOSE POSITION", "FLATTEN ALL"):
+            try:
+                btns = self._driver.find_elements(
+                    By.XPATH, f'//button[contains(normalize-space(),"{label}")]')
+                if btns and btns[0].is_enabled():
+                    btns[0].click()
+                    time.sleep(ORDER_SETTLE)
+                    return True
+            except Exception:
+                pass
+        return False
 
     def flatten_all(self) -> bool:
-        """
-        Cancel all orders and close all positions via
-        POST /api/v1/t4/trading/cancel-all/ REST endpoint.
-        """
         return self._rest_cancel_all()
 
     def get_account_balance(self) -> Optional[float]:
-        """Return the available balance from the REST accounts endpoint."""
         data = self._rest_get_accounts()
         if data:
-            acct = next(
-                (a for a in data if a.get("account_id") == self._account_uuid),
-                data[0] if data else None,
-            )
+            acct = next((a for a in data if a.get("account_id") == self._account_uuid),
+                        data[0] if data else None)
             if acct:
                 return float(acct.get("available_balance", acct.get("balance", 0)))
         return None
 
     def get_account_info(self) -> Optional[dict]:
-        """Return full account info dict from the REST API."""
         data = self._rest_get_accounts()
         if data:
-            return next(
-                (a for a in data if a.get("account_id") == self._account_uuid),
-                data[0] if data else None,
-            )
+            return next((a for a in data if a.get("account_id") == self._account_uuid),
+                        data[0] if data else None)
         return None
 
     def get_active_account(self) -> Optional[str]:
-        """Return the active account name (e.g. 'ADVEV2026060800605').
-
-        Tries in order:
-          1. Cached ``_account_name`` set during login / REST fetch.
-          2. DOM scrape of the account selector shown in the platform header.
-        """
         if self._account_name:
             return self._account_name
-        # Fallback: read from the browser DOM
-        if self._page:
-            try:
-                name = self._run(self._async_read_account_name())
-                if name:
-                    self._account_name = name
-                    return name
-            except Exception as e:
-                logger.warning("get_active_account DOM fallback failed: %s", e)
-        return None
+        if self._driver:
+            self._account_name = self._read_account_name()
+        return self._account_name
 
     def get_account_stats(self) -> dict:
-        """Return a dict with Balance, Equity, DailyPnL keys for the UI pre-flight log."""
-        if self._page:
+        if self._driver:
             try:
-                return self._run(self._async_get_stats())
-            except Exception as e:
-                logger.warning("get_account_stats error: %s", e)
-        # REST fallback
-        balance = self.get_account_balance()
-        return {"Balance": f"${balance:,.2f}" if balance is not None else "N/A"}
+                return self._get_stats()
+            except Exception:
+                pass
+        bal = self.get_account_balance()
+        return {"Balance": f"${bal:,.2f}" if bal is not None else "N/A"}
 
     def is_connected(self) -> bool:
         return self._connected
 
     # ================================================================== #
-    # REST API helpers (synchronous, no browser)
+    # REST helpers
     # ================================================================== #
 
     def _ensure_token(self):
-        """Re-login or refresh the Firebase JWT if it's expired or about to expire."""
-        if self._id_token and time.time() < self._token_exp - TOKEN_REFRESH_BUFFER_S:
-            return  # Token still valid
-
+        if self._id_token and time.time() < self._token_exp - TOKEN_REFRESH:
+            return
         if self._refresh_token:
             try:
                 self._rest_refresh_token()
                 return
-            except Exception as e:
-                logger.warning("Token refresh failed, re-logging in: %s", e)
-
+            except Exception:
+                pass
         self._rest_login()
 
     def _rest_login(self):
-        """POST /api/v1/auth/login/ and store tokens."""
         resp = requests.post(
             f"{API_BASE}/auth/login/",
             json={"email": self.email, "password": self.password},
@@ -291,483 +346,256 @@ class AlphaTraderConnector:
         data = resp.json()
         if not data.get("success"):
             raise RuntimeError(f"Alpha Trader login failed: {data.get('message')}")
-
         tokens = data["data"]["tokens"]
-        self._id_token = tokens["id_token"]
+        self._id_token      = tokens["id_token"]
         self._refresh_token = tokens.get("refresh_token")
-        expires_in = int(tokens.get("expires_in", 3600))
-        self._token_exp = time.time() + expires_in
-        logger.info("Alpha Trader: logged in as %s (token valid %ds)", self.email, expires_in)
+        self._token_exp     = time.time() + int(tokens.get("expires_in", 3600))
+        logger.info("Alpha Trader REST: authenticated as %s", self.email)
 
     def _rest_refresh_token(self):
-        """
-        Refresh the Firebase ID token using the refresh_token grant.
-        Firebase token refresh: POST https://securetoken.googleapis.com/v1/token
-        """
         resp = requests.post(
             "https://securetoken.googleapis.com/v1/token",
-            params={"key": "AIzaSyD-PLACEHOLDER"},   # API key embedded in JWT issuer
+            params={"key": "AIzaSyD-PLACEHOLDER"},
             json={"grant_type": "refresh_token", "refresh_token": self._refresh_token},
             timeout=15,
         )
         if resp.status_code == 200:
-            data = resp.json()
-            self._id_token = data.get("id_token")
-            expires_in = int(data.get("expires_in", 3600))
-            self._token_exp = time.time() + expires_in
+            d = resp.json()
+            self._id_token  = d.get("id_token")
+            self._token_exp = time.time() + int(d.get("expires_in", 3600))
         else:
-            # Fall back to full re-login
             self._rest_login()
 
     def _auth_headers(self) -> dict:
         self._ensure_token()
-        return {
-            "Authorization": f"Bearer {self._id_token}",
-            "Content-Type": "application/json",
-        }
+        return {"Authorization": f"Bearer {self._id_token}", "Content-Type": "application/json"}
 
     def _rest_get_accounts(self) -> Optional[list]:
         try:
-            resp = requests.get(f"{API_BASE}/t4/accounts/", headers=self._auth_headers(), timeout=10)
-            resp.raise_for_status()
-            return resp.json().get("data", [])
+            r = requests.get(f"{API_BASE}/t4/accounts/", headers=self._auth_headers(), timeout=10)
+            r.raise_for_status()
+            return r.json().get("data", [])
         except Exception as e:
-            logger.warning("get_accounts error: %s", e)
+            logger.warning("get_accounts: %s", e)
             return None
 
     def _rest_cancel_all(self) -> bool:
         try:
-            resp = requests.post(
-                f"{API_BASE}/t4/trading/cancel-all/",
-                headers=self._auth_headers(),
-                json={"account_id": self._account_uuid} if self._account_uuid else {},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            logger.info("Alpha Trader: cancel-all sent.")
+            payload = {"account_id": self._account_uuid} if self._account_uuid else {}
+            r = requests.post(f"{API_BASE}/t4/trading/cancel-all/",
+                              headers=self._auth_headers(), json=payload, timeout=10)
+            r.raise_for_status()
             return True
         except Exception as e:
-            logger.warning("cancel_all REST error: %s", e)
+            logger.warning("cancel_all: %s", e)
             return False
 
     # ================================================================== #
-    # Async internals (Playwright)
+    # Selenium helpers
     # ================================================================== #
 
-    def _run(self, coro):
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-        return self._loop.run_until_complete(coro)
+    def _init_driver(self) -> webdriver.Chrome:
+        """Launch system Chrome with Tradovate-style anti-detection options."""
+        opts = Options()
 
-    async def _async_connect(self) -> bool:
-        from playwright.async_api import async_playwright
+        # Persistent profile — keeps login state between sessions
+        safe = re.sub(r"[^A-Za-z0-9_-]", "_", self.email)
+        profile_dir = os.path.join(tempfile.gettempdir(), "alphatrader_profiles", safe)
+        os.makedirs(profile_dir, exist_ok=True)
+        opts.add_argument(f"--user-data-dir={profile_dir}")
+        logger.info("[CHROME] AlphaTrader profile: %s", profile_dir)
 
-        # Step 1: REST login (no browser needed)
-        try:
-            self._rest_login()
-        except Exception as e:
-            logger.error("Alpha Trader REST login failed: %s", e)
-            return False
+        if self.headless:
+            opts.add_argument("--headless=new")
 
-        # Step 2: Fetch account UUID
-        accounts = self._rest_get_accounts()
-        if accounts:
-            default = next((a for a in accounts if a.get("is_default")), accounts[0])
-            self._account_uuid = default.get("account_id")
-            self._account_name = default.get("account_name")
-            logger.info("Alpha Trader: using account %s (%s)", self._account_name, self._account_uuid)
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-crash-reporter")
+        opts.add_argument("--disable-logging")
+        opts.add_argument("--log-level=3")
+        opts.add_argument("--silent")
+        opts.add_argument("--disable-features=TranslateUI,MediaRouter")
+        opts.add_argument("--disable-component-update")
+        opts.add_argument("--disable-background-timer-throttling")
+        opts.add_argument("--disable-backgrounding-occluded-windows")
+        opts.add_argument("--disable-renderer-backgrounding")
+        opts.add_argument("--enable-features=NetworkService,NetworkServiceInProcess")
+        opts.add_argument("--disable-extensions")
+        opts.add_argument("--disable-plugins")
+        opts.add_argument("--disable-background-networking")
+        opts.add_argument("--disable-default-apps")
+        opts.add_argument("--disable-sync")
+        opts.add_argument("--window-size=1280,900")
+        opts.add_argument("--disable-software-rasterizer")
 
-        # Step 3: Launch browser and navigate to platform
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(headless=self.headless)
-        context = await self._browser.new_context()
-        self._page = await context.new_page()
+        # Anti-detection — removes "Chrome is being controlled by automated software" banner
+        opts.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+        opts.add_experimental_option("useAutomationExtension", False)
+        opts.add_argument("--disable-blink-features=AutomationControlled")
 
-        # Inject the Firebase auth token into localStorage so the app logs in automatically
-        await self._page.goto(PLATFORM_URL, timeout=DEFAULT_TIMEOUT_MS)
-        await self._page.wait_for_load_state("domcontentloaded")
+        opts.add_experimental_option("prefs", {
+            "profile.default_content_setting_values": {"popups": 2, "notifications": 2},
+            "profile.default_content_settings.images": 1,
+        })
 
-        # Fill login form (the app redirects to /signin if not authenticated)
-        if "/signin" in self._page.url:
-            await self._page.fill('input[placeholder="Email"]', self.email)
-            await self._page.fill('input[placeholder="Password"]', self.password)
-            await self._page.click('button:has-text("Login")')
-
-        # Wait for the platform to be ready (account balance in header)
-        try:
-            await self._page.wait_for_selector(
-                'text="Current Balance"', timeout=DEFAULT_TIMEOUT_MS
-            )
-            self._connected = True
-            logger.info("Alpha Trader: platform ready.")
-
-            # Read account name from DOM if it wasn't set by the REST API
-            if not self._account_name:
-                self._account_name = await self._async_read_account_name()
-                if self._account_name:
-                    logger.info("Alpha Trader: account name from DOM = %s", self._account_name)
-
-            # Make sure Order panel is visible
-            await self._page.click('button:has-text("Order")')
-            await self._page.wait_for_timeout(500)
-
-        except Exception as e:
-            logger.error("Alpha Trader: platform failed to load: %s", e)
-            self._connected = False
-
-        return self._connected
-
-    async def _async_disconnect(self):
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
-        self._connected = False
-        logger.info("Alpha Trader: disconnected.")
-
-    # ------------------------------------------------------------------ #
-    # Order placement
-    # ------------------------------------------------------------------ #
-
-    async def _async_place_order(
-        self,
-        symbol: str,
-        side: str,
-        qty: int,
-        tp_ticks: Optional[int],
-        sl_ticks: Optional[int],
-    ) -> bool:
-        page = self._page
-        if page is None:
-            logger.error("Not connected.")
-            return False
-
-        contract_id = _map_symbol(symbol)
-        tick_size = TICK_SIZE.get(contract_id, 0.25)
-        side_lower = side.lower()
-        use_bracket = (tp_ticks is not None) or (sl_ticks is not None)
-
-        logger.info(
-            "AlphaTrader: placing %s %s qty=%d tp=%s sl=%s",
-            side_lower, contract_id, qty, tp_ticks, sl_ticks,
+        driver = webdriver.Chrome(options=opts)
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
         )
+        return driver
 
-        # ---- Switch to the correct contract ----
-        await self._switch_contract(contract_id)
-
-        # ---- Set quantity ----
-        await self._set_qty(qty)
-
-        # ---- Configure AutoOCO/bracket if needed ----
-        if use_bracket:
-            # Get current bid/ask from page to calculate absolute prices
-            entry_est = await self._get_current_price(side_lower)
-            if entry_est is None:
-                logger.warning("Could not read current price; bracket may be inaccurate.")
-                entry_est = 0.0
-
-            tp_price: Optional[float] = None
-            sl_price: Optional[float] = None
-
-            if side_lower == "buy":
-                if tp_ticks:
-                    tp_price = entry_est + tp_ticks * tick_size
-                if sl_ticks:
-                    sl_price = entry_est - sl_ticks * tick_size
-            else:  # sell
-                if tp_ticks:
-                    tp_price = entry_est - tp_ticks * tick_size
-                if sl_ticks:
-                    sl_price = entry_est + sl_ticks * tick_size
-
-            # Round to tick size
-            if tp_price is not None:
-                tp_price = round(round(tp_price / tick_size) * tick_size, 4)
-            if sl_price is not None:
-                sl_price = round(round(sl_price / tick_size) * tick_size, 4)
-
-            await self._configure_bracket(tp_price, sl_price)
-        else:
-            # Ensure bracket is disabled to place a plain market order
-            await self._disable_bracket()
-
-        # ---- Click BUY/SELL at Market ----
-        btn_text = "BUY" if side_lower == "buy" else "SELL"
-        await page.click(f'button:has-text("{btn_text}")', timeout=DEFAULT_TIMEOUT_MS)
-
-        await asyncio.sleep(ORDER_SETTLE_S)
-        logger.info("AlphaTrader: order placement complete.")
-        return True
-
-    # Full display name for each contract_id — used for the search filter
-    _CONTRACT_DISPLAY: dict[str, str] = {
-        "NQ":  "E-mini NASDAQ-100",
-        "MNQ": "E-mini Micro NASDAQ-100",
-        "ES":  "E-mini S&P 500",
-        "MES": "E-mini Micro S&P 500",
-        "GC":  "Gold",
-        "MGC": "E-micro Gold",
-        "CL":  "Crude Oil",
-        "RTY": "E-mini Russell 2000",
-        "MYM": "E-mini Micro Dow",
-        "YM":  "E-mini Dow",
-    }
-
-    async def _switch_contract(self, contract_id: str):
-        """
-        Switch the active contract in the Order panel.
-
-        Uses the React-Select combobox: type the contract_id short code to filter,
-        then click the matching option.  Skips if the contract is already selected.
-        """
-        page = self._page
+    def _platform_ready(self, driver: webdriver.Chrome) -> bool:
         try:
-            # Check current contract label
-            current = await page.evaluate(
-                """() => {
-                    // The selected value appears in a div containing the contract name
-                    const el = document.querySelector('[class*="singleValue"]');
-                    return el ? el.textContent.trim() : '';
-                }"""
-            )
-            target_display = self._CONTRACT_DISPLAY.get(contract_id, contract_id)
-            if target_display.lower() in (current or "").lower():
-                logger.debug("_switch_contract: already on %s", contract_id)
+            return bool(driver.find_elements(By.XPATH, '//*[contains(text(),"Current Balance")]'))
+        except Exception:
+            return False
+
+    def _switch_contract(self, contract_id: str):
+        driver = self._driver
+        target = CONTRACT_DISPLAY.get(contract_id, contract_id)
+        try:
+            # Already on this contract?
+            cur_els = driver.find_elements(By.CSS_SELECTOR, '[class*="singleValue"]')
+            if cur_els and target.lower() in cur_els[0].text.lower():
                 return
 
-            # Find the React-Select input for contracts
-            # It's identifiable as the combobox that is *not* in a hidden/zero-size container
-            combo_input = await page.evaluate(
-                """() => {
-                    const inputs = Array.from(document.querySelectorAll('input[role="combobox"]'));
-                    // The contracts combobox is in the Order panel (visible, not the account one)
-                    for (const inp of inputs) {
-                        const rect = inp.getBoundingClientRect();
-                        if (rect.height > 10) return inp.id;
-                    }
-                    // Fallback: return largest combobox id
-                    return inputs.length > 0 ? inputs[inputs.length - 1].id : null;
-                }"""
-            )
-
-            if not combo_input:
-                logger.warning("_switch_contract: could not find combobox input")
+            # Find the React-Select combobox
+            combos = driver.find_elements(By.CSS_SELECTOR, 'input[role="combobox"]')
+            combo = next((c for c in combos if c.size.get("height", 0) > 10), None)
+            if combo is None and combos:
+                combo = combos[-1]
+            if combo is None:
                 return
 
-            # Focus the input, type the short code to filter options
-            await page.click(f'#{combo_input}', timeout=5_000)
-            await page.fill(f'#{combo_input}', contract_id)
-            await page.wait_for_timeout(400)
+            combo.click()
+            combo.send_keys(Keys.CONTROL + "a")
+            combo.send_keys(contract_id)
+            time.sleep(0.4)
 
-            # Click the first (and usually only) matching option
-            option_sel = f'[id*="option"]:has-text("{target_display}")'
-            await page.click(option_sel, timeout=5_000)
-            await page.wait_for_timeout(500)
+            opts = driver.find_elements(
+                By.XPATH, f'//*[contains(@id,"option") and contains(normalize-space(),"{target}")]')
+            if opts:
+                opts[0].click()
+            else:
+                combo.send_keys(Keys.RETURN)
+            time.sleep(0.5)
 
-            # Switch back to Order panel (selecting a contract opens the chart)
-            await page.click('button:has-text("Order")', timeout=5_000)
-            await page.wait_for_timeout(400)
-
-            logger.info("_switch_contract: switched to %s (%s)", contract_id, target_display)
-
+            # Return to Order panel
+            ob = driver.find_elements(By.XPATH, '//button[normalize-space()="Order"]')
+            if ob:
+                ob[0].click()
+            time.sleep(0.4)
         except Exception as e:
-            logger.warning("_switch_contract error: %s", e)
+            logger.warning("_switch_contract: %s", e)
 
-    async def _set_qty(self, qty: int):
-        """Set the number of contracts in the Order panel."""
-        page = self._page
+    def _set_qty(self, qty: int):
+        driver = self._driver
         try:
-            # Quick-select preset buttons first (1, 3, 5, 10, 15)
             presets = {1: "1", 3: "3", 5: "5", 10: "10", 15: "15"}
             if qty in presets:
-                btns = page.locator(f'[class*="quantity" i] button:has-text("{presets[qty]}"), '
-                                    f'button[class*="quick" i]:has-text("{presets[qty]}")')
-                if await btns.count() > 0:
-                    await btns.first.click()
-                    return
-
-            # Fall back to typing into the spinbutton
-            spin = page.locator('[role="spinbutton"]').filter(has_text=re.compile(r"^\d+$")).first
-            await spin.triple_click()
-            await spin.type(str(qty))
+                for btn in driver.find_elements(By.XPATH, f'//button[normalize-space()="{presets[qty]}"]'):
+                    if btn.is_displayed() and btn.is_enabled():
+                        btn.click()
+                        return
+            spins = driver.find_elements(By.CSS_SELECTOR, '[role="spinbutton"]')
+            if spins:
+                spins[0].click()
+                spins[0].send_keys(Keys.CONTROL + "a")
+                spins[0].send_keys(str(qty))
         except Exception as e:
-            logger.warning("_set_qty error: %s", e)
+            logger.warning("_set_qty: %s", e)
 
-    async def _get_current_price(self, side: str) -> Optional[float]:
-        """Read the current bid (for sells) or ask (for buys) from the Order panel."""
-        page = self._page
-        # Brief wait to ensure price feed has updated after a symbol switch
-        await page.wait_for_timeout(300)
+    def _get_current_price(self, side: str) -> Optional[float]:
+        time.sleep(0.3)
         try:
             label = "ask" if side == "buy" else "bid"
-            price_text = await page.evaluate(
-                f"""() => {{
-                    const allText = document.body.innerText;
-                    const match = allText.match(/{label}[:\\s]+([$\\d,]+\\.\\d+)/i);
-                    return match ? match[1].replace(/[$,]/g, '') : null;
-                }}"""
-            )
-            if price_text:
-                return float(price_text)
-        except Exception as e:
-            logger.warning("_get_current_price error: %s", e)
+            txt = self._driver.execute_script(f"""
+                const m = document.body.innerText.match(/{label}[:\\s]+([\\d,]+\\.\\d+)/i);
+                return m ? m[1].replace(/,/g,'') : null;
+            """)
+            if txt:
+                return float(txt)
+        except Exception:
+            pass
         return None
 
-    async def _configure_bracket(self, tp_price: Optional[float], sl_price: Optional[float]):
-        """
-        Enable the AutoOCO bracket and set TP/SL prices.
-
-        The bracket section has two spinbutton[role] inputs:
-          [0] = Take Profit price
-          [1] = Stop Loss price
-        """
-        page = self._page
-
-        # Expand the AutoOCO section if it's collapsed (no TP/SL number inputs visible)
+    def _configure_bracket(self, tp: Optional[float], sl: Optional[float]):
+        driver = self._driver
         try:
-            count = await page.locator('input[type="number"][placeholder="0.00"]').count()
-            if count < 2:
-                await page.click('text="AutoOCO/Bracket Order"', timeout=5_000)
-                await page.wait_for_timeout(400)
-        except Exception:
-            pass
-
-        try:
-            # TP/SL fields are <input type="number" placeholder="0.00"> (NOT role=spinbutton).
-            # Set via native value setter + React-compatible events.
-            set_result = await page.evaluate(
-                """([tp, sl]) => {
-                    const inputs = Array.from(
-                        document.querySelectorAll('input[type="number"][placeholder="0.00"]')
-                    );
-                    if (inputs.length < 2) return { ok: false, count: inputs.length };
-                    const setter = Object.getOwnPropertyDescriptor(
-                        window.HTMLInputElement.prototype, 'value'
-                    ).set;
-                    function setVal(el, val) {
-                        setter.call(el, String(val));
-                        el.dispatchEvent(new Event('input',  { bubbles: true }));
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                        el.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-                    }
-                    if (tp !== null) setVal(inputs[0], tp);
-                    if (sl !== null) setVal(inputs[1], sl);
-                    return { ok: true, tp: inputs[0].value, sl: inputs[1].value };
-                }""",
-                [tp_price, sl_price],
-            )
-            logger.debug("Bracket set result: %s", set_result)
-
+            inputs = driver.find_elements(By.CSS_SELECTOR, 'input[type="number"][placeholder="0.00"]')
+            if len(inputs) < 2:
+                btns = driver.find_elements(By.XPATH, '//*[contains(text(),"AutoOCO/Bracket Order")]')
+                if btns:
+                    btns[0].click()
+                    time.sleep(0.4)
+            driver.execute_script("""
+                const tp=arguments[0], sl=arguments[1];
+                const inputs=[...document.querySelectorAll('input[type="number"][placeholder="0.00"]')];
+                if(inputs.length<2) return;
+                const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+                function sv(el,v){setter.call(el,String(v));
+                  el.dispatchEvent(new Event('input',{bubbles:true}));
+                  el.dispatchEvent(new Event('change',{bubbles:true}));
+                  el.dispatchEvent(new FocusEvent('blur',{bubbles:true}));}
+                if(tp!==null) sv(inputs[0],tp);
+                if(sl!==null) sv(inputs[1],sl);
+            """, tp, sl)
         except Exception as e:
-            logger.warning("_configure_bracket error: %s", e)
+            logger.warning("_configure_bracket: %s", e)
 
-    async def _disable_bracket(self):
-        """Collapse/disable the AutoOCO bracket section if it's expanded."""
-        page = self._page
+    def _disable_bracket(self):
+        driver = self._driver
         try:
-            # Bracket is open when the number inputs (TP/SL) are present
-            count = await page.locator('input[type="number"][placeholder="0.00"]').count()
-            if count > 0:
-                await page.click('text="AutoOCO/Bracket Order"', timeout=3_000)
-                await page.wait_for_timeout(300)
+            if driver.find_elements(By.CSS_SELECTOR, 'input[type="number"][placeholder="0.00"]'):
+                btns = driver.find_elements(By.XPATH, '//*[contains(text(),"AutoOCO/Bracket Order")]')
+                if btns:
+                    btns[0].click()
+                    time.sleep(0.3)
         except Exception:
             pass
 
-    # ------------------------------------------------------------------ #
-    # Position management
-    # ------------------------------------------------------------------ #
-
-    async def _async_close_all(self, symbol: str) -> bool:
-        page = self._page
-        if page is None:
-            logger.error("Not connected.")
-            return False
-
-        contract_id = _map_symbol(symbol)
-        await self._switch_contract(contract_id)
-
-        try:
-            # Try "CLOSE POSITION" button in the Order panel
-            close_btn = page.locator('button:has-text("CLOSE POSITION")')
-            if await close_btn.is_enabled(timeout=3_000):
-                await close_btn.click()
-                await asyncio.sleep(ORDER_SETTLE_S)
-                logger.info("AlphaTrader: close_all sent for %s.", contract_id)
-                return True
-        except Exception:
-            pass
-
-        # Fallback: use REST cancel-all + FLATTEN ALL UI button
-        try:
-            flatten_btn = page.locator('button:has-text("FLATTEN ALL")')
-            if await flatten_btn.is_enabled(timeout=3_000):
-                await flatten_btn.click()
-                await asyncio.sleep(ORDER_SETTLE_S)
-                logger.info("AlphaTrader: flatten_all sent.")
-                return True
-        except Exception:
-            pass
-
-        logger.info("AlphaTrader: no open position to close for %s.", contract_id)
-        return False
-
-    async def _async_read_account_name(self) -> Optional[str]:
-        """Read the selected account name from the DOM header selector."""
-        page = self._page
-        if page is None:
+    def _read_account_name(self) -> Optional[str]:
+        driver = self._driver
+        if not driver:
             return None
-        import re as _re
-        # Primary selector: the account wrapper div
         for sel in ('.accountSelectorWrapper', '[class*="singleValue"]'):
             try:
-                el = page.locator(sel).first
-                text = await el.inner_text(timeout=5_000)
-                # Extract e.g. "ADVEV2026060800605" from "evaluation - ADVEV2026060800605"
-                m = _re.search(r'[A-Z]{2,}[A-Z0-9]{10,}', text)
-                if m:
-                    return m.group(0)
-                # If no match, return the full cleaned string
-                return text.strip()
+                els = driver.find_elements(By.CSS_SELECTOR, sel)
+                if els:
+                    text = els[0].text.strip()
+                    m = re.search(r'[A-Z]{2,}[A-Z0-9]{10,}', text)
+                    return m.group(0) if m else (text or None)
             except Exception:
-                continue
+                pass
         return None
 
-    async def _async_get_stats(self) -> dict:
-        """Scrape Balance, Equity and DailyPnL from the platform header."""
-        page = self._page
-        if page is None:
+    def _get_stats(self) -> dict:
+        driver = self._driver
+        if not driver:
             return {}
         stats = {}
-
-        async def _read_label(label: str) -> Optional[str]:
+        for key, label in [
+            ("Balance",     "Current Balance"),
+            ("Equity",      "Equity"),
+            ("DailyPnL",    "Net Daily PNL"),
+            ("MLL",         "MLL"),
+            ("SOD Balance", "SOD Balance"),
+        ]:
             try:
-                # Header structure: <div>Label</div><div>Value</div> as siblings
-                loc = page.locator(f'text="{label}"').first
-                # The value is in the next sibling element
-                val = await loc.evaluate(
-                    'el => el.parentElement ? el.parentElement.children[1].innerText : ""',
-                    timeout=4_000,
-                )
-                return (val or "").strip()
+                els = driver.find_elements(By.XPATH, f'//*[normalize-space()="{label}"]')
+                for el in els:
+                    try:
+                        children = el.find_element(By.XPATH, "..").find_elements(By.XPATH, "*")
+                        if len(children) >= 2:
+                            val = children[1].text.strip()
+                            if val:
+                                stats[key] = val
+                                break
+                    except Exception:
+                        pass
             except Exception:
-                return None
-
-        balance = await _read_label("Current Balance")
-        if balance:
-            stats["Balance"] = balance
-        equity = await _read_label("Equity")
-        if equity:
-            stats["Equity"] = equity
-        pnl = await _read_label("Net Daily PNL")
-        if pnl:
-            stats["DailyPnL"] = pnl
-        mll = await _read_label("MLL")
-        if mll:
-            stats["MLL"] = mll
-        sod = await _read_label("SOD Balance")
-        if sod:
-            stats["SOD Balance"] = sod
-
+                pass
         return stats
 
 
@@ -776,14 +604,9 @@ class AlphaTraderConnector:
 # ================================================================== #
 
 def create_connector(config: dict) -> AlphaTraderConnector:
-    """
-    Build an AlphaTraderConnector from a config dict.
-
-    Expected keys: email, password
-    Optional keys: headless (bool)
-    """
     return AlphaTraderConnector(
         email=config["email"],
         password=config["password"],
         headless=config.get("headless", False),
     )
+
