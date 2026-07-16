@@ -67,7 +67,7 @@ class BlackArrowConnector:
         self,
         email: str,
         password: str,
-        account_id: str,
+        account_id: str = "",
         headless: bool = False,
     ):
         self.email = email

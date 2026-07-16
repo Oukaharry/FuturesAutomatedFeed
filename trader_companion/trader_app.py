@@ -9511,7 +9511,14 @@ class TradeOpssAIApp:
                         self.log(f"BlackArrow import failed: {err}", "ERROR")
                         self.root.after(0, lambda: conn["connect_btn"].configure(text="Connect"))
                         return
-                    account = BlackArrowConnector(email=user, password=pwd)
+                    # Gather account IDs from active evals for this firm
+                    _ba_acct_ids = [
+                        str(rd["eval"].get("Account #") or rd["eval"].get("Account #.1") or "").strip()
+                        for rd in getattr(self, "_active_trade_rows", [])
+                        if isinstance(rd.get("eval"), dict) and str(rd["eval"].get("Prop Firm") or "").strip() == firm_name
+                    ]
+                    _ba_acct_id = next((a for a in _ba_acct_ids if a), "")
+                    account = BlackArrowConnector(email=user, password=pwd, account_id=_ba_acct_id)
                     account.connect()
                     self.log("⚠ BlackArrow: if a 2FA code is requested, enter it manually in the browser window.")
                 else:
