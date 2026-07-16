@@ -11127,7 +11127,8 @@ class TradeOpssAIApp:
         # 1. Literal heuristic — fast path, preserves prior behaviour.
         if "topstep" in name.lower():
             return "TopStepX"
-        if "blackarrow" in name.lower() or "the5ers" in name.lower() or "5ers" in name.lower():
+        _name_stripped = name.lower().replace("%", "").replace(" ", "")
+        if "blackarrow" in name.lower() or "the5ers" in _name_stripped or "5ers" in _name_stripped:
             return "BlackArrow"
         if "alphafutures" in name.lower() or "alpha futures" in name.lower():
             return "AlphaTrader"
