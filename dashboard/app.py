@@ -83,6 +83,19 @@ _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS = frozenset({
 })
 
 
+def _kenya_now():
+    """Kenya EAT (UTC+3) — matches downtime / daily-summary workflow."""
+    try:
+        from datetime import timezone as _tz, timedelta as _td
+        return datetime.now(_tz.utc).astimezone(_tz(_td(hours=3)))
+    except Exception:
+        return datetime.now()
+
+
+def _kenya_today_str():
+    return _kenya_now().strftime('%Y-%m-%d')
+
+
 def _issues_for_trader_client_quality_views(issues):
     skip = _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS | {'Scan error'}
     return [i for i in (issues or []) if i.get('check') not in skip]
@@ -9467,17 +9480,11 @@ def run_quality_scan(target_client=None):
 
     all_clients = [target_client] if target_client else hierarchy_get_all_clients()
     results = []
-    # The server runs UTC, but the ops workflow (and Slack bot schedule) is keyed to Kenyan time.
-    # Use Kenyan "now" for day-marker / downtime logic so missing trading days are flagged
-    # as soon as we cross midnight EAT, not midnight UTC.
-    now = datetime.now()
-    today_weekday = now.weekday()  # 0=Mon, 6=Sun (UTC)
-    scan_date_str = now.strftime('%Y-%m-%d')  # persisted scan date remains UTC
-    try:
-        from datetime import timezone as _tz, timedelta as _td
-        now_eat = datetime.now(_tz.utc).astimezone(_tz(_td(hours=3)))
-    except Exception:
-        now_eat = now
+    # Ops workflow is keyed to Kenyan time (downtime markers, daily summaries).
+    now_eat = _kenya_now()
+    now = now_eat
+    today_weekday = now_eat.weekday()  # 0=Mon, 6=Sun
+    scan_date_str = _kenya_today_str()
 
     for client_name in all_clients:
         profile = get_client_profile(client_name)
@@ -10541,9 +10548,7 @@ def api_run_quality_scan():
         traceback.print_exc()
         return jsonify({'status': 'error', 'message': f'Scan failed: {str(e)}'}), 500
 
-    scan_date = datetime.now().strftime('%Y-%m-%d')
-
-    # Step 2: persist results — non-fatal if the DB is in a bad state
+    scan_date = _kenya_today_str()
     save_warning = None
     try:
         from dashboard.database import save_quality_scan_results
@@ -10607,7 +10612,7 @@ def api_quality_client(client_id):
                 # Persist the updated result into today's scan row for this client
                 try:
                     from dashboard.database import get_connection
-                    scan_date = datetime.now().strftime('%Y-%m-%d')
+                    scan_date = _kenya_today_str()
                     with get_connection() as conn:
                         cursor = conn.cursor()
                         cursor.execute('DELETE FROM quality_scan_results WHERE scan_date = ? AND client_id = ?',
@@ -11092,7 +11097,7 @@ def api_admin_tracker():
             admin_name = (session_user.get('user_identifier') or '').strip()
         if not admin_name:
             return jsonify({'status': 'error', 'message': 'Admin name required'}), 400
-        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        date = request.args.get('date', _kenya_today_str())
 
         payload = compute_admin_tracker_payload(admin_name, date)
         return jsonify({'status': 'success', **payload})
@@ -11115,7 +11120,7 @@ def api_quality_admin_tracker():
             if a:
                 admins.add(a)
         admin = (request.args.get('admin') or '').strip()
-        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        date = request.args.get('date', _kenya_today_str())
 
         # Reuse the existing admin tracker endpoint logic by calling the local view function's helper through a request-style call:
         # We simply invoke /api/admin/tracker-style computation by issuing internal HTTP is overkill; instead, we call api_admin_tracker
@@ -11204,7 +11209,7 @@ def api_summary_status():
     # This means the tracker naturally flips ~55 min after the 2:05 AM Slack send.
     from datetime import timezone, timedelta as _td
     _kenyan_tz = timezone(_td(hours=3))
-    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    date = request.args.get('date', _kenya_today_str())
     submissions = get_summary_status_for_date(date)
 
     # Convert timestamps from UTC to Kenyan time (UTC+3)
@@ -11397,7 +11402,7 @@ def api_trader_issues():
         # Optional: rescan=1 to force live recompute (keeps trader portal in sync with client dashboard).
         # This is intentionally opt-in because it can be expensive across many clients.
         do_rescan = request.args.get('rescan') == '1'
-        scan_date_today = datetime.now().strftime('%Y-%m-%d')
+        scan_date_today = _kenya_today_str()
 
         if do_rescan and trader_clients:
             # Cap rescans for safety (super_admin can rescan larger sets).
@@ -11484,7 +11489,7 @@ def api_trader_summary_status():
         if err is not None:
             return err
 
-        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        date = request.args.get('date', _kenya_today_str())
         submissions = get_summary_status_for_date(date) or []
 
         _kenyan_tz = timezone(_td(hours=3))
@@ -11656,11 +11661,11 @@ def api_repair_database():
     return jsonify({'status': 'error', 'message': message}), 500
 
 
-def _persist_quality_scan_for_client(client_id: str, scan_result: dict) -> None:
+def _persist_quality_scan_for_client(client_id: str, scan_result: dict, scan_date: str = None) -> None:
     """Upsert today's quality_scan_results row for one client."""
     from dashboard.database import get_connection
 
-    scan_date = datetime.now().strftime('%Y-%m-%d')
+    scan_date = scan_date or _kenya_today_str()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -11684,22 +11689,30 @@ def _persist_quality_scan_for_client(client_id: str, scan_result: dict) -> None:
         conn.commit()
 
 
-def _rescan_client_after_daily_summary(client_id: str) -> None:
-    """Run quality scan immediately after a trader submits/sends a daily summary."""
+def _rescan_client_after_daily_summary(client_id: str):
+    """Run quality scan immediately after a trader submits/sends a daily summary.
+
+    Returns trader-facing quality row dict, or None on failure.
+    """
     if not (client_id or '').strip():
-        return
+        return None
     try:
+        scan_date = _kenya_today_str()
         results = run_quality_scan(target_client=client_id) or []
         if not results:
-            return
+            return None
         r = results[0]
-        _persist_quality_scan_for_client(client_id, r)
+        _persist_quality_scan_for_client(client_id, r, scan_date=scan_date)
         try:
-            _sync_quality_issue_tracking(datetime.now().strftime('%Y-%m-%d'), [r])
+            _sync_quality_issue_tracking(scan_date, [r])
         except Exception:
             pass
+        out = _quality_scan_row_for_trader_client_quality_api(r)
+        out['scan_date'] = scan_date
+        return out
     except Exception as e:
         logging.warning('Post-summary quality rescan failed for %s: %s', client_id, e)
+        return None
 
 
 # ============ Daily Checklists ============
@@ -11721,18 +11734,23 @@ def api_submit_checklist():
     if not items:
         return jsonify({'status': 'error', 'message': 'No items provided'}), 400
 
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = _kenya_today_str()
     save_daily_checklist(today, user_identifier, user_type, checklist_type, items,
                          get_remote_address(), client_id=client_id)
 
     log_action('CHECKLIST_SUBMIT', user_type, user_identifier, get_remote_address(),
                f"{checklist_type} for {client_id}: {len(items)} sections")
 
+    quality_rescan = None
     # Trader finished the daily summary — rescan now so stale weekday markers surface immediately.
     if checklist_type == 'daily_summary' and (client_id or '').strip():
-        _rescan_client_after_daily_summary(client_id.strip())
+        quality_rescan = _rescan_client_after_daily_summary(client_id.strip())
 
-    return jsonify({'status': 'success', 'message': 'Daily summary saved'})
+    return jsonify({
+        'status': 'success',
+        'message': 'Daily summary saved',
+        'quality_rescan': quality_rescan,
+    })
 
 
 @app.route('/api/checklist/status')
@@ -11744,7 +11762,7 @@ def api_checklist_status():
     user_identifier = session_user.get('user_identifier')
     user_type = session_user.get('user_type')
 
-    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    date = request.args.get('date', _kenya_today_str())
     client_id = request.args.get('client_id', '')
 
     if user_type in ('super_admin', 'bef_admin'):
@@ -11941,7 +11959,7 @@ def api_daily_summary():
 
     # UTC date — server runs UTC; midnight UTC = 3 AM Kenyan, so the day
     # flips after the automated 2:05 AM Kenyan Slack send.
-    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    date = request.args.get('date', _kenya_today_str())
     scan_results = get_quality_scan_results(date)
     checklists = get_daily_checklists(date)
 
@@ -12429,8 +12447,9 @@ def api_send_checklist_slack():
     try:
         ok = send_slack_to_webhook(webhook_url, summary_text)
         if ok:
+            quality_rescan = None
             if client_id:
-                today = datetime.now().strftime('%Y-%m-%d')
+                today = _kenya_today_str()
                 # Do not replace a full daily_summary payload: the quality scan reads
                 # checklist items (e.g. payout_requests). Slack used to overwrite the row
                 # with only slack_sent, which wiped section 4 and broke payout-eligible QA.
@@ -12468,11 +12487,15 @@ def api_send_checklist_slack():
                     get_remote_address(),
                     client_id=client_id,
                 )
-                # Post-send safety net: same immediate rescan as checklist submit.
-                _rescan_client_after_daily_summary(client_id)
+                # Post-send: rescan after slack_sent is saved so downtime surfaces immediately.
+                quality_rescan = _rescan_client_after_daily_summary(client_id)
             log_action('SLACK_DAILY_SUMMARY', user_type, user_identifier,
                        get_remote_address(), f'Daily summary sent to Slack for {client_id}')
-            return jsonify({'status': 'success', 'message': 'Summary sent to Slack!'})
+            return jsonify({
+                'status': 'success',
+                'message': 'Summary sent to Slack!',
+                'quality_rescan': quality_rescan,
+            })
         else:
             return jsonify({'status': 'error', 'message': 'Slack post failed — check webhook URL.'}), 502
     except Exception as e:
