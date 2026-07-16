@@ -4785,6 +4785,29 @@
 
         // --- Issues Tab Logic ---
         let _clientIssues = [];
+        let _issuesRescanPending = false;
+
+        function _renderClientIssues(issues) {
+            _clientIssues = issues || [];
+            const badge = document.getElementById('issues-count-badge');
+            if (badge) {
+                if (_clientIssues.length > 0) {
+                    badge.textContent = _clientIssues.length;
+                    badge.style.display = 'inline';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+            filterIssuesTable();
+        }
+
+        function applyClientIssuesFromRescan(scanRow) {
+            if (!scanRow || !Array.isArray(scanRow.issues)) return false;
+            _issuesRescanPending = false;
+            _renderClientIssues(scanRow.issues);
+            return true;
+        }
+
         function loadClientIssues(forceRescan) {
             if (SHEET_EDIT_LOCKED) return;
             const clientId = '{{ client_id }}';
@@ -4803,20 +4826,10 @@
                 .then(data => {
                     if (loading) loading.style.display = 'none';
                     if (data.status === 'success' && data.data) {
-                        _clientIssues = data.data.issues || [];
-                        const badge = document.getElementById('issues-count-badge');
-                        if (badge) {
-                            if (_clientIssues.length > 0) {
-                                badge.textContent = _clientIssues.length;
-                                badge.style.display = 'inline';
-                            } else {
-                                badge.style.display = 'none';
-                            }
-                        }
-                        filterIssuesTable();
-                        // Background rescan after cached results render (avoids pool stampede on load).
-                        if (!forceRescan) {
-                            setTimeout(() => loadClientIssues(true), 3000);
+                        _renderClientIssues(data.data.issues || []);
+                        // Background rescan after cached results render (skip if just refreshed via summary send).
+                        if (!forceRescan && !_issuesRescanPending) {
+                            setTimeout(() => loadClientIssues(true), 500);
                         }
                     }
                 })
@@ -9451,6 +9464,11 @@
                     document.getElementById('checklist-footer-edit').style.display = 'none';
                     document.getElementById('checklist-footer-preview').style.display = 'flex';
                     renderClientDots();
+                    // Immediate quality rescan (downtime etc.) — don't wait for background refresh.
+                    _issuesRescanPending = true;
+                    if (!applyClientIssuesFromRescan(data.quality_rescan)) {
+                        loadClientIssues(true);
+                    }
                     btn.innerHTML = '<i class="fas fa-check" style="margin-right:6px;"></i> Saved!';
                     btn.style.background = 'linear-gradient(135deg, #22c55e, #16a34a)';
                     setTimeout(() => {
@@ -9526,6 +9544,19 @@
                 });
                 const data = await resp.json();
                 if (data.status === 'success') {
+                    // Post-Slack rescan: show downtime immediately in Issues tab.
+                    _issuesRescanPending = true;
+                    if (!applyClientIssuesFromRescan(data.quality_rescan)) {
+                        loadClientIssues(true);
+                    }
+                    const downtimeHits = (data.quality_rescan && data.quality_rescan.issues || [])
+                        .filter(i => (i.check || '') === 'Downtime detected');
+                    if (downtimeHits.length) {
+                        const n = downtimeHits.length;
+                        setTimeout(() => {
+                            alert(`Downtime flagged on ${n} row${n === 1 ? '' : 's'} — check the Issues tab.`);
+                        }, 100);
+                    }
                     btn.innerHTML = '<i class="fas fa-check" style="margin-right:4px;"></i> Sent!';
                     btn.style.borderColor = 'rgba(34,197,94,0.5)';
                     btn.style.color = '#4ade80';

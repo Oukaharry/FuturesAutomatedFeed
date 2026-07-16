@@ -90,11 +90,11 @@ def run_scheduler():
 def run_scheduled_quality_scan():
     """Run the quality scan and save results — same as the API but without Flask context."""
     try:
-        from dashboard.app import run_quality_scan
+        from dashboard.app import run_quality_scan, _kenya_today_str
         from dashboard.database import save_quality_scan_results, log_action
 
         results = run_quality_scan()
-        scan_date = datetime.now().strftime('%Y-%m-%d')
+        scan_date = _kenya_today_str()
         save_quality_scan_results(scan_date, results)
 
         total_issues = sum(r['total_issues'] for r in results)
