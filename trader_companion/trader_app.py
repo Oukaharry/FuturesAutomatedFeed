@@ -6487,8 +6487,9 @@ class TradeOpssAIApp:
                     try:
                         msg = r.json().get("message", msg)
                     except Exception:
-                        pass
-                    self.root.after(0, lambda m=msg: self.log(f"Failed to load trades: {m}", "ERROR"))
+                        msg = r.text[:200] if r.text else f"HTTP {r.status_code}"
+                    full_msg = f"HTTP {r.status_code}: {msg}"
+                    self.root.after(0, lambda m=full_msg: self.log(f"Failed to load trades: {m}", "ERROR"))
                     self.root.after(0, lambda: self.trades_count_var.set("Load failed"))
                     return
                 data = r.json()
