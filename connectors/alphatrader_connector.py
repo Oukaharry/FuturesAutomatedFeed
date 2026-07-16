@@ -461,102 +461,95 @@ class AlphaTraderConnector:
     def _switch_contract(self, contract_id: str):
         """
         Switch the active contract on the Order panel.
-        AlphaTrader ORDER panel has a CONTRACTS section with a dropdown button
-        showing the current contract name + chevron. Clicking it opens a list.
+        Clicks the CONTRACTS dropdown button then selects by name.
         """
         driver = self._driver
-        sym       = contract_id.upper()            # e.g. "NQ"
-        target    = CONTRACT_DISPLAY.get(sym, sym)  # e.g. "E-mini NASDAQ"
-        target_up = target.upper()
+        sym    = contract_id.upper()
+        target = CONTRACT_DISPLAY.get(sym, sym)   # e.g. "E-mini NASDAQ"
+        wait   = WebDriverWait(driver, 5)
         try:
-            # ---- Check if already on this contract ----
-            # The selected contract is shown in the button just below the
-            # "CONTRACTS" label. Read it via JS to avoid stale-element issues.
-            def _selected_text() -> str:
-                return driver.execute_script("""
-                    var els = document.querySelectorAll('*');
-                    for (var el of els) {
-                        if (el.children.length === 0 && el.textContent.trim() === 'CONTRACTS') {
-                            // walk up to find the container, then find the first
-                            // visible button/div sibling below the label
-                            var parent = el.parentElement;
-                            if (parent) {
-                                var all = parent.querySelectorAll('button, [role="button"], [class*="select"]');
-                                for (var b of all) {
-                                    if (b.offsetHeight > 0) return b.textContent.trim();
-                                }
-                            }
+            # ---- Already on this contract? ----
+            # Read the button that sits directly below the "CONTRACTS" label
+            cur_text = driver.execute_script("""
+                for (var el of document.querySelectorAll('*')) {
+                    if (el.children.length===0 && el.textContent.trim()==='CONTRACTS') {
+                        var p = el.parentElement;
+                        if (p) {
+                            var b = p.querySelector('button,[role="button"]');
+                            if (b) return b.textContent.trim();
                         }
                     }
-                    return '';
-                """) or ""
-
-            if target_up in _selected_text().upper():
-                logger.debug("_switch_contract: already on %s", sym)
+                }
+                return '';
+            """) or ""
+            if target.upper() in cur_text.upper():
+                logger.debug("_switch_contract: already on %s (%s)", sym, cur_text)
                 return
 
-            # ---- Open the contracts dropdown ----
-            # Find the CONTRACTS label then click its dropdown button via JS
-            clicked = driver.execute_script("""
-                var target = arguments[0];
-                var els = document.querySelectorAll('*');
-                for (var el of els) {
-                    if (el.children.length === 0 && el.textContent.trim() === 'CONTRACTS') {
-                        var parent = el.parentElement;
-                        if (parent) {
-                            var btns = parent.querySelectorAll('button, [role="button"]');
-                            for (var b of btns) {
-                                if (b.offsetHeight > 0) { b.click(); return true; }
-                            }
+            # ---- Click the CONTRACTS dropdown button ----
+            opened = driver.execute_script("""
+                for (var el of document.querySelectorAll('*')) {
+                    if (el.children.length===0 && el.textContent.trim()==='CONTRACTS') {
+                        var p = el.parentElement;
+                        if (p) {
+                            var b = p.querySelector('button,[role="button"]');
+                            if (b) { b.click(); return true; }
                         }
                     }
                 }
                 return false;
-            """, target_up)
-
-            if not clicked:
+            """)
+            if not opened:
                 raise RuntimeError(
-                    "AlphaTrader: could not find the CONTRACTS dropdown — "
-                    "ORDER panel may not be active"
+                    "AlphaTrader: CONTRACTS dropdown button not found — ORDER panel may not be active"
                 )
 
-            # ---- Wait for dropdown options to render ----
-            time.sleep(0.5)
+            # ---- Wait for dropdown options to appear ----
+            time.sleep(0.6)
 
-            # ---- Click the target option ----
-            # Options are rendered as a list; find by exact or partial text match
-            chosen = driver.execute_script("""
-                var target = arguments[0];  // e.g. "E-MINI NASDAQ"
-                var candidates = document.querySelectorAll('li, [role="option"], [role="listitem"]');
-                for (var el of candidates) {
-                    if (el.offsetHeight > 0 && el.textContent.trim().toUpperCase() === target) {
-                        el.click(); return el.textContent.trim();
-                    }
-                }
-                // partial match fallback
-                for (var el of candidates) {
-                    if (el.offsetHeight > 0 && el.textContent.trim().toUpperCase().includes(target)) {
-                        el.click(); return el.textContent.trim();
-                    }
-                }
-                // last resort: any visible element whose EXACT text matches
-                var all = document.querySelectorAll('div, span, p');
-                for (var el of all) {
-                    if (el.children.length === 0 && el.offsetHeight > 0
-                            && el.textContent.trim().toUpperCase() === target) {
-                        el.click(); return el.textContent.trim();
-                    }
-                }
-                return null;
-            """, target_up)
+            # ---- Find the option using Selenium (handles React portals) ----
+            # Try multiple selectors in priority order
+            chosen = None
+            all_candidates = []
+            for css in ('li', '[role="option"]', '[role="listitem"]',
+                        '[class*="option"]', '[class*="Option"]',
+                        '[class*="item"]', '[class*="Item"]'):
+                els = driver.find_elements(By.CSS_SELECTOR, css)
+                visible = [e for e in els if e.is_displayed() and e.text.strip()]
+                if visible:
+                    all_candidates = visible
+                    # Log available options (helps debug name mismatches)
+                    logger.info("Contract options via '%s': %s", css,
+                                [e.text.strip() for e in visible[:20]])
+                    # Exact match first
+                    for e in visible:
+                        if e.text.strip().upper() == target.upper():
+                            chosen = e
+                            break
+                    # Partial match (ensure "E-mini NASDAQ" doesn't match "E-mini Micro NASDAQ")
+                    if not chosen:
+                        for e in visible:
+                            t = e.text.strip().upper()
+                            if target.upper() == t[:len(target)]:   # starts-with
+                                chosen = e
+                                break
+                    if chosen:
+                        break
 
             if not chosen:
-                driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+                # Escape the dropdown and raise with available option names
+                try:
+                    driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+                except Exception:
+                    pass
+                available = [e.text.strip() for e in all_candidates[:20]]
                 raise RuntimeError(
-                    f"AlphaTrader: contract '{target}' not found in dropdown list"
+                    f"AlphaTrader: contract '{target}' not found in dropdown. "
+                    f"Available: {available}"
                 )
 
-            logger.info("AlphaTrader: clicked contract option '%s'", chosen)
+            chosen.click()
+            logger.info("AlphaTrader: selected contract '%s'", chosen.text.strip())
             time.sleep(0.5)
 
             # ---- Return to Order panel ----
@@ -565,14 +558,25 @@ class AlphaTraderConnector:
                 ob[0].click()
             time.sleep(0.4)
 
-            # ---- Confirm the switch succeeded ----
-            cur = _current_contract_el()
-            if cur and target_up not in cur.text.upper():
+            # ---- Confirm ----
+            cur_text = driver.execute_script("""
+                for (var el of document.querySelectorAll('*')) {
+                    if (el.children.length===0 && el.textContent.trim()==='CONTRACTS') {
+                        var p = el.parentElement;
+                        if (p) {
+                            var b = p.querySelector('button,[role="button"]');
+                            if (b) return b.textContent.trim();
+                        }
+                    }
+                }
+                return '';
+            """) or ""
+            if cur_text and target.upper() not in cur_text.upper():
                 raise RuntimeError(
                     f"AlphaTrader: contract switch to '{sym}' failed — "
-                    f"platform still shows '{cur.text}'"
+                    f"platform still shows '{cur_text}'"
                 )
-            logger.info("AlphaTrader: switched to contract %s (%s)", sym, target)
+            logger.info("AlphaTrader: contract confirmed as '%s'", cur_text)
 
         except RuntimeError:
             raise
