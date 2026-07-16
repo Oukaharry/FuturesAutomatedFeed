@@ -458,12 +458,20 @@ class AlphaTraderConnector:
             return False
 
     def _switch_contract(self, contract_id: str):
+        """
+        Switch the active contract on the Order panel.
+        T4/AlphaTrader shows options as "XCME_Eq NQ (U26)" style — we match
+        by the short symbol (e.g. "NQ") rather than the full display name.
+        Raises RuntimeError if the contract cannot be confirmed after switching.
+        """
         driver = self._driver
-        target = CONTRACT_DISPLAY.get(contract_id, contract_id)
+        # Match by short symbol in the selected-value element and in dropdown options
+        sym = contract_id.upper()  # e.g. "NQ"
         try:
-            # Already on this contract?
+            # Already on this contract? (singleValue shows e.g. "XCME_Eq NQ (U26)")
             cur_els = driver.find_elements(By.CSS_SELECTOR, '[class*="singleValue"]')
-            if cur_els and target.lower() in cur_els[0].text.lower():
+            if cur_els and sym in cur_els[0].text.upper():
+                logger.debug("_switch_contract: already on %s", sym)
                 return
 
             # Find the React-Select combobox
@@ -472,28 +480,51 @@ class AlphaTraderConnector:
             if combo is None and combos:
                 combo = combos[-1]
             if combo is None:
-                return
+                raise RuntimeError(f"AlphaTrader: contract dropdown not found on page")
 
             combo.click()
             combo.send_keys(Keys.CONTROL + "a")
-            combo.send_keys(contract_id)
-            time.sleep(0.4)
+            combo.send_keys(sym)
+            time.sleep(0.6)
 
+            # Find option whose text contains the symbol (e.g. "NQ" in "XCME_Eq NQ (U26)")
+            # Try short-symbol match first, then full display-name fallback
+            full_name = CONTRACT_DISPLAY.get(sym, sym)
             opts = driver.find_elements(
-                By.XPATH, f'//*[contains(@id,"option") and contains(normalize-space(),"{target}")]')
+                By.XPATH,
+                f'//*[contains(@id,"option") and '
+                f'(contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"{sym} ") or '
+                f'contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ")," {sym}(") or '
+                f'contains(normalize-space(),"{full_name}"))]'
+            )
             if opts:
                 opts[0].click()
             else:
-                combo.send_keys(Keys.RETURN)
+                # No matching option found — press Escape to close dropdown and raise
+                combo.send_keys(Keys.ESCAPE)
+                raise RuntimeError(
+                    f"AlphaTrader: contract '{sym}' not found in dropdown "
+                    f"(searched for '{sym}' / '{full_name}')"
+                )
             time.sleep(0.5)
+
+            # Confirm the switch succeeded
+            cur_els = driver.find_elements(By.CSS_SELECTOR, '[class*="singleValue"]')
+            if cur_els and sym not in cur_els[0].text.upper():
+                raise RuntimeError(
+                    f"AlphaTrader: contract switch to '{sym}' failed — "
+                    f"platform still shows '{cur_els[0].text}'"
+                )
 
             # Return to Order panel
             ob = driver.find_elements(By.XPATH, '//button[normalize-space()="Order"]')
             if ob:
                 ob[0].click()
             time.sleep(0.4)
+        except RuntimeError:
+            raise
         except Exception as e:
-            logger.warning("_switch_contract: %s", e)
+            raise RuntimeError(f"AlphaTrader: _switch_contract failed: {e}") from e
 
     def _set_qty(self, qty: int):
         driver = self._driver
