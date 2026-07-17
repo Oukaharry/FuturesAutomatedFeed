@@ -62,7 +62,7 @@ from dashboard.database import (
     get_m1_coverage_stats,
 )
 from dashboard.notes_service import (
-    get_client_notes, save_client_note, delete_client_note
+    get_client_notes, save_client_note, delete_client_note, notes_for_eval_row
 )
 from dashboard.utils.trade_matcher import UnifiedTradeMatcher
 
@@ -8911,8 +8911,9 @@ def get_data():
                 try:
                     notes = page_meta.get('notes') or {}
                     for i, ev in enumerate(data['evaluations']):
-                        if i in notes:
-                            ev['_notes'] = notes[i]
+                        row_notes = notes_for_eval_row(notes, i)
+                        if row_notes:
+                            ev['_notes'] = row_notes
                 except Exception as e:
                     logging.error(f"Error injecting notes: {e}")
 
@@ -9520,8 +9521,9 @@ def run_quality_scan(target_client=None):
             try:
                 notes = get_client_notes(client_name)
                 for i, ev in enumerate(evaluations):
-                    if i in notes:
-                        ev['_notes'] = notes[i]
+                    row_notes = notes_for_eval_row(notes, i)
+                    if row_notes:
+                        ev['_notes'] = row_notes
             except Exception:
                 pass
 
@@ -12692,6 +12694,11 @@ def update_note():
         if not client_id or row_index is None or not column_key:
             return jsonify({"status": "error", "message": "Missing required fields"}), 400
 
+        try:
+            row_index = int(row_index)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "Invalid row_index"}), 400
+
         # Ensure user has access
         if not can_access_client(user_type, user_identifier, client_id):
             log_action('ACCESS_DENIED', user_type, user_identifier, get_remote_address(), f"Note access denied: {client_id}", False)
@@ -12701,11 +12708,13 @@ def update_note():
             return jsonify({"status": "error", "message": "Read-only account"}), 403
 
         if content:
-            save_client_note(client_id, row_index, column_key, content, user_identifier)
+            if not save_client_note(client_id, row_index, column_key, content, user_identifier):
+                return jsonify({"status": "error", "message": "Failed to save note"}), 500
             action = 'UPDATE_NOTE'
         else:
             # Empty content means delete
-            delete_client_note(client_id, row_index, column_key)
+            if not delete_client_note(client_id, row_index, column_key):
+                return jsonify({"status": "error", "message": "Failed to delete note"}), 500
             action = 'DELETE_NOTE'
             
         log_action(action, user_type, user_identifier, get_remote_address(), f"Note on {client_id} row {row_index} col {column_key}", True)

@@ -4230,6 +4230,9 @@
                     }
 
                     const pendingNewRows = _collectPendingNewRows(currentData.evaluations);
+                    if (data.evaluations) {
+                        data.evaluations = _mergePendingPropProgressNotes(data.evaluations);
+                    }
                     currentData = data;
                     if (_pendingNewRowIds.size > 0 && currentData.evaluations) {
                         currentData.evaluations = _reappendPendingNewRows(currentData.evaluations, pendingNewRows);
@@ -5030,7 +5033,7 @@
                                     value="${displayValue}" 
                                     placeholder="-"
                                     onfocus="isEditing = true"
-                                    ${readOnly ? 'readonly' : `oninput="syncPropProgressInput(this, ${index}, '${propDayKey}')"`}
+                                    ${readOnly ? 'readonly' : `oninput="syncPropProgressInput(this, ${index}, '${propDayKey}')" onblur="updatePropProgress(this, ${index}, '${propDayKey}')"`}
                                     style="width:100%; height:100%; border:none; background:transparent; color:white; font-size:0.85em; ${readOnly ? 'cursor:not-allowed; opacity:0.6;' : ''}"
                                 >
                             </td>`;
@@ -5059,12 +5062,72 @@
                .then(data => {
                    if (data.status !== 'success') {
                        console.error('Failed to save progress note:', data.message);
+                       showSaveStatus('failed', data.message || 'Prop Progress save failed');
                    }
                    return data;
                }).catch(err => {
                    console.error('Error saving progress note:', err);
+                   showSaveStatus('failed', 'Prop Progress save failed');
                    throw err;
                });
+        }
+
+        function _parsePropProgressTimerKey(timerKey) {
+             const colon = timerKey.indexOf(':');
+             if (colon < 0) return null;
+             const index = parseInt(timerKey.slice(0, colon), 10);
+             const key = timerKey.slice(colon + 1);
+             if (!Number.isFinite(index) || !key) return null;
+             return { index, key };
+        }
+
+        /** Flush debounced Prop Progress saves (blur, refresh, tab close). */
+        function flushAllPropProgressNotes(useKeepalive = false) {
+             const pending = Object.keys(_propProgressSaveTimers);
+             if (!pending.length) return Promise.resolve();
+             const saves = [];
+             for (const timerKey of pending) {
+                 clearTimeout(_propProgressSaveTimers[timerKey]);
+                 delete _propProgressSaveTimers[timerKey];
+                 const parsed = _parsePropProgressTimerKey(timerKey);
+                 if (!parsed) continue;
+                 const { index, key } = parsed;
+                 const content = currentData.evaluations[index]?._notes?.[key] ?? '';
+                 if (useKeepalive && typeof fetch === 'function') {
+                     const clientId = "{{ client_id }}";
+                     fetch('/api/notes', {
+                         method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                         body: JSON.stringify({
+                             client_id: clientId,
+                             row_index: index,
+                             column_key: key,
+                             content: content
+                         }),
+                         keepalive: true
+                     });
+                 } else {
+                     saves.push(savePropProgressNote(index, key, content));
+                 }
+             }
+             return saves.length ? Promise.all(saves) : Promise.resolve();
+        }
+
+        function _mergePendingPropProgressNotes(serverEvals) {
+             if (!Array.isArray(serverEvals)) return serverEvals;
+             const pendingKeys = Object.keys(_propProgressSaveTimers);
+             if (!pendingKeys.length || !currentData.evaluations) return serverEvals;
+             const merged = serverEvals.map((row) => (row && typeof row === 'object' ? { ...row } : row));
+             for (const timerKey of pendingKeys) {
+                 const parsed = _parsePropProgressTimerKey(timerKey);
+                 if (!parsed) continue;
+                 const { index, key } = parsed;
+                 const localVal = currentData.evaluations[index]?._notes?.[key];
+                 if (localVal === undefined) continue;
+                 if (!merged[index] || typeof merged[index] !== 'object') continue;
+                 merged[index]._notes = { ...(merged[index]._notes || {}), [key]: localVal };
+             }
+             return merged;
         }
 
         function syncPropProgressInput(input, index, key) {
@@ -8962,6 +9025,10 @@
 
         // Initialize Dashboard
         updateDashboard();
+
+        // Flush in-flight Prop Progress debounced saves before the page unloads.
+        window.addEventListener('pagehide', () => { flushAllPropProgressNotes(true); });
+        window.addEventListener('beforeunload', () => { flushAllPropProgressNotes(true); });
         
         // Auto-refresh every 30s (silent mode: no spinner, preserves scroll/page)
         // Balances real-time updates with rate limiting (2000/hour default, 30s = 120/hour per tab).

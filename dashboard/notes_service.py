@@ -1,6 +1,28 @@
 from dashboard.database import get_connection
 import logging
 
+
+def _normalize_row_index(rid):
+    """Coerce DB/JSON row_index to int for stable dict keys."""
+    try:
+        return int(rid)
+    except (TypeError, ValueError):
+        return rid
+
+
+def notes_for_eval_row(notes, row_index):
+    """Look up injected notes for evaluation array index (int or legacy str keys)."""
+    if not notes:
+        return None
+    idx = _normalize_row_index(row_index)
+    if idx in notes:
+        return notes[idx]
+    sidx = str(idx)
+    if sidx in notes:
+        return notes[sidx]
+    return None
+
+
 def get_client_notes(client_id, _conn=None):
     """
     Returns a dictionary of notes for a client.
@@ -24,6 +46,7 @@ def get_client_notes(client_id, _conn=None):
                     rid = row[0]
                     col = row[1]
                     content = row[2]
+                rid = _normalize_row_index(rid)
                 if rid not in notes:
                     notes[rid] = {}
                 notes[rid][col] = content
@@ -43,6 +66,7 @@ def save_client_note(client_id, row_index, column_key, content, user):
     Saves or updates a note.
     """
     try:
+        row_index = _normalize_row_index(row_index)
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
@@ -64,6 +88,7 @@ def delete_client_note(client_id, row_index, column_key):
     Deletes a specific note.
     """
     try:
+        row_index = _normalize_row_index(row_index)
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
