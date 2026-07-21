@@ -1953,13 +1953,30 @@ def get_checklist_clients_for_date(date: str) -> set:
         return set()
 
 
+def summary_tracker_window_bounds(date: str):
+    """Return (start, end) for a summary tracker date key.
+
+    Bounds are naive Kenya (EAT) ISO strings matching ``submitted_at`` storage
+    (``datetime.now().isoformat()`` on the app server).  Tracker day *date* runs
+    02:05 EAT on *date* through 02:05 EAT the next calendar day.
+    """
+    from datetime import timedelta as _td
+    try:
+        day = datetime.strptime(date, '%Y-%m-%d')
+    except ValueError:
+        return None, None
+    start = day.strftime('%Y-%m-%d') + 'T02:05'
+    end = (day + _td(days=1)).strftime('%Y-%m-%d') + 'T02:05'
+    return start, end
+
+
 def get_summary_status_for_date(date: str) -> list:
     """Return all daily_summary checklist submissions for the given date.
     Merges data from daily_checklists table AND audit_log.
 
-    The 24-hour window runs from 23:05 UTC day-1 to 23:05 UTC day
-    (= 2:05 AM Kenyan → 2:05 AM Kenyan).  The `date` parameter is the
-    UTC date (server runs UTC).
+    The 24-hour window runs 02:05 EAT on ``date`` through 02:05 EAT the next day.
+    ``submitted_at`` is stored as naive local (Kenya) ISO timestamps.
+    The ``date`` parameter is the tracker date key.
     """
     results = {}  # normalized client_id -> {client_id, submitted_by, submitted_at}
 
@@ -1973,16 +1990,9 @@ def get_summary_status_for_date(date: str) -> list:
             except Exception:
                 return default
 
-    from datetime import timedelta as _td
-    try:
-        utc_date = datetime.strptime(date, '%Y-%m-%d')
-    except ValueError:
+    utc_start, utc_end = summary_tracker_window_bounds(date)
+    if not utc_start:
         return []
-
-    # Window: 23:05 UTC previous day → 23:05 UTC this day
-    # = 2:05 AM Kenyan day → 2:05 AM Kenyan day+1
-    utc_start = (utc_date - _td(days=1)).strftime('%Y-%m-%d') + 'T23:05'
-    utc_end = utc_date.strftime('%Y-%m-%d') + 'T23:05'
 
     try:
         # Build a set of valid client names to avoid mis-parsing audit_log details.
@@ -2029,7 +2039,7 @@ def get_summary_status_for_date(date: str) -> list:
                         'submitted_at': _row_value(row, 'submitted_at'),
                     }
 
-            # Source 2: audit_log — same 23:05→23:05 UTC window
+            # Source 2: audit_log — same EAT 02:05→02:05 window
             cursor.execute(
                 "SELECT user_identifier, details, timestamp FROM audit_log "
                 "WHERE action IN ('SLACK_DAILY_SUMMARY') "

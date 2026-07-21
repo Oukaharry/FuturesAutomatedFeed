@@ -173,19 +173,26 @@ def _build_daily_summary_text():
         _trader_ranking_health_metrics,
         _should_skip_daily_summary_tracking,
         _client_daily_summary_not_expected,
+        _summary_tracker_date_str,
+        _summary_tracker_display_date_str,
+        _quality_scan_date_for_summary,
         DAILY_SUMMARY_TRACKER_SKIP_MSG,
     )
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from config.hierarchy import SYSTEM_HIERARCHY
 
-    # UTC date — server runs UTC so at 23:05 UTC (2:05 AM Kenyan) the date
-    # is still the day we want.  It flips at midnight UTC = 3 AM Kenyan.
-    now = datetime.now()
-    date = now.strftime('%Y-%m-%d')
-    weekday = now.strftime('%A')
+    # Summary tracker day = 02:05 EAT boundary; quality scan may lag until morning run.
+    tracker_date = _summary_tracker_display_date_str()
+    scan_date = _quality_scan_date_for_summary(tracker_date)
+    date = tracker_date
+    try:
+        from dashboard.app import _kenya_now
+        weekday = _kenya_now().strftime('%A')
+    except Exception:
+        weekday = datetime.now().strftime('%A')
 
-    scan_results = get_quality_scan_results(date)
-    checklists = get_daily_checklists(date)
+    scan_results = get_quality_scan_results(scan_date)
+    checklists = get_daily_checklists(tracker_date)
     scan_by_client = {
         r.get('client_id'): r for r in (scan_results or []) if r.get('client_id')
     }
@@ -477,7 +484,7 @@ def _build_daily_summary_text():
         tracker_incomplete.sort(key=lambda x: x[0])
         total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
-        lines.append("📬 *DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)*")
+        lines.append("📬 *DAILY SUMMARY SUBMISSION BY 2:05 AM (KENYAN TIME)*")
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
         if _should_skip_daily_summary_tracking(_eat_now):
