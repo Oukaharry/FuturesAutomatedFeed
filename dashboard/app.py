@@ -96,6 +96,61 @@ def _kenya_today_str():
     return _kenya_now().strftime('%Y-%m-%d')
 
 
+# Daily summary submission windows run 02:05 EAT → 02:05 EAT (see get_summary_status_for_date).
+_SUMMARY_TRACKER_ROLLOVER_MINUTES = 2 * 60 + 5
+# Evening batch typically starts ~18:00 EAT; before that, show prior night if today empty.
+_SUMMARY_TRACKER_EVENING_START_HOUR = 18
+
+
+def _summary_tracker_date_str(eat_dt=None):
+    """Rollover tracker date key (02:05 EAT boundary, not calendar midnight)."""
+    if eat_dt is None:
+        eat_dt = _kenya_now()
+    d = eat_dt.date()
+    if eat_dt.hour * 60 + eat_dt.minute < _SUMMARY_TRACKER_ROLLOVER_MINUTES:
+        d = d - timedelta(days=1)
+    return d.strftime('%Y-%m-%d')
+
+
+def _summary_tracker_display_date_str(eat_dt=None):
+    """Tracker date shown on dashboards / Slack until tonight's batch starts.
+
+    Traders send ~18:00–21:00 EAT.  After the 02:05 rollover the new window is
+    empty until that evening — keep showing last night's completed batch.
+    """
+    from dashboard.database import get_summary_status_for_date
+
+    eat_dt = eat_dt or _kenya_now()
+    current = _summary_tracker_date_str(eat_dt)
+    if get_summary_status_for_date(current):
+        return current
+    if eat_dt.hour >= _SUMMARY_TRACKER_EVENING_START_HOUR:
+        return current
+    try:
+        prev = (datetime.strptime(current, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+    except ValueError:
+        return current
+    if get_summary_status_for_date(prev):
+        return prev
+    return current
+
+
+def _quality_scan_date_for_summary(tracker_date=None):
+    """Scan date to pair with a summary tracker day (fallback to prior day before morning scan)."""
+    from dashboard.database import get_quality_scan_results
+
+    tracker_date = tracker_date or _summary_tracker_date_str()
+    if get_quality_scan_results(tracker_date):
+        return tracker_date
+    try:
+        prev = (datetime.strptime(tracker_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
+    except ValueError:
+        return tracker_date
+    if get_quality_scan_results(prev):
+        return prev
+    return tracker_date
+
+
 def _issues_for_trader_client_quality_views(issues):
     skip = _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS | {'Scan error'}
     return [i for i in (issues or []) if i.get('check') not in skip]
@@ -11099,7 +11154,7 @@ def api_admin_tracker():
             admin_name = (session_user.get('user_identifier') or '').strip()
         if not admin_name:
             return jsonify({'status': 'error', 'message': 'Admin name required'}), 400
-        date = request.args.get('date', _kenya_today_str())
+        date = request.args.get('date', _summary_tracker_display_date_str())
 
         payload = compute_admin_tracker_payload(admin_name, date)
         return jsonify({'status': 'success', **payload})
@@ -11122,7 +11177,7 @@ def api_quality_admin_tracker():
             if a:
                 admins.add(a)
         admin = (request.args.get('admin') or '').strip()
-        date = request.args.get('date', _kenya_today_str())
+        date = request.args.get('date', _summary_tracker_display_date_str())
 
         # Reuse the existing admin tracker endpoint logic by calling the local view function's helper through a request-style call:
         # We simply invoke /api/admin/tracker-style computation by issuing internal HTTP is overkill; instead, we call api_admin_tracker
@@ -11207,12 +11262,13 @@ def api_summary_status():
     from dashboard.database import get_summary_status_for_date, get_setting, get_client_data
     import json as _json
 
-    # Use UTC date as default — server runs UTC, so midnight UTC = 3 AM Kenyan.
-    # This means the tracker naturally flips ~55 min after the 2:05 AM Slack send.
+    # Tracker day runs 02:05 EAT → 02:05 EAT (not calendar midnight).
     from datetime import timezone, timedelta as _td
+    from dashboard.database import summary_tracker_window_bounds
     _kenyan_tz = timezone(_td(hours=3))
-    date = request.args.get('date', _kenya_today_str())
+    date = request.args.get('date', _summary_tracker_display_date_str())
     submissions = get_summary_status_for_date(date)
+    utc_start, utc_end = summary_tracker_window_bounds(date)
 
     # Convert timestamps from UTC to Kenyan time (UTC+3)
     for s in submissions:
@@ -11230,13 +11286,12 @@ def api_summary_status():
     all_clients = hierarchy_get_all_clients()
 
     from dashboard.database import get_quality_scan_results
+    quality_scan_date = _quality_scan_date_for_summary(date)
     scan_by_client = {
         r.get('client_id'): r
-        for r in (get_quality_scan_results(date) or [])
+        for r in (get_quality_scan_results(quality_scan_date) or [])
         if r.get('client_id')
     }
-
-    # Load exclusion settings
     excluded_traders = set(_json.loads(get_setting('summary_tracker_excluded_traders') or '[]'))
     excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
 
@@ -11331,6 +11386,10 @@ def api_summary_status():
         row['clearance_rank'] = idx
     return jsonify({
         'status': 'success', 'date': date,
+        'kenya_calendar_date': _kenya_today_str(),
+        'tracker_rollover_date': _summary_tracker_date_str(),
+        'scan_date': quality_scan_date,
+        'tracker_window_utc': {'start': utc_start, 'end': utc_end},
         'total_clients': tracked_count, 'total_sent': total_sent,
         'total_not_sent': tracked_count - total_sent,
         'excluded_traders': sorted(excluded_traders),
@@ -11491,7 +11550,7 @@ def api_trader_summary_status():
         if err is not None:
             return err
 
-        date = request.args.get('date', _kenya_today_str())
+        date = request.args.get('date', _summary_tracker_display_date_str())
         submissions = get_summary_status_for_date(date) or []
 
         _kenyan_tz = timezone(_td(hours=3))
@@ -11512,9 +11571,10 @@ def api_trader_summary_status():
         excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
 
         from dashboard.database import get_quality_scan_results
+        scan_date = _quality_scan_date_for_summary(date)
         scan_by_client = {
             r.get('client_id'): r
-            for r in (get_quality_scan_results(date) or [])
+            for r in (get_quality_scan_results(scan_date) or [])
             if r.get('client_id')
         }
 
@@ -11736,7 +11796,7 @@ def api_submit_checklist():
     if not items:
         return jsonify({'status': 'error', 'message': 'No items provided'}), 400
 
-    today = _kenya_today_str()
+    today = _summary_tracker_date_str() if checklist_type == 'daily_summary' else _kenya_today_str()
     save_daily_checklist(today, user_identifier, user_type, checklist_type, items,
                          get_remote_address(), client_id=client_id)
 
@@ -11764,7 +11824,7 @@ def api_checklist_status():
     user_identifier = session_user.get('user_identifier')
     user_type = session_user.get('user_type')
 
-    date = request.args.get('date', _kenya_today_str())
+    date = request.args.get('date', _summary_tracker_display_date_str())
     client_id = request.args.get('client_id', '')
 
     if user_type in ('super_admin', 'bef_admin'):
@@ -11806,13 +11866,13 @@ def api_admin_summary_signoff():
     if not effective_admin:
         return jsonify({'status': 'error', 'message': 'Admin name required'}), 400
     if not date:
-        date = datetime.now().strftime('%Y-%m-%d')
+        date = _summary_tracker_date_str()
     else:
         # Defensive: if invalid format, fall back to server date
         try:
             datetime.strptime(date, '%Y-%m-%d')
         except Exception:
-            date = datetime.now().strftime('%Y-%m-%d')
+            date = _summary_tracker_date_str()
 
     # Once an admin signs off "checked", keep it locked and read-only (cannot be unticked).
     already_signed = False
@@ -11959,11 +12019,12 @@ def api_daily_summary():
     from config.hierarchy import get_all_clients, get_client_profile
     from config.hierarchy import SYSTEM_HIERARCHY
 
-    # UTC date — server runs UTC; midnight UTC = 3 AM Kenyan, so the day
-    # flips after the automated 2:05 AM Kenyan Slack send.
-    date = request.args.get('date', _kenya_today_str())
-    scan_results = get_quality_scan_results(date)
-    checklists = get_daily_checklists(date)
+    # Tracker date for submissions/checklists; quality scan may still be prior morning's run.
+    tracker_date = request.args.get('date', _summary_tracker_display_date_str())
+    scan_date = _quality_scan_date_for_summary(tracker_date)
+    date = tracker_date
+    scan_results = get_quality_scan_results(scan_date)
+    checklists = get_daily_checklists(tracker_date)
 
     # Apply Daily Summary Tracker exclusions to the generated report as well
     # (so preview matches what the Slack bot posts).
@@ -12115,7 +12176,7 @@ def api_daily_summary():
         from dashboard.database import get_quality_scan_results
         scan_by_client = {
             r.get('client_id'): r
-            for r in (get_quality_scan_results(date) or [])
+            for r in (get_quality_scan_results(_quality_scan_date_for_summary(date)) or [])
             if r.get('client_id')
         }
 
@@ -12175,7 +12236,7 @@ def api_daily_summary():
         tracker_incomplete.sort(key=lambda x: x[0])
         total_sent_summary = sum(x[1] for x in tracker_complete) + sum(x[1] for x in tracker_incomplete)
 
-        lines.append("📬 **DAILY SUMMARY SUBMISSION BY MIDNIGHT (KENYAN TIME)**")
+        lines.append("📬 **DAILY SUMMARY SUBMISSION BY 2:05 AM (KENYAN TIME)**")
         from datetime import timezone as _tz2, timedelta as _td2
         _eat_now = datetime.now(_tz2(_td2(hours=3)))
         if _should_skip_daily_summary_tracking(_eat_now):
@@ -12451,7 +12512,7 @@ def api_send_checklist_slack():
         if ok:
             quality_rescan = None
             if client_id:
-                today = _kenya_today_str()
+                today = _summary_tracker_date_str()
                 # Do not replace a full daily_summary payload: the quality scan reads
                 # checklist items (e.g. payout_requests). Slack used to overwrite the row
                 # with only slack_sent, which wiped section 4 and broke payout-eligible QA.
