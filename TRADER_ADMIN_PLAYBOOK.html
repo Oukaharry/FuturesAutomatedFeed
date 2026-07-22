@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trader &amp; Admin Playbook — Quality Issues</title>
+  <style>
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #fbbf24;
+  --border: #334155;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.55;
+  font-size: 15px;
+}
+.wrap { max-width: 820px; margin: 0 auto; padding: 32px 20px 64px; }
+h1 { font-size: 1.75rem; margin: 0 0 8px; color: #fff; }
+h2 { font-size: 1.12rem; margin: 0 0 12px; color: #f8fafc; line-height: 1.35; }
+h3 { font-size: 1rem; margin: 20px 0 8px; color: var(--accent); }
+p { margin: 8px 0; }
+p.meta { color: var(--muted); font-size: 0.95rem; }
+hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+ul, ol { margin: 8px 0 8px 1.2rem; padding: 0; }
+li { margin: 4px 0; }
+code { background: #0b1220; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+strong { color: #fff; }
+.issue-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 16px 0;
+}
+.issue-num { color: var(--accent); font-weight: 700; margin-right: 4px; }
+@media print {
+  body { background: #fff; color: #111; }
+  .issue-card { break-inside: avoid; border-color: #ccc; background: #f8fafc; }
+  strong { color: #000; }
+}
+</style>
+</head>
+<body>
+  <div class="wrap">
+<h1>Most recurring issues — how to clear them fast</h1>
+<p>Ranked by how often they showed up last week (Jul 10–13).</p>
+<p>Teach this order: <strong>fix the ones that keep coming back first.</strong></p>
+<hr>
+<section class="issue-card" id="issue-1">
+<h2><span class="issue-num">1.</span> Negative Hedge Net, no note — <strong>80×</strong></h2>
+<p><strong>What it means:</strong> Hedge Net is negative and the sheet has no explanation.</p>
+<p><strong>Fix (pick one):</strong></p>
+<ol>
+<li>Fix the Hedge Net number (make it ≥ 0 if the number was wrong), <strong>or</strong></li>
+<li>Add a <strong>cell note</strong> on <em>any</em> cell on that row, <strong>or</strong> type in the <strong>Notes</strong> column.</li>
+</ol>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>You’re typing in a hedge cell as normal text — that is <strong>not</strong> a note. Open the <strong>cell note</strong> (comment), don’t just overwrite the number with words.</li>
+<li>Or you only fixed yesterday’s row and a <strong>different row</strong> is still negative.</li>
+<li>After ~Apr 29 purchase dates, this flips to <strong>Negative Hedge Net-QA</strong> — notes stop working (see #6).</li>
+</ul>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-2">
+<h2><span class="issue-num">2.</span> Phase 1: missing Date Ended — <strong>51×</strong></h2>
+<p><strong>What it means:</strong> Status P1 is <code>pass</code> or <code>fail</code>, but <strong>Date Ended</strong> (phase 1) is empty.</p>
+<p><strong>Fix:</strong> Fill <strong>Date Ended</strong> on that row (eval / phase 1 date column — not the funded <code>.1</code> date).</p>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>You’re filling <strong>Date Ended.1</strong> (funded) instead of phase 1 <strong>Date Ended</strong>.</li>
+<li>Or Status P1 still says pass/fail while you meant <code>not started</code> / still running — then change status, don’t only add dates.</li>
+</ul>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-3">
+<h2><span class="issue-num">3.</span> Daily summary: payouts eligible ≥1-QA — <strong>50×</strong></h2>
+<p><strong>What it means:</strong> In today’s daily summary, payouts-eligible count is ≥ 1. Needs a human QA check (not a sheet typo fix).</p>
+<p><strong>Fix:</strong></p>
+<ul>
+<li>Trader: in Daily Summaries, make sure section 4 (payouts) is <strong>true</strong> — don’t mark eligible if they aren’t.</li>
+<li>Admin: spot-check; don’t “resolve” this yourself.</li>
+<li>Super admin: clear it in the QA queue after review.</li>
+</ul>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>Someone is marking “eligible” on the summary every day even when nothing is due.</li>
+<li>Or the real payout is fine and QA was never cleared — escalate, don’t keep editing the sheet.</li>
+</ul>
+<p><strong>Who:</strong> Trader (accuracy) → Super admin (resolve)</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-4">
+<h2><span class="issue-num">4.</span> Downtime detected — <strong>22×</strong></h2>
+<p><strong>What it means:</strong> A hedge/day cell still has a <strong>weekday that isn’t allowed for today</strong> (Kenya time). Usually yesterday’s <code>mon</code>/<code>tue</code> left sitting there.</p>
+<p><strong>Fix:</strong> In <strong>Hedge Result / Hedge Day / Prop Day</strong>:</p>
+<ul>
+<li>Put <strong>today’s</strong> weekday (mon–fri), <strong>or</strong></li>
+<li>Clear the old weekday, <strong>or</strong></li>
+<li>Put a <strong>cell note on that same day/result column</strong> explaining downtime.</li>
+</ul>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>You updated Status or Notes column — <strong>wrong place</strong>. The marker lives in the <strong>day/result cells</strong>.</li>
+<li>You fixed one client and the same stale weekday is on <strong>another row</strong>.</li>
+<li>It reappears right after you Send to Slack — that’s normal; fix the leftover weekday then Refresh Issues.</li>
+</ul>
+<p><strong>Who:</strong> Trader (Admin sees it on their tracker too)</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-5">
+<h2><span class="issue-num">5.</span> No current day value — <strong>21×</strong></h2>
+<p><strong>What it means:</strong> Row is active, but none of the day/result columns show today’s weekday <strong>and</strong> there’s no note on those columns.</p>
+<p><strong>Fix:</strong> On <strong>Hedge Result / Hedge Day / Prop Day / Prop Progress</strong>, put today’s weekday <strong>or</strong> a cell note on that column.</p>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>Note is on Status / Fee / random cell — <strong>doesn’t count</strong>. Note must be on a <strong>day/result</strong> column.</li>
+<li>Status P1 is filled so the check runs — if the account isn’t trading, mark status inactive properly (fail/breach/closed/sl) instead of leaving it “active looking.”</li>
+</ul>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-6">
+<h2><span class="issue-num">6.</span> Negative Hedge Net-QA — <strong>20×</strong></h2>
+<p><strong>What it means:</strong> Hedge Net &amp;lt; 0 on a newer purchase (from ~Apr 29). <strong>This is QA-locked.</strong></p>
+<p><strong>Fix:</strong></p>
+<ol>
+<li>Correct Hedge Net if it’s wrong, <strong>or</strong></li>
+<li>Ask <strong>super admin / BEF</strong> to QA-resolve after they review.</li>
+</ol>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>You’re adding notes — <strong>notes do nothing here</strong> (unlike #1).</li>
+<li>You’re treating it like “Negative Hedge Net, no note.” Different rule.</li>
+</ul>
+<p><strong>Who:</strong> Trader + Super/BEF</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-7">
+<h2><span class="issue-num">7.</span> Missing Date Purchased — <strong>18×</strong></h2>
+<p><strong>What it means:</strong> New row still in “strict” mode with no <strong>Date Purchased</strong>.</p>
+<p><strong>Fix:</strong> Fill <strong>Date Purchased</strong>.</p>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>You’re filling Date Started instead of Date Purchased.</li>
+<li>Or you added hedge numbers so it’s no longer “new” — then other date flags may appear; still fill Date Purchased when you create the row.</li>
+</ul>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-8">
+<h2><span class="issue-num">8.</span> Funded phase: missing Date Started — <strong>16×</strong></h2>
+<p><strong>What it means:</strong> Funded <strong>Status</strong> starts with <code>pass</code> or <code>fail</code>, but <strong>Date Started.1</strong> is empty.</p>
+<p><strong>Fix:</strong> Fill <strong>Date Started.1</strong> (funded start — the <code>.1</code> column).</p>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>You’re filling phase 1 <strong>Date Started</strong> (no <code>.1</code>) — wrong column.</li>
+<li>Funded Status still says pass/fail when the account never really started funded — fix Status, not only dates.</li>
+</ul>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-9">
+<h2><span class="issue-num">9.</span> New row: Status P1 not started — <strong>15×</strong></h2>
+<p><strong>What it means:</strong> Brand-new row with a fee, but Status P1 is something other than exactly <code>not started</code> (and no weekday hedge yet).</p>
+<p><strong>Fix:</strong> Set Status P1 to <strong><code>not started</code></strong> until they actually hedge.</p>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>You’re typing <code>Not Started</code>, <code>pending</code>, <code>new</code> — it must match <strong><code>not started</code></strong> (that exact idea the sheet expects).</li>
+<li>Or you already put hedge numbers — then exit “new row” properly and use real status (pass / in progress / etc.).</li>
+</ul>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-10">
+<h2><span class="issue-num">10.</span> No evaluations — <strong>14×</strong></h2>
+<p><strong>What it means:</strong> Client exists but the evaluations table is empty.</p>
+<p><strong>Fix:</strong> Add at least one evaluation row (prop firm + size, etc.).</p>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>Client was wiped / never saved. Open sheet, add row, <strong>Save</strong>.</li>
+<li>Inactive clients shouldn’t be worked — mark inactive in profile if they’re done.</li>
+</ul>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-11">
+<h2><span class="issue-num">11.</span> Funded phase: missing Date Ended — <strong>13×</strong></h2>
+<p><strong>Same family as #8.</strong> Funded Status is pass/fail but <strong>Date Ended.1</strong> empty.</p>
+<p><strong>Fix:</strong> Fill <strong>Date Ended.1</strong>.</p>
+<p><strong>If it keeps coming back:</strong> Filling phase 1 Date Ended instead of <strong>Date Ended.1</strong>.</p>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-12">
+<h2><span class="issue-num">12.</span> Phase 1: missing Date Started — <strong>11×</strong></h2>
+<p><strong>What it means:</strong> Status P1 needs a start date and <strong>Date Started</strong> (phase 1) is empty.</p>
+<p><strong>Fix:</strong> Fill phase 1 <strong>Date Started</strong> (not <code>.1</code>).</p>
+<p><strong>If it keeps coming back:</strong> Filling <strong>Date Started.1</strong> by mistake.</p>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-13">
+<h2><span class="issue-num">13.</span> Empty Fee — <strong>9×</strong></h2>
+<p><strong>What it means:</strong> Fee is blank/0 and there’s no override on the Fee cell.</p>
+<p><strong>Fix (pick one):</strong></p>
+<ol>
+<li>Enter the real Fee (&amp;gt; 0), <strong>or</strong></li>
+<li>Add a <strong>cell note on the Fee cell</strong> (not Status, not Notes column only), <strong>or</strong></li>
+<li>MFF/TopStep double-dip: fill <strong>Activation Fee</strong> so empty challenge fee is allowed.</li>
+</ol>
+<p><strong>If it keeps coming back:</strong></p>
+<ul>
+<li>Note is on Status P1 or Notes column — <strong>wrong</strong>. For Empty Fee it must be a <strong>note on the Fee cell</strong>.</li>
+<li>You’re zeroing Fee every day “temporarily.”</li>
+</ul>
+<p><strong>Who:</strong> Trader (Admin sees under challenge fees)</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-14">
+<h2><span class="issue-num">14.</span> Status blank — <strong>4×</strong></h2>
+<p><strong>Fix:</strong> Fill <strong>Status P1</strong>.</p>
+<p><strong>If it keeps coming back:</strong> Saving without Status on new rows; or clearing Status when editing fees.</p>
+<p><strong>Who:</strong> Trader</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-15">
+<h2><span class="issue-num">15.</span> No data — <strong>3×</strong></h2>
+<p><strong>Fix:</strong> Client has no saved sheet — create/sync data before anything else.</p>
+<p><strong>Who:</strong> Trader / escalate if client won’t load</p>
+</section>
+<hr>
+<section class="issue-card" id="issue-16">
+<h2><span class="issue-num">16.</span> Alpha Futures: missing Activation Fee — <strong>2×</strong></h2>
+<p><strong>Fix:</strong> Fill <strong>Activation Fee</strong> once they’ve funded and have funded hedge activity.</p>
+<p><strong>If it keeps coming back:</strong> Filling regular Fee but leaving Activation Fee empty.</p>
+<p><strong>Who:</strong> Trader (Admin: challenge fees)</p>
+</section>
+<hr>
+<h2>Also teach: Not Started but hedge values present</h2>
+<p><strong>Fix:</strong> Change status to match hedges, <strong>or</strong> type <strong><code>see note</code></strong> in a Hedge Result cell, <strong>or</strong> any cell note / Notes column.</p>
+<p><strong>If it keeps coming back:</strong> Writing explanation only in Status — need <code>see note</code> in hedge cell or a real cell note.</p>
+<hr>
+<h1>Admin-only patterns (teach these too)</h1>
+<h3>Challenge fees (Empty Fee / Empty Activation / Alpha)</h3>
+<p>Same fixes as above. Admin opens client from <strong>Admin-owned Issues</strong> and nudges or fills.</p>
+<h3>Max-out (too many / too few active accounts per firm)</h3>
+<p><strong>Over limit:</strong> put a <strong>cell note on Status P1 only</strong> on each extra row.</p>
+<p><strong>If it keeps coming back:</strong> note is on Fee, Hedge, or Notes column — <strong>doesn’t count</strong>. Status P1 only.</p>
+<h3>Summary sign-off</h3>
+<p>After trader Sends to Slack → Admin tab <strong>Daily Summaries — Sign-off</strong> → check sent to client.</p>
+<p><strong>Can’t untick.</strong> If badge stuck: trader never sent Slack for that client.</p>
+<hr>
+<h1>60-second trader loop</h1>
+<ol>
+<li>Trader home → <strong>Issues</strong> → Refresh</li>
+<li>Open top clients → Issues → <strong>Go To</strong></li>
+<li>Fix using the cards above (watch <strong>which column</strong> and <strong>note vs typed text</strong>)</li>
+<li>Daily Summaries FAB → Submit → <strong>Send to Slack</strong></li>
+<li>Issues again until clear</li>
+</ol>
+<h1>60-second admin loop</h1>
+<ol>
+<li>Admin home → <strong>Admin-owned Issues</strong> (fees / downtime / max-out)</li>
+<li>Open client → fix or ping trader</li>
+<li><strong>Sign-off</strong> tab after traders send summaries</li>
+</ol>
+<hr>
+<p class="meta">Refresh counts: <code>python scripts/_issue_priority_report.py</code></p>
+  </div>
+</body>
+</html>
