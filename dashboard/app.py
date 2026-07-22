@@ -4483,29 +4483,9 @@ def get_filtered_hierarchy(user_type, user_identifier):
     
     return {'admins': {}}
 
-@app.route('/api/hierarchy')
-def get_hierarchy():
-    """Returns hierarchy filtered by user's role."""
-    session_token = request.cookies.get('session_token')
-    
-    if not session_token:
-        # Check for simple API key header for scripts
-        api_key = request.headers.get('X-API-Key')
-        if not api_key:
-             return jsonify({"status": "error", "message": "Authentication required"}), 401
-    
-    user_type = 'super_admin' # Fallback for trusted scripts
-    user_identifier = 'baller'
-    
-    if session_token:
-        session_info = validate_session(session_token)
-        if not session_info:
-            return jsonify({"status": "error", "message": "Invalid session"}), 401
-        
-        user_type = session_info.get('user_type')
-        user_identifier = session_info.get('user_identifier')
-    
-    # Reload hierarchy to get latest changes from file
+
+def _build_hierarchy_api_payload(user_type, user_identifier):
+    """Build enriched hierarchy JSON (shared cache target for /api/hierarchy)."""
     from config.hierarchy import reload_hierarchy
     reload_hierarchy()
     global _kyc_hierarchy_sync_at
@@ -4513,10 +4493,9 @@ def get_hierarchy():
         if sync_kyc_links_into_hierarchy():
             reload_hierarchy()
         _kyc_hierarchy_sync_at = time.time()
-    
+
     filtered = get_filtered_hierarchy(user_type, user_identifier)
-    
-    # Enrich client objects with active_status — single bulk query instead of N+1
+
     from dashboard.database import get_all_client_identities
     import copy
     all_identities = get_all_client_identities()
@@ -4534,20 +4513,20 @@ def get_hierarchy():
                 cname = client.get('name', '')
                 identity = all_identities.get(cname, {})
                 client['active_status'] = identity.get('active_status', 'active')
-                # Default split % is always 50; per-period overrides live in split_pct_overrides.
-                # Ignore any legacy identity.split_pct that may have been populated from sheet imports.
                 client['split_pct'] = 50
-                # Hierarchy email is the source of truth (preserves original case).
-                # Only fall back to DB identity email if hierarchy has none.
                 if not client.get('email'):
                     client['email'] = identity.get('email', '')
-    # Debug logging for empty hierarchy results
+
     if not enriched.get('admins') or all(
         not admin_data.get('traders', {}) for admin_data in enriched.get('admins', {}).values()
     ):
-        logging.warning(f"[HIERARCHY] Empty result for user_type={user_type} user_identifier='{user_identifier}' — available trader keys: {[t for a in hierarchy.get('admins', {}).values() for t in a.get('traders', {}).keys()]}")
-    
-    # Shuffle client order daily so traders start with different clients each day
+        logging.warning(
+            "[HIERARCHY] Empty result for user_type=%s user_identifier='%s' — available trader keys: %s",
+            user_type,
+            user_identifier,
+            [t for a in hierarchy.get('admins', {}).values() for t in a.get('traders', {}).keys()],
+        )
+
     import random
     from datetime import date as _date_cls
     today_seed = _date_cls.today().toordinal()
@@ -4555,39 +4534,47 @@ def get_hierarchy():
         for trader_name, trader_data in admin_data.get('traders', {}).items():
             clients = trader_data.get('clients', [])
             if len(clients) > 1:
-                # Seed with today's date + trader name for per-trader unique order
                 rng = random.Random(today_seed + hash(trader_name))
                 rng.shuffle(clients)
-    
+
+    return enriched
+
+
+@app.route('/api/hierarchy')
+def get_hierarchy():
+    """Returns hierarchy filtered by user's role."""
+    session_token = request.cookies.get('session_token')
+
+    if not session_token:
+        api_key = request.headers.get('X-API-Key')
+        if not api_key:
+             return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    user_type = 'super_admin'
+    user_identifier = 'baller'
+
+    if session_token:
+        session_info = validate_session(session_token)
+        if not session_info:
+            return jsonify({"status": "error", "message": "Invalid session"}), 401
+
+        user_type = session_info.get('user_type')
+        user_identifier = session_info.get('user_identifier')
+
+    from dashboard.shared_cache import get_or_compute, HIERARCHY_CACHE_TTL
+
+    cache_key = f"hierarchy:{user_type}:{user_identifier}"
+    enriched = get_or_compute(
+        cache_key,
+        HIERARCHY_CACHE_TTL,
+        lambda: _build_hierarchy_api_payload(user_type, user_identifier),
+    )
     return jsonify(enriched)
 
 from dashboard.financial_overview import calculate_all_financials
 
-@app.route('/api/super_admin/totals')
-def get_super_admin_totals():
-    """Get aggregated totals across all clients for super admin dashboard."""
-    session_token = request.cookies.get('session_token')
-    
-    if not session_token:
-        return jsonify({"status": "error", "message": "Authentication required"}), 401
-    
-    # Check session
-    # ... (auth check logic is fine, keeping it implicitly via context if needed or re-implementing if I replace the whole function body)
-    # The snippet below replaces the body.
-    
-    session_info = validate_session(session_token)
-    if not session_info or session_info.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
-        return jsonify({"status": "error", "message": "Admin access required"}), 403
-    
-    profile_filter = request.args.get('profile', 'ALL').upper()
-    
-    # BEF admin always sees only BEF profile data
-    if session_info.get('user_type') == 'bef_admin':
-        profile_filter = 'BEF'
-    if session_info.get('user_type') == 'kwok_admin':
-        profile_filter = 'ALL'
 
-    # Derive ALL totals from per-client stats (fast — uses precomputed cashflow_inprogress)
+def _build_super_admin_totals_payload(profile_filter, user_type):
     clients = get_client_performance_stats(profile_filter)
     excluded_sa = _get_super_admin_stats_excluded_set()
     clients = [c for c in clients if str(c.get('client_id') or '').strip() not in excluded_sa]
@@ -4607,7 +4594,7 @@ def get_super_admin_totals():
     ev = t_net / t_ended if t_ended > 0 else 0.0
     ev_day = t_net / t_duration if t_duration > 0 else 0.0
 
-    response_data = {
+    return {
         "status": "success",
         "totals": {
             "total_payouts": round(t_pay, 2),
@@ -4620,11 +4607,40 @@ def get_super_admin_totals():
             "total_hedge": round(t_hedge, 2),
             "total_farming": round(t_farming, 2),
             "expected_value": round(ev, 2),
-            "ev_per_day": round(ev_day, 2)
+            "ev_per_day": round(ev_day, 2),
         },
-        "clients": clients
+        "clients": clients,
     }
 
+
+@app.route('/api/super_admin/totals')
+def get_super_admin_totals():
+    """Get aggregated totals across all clients for super admin dashboard."""
+    session_token = request.cookies.get('session_token')
+
+    if not session_token:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+    session_info = validate_session(session_token)
+    if not session_info or session_info.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
+
+    profile_filter = request.args.get('profile', 'ALL').upper()
+    user_type = session_info.get('user_type')
+
+    if user_type == 'bef_admin':
+        profile_filter = 'BEF'
+    if user_type == 'kwok_admin':
+        profile_filter = 'ALL'
+
+    from dashboard.shared_cache import get_or_compute, SUPER_ADMIN_TOTALS_CACHE_TTL
+
+    cache_key = f"super_admin_totals:{user_type}:{profile_filter}"
+    response_data = get_or_compute(
+        cache_key,
+        SUPER_ADMIN_TOTALS_CACHE_TTL,
+        lambda: _build_super_admin_totals_payload(profile_filter, user_type),
+    )
     return jsonify(response_data)
 
 @app.route('/api/super_admin/profit_splits')

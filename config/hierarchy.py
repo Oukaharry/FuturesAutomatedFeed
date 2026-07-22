@@ -127,6 +127,12 @@ def save_hierarchy(hierarchy_data):
         SYSTEM_HIERARCHY.clear()
         SYSTEM_HIERARCHY.update(hierarchy_data)
 
+    try:
+        from dashboard.shared_cache import invalidate_prefix
+        invalidate_prefix('hierarchy:')
+    except Exception:
+        pass
+
 def reassign_client_trader(client_name, admin_name, new_trader):
     """
     Reassign a client to a trader under target admin (may differ from current admin).
