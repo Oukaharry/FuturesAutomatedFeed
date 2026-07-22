@@ -54,6 +54,12 @@ local-before-restore.dump
 *.sqlite3
 dashboard/dashboard.db
 
+# Downloaded production logs (may contain client/request data)
+prod_logs/
+
+# Local investigation exports (client data, one-off reports)
+exports/
+
 # Editor / agent state (machine-specific)
 .claude/
 .vscode/

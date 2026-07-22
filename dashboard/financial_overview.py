@@ -50,6 +50,11 @@ _overview_cache = SimpleCache(max_keys=50)
 def clear_financial_overview_cache():
     """Invalidate cached financial overview results (e.g. after Super Admin stats exclusion saves)."""
     _overview_cache.clear()
+    try:
+        from dashboard.shared_cache import invalidate_prefix
+        invalidate_prefix('super_admin_totals:')
+    except Exception:
+        pass
 
 def col_idx_to_letter(n):
     """
@@ -286,7 +291,7 @@ def _hedge_farming_for_period(ev, start_date=None, end_date=None,
 
 def clear_financial_cache():
     """Invalidate the financial overview cache."""
-    _overview_cache.clear()
+    clear_financial_overview_cache()
 
 
 def _portfolio_hedge_mt5_adjustment_vs_sheet_columns(
