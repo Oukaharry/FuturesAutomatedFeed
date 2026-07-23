@@ -6480,12 +6480,17 @@ class TradeOpssAIApp:
 
         def _do_load():
             try:
-                r = requests.post(
-                    f"{dashboard_url}/api/client/data",
-                    json={"email": email},
-                    headers={"Content-Type": "application/json"},
-                    timeout=15
-                )
+                r = None
+                for attempt in range(3):
+                    r = requests.post(
+                        f"{dashboard_url}/api/client/data",
+                        json={"email": email},
+                        headers={"Content-Type": "application/json"},
+                        timeout=15
+                    )
+                    if r.status_code != 429:
+                        break
+                    time.sleep(3 if attempt == 0 else 5)
                 if r.status_code != 200:
                     msg = "Unknown error"
                     try:

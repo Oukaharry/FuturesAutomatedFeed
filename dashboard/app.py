@@ -5372,7 +5372,7 @@ def api_list_emails():
 # ============ PUBLIC CLIENT API (No API Key Required) ============
 
 @app.route('/api/client/auth', methods=['POST'])
-@limiter.limit("30 per minute")
+@limiter.limit("120 per minute")
 def api_client_auth():
     """
     Public endpoint - authenticate client by email only.
@@ -5428,7 +5428,7 @@ def api_client_auth():
 
 
 @app.route('/api/client/data', methods=['POST'])
-@limiter.limit("30 per minute")
+@limiter.limit("120 per minute")
 def api_client_data():
     """
     Public endpoint - fetch client evaluations by email.
