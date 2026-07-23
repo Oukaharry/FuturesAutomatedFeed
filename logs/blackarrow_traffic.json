@@ -1,0 +1,58 @@
+[
+  {
+    "type": "FETCH_REQ",
+    "method": "POST",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/logs",
+    "body": "{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:01:21.935Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"ImAlive\",\"message\":\"im alive\",\"value\":\"\",\"value2\":\"\",\"environment\":3,\"developer\":false,\"version\":\"1.0.3.247\",\"platform\":\"web\",\"product\":\"BlackArrowOne\",\"codeInfo\":\"LoggerManager.ts:144\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:01:35.593Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"InfoMessage\",\"message\":\"WebSocketConnection#REQUEST\",\"value\":\"{\\\"event\\\":\\\"infoMessageSent\\\",\\\"direction\\\":\\\"outbound\\\",\\\"serviceName\\\":\\\"Info\\\",\\\"messageId\\\":\\\"25\\\",\\\"payloadSummary\\\":{\\\"itemCount\\\":1,\\\"stringCount\\\":0,\\\"numberCount\\\":0,\\\"booleanCount\\\":0,\\\"nullishCount\\\":0,\\\"binaryCount\\\":0,\\\"arrayCount\\\":0,\\\"objectCount\\\":1,\\\"maxStringLength\\\":0},\\\"payloadRedacted\\\":true}\",\"value2\":\"\",\"environment\":3,\"developer\":false,\"version\":\"1.0.3.247\",\"platform\":\"web\",\"product\":\"BlackArrowOne\",\"codeInfo\":\"MessagerInfoProxyServiceControl.ts:557\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:01:38.636Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"HadesMessage\",\"message\":\"HADES_RECEIVER\",\"value\":\"{\\\"nMsgId\\\":4,\\\"strMsgName\\\":\\\"ConnectionStateMsgReceiver\\\",\\\"serviceName\\\":\\\"BrokerHub\\\",\\\"nBrokerID\\\":0,\\\"stateName\\\":\\\"DISCONNECTED\\\",\\\"nProtocol\\\":0}\",\"value2\":\"ConnectionStateMsgReceiver\",\"environment\":3,\"developer\":false,\"version\":\"1.0.3.247\",\"platform\":\"web\",\"product\":\"BlackArrowOne\",\"codeInfo\":\"LoggerEncoder.ts:129\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:02:00.670Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"HadesMessage\",\"message\":\"HADES_RECEIVER\",\"value\":\"{\\\"nMsgId\\\":4,\\\"strMsgName\\\":\\\"ConnectionStateMsgReceiver\\\",\\\"serviceName\\\":\\\"BrokerHub\\\",\\\"nBrokerID\\\":0,\\\"stateName\\\":\\\"DISCONNECT",
+    "ts": 1784304141941
+  },
+  {
+    "type": "FETCH_REQ",
+    "method": "POST",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/logs",
+    "body": "{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:01:21.935Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"ImAlive\",\"message\":\"im alive\",\"value\":\"\",\"value2\":\"\",\"environment\":3,\"developer\":false,\"version\":\"1.0.3.247\",\"platform\":\"web\",\"product\":\"BlackArrowOne\",\"codeInfo\":\"LoggerManager.ts:144\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:01:35.593Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"InfoMessage\",\"message\":\"WebSocketConnection#REQUEST\",\"value\":\"{\\\"event\\\":\\\"infoMessageSent\\\",\\\"direction\\\":\\\"outbound\\\",\\\"serviceName\\\":\\\"Info\\\",\\\"messageId\\\":\\\"25\\\",\\\"payloadSummary\\\":{\\\"itemCount\\\":1,\\\"stringCount\\\":0,\\\"numberCount\\\":0,\\\"booleanCount\\\":0,\\\"nullishCount\\\":0,\\\"binaryCount\\\":0,\\\"arrayCount\\\":0,\\\"objectCount\\\":1,\\\"maxStringLength\\\":0},\\\"payloadRedacted\\\":true}\",\"value2\":\"\",\"environment\":3,\"developer\":false,\"version\":\"1.0.3.247\",\"platform\":\"web\",\"product\":\"BlackArrowOne\",\"codeInfo\":\"MessagerInfoProxyServiceControl.ts:557\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:01:38.636Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"HadesMessage\",\"message\":\"HADES_RECEIVER\",\"value\":\"{\\\"nMsgId\\\":4,\\\"strMsgName\\\":\\\"ConnectionStateMsgReceiver\\\",\\\"serviceName\\\":\\\"BrokerHub\\\",\\\"nBrokerID\\\":0,\\\"stateName\\\":\\\"DISCONNECTED\\\",\\\"nProtocol\\\":0}\",\"value2\":\"ConnectionStateMsgReceiver\",\"environment\":3,\"developer\":false,\"version\":\"1.0.3.247\",\"platform\":\"web\",\"product\":\"BlackArrowOne\",\"codeInfo\":\"LoggerEncoder.ts:129\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:02:00.670Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"hardwareId\":\"71207424\",\"activationCode\":\"8917227320378085185\",\"type\":\"HadesMessage\",\"message\":\"HADES_RECEIVER\",\"value\":\"{\\\"nMsgId\\\":4,\\\"strMsgName\\\":\\\"ConnectionStateMsgReceiver\\\",\\\"serviceName\\\":\\\"BrokerHub\\\",\\\"nBrokerID\\\":0,\\\"stateName\\\":\\\"DISCONNECT",
+    "ts": 1784304141941
+  },
+  {
+    "type": "FETCH_REQ",
+    "method": "POST",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/statistics",
+    "body": "{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:02:01.893Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"product\":\"BlackArrowOne\",\"browser\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36\",\"activationCode\":\"8917227320378085185\",\"type\":\"RoutingButton#ChartBoleta\",\"message\":\"buy btn\",\"value\":\"{\\\"action\\\":\\\"buy btn\\\",\\\"account\\\":\\\"1252252|5901||0|0\\\",\\\"asset\\\":\\\"NQFUT|77\\\",\\\"price\\\":28700.25,\\\"qty\\\":1,\\\"total\\\":574005,\\\"nClose\\\":28889.25,\\\"nBid\\\":28889.5,\\\"nAsk\\\":28888,\\\"strategy\\\":\\\"None\\\",\\\"validity\\\":\\\"Good till Cancelled\\\",\\\"isDayTrade\\\":false,\\\"stopOffset\\\":7.5}\",\"value2\":\"\",\"developer\":false,\"version\":\"1.0.3.247\",\"codeInfo\":\"ActionLog.ts:35\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:02:03.450Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"product\":\"BlackArrowOne\",\"browser\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36\",\"activationCode\":\"8917227320378085185\",\"type\":\"NewOrder\",\"message\":\"NQFUT_77_0\",\"value\":\"{\\\"dtCreation\\\":{\\\"_localTime\\\":null,\\\"utcDate\\\":\\\"2026-07-17T16:02:01.900Z\\\",\\\"eSourceTz\\\":{\\\"name\\\":\\\"UTC+3\\\",\\\"offset\\\":180,\\\"country\\\":\\\"Europe/Moscow\\\",\\\"offsetJs\\\":-180}},\\\"dtUpdateAt\\\":{\\\"_localTime\\\":null,\\\"utcDate\\\":\\\"2026-07-17T16:02:03.446Z\\\",\\\"eSourceTz\\\":{\\\"name\\\":\\\"UTC+3\\\",\\\"offset\\\":180,\\\"country\\\":\\\"Europe/Moscow\\\",\\\"offsetJs\\\":-180}},\\\"dtValidity\\\":{\\\"_localTime\\\":null,\\\"utcDate\\\":\\\"2026-07-17T13:00:00.000Z\\\",\\\"eSourceTz\\\":{\\\"name\\\":\\\"UTC-5\\\",\\\"offset\\\":-300,\\\"country\\\":\\\"America/Rio_Branco\\\",\\\"offsetJs\\\":300}},\\\"fGainPrice\\\":0,\\\"fLossPrice\\\":0,\\\"fPrice\\\":28700.25,\\\"fPriceChanged\\\":-1,\\\"fStopGainPrice\\\":0,\\\"fStopLossPrice\\\":0,\\\"fStopPrice\\\":-1,\\\"fStopPriceChanged\\\":-1,\\\"fTotal\\\":574005,\\\"fTotalExec\\\":null,\\\"nMsgID\\\":24,\\\"strProfitID\\\":\\\"2260717181321949\\\",\\\"nQty\\\":1,\\\"nQtyRemain\\\":1,\\\"assetKeyEntity\\\":{\\\"bInfoReceived\\\":true,\\\"bInfoPending\\\":false,\\\"bCoinSameAsTicker\\\":true,\\\"_strCoin\\\":\\\"NQFUT\\\",\\\"_str",
+    "ts": 1784304142176
+  },
+  {
+    "type": "FETCH_REQ",
+    "method": "POST",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/statistics",
+    "body": "{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:02:01.893Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"product\":\"BlackArrowOne\",\"browser\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36\",\"activationCode\":\"8917227320378085185\",\"type\":\"RoutingButton#ChartBoleta\",\"message\":\"buy btn\",\"value\":\"{\\\"action\\\":\\\"buy btn\\\",\\\"account\\\":\\\"1252252|5901||0|0\\\",\\\"asset\\\":\\\"NQFUT|77\\\",\\\"price\\\":28700.25,\\\"qty\\\":1,\\\"total\\\":574005,\\\"nClose\\\":28889.25,\\\"nBid\\\":28889.5,\\\"nAsk\\\":28888,\\\"strategy\\\":\\\"None\\\",\\\"validity\\\":\\\"Good till Cancelled\\\",\\\"isDayTrade\\\":false,\\\"stopOffset\\\":7.5}\",\"value2\":\"\",\"developer\":false,\"version\":\"1.0.3.247\",\"codeInfo\":\"ActionLog.ts:35\"}\r\n{\"index\":{}}\r\n{\"@timestamp\":\"2026-07-17T16:02:03.450Z\",\"sessionId\":\"3e02462a-06c3-437f-99c2-4476b40069a9\",\"product\":\"BlackArrowOne\",\"browser\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36\",\"activationCode\":\"8917227320378085185\",\"type\":\"NewOrder\",\"message\":\"NQFUT_77_0\",\"value\":\"{\\\"dtCreation\\\":{\\\"_localTime\\\":null,\\\"utcDate\\\":\\\"2026-07-17T16:02:01.900Z\\\",\\\"eSourceTz\\\":{\\\"name\\\":\\\"UTC+3\\\",\\\"offset\\\":180,\\\"country\\\":\\\"Europe/Moscow\\\",\\\"offsetJs\\\":-180}},\\\"dtUpdateAt\\\":{\\\"_localTime\\\":null,\\\"utcDate\\\":\\\"2026-07-17T16:02:03.446Z\\\",\\\"eSourceTz\\\":{\\\"name\\\":\\\"UTC+3\\\",\\\"offset\\\":180,\\\"country\\\":\\\"Europe/Moscow\\\",\\\"offsetJs\\\":-180}},\\\"dtValidity\\\":{\\\"_localTime\\\":null,\\\"utcDate\\\":\\\"2026-07-17T13:00:00.000Z\\\",\\\"eSourceTz\\\":{\\\"name\\\":\\\"UTC-5\\\",\\\"offset\\\":-300,\\\"country\\\":\\\"America/Rio_Branco\\\",\\\"offsetJs\\\":300}},\\\"fGainPrice\\\":0,\\\"fLossPrice\\\":0,\\\"fPrice\\\":28700.25,\\\"fPriceChanged\\\":-1,\\\"fStopGainPrice\\\":0,\\\"fStopLossPrice\\\":0,\\\"fStopPrice\\\":-1,\\\"fStopPriceChanged\\\":-1,\\\"fTotal\\\":574005,\\\"fTotalExec\\\":null,\\\"nMsgID\\\":24,\\\"strProfitID\\\":\\\"2260717181321949\\\",\\\"nQty\\\":1,\\\"nQtyRemain\\\":1,\\\"assetKeyEntity\\\":{\\\"bInfoReceived\\\":true,\\\"bInfoPending\\\":false,\\\"bCoinSameAsTicker\\\":true,\\\"_strCoin\\\":\\\"NQFUT\\\",\\\"_str",
+    "ts": 1784304142176
+  },
+  {
+    "type": "FETCH_RESP",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/logs",
+    "status": 200,
+    "body": "",
+    "ts": 1784304142177
+  },
+  {
+    "type": "FETCH_RESP",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/logs",
+    "status": 200,
+    "body": "",
+    "ts": 1784304142177
+  },
+  {
+    "type": "FETCH_RESP",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/statistics",
+    "status": 200,
+    "body": "",
+    "ts": 1784304142397
+  },
+  {
+    "type": "FETCH_RESP",
+    "url": "https://usagelogs.nelogica.com.br/v2/blackarrow/web/statistics",
+    "status": 200,
+    "body": "",
+    "ts": 1784304142397
+  }
+]

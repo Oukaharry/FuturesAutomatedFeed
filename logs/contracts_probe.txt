@@ -1,0 +1,508 @@
+﻿
+
+============================================================
+  AlphaTrader probe
+============================================================
+  Γä╣   Profile : 
+C:\Users\harry\AppData\Local\Temp\alphatrader_profiles\joehickenfpf_gmail_com
+  Γä╣   Profile exists: True
+  Γ£à  Chrome opened  (profile: 
+C:\Users\harry\AppData\Local\Temp\alphatrader_profiles\joehickenfpf_gmail_com)
+  Γä╣   Navigating to https://futures.alphatrader.com/ ...
+  Γä╣   Waiting for platform to load (30s)...
+  Γ£à  Platform loaded
+
+============================================================
+  1 ΓÇö Page info
+============================================================
+  Γä╣   URL  : https://futures.alphatrader.com/
+  Γä╣   Title: Futures Trader
+  Γ£à  On Alpha Trader platform
+
+============================================================
+  2 ΓÇö Deep DOM snapshot
+============================================================
+
+  ALL BUTTONS (visible + hidden):
+    [VIS][OFF] (1034,   8)  'Save'  cls=lm-quick-save-btn 
+    [VIS][ON ] (1108,   8)  'Layouts'  cls=lm-trigger 
+
+  ALL INPUTS:
+
+  VISIBLE TEXT NODES (near-leaf):
+    (   0,   0)  DIV  'CURRENT BALANCE\n$0.00\nEQUITY\n$0.00\nNET DAILY 
+PNL\n$0.00\nUNREALIZED PNL\n$0.00\nSOD '
+    (   5,   0)  DIV  'CURRENT BALANCE\n$0.00\nEQUITY\n$0.00\nNET DAILY 
+PNL\n$0.00\nUNREALIZED PNL\n$0.00\nSOD '
+    ( 125,   9)  DIV  'CURRENT BALANCE\n$0.00'
+    ( 125,  10)  DIV  'CURRENT BALANCE'
+    ( 125,  22)  DIV  '$0.00'
+    ( 258,   9)  DIV  'EQUITY\n$0.00'
+    ( 258,  10)  DIV  'EQUITY'
+    ( 354,   9)  DIV  'NET DAILY PNL\n$0.00'
+    ( 354,  10)  DIV  'NET DAILY PNL'
+    ( 463,   9)  DIV  'UNREALIZED PNL\n$0.00'
+    ( 463,  10)  DIV  'UNREALIZED PNL'
+    ( 584,   9)  DIV  'SOD BALANCE\n$0.00'
+    ( 584,  10)  DIV  'SOD BALANCE'
+    ( 690,   9)  DIV  'MLL\n$0.00'
+    ( 690,  10)  DIV  'MLL'
+    ( 786,   9)  DIV  'DISTANCE TO MLL\n$0.00'
+    ( 786,  10)  DIV  'DISTANCE TO MLL'
+    (1034,   8)  DIV  'Save\nLayouts'
+    (1034,   8)  BUTTON  'Save'
+    (1108,   8)  BUTTON  'Layouts'
+
+  GOLDEN-LAYOUT / PANEL COMPONENTS:
+
+  IFRAMES:
+
+  BODY HTML (first 4000 chars):
+<noscript>You need to enable JavaScript to run this app.</noscript><div 
+id="root"><div class="App"><div class="ant-layout main_layout css-7t2xvq" 
+style="height: 100vh; overflow: hidden;"><header class="ant-layout-header 
+css-7t2xvq" style="padding: 20px 12px; display: flex; justify-content: 
+space-between; align-items: center; background: transparent;"><div 
+class="headerLeft"><img 
+src="/static/media/CompanyLogo.beaca70c39710b0c7d6b1baf798da92d.svg" 
+alt="Company Logo" class="headerLogo"></div><div class="headerRight"><div 
+class="session-counter-wrapper" style="display: none;"><div 
+class="custom-tooltip-wrapper"><div class="session-counter"><div 
+class="info-icon">i</div><span class="time"></span></div></div></div><div 
+class="account-stats"><div class="account-item"><div class="label">Current 
+Balance</div><div class="value red">$0.00</div></div><div 
+class="account-item"><div class="label">Equity</div><div class="value 
+">$0.00</div></div><div class="account-item"><div class="label">Net Daily 
+PNL</div><div class="value ">$0.00</div></div><div class="account-item"><div 
+class="label">Unrealized PNL</div><div class="value ">$0.00</div></div><div 
+class="account-item"><div class="label">SOD Balance</div><div class="value 
+red">$0.00</div></div><div class="account-item"><div 
+class="label">MLL</div><div class="value red">$0.00</div></div><div 
+class="account-item"><div class="label">Distance to MLL</div><div class="value 
+red">$0.00</div></div></div><div class="accountSelectorWrapper"></div><div 
+class="lm-container "><button class="lm-quick-save-btn " title="Save current 
+layout" disabled=""><svg xmlns="http://www.w3.org/2000/svg" width="12" 
+height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide 
+lucide-save" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 
+0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path 
+d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"></path><path d="M7 3v4a1 1 0 0 0 
+1 1h7"></path></svg><span>Save</span></button><button class="lm-trigger " 
+title="Manage layouts"><svg xmlns="http://www.w3.org/2000/svg" width="13" 
+height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" 
+class="lucide lucide-layout-dashboard" aria-hidden="true"><rect width="7" 
+height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" 
+rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect 
+width="7" height="5" x="3" y="16" rx="1"></rect></svg><span>Layouts</span><svg 
+xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" 
+fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" 
+stroke-linejoin="round" class="lucide lucide-chevron-down lm-chevron" 
+aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button></div><div 
+class="profileIcon"><img 
+src="/static/media/UserIcon.6dc9e879425128311df3a1597893f35f.svg" 
+alt="UserIcon" style="cursor: pointer; height: 
+32px;"></div></div></header><div class="mobile-account-stats-bar"><div 
+class="mobile-stats-item"><span class="label">Current Balance:</span><span 
+class="value red">$0.00</span></div><div class="mobile-stats-item"><span 
+class="label">Equity:</span><span class="value ">$0.00</span></div><div 
+class="mobile-stats-item"><span class="label">Net Daily PNL:</span><span 
+class="value ">$0.00</span></div><div class="mobile-stats-item"><span 
+class="label">Unrealized PNL:</span><span class="value 
+">$0.00</span></div><div class="mobile-stats-item"><span class="label">SOD 
+Balance:</span><span class="value red">$0.00</span></div><div 
+class="mobile-stats-item"><span class="label">MLL:</span><span class="value 
+red">$0.00</span></div><div class="mobile-stats-item"><span 
+class="label">Distance to MLL:</span><span class="value 
+red">$0.00</span></div></div><div class="ant-layout ant-layout-has-sider 
+css-7t2xvq" style="display: flex;"><aside class="ant-layou
+
+============================================================
+  3 ΓÇö Open Trade Panel sidebar icon
+============================================================
+  Γä╣   Trade Panel click: clicked_LI (Trade Panel img found)
+  Γä╣   Account selector: accountSelectorWrapper children=1  innerHTML=<div 
+class="css-b62m3t-container"><span id="react-select-5-live-region" 
+class="css-7pg0cj-a11yText"></span><span aria-live="polite" 
+aria-atomic="false" aria-relevant="additions text" role="log" 
+class="css-7pg0cj-a11yText"></span><div class="css-1vs97jx-control"><div 
+class="css-1g5rk0c"><div class="c
+
+  All visible buttons after Trade Panel click:
+    (1037,   8)  'Save'  cls=lm-quick-save-btn 
+    (1111,   8)  'Layouts'  cls=lm-trigger 
+    (1154, 115)  '1'  cls=flexlayout__tab_toolbar_button 
+flexlayout__tab_button_overfl
+    ( 341, 234)  'Γèƒ'  cls=
+    ( 151, 262)  'Buy'  cls=
+    ( 212, 268)  'ΓêÆ'  cls=
+    ( 283, 268)  '+'  cls=
+    ( 307, 262)  'Sell'  cls=
+    ( 151, 294)  'Join Bid\n---'  cls=
+    ( 256, 294)  'Join Ask\n---'  cls=
+    ( 882, 398)  '-'  cls=pos-btn
+    ( 913, 397)  '1'  cls=pos-btn active
+    ( 946, 398)  '3'  cls=pos-btn 
+    ( 978, 398)  '5'  cls=pos-btn 
+    (1010, 398)  '10'  cls=pos-btn 
+    ( 930, 430)  '15'  cls=pos-btn 
+    ( 962, 430)  '+'  cls=pos-btn
+    ( 872, 571)  'BUY +1 @ MARKET'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    ( 872, 603)  'SELL -1 @ MARKET'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    ( 872, 637)  'CLOSE POSITION'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    ( 872, 668)  'REVERSE POSITION'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    ( 872, 702)  'FLATTEN ALL'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    ( 872, 733)  'CANCEL ALL'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    ( 872, 765)  'CLOSE & CANCEL'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1286, 151)  'Recenter'  cls=recenter-btn
+    (1091, 612)  '-'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1119, 612)  '1'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1149, 612)  '3'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1178, 612)  '5'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1207, 612)  '10'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1134, 644)  '15'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1169, 644)  '+'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1049, 678)  'BUY +1 MARKET'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1168, 678)  'SELL -1 MARKET'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1108, 716)  'Join Bid'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1166, 716)  'Join Ask'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1117, 750)  'CLOSE POSITION'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1117, 782)  'CANCEL ORDERS'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1087, 816)  'FLATTEN ALL'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+    (1168, 816)  'CANCEL ALL'  cls=ant-btn css-7t2xvq ant-btn-default 
+ant-btn-color-default ant
+
+  Menus/panels:
+    [[class*="dropdown"]] TEXT: E-mini S&P 500
+
+  All visible text (after Trade Panel click):
+    (  60,   9)  DIV  'CURRENT BALANCE\n$150,096.98'
+    (  60,   5)  DIV  'CURRENT BALANCE'
+    (  60,  27)  DIV  '$150,096.98'
+    ( 185,   9)  DIV  'EQUITY\n$150,096.98'
+    ( 185,  10)  DIV  'EQUITY'
+    ( 283,   9)  DIV  'NET DAILY PNL\n$0.00'
+    ( 283,   5)  DIV  'NET DAILY PNL'
+    ( 283,  27)  DIV  '$0.00'
+    ( 385,   9)  DIV  'UNREALIZED PNL\n$0.00'
+    ( 385,   5)  DIV  'UNREALIZED PNL'
+    ( 498,   9)  DIV  'SOD BALANCE\n$150,096.98'
+    ( 498,   5)  DIV  'SOD BALANCE'
+    ( 598,   9)  DIV  'MLL\n$144,846.98'
+    ( 598,  10)  DIV  'MLL'
+    ( 598,  22)  DIV  '$144,846.98'
+    ( 696,   9)  DIV  'DISTANCE TO MLL\n$5,250.00'
+    ( 696,   5)  DIV  'DISTANCE TO MLL'
+    ( 696,  27)  DIV  '$5,250.00'
+    ( 788,   4)  DIV  'evaluation - ADVEV2026060800605'
+    (1036,   8)  DIV  'Save\nLayouts'
+    (1036,   8)  BUTTON  'Save'
+    (1110,   8)  BUTTON  'Layouts'
+    (  77,-29948)  DIV  'FindBorderBarSize'
+    (  77,  52)  DIV  'TRADE PANEL'
+    (  78,  77)  DIV  '1\nES\n2\nMNQ\n3\nMES\n4\nMGC'
+    (  82,  81)  DIV  '1\nES'
+    (  99,  87)  DIV  '1'
+    ( 121,  86)  DIV  'ES'
+    ( 191,  81)  DIV  '2\nMNQ'
+    ( 208,  87)  DIV  '2'
+    ( 230,  86)  DIV  'MNQ'
+    ( 313,  81)  DIV  '3\nMES'
+    ( 330,  87)  DIV  '3'
+    ( 352,  86)  DIV  'MES'
+    ( 432,  81)  DIV  '4\nMGC'
+    ( 449,  87)  DIV  '4'
+    ( 471,  86)  DIV  'MGC'
+    (  78, 110)  DIV  'CHART\nΓ£ò\n+\nΓûí\nΓ£ò\nORDER\nΓ£ò\n+\nΓûí\nΓ£ò\nACCOUN
+TS\nΓ£ò\nPOSITIONS\nΓ£ò\nORDERS\nΓ£ò\nTRADES\nΓ£ò\nCURRENT ORD'
+    (  78, 110)  DIV  'CHART\nΓ£ò\n+\nΓûí\nΓ£ò\nORDER\nΓ£ò\n+\nΓûí\nΓ£ò\nACCOUN
+TS\nΓ£ò\nPOSITIONS\nΓ£ò\nORDERS\nΓ£ò\nTRADES\nΓ£ò\nCURRENT ORD'
+    (  78, 110)  DIV  'CHART\nΓ£ò\n+\nΓûí\nΓ£ò\nORDER\nΓ£ò\n+\nΓûí\nΓ£ò'
+    (  78, 110)  DIV  'CHART\nΓ£ò\n+\nΓûí\nΓ£ò'
+    (  79, 111)  DIV  'CHART\nΓ£ò'
+    (  91, 120)  DIV  'CHART'
+    ( 138, 112)  DIV  'Γ£ò'
+    ( 772, 111)  DIV  '+\nΓûí\nΓ£ò'
+    ( 788, 114)  DIV  '+'
+    ( 811, 118)  DIV  'Γûí'
+    ( 863, 110)  DIV  'ORDER\nΓ£ò\n+\nΓûí\nΓ£ò'
+    ( 864, 111)  DIV  'ORDER\nΓ£ò'
+    ( 876, 120)  DIV  'ORDER'
+    (  78, 614)  DIV  
+'ACCOUNTS\nΓ£ò\nPOSITIONS\nΓ£ò\nORDERS\nΓ£ò\nTRADES\nΓ£ò\nCURRENT 
+ORDERS\nΓ£ò\n+\nΓûí\nΓ£ò'
+    (  79, 615)  DIV  
+'ACCOUNTS\nΓ£ò\nPOSITIONS\nΓ£ò\nORDERS\nΓ£ò\nTRADES\nΓ£ò\nCURRENT ORDERS\nΓ£ò'
+    (  83, 617)  DIV  'ACCOUNTS\nΓ£ò'
+    (  98, 625)  DIV  'ACCOUNTS'
+    ( 200, 617)  DIV  'POSITIONS\nΓ£ò'
+    ( 215, 625)  DIV  'POSITIONS'
+    ( 316, 617)  DIV  'ORDERS\nΓ£ò'
+    ( 324, 624)  DIV  'ORDERS'
+    ( 398, 617)  DIV  'TRADES\nΓ£ò'
+    ( 413, 625)  DIV  'TRADES'
+    ( 499, 617)  DIV  'CURRENT ORDERS\nΓ£ò'
+    ( 514, 625)  DIV  'CURRENT ORDERS'
+    (1066, 110)  DIV  'DOM\nΓ£ò\nWATCHLIST\nΓ£ò\n1\n+\nΓûí\nΓ£ò'
+    (1067, 111)  DIV  'DOM\nΓ£ò\nWATCHLIST\nΓ£ò'
+    (1071, 113)  DIV  'DOM\nΓ£ò'
+    (1079, 120)  DIV  'DOM'
+    (1137, 113)  DIV  'WATCHLIST\nΓ£ò'
+    (1152, 121)  DIV  'WATCHLIST'
+    (1146, 111)  DIV  '1\n+\nΓûí\nΓ£ò'
+    (  79, 141)  DIV  'Quick 
+Trade\nCME_Eq:ES\nΓèƒ\nBuy\nΓêÆ\n1\ncontract\n+\nSell\nJoin Bid\n---\nJoin 
+Ask\n---'
+    ( 144, 227)  DIV  'Quick Trade\nCME_Eq:ES\nΓèƒ'
+    ( 154, 233)  SPAN  'Quick Trade'
+    ( 219, 232)  SPAN  'CME_Eq:ES'
+    ( 341, 234)  BUTTON  'Γèƒ'
+    ( 144, 255)  DIV  'Buy\nΓêÆ\n1\ncontract\n+\nSell'
+    ( 151, 262)  BUTTON  'Buy'
+    ( 203, 263)  DIV  'ΓêÆ\n1\ncontract\n+'
+    ( 212, 268)  BUTTON  'ΓêÆ'
+    ( 223, 268)  DIV  '1\ncontract'
+    ( 240, 268)  SPAN  'contract'
+    ( 307, 262)  BUTTON  'Sell'
+    ( 144, 294)  DIV  'Join Bid\n---\nJoin Ask\n---'
+    ( 151, 294)  BUTTON  'Join Bid\n---'
+    ( 180, 301)  SPAN  'Join Bid'
+    ( 191, 317)  SPAN  '---'
+    ( 256, 294)  BUTTON  'Join Ask\n---'
+    ( 284, 301)  SPAN  'Join Ask'
+    ( 872, 149)  DIV  'CONTRACTS\nE-mini S&P 500'
+    ( 872, 149)  LABEL  'CONTRACTS'
+    ( 872, 169)  DIV  'E-mini S&P 500'
+    ( 872, 213)  DIV  'ORDER TYPE\nMarket'
+    ( 872, 213)  LABEL  'ORDER TYPE'
+    ( 872, 232)  DIV  'Market'
+    ( 872, 276)  DIV  '# OF CONTRACTS'
+    ( 872, 336)  SPAN  'ACTIVE POSITIONS'
+    ( 872, 354)  DIV  'No Active Positions'
+    ( 872, 398)  DIV  '-\n1\n3\n5\n10\n15\n+'
+    ( 882, 398)  BUTTON  '-'
+    ( 978, 398)  BUTTON  '5'
+    (1010, 398)  BUTTON  '10'
+    ( 930, 430)  BUTTON  '15'
+    ( 872, 466)  DIV  'Bid:\n$0.00\n$0.00\n0.00\nAsk:\n$0.00'
+    ( 883, 482)  SPAN  'Bid:\n$0.00'
+    ( 944, 474)  DIV  '$0.00\n0.00'
+    ( 947, 490)  SPAN  '0.00'
+    ( 989, 482)  SPAN  'Ask:\n$0.00'
+    ( 872, 518)  DIV  'AutoOCO/Bracket Order\nOne-Cancels-Other with TP/SL'
+    ( 881, 525)  DIV  'AutoOCO/Bracket Order'
+    ( 881, 542)  DIV  'One-Cancels-Other with TP/SL'
+    ( 872, 571)  DIV  'BUY +1 @ MARKET\nSELL -1 @ MARKET'
+    ( 872, 571)  BUTTON  'BUY +1 @ MARKET'
+    ( 872, 603)  BUTTON  'SELL -1 @ MARKET'
+    ( 872, 637)  DIV  'CLOSE POSITION\nREVERSE POSITION'
+    ( 872, 637)  BUTTON  'CLOSE POSITION'
+    ( 872, 668)  BUTTON  'REVERSE POSITION'
+    ( 872, 702)  DIV  'FLATTEN ALL\nCANCEL ALL\nCLOSE & CANCEL'
+    ( 872, 702)  DIV  'FLATTEN ALL\nCANCEL ALL'
+    ( 872, 702)  BUTTON  'FLATTEN ALL'
+    ( 872, 733)  BUTTON  'CANCEL ALL'
+    ( 872, 759)  DIV  'CLOSE & CANCEL'
+    (  94, 658)  TH  'TIME'
+    ( 267, 658)  TH  'SYMBOL'
+    ( 408, 658)  TH  'SIDE'
+    ( 570, 658)  TH  'STATUS'
+    ( 664, 658)  TH  'STATUS DETAIL'
+    ( 933, 658)  TH  'FILLED PRICE'
+    (1032, 658)  TH  'LIMIT PRICE'
+    (1125, 658)  TH  'STOP PRICE'
+    (1216, 658)  TH  'TRAIL PRICE'
+    (1310, 658)  TH  'VOLUME'
+    (1384, 658)  TH  'WORKING VOL'
+    (1489, 658)  TH  'FILLED VOL'
+    (1578, 658)  TH  'UPDATED AT'
+    (1750, 658)  TH  'CREATED AT'
+    (1922, 658)  TH  'FILLED AT'
+    (2094, 658)  TH  'CLOSE'
+    (  94, 691)  TD  '18/07/2026 12:56:17.43 PM'
+    ( 267, 691)  TD  'XCME_Eq ES (U26)'
+    ( 408, 691)  TD  'BUY'
+    ( 462, 691)  TD  'MARKET'
+    ( 570, 691)  TD  'REJECTED'
+    ( 664, 691)  TD  'Blocked, Liquidation Risk Status'
+    (1310, 691)  TD  '3.00'
+    (  94, 728)  TD  '18/07/2026 12:54:31.21 PM'
+    (1310, 728)  TD  '1.00'
+    (  94, 765)  TD  '18/07/2026 12:49:57.33 PM'
+    (  94, 803)  TD  '18/07/2026 12:47:32.43 PM'
+    (  94, 840)  TD  '16/07/2026 03:32:41.88 PM'
+    ( 570, 840)  TD  'FILLED'
+    ( 664, 840)  TD  'Flatten Trigger'
+    ( 933, 840)  TD  '7584.50'
+    (1310, 840)  TD  '6.00'
+    (1750, 840)  TD  '16/07/2026 03:32:41.87 PM'
+    (  94, 877)  TD  '16/07/2026 03:31:48.53 PM'
+    ( 462, 877)  TD  'LIMIT'
+    ( 570, 877)  TD  'CANCELLED'
+    ( 664, 877)  TD  'AutoOCO Activated'
+    (1032, 877)  TD  '7534.25'
+    ( 462, 915)  TD  'STOP_MARKET'
+    ( 664, 915)  TD  'Stop Awaiting Trigger'
+    (1125, 915)  TD  '7629.25'
+    (1578, 915)  TD  '16/07/2026 03:32:41.86 PM'
+    (  94, 952)  TD  '16/07/2026 03:31:48.55 PM'
+    ( 408, 952)  TD  'SELL'
+    ( 933, 952)  TD  '7585.25'
+    ( 664,1101)  TD  'Pull Rejected: Exchange response still pending'
+    (  94,1549)  TD  '16/07/2026 11:24:08.24 AM'
+    ( 267,1549)  TD  'XCME_Eq MNQ (U26)'
+    ( 664,1549)  TD  'AutoOCO Pull'
+    (1032,1549)  TD  '29543.75'
+    (1578,1549)  TD  '16/07/2026 11:24:08.74 AM'
+    (  94,1586)  TD  '16/07/2026 11:24:08.31 AM'
+    ( 664,1586)  TD  'Stop Trigger'
+    ( 933,1586)  TD  '29535.50'
+    (1750,1586)  TD  '16/07/2026 11:24:07.72 AM'
+    (  94,1623)  TD  '16/07/2026 11:24:07.74 AM'
+    ( 933,1623)  TD  '29536.75'
+    (  94,1661)  TD  '16/07/2026 11:22:51.40 AM'
+    ( 267,1661)  TD  'XCME_Eq NQ (U26)'
+    ( 933,1661)  TD  '29547.25'
+    (1750,1661)  TD  '16/07/2026 11:22:51.38 AM'
+    (  94,1698)  TD  '16/07/2026 11:22:45.69 AM'
+    (1125,1698)  TD  '29541.50'
+    (1032,1735)  TD  '29549.00'
+    (1578,1735)  TD  '16/07/2026 11:22:51.37 AM'
+    (  94,1772)  TD  '16/07/2026 11:22:45.71 AM'
+    ( 933,1772)  TD  '29545.50'
+    (  94,1810)  TD  '16/07/2026 11:18:46.17 AM'
+    ( 933,1810)  TD  '7597.50'
+    (1750,1810)  TD  '16/07/2026 11:18:46.16 AM'
+    (  94,1847)  TD  '16/07/2026 11:18:39.44 AM'
+    (1125,1847)  TD  '7596.25'
+    (1032,1884)  TD  '7603.75'
+    (1578,1884)  TD  '16/07/2026 11:18:46.13 AM'
+    (  94,1922)  TD  '16/07/2026 11:18:39.45 AM'
+    ( 933,1922)  TD  '7598.25'
+    (  94,1959)  TD  '16/07/2026 11:08:58.05 AM'
+    ( 933,1959)  TD  '7600.00'
+    (1750,1959)  TD  '16/07/2026 11:08:58.03 AM'
+    (  94,1996)  TD  '16/07/2026 11:08:54.81 AM'
+    (1125,1996)  TD  '7562.75'
+    (1032,2034)  TD  '7676.75'
+    (1578,2034)  TD  '16/07/2026 11:08:57.99 AM'
+    (  94,2071)  TD  '16/07/2026 11:08:54.84 AM'
+    ( 933,2071)  TD  '7600.25'
+    (  94,2108)  TD  '16/07/2026 11:07:08.69 AM'
+    ( 933,2108)  TD  '7600.75'
+    (1750,2108)  TD  '16/07/2026 11:07:08.67 AM'
+    (  94,2145)  TD  '16/07/2026 11:07:04.51 AM'
+    (1578,2183)  TD  '16/07/2026 11:07:08.63 AM'
+    (  94,2220)  TD  '16/07/2026 11:07:04.54 AM'
+    ( 933,2220)  TD  '7601.00'
+    (  94,2257)  TD  '16/07/2026 11:06:38.77 AM'
+    ( 933,2257)  TD  '7601.50'
+    (1750,2257)  TD  '16/07/2026 11:06:38.73 AM'
+    (  94,2295)  TD  '16/07/2026 11:06:34.59 AM'
+    (1578,2295)  TD  '16/07/2026 11:06:38.74 AM'
+    (  94,2369)  TD  '16/07/2026 11:06:34.60 AM'
+    (  94,2407)  TD  '16/07/2026 11:06:18.85 AM'
+    ( 933,2407)  TD  '7601.25'
+    (1750,2407)  TD  '16/07/2026 11:06:18.82 AM'
+    (  94,2444)  TD  '16/07/2026 11:06:14.60 AM'
+    (  94,2518)  TD  '16/07/2026 11:06:14.63 AM'
+    ( 100,2571)  LI  '1-50 of 58 items'
+    ( 780,2607)  LI  '50 / page\nGo toPage'
+    ( 780,2607)  DIV  '50 / page'
+    ( 889,2607)  DIV  'Go toPage'
+    (1067, 141)  DIV  'Contract\nE-mini S&P 500\nRecenter\nΓÜÖ'
+    (1079, 156)  SPAN  'Contract'
+    (1286, 151)  DIV  'Recenter\nΓÜÖ'
+    (1286, 151)  BUTTON  'Recenter'
+    (1354, 151)  SPAN  'ΓÜÖ'
+    (1067, 188)  DIV  'No Position'
+    (1079, 584)  DIV  'No PositionB/E'
+    (1186, 585)  SPAN  'B/E'
+    (1079, 678)  DIV  'BUY +1 MARKET\nSELL -1 MARKET'
+    (1049, 678)  BUTTON  'BUY +1 MARKET'
+    (1168, 678)  BUTTON  'SELL -1 MARKET'
+    (1079, 716)  DIV  'Join Bid\nJoin Ask'
+    (1079, 750)  DIV  'CLOSE POSITION\nCANCEL ORDERS'
+    (1117, 782)  BUTTON  'CANCEL ORDERS'
+
+============================================================
+  4 ΓÇö Ensure Order panel is open
+============================================================
+  Γ£à  Clicked 'Order' tab
+  Γ£à  Order panel active ΓÇö BUY buttons: 3, SELL buttons: 3
+    [ON]  'Buy'
+    [ON]  'BUY +1 @ MARKET'
+    [ON]  'BUY +1 MARKET'
+    [ON]  'Sell'
+    [ON]  'SELL -1 @ MARKET'
+    [ON]  'SELL -1 MARKET'
+
+============================================================
+  4b ΓÇö Probe CONTRACTS dropdown
+============================================================
+  Γä╣   Clicked CONTRACTS trigger: {'clicked': 'DIV.react-select 
+css-b62m3t-container', 'text': 'E-mini S&P 500'}
+  [[class*="dropdown"]]  count=1
+    DIV cls='contract-dropdown css-b62m3t-container'  text='E-mini S&P 500'
+  [[class*="menu"]]  count=9
+    UL cls='ant-menu ant-menu-root ant-menu-inline ant-menu-li'  text=''
+    LI cls='ant-menu-item ant-menu-item-only-child sidebar-men'  text=''
+    SPAN cls='ant-menu-title-content'  text=''
+    LI cls='ant-menu-item ant-menu-item-only-child sidebar-men'  text=''
+    SPAN cls='ant-menu-title-content'  text=''
+  [[class*="options"]]  count=3
+    LI cls='ant-pagination-options'  text='50 / page\nGo toPage'
+    DIV cls='ant-select ant-select-outlined ant-pagination-opti'  text='50 / 
+page'
+    DIV cls='ant-pagination-options-quick-jumper'  text='Go toPage'
+  Γä╣   Instrument keywords found (16 elements):
+  (  78,  77) DIV  cls='symbol-tabs-container'  '1\nES\n2\nMNQ\n3\nMES\n4\nMGC'
+  ( 230,  86) DIV  cls='tab-content'  'MNQ'
+  ( 352,  86) DIV  cls='tab-content'  'MES'
+  ( 471,  86) DIV  cls='tab-content'  'MGC'
+  (  78, 614) DIV  cls='flexlayout__tabset_container'  
+'ACCOUNTS\nΓ£ò\nPOSITIONS\nΓ£ò\nORDERS\nΓ£ò\nTRADES\nΓ£ò\nCURRENT 
+ORDERS\nΓ£ò\n+\nΓûí\nΓ£ò'
+  (  79, 615) DIV  cls='flexlayout__mini_scrollbar_container'  
+'ACCOUNTS\nΓ£ò\nPOSITIONS\nΓ£ò\nORDERS\nΓ£ò\nTRADES\nΓ£ò\nCURRENT ORDERS\nΓ£ò'
+  ( 398, 617) DIV  cls='flexlayout__tab_button flexlayout__tab_b'  
+'TRADES\nΓ£ò'
+  ( 413, 625) DIV  cls='flexlayout__tab_button_content'  'TRADES'
+  (  79, 141) DIV  cls='flexlayout__tab'  'Quick 
+Trade\nCME_Eq:ES\nΓèƒ\nBuy\nΓêÆ\n1\ncontract\n+\nSell\nJoin Bid\n---\nJoin 
+Ask\n---'
+  ( 219, 232) SPAN  cls=''  'CME_Eq:ES'
+  ( 872, 149) DIV  cls='input-wrapper'  'CONTRACTS\nE-mini S&P 500'
+  ( 872, 169) DIV  cls='css-1djopv9-control'  'E-mini S&P 500'
+  ( 267, 691) TD  cls='ant-table-cell'  'XCME_Eq ES (U26)'
+  ( 267,1549) TD  cls='ant-table-cell'  'XCME_Eq MNQ (U26)'
+  ( 267,1661) TD  cls='ant-table-cell'  'XCME_Eq NQ (U26)'
+  (1067, 141) DIV  cls='dom-header'  'Contract\nE-mini S&P 500\nRecenter\nΓÜÖ'
+
+============================================================
+  No --side given ΓÇö diagnostics complete, browser stays open
+============================================================
+  Γ£à  Browser closed.
+
+

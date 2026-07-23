@@ -4267,6 +4267,8 @@
                                 ev['Prop Firm'] = 'Topstep';
                             } else if (pf === 'fundingticks' || pf === 'fundingtick') {
                                 ev['Prop Firm'] = 'Funding Ticks';
+                            } else if (pf === 'fundednextflex') {
+                                ev['Prop Firm'] = 'Funded Next Flex';
                             } else if (pf === 'fundednext') {
                                 ev['Prop Firm'] = 'FundedNext';
                             } else if (pf === 'tradeday') {
@@ -5209,15 +5211,24 @@
             const hasFB = false;
             const firms = {};
             const pc = (v) => { try { return parseFloat(String(v||'').replace(/[$,]/g,'').trim()) || 0; } catch(e) { return 0; } };
+            const statsFirmParent = (name) => {
+                const raw = String(name || '').trim() || 'Unknown';
+                const key = raw.toLowerCase().replace(/[\s_]/g, '');
+                if (key === 'fundednextflex') return 'FundedNext';
+                return raw;
+            };
             evals.forEach(ev => {
                 // Do not include soft-deleted rows in the By Prop Firm breakdown.
                 // Deleted rows can linger in the DB for audit/history but should not
                 // contribute to active client rollups.
                 if (ev && ev._deleted) return;
-                const name = String(ev['Prop Firm']||'').trim() || 'Unknown';
+                const rawFirmName = String(ev['Prop Firm'] || '').trim() || 'Unknown';
+                const rawFirmKey = rawFirmName.toLowerCase().replace(/[\s_]/g, '');
+                const name = statsFirmParent(rawFirmName);
                 if (isFirmHidden(name)) return;
-                if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
+                if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0,flex_evals:0};
                 const f = firms[name];
+                if (rawFirmKey === 'fundednextflex') f.flex_evals++;
                 f.evals++;
                 const st = String(ev['Status P1']||'').toLowerCase();
                 const st2 = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
@@ -5275,9 +5286,12 @@
                 const fbEntry = fb[name] || {};
                 const actFees = fbEntry.total_fees;
                 const actPayouts = fbEntry.total_payouts;
+                const flexBadge = (name === 'FundedNext' && f.flex_evals > 0)
+                    ? ` <span style="font-size:0.68rem; font-weight:700; color:#d8b4fe; background:rgba(147,51,234,0.18); border:1px solid rgba(147,51,234,0.45); border-radius:999px; padding:2px 8px; margin-left:8px;">Flex x${f.flex_evals}</span>`
+                    : '';
                 return `
                 <tr style="border-bottom:1px solid #1e293b;" class="pf-main-row">
-                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#e2e8f0;">${name}</td>
+                    <td style="position:sticky;left:0;z-index:15;background:var(--card-bg);padding:10px 16px;font-weight:600;color:#e2e8f0;">${name}${flexBadge}</td>
                     <td style="text-align:left;">${f.evals}</td>
                     <td style="text-align:left;">${f.active}</td>
                     <td style="text-align:left;">${fmt(f.payouts)}</td>
@@ -5337,6 +5351,7 @@
                         'topsteprtp': 'Topstep',
                         'fundingticks': 'Funding Ticks', 'fundingtick': 'Funding Ticks',
                         'fundednext': 'FundedNext',
+                        'fundednextflex': 'FundedNext',
                         'tradeday': 'TradeDay', 'tradeify': 'Tradeify',
                         'alphafutures': 'Alpha Futures', 'lucid': 'Lucid', 'lucidmaxx': 'LucidMaxx',
                         'toponefutures': 'Top One Futures', 'topone': 'Top One Futures',
@@ -6009,7 +6024,7 @@
                 // Predefined Prop Firms
                 const firms = [
                     'My Funded Futures', 'Funding Ticks', 'TradeDay', 
-                    'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers', 'Other'
+                    'FundedNext', 'Funded Next Flex', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'Tradeify', 'Alpha Futures', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers', 'Other'
                 ].filter(f => !isFirmHidden(f));
 
                 accounts.forEach((acc, index) => {
@@ -7128,7 +7143,7 @@
         const HIT_SL_OPTIONS = Array.from({ length: 10 }, (_, i) => `Hit SL${i + 1}`);
 
         const dropdownOptions = {
-            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
+            'Prop Firm': ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'Funding Ticks', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers', 'Other'].filter(f => !isFirmHidden(f)),
             'Account Size': ['$5,000', '$10,000', '$25,000', '$50,000', '$100,000', '$150,000', '$200,000'],
             'Status P1': ['Pass', 'Fail', 'In Progress', 'Not Started', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted'],
             'Status': ['-', 'Pass', 'Fail', 'In Progress', 'Not Started', 'Hit TP0', ...HIT_TP_OPTIONS, ...HIT_SL_OPTIONS, 'Deleted', 'Completed']
@@ -9079,7 +9094,7 @@
         let _activeClient = '';     // currently selected client in the panel
         let _checklistLoaded = false;
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
-        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers'].filter(f => !isFirmHidden(f));
+        const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers'].filter(f => !isFirmHidden(f));
 
         function _getDefaultSections() {
             const d = {};

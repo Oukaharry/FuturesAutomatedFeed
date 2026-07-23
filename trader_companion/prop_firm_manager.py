@@ -3,6 +3,7 @@
 
 import logging
 import datetime
+import copy
 
 # ── Kenya / East Africa Time (UTC+3) ──────────────────────────────────
 # Daily-rollover decisions (the per-account direction lock below) need to
@@ -30,6 +31,7 @@ class PropFirmManager:
     Supported Prop Firms:
     - MFFU: My Funded Futures
     - Funded Next: Funded Next
+    - Funded Next Flex: Funded Next Flex
     - FundingTicks: Funding Ticks
     - TopStep: TopStep
     - Trade Day: Trade Day (EOD Account Type)
@@ -46,6 +48,8 @@ class PropFirmManager:
         "MFFU_Flex": "MFFU_Flex",
         "Funded Next": "Funded Next",
         "FundedNext": "Funded Next",
+        "Funded Next Flex": "Funded Next Flex",
+        "FundedNextFlex": "Funded Next Flex",
         "FundingTicks": "FundingTicks",
         "Trade Day": "TradeDay",
         "TopStep": "TopStep",
@@ -1737,6 +1741,10 @@ class PropFirmManager:
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
                             "sl_mode":          "full_cushion",
+                            # NEVER raise TP via calculate_adjusted_tp.
+                            # 100t × 2 NQ × $5 = $1,000 = 33.3% of $3k target -> within 40% rule.
+                            # Raising TP (e.g. to 150t = $1,500) would breach the 40% consistency limit.
+                            "disable_tp_adjustment": True,
                             "mt5_volume":  0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1750,6 +1758,7 @@ class PropFirmManager:
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
                             "sl_mode":          "full_cushion",
+                            "disable_tp_adjustment": True,
                             "mt5_volume":  0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1763,6 +1772,7 @@ class PropFirmManager:
                             "tradovate_tp_ticks": 100,
                             "tradovate_sl_ticks": 200,
                             "sl_mode":          "full_cushion",
+                            "disable_tp_adjustment": True,
                             "mt5_volume":  0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1780,6 +1790,7 @@ class PropFirmManager:
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 94,
                             "tradovate_sl_ticks": 100,
+                            "disable_tp_adjustment": True,
                             "mt5_volume":  0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1795,6 +1806,7 @@ class PropFirmManager:
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 120,
                             "tradovate_sl_ticks": 100,
+                            "disable_tp_adjustment": True,
                             "mt5_volume":  0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1808,6 +1820,7 @@ class PropFirmManager:
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 120,
                             "tradovate_sl_ticks": 100,
+                            "disable_tp_adjustment": True,
                             "mt5_volume":  0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1821,6 +1834,7 @@ class PropFirmManager:
                             "tradovate_qty":    2,
                             "tradovate_tp_ticks": 120,
                             "tradovate_sl_ticks": 100,
+                            "disable_tp_adjustment": True,
                             "mt5_volume":  0,
                             "mt5_tp_points": 0,
                             "mt5_sl_points": 0,
@@ -1923,6 +1937,72 @@ class PropFirmManager:
             },
         }
 
+        # Funded Next has two selectable blueprints in the UI. Flex starts as
+        # an independent clone so values can diverge safely later.
+        self.firm_blueprints["Funded Next Flex"] = copy.deepcopy(self.firm_blueprints["Funded Next"])
+        self.firm_blueprints["Funded Next Flex"]["name"] = "Funded Next Flex"
+
+        # Funded Next Flex tuning (50k account):
+        # - Challenge tuned to ~2.5k cumulative target with 40% consistency-friendly sizing.
+        # - Funded tuned to $1.5k payout-style TP/risk per trade.
+        fn_flex_cfg = self.firm_blueprints["Funded Next Flex"]["strategy_configs"]
+
+        fn_flex_cfg["challenge_trade1"]["50k"].update({
+            "tradovate_tp_ticks": 84,
+            "tradovate_sl_ticks": 150,
+            "mt5_volume": 3.2,
+            "mt5_tp_points": 35,
+            "mt5_sl_points": 24,
+        })
+        fn_flex_cfg["challenge_trade2"]["50k"].update({
+            "tradovate_tp_ticks": 84,
+            "tradovate_sl_ticks": 150,
+            "mt5_volume": 6.4,
+            "mt5_tp_points": 35,
+            "mt5_sl_points": 24,
+        })
+        fn_flex_cfg["challenge_trade3"]["50k"].update({
+            "tradovate_tp_ticks": 84,
+            "tradovate_sl_ticks": 150,
+            "mt5_volume": 9.6,
+            "mt5_tp_points": 35,
+            "mt5_sl_points": 24,
+        })
+
+        fn_flex_cfg["funded_trade1"]["50k"].update({
+            "tradovate_tp_ticks": 310,
+            "tradovate_sl_ticks": 150,
+            "mt5_volume": 12,
+            "mt5_tp_points": 35,
+            "mt5_sl_points": 80,
+        })
+        fn_flex_cfg["funded_trade2"]["50k"].update({
+            "tradovate_tp_ticks": 150,
+            "tradovate_sl_ticks": 150,
+            "mt5_volume": 14,
+            "mt5_tp_points": 35,
+            "mt5_sl_points": 35,
+        })
+        fn_flex_cfg["funded_trade3"]["50k"].update({
+            "tradovate_tp_ticks": 150,
+            "tradovate_sl_ticks": 150,
+            "mt5_volume": 16,
+            "mt5_tp_points": 35,
+            "mt5_sl_points": 35,
+        })
+        fn_flex_cfg["funded_trade4"]["50k"].update({
+            "tradovate_tp_ticks": 150,
+            "tradovate_sl_ticks": 150,
+            "mt5_volume": 0,
+            "mt5_tp_points": 35,
+            "mt5_sl_points": 35,
+        })
+
+        # Flex uses the same farming setup as standard Funded Next.
+        fn_flex_cfg["farming"]["50k"] = copy.deepcopy(
+            self.firm_blueprints["Funded Next"]["strategy_configs"]["farming"]["50k"]
+        )
+
     def detect_prop_firm(self, username: str) -> Optional[str]:
         """Detect prop firm based on username prefix. Returns None if unrecognized."""
         if not username or (isinstance(username, str) and len(username) < 4):
@@ -1976,6 +2056,8 @@ class PropFirmManager:
             normalized_code = "AlphaFutures"
         elif firm_code == "FundedNext":
             normalized_code = "Funded Next"
+        elif firm_code in ("FundedNextFlex", "Funded Next Flex"):
+            normalized_code = "Funded Next Flex"
         elif firm_code in ("FFF", "Funded Futures Family", "FundedFuturesFamily"):
             normalized_code = "Funded Futures Family"
         elif firm_code in ("5ers", "The5ers", "the5ers", "The 5ers"):
@@ -2105,6 +2187,8 @@ class PropFirmManager:
             "MFFU_Flex": "MFFU_Flex",
             "Funded Next": "Funded Next",
             "FundedNext": "Funded Next",
+            "Funded Next Flex": "Funded Next Flex",
+            "FundedNextFlex": "Funded Next Flex",
             "FundingTicks": "FundingTicks",
             "TopStep": "TopStep",
             "TopStep RTP": "TopStep RTP",
@@ -2273,10 +2357,10 @@ class PropFirmManager:
         if config:
             self.logger.info(f"[DEBUG] Config qty={config.get('tradovate_qty', 'N/A')}, volume={config.get('mt5_volume', 'N/A')}")
         
-        if phase_key == "farming" and self.current_firm_code == "Funded Next":
-            # Strict logic: Funded Next farming MUST use 50k blueprint regardless of size
+        if phase_key == "farming" and self.current_firm_code in ("Funded Next", "Funded Next Flex"):
+            # Strict logic: Funded Next farming blueprints MUST use 50k regardless of size
             if "50k" in phase_configs:
-                self.logger.info(f"Enforcing Funded Next 50k farming blueprint for '{size_key}'")
+                self.logger.info(f"Enforcing {self.current_firm_code} 50k farming blueprint for '{size_key}'")
                 config = phase_configs["50k"]
 
         if not config:
@@ -2385,6 +2469,11 @@ class PropFirmManager:
             "Farming":    ["farming"],
         },
         "Funded Next": {
+            "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "Funded Next Flex": {
             "Challenge": ["challenge_trade1", "challenge_trade2", "challenge_trade3"],
             "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3", "funded_trade4"],
             "Farming":   ["farming"],
@@ -2696,6 +2785,7 @@ class PropFirmManager:
         "TopStep":          0.0,     # Funded starts at $0; account blows at $0
         "TopStep RTP":      0.0,
         "Funded Next":      50000.0,
+        "Funded Next Flex": 48500.0,
         "FundingTicks":     50000.0,
         "TradeDay":         50000.0,
         "Tradeify":         50000.0,
@@ -2715,6 +2805,7 @@ class PropFirmManager:
         "MFFU":             {"Challenge": 3020, "Funded": 1020},
         "MFFU_Flex":        {"Challenge": 3020, "Funded": 5400},
         "Funded Next":      {"Challenge": 3050, "Funded": 5200},
+        "Funded Next Flex": {"Challenge": 2500, "Funded": 1500},
         "FundingTicks":     {"Challenge": 2540, "Funded": 5000},
         "TopStep":          {"Challenge": 3020, "Funded": 5400},
         "TopStep RTP":      {"Challenge": 3020, "Funded": 5400},
@@ -2901,7 +2992,7 @@ class PropFirmManager:
         is_trade4 = pk.endswith("trade4") or pk.endswith("_4")
         is_last_funded = is_trade4 or (
             pk.endswith("trade3") and firm_code in (
-                "Funded Next", "FundingTicks", "Tradeify", "Lucid"))
+                "Funded Next", "Funded Next Flex", "FundingTicks", "Tradeify", "Lucid"))
 
         mtp = int(config.get("mt5_tp_points") or 0)
         msl = int(config.get("mt5_sl_points") or 0)

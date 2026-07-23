@@ -759,6 +759,7 @@ def normalize_prop_firm_name(name):
         "myfundedfutures": "My Funded Futures",
         "myfundedfx": "My Funded Futures",
         "fundednext": "FundedNext",
+        "fundednextflex": "FundedNext",
         "topstep": "Topstep",
         "topsteprtp": "TopStep RTP",
         "fundingticks": "Funding Ticks",
@@ -801,6 +802,8 @@ def normalize_prop_firm_name(name):
     # Check if key starts with... (optional, logic for variations)
     if "myfundedfutures" in normalized:
         return "My Funded Futures"
+    if "fundednextflex" in normalized:
+        return "FundedNext"
     if "fundednext" in normalized:
         return "FundedNext"
     if "lucidmaxx" in normalized:

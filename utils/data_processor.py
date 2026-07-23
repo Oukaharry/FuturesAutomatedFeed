@@ -406,6 +406,7 @@ _FIRM_MAP = {
 # Child variants stored on their own row but rolled into the parent for stats / limits.
 _PROP_FIRM_STATS_PARENT = {
     "TopStep RTP": "Topstep",
+    "Funded Next Flex": "FundedNext",
 }
 
 

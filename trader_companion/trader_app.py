@@ -19,7 +19,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.11.0"  # BlackArrow + AlphaTrader connectors, The5ers full-cushion SL
+APP_VERSION = "1.11.4"  # AlphaTrader: pre-adjustment account switch; get_min_equity; bracket fix; adj-reasons in dialog
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -5112,6 +5112,8 @@ class TradeOpssAIApp:
         "Funding Ticks": "FundingTicks",
         "Funded Next": "Funded Next",
         "FundedNext": "Funded Next",
+        "Funded Next Flex": "Funded Next Flex",
+        "FundedNextFlex": "Funded Next Flex",
         "TopStep": "TopStep",
         "TopStep RTP": "TopStep RTP",
         "TopStep_RTP": "TopStep RTP",
@@ -5171,6 +5173,8 @@ class TradeOpssAIApp:
         # 5. Other known families by substring (defensive).
         if "mffu" in norm or "my funded futures" in norm:
             return "MFFU_Flex"
+        if "fundednextflex" in compact or "funded next flex" in norm:
+            return "Funded Next Flex"
         if "fundednext" in compact or "funded next" in norm:
             return "Funded Next"
         if "funded futures family" in norm or "fundedfuturesfamily" in compact or compact == "fff":
@@ -7146,14 +7150,6 @@ class TradeOpssAIApp:
         # clear it on the dashboard after the broker leg fills.
         day_field = self._find_day_field_name(ev, row_data["current_phase"])
 
-        # Get trade config from blueprint
-        config = None
-        if self.prop_firm_mgr:
-            config = self.prop_firm_mgr.get_strategy_config(firm_code, phase_key, acct_size)
-        if not config:
-            messagebox.showerror("Error", f"No blueprint config for {firm_code} / {phase_key} / {acct_size}")
-            return
-
         hedging = self.hedge_mode_var.get() == "Hedging"
         prop_firm_name = row_data["eval"].get("Prop Firm", firm_code) if row_data.get("eval") else firm_code
         # Platform follows the resolved blueprint code, not a substring of the
@@ -7163,6 +7159,46 @@ class TradeOpssAIApp:
 
         if not broker_account:
             messagebox.showerror("Error", f"Connect broker for {prop_firm_name} first")
+            return
+
+        # ── AlphaTrader: switch to the correct account BEFORE any balance reads ──
+        # get_account_size_label(), get_account_stats() and get_min_equity() all
+        # scrape the CURRENTLY VISIBLE account in the UI header. The actual switch
+        # inside place_order() is too late — the adjustments would use the wrong
+        # account's balance. Switch here so every subsequent read is on-target.
+        if platform == "AlphaTrader" and acct_num and hasattr(broker_account, 'switch_account'):
+            try:
+                active_now = broker_account.get_active_account() if hasattr(broker_account, 'get_active_account') else None
+                _acct_str = str(acct_num)
+                _active_str = str(active_now or "")
+                if _acct_str.upper() not in _active_str.upper():
+                    self.log(f"🔀 AlphaTrader: pre-adjustment account switch {_active_str!r} → {_acct_str!r}")
+                    switched = broker_account.switch_account(_acct_str)
+                    if not switched:
+                        self.log(f"⚠ AlphaTrader: account switch to '{_acct_str}' may have failed — proceeding anyway")
+                else:
+                    self.log(f"✅ AlphaTrader: already on correct account {_active_str!r}")
+            except Exception as _sw_err:
+                self.log(f"⚠ AlphaTrader: pre-adjustment switch failed ({_sw_err}) — balance reads may use wrong account")
+
+        # For AlphaTrader, auto-detect the account size from the live balance when
+        # the eval row doesn't have a size (or has "—"), so the right blueprint
+        # config (qty / TP / SL) is used rather than falling back to 50k defaults.
+        if platform == "AlphaTrader" and acct_size in ("—", "-", "", "N/A"):
+            try:
+                detected = broker_account.get_account_size_label("AlphaFutures")
+                if detected:
+                    acct_size = detected
+                    self.log(f"📐 AlphaTrader {acct_num}: account size auto-detected → {acct_size}")
+            except Exception as _sz_err:
+                self.log(f"⚠ AlphaTrader size detection failed for {acct_num}: {_sz_err}")
+
+        # Get trade config from blueprint
+        config = None
+        if self.prop_firm_mgr:
+            config = self.prop_firm_mgr.get_strategy_config(firm_code, phase_key, acct_size)
+        if not config:
+            messagebox.showerror("Error", f"No blueprint config for {firm_code} / {phase_key} / {acct_size}")
             return
 
         mt5_api = None
@@ -7260,10 +7296,17 @@ class TradeOpssAIApp:
         if day_name:
             phase_bits.append(day_name)
         phase_line = "\nPhase:     " + "  ·  ".join(phase_bits)
+
+        _adj_reasons = config.get("_adj_reasons") or []
+        _adj_line = ""
+        if _adj_reasons:
+            _adj_line = "\n⚠ Auto-adjusted:" + "".join(f"\n   • {r}" for r in _adj_reasons)
+
         tp_sl_lines = (
             phase_line
-            + f"\n{platform}:  TP {trado_tp} ticks  |  SL {trado_sl} ticks"
+            + f"\n{platform}:  Qty {trado_qty}  |  TP {trado_tp} ticks  |  SL {trado_sl} ticks"
             + (f"\nMT5:       TP {mt5_tp} pts    |  SL {mt5_sl} pts" if hedging else "")
+            + _adj_line
         )
 
         confirm = messagebox.askyesno(
@@ -7337,10 +7380,13 @@ class TradeOpssAIApp:
                     else:
                         order_result = broker_account.place_sell_order(_tsx_sym, trado_qty, tp_dollars=_tsx_tp_dollars, sl_dollars=_tsx_sl_dollars, expected_account=acct_num)
                 elif platform == "AlphaTrader":
-                    # Alpha Trader (futures.alphatrader.com) — ticks passed directly
+                    # Alpha Trader (futures.alphatrader.com) — ticks passed directly.
+                    # Pass expected_account so the connector verifies / switches
+                    # to the correct account before placing.
                     order_result = broker_account.place_order(
                         trado_sym, side=side, qty=trado_qty,
                         tp_ticks=trado_tp, sl_ticks=trado_sl,
+                        expected_account=acct_num,
                     )
                 elif platform == "BlackArrow":
                     # BlackArrow (web.blackarrowtrading.com) — ticks passed directly
@@ -7571,33 +7617,46 @@ class TradeOpssAIApp:
             # 1) TP by stage profit (skipped for farming symbols upstream)
             if broker_account and not is_farming:
                 try:
-                    current_profit = self._get_current_phase_profit(
-                        row_eval, current_phase,
-                        broker_account=broker_account, acct_size=acct_size,
-                        live_equity=scoped_net_liq, acct_num=acct_num)
-                    size_key = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
-                    stage_start = self.prop_firm_mgr.get_stage_start_target(
-                        firm_code, current_phase, phase_key, size_key)
-                    # Only apply when stage_start is trustworthy — falling back
-                    # to 0 would attribute the whole account balance to this
-                    # stage and collapse TP to the floor.
-                    if stage_start is not None:
-                        stage_profit_so_far = current_profit - stage_start
-                        self.log(f"🧮 TP-by-stage {acct_num}: equity_scoped={'yes' if scoped_net_liq is not None else 'NO(fallback)'} "
-                                 f"current_profit=${current_profit:,.2f} stage_start=${stage_start:,.2f} "
-                                 f"stage_profit_so_far=${stage_profit_so_far:,.2f} size_key={size_key} tick_value={tick_value}")
-                        config = self.prop_firm_mgr.calculate_adjusted_tp(
-                            config, stage_profit_so_far, tick_value)
+                    # Respect the per-config opt-out flag.  The5ers (and any other
+                    # firm with a strict consistency rule) set disable_tp_adjustment=True
+                    # in their blueprint so the dynamic TP raise can never push a single
+                    # trade over the 40% consistency ceiling.
+                    if config.get("disable_tp_adjustment"):
+                        self.log(
+                            f"⏭ TP-by-stage {acct_num}: skipped — "
+                            f"disable_tp_adjustment=True in blueprint ({firm_code}/{phase_key})"
+                        )
                         audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
-                              status="applied", target_account_id=target_account_id,
-                              scoped_equity=(scoped_net_liq is not None),
-                              current_profit=current_profit, stage_start=stage_start,
-                              stage_profit_so_far=stage_profit_so_far, size_key=str(size_key),
-                              tp_before=_before_tp, tp_after=config.get("tradovate_tp_ticks"))
+                              status="disabled_by_blueprint", firm=str(firm_code or ""),
+                              phase_key=str(phase_key or ""))
                     else:
-                        self.log(f"⚠ TP-by-stage {acct_num}: stage_start unavailable ({firm_code}/{phase_key}) — TP unchanged")
-                        audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
-                              status="no_stage_start", firm=str(firm_code or ""), phase_key=str(phase_key or ""))
+                        current_profit = self._get_current_phase_profit(
+                            row_eval, current_phase,
+                            broker_account=broker_account, acct_size=acct_size,
+                            live_equity=scoped_net_liq, acct_num=acct_num)
+                        size_key = self.prop_firm_mgr.convert_account_size_to_key(acct_size)
+                        stage_start = self.prop_firm_mgr.get_stage_start_target(
+                            firm_code, current_phase, phase_key, size_key)
+                        # Only apply when stage_start is trustworthy — falling back
+                        # to 0 would attribute the whole account balance to this
+                        # stage and collapse TP to the floor.
+                        if stage_start is not None:
+                            stage_profit_so_far = current_profit - stage_start
+                            self.log(f"🧮 TP-by-stage {acct_num}: equity_scoped={'yes' if scoped_net_liq is not None else 'NO(fallback)'} "
+                                     f"current_profit=${current_profit:,.2f} stage_start=${stage_start:,.2f} "
+                                     f"stage_profit_so_far=${stage_profit_so_far:,.2f} size_key={size_key} tick_value={tick_value}")
+                            config = self.prop_firm_mgr.calculate_adjusted_tp(
+                                config, stage_profit_so_far, tick_value)
+                            audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
+                                  status="applied", target_account_id=target_account_id,
+                                  scoped_equity=(scoped_net_liq is not None),
+                                  current_profit=current_profit, stage_start=stage_start,
+                                  stage_profit_so_far=stage_profit_so_far, size_key=str(size_key),
+                                  tp_before=_before_tp, tp_after=config.get("tradovate_tp_ticks"))
+                        else:
+                            self.log(f"⚠ TP-by-stage {acct_num}: stage_start unavailable ({firm_code}/{phase_key}) — TP unchanged")
+                            audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
+                                  status="no_stage_start", firm=str(firm_code or ""), phase_key=str(phase_key or ""))
                 except Exception as _te:
                     self.log(f"⚠ TP adjust failed for {acct_num}: {_te}")
                     audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
@@ -7792,6 +7851,12 @@ class TradeOpssAIApp:
                         closed_tv += 1
                         self.root.after(0, lambda fn=firm_name:
                             self.log(f"  ✅ {fn} positions closed"))
+                    elif hasattr(acct, 'flatten_all'):
+                        # AlphaTrader — cancel all orders and flatten
+                        acct.flatten_all()
+                        closed_tv += 1
+                        self.root.after(0, lambda fn=firm_name:
+                            self.log(f"  ✅ {fn} positions flattened"))
                 except Exception as e:
                     errors.append(f"{firm_name}: {e}")
                     self.root.after(0, lambda fn=firm_name, err=str(e):
@@ -8798,6 +8863,16 @@ class TradeOpssAIApp:
                 acct_size = row_data["acct_size"]
                 acct_num = row_data["acct_num"]
 
+                # For AlphaTrader, auto-detect account size from live balance when
+                # eval row doesn't have a size value.
+                if platform == "AlphaTrader" and acct_size in ("—", "-", "", "N/A"):
+                    try:
+                        detected = broker_account.get_account_size_label("AlphaFutures")
+                        if detected:
+                            acct_size = detected
+                    except Exception:
+                        pass
+
                 # ── Resolve phase_key from day placeholder (primary source of truth) ──
                 auto_ev = row_data.get("eval", {})
                 fresh_auto_ev = self._refresh_eval_for_account(acct_num)
@@ -9100,6 +9175,7 @@ class TradeOpssAIApp:
                         order_result = broker_account.place_order(
                             trado_sym, side=side, qty=trado_qty,
                             tp_ticks=trado_tp, sl_ticks=trado_sl,
+                            expected_account=acct_num,
                         )
                     elif platform == "BlackArrow":
                         order_result = broker_account.place_order(
@@ -9315,6 +9391,8 @@ class TradeOpssAIApp:
                 _FIRM_ALIASES = {
                     "funded next": ["fundednext"],
                     "fundednext": ["funded next"],
+                    "funded next flex": ["fundednextflex", "funded next", "fundednext"],
+                    "fundednextflex": ["funded next flex", "funded next", "fundednext"],
                     "my funded futures": ["mffu"],
                     "mffu": ["my funded futures"],
                     "lucid": ["lucid trading"],
@@ -9918,6 +9996,9 @@ class TradeOpssAIApp:
                               "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts",
                               "cdp": True},
         "FundedNext":        {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "FundedNextCDPAccount",
+                              "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts",
+                              "cdp": True},
+        "Funded Next Flex":  {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "FundedNextCDPAccount",
                               "login_url": "https://app.fundednext.com", "accounts_url": "https://app.fundednext.com/accounts",
                               "cdp": True},
         # CDP-based scrapers — attach to existing Chrome tab (no Selenium needed)
@@ -10910,6 +10991,8 @@ class TradeOpssAIApp:
                     _FIRM_ALIASES = {
                         "funded next": ["fundednext"],
                         "fundednext": ["funded next"],
+                        "funded next flex": ["fundednextflex", "funded next", "fundednext"],
+                        "fundednextflex": ["funded next flex", "funded next", "fundednext"],
                         "my funded futures": ["mffu"],
                         "mffu": ["my funded futures"],
                     }

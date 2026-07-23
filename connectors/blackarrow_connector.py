@@ -11,7 +11,7 @@ Login form selectors (live-verified):
   Submit:   button[type="submit"]  or  button text "Enter"
 
 Stats DOM (Nelogica/Hades UI):
-  Balance: leaf <nav *> node matching /^\$ [\d,]+\.\d{2}$/
+  Balance: leaf <nav *> node matching /^\\$ [\\d,]+\\.\\d{2}$/
   Stats:   .info > span.key (label) + span.value (value)
 
 USAGE:
@@ -42,8 +42,20 @@ logger = logging.getLogger(__name__)
 
 BLACKARROW_URL   = "https://web.blackarrowtrading.com/"
 DEFAULT_WAIT     = 30     # seconds
-CONFIRM_WAIT     = 8      # seconds for confirmation dialogs
+CONFIRM_WAIT     = 3      # seconds for confirmation dialogs (short — dialog is optional)
 ORDER_SETTLE     = 2.0    # seconds after placing an order
+DEBUG_PORT       = 9222   # Chrome remote-debugging port (probe / diagnostics)
+FILL_WAIT        = 5      # seconds to poll for Avg fill price after market entry
+
+# Tick sizes (minimum price increment) for supported instruments.
+# BlackArrow uses price-based TP/SL orders, so ticks → price offset.
+TICK_SIZES: dict = {
+    "NQFUT":  0.25,
+    "NQU6":   0.25,
+    "NQFU6":  0.25,
+    "MNQFUT": 0.25,
+    "MNQU6":  0.25,
+}
 
 
 class BlackArrowConnector:
@@ -207,6 +219,12 @@ class BlackArrowConnector:
             # Wait for platform to fully load (canvas / chart area)
             wait.until(lambda d: self._platform_ready(d))
             self._connected = True
+            # Auto-detect account ID from the nav bar if not supplied
+            if not self.account_id:
+                detected = self._read_account_id()
+                if detected:
+                    self.account_id = detected
+                    logger.info("BlackArrow: detected account_id=%s", detected)
             logger.info("BlackArrow: platform ready.")
 
         except Exception as e:
@@ -233,45 +251,271 @@ class BlackArrowConnector:
         tp_ticks: Optional[int] = None,
         sl_ticks: Optional[int] = None,
     ) -> bool:
+        """
+        Place a market order then attach TP/SL as separate limit/stop orders.
+
+        UI flow (persistent order panel — no popup ticket):
+          1. Set Qty in the panel's Qty field.
+          2. Click 'Buy at Mkt' or 'Sell at Mkt' for the market entry.
+          3. Confirm any dialog.
+          4. Wait for the Avg fill price to appear in the position panel.
+          5. For TP: set Price → click 'Sell' (long) or 'B Stop' (short).
+          6. For SL: set Price → click 'Sell' (long) or 'B Stop' (short).
+
+        The platform auto-detects limit vs stop based on whether the price is
+        above or below the current market — same pattern as Tradovate OCO legs.
+        """
         if not self._driver or not self._connected:
-            raise RuntimeError("BlackArrow not connected — open the broker panel and click Connect first")
-
-        side_lower  = side.lower()
-        use_bracket = (tp_ticks is not None) or (sl_ticks is not None)
-        logger.info("BlackArrow: placing %s %s qty=%d tp=%s sl=%s",
-                    side_lower, symbol, qty, tp_ticks, sl_ticks)
-
-        self._set_qty(qty)
-
-        if use_bracket:
-            self._configure_bracket(tp_ticks or 0, sl_ticks or 0)
-
-        # BlackArrow ORDER panel shows dynamic text like "BUY +6 @ MARKET" / "SELL -6 @ MARKET".
-        # Use contains() so the quantity embedded in the label doesn't break matching.
-        # Also try ion-button (Ionic/Capacitor wrapper) and fallback to aria-label.
-        kw = "BUY" if side_lower == "buy" else "SELL"
-        try:
-            btns = self._driver.find_elements(
-                By.XPATH,
-                f'//button[contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"{kw}") '
-                f'and contains(translate(normalize-space(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"MARKET")]'
+            raise RuntimeError(
+                "BlackArrow not connected — open the broker panel and click Connect first"
             )
-            if not btns:
-                # Fallback: ion-button via JS click helper
-                clicked = self._click_ionic_button(kw)
-                if not clicked:
-                    raise RuntimeError(f"BlackArrow: no '{kw} @ MARKET' button found — is the Order panel open?")
-            else:
-                btns[0].click()
-        except RuntimeError:
-            raise
-        except Exception as e:
-            raise RuntimeError(f"BlackArrow: order click failed: {e}") from e
 
+        side_lower = side.lower()
+        logger.info(
+            "BlackArrow: placing %s %s qty=%d tp=%s sl=%s",
+            side_lower, symbol, qty, tp_ticks, sl_ticks,
+        )
+
+        # ── 1. Set quantity ──────────────────────────────────────────────
+        self._set_qty_field(qty)
+        time.sleep(0.2)
+
+        # ── 2. Market entry ──────────────────────────────────────────────
+        entry_btn = "Buy at Mkt" if side_lower == "buy" else "Sell at Mkt"
+        if not self._click_ionic_button(entry_btn):
+            raise RuntimeError(
+                f"BlackArrow: could not find '{entry_btn}' button — "
+                "is the Order panel visible?"
+            )
         self._confirm_order_dialog()
         time.sleep(ORDER_SETTLE)
+
+        # ── 3. Nothing more to do if no TP / SL requested ───────────────
+        if not tp_ticks and not sl_ticks:
+            logger.info("BlackArrow: market order complete (no TP/SL).")
+            return True
+
+        # ── 4. Read fill price from position panel ───────────────────────
+        avg_price: Optional[float] = None
+        for _ in range(FILL_WAIT):
+            avg_price = self._get_avg_price()
+            if avg_price:
+                break
+            time.sleep(1.0)
+
+        if not avg_price:
+            logger.warning(
+                "BlackArrow: could not read Avg fill price after %ds — "
+                "TP/SL orders skipped",
+                FILL_WAIT,
+            )
+            return True
+
+        tick     = TICK_SIZES.get(symbol.upper(), 0.25)
+        # Snap avg price to the nearest valid tick — eliminates any DOM-parsing float noise
+        avg_snapped = self._snap_to_tick(avg_price, tick)
+        if avg_snapped != avg_price:
+            logger.debug(
+                "BlackArrow: avg_price %.4f snapped to %.2f (tick=%.2f)",
+                avg_price, avg_snapped, tick,
+            )
+        avg_price = avg_snapped
+
+        # For long:  exit via 'Sell' (limit above, stop below)
+        # For short: exit via 'B Stop' (limit below, stop above)
+        exit_btn = "Sell" if side_lower == "buy" else "B Stop"
+
+        # ── 5. Place TP order ────────────────────────────────────────────
+        if tp_ticks:
+            tp_price = self._snap_to_tick(
+                avg_price + tp_ticks * tick if side_lower == "buy"
+                else avg_price - tp_ticks * tick,
+                tick,
+            )
+            self._set_price_field(tp_price, tick)
+            time.sleep(0.2)
+            self._click_ionic_button(exit_btn)
+            self._confirm_order_dialog()
+            time.sleep(0.5)
+            logger.info(
+                "BlackArrow: TP order placed — %s @ %.2f (%d ticks from avg %.2f)",
+                exit_btn, tp_price, tp_ticks, avg_price,
+            )
+
+        # ── 6. Place SL order ────────────────────────────────────────────
+        if sl_ticks:
+            sl_price = self._snap_to_tick(
+                avg_price - sl_ticks * tick if side_lower == "buy"
+                else avg_price + sl_ticks * tick,
+                tick,
+            )
+            self._set_price_field(sl_price, tick)
+            time.sleep(0.2)
+            self._click_ionic_button(exit_btn)
+            self._confirm_order_dialog()
+            time.sleep(0.5)
+            logger.info(
+                "BlackArrow: SL order placed — %s @ %.2f (%d ticks from avg %.2f)",
+                exit_btn, sl_price, sl_ticks, avg_price,
+            )
+
         logger.info("BlackArrow: order complete.")
         return True
+
+    # ── Order-panel helpers ─────────────────────────────────────────────
+
+    @staticmethod
+    def _snap_to_tick(price: float, tick_size: float) -> float:
+        """Round price to the nearest valid tick boundary.
+
+        Uses integer arithmetic to avoid floating-point drift:
+            snap(28801.123, 0.25) -> 28801.25
+            snap(28801.0,   0.25) -> 28801.0
+        """
+        return round(round(price / tick_size) * tick_size, 10)
+
+    def _set_price_field(self, price: float, tick_size: float = 0.25) -> None:
+        """Set the Price input in the main order panel using a React-aware setter.
+
+        Decimal places are derived from the tick size so the platform always
+        receives a properly-formatted price (e.g. "28801.25" not "28801.2500").
+        """
+        # Number of decimal places = decimal places in tick_size string
+        decimals = len(str(tick_size).rstrip('0').split('.')[-1]) if '.' in str(tick_size) else 0
+        try:
+            self._driver.execute_script("""
+                (function(price, decimals) {
+                    var setter = Object.getOwnPropertyDescriptor(
+                        HTMLInputElement.prototype, 'value'
+                    ).set;
+                    function fire(el, v) {
+                        setter.call(el, v);
+                        el.dispatchEvent(new Event('input',  { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                    }
+                    // Strategy 1: input with aria-label / placeholder mentioning "price"
+                    var inp = document.querySelector(
+                        'input[aria-label*="price" i], input[placeholder*="price" i]'
+                    );
+                    // Strategy 2: label "Price" → its associated input
+                    if (!inp) {
+                        var labels = document.querySelectorAll('label');
+                        for (var lbl of labels) {
+                            if (lbl.textContent.trim().toLowerCase() === 'price') {
+                                var id = lbl.htmlFor;
+                                inp = (id && document.getElementById(id))
+                                      || lbl.querySelector('input')
+                                      || (lbl.parentElement
+                                          && lbl.parentElement.querySelector('input'));
+                                break;
+                            }
+                        }
+                    }
+                    // Strategy 3: first visible numeric input in the panel
+                    if (!inp) {
+                        var all = Array.from(document.querySelectorAll(
+                            'input[type="number"], input[type="text"]'
+                        ));
+                        inp = all.find(function(i) {
+                            var r = i.getBoundingClientRect();
+                            return r.width > 30 && r.height > 10;
+                        });
+                    }
+                    if (inp) fire(inp, price.toFixed(decimals));
+                })(arguments[0], arguments[1]);
+            """, price, decimals)
+        except Exception as e:
+            logger.warning("_set_price_field: %s", e)
+
+    def _set_qty_field(self, qty: int) -> None:
+        """Set the Qty input in the main order panel using a React-aware setter."""
+        try:
+            self._driver.execute_script("""
+                (function(qty) {
+                    var setter = Object.getOwnPropertyDescriptor(
+                        HTMLInputElement.prototype, 'value'
+                    ).set;
+                    function fire(el, v) {
+                        setter.call(el, v);
+                        el.dispatchEvent(new Event('input',  { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                    }
+                    // Strategy 1: input with aria-label / placeholder mentioning "qty"
+                    var inp = document.querySelector(
+                        'input[aria-label*="qty" i], input[placeholder*="qty" i], '
+                        + 'input[aria-label*="quantity" i]'
+                    );
+                    // Strategy 2: label "Qty" → its associated input
+                    if (!inp) {
+                        var labels = document.querySelectorAll('label');
+                        for (var lbl of labels) {
+                            var t = lbl.textContent.trim().toLowerCase();
+                            if (t === 'qty' || t === 'quantity') {
+                                var id = lbl.htmlFor;
+                                inp = (id && document.getElementById(id))
+                                      || lbl.querySelector('input')
+                                      || (lbl.parentElement
+                                          && lbl.parentElement.querySelector('input'));
+                                break;
+                            }
+                        }
+                    }
+                    // Strategy 3: second visible numeric input (Price is first)
+                    if (!inp) {
+                        var all = Array.from(document.querySelectorAll(
+                            'input[type="number"], input[type="text"]'
+                        )).filter(function(i) {
+                            var r = i.getBoundingClientRect();
+                            return r.width > 30 && r.height > 10;
+                        });
+                        if (all.length >= 2) inp = all[1];
+                    }
+                    if (inp) fire(inp, String(qty));
+                })(arguments[0]);
+            """, qty)
+        except Exception as e:
+            logger.warning("_set_qty_field: %s", e)
+
+    def _get_avg_price(self) -> Optional[float]:
+        """Read the Avg (fill price) from the position panel.
+
+        Finds the 'Avg' label leaf node, then locates the price node at the
+        SAME y-coordinate (same row).  Returns None when flat ($ 0.00 or not found).
+        """
+        try:
+            text = self._driver.execute_script(r"""
+                var all = Array.from(document.querySelectorAll('*'));
+                // First pass: find the 'Avg' label and its y position
+                var avgEl = null, avgY = -1;
+                for (var el of all) {
+                    if (el.children.length > 0) continue;
+                    if (el.textContent.trim() !== 'Avg') continue;
+                    var r = el.getBoundingClientRect();
+                    if (r.width === 0) continue;
+                    avgEl = el;
+                    avgY  = r.y;
+                    break;
+                }
+                if (!avgEl) return null;
+                // Second pass: find a price node on the same row (within 5px)
+                for (var n of all) {
+                    if (n === avgEl || n.children.length > 0) continue;
+                    var nr = n.getBoundingClientRect();
+                    if (Math.abs(nr.y - avgY) > 5) continue;
+                    var t = n.textContent.trim();
+                    // Match "$ 28,776.00" format; skip $0.00 (flat / no position)
+                    if (/^\$\s*[\d,]+\.\d{2}$/.test(t) && t !== '$ 0.00') return t;
+                }
+                return null;
+            """)
+            if text:
+                num = re.sub(r"[^\d.]", "", text)
+                return float(num) if num else None
+        except Exception as e:
+            logger.warning("_get_avg_price: %s", e)
+        return None
 
     def close_all(self, symbol: str = "NQFUT") -> bool:
         if not self._driver:
@@ -324,6 +568,14 @@ class BlackArrowConnector:
     def is_connected(self) -> bool:
         return self._connected
 
+    def buy_market(self, symbol, qty=1, tp=None, sl=None, expected_account=None):
+        """Convenience wrapper — delegates to place_order(side='buy')."""
+        return self.place_order(symbol, side="buy", qty=qty, tp_ticks=tp, sl_ticks=sl)
+
+    def sell_market(self, symbol, qty=1, tp=None, sl=None, expected_account=None):
+        """Convenience wrapper — delegates to place_order(side='sell')."""
+        return self.place_order(symbol, side="sell", qty=qty, tp_ticks=tp, sl_ticks=sl)
+
     # ================================================================== #
     # Selenium helpers
     # ================================================================== #
@@ -372,6 +624,12 @@ class BlackArrowConnector:
             "profile.default_content_settings.images": 1,
         })
 
+        # Remote-debugging port — lets probe scripts and diagnostics attach
+        # to the running browser without restarting it.
+        opts.add_argument(f"--remote-debugging-port={DEBUG_PORT}")
+        # Allow CDP WebSocket connections from any localhost origin
+        opts.add_argument("--remote-allow-origins=*")
+
         driver = webdriver.Chrome(options=opts)
         driver.execute_cdp_cmd(
             "Page.addScriptToEvaluateOnNewDocument",
@@ -400,74 +658,8 @@ class BlackArrowConnector:
             return False
 
     def _set_qty(self, qty: int):
-        driver = self._driver
-        try:
-            driver.execute_script("""
-                (function(qty) {
-                    const inputs = document.querySelectorAll('input[type="number"], input[class*="qty" i], input[class*="quantity" i]');
-                    for (const inp of inputs) {
-                        const r = inp.getBoundingClientRect();
-                        if (r.width > 20 && r.height > 10) {
-                            const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                            setter.call(inp, qty);
-                            inp.dispatchEvent(new Event('input',  { bubbles: true }));
-                            inp.dispatchEvent(new Event('change', { bubbles: true }));
-                            break;
-                        }
-                    }
-                })(arguments[0]);
-            """, qty)
-        except Exception as e:
-            logger.warning("_set_qty: %s", e)
-
-    def _configure_bracket(self, tp_ticks: int, sl_ticks: int):
-        driver = self._driver
-        try:
-            # Open bracket dropdown and select <Custom>
-            try:
-                dropdown = driver.find_elements(By.CSS_SELECTOR,
-                    '[class*="bracket" i] [class*="dropdown" i], [class*="bracketType" i]')
-                if dropdown:
-                    dropdown[0].click()
-                    time.sleep(0.3)
-                    custom = driver.find_elements(By.XPATH, '//*[normalize-space()="<Custom>"]')
-                    if custom:
-                        custom[0].click()
-                        time.sleep(0.3)
-            except Exception:
-                pass
-
-            # Select Ticks unit
-            try:
-                driver.execute_script("""
-                    const labels = document.querySelectorAll('[class*="bracket" i] label, [class*="graphic-order" i] label');
-                    for (const lbl of labels) {
-                        if (lbl.textContent.trim().toLowerCase() === 'ticks') { lbl.click(); return; }
-                    }
-                """)
-            except Exception:
-                pass
-
-            # Set TP (Gain) and SL (Loss) values
-            driver.execute_script("""
-                (function(gain, loss) {
-                    const bracket = document.querySelector(
-                        '[class*="graphic-order__bracket" i], [class*="bracket-body" i], [class*="bracketBody" i]'
-                    );
-                    if (!bracket) return;
-                    const inputs = bracket.querySelectorAll('input');
-                    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                    function sv(el, v) {
-                        setter.call(el, String(v));
-                        el.dispatchEvent(new Event('input',  { bubbles: true }));
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                    if (inputs[0]) sv(inputs[0], gain);
-                    if (inputs[1]) sv(inputs[1], loss);
-                })(arguments[0], arguments[1]);
-            """, tp_ticks, sl_ticks)
-        except Exception as e:
-            logger.warning("_configure_bracket: %s", e)
+        """Legacy alias for _set_qty_field."""
+        self._set_qty_field(qty)
 
     def _confirm_order_dialog(self):
         """Click OK/Confirm on any order confirmation modal."""
@@ -482,12 +674,39 @@ class BlackArrowConnector:
         except Exception:
             logger.debug("No confirmation dialog.")
 
+    def _read_account_id(self) -> Optional[str]:
+        """Extract the numeric account ID from the nav-bar header.
+
+        The header shows:  Simulador  1252252 - harry@gmail.com  D...  USD  49,997.50
+        We look for a standalone token of 5-10 digits that appears before " - email".
+        """
+        try:
+            acct = self._driver.execute_script(r"""
+                var els = Array.from(document.querySelectorAll('nav *'));
+                for (var el of els) {
+                    if (el.children.length > 0) continue;
+                    var t = el.textContent.trim();
+                    // Match "1252252 - user@example.com" pattern
+                    var m = t.match(/^(\d{5,10})\s*-\s*.+@/);
+                    if (m) return m[1];
+                    // Also match a bare numeric token between 5-10 digits
+                    if (/^\d{5,10}$/.test(t)) return t;
+                }
+                return null;
+            """)
+            return acct or None
+        except Exception as e:
+            logger.debug("_read_account_id: %s", e)
+            return None
+
     def _get_stats(self) -> dict:
         """Scrape Balance, MLL, SOD Balance and DailyPnL from the platform."""
         driver = self._driver
         if not driver:
             return {}
         stats = {}
+        if self.account_id:
+            stats["AccountId"] = self.account_id
 
         # Balance from nav bar
         try:
