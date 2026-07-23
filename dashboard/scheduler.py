@@ -175,7 +175,7 @@ def _build_daily_summary_text():
         _client_daily_summary_not_expected,
         _summary_tracker_date_str,
         _summary_tracker_display_date_str,
-        _quality_scan_date_for_summary,
+        _quality_scan_date_for_issue_counts,
         DAILY_SUMMARY_TRACKER_SKIP_MSG,
     )
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
@@ -183,7 +183,7 @@ def _build_daily_summary_text():
 
     # Summary tracker day = 02:05 EAT boundary; quality scan may lag until morning run.
     tracker_date = _summary_tracker_display_date_str()
-    scan_date = _quality_scan_date_for_summary(tracker_date)
+    scan_date = _quality_scan_date_for_issue_counts(tracker_date)
     date = tracker_date
     try:
         from dashboard.app import _kenya_now
