@@ -9390,6 +9390,17 @@ def _allowed_trading_day_abbrs(ref_dt):
     return frozenset({order[wd], order[wd + 1]})
 
 
+def _today_tomorrow_trading_abbrs(ref_dt):
+    """(today, tomorrow) session markers for Mon–Fri; (None, None) on Sat/Sun."""
+    wd = ref_dt.weekday()
+    order = ('mon', 'tue', 'wed', 'thu', 'fri')
+    if wd >= 5:
+        return None, None
+    if wd == 4:
+        return 'fri', 'mon'
+    return order[wd], order[wd + 1]
+
+
 def _should_skip_daily_summary_tracking(eat_dt):
     """Skip daily-summary submission tracker when there is no session to track.
 
@@ -9564,11 +9575,14 @@ def _get_daily_summary_payout_qa_resolved_set():
     )
 
 
-def run_quality_scan(target_client=None):
+def run_quality_scan(target_client=None, day_marker_strict=None):
     """
     Automated quality scan: checks every client's data for SOP violations.
     Returns list of per-client scan results with issues and health scores.
     If target_client is given, only scan that one client.
+
+    day_marker_strict: when True (or auto after 22:00 EAT on weekdays), flag rows that
+    only show today's weekday marker without tomorrow's — stale after daily summary / EOD.
     """
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from dashboard.database import (
@@ -9584,6 +9598,9 @@ def run_quality_scan(target_client=None):
     now = now_eat
     today_weekday = now_eat.weekday()  # 0=Mon, 6=Sun
     scan_date_str = _kenya_today_str()
+    if day_marker_strict is None:
+        # After 22:00 EAT Mon–Fri, same-day-only markers (e.g. WED on Wed) are stale.
+        day_marker_strict = today_weekday < 5 and now_eat.hour >= 22
 
     for client_name in all_clients:
         profile = get_client_profile(client_name)
@@ -10178,6 +10195,7 @@ def run_quality_scan(target_client=None):
                     )
                     stale_detail_parts = []
                     has_allowed_markers = bool(_live_status_p1_note)
+                    all_day_markers = set()
                     for col in _day_columns:
                         if not _is_live_day_row:
                             note_val = _cell_notes.get(col)
@@ -10190,6 +10208,7 @@ def run_quality_scan(target_client=None):
                         ab = _weekday_abbrs_in_text(raw_cell)
                         if not ab:
                             continue
+                        all_day_markers |= ab
                         disallowed = ab - _allowed_abbrs
                         if disallowed:
                             bad = ', '.join(sorted(disallowed))
@@ -10210,6 +10229,35 @@ def run_quality_scan(target_client=None):
                             ),
                             'estimated_date': _estimate_issue_date(ev, 'Downtime detected', scan_date_str),
                         })
+                    elif day_marker_strict and not _live_status_p1_note:
+                        _today_ab, _tomorrow_ab = _today_tomorrow_trading_abbrs(now_eat)
+                        if (
+                            _today_ab
+                            and _tomorrow_ab
+                            and all_day_markers
+                            and _today_ab in all_day_markers
+                            and _tomorrow_ab not in all_day_markers
+                            and not (_is_live_day_row and _live_status_p1_note)
+                        ):
+                            _only_today_cols = []
+                            for col in _day_columns:
+                                raw_cell = ev.get(col)
+                                if _hedge_cell_currency_only(raw_cell):
+                                    continue
+                                ab = _weekday_abbrs_in_text(raw_cell)
+                                if ab == {_today_ab}:
+                                    _only_today_cols.append(f'{col}={str(raw_cell).strip()!r}')
+                            prevw = ', '.join(_only_today_cols[:5]) or _today_ab
+                            issues.append({
+                                'check': 'Downtime detected',
+                                'severity': 'high',
+                                'row': idx,
+                                'detail': (
+                                    f'{row_label}: Same-day marker only ({prevw}) — '
+                                    f'missing tomorrow ({_tomorrow_ab}); update after trading'
+                                ),
+                                'estimated_date': _estimate_issue_date(ev, 'Downtime detected', scan_date_str),
+                            })
                     elif (
                         not has_allowed_markers
                         and not (
@@ -11803,7 +11851,7 @@ def _rescan_client_after_daily_summary(client_id: str):
         return None
     try:
         scan_date = _kenya_today_str()
-        results = run_quality_scan(target_client=client_id) or []
+        results = run_quality_scan(target_client=client_id, day_marker_strict=True) or []
         if not results:
             return None
         r = results[0]
