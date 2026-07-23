@@ -151,6 +151,33 @@ def _quality_scan_date_for_summary(tracker_date=None):
     return tracker_date
 
 
+def _latest_quality_scan_date_str():
+    """Most recent quality_scan_results.scan_date in the DB, or None."""
+    try:
+        from dashboard.database import get_connection
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT MAX(scan_date) AS d FROM quality_scan_results')
+            row = cursor.fetchone()
+            return row['d'] if row and row.get('d') else None
+    except Exception:
+        return None
+
+
+def _quality_scan_date_for_issue_counts(tracker_date=None):
+    """Scan date for open-issue counts and health scores.
+
+    Uses the tracker-paired scan, but prefers a newer morning scan when the
+    summary tracker is still showing the prior night's batch (before ~18:00 EAT).
+    Keeps the bot / tracker aligned with the All Issues table (latest scan).
+    """
+    paired = _quality_scan_date_for_summary(tracker_date)
+    latest = _latest_quality_scan_date_str()
+    if latest and paired and latest > paired:
+        return latest
+    return paired or latest
+
+
 def _issues_for_trader_client_quality_views(issues):
     skip = _QUALITY_CHECKS_HIDDEN_FROM_TRADER_CLIENT_VIEWS | {'Scan error'}
     return [i for i in (issues or []) if i.get('check') not in skip]
@@ -11302,7 +11329,7 @@ def api_summary_status():
     all_clients = hierarchy_get_all_clients()
 
     from dashboard.database import get_quality_scan_results
-    quality_scan_date = _quality_scan_date_for_summary(date)
+    quality_scan_date = _quality_scan_date_for_issue_counts(date)
     scan_by_client = {
         r.get('client_id'): r
         for r in (get_quality_scan_results(quality_scan_date) or [])
@@ -11587,7 +11614,7 @@ def api_trader_summary_status():
         excluded_clients = set(_json.loads(get_setting('summary_tracker_excluded_clients') or '[]'))
 
         from dashboard.database import get_quality_scan_results
-        scan_date = _quality_scan_date_for_summary(date)
+        scan_date = _quality_scan_date_for_issue_counts(date)
         scan_by_client = {
             r.get('client_id'): r
             for r in (get_quality_scan_results(scan_date) or [])
@@ -12035,9 +12062,9 @@ def api_daily_summary():
     from config.hierarchy import get_all_clients, get_client_profile
     from config.hierarchy import SYSTEM_HIERARCHY
 
-    # Tracker date for submissions/checklists; quality scan may still be prior morning's run.
+    # Tracker date for submissions/checklists; issue counts use latest scan when newer.
     tracker_date = request.args.get('date', _summary_tracker_display_date_str())
-    scan_date = _quality_scan_date_for_summary(tracker_date)
+    scan_date = _quality_scan_date_for_issue_counts(tracker_date)
     date = tracker_date
     scan_results = get_quality_scan_results(scan_date)
     checklists = get_daily_checklists(tracker_date)
@@ -12192,7 +12219,7 @@ def api_daily_summary():
         from dashboard.database import get_quality_scan_results
         scan_by_client = {
             r.get('client_id'): r
-            for r in (get_quality_scan_results(_quality_scan_date_for_summary(date)) or [])
+            for r in (get_quality_scan_results(_quality_scan_date_for_issue_counts(date)) or [])
             if r.get('client_id')
         }
 
