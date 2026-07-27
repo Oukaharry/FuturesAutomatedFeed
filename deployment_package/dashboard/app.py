@@ -2055,6 +2055,8 @@ def api_update_client():
             return jsonify({"status": "error", "message": "Rename failed (not found)"}), 400
         rename_client_in_db(name, new_name)
         rename_user_credential(name, new_name, 'client')
+        if email:
+            update_user_email(new_name, 'client', email)
         log_action('RENAME_CLIENT', 'client', f'{name} -> {new_name}', get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
     

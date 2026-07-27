@@ -42,13 +42,14 @@ def merge_identity_preserving_admin_fields(
             merged[key] = base[key]
     return merged
 
-# Personal trading override: Fallback and all KYC-linked accounts under it
-# must always be allowed to push companion data.
-ALWAYS_ALLOW_PUSH_PRIMARY_CLIENT = "Fallback"
+# Personal trading override: seed from stable aliases + owner email, then
+# expand to all linked KYC accounts under whichever client name is active.
+ALWAYS_ALLOW_PUSH_CLIENT_ALIASES = frozenset({"Fallback", "Harry"})
+ALWAYS_ALLOW_PUSH_EMAILS = frozenset({"harryodhiambo16@gmail.com"})
 
 _ALLOW_CACHE_TTL_SECS = 30.0
 _allow_cache_until = 0.0
-_allow_cache_ids: frozenset[str] = frozenset({ALWAYS_ALLOW_PUSH_PRIMARY_CLIENT})
+_allow_cache_ids: frozenset[str] = frozenset(ALWAYS_ALLOW_PUSH_CLIENT_ALIASES)
 
 
 def _allowed_push_client_ids() -> frozenset[str]:
@@ -59,17 +60,25 @@ def _allowed_push_client_ids() -> frozenset[str]:
     if now < _allow_cache_until:
         return _allow_cache_ids
 
-    resolved = {ALWAYS_ALLOW_PUSH_PRIMARY_CLIENT}
+    resolved = set(ALWAYS_ALLOW_PUSH_CLIENT_ALIASES)
     try:
         # Local import avoids a module-level dependency on database bootstrap.
         from dashboard.database import get_all_kyc_accounts
+        from config.hierarchy import get_client_by_email
 
-        for name in get_all_kyc_accounts(ALWAYS_ALLOW_PUSH_PRIMARY_CLIENT) or []:
-            cid = str(name or "").strip()
+        for email in ALWAYS_ALLOW_PUSH_EMAILS:
+            profile = get_client_by_email(email)
+            cid = str((profile or {}).get("client") or "").strip()
             if cid:
                 resolved.add(cid)
+
+        for seed_client in tuple(resolved):
+            for name in get_all_kyc_accounts(seed_client) or []:
+                cid = str(name or "").strip()
+                if cid:
+                    resolved.add(cid)
     except Exception:
-        # If DB is unavailable, keep at least the primary account exempt.
+        # If DB is unavailable, keep at least the known aliases exempt.
         pass
 
     _allow_cache_ids = frozenset(resolved)

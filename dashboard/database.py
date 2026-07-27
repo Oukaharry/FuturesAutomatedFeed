@@ -862,10 +862,11 @@ def find_user_by_identifier(identifier: str) -> dict:
         return best
 
 
-_FALLBACK_OVERRIDE_PRIMARY = 'Fallback'
+_FALLBACK_OVERRIDE_PRIMARY_EMAIL = 'harryodhiambo16@gmail.com'
+_FALLBACK_OVERRIDE_CLIENT_ALIASES = frozenset({'Fallback', 'Harry'})
 _FALLBACK_OVERRIDE_CACHE_TTL_SECS = 30.0
 _fallback_override_cache_until = 0.0
-_fallback_override_clients = frozenset({_FALLBACK_OVERRIDE_PRIMARY})
+_fallback_override_clients = frozenset(_FALLBACK_OVERRIDE_CLIENT_ALIASES)
 
 
 def _resolve_fallback_override_clients() -> frozenset[str]:
@@ -876,9 +877,17 @@ def _resolve_fallback_override_clients() -> frozenset[str]:
     if now < _fallback_override_cache_until:
         return _fallback_override_clients
 
-    names = {_FALLBACK_OVERRIDE_PRIMARY}
+    names = set(_FALLBACK_OVERRIDE_CLIENT_ALIASES)
     try:
-        names.update(str(n or '').strip() for n in get_all_kyc_accounts(_FALLBACK_OVERRIDE_PRIMARY) or [])
+        from config.hierarchy import get_client_by_email as _get_client_by_email
+
+        profile = _get_client_by_email(_FALLBACK_OVERRIDE_PRIMARY_EMAIL)
+        primary_client = str((profile or {}).get('client') or '').strip()
+        if primary_client:
+            names.add(primary_client)
+
+        for seed_client in tuple(names):
+            names.update(str(n or '').strip() for n in get_all_kyc_accounts(seed_client) or [])
     except Exception:
         pass
 
@@ -987,14 +996,64 @@ def rename_user_credential(old_name: str, new_name: str, user_type: str) -> bool
         return cursor.rowcount > 0
 
 def rename_client_in_db(old_name: str, new_name: str) -> bool:
-    """Rename client_id across all client data tables."""
+    """Rename a client consistently across DB tables keyed by client name."""
+    old_name = _normalize_identifier(old_name)
+    new_name = _normalize_identifier(new_name)
+    if not old_name or not new_name:
+        return False
+    if old_name == new_name:
+        return True
+
     with get_connection() as conn:
         cursor = conn.cursor()
-        for table in ['clients_data', 'data_history', 'cell_notes', 'daily_watermarks', 'waterlog_periods']:
+
+        def _safe_execute(sql: str, params: tuple):
+            cursor.execute('SAVEPOINT rename_client_sp')
             try:
-                cursor.execute(f'UPDATE {table} SET client_id = ? WHERE client_id = ?', (new_name, old_name))
+                cursor.execute(sql, params)
             except Exception:
-                pass
+                cursor.execute('ROLLBACK TO SAVEPOINT rename_client_sp')
+            finally:
+                cursor.execute('RELEASE SAVEPOINT rename_client_sp')
+
+        client_id_tables = [
+            'clients_data',
+            'data_history',
+            'cell_notes',
+            'daily_watermarks',
+            'waterlog_periods',
+            'daily_checklists',
+            'quality_scan_results',
+            'quality_issue_baseline',
+            'quality_issue_resolution',
+            'qa_resolutions',
+            'm1_bars',
+        ]
+
+        for table in client_id_tables:
+            _safe_execute(f'UPDATE {table} SET client_id = ? WHERE client_id = ?', (new_name, old_name))
+
+        _safe_execute('UPDATE api_keys SET client = ? WHERE client = ?', (new_name, old_name))
+        _safe_execute('UPDATE kyc_links SET primary_client = ? WHERE primary_client = ?', (new_name, old_name))
+        _safe_execute('UPDATE kyc_links SET linked_client = ? WHERE linked_client = ?', (new_name, old_name))
+
+        try:
+            cursor.execute('SELECT identity FROM clients_data WHERE client_id = ?', (new_name,))
+            row = cursor.fetchone()
+            if row:
+                identity = json.loads(row['identity'] or '{}') or {}
+                if isinstance(identity, dict):
+                    if str(identity.get('name') or '').strip() in ('', old_name):
+                        identity['name'] = new_name
+                    if str(identity.get('client') or '').strip() in ('', old_name):
+                        identity['client'] = new_name
+                    cursor.execute(
+                        'UPDATE clients_data SET identity = ?, last_updated = ? WHERE client_id = ?',
+                        (json.dumps(identity), datetime.now().isoformat(), new_name)
+                    )
+        except Exception:
+            pass
+
         conn.commit()
         return True
 
