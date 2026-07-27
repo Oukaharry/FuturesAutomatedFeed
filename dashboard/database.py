@@ -618,17 +618,12 @@ def verify_user_password(username: str, user_type: str, password: str) -> dict:
             SELECT id, username, email, password_hash, salt, user_type, 
                    parent_admin, parent_trader, is_active, must_change_password
             FROM user_credentials 
-            WHERE username = ? AND user_type = ?
+            WHERE username = ? AND user_type = ? AND is_active = 1
         ''', (username, user_type))
         row = cursor.fetchone()
         
         if row is None:
             return None
-
-        is_active = bool(row.get('is_active', 1))
-        if not is_active:
-            if user_type != 'client' or not _client_inactive_override_allowed(row.get('username'), row.get('email')):
-                return None
         
         if not verify_password(password, row['password_hash'], row['salt']):
             return None
@@ -658,14 +653,11 @@ def verify_client_login(email: str, password: str) -> dict:
             SELECT id, username, email, password_hash, salt, user_type, 
                    parent_admin, parent_trader, is_active, must_change_password
             FROM user_credentials 
-            WHERE email = ? AND user_type = 'client'
+            WHERE email = ? AND user_type = 'client' AND is_active = 1
         ''', (email,))
         row = cursor.fetchone()
         
         if row is None:
-            return None
-
-        if not bool(row.get('is_active', 1)) and not _client_inactive_override_allowed(row.get('username'), row.get('email')):
             return None
         
         if not verify_password(password, row['password_hash'], row['salt']):
@@ -819,19 +811,9 @@ def find_user_by_identifier(identifier: str) -> dict:
             SELECT id, username, email, user_type, parent_admin, parent_trader, 
                    is_active, must_change_password, password_hash, salt, last_login
             FROM user_credentials 
-            WHERE (username = ? OR email = ?)
+            WHERE (username = ? OR email = ?) AND is_active = 1
         ''', (identifier, identifier))
         rows = cursor.fetchall() or []
-        filtered = []
-        for row in rows:
-            if bool(row.get('is_active', 1)):
-                filtered.append(row)
-                continue
-            # Exception: allow inactive login for the Fallback client and its KYC-linked clients.
-            if (row.get('user_type') == 'client' and
-                    _client_inactive_override_allowed(row.get('username'), row.get('email'))):
-                filtered.append(row)
-        rows = filtered
         if not rows:
             return None
 
@@ -860,55 +842,6 @@ def find_user_by_identifier(identifier: str) -> dict:
 
         best = sorted((dict(r) for r in candidates), key=_score)[0]
         return best
-
-
-_FALLBACK_OVERRIDE_PRIMARY = 'Fallback'
-_FALLBACK_OVERRIDE_CACHE_TTL_SECS = 30.0
-_fallback_override_cache_until = 0.0
-_fallback_override_clients = frozenset({_FALLBACK_OVERRIDE_PRIMARY})
-
-
-def _resolve_fallback_override_clients() -> frozenset[str]:
-    """Client names that may login even when user_credentials.is_active = 0."""
-    global _fallback_override_cache_until, _fallback_override_clients
-
-    now = time.time()
-    if now < _fallback_override_cache_until:
-        return _fallback_override_clients
-
-    names = {_FALLBACK_OVERRIDE_PRIMARY}
-    try:
-        names.update(str(n or '').strip() for n in get_all_kyc_accounts(_FALLBACK_OVERRIDE_PRIMARY) or [])
-    except Exception:
-        pass
-
-    names = {n for n in names if n}
-    _fallback_override_clients = frozenset(names)
-    _fallback_override_cache_until = now + _FALLBACK_OVERRIDE_CACHE_TTL_SECS
-    return _fallback_override_clients
-
-
-def _client_inactive_override_allowed(username: Optional[str], email: Optional[str]) -> bool:
-    """True when the client is Fallback or part of Fallback's KYC account group."""
-    allowed = _resolve_fallback_override_clients()
-
-    uname = str(username or '').strip()
-    if uname and uname in allowed:
-        return True
-
-    em = str(email or '').strip().lower()
-    if not em:
-        return False
-
-    try:
-        from config.hierarchy import get_client_by_email as _get_client_by_email
-
-        profile = _get_client_by_email(em)
-        if profile and str(profile.get('client') or '').strip() in allowed:
-            return True
-    except Exception:
-        return False
-    return False
 
 def verify_user_by_identifier(identifier: str, password: str) -> dict:
     """
