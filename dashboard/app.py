@@ -22,7 +22,13 @@ import re
 from datetime import datetime, timedelta
 from dashboard.financial_overview import calculate_propfirm_overview, get_payouts_history, get_portfolio_growth_data, get_payouts_growth_data, get_cumulative_deposits, get_cumulative_trading_profit, get_cumulative_fees_data, get_cumulative_hedge_data, get_cumulative_farming_data, calculate_trader_stats, parse_date, get_cached_clients_dataset, calculate_all_financials, get_client_performance_stats
 from dashboard.eval_status import is_eval_phase_failed, is_funded_phase_ended
-from dashboard.push_policy import is_client_push_blocked, push_blocked_message
+from dashboard.push_policy import (
+    is_client_inactive,
+    is_client_push_blocked,
+    is_valid_active_status,
+    merge_identity_preserving_admin_fields,
+    push_blocked_message,
+)
 
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client,
@@ -4232,9 +4238,10 @@ def _ensure_client_database_membership(client_name, admin_name, trader_name, ema
         'source': category or identity.get('source') or 'Private',
         'admin': admin_name,
         'trader': trader_name,
-        'active_status': identity.get('active_status') or 'active',
     }
-    next_identity = {**identity, **desired}
+    next_identity = merge_identity_preserving_admin_fields(identity, desired)
+    if 'active_status' not in next_identity:
+        next_identity['active_status'] = 'active'
     if not existing or any(identity.get(k) != v for k, v in desired.items()):
         update_client_field(name, 'identity', next_identity)
 
@@ -5371,6 +5378,16 @@ def api_list_emails():
 
 # ============ PUBLIC CLIENT API (No API Key Required) ============
 
+def _companion_access_denied(client_id, identity=None):
+    """403 when inactive or push-blocked; None if companion access is allowed."""
+    if not is_client_push_blocked(client_id, identity):
+        return None
+    return jsonify({
+        "status": "inactive" if is_client_inactive(identity) else "blocked",
+        "message": push_blocked_message(client_id, identity),
+    }), 403
+
+
 @app.route('/api/client/auth', methods=['POST'])
 @limiter.limit("120 per minute")
 def api_client_auth():
@@ -5398,6 +5415,22 @@ def api_client_auth():
             remote_addr = "0.0.0.0"
 
         if client:
+            client_data = get_client_data(client['client']) or {}
+            denied = _companion_access_denied(client['client'], client_data.get('identity'))
+            if denied:
+                try:
+                    log_action(
+                        'CLIENT_AUTH_DENIED',
+                        'client',
+                        email,
+                        remote_addr,
+                        push_blocked_message(client['client'], client_data.get('identity')),
+                        False,
+                    )
+                except Exception as e:
+                    print(f"Log action error: {e}", file=sys.stderr)
+                return denied
+
             try:
                 log_action('CLIENT_AUTH', 'client', email, remote_addr, 'Email verified')
             except Exception as e:
@@ -5453,6 +5486,10 @@ def api_client_data():
         client_data = get_client_data(client_id)
         if not client_data:
             return jsonify({"status": "error", "message": "No data found for client"}), 404
+
+        denied = _companion_access_denied(client_id, client_data.get('identity'))
+        if denied:
+            return denied
 
         # Mark each evaluation with is_active using the same logic as data_processor
         evaluations = client_data.get("evaluations", [])
@@ -5672,12 +5709,11 @@ def api_client_push():
     client_id = client_info['client']
 
     existing_data = get_client_data(client_id) or {}
-    if is_client_push_blocked(client_id, existing_data.get('identity')):
+    existing_identity = existing_data.get('identity') or {}
+    denied = _companion_access_denied(client_id, existing_identity)
+    if denied:
         app.logger.warning("Push blocked for %s (email=%s)", client_id, email)
-        return jsonify({
-            "status": "blocked",
-            "message": push_blocked_message(client_id),
-        }), 403
+        return denied
 
     # Trader Companion version (for audit/visibility; not trusted for auth)
     companion_version = (
@@ -5958,13 +5994,16 @@ def api_client_push():
         "evaluations": evaluations,
         "statistics": statistics,
         "dropdown_options": data.get("dropdown_options", {}),
-        "identity": {
-            "admin": admin_id,
-            "trader": trader_id,
-            "client": client_id,
-            "email": client_info.get('email', email),
-            "sheet_url": push_sheet_url
-        },
+        "identity": merge_identity_preserving_admin_fields(
+            existing_identity,
+            {
+                "admin": admin_id,
+                "trader": trader_id,
+                "client": client_id,
+                "email": client_info.get('email', email),
+                "sheet_url": push_sheet_url,
+            },
+        ),
         # Store aggregated comment data if provided (from Push by Comment feature).
         # IMPORTANT: a fresh MT5 push (signaled by mt5_deals OR mt5_account being
         # present in the payload, OR an explicit aggregated_by_comment key in the
@@ -6109,6 +6148,12 @@ def api_client_m1_bars_status():
     client_info = get_client_by_email(email)
     if not client_info:
         return jsonify({"status": "error", "message": "Email not registered"}), 404
+
+    client_data = get_client_data(client_info['client']) or {}
+    denied = _companion_access_denied(client_info['client'], client_data.get('identity'))
+    if denied:
+        return denied
+
     storage_id = m1_market_storage_id(symbol)
     stats = get_m1_bar_stats(storage_id, symbol)
     return jsonify({
@@ -6155,6 +6200,11 @@ def api_client_m1_bars_push():
     client_info = get_client_by_email(email)
     if not client_info:
         return jsonify({"status": "error", "message": "Email not registered"}), 404
+
+    client_data = get_client_data(client_info['client']) or {}
+    denied = _companion_access_denied(client_info['client'], client_data.get('identity'))
+    if denied:
+        return denied
 
     if not is_plexy_broker_name(mt5_server, broker, broker):
         app.logger.info(
@@ -6360,6 +6410,11 @@ def api_migrate_sheet():
     admin_id = client_info['admin']
     trader_id = client_info['trader']
     client_id = client_info['client']
+
+    client_data = get_client_data(client_id) or {}
+    denied = _companion_access_denied(client_id, client_data.get('identity'))
+    if denied:
+        return denied
     
     # Fetch data from Google Sheets
     try:
@@ -6628,8 +6683,46 @@ def api_get_watermark_history(client_id):
         except Exception as snap_err:
             logging.warning(f"Live watermark snapshot failed for {client_id}: {snap_err}")
 
-        # Get history for the requested period (14 days)
-        history = get_watermark_history(client_id, days=14)
+        # Default: last 14 days. Super admins may request a custom date range.
+        start_date = request.args.get('start_date') or None
+        end_date = request.args.get('end_date') or None
+        days_param = request.args.get('days')
+
+        if start_date or end_date or days_param:
+            if user_type != 'super_admin':
+                return jsonify({
+                    "status": "error",
+                    "message": "Custom watermark period is restricted to super admin"
+                }), 403
+
+        history_kwargs = {'days': 14}
+        if start_date or end_date:
+            # Validate YYYY-MM-DD
+            for label, value in (('start_date', start_date), ('end_date', end_date)):
+                if value:
+                    try:
+                        __import__('datetime').datetime.strptime(value, '%Y-%m-%d')
+                    except ValueError:
+                        return jsonify({
+                            "status": "error",
+                            "message": f"Invalid {label}; expected YYYY-MM-DD"
+                        }), 400
+            if start_date and end_date and start_date > end_date:
+                return jsonify({
+                    "status": "error",
+                    "message": "start_date must be on or before end_date"
+                }), 400
+            history_kwargs = {'start_date': start_date, 'end_date': end_date}
+        elif days_param:
+            try:
+                days = int(days_param)
+            except (TypeError, ValueError):
+                return jsonify({"status": "error", "message": "days must be an integer"}), 400
+            if days < 1 or days > 3650:
+                return jsonify({"status": "error", "message": "days must be between 1 and 3650"}), 400
+            history_kwargs = {'days': days}
+
+        history = get_watermark_history(client_id, **history_kwargs)
 
         # Low watermark among previous days only (exclude today so live value is shown separately)
         prev_history = [h for h in history if h['date'] < today_str]
@@ -6642,7 +6735,12 @@ def api_get_watermark_history(client_id):
             "status": "success",
             "history": history,
             "low_watermark": low_watermark,
-            "today": today_entry
+            "today": today_entry,
+            "period": {
+                "start_date": start_date,
+                "end_date": end_date,
+                "days": history_kwargs.get('days'),
+            },
         })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -8080,14 +8178,16 @@ def api_update_client():
         except Exception as e:
             print(f"Error syncing category to DB identity: {e}")
 
-    # Save active_status if provided
+    # Save active_status if provided (dashboard toggle only)
     active_status = request.json.get('active_status')
-    if active_status:
+    if active_status is not None:
+        if not is_valid_active_status(active_status):
+            return jsonify({"status": "error", "message": "active_status must be active or inactive"}), 400
         try:
             client_data = get_client_data(name)
             if client_data:
                 identity = client_data.get('identity', {})
-                identity['active_status'] = active_status
+                identity['active_status'] = str(active_status).strip().lower()
                 update_client_field(name, 'identity', identity)
         except Exception as e:
             print(f"Error updating active_status: {e}")
@@ -8245,10 +8345,13 @@ def api_update_client_profile():
     trader = data.get('trader')
     name = data.get('name')
     category = data.get('category')
-    active_status = data.get('active_status', 'active')
+    active_status = data.get('active_status')
     
     if not admin or not trader or not name or category is None:
          return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    if active_status is not None and not is_valid_active_status(active_status):
+        return jsonify({"status": "error", "message": "active_status must be active or inactive"}), 400
     
     from config.hierarchy import update_client_category
     
@@ -8261,12 +8364,14 @@ def api_update_client_profile():
                  identity = client_data.get('identity', {})
                  identity['profile'] = category 
                  identity['category'] = category
-                 identity['active_status'] = active_status
+                 if active_status is not None:
+                     identity['active_status'] = str(active_status).strip().lower()
                  update_client_field(client_id, 'identity', identity)
         except Exception as e:
              print(f"Error updating DB identity profile: {e}")
 
-        log_action('UPDATE_CLIENT_PROFILE', session_user.get('user_type'), name, get_remote_address(), f"To: {category}, Status: {active_status}")
+        status_note = f", Status: {active_status}" if active_status is not None else ""
+        log_action('UPDATE_CLIENT_PROFILE', session_user.get('user_type'), name, get_remote_address(), f"To: {category}{status_note}")
         return jsonify({"status": "success"})
     
     return jsonify({"status": "error", "message": "Client not found"}), 404
@@ -8683,12 +8788,10 @@ def api_push_hedging_review():
     if not client_data:
         return jsonify({"status": "error", "message": "Client data not found"}), 404
 
-    if is_client_push_blocked(client_id, client_data.get('identity')):
+    denied = _companion_access_denied(client_id, client_data.get('identity'))
+    if denied:
         app.logger.warning("Hedging review push blocked for %s (email=%s)", client_id, email)
-        return jsonify({
-            "status": "blocked",
-            "message": push_blocked_message(client_id),
-        }), 403
+        return denied
 
     if 'statistics' not in client_data:
         client_data['statistics'] = {}
@@ -12772,6 +12875,10 @@ def import_csv_companion():
         return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
 
     client_id = client_info['client']
+    client_data = get_client_data(client_id) or {}
+    denied = _companion_access_denied(client_id, client_data.get('identity'))
+    if denied:
+        return denied
 
     file = request.files.get('file')
     if not file or not file.filename:

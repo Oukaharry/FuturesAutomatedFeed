@@ -1685,6 +1685,102 @@
             flex-wrap: nowrap;
             margin-left: auto;
         }
+
+        /* Daily Profit History — superadmin period filter (override global button width) */
+        .waterlog-period-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin: 30px 0 15px;
+        }
+        .waterlog-period-header h3 {
+            color: #60a5fa;
+            margin: 0;
+            flex: 0 0 auto;
+        }
+        .waterlog-period-filter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+            margin-left: auto;
+            flex: 0 1 auto;
+        }
+        .waterlog-period-filter button {
+            width: auto !important;
+            flex: 0 0 auto;
+            box-shadow: none;
+            letter-spacing: 0.02em;
+            font-size: 0.72rem;
+            line-height: 1.2;
+            padding: 5px 10px !important;
+            border-radius: 6px !important;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .waterlog-period-filter button:hover {
+            transform: none;
+            filter: brightness(1.08);
+            box-shadow: none;
+        }
+        .waterlog-period-filter .waterlog-apply-btn {
+            background: linear-gradient(135deg, #2563eb, #3b82f6) !important;
+            border: 1px solid rgba(96, 165, 250, 0.45) !important;
+            color: #fff !important;
+        }
+        .waterlog-period-filter .waterlog-reset-btn {
+            background: rgba(51, 65, 85, 0.45) !important;
+            border: 1px solid rgba(100, 116, 139, 0.5) !important;
+            color: #94a3b8 !important;
+        }
+        .waterlog-period-filter .waterlog-field {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 0 0 auto;
+        }
+        .waterlog-period-filter .waterlog-field label {
+            color: #94a3b8;
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .waterlog-period-filter input[type="date"] {
+            width: 118px;
+            min-width: 118px;
+            padding: 4px 6px;
+            font-size: 0.72rem;
+            border-radius: 6px;
+            border: 1px solid rgba(30, 58, 138, 0.55);
+            background: rgba(1, 3, 10, 0.65);
+            color: #e8eeff;
+            color-scheme: dark;
+            font-family: 'IBM Plex Mono', monospace;
+            box-sizing: border-box;
+        }
+        .waterlog-period-filter input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(0.75);
+            opacity: 0.75;
+            cursor: pointer;
+        }
+        .waterlog-period-status {
+            font-size: 0.68rem;
+            color: #64748b;
+            font-family: 'IBM Plex Mono', monospace;
+            white-space: nowrap;
+            margin-left: 2px;
+        }
+        @media (max-width: 900px) {
+            .waterlog-period-filter {
+                flex-wrap: wrap;
+                margin-left: 0;
+                width: 100%;
+            }
+        }
         .kyc-portfolio-header-row {
             display: flex;
             align-items: center;
@@ -2430,7 +2526,28 @@
                     </tbody>
                 </table>
 
-                <h3 style="color: #60a5fa; margin: 30px 0 15px;">Daily Profit History</h3>
+                <div class="waterlog-period-header">
+                    <h3>Daily Profit History</h3>
+                    {% if user_type == 'super_admin' %}
+                    <div id="waterlog-period-filter" class="waterlog-period-filter">
+                        <div class="waterlog-field">
+                            <label for="waterlog-date-from">From</label>
+                            <input type="date" id="waterlog-date-from">
+                        </div>
+                        <div class="waterlog-field">
+                            <label for="waterlog-date-to">To</label>
+                            <input type="date" id="waterlog-date-to">
+                        </div>
+                        <button type="button" class="waterlog-apply-btn" onclick="applyWaterlogPeriodFilter()">
+                            <i class="fas fa-filter"></i> Apply
+                        </button>
+                        <button type="button" class="waterlog-reset-btn" onclick="resetWaterlogPeriodFilter()" title="Reset to last 14 days">
+                            14d
+                        </button>
+                        <span id="waterlog-period-status" class="waterlog-period-status"></span>
+                    </div>
+                    {% endif %}
+                </div>
                 <table class="data-table" style="width: 100%;">
                     <thead>
                         <tr>
@@ -2662,13 +2779,14 @@
             <table id="hedge-accounts-table">
                 <thead>
                     <tr>
-                        <th style="width: 15%;">Broker</th>
-                        <th style="width: 10%;">Platform</th>
-                        <th style="width: 15%;">Login</th>
-                        <th style="width: 15%;">Password</th>
-                        <th style="width: 20%;">Server</th>
-                        <th style="width: 15%;">Name</th>
-                        <th style="width: 10%;">Actions</th>
+                        <th style="width: 12%;">Broker</th>
+                        <th style="width: 8%;">Platform</th>
+                        <th style="width: 12%;">Login</th>
+                        <th style="width: 12%;">Password</th>
+                        <th style="width: 16%;">Server</th>
+                        <th style="width: 10%;">Hedge Symbol</th>
+                        <th style="width: 12%;">Name</th>
+                        <th style="width: 8%;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="hedge-accounts-body"></tbody>
@@ -5946,7 +6064,7 @@
                 accounts.forEach((acc, index) => {
                     const row = document.createElement('tr');
                     
-                    const brokers = ['plexytrade', 'icmarkets', 'pepperstone', 'roboforex', 'Vantage FX', 'HFM', 'OX', 'EightcapGlobal-Live', 'other'];
+                    const brokers = ['plexytrade', 'VT Markets', 'icmarkets', 'pepperstone', 'roboforex', 'Vantage FX', 'HFM', 'OX', 'EightcapGlobal-Live', 'other'];
                     const types = ['MT5', 'MT4'];
                     
                     // Broker Select
@@ -5988,6 +6106,12 @@
                                    value="${acc.server || ''}" 
                                    placeholder="Server Name"
                                    onchange="updateHedgeAccount(${index}, 'server', this.value)">
+                        </td>
+                        <td>
+                            <input type="text" class="cell-input" style="width:100%" 
+                                   value="${acc.hedge_symbol || acc.mt5_symbol || ''}" 
+                                   placeholder="USTECH / NAS100"
+                                   onchange="updateHedgeAccount(${index}, 'hedge_symbol', this.value)">
                         </td>
                         <td>
                             <input type="text" class="cell-input" style="width:100%" 
@@ -6521,6 +6645,7 @@
                 login: '',
                 password: '',
                 server: '',
+                hedge_symbol: '',
                 name: ''
             });
             renderHedgeAccounts(currentData);
@@ -8531,6 +8656,7 @@
         // --- Waterlog / Profit Split Tab Functions ---
         let waterlogDailyInitialized = false;
         let waterlogPollTimer = null;
+        let waterlogCustomPeriod = null; // { start_date, end_date } when superadmin filter is active
 
         /** Profit Splits Paid so far = sum of all Profit Split rows (including current period). Actual net = net in progress − that sum. */
         function updateProfitSplitHeaderFromRows(rows) {
@@ -8560,16 +8686,63 @@
             }
         }
 
+        function _waterlogHistoryUrl() {
+            let url = `/api/client/watermark_history/${encodeURIComponent(CLIENT_ID)}`;
+            if (waterlogCustomPeriod && (waterlogCustomPeriod.start_date || waterlogCustomPeriod.end_date)) {
+                const params = new URLSearchParams();
+                if (waterlogCustomPeriod.start_date) params.set('start_date', waterlogCustomPeriod.start_date);
+                if (waterlogCustomPeriod.end_date) params.set('end_date', waterlogCustomPeriod.end_date);
+                url += `?${params.toString()}`;
+            }
+            return url;
+        }
+
+        function _setWaterlogPeriodStatus(msg) {
+            const el = document.getElementById('waterlog-period-status');
+            if (el) el.textContent = msg || '';
+        }
+
+        function applyWaterlogPeriodFilter() {
+            if (USER_TYPE !== 'super_admin') return;
+            const fromEl = document.getElementById('waterlog-date-from');
+            const toEl = document.getElementById('waterlog-date-to');
+            const start = (fromEl && fromEl.value) ? fromEl.value : '';
+            const end = (toEl && toEl.value) ? toEl.value : '';
+            if (!start && !end) {
+                _setWaterlogPeriodStatus('Pick a From and/or To date');
+                return;
+            }
+            if (start && end && start > end) {
+                _setWaterlogPeriodStatus('From must be ≤ To');
+                return;
+            }
+            waterlogCustomPeriod = { start_date: start || null, end_date: end || null };
+            const label = [start || '…', end || '…'].join(' → ');
+            _setWaterlogPeriodStatus(label);
+            loadWatermarkData();
+        }
+
+        function resetWaterlogPeriodFilter() {
+            if (USER_TYPE !== 'super_admin') return;
+            const fromEl = document.getElementById('waterlog-date-from');
+            const toEl = document.getElementById('waterlog-date-to');
+            if (fromEl) fromEl.value = '';
+            if (toEl) toEl.value = '';
+            waterlogCustomPeriod = null;
+            _setWaterlogPeriodStatus('Last 14 days');
+            loadWatermarkData();
+        }
+
         function loadWatermarkData() {
             const tbody = document.getElementById('waterlog-body');
             if (!CLIENT_ID || !tbody) return;
-            fetch(`/api/client/watermark_history/${encodeURIComponent(CLIENT_ID)}`)
+            fetch(_waterlogHistoryUrl())
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
                         const history = data.history || [];
                         if (history.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No daily profit records found yet. Records are saved automatically at midnight each day.</td></tr>';
+                            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No daily profit records found for this period. Records are saved automatically at midnight each day.</td></tr>';
                             return;
                         }
                         const rows = [...history].reverse();
@@ -8933,6 +9106,18 @@
             }
             if (!waterlogDailyInitialized) {
                 if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading daily profit records...</td></tr>';
+                if (USER_TYPE === 'super_admin' && !waterlogCustomPeriod) {
+                    _setWaterlogPeriodStatus('Last 14 days');
+                }
+                ['waterlog-date-from', 'waterlog-date-to'].forEach((id) => {
+                    const el = document.getElementById(id);
+                    if (el && !el.dataset.boundEnter) {
+                        el.dataset.boundEnter = '1';
+                        el.addEventListener('keydown', (ev) => {
+                            if (ev.key === 'Enter') applyWaterlogPeriodFilter();
+                        });
+                    }
+                });
                 loadWatermarkData();
                 if (!waterlogPollTimer) {
                     waterlogPollTimer = setInterval(loadWatermarkData, 60000);

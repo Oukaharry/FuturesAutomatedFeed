@@ -45,6 +45,7 @@ trader_companion/trader_bias.json
 trader_companion/signals/indicator_params_ustech_m5.json
 trader_companion/signals/*.jsonl
 scripts/_compare_matt_csv.py
+scripts/_tmp_*.py
 
 local-before-restore.dump
 

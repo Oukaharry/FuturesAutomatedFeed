@@ -72,6 +72,15 @@ except ImportError as e:
         print("💡 PyInstaller MT5 import failure - this may be resolved by the enhanced build process")
     raise
 
+try:
+    from trader_companion.mt5_symbol_policy import is_nasdaq_hedge_symbol
+except ImportError:
+    try:
+        from mt5_symbol_policy import is_nasdaq_hedge_symbol
+    except ImportError:
+        def is_nasdaq_hedge_symbol(symbol):  # noqa: ARG001
+            return True
+
 # Setup logging
 logging.basicConfig(
     filename='mt5_trading.log',
@@ -794,9 +803,26 @@ class MT5API:
                     self._symbol_cache_timestamp[cache_key] = current_time
                     return symbol
                 else:
-                    # Symbol exists but no tick data - CRITICAL: Don't proceed with trading
-                    logging.error(f"[ERROR] Symbol {symbol} exists but no tick data available - cannot trade")
-                    return None
+                    # Symbol exists but no tick yet — try broker aliases (e.g. NAS100 on VT Markets).
+                    logging.warning(
+                        "[WARN] Symbol %s exists but no tick data — trying Nasdaq aliases",
+                        symbol,
+                    )
+
+            # Case variants before alias scan (brokers are case-sensitive: ustech vs USTECH vs NAS100).
+            if is_nasdaq_hedge_symbol(symbol):
+                for candidate in (symbol.upper(), symbol.lower(), symbol.capitalize()):
+                    if candidate == symbol:
+                        continue
+                    info = mt5.symbol_info(candidate)
+                    if not info:
+                        continue
+                    tick = mt5.symbol_info_tick(candidate)
+                    if tick and (tick.bid > 0 or tick.ask > 0):
+                        logging.info("[OK] Nasdaq alias %s resolved to %s", symbol, candidate)
+                        self._symbol_cache[cache_key] = candidate
+                        self._symbol_cache_timestamp[cache_key] = current_time
+                        return candidate
             
             # Try to select the symbol if it wasn't found
             logging.info(f"[SIGNAL] SELECTING SYMBOL: Attempting to activate '{symbol}'")
@@ -843,7 +869,7 @@ class MT5API:
                 # Prioritize exact matches and simple variations
                 if (variation == symbol or 
                     variation == symbol.upper() or
-                    variation in ['USTECH', 'USTEC', 'XAUUSD']):
+                    variation in ['USTECH', 'USTEC', 'XAUUSD', 'NAS100']):
                     priority_variations.append(variation)
                 else:
                     other_variations.append(variation)
@@ -890,6 +916,25 @@ class MT5API:
                 except Exception as e:
                     logging.debug(f"Error trying symbol variation {variation}: {e}")
                     continue
+
+            # Last resort for Nasdaq hedges: scan broker symbol list for USTECH/NAS100 family.
+            if is_nasdaq_hedge_symbol(symbol):
+                try:
+                    from trader_companion.mt5_symbol_policy import infer_hedge_symbol_from_server
+                    preferred = infer_hedge_symbol_from_server(getattr(self, "server", "")) or "NAS100"
+                    for candidate in (preferred, "USTECH", "NAS100", "US100", "USTEC"):
+                        info = mt5.symbol_info(candidate)
+                        if not info:
+                            continue
+                        mt5.symbol_select(candidate, True)
+                        tick = mt5.symbol_info_tick(candidate)
+                        if tick and (tick.bid > 0 or tick.ask > 0):
+                            logging.info("[OK] Nasdaq scan resolved %s -> %s", symbol, candidate)
+                            self._symbol_cache[cache_key] = candidate
+                            self._symbol_cache_timestamp[cache_key] = current_time
+                            return candidate
+                except Exception as scan_err:
+                    logging.debug("Nasdaq symbol scan failed: %s", scan_err)
                     
             # CRITICAL: Don't return symbol as fallback if no valid symbol was found
             logging.error(f"[FAILED] No valid symbol found for {symbol} - cannot proceed with trading")

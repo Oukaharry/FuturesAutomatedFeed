@@ -46,21 +46,39 @@ def save_daily_profit(client_id, net_profit, date_str=None, source='auto'):
         logging.error(f"Error saving daily profit: {e}")
         return False
 
-def get_watermark_history(client_id, days=30):
+def get_watermark_history(client_id, days=30, start_date=None, end_date=None):
     """
     Returns list of dicts: [{'date': 'YYYY-MM-DD', 'profit': 123.45}, ...]
     Sorted by date.
+
+    If start_date / end_date are provided (YYYY-MM-DD), they take precedence over days.
     """
     try:
-        cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         with get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT date, net_profit_complete 
-                FROM daily_watermarks 
-                WHERE client_id = ? AND date >= ? 
-                ORDER BY date ASC
-            ''', (client_id, cutoff_date))
+            if start_date or end_date:
+                clauses = ['client_id = ?']
+                params = [client_id]
+                if start_date:
+                    clauses.append('date >= ?')
+                    params.append(start_date)
+                if end_date:
+                    clauses.append('date <= ?')
+                    params.append(end_date)
+                cursor.execute(f'''
+                    SELECT date, net_profit_complete
+                    FROM daily_watermarks
+                    WHERE {' AND '.join(clauses)}
+                    ORDER BY date ASC
+                ''', params)
+            else:
+                cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+                cursor.execute('''
+                    SELECT date, net_profit_complete
+                    FROM daily_watermarks
+                    WHERE client_id = ? AND date >= ?
+                    ORDER BY date ASC
+                ''', (client_id, cutoff_date))
             rows = cursor.fetchall()
             return [{'date': row['date'], 'profit': row['net_profit_complete']} for row in rows]
     except Exception as e:
