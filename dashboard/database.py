@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from contextlib import contextmanager
 from urllib.parse import urlparse
+from dashboard.push_policy import merge_identity_preserving_admin_fields
 try:
     from dotenv import load_dotenv  # type: ignore
 except Exception:  # pragma: no cover
@@ -1192,7 +1193,13 @@ def save_client_data(client_id: str, data: dict, overwrite: bool = False, _conn=
                 merged_evaluations = data.get('evaluations', existing_data.get('evaluations', []))
                 merged_statistics = data.get('statistics', existing_data.get('statistics', {}))
                 merged_dropdown_options = data.get('dropdown_options', existing_data.get('dropdown_options', {}))
-                merged_identity = data.get('identity', existing_data.get('identity', {}))
+                if 'identity' in data and isinstance(data.get('identity'), dict):
+                    merged_identity = merge_identity_preserving_admin_fields(
+                        existing_data.get('identity', {}),
+                        data.get('identity', {}),
+                    )
+                else:
+                    merged_identity = existing_data.get('identity', {}) or data.get('identity', {})
                 merged_hedge_accounts = data.get('hedge_accounts', existing_data.get('hedge_accounts', []))
                 merged_prop_accounts = data.get('prop_accounts', existing_data.get('prop_accounts', []))
                 merged_vps_accounts = data.get('vps_accounts', existing_data.get('vps_accounts', []))

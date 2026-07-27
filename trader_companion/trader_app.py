@@ -1881,6 +1881,7 @@ class TradeOpssAIApp:
         self._push_in_progress = False
         self._push_pending = False
         self.client_info = None
+        self._hedge_account_profile = {}
 
         # Auto-trade scheduler state
         self.auto_trade_enabled = False
@@ -2738,7 +2739,8 @@ class TradeOpssAIApp:
                                             ha_login = str(ha.get('login', '')).strip()
                                             ha_pass = str(ha.get('password', '')).strip()
                                             ha_server = str(ha.get('server', '')).strip()
-                                            def _fill_creds(l=ha_login, p=ha_pass, s=ha_server):
+                                            def _fill_creds(l=ha_login, p=ha_pass, s=ha_server, profile=ha):
+                                                self._hedge_account_profile = dict(profile or {})
                                                 if l:
                                                     self.mt5_login.delete(0, 'end')
                                                     self.mt5_login.insert(0, l)
@@ -2769,7 +2771,8 @@ class TradeOpssAIApp:
                             else:
                                 self.hierarchy_label.configure(foreground='#dc2626')
                             self.client_info = None
-                            self.stop_auto_push("client lookup failed")
+                            reason = "account inactive" if data.get("status") == "inactive" else "client lookup failed"
+                            self.stop_auto_push(reason)
                             self.log(f"❌ Lookup failed: {msg}", "ERROR")
                         self.root.after(0, _on_not_found)
                 else:
@@ -2777,16 +2780,17 @@ class TradeOpssAIApp:
                     try:
                         error_data = response.json()
                         error_msg = error_data.get("message", error_msg)
+                        inactive = error_data.get("status") == "inactive"
                     except:
-                        pass
-                    def _on_error(msg=error_msg):
+                        inactive = False
+                    def _on_error(msg=error_msg, inactive=inactive):
                         self.hierarchy_var.set(f"❌ {msg}")
                         if CTK_AVAILABLE:
                             self.hierarchy_label.configure(text_color='#dc2626')
                         else:
                             self.hierarchy_label.configure(foreground='#dc2626')
                         self.client_info = None
-                        self.stop_auto_push("client lookup failed")
+                        self.stop_auto_push("account inactive" if inactive else "client lookup failed")
                         self.log(f"❌ Lookup failed: {msg}", "ERROR")
                     self.root.after(0, _on_error)
                     
@@ -3887,10 +3891,15 @@ class TradeOpssAIApp:
                 else:
                     _log(f"❌ {data.get('message', 'Push failed')}", "ERROR")
                     _status("Push failed")
+                    if data.get("status") in ("inactive", "blocked"):
+                        self.root.after(0, lambda m=data.get("message", "Sync disabled"): self.stop_auto_push(m))
             else:
                 error_msg = f"HTTP {response.status_code}"
                 try:
-                    error_msg = response.json().get("message", error_msg)
+                    body = response.json()
+                    error_msg = body.get("message", error_msg)
+                    if body.get("status") in ("inactive", "blocked") or response.status_code == 403:
+                        self.root.after(0, lambda m=error_msg: self.stop_auto_push(m))
                 except Exception:
                     pass
                 _log(f"❌ Push failed: {error_msg}", "ERROR")
@@ -5961,7 +5970,7 @@ class TradeOpssAIApp:
                 "sl_points": sl_pts,
                 "expected_min": trade_simulator.expected_duration_min(tp_pts, sl_pts),
                 "is_farming": "MNQ" in sym,
-                "mt5_symbol": config.get("mt5_symbol", "ustech"),
+                "mt5_symbol": self._resolve_mt5_hedge_symbol(config),
             })
         return plans
 
@@ -6628,7 +6637,9 @@ class TradeOpssAIApp:
                     mt5_login = self._cell(chosen_hedge.get("login"))
                     mt5_pass = self._cell(chosen_hedge.get("password"))
                     mt5_server = self._cell(chosen_hedge.get("server"))
+                    self._hedge_account_profile = dict(chosen_hedge)
                 else:
+                    self._hedge_account_profile = {}
                     mt5_creds = data.get("mt5_credentials") or {}
                     mt5_login = self._cell(mt5_creds.get("login"))
                     mt5_pass = self._cell(mt5_creds.get("password"))
@@ -6975,7 +6986,7 @@ class TradeOpssAIApp:
             row_data["firm_code"], row_data["phase_key"], row_data["acct_size"])
         if not config:
             return None
-        mt5_sym = config.get("mt5_symbol", "ustech")
+        mt5_sym = self._resolve_mt5_hedge_symbol(config)
         mt5_vol = float(config.get("mt5_volume", 2.8) or 0)
         if mt5_vol <= 0:
             return None
@@ -7243,7 +7254,7 @@ class TradeOpssAIApp:
 
         trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
         trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
-        mt5_sym = config.get("mt5_symbol", "ustech")
+        mt5_sym = self._resolve_mt5_hedge_symbol(config)
         mt5_vol = float(config.get("mt5_volume", 2.8))
         mt5_tp = int(config.get("mt5_tp_points", 46))
         mt5_sl = int(config.get("mt5_sl_points", 42))
@@ -8995,7 +9006,7 @@ class TradeOpssAIApp:
                         if self.prop_firm_mgr:
                             config_tmp = self.prop_firm_mgr.get_strategy_config(
                                 firm_code, phase_key, acct_size)
-                        mt5_sym = (config_tmp or {}).get("mt5_symbol", "ustech")
+                        mt5_sym = self._resolve_mt5_hedge_symbol(config_tmp or {})
                         self._align_signal_to_bar_close(stop_event=self._auto_trade_stop)
                         if self._auto_trade_stop.is_set():
                             break
@@ -9120,7 +9131,7 @@ class TradeOpssAIApp:
 
                 trado_tp = int(config.get("tradovate_tp_ticks", 151) or config.get("topstepx_tp_ticks", 151))
                 trado_sl = int(config.get("tradovate_sl_ticks", 200) or config.get("topstepx_sl_ticks", 200))
-                mt5_sym = config.get("mt5_symbol", "ustech")
+                mt5_sym = self._resolve_mt5_hedge_symbol(config)
                 mt5_vol = float(config.get("mt5_volume", 2.8))
                 mt5_tp = int(config.get("mt5_tp_points", 46))
                 mt5_sl = int(config.get("mt5_sl_points", 42))
@@ -11311,6 +11322,23 @@ class TradeOpssAIApp:
         size = self.acct_size_var.get()
         config = self.prop_firm_mgr.get_strategy_config(firm, phase, size)
         return config
+
+    def _resolve_mt5_hedge_symbol(self, config=None):
+        """Dashboard hedge account + broker/server override, then blueprint default."""
+        try:
+            from trader_companion.mt5_symbol_policy import resolve_hedge_mt5_symbol
+        except ImportError:
+            from mt5_symbol_policy import resolve_hedge_mt5_symbol
+        server = ""
+        try:
+            server = self.mt5_server.get().strip()
+        except Exception:
+            pass
+        return resolve_hedge_mt5_symbol(
+            config=config or {},
+            hedge_account=getattr(self, "_hedge_account_profile", None) or {},
+            server=server,
+        )
 
     def _get_mt5_trading_api(self):
         """Get or create the MT5 trading API from companion's existing MT5 connection."""
