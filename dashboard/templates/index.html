@@ -9643,11 +9643,43 @@
             }
         }
 
+        /** Daily summary header date — Kenya EAT + 02:05 rollover (matches server _summary_tracker_date_str). */
+        function _eatSummaryHeaderDateStr() {
+            const TZ = 'Africa/Nairobi';
+            const parts = Object.fromEntries(
+                new Intl.DateTimeFormat('en-GB', {
+                    timeZone: TZ,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hourCycle: 'h23',
+                }).formatToParts(new Date()).map(p => [p.type, p.value])
+            );
+            let y = parseInt(parts.year, 10);
+            let m = parseInt(parts.month, 10);
+            let d = parseInt(parts.day, 10);
+            const mins = parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10);
+            if (mins < 125) { // before 02:05 EAT — still prior tracker day
+                const t = new Date(Date.UTC(y, m - 1, d));
+                t.setUTCDate(t.getUTCDate() - 1);
+                y = t.getUTCFullYear();
+                m = t.getUTCMonth() + 1;
+                d = t.getUTCDate();
+            }
+            return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                timeZone: 'UTC',
+            }).toUpperCase();
+        }
+
         function generateSummaryText(clientId) {
             clientId = clientId || _activeClient;
             const summaryData = _allClientSummaries[clientId] || _getDefaultSections();
-            const today = new Date();
-            const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+            const dateStr = _eatSummaryHeaderDateStr();
             let lines = [];
             if (CLIENT_TRADER_NAME) lines.push(`👤 Trader: ${CLIENT_TRADER_NAME}`);
             if (CLIENT_ADMIN_NAME) {
