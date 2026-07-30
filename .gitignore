@@ -36,7 +36,6 @@ data/ml/models/
 
 # Local runtime state / data files
 pg_backups/
-config/hierarchy.json
 dashboard/.scheduler_state.json
 dashboard/instance/ml_cache/
 trader_companion/trader_bias.json
