@@ -58,14 +58,14 @@ def run_scheduler():
                 _mark_ran('watermark', today)
                 time.sleep(60)
 
-            # 23:27 UTC (02:27 EAT) — Quality scan before daily Slack summary
-            if now.hour == 23 and now.minute == 27 and ran.get('quality_scan') != today:
-                logging.info("Running scheduled quality scan (02:27 EAT)...")
-                run_scheduled_quality_scan()
+            # 23:10 UTC (02:10 EAT) — Quality scan before daily Slack summary (~20 min buffer)
+            if now.hour == 23 and now.minute == 10 and ran.get('quality_scan') != today:
+                logging.info("Running scheduled quality scan (02:10 EAT)...")
+                run_scheduled_quality_scan(label='scheduled')
                 _mark_ran('quality_scan', today)
                 time.sleep(60)
 
-            # 23:30 UTC (02:30 EAT) — Post daily summary to Slack
+            # 23:30 UTC (02:30 EAT) — Post daily summary to Slack (fresh scan runs again in post_slack_summary)
             if now.hour == 23 and now.minute == 30 and ran.get('slack_summary') != today:
                 logging.info("Posting daily quality summary to Slack (02:30 EAT)...")
                 post_slack_summary()
@@ -87,22 +87,28 @@ def run_scheduler():
 
 
 # ── Quality Scan ─────────────────────────────────────────────────────
-def run_scheduled_quality_scan():
-    """Run the quality scan and save results — same as the API but without Flask context."""
+def run_scheduled_quality_scan(label='scheduled'):
+    """Run the quality scan and save results — same rules as client/trader dashboards."""
     try:
-        from dashboard.app import run_quality_scan, _kenya_today_str
+        from dashboard.app import (
+            run_quality_scan,
+            _kenya_today_str,
+            _quality_scan_day_marker_strict_for_dashboard,
+        )
         from dashboard.database import save_quality_scan_results, log_action
 
-        results = run_quality_scan()
+        results = run_quality_scan(day_marker_strict=_quality_scan_day_marker_strict_for_dashboard())
         scan_date = _kenya_today_str()
         save_quality_scan_results(scan_date, results)
 
         total_issues = sum(r['total_issues'] for r in results)
         log_action('QUALITY_SCAN', 'system', 'scheduler',
-                   '127.0.0.1', f"Scheduled scan: {len(results)} clients, {total_issues} issues")
-        logging.info(f"Quality scan complete: {len(results)} clients, {total_issues} issues")
+                   '127.0.0.1', f"{label}: {len(results)} clients, {total_issues} issues")
+        logging.info("Quality scan complete (%s): %s clients, %s issues", label, len(results), total_issues)
+        return results
     except Exception as e:
-        logging.error(f"Scheduled quality scan failed: {e}")
+        logging.error(f"Scheduled quality scan failed ({label}): {e}")
+        return []
 
 
 # ── Slack Integration ────────────────────────────────────────────────
@@ -552,12 +558,13 @@ def _build_daily_summary_text():
 def post_slack_summary():
     """Build and post the daily quality summary to Slack."""
     try:
+        run_scheduled_quality_scan(label='pre_slack')
         text = _build_daily_summary_text()
         ok = send_slack_message(text)
         if ok:
             try:
-                from dashboard.app import record_team_leaderboard_for_date
-                record_team_leaderboard_for_date(datetime.now().strftime('%Y-%m-%d'))
+                from dashboard.app import record_team_leaderboard_for_date, _summary_tracker_display_date_str
+                record_team_leaderboard_for_date(_summary_tracker_display_date_str())
             except Exception as lb_err:
                 logging.warning('Team leaderboard record after Slack bot: %s', lb_err)
     except Exception as e:
