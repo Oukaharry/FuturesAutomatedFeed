@@ -189,6 +189,32 @@ def _issues_for_trader_client_quality_views(issues):
     return [i for i in (issues or []) if i.get('check') not in skip]
 
 
+def _quality_scan_day_marker_strict_for_dashboard():
+    """Scan mode for dashboards, bot scoring, and scheduled pre-Slack scans.
+
+    False = same rules traders see on client sheets during the day. Strict EOD
+    same-day-only markers (after daily summary submit) use day_marker_strict=True
+    only in _rescan_client_after_daily_summary.
+    """
+    return False
+
+
+def _is_same_day_marker_only_downtime(issue):
+    """EOD-only downtime flag — must not affect team/trader health scores."""
+    return (
+        (issue or {}).get('check') == 'Downtime detected'
+        and 'Same-day marker only' in ((issue or {}).get('detail') or '')
+    )
+
+
+def _issues_for_trader_ranking(issues):
+    """Issues that count toward trader/team leaderboard health — matches dashboard display."""
+    return [
+        i for i in _issues_for_trader_client_quality_views(issues)
+        if not _is_same_day_marker_only_downtime(i)
+    ]
+
+
 def _client_daily_summary_not_expected(client_id=None, issues=None, cdata=None, scan_row=None):
     """
     True for new/enrolled clients with no evaluation sheet yet.
@@ -217,7 +243,7 @@ _QUALITY_SEVERITY_WEIGHT = {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, '
 
 def _trader_ranking_health_metrics(issues):
     """(total_issues, health_score) for trader leaderboards and scorecards — excludes payout QA and scan errors."""
-    vis = _issues_for_trader_client_quality_views(issues)
+    vis = _issues_for_trader_ranking(issues)
     if not vis:
         return 0, 100.0
     deduction = sum(_QUALITY_SEVERITY_WEIGHT.get(i.get('severity', 'low'), 2) for i in vis)
@@ -612,9 +638,10 @@ def compute_admin_teams_ranked(date, all_clients, excluded_clients, excluded_tra
     sent_map = {s['client_id']: s for s in submissions if s.get('client_id')}
 
     from dashboard.database import get_quality_scan_results
+    scan_date = _quality_scan_date_for_issue_counts(date)
     scan_by_client = {
         r.get('client_id'): r
-        for r in (get_quality_scan_results(date) or [])
+        for r in (get_quality_scan_results(scan_date) or [])
         if r.get('client_id')
     }
 
@@ -9686,8 +9713,9 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
     Returns list of per-client scan results with issues and health scores.
     If target_client is given, only scan that one client.
 
-    day_marker_strict: when True (or auto after 22:00 EAT on weekdays), flag rows that
-    only show today's weekday marker without tomorrow's — stale after daily summary / EOD.
+    day_marker_strict: when True, flag rows that only show today's weekday marker
+    without tomorrow's (post-daily-summary EOD check). Default False — matches
+    client/trader dashboards and bot scoring. Scheduler/bot pass False explicitly.
     """
     from config.hierarchy import get_all_clients as hierarchy_get_all_clients, get_client_profile
     from dashboard.database import (
@@ -9704,8 +9732,9 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
     today_weekday = now_eat.weekday()  # 0=Mon, 6=Sun
     scan_date_str = _kenya_today_str()
     if day_marker_strict is None:
-        # After 22:00 EAT Mon–Fri, same-day-only markers (e.g. WED on Wed) are stale.
-        day_marker_strict = today_weekday < 5 and now_eat.hour >= 22
+        # Default: dashboard/bot mode (matches client sheets). Pass True only for
+        # post-daily-summary rescans (_rescan_client_after_daily_summary).
+        day_marker_strict = _quality_scan_day_marker_strict_for_dashboard()
 
     for client_name in all_clients:
         profile = get_client_profile(client_name)
@@ -10795,7 +10824,7 @@ def api_run_quality_scan():
     """Run quality scan on all clients. Super admin only."""
     # Step 1: run the scan (reads client data only)
     try:
-        results = run_quality_scan()
+        results = run_quality_scan(day_marker_strict=_quality_scan_day_marker_strict_for_dashboard())
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -10859,7 +10888,10 @@ def api_quality_client(client_id):
     # If rescan=1, run a live scan for this client and update the stored results
     if request.args.get('rescan') == '1':
         try:
-            results = run_quality_scan(target_client=client_id)
+            results = run_quality_scan(
+                target_client=client_id,
+                day_marker_strict=_quality_scan_day_marker_strict_for_dashboard(),
+            )
             if results:
                 r = results[0]
                 # Persist the updated result into today's scan row for this client
@@ -10899,7 +10931,10 @@ def api_quality_client(client_id):
     # No saved results — only super admins should trigger a live scan
     if user_type == 'super_admin':
         try:
-            results = run_quality_scan(target_client=client_id)
+            results = run_quality_scan(
+                target_client=client_id,
+                day_marker_strict=_quality_scan_day_marker_strict_for_dashboard(),
+            )
             if results:
                 return jsonify({
                     "status": "success",
@@ -11673,7 +11708,10 @@ def api_trader_issues():
                 live_results = []
                 for cid in to_scan:
                     try:
-                        rlist = run_quality_scan(target_client=cid) or []
+                        rlist = run_quality_scan(
+                            target_client=cid,
+                            day_marker_strict=_quality_scan_day_marker_strict_for_dashboard(),
+                        ) or []
                         if rlist:
                             live_results.append(rlist[0])
                     except Exception:
@@ -12615,7 +12653,13 @@ def api_send_slack_summary():
     Accepts optional JSON body: { "test_webhook": "https://hooks.slack.com/..." }
     to override the target (e.g. send to a DM or test channel instead of main).
     """
-    from dashboard.scheduler import send_slack_message, send_slack_to_webhook, _build_daily_summary_text, _get_slack_webhook_url
+    from dashboard.scheduler import (
+        send_slack_message,
+        send_slack_to_webhook,
+        _build_daily_summary_text,
+        _get_slack_webhook_url,
+        run_scheduled_quality_scan,
+    )
 
     data = request.get_json(silent=True) or {}
     test_webhook = (data.get('test_webhook') or '').strip()
@@ -12627,6 +12671,7 @@ def api_send_slack_summary():
     if not test_webhook and not _get_slack_webhook_url():
         return jsonify({'status': 'error', 'message': 'Slack webhook not configured. Paste your webhook URL in the Settings section below.'}), 400
     try:
+        run_scheduled_quality_scan(label='pre_slack_manual')
         text = _build_daily_summary_text()
         if test_webhook:
             text = "🧪 *[TEST MODE — DM only]*\n\n" + text
@@ -12638,7 +12683,7 @@ def api_send_slack_summary():
             log_action('SLACK_SUMMARY', 'super_admin', request.session_user.get('user_identifier'),
                        get_remote_address(), f'Manual Slack summary posted to {dest}')
             try:
-                record_team_leaderboard_for_date(datetime.now().strftime('%Y-%m-%d'))
+                record_team_leaderboard_for_date(_summary_tracker_display_date_str())
             except Exception as lb_err:
                 logging.warning('Team leaderboard record after manual Slack: %s', lb_err)
             return jsonify({'status': 'success', 'message': f'Summary posted to {dest}.'})
