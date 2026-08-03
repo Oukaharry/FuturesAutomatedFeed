@@ -183,16 +183,7 @@ health_score = max(0, 100 - deduction), rounded to 1 decimal
 
 ## 5. Row-level checks (alphabetical by check name)
 
-### 5.1 `Alpha Futures: missing Activation Fee`
-
-| Field | Value |
-|-------|--------|
-| **Severity** | `high` |
-| **When** | Prop firm normalizes to **Alpha Futures**; `Activation Fee` empty; **not** new-row strict mode; **not** live numeric row; **and** a funded marker exists: Status P1 is `pass`, or `Account #.1` set, or `Date Started.1` / `Date Ended.1` / phase-2 `Status` non-empty; **and** at least one funded-phase hedge column contains a digit `1-9` (regex on string — crude proxy for “had activity”). |
-
-**Bypass:** Enter activation fee; avoid funded markers until ready; ensure funded HR cells are empty/zero text; use live numeric row path; stay in new row strict mode without triggering Alpha block.
-
-### 5.2 `Comma in hedge value`
+### 5.1 `Comma in hedge value`
 
 | Field | Value |
 |-------|--------|
@@ -226,9 +217,9 @@ health_score = max(0, 100 - deduction), rounded to 1 decimal
 | Field | Value |
 |-------|--------|
 | **Severity** | `medium` |
-| **When** | Phase-2 status (`status_p2`) is one of `funded`, `live`, `payout`; activation field blank; not new-row strict; not live numeric. |
+| **When** | Phase-2 status (`status_p2`) is one of `funded`, `live`, `payout`; activation field blank; not new-row strict; not live numeric. **Alpha Futures:** activation is optional — this check is skipped. |
 
-**Bypass:** Fill activation fee; use statuses outside that set; new-row strict / live numeric paths.
+**Bypass:** Fill activation fee; use statuses outside that set; new-row strict / live numeric paths; use Alpha Futures (activation optional — only purchase/challenge `Fee` is enforced via **Empty Fee**).
 
 ### 5.6 `Empty Fee`
 
@@ -334,7 +325,6 @@ Promotes scan issues whose `check` is one of:
 
 - `Empty Fee`
 - `Empty Activation Fee`
-- `Alpha Futures: missing Activation Fee`
 
 into admin issues of `type: challenge_fees`.
 
@@ -434,8 +424,7 @@ Many row issues set `estimated_date` via `_estimate_issue_date` using parsed dat
 10. `Empty Account Size`  
 11. `Empty Account #`  
 12. `Empty Activation Fee`  
-13. `Alpha Futures: missing Activation Fee`  
-14. `No current day value`  
+13. `No current day value`  
 15. `Negative Hedge Net-QA`  
 16. `Negative Hedge Net, no note`  
 17. `Comma in hedge value`  
