@@ -19,7 +19,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.11.4"  # AlphaTrader: pre-adjustment account switch; get_min_equity; bracket fix; adj-reasons in dialog
+APP_VERSION = "1.11.6"  # Alpha Futures NQ-only blueprint cleanup + challenge consistency retune
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -5221,6 +5221,12 @@ class TradeOpssAIApp:
         label = self._DETECTED_PROP_FIRM_LABEL.get(detected, detected)
         cur_code = self._resolve_firm_code(ev.get("Prop Firm", ""))
         new_code = self._resolve_firm_code(label)
+
+        # Funded Next account prefixes cannot distinguish standard vs Flex.
+        # If the row is explicitly set to Flex, never downgrade it to standard.
+        if cur_code == "Funded Next Flex" and new_code == "Funded Next":
+            return
+
         if cur_code != new_code:
             ev["Prop Firm"] = label
 
@@ -5649,7 +5655,13 @@ class TradeOpssAIApp:
         return out
 
     def _scan_day_placeholders(self, ev, phase_sets, target_weekday=None):
-        """Return (has_target_weekday, found_any_day_token) across field sets."""
+        """Return whether a placeholder is tradeable today or missed earlier.
+
+        Rows with no day placeholder at all are not active.  Future-only queued
+        placeholders remain inactive until the scheduled weekday arrives.  A
+        prior weekday placeholder counts as active because it represents a missed
+        trade that still needs to be caught up.
+        """
         found_any = False
         for _phase, fields in phase_sets:
             for f in fields:
@@ -5657,10 +5669,14 @@ class TradeOpssAIApp:
                 if val is None:
                     continue
                 day_num = self._parse_day_token(val)
-                if day_num is not None:
-                    found_any = True
-                    if target_weekday is not None and day_num == target_weekday:
-                        return True, True
+                if day_num is None:
+                    continue
+                found_any = True
+                if target_weekday is None:
+                    continue
+                bucket = self._classify_day_placeholder(day_num, target_weekday)
+                if bucket in ("today", "past"):
+                    return True, True
         if target_weekday is not None:
             return False, found_any
         return found_any, found_any
@@ -5683,16 +5699,12 @@ class TradeOpssAIApp:
         return self._funded_leg_tradeable(ev, weekday)
 
     def _has_placeholder_for_weekday(self, ev, weekday: int) -> bool:
-        """True when an eval belongs on SCAN for this calendar weekday (Kenya EAT).
+        """True when an eval is still tradeable for this calendar weekday (Kenya EAT).
 
-        Scans hedge-result / hedge-day fields for the row's *current* leg:
-        once challenge is passed (both account columns filled), only funded
-        (and farming, if active) columns count — stale MON/TUE/FRIDAY in
-        challenge cells are never used for scheduling.
-
-        Rows with no day placeholders in the scoped columns are kept for
-        challenge-only rows; passed-to-funded rows with no funded placeholders
-        are skipped (funded track complete / not scheduled today).
+        A row is active only when it has a placeholder for today or for an
+        earlier missed weekday.  Future-only placeholders are queued for later and
+        therefore do not count as active on the current day.  A row with no day
+        placeholders at all is not tradeable and must be filtered out.
         """
         passed_funded = self._has_passed_to_funded(ev)
         if passed_funded or self._is_funded_only_row(ev):
@@ -5704,7 +5716,7 @@ class TradeOpssAIApp:
         if today_scoped:
             return True
         if not found_any_scoped:
-            return True
+            return False
         return False
 
     def _classify_day_placeholder(self, day_num: int, today_weekday: int) -> str:
@@ -7658,16 +7670,25 @@ class TradeOpssAIApp:
                         # stage and collapse TP to the floor.
                         if stage_start is not None:
                             stage_profit_so_far = current_profit - stage_start
+                            target_profit_dollars = None
+                            if firm_code == "Funded Next Flex" and phase_key == "funded_trade2":
+                                target_profit_dollars = self.prop_firm_mgr._PROFIT_TARGETS.get("Funded Next Flex", {}).get("Funded", 3050.0)
                             self.log(f"🧮 TP-by-stage {acct_num}: equity_scoped={'yes' if scoped_net_liq is not None else 'NO(fallback)'} "
                                      f"current_profit=${current_profit:,.2f} stage_start=${stage_start:,.2f} "
-                                     f"stage_profit_so_far=${stage_profit_so_far:,.2f} size_key={size_key} tick_value={tick_value}")
+                                     f"stage_profit_so_far=${stage_profit_so_far:,.2f} size_key={size_key} tick_value={tick_value} "
+                                     f"target_profit_dollars={target_profit_dollars}")
                             config = self.prop_firm_mgr.calculate_adjusted_tp(
-                                config, stage_profit_so_far, tick_value)
+                                config,
+                                stage_profit_so_far,
+                                tick_value,
+                                target_profit_dollars=target_profit_dollars,
+                            )
                             audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
                                   status="applied", target_account_id=target_account_id,
                                   scoped_equity=(scoped_net_liq is not None),
                                   current_profit=current_profit, stage_start=stage_start,
                                   stage_profit_so_far=stage_profit_so_far, size_key=str(size_key),
+                                  target_profit_dollars=target_profit_dollars,
                                   tp_before=_before_tp, tp_after=config.get("tradovate_tp_ticks"))
                         else:
                             self.log(f"⚠ TP-by-stage {acct_num}: stage_start unavailable ({firm_code}/{phase_key}) — TP unchanged")
