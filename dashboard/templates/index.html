@@ -7774,8 +7774,15 @@
             if ((key === 'Account #' || key === 'Account #.1') && value && String(value).trim().length >= 4) {
                 const detected = detectPropFirmFromAccount(value);
                 if (detected) {
-                    currentData.evaluations[index]['Prop Firm'] = detected;
-                    _changedFields[index].add('Prop Firm');
+                    const currentPf = String(currentData.evaluations[index]['Prop Firm'] || '').trim();
+                    const currentKey = currentPf.toLowerCase().replace(/[\s_]/g, '');
+
+                    // FNFT/FTFN prefixes map to generic FundedNext only. If the
+                    // user already selected Funded Next Flex, keep it.
+                    if (!(detected === 'FundedNext' && currentKey === 'fundednextflex')) {
+                        currentData.evaluations[index]['Prop Firm'] = detected;
+                        _changedFields[index].add('Prop Firm');
+                    }
                 }
             }
 

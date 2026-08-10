@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 API_BASE      = "https://apiv2.alphatrader.com/api/v1"
 PLATFORM_URL  = "https://futures.alphatrader.com/"
 DEFAULT_WAIT  = 25      # seconds
-ORDER_SETTLE  = 2.0     # seconds after placing an order
+ORDER_SETTLE  = 2.0     # seconds used for non-entry actions (e.g. close_all)
 TOKEN_REFRESH = 300     # refresh token this many seconds before expiry
 
 # Tradovate symbol -> Alpha Trader contract_id
@@ -301,7 +301,8 @@ class AlphaTraderConnector:
         except Exception as e:
             raise RuntimeError(f"AlphaTrader: order click failed: {e}") from e
 
-        time.sleep(ORDER_SETTLE)
+        # Do not block here: trader_app dispatches the MT5 hedge immediately
+        # after this function returns. A hard 2s settle delay causes hedge lag.
         logger.info("AlphaTrader: order complete.")
         return True
 
@@ -383,7 +384,6 @@ class AlphaTraderConnector:
         # Pull size tiers from PropFirmManager if available, else use defaults
         _FIRM_TIERS: dict = {
             "AlphaFutures":    [50_000, 100_000, 150_000],
-            "AlphaFutures GC": [50_000, 100_000, 150_000],
             "TopStep":         [50_000, 100_000, 150_000],
             "TopStepX":        [50_000, 100_000, 150_000],
         }
