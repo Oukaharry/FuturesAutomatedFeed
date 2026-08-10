@@ -1,9 +1,42 @@
 from collections import defaultdict
 from dashboard.database import get_connection
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as _date_cls
+import calendar
 import logging
 import threading
 import time
+
+# Profit-share schedule after the 3/20/2026 transition:
+# twice monthly — periods end on the 15th and the 30th
+# (or last day of month when there is no 30th, e.g. February).
+
+
+def _bimonthly_period_end(period_start):
+    """
+    Bi-monthly window ending on the 15th or 30th.
+
+    start.day <= 15  → end on the 15th of the same month
+    start.day 16–30  → end on the 30th (or last day if month is shorter)
+    start.day == 31  → end on the 15th of the next month
+    """
+    last = calendar.monthrange(period_start.year, period_start.month)[1]
+    if period_start.day <= 15:
+        return _date_cls(period_start.year, period_start.month, 15)
+    end_day = min(30, last)
+    if period_start.day <= end_day:
+        return _date_cls(period_start.year, period_start.month, end_day)
+    if period_start.month == 12:
+        return _date_cls(period_start.year + 1, 1, 15)
+    return _date_cls(period_start.year, period_start.month + 1, 15)
+
+
+def _iter_profit_split_periods(month_start, today):
+    """Yield (period_start, period_end) on the 15/30 bi-monthly schedule."""
+    period_start = month_start
+    while period_start <= today:
+        period_end = _bimonthly_period_end(period_start)
+        yield period_start, period_end
+        period_start = period_end + timedelta(days=1)
 
 _WATERLOG_TABLES_ENSURED = False
 _WATERLOG_TABLES_LOCK = threading.Lock()
@@ -539,9 +572,10 @@ def _monthly_profit_split_amount(net_profit, last_net_at_split, split_pct):
 
 def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0, prev_period_net=0.0, _bulk=None, _live_net=None):
     """
-    Build monthly Profit Share rows (21st → 20th) from daily_watermarks alone.
+    Build Profit Share rows from daily_watermarks alone (no imported schedule).
 
-    Used for new clients with no imported waterlog_periods schedule.
+    After the Mar 20 2026 transition: bi-monthly periods ending on the 15th
+    and 30th (Feb uses last day of month).
     """
     from datetime import datetime as _dt, date as _date
 
@@ -572,12 +606,7 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
     today = _dt.now().date()
     month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
 
-    while month_start <= today:
-        if month_start.month == 12:
-            month_end = _date(month_start.year + 1, 1, 20)
-        else:
-            month_end = _date(month_start.year, month_start.month + 1, 20)
-
+    for month_start, month_end in _iter_profit_split_periods(month_start, today):
         effective_end = min(month_end, today)
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
         period_complete = effective_end >= month_end
@@ -611,10 +640,6 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
             if profit_split > 0:
                 last_net_at_split = net_profit
 
-        month_start = month_end + timedelta(days=1)
-        if month_start > today:
-            break
-
     if ps_overrides:
         for period in result:
             key = period['from_date']
@@ -645,7 +670,8 @@ def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
 
     Periods before 2/24/2026 use old HWM logic.
     Periods overlapping 2/24-3/20/2026 are condensed into one transition row.
-    Periods after 3/20/2026 are generated monthly with new split logic:
+    Periods after 3/20/2026 are bi-monthly (end on the 15th and 30th; Feb uses
+    last day of month):
       split = 50% of (current_net - net_at_last_paid_split) when current_net is
       above that baseline. The baseline only advances when a period actually
       pays a profit split (> 0); months with $0 split (e.g. drawdown) do not
@@ -797,18 +823,12 @@ def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
         if _parse_money_cell(row.get('profit_split')) > 0:
             last_net_at_split = _parse_money_cell(row.get('low'))
 
-    # ── Monthly periods from 3/21 onwards ──────────────────────────────
+    # ── Bi-monthly periods from 3/21 onwards (ends on 15th / 30th) ─────
     prev_period_net = transition_net
     today = _dt.now().date()
     month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
 
-    while month_start <= today:
-        # Monthly window: 21st → 20th of next month
-        if month_start.month == 12:
-            month_end = _date(month_start.year + 1, 1, 20)
-        else:
-            month_end = _date(month_start.year, month_start.month + 1, 20)
-
+    for month_start, month_end in _iter_profit_split_periods(month_start, today):
         effective_end = min(month_end, today)
 
         in_range = [(d, v) for (d, v) in daily if month_start <= d <= effective_end]
@@ -840,16 +860,11 @@ def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
             'split_pct':    monthly_split_pct,
         })
 
-        # Completed month: advance daily carry; baseline only moves when split was paid.
+        # Completed period: advance daily carry; baseline only moves when split was paid.
         if period_complete:
             prev_period_net = net_profit
             if profit_split > 0:
                 last_net_at_split = net_profit
-
-        # Advance to next month
-        month_start = month_end + timedelta(days=1)
-        if month_start > today:
-            break
 
     # Net profit overrides are now applied during HWM calculation above
     # (no post-processing needed)
