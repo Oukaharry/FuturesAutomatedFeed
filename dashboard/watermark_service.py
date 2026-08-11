@@ -7,8 +7,18 @@ import threading
 import time
 
 # Profit-share schedule after the 3/20/2026 transition:
-# twice monthly — periods end on the 15th and the 30th
-# (or last day of month when there is no 30th, e.g. February).
+# - Through Aug 2026: monthly windows 21st → 20th (legacy — keep history as-is)
+# - From 15 Aug 2026 onward: twice monthly, periods end on the 15th and 30th
+#   (or last day of month when there is no 30th, e.g. February).
+# The open Jul 21 → Aug 20 window is truncated to end on Aug 15, then bi-monthly.
+PROFIT_SPLIT_BIMONTHLY_CUTOVER = _date_cls(2026, 8, 15)
+
+
+def _legacy_monthly_period_end(period_start):
+    """Legacy monthly window: start on 21st → end on 20th of next month."""
+    if period_start.month == 12:
+        return _date_cls(period_start.year + 1, 1, 20)
+    return _date_cls(period_start.year, period_start.month + 1, 20)
 
 
 def _bimonthly_period_end(period_start):
@@ -30,11 +40,22 @@ def _bimonthly_period_end(period_start):
     return _date_cls(period_start.year, period_start.month + 1, 15)
 
 
-def _iter_profit_split_periods(month_start, today):
-    """Yield (period_start, period_end) on the 15/30 bi-monthly schedule."""
+def _iter_profit_split_periods(month_start, today, cutover=PROFIT_SPLIT_BIMONTHLY_CUTOVER):
+    """
+    Yield (period_start, period_end) from month_start through today.
+
+    Legacy monthly (21→20) until the open window that would pass the cutover;
+    that window ends on the cutover date, then bi-monthly 15/30 going forward.
+    """
     period_start = month_start
     while period_start <= today:
-        period_end = _bimonthly_period_end(period_start)
+        if period_start <= cutover:
+            period_end = _legacy_monthly_period_end(period_start)
+            if period_end > cutover:
+                period_end = cutover
+        else:
+            period_end = _bimonthly_period_end(period_start)
+
         yield period_start, period_end
         period_start = period_end + timedelta(days=1)
 
@@ -574,8 +595,8 @@ def _compute_waterlog_monthly_from_daily(client_id, daily, last_net_at_split=0.0
     """
     Build Profit Share rows from daily_watermarks alone (no imported schedule).
 
-    After the Mar 20 2026 transition: bi-monthly periods ending on the 15th
-    and 30th (Feb uses last day of month).
+    Legacy monthly 21st→20th through the Aug 15 2026 cutover (last legacy
+    window truncated to Aug 15), then bi-monthly ending on the 15th and 30th.
     """
     from datetime import datetime as _dt, date as _date
 
@@ -670,8 +691,10 @@ def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
 
     Periods before 2/24/2026 use old HWM logic.
     Periods overlapping 2/24-3/20/2026 are condensed into one transition row.
-    Periods after 3/20/2026 are bi-monthly (end on the 15th and 30th; Feb uses
-    last day of month):
+    Periods after 3/20/2026:
+      - Legacy monthly 21st→20th until Aug 15 2026 (last window ends Aug 15,
+        not Aug 20 — history before that stays on the 20th)
+      - Then bi-monthly periods ending on the 15th and 30th (Feb = last day)
       split = 50% of (current_net - net_at_last_paid_split) when current_net is
       above that baseline. The baseline only advances when a period actually
       pays a profit split (> 0); months with $0 split (e.g. drawdown) do not
@@ -823,7 +846,8 @@ def compute_waterlog_from_db(client_id, _bulk=None, _live_net=None):
         if _parse_money_cell(row.get('profit_split')) > 0:
             last_net_at_split = _parse_money_cell(row.get('low'))
 
-    # ── Bi-monthly periods from 3/21 onwards (ends on 15th / 30th) ─────
+    # ── Monthly then bi-monthly periods from 3/21 onwards ──────────────
+    # History stays 21→20; from Aug 15 2026 cutover onward: 15th / 30th.
     prev_period_net = transition_net
     today = _dt.now().date()
     month_start = TRANSITION_END + timedelta(days=1)  # 3/21/2026
