@@ -3614,6 +3614,7 @@
         let isEditing = false;
         let _changedFields = {};  // Tracks explicitly edited fields: { evalIndex: Set of field names }
         let _saveChangedFieldsSnapshot = null;  // Preserved until save response applied
+        let _versionConflictRetries = 0;  // Cap 409 refresh-and-retry loops
         let _saveDebounceTimer = null;  // Debounce rapid edits into one save
         let _propProgressSaveTimers = {};  // Debounced Prop Progress note saves
         // Save policy: while cursor is inside a cell, NEVER save.
@@ -3621,6 +3622,60 @@
         let _evalPendingSave = false;
         let _evalBlurSaveTimer = null;
         let _evalBlurListenerAttached = false;
+
+        function _evalCellBlank(value) {
+            if (value == null) return true;
+            const s = String(value).trim();
+            return s === '' || s === '-' || s === '—' || s === '–' || s === '--';
+        }
+
+        function _snapshotChangedEvalValues() {
+            const out = {};
+            const take = (src) => {
+                if (!src) return;
+                for (const [idxStr, fields] of Object.entries(src)) {
+                    const idx = parseInt(idxStr, 10);
+                    if (!Number.isFinite(idx) || !currentData.evaluations || !currentData.evaluations[idx]) continue;
+                    const fieldSet = fields instanceof Set ? fields : new Set(Array.isArray(fields) ? fields : []);
+                    if (!fieldSet.size) continue;
+                    if (!out[idx]) out[idx] = {};
+                    const ev = currentData.evaluations[idx];
+                    fieldSet.forEach((key) => {
+                        if (key == null) return;
+                        out[idx][key] = ev[key];
+                    });
+                }
+            };
+            take(_changedFields);
+            take(_saveChangedFieldsSnapshot);
+            const focused = document.querySelector('#evaluations-table .cell-input:focus');
+            if (focused) {
+                const idx = parseInt(focused.getAttribute('data-eval-index'), 10);
+                const key = focused.getAttribute('data-eval-field');
+                if (Number.isFinite(idx) && key && currentData.evaluations && currentData.evaluations[idx]) {
+                    if (!out[idx]) out[idx] = {};
+                    out[idx][key] = focused.value;
+                }
+            }
+            return out;
+        }
+
+        function _restoreChangedEvalValues(overlay) {
+            if (!overlay || !currentData.evaluations) return;
+            for (const [idxStr, keys] of Object.entries(overlay)) {
+                const idx = parseInt(idxStr, 10);
+                if (!Number.isFinite(idx) || !currentData.evaluations[idx] || !keys) continue;
+                if (!_changedFields[idx]) _changedFields[idx] = new Set();
+                for (const [k, v] of Object.entries(keys)) {
+                    currentData.evaluations[idx][k] = v;
+                    // Mid-keystroke blanks are kept in the model for the input, but must
+                    // not be marked changed — that is what produced empty hedge saves.
+                    if (_evalCellBlank(v)) continue;
+                    _changedFields[idx].add(k);
+                }
+                if (_changedFields[idx].size === 0) delete _changedFields[idx];
+            }
+        }
 
         function _flushEvalPendingSave() {
             if (!_evalPendingSave) return;
@@ -7687,8 +7742,6 @@
 
             isEditing = true;
             _pendingEvalRecalc = true;
-            if (!_changedFields[index]) _changedFields[index] = new Set();
-            _changedFields[index].add(key);
 
             let value = rawValue;
             const moneyPrefixes = ['Payout', 'Fee', 'Activation Fee', 'Hedge Result', 'Hedge Day', 'Prop Day'];
@@ -7699,6 +7752,19 @@
                 }
             }
             currentData.evaluations[index][key] = value;
+
+            // Select-all + replace sends an empty keystroke first. Do not mark that
+            // as an intentional clear or a later blur/save of another cell will wipe WED.
+            if (_evalCellBlank(value)) {
+                if (_changedFields[index]) {
+                    _changedFields[index].delete(key);
+                    if (_changedFields[index].size === 0) delete _changedFields[index];
+                }
+                return;
+            }
+
+            if (!_changedFields[index]) _changedFields[index] = new Set();
+            _changedFields[index].add(key);
 
             if (_statsRenderDebounce) clearTimeout(_statsRenderDebounce);
             _statsRenderDebounce = setTimeout(() => {
@@ -8230,6 +8296,8 @@
                     return response.json().then(err => {
                         const e = new Error(err.message || 'Save conflict');
                         e.httpStatus = 409;
+                        e.currentVersion = err.current_version;
+                        e.code = err.code;
                         throw e;
                     });
                 }
@@ -8242,6 +8310,7 @@
             })
             .then(data => {
                 isSaving = false;
+                _versionConflictRetries = 0;
                 _saveChangedFieldsSnapshot = null;
                 if (data.version != null) _lastSavedVersion = data.version;
                 if (data._version != null) _lastSavedVersion = data._version;
@@ -8327,9 +8396,9 @@
             })
             .catch((error) => {
                 console.error('Error saving data:', error);
-                isSaving = false;
-                
+
                 if (error.message === 'SESSION_EXPIRED') {
+                    isSaving = false;
                     _saveChangedFieldsSnapshot = null;
                     alert('Your session has expired. Please log in again to continue.');
                     window.location.href = '/login';
@@ -8337,20 +8406,68 @@
                 }
 
                 if (error.httpStatus === 409) {
-                    _saveChangedFieldsSnapshot = null;
-                    isEditing = false;
-                    _pendingEvalRecalc = false;
-                    setEvaluationsRecalcIndicator(false);
-                    showSaveStatus('failed', error.message);
-                    updateDashboard(true);
-                    if (_pendingSaveCallback) { _pendingSaveCallback(false); _pendingSaveCallback = null; }
-                    if (_pendingEvalSaveAfterFlight) {
-                        const pending = _pendingEvalSaveAfterFlight;
-                        _pendingEvalSaveAfterFlight = null;
-                        setTimeout(() => { saveData(pending.action || 'UPDATE', pending.description || null); }, 500);
+                    const overlay = _snapshotChangedEvalValues();
+                    const pending = _pendingEvalSaveAfterFlight;
+                    _pendingEvalSaveAfterFlight = null;
+                    const retryAction = (pending && pending.action && pending.action !== 'UPDATE')
+                        ? pending.action
+                        : action;
+                    const retryDesc = (pending && pending.description) || description;
+
+                    if (_versionConflictRetries >= 3) {
+                        _saveChangedFieldsSnapshot = null;
+                        isSaving = false;
+                        isEditing = false;
+                        _pendingEvalRecalc = false;
+                        setEvaluationsRecalcIndicator(false);
+                        showSaveStatus('failed', error.message);
+                        if (_pendingSaveCallback) { _pendingSaveCallback(false); _pendingSaveCallback = null; }
+                        updateDashboard(true);
+                        return;
                     }
+                    _versionConflictRetries += 1;
+                    showSaveStatus('retrying', _versionConflictRetries);
+
+                    const url = `/api/data?client_id=${encodeURIComponent(CLIENT_ID)}&_t=${Date.now()}`;
+                    fetch(url)
+                        .then(r => r.json())
+                        .then(fresh => {
+                            if (!fresh || fresh.status === 'error') {
+                                throw new Error((fresh && fresh.message) || 'Refresh failed');
+                            }
+                            const pendingNew = _collectPendingNewRows(currentData.evaluations);
+                            if (fresh.evaluations) {
+                                currentData.evaluations = _reappendPendingNewRows(
+                                    _mergePendingPropProgressNotes(fresh.evaluations),
+                                    pendingNew
+                                );
+                            }
+                            if (fresh.statistics) currentData.statistics = fresh.statistics;
+                            if (fresh.last_updated) currentData.last_updated = fresh.last_updated;
+                            if (fresh._activity) currentData._activity = fresh._activity;
+                            currentData._version = (error.currentVersion != null)
+                                ? error.currentVersion
+                                : fresh._version;
+                            _restoreChangedEvalValues(overlay);
+                            isSaving = false;
+                            isEditing = true;
+                            saveData(retryAction || 'UPDATE', retryDesc || null);
+                        })
+                        .catch(err => {
+                            console.error('version conflict refresh failed', err);
+                            _saveChangedFieldsSnapshot = null;
+                            isEditing = false;
+                            isSaving = false;
+                            _pendingEvalRecalc = false;
+                            setEvaluationsRecalcIndicator(false);
+                            showSaveStatus('failed', error.message);
+                            if (_pendingSaveCallback) { _pendingSaveCallback(false); _pendingSaveCallback = null; }
+                            updateDashboard(true);
+                        });
                     return;
                 }
+
+                isSaving = false;
                 
                 // Retry logic (up to 3 times with exponential backoff)
                 // Reuses the same serialized body so _changedFields are preserved
