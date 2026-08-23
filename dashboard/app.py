@@ -4169,6 +4169,18 @@ def client_dashboard(client_id):
     # Look up admin's Slack member ID for direct tagging
     _admin_data = SYSTEM_HIERARCHY.get('admins', {}).get(client_admin_name, {})
     client_admin_slack_id = _admin_data.get('slack_user_id', '')
+    _identity = (client_data or {}).get('identity') if isinstance(client_data, dict) else {}
+    from dashboard.financial_overview import get_client_profile as _resolve_client_category
+    client_is_gs = (_resolve_client_category(client_id, _identity) or '').upper() == 'GS'
+    _index_ctx = dict(
+        client_id=client_id,
+        client_email=client_email,
+        is_active=is_active,
+        client_trader_name=client_trader_name,
+        client_admin_name=client_admin_name,
+        client_admin_slack_id=client_admin_slack_id,
+        client_is_gs=client_is_gs,
+    )
 
     # Allow super_admin, bef_admin, kwok_admin, admin, and trader to access client dashboards
     if user_type in ['super_admin', 'bef_admin', 'kwok_admin', 'admin', 'trader']:
@@ -4176,24 +4188,17 @@ def client_dashboard(client_id):
         if user_type == 'bef_admin' and not can_access_client('bef_admin', None, client_id):
             return redirect('/bef_admin')
         can_edit = user_type != 'kwok_admin'
-        return render_template('index.html', client_id=client_id, user_type=user_type, 
-                               can_edit_hedging=can_edit, client_email=client_email, is_active=is_active,
-                               client_trader_name=client_trader_name, client_admin_name=client_admin_name,
-                               client_admin_slack_id=client_admin_slack_id)
+        return render_template(
+            'index.html', user_type=user_type, can_edit_hedging=can_edit, **_index_ctx
+        )
     # Client access: allow own dashboard OR primary KYC can view linked accounts
     if user_type == 'client':
         own_name = session_user.get('user_identifier')
         if client_id == own_name:
-            return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=True, client_email=client_email, is_active=is_active,
-                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name,
-                                   client_admin_slack_id=client_admin_slack_id)
+            return render_template('index.html', user_type=user_type, can_edit_hedging=True, **_index_ctx)
         # Only primary KYC clients can view linked accounts
         if is_kyc_primary(own_name) and client_id in get_all_kyc_accounts(own_name):
-            return render_template('index.html', client_id=client_id, user_type=user_type, 
-                                   can_edit_hedging=True, client_email=client_email, is_active=is_active,
-                                   client_trader_name=client_trader_name, client_admin_name=client_admin_name,
-                                   client_admin_slack_id=client_admin_slack_id)
+            return render_template('index.html', user_type=user_type, can_edit_hedging=True, **_index_ctx)
     return redirect('/')
 
 # ============ Hierarchy API with Role-Based Access Control ============
@@ -5151,7 +5156,7 @@ def api_cleanup_database():
 @app.route('/api/client/update_source', methods=['POST'])
 @require_session
 def update_client_source():
-    """Update client source (BEF/Private)."""
+    """Update client source (BEF/Private/GS)."""
     session_user = request.session_user
     if session_user.get('user_type') != 'super_admin':
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
@@ -5159,7 +5164,7 @@ def update_client_source():
     data = request.get_json(silent=True) or {}
     client_id = data.get('client_id')
     source = data.get('source')
-    allowed = ['BEF', 'Private']
+    allowed = ['BEF', 'Private', 'GS']
 
     if not client_id or source not in allowed:
         return jsonify({"status": "error", "message": "Invalid data"}), 400

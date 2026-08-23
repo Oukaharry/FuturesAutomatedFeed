@@ -177,6 +177,13 @@
             font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
             padding: 1px 6px; margin-left: 6px;
         }
+        .client-badge-gs {
+            background: rgba(168,85,247,0.15); color: #d8b4fe;
+            border: 1px solid rgba(168,85,247,0.25); border-radius: 99px;
+            font-size: 0.6rem; font-family: 'IBM Plex Mono', monospace;
+            font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+            padding: 1px 6px; margin-left: 6px;
+        }
         .client-badge-inactive {
             background: rgba(239,68,68,0.18); color: #f87171;
             border: 1px solid rgba(239,68,68,0.28); border-radius: 99px;
@@ -391,6 +398,7 @@
                 <select id="editCategory" class="form-dark">
                     <option value="PRIVATE">Private (Standard)</option>
                     <option value="BEF">BEF (High Risk)</option>
+                    <option value="GS">Golden Spike</option>
                 </select>
             </div>
             <div class="form-group">
@@ -705,7 +713,8 @@
         document.getElementById('editTrader').value = trader;
         document.getElementById('editName').value = name;
         document.getElementById('editNameDisplay').textContent = name;
-        document.getElementById('editCategory').value = (category && category.toUpperCase() === 'BEF') ? 'BEF' : 'PRIVATE';
+        const u = (category || 'PRIVATE').toUpperCase();
+        document.getElementById('editCategory').value = u === 'BEF' ? 'BEF' : u === 'GS' ? 'GS' : 'PRIVATE';
         document.getElementById('editActiveStatus').value = activeStatus || 'active';
         document.getElementById('editClientModal').style.display = 'block';
     }

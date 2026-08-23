@@ -1325,6 +1325,12 @@
         .prop-field-textarea { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.75rem; resize: vertical; min-height: 28px; font-family: inherit; box-sizing: border-box; }
         .prop-field-textarea::placeholder { color: #475569; }
         .prop-field-textarea:focus { border-color: rgba(167,139,250,0.5); outline: none; }
+        .prop-field-select { width: 100%; padding: 5px 8px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; color: #e2e8f0; font-size: 0.8rem; font-family: inherit; box-sizing: border-box; cursor: pointer; }
+        .prop-field-select:focus { border-color: rgba(192,132,252,0.5); outline: none; }
+        .prop-outcome-tp { color: #4ade80; border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.1); }
+        .prop-outcome-sl { color: #f87171; border-color: rgba(248,113,113,0.35); background: rgba(248,113,113,0.1); }
+        .prop-outcome-payout { color: #c084fc; border-color: rgba(192,132,252,0.35); background: rgba(168,85,247,0.12); }
+        .account-result-counts { display: flex; flex-wrap: wrap; gap: 8px; }
 
         /* Preview output box */
         .summary-preview {
@@ -3263,6 +3269,7 @@
     <script>
         const CLIENT_ID = "{{ client_id }}";
         const USER_TYPE = "{{ user_type }}";
+        const CLIENT_IS_GS = {{ 'true' if client_is_gs|default(false) else 'false' }};
         const IS_CLIENT = USER_TYPE === 'client';
         const IS_BEF_ADMIN = USER_TYPE === 'bef_admin';
         const IS_KWOK_ADMIN = USER_TYPE === 'kwok_admin';
@@ -9363,37 +9370,83 @@
         // ══════════════════════════════════════════════════════════
         // ── Per-Client Daily Summary Generator ───────────────────
         // ══════════════════════════════════════════════════════════
-        const SUMMARY_SECTIONS = [
-            { id: 'challenge_purchase', num: 1, title: 'Challenge Purchase Status',
+        const ACCOUNT_RESULT_COUNT_FIELDS = [
+            { key: 'hit_tp', label: 'Hit TP' },
+            { key: 'hit_sl', label: 'Hit SL' },
+            { key: 'payout', label: 'Payout' },
+        ];
+
+        function _formatAccountResultCounts(fields) {
+            const f = fields || {};
+            const parts = [];
+            const n = (k) => parseInt(f[k] || 0, 10) || 0;
+            if (n('hit_tp')) parts.push(`${n('hit_tp')} hit TP`);
+            if (n('hit_sl')) parts.push(`${n('hit_sl')} hit SL`);
+            if (n('payout')) parts.push(`${n('payout')} payout`);
+            return parts.join(', ') || 'Pending';
+        }
+
+        const _SUMMARY_SECTION_DEFS = {
+            challenge_purchase: { id: 'challenge_purchase', title: 'Challenge Purchase Status',
               okText: 'All challenges purchased and funded — no pending orders.',
               fields: [{ key: 'count', label: 'Pending Challenges to Purchase' }],
               template: (f) => `${f.count || 0} challenge(s) pending purchase` },
-            { id: 'renewal_cancel', num: 2, title: 'Renewal / Cancellation Check',
+            renewal_cancel: { id: 'renewal_cancel', title: 'Renewal / Cancellation Check',
               okText: 'No renewals or cancellations needed today.',
               fields: [{ key: 'renewals', label: 'Renewals' }, { key: 'cancellations', label: 'Cancellations' }],
               template: (f) => `${f.renewals || 0} renewal(s), ${f.cancellations || 0} cancellation(s)` },
-            { id: 'trading_delays', num: 3, title: 'Trading / Operational Delays',
+            trading_delays: { id: 'trading_delays', title: 'Trading / Operational Delays',
               okText: 'All accounts traded on schedule — no delays or issues.',
               fields: [{ key: 'details', label: 'Details', type: 'text' }],
               template: (f) => f.details || 'Trading delay reported' },
-            { id: 'payout_requests', num: 4, title: 'Payout Requests',
+            payout_requests: { id: 'payout_requests', title: 'Payout Requests',
               okText: 'No payout requests pending.',
               fields: [{ key: 'count', label: 'Payouts eligible at Next Trading Day' }],
               template: (f) => `${f.count || 0} payout(s) eligible at Next Trading Day. To be requested at market open` },
-            { id: 'payout_confirm', num: 5, title: 'Payout Confirmation & Sheet Update',
+            account_results: { id: 'account_results', title: 'Account Results',
+              okText: 'All account results recorded.',
+              fields: ACCOUNT_RESULT_COUNT_FIELDS.map(f => ({ ...f, type: 'count' })),
+              template: _formatAccountResultCounts,
+              gsOnly: true },
+            payout_confirm: { id: 'payout_confirm', title: 'Payout Confirmation & Sheet Update',
               okText: 'All confirmed payouts recorded — sheet is up to date.',
               fields: [{ key: 'amount', label: 'Amount ($)', prefix: '$' }],
               template: (f) => `$${f.amount || 0} payout confirmed — sheet updated` },
-            { id: 'action_items', num: 6, title: 'Client Action Items',
+            action_items: { id: 'action_items', title: 'Client Action Items',
               okText: 'No client action required at this time.',
               fields: [{ key: 'details', label: 'Details', type: 'text' }],
               template: (f) => f.details || 'Action items pending' },
-            { id: 'trade_count', num: 7, title: '# of times account traded today',
+            trade_count: { id: 'trade_count', title: '# of times account traded today',
               okText: 'Trade counts recorded.',
               fields: [{ key: 'count', label: '# of trades' }],
               template: (f) => { const v = (f.count || '').trim(); const m = v.match(/^(\d+\.?\d*)\s*(.*)/); if (m) { const n = parseFloat(m[1]); const rest = m[2].trim() || 'hit TP today'; return `${n} ${n == 1 ? 'trade' : 'trades'} ${rest}`; } return v || '0 trades hit TP today'; },
               conditional: true }
-        ];
+        };
+
+        function _buildSummarySections(isGs) {
+            const order = isGs
+                ? ['challenge_purchase', 'renewal_cancel', 'trading_delays', 'payout_requests',
+                   'account_results', 'payout_confirm', 'action_items', 'trade_count']
+                : ['challenge_purchase', 'renewal_cancel', 'trading_delays', 'payout_requests',
+                   'payout_confirm', 'action_items', 'trade_count'];
+            return order.map((id, idx) => ({ ..._SUMMARY_SECTION_DEFS[id], num: idx + 1 }));
+        }
+
+        function _summarySectionsFor(clientId) {
+            const isGs = CLIENT_IS_GS || clientId === 'Golden Spike';
+            return _buildSummarySections(isGs);
+        }
+
+        function _propFirmDisplayName(propFirm) {
+            const map = {
+                'My Funded Futures': 'MFFU',
+                'FundedNext': 'Funded Next',
+                'Funded Next Flex': 'Funded Next',
+                'Topstep': 'TopStep',
+                'TopStep RTP': 'TopStep',
+            };
+            return map[propFirm] || propFirm;
+        }
 
         let _tradeCountEnabledClients = new Set();
 
@@ -9405,33 +9458,38 @@
         let _disabledPropFirms = {}; // { clientId: Set(['FirmA', ...]) }
         const MANAGED_PROP_FIRMS = ['My Funded Futures', 'FundedNext', 'Funded Next Flex', 'Topstep', 'TopStep RTP', 'Lucid', 'LucidMaxx', 'TradeDay', 'Alpha Futures', 'Tradeify', 'Apex', 'Top One Futures', 'Funded Futures Family', 'The 5%ers'].filter(f => !isFirmHidden(f));
 
-        function _getDefaultSections() {
+        function _getDefaultSections(clientId) {
             const d = {};
-            SUMMARY_SECTIONS.forEach(s => { d[s.id] = { status: 'ok', notes: {} }; });
+            _summarySectionsFor(clientId || _activeClient || CLIENT_ID).forEach(s => { d[s.id] = { status: 'ok', notes: {} }; });
             return d;
         }
 
-        function _getClientPropFirms() {
-            // Return managed prop firms that the client actually trades (from evaluations), minus disabled ones
-            if (!currentData || !currentData.evaluations) return [];
+        function _activePropFirmsFromEvaluations(evaluations) {
+            // Prop firms with at least one row visible under the dashboard Active filter
+            if (!evaluations || !evaluations.length) return [];
             const clientFirms = new Set();
-            currentData.evaluations.forEach(ev => {
+            evaluations.forEach(ev => {
                 const pf = (ev['Prop Firm'] || '').trim();
-                if (pf) clientFirms.add(pf);
+                if (!pf || isFirmHidden(pf) || hidesFromActiveFilter(ev)) return;
+                clientFirms.add(pf);
             });
-            const disabled = _disabledPropFirms[_activeClient] || new Set();
-            return MANAGED_PROP_FIRMS.filter(pf => clientFirms.has(pf) && !disabled.has(pf));
+            return MANAGED_PROP_FIRMS.filter(pf => clientFirms.has(pf));
+        }
+
+        function _getClientPropFirmsForClient(clientId) {
+            if (!currentData || !currentData.evaluations) return [];
+            const disabled = _disabledPropFirms[clientId] || new Set();
+            return _activePropFirmsFromEvaluations(currentData.evaluations)
+                .filter(pf => !disabled.has(pf));
+        }
+
+        function _getClientPropFirms() {
+            return _getClientPropFirmsForClient(_activeClient);
         }
 
         function _getAllClientPropFirms() {
-            // All managed prop firms present in evaluations (including disabled) for toggle UI
-            if (!currentData || !currentData.evaluations) return [];
-            const clientFirms = new Set();
-            currentData.evaluations.forEach(ev => {
-                const pf = (ev['Prop Firm'] || '').trim();
-                if (pf) clientFirms.add(pf);
-            });
-            return MANAGED_PROP_FIRMS.filter(pf => clientFirms.has(pf));
+            // Active prop firms only (toggle bar); disabled state applied in _getClientPropFirms
+            return _activePropFirmsFromEvaluations(currentData?.evaluations);
         }
 
         function togglePropFirmDisabled(propFirm) {
@@ -9443,7 +9501,7 @@
 
         function _initPropNotes(sectionId) {
             // Ensure notes object has entries for all current prop firms
-            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections(_activeClient);
             const d = _allClientSummaries[_activeClient][sectionId];
             const propFirms = _getClientPropFirms();
             if (typeof d.notes !== 'object' || d.notes === null) d.notes = {};
@@ -9458,8 +9516,7 @@
             return d.notes;
         }
 
-        function _isSectionComplete(d) {
-            // A section is complete if status is 'ok', or if all prop firms are addressed
+        function _isSectionComplete(d, sectionId) {
             if (d.status === 'ok') return true;
             if (typeof d.notes !== 'object' || d.notes === null) return false;
             const propFirms = _getClientPropFirms();
@@ -9468,12 +9525,15 @@
                 const pn = d.notes[pf];
                 if (!pn) return false;
                 if (pn.status === 'ok') return true;
-                // Check if any field has a non-zero value
+                if (sectionId === 'account_results') {
+                    return pn.fields && ACCOUNT_RESULT_COUNT_FIELDS.some(
+                        f => (parseInt(pn.fields[f.key] || 0, 10) || 0) > 0
+                    );
+                }
                 if (pn.fields) return Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0');
                 return false;
             });
         }
-
         function toggleChecklistPanel() {
             const panel = document.getElementById('checklist-panel');
             const overlay = document.getElementById('checklist-overlay');
@@ -9531,7 +9591,7 @@
 
             // Init data store
             _clientList.forEach(c => {
-                if (!_allClientSummaries[c]) _allClientSummaries[c] = _getDefaultSections();
+                if (!_allClientSummaries[c]) _allClientSummaries[c] = _getDefaultSections(c);
             });
 
             // Load saved data for current client + trade count enabled list + slack channels
@@ -9553,10 +9613,12 @@
                 if (data.checklists && data.checklists.length) {
                     const saved = data.checklists[0];
                     if (saved.items && Array.isArray(saved.items)) {
-                        if (!_allClientSummaries[clientId]) _allClientSummaries[clientId] = _getDefaultSections();
+                        if (!_allClientSummaries[clientId]) _allClientSummaries[clientId] = _getDefaultSections(clientId);
                         saved.items.forEach(item => {
-                            if (_allClientSummaries[clientId][item.id]) {
-                                _allClientSummaries[clientId][item.id].status = item.status || 'ok';
+                            if (!_allClientSummaries[clientId][item.id]) {
+                                _allClientSummaries[clientId][item.id] = { status: 'ok', notes: {} };
+                            }
+                            _allClientSummaries[clientId][item.id].status = item.status || 'ok';
                                 // Handle both old string notes and new object notes
                                 const n = item.notes;
                                 if (typeof n === 'object' && n !== null) {
@@ -9566,7 +9628,6 @@
                                 } else {
                                     _allClientSummaries[clientId][item.id].notes = {};
                                 }
-                            }
                         });
                     }
                 }
@@ -9586,7 +9647,7 @@
                 body.innerHTML = '<p style="color:#64748b;text-align:center;padding:40px 0;">No clients found.</p>';
                 return;
             }
-            const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections();
+            const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections(_activeClient);
             const propFirms = _getClientPropFirms();
             const allFirms = _getAllClientPropFirms();
             const disabled = _disabledPropFirms[_activeClient] || new Set();
@@ -9606,6 +9667,12 @@
                 </div>
             </div>` : '';
 
+            // Golden Spike: Account Results feature bar
+            const gsAccountResultsBar = CLIENT_IS_GS ? `<div style="margin-bottom:12px; padding:8px 12px; background:rgba(168,85,247,0.08); border:1px solid rgba(192,132,252,0.22); border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-size:0.78rem; color:#c4b5fd;"><i class="fas fa-star" style="color:#a78bfa; margin-right:6px;"></i>Account Results</span>
+                <span style="padding:3px 12px; border-radius:6px; font-size:0.72rem; border:1px solid rgba(192,132,252,0.4); background:rgba(168,85,247,0.15); color:#d8b4fe;">✅ Enabled</span>
+            </div>` : '';
+
             // Trade count toggle for current client
             const tcEnabled = _tradeCountEnabledClients.has(_activeClient);
             const tcToggle = `<div style="margin-bottom:12px; padding:8px 12px; background:rgba(129,140,248,0.06); border:1px solid rgba(129,140,248,0.15); border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
@@ -9613,16 +9680,13 @@
                 <button onclick="toggleClientTradeCount()" style="padding:3px 12px; border-radius:6px; font-size:0.72rem; cursor:pointer; border:1px solid ${tcEnabled ? 'rgba(129,140,248,0.4)' : 'rgba(255,255,255,0.08)'}; background:${tcEnabled ? 'rgba(129,140,248,0.15)' : 'rgba(255,255,255,0.03)'}; color:${tcEnabled ? '#a5b4fc' : '#475569'}; transition:all 0.15s;">${tcEnabled ? '✅ Enabled' : 'Off'}</button>
             </div>`;
 
-            const visibleSections = SUMMARY_SECTIONS.filter(s => {
-                if (s.conditional && s.id === 'trade_count') return _tradeCountEnabledClients.has(_activeClient);
-                return true;
-            });
+            const visibleSections = _visibleSectionsFor(_activeClient);
 
             const html = visibleSections.map(s => {
-                const d = summaryData[s.id];
+                const d = summaryData[s.id] || { status: 'ok', notes: {} };
                 const isOk = d.status === 'ok';
                 const isWarn = d.status === 'warn';
-                if (isOk || (isWarn && _isSectionComplete(d))) filled++;
+                if (isOk || (isWarn && _isSectionComplete(d, s.id))) filled++;
 
                 let notesHtml = '';
                 if (isWarn) {
@@ -9633,28 +9697,43 @@
                             const isAllGood = pn.status === 'ok';
                             const safeId = s.id;
                             const safePf = pf.replace(/'/g, "\\'");
-                            const fieldInputs = !isAllGood ? s.fields.map(f => {
-                                const val = (pn.fields && pn.fields[f.key]) || '';
-                                if (f.type === 'text') {
-                                    return `<div class="prop-field-group prop-field-full">
+                            const isAccountResults = s.id === 'account_results';
+                            let fieldInputs = '';
+                            if (!isAllGood) {
+                                fieldInputs = s.fields.map(f => {
+                                    const val = (pn.fields && pn.fields[f.key]) || '';
+                                    if (f.type === 'count') {
+                                        return `<div class="prop-field-group" style="min-width:72px;max-width:90px;">
+                                            <label class="prop-field-label">${f.label}</label>
+                                            <input type="number" min="0" step="1" class="prop-field-input" value="${val}"
+                                                placeholder="0"
+                                                oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">
+                                        </div>`;
+                                    }
+                                    if (f.type === 'text') {
+                                        return `<div class="prop-field-group prop-field-full">
+                                            <label class="prop-field-label">${f.label}</label>
+                                            <textarea class="prop-field-textarea" placeholder="Describe the issue..."
+                                                oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">${val}</textarea>
+                                        </div>`;
+                                    }
+                                    return `<div class="prop-field-group">
                                         <label class="prop-field-label">${f.label}</label>
-                                        <textarea class="prop-field-textarea" placeholder="Describe the issue..."
-                                            oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">${val}</textarea>
+                                        <input type="text" class="prop-field-input" value="${val}"
+                                            placeholder=""
+                                            oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">
                                     </div>`;
-                                }
-                                return `<div class="prop-field-group">
-                                    <label class="prop-field-label">${f.label}</label>
-                                    <input type="text" class="prop-field-input" value="${val}"
-                                        placeholder=""
-                                        oninput="setPropField('${safeId}','${safePf}','${f.key}',this.value)">
-                                </div>`;
-                            }).join('') : '';
+                                }).join('');
+                            }
+                            const allGoodBtn = isAccountResults ? '' :
+                                `<button class="prop-note-allgood ${isAllGood ? 'active' : ''}" onclick="setPropAllGood('${safeId}','${safePf}')">✅ All Good</button>`;
+                            const fieldsWrapClass = isAccountResults ? 'account-result-counts' : 'prop-fields-row';
                             return `<div class="prop-note-row">
                                 <div class="prop-note-header">
-                                    <span class="prop-note-name">${pf}</span>
-                                    <button class="prop-note-allgood ${isAllGood ? 'active' : ''}" onclick="setPropAllGood('${safeId}','${safePf}')">✅ All Good</button>
+                                    <span class="prop-note-name">${isAccountResults ? _propFirmDisplayName(pf) : pf}</span>
+                                    ${allGoodBtn}
                                 </div>
-                                ${fieldInputs ? `<div class="prop-fields-row">${fieldInputs}</div>` : ''}
+                                ${fieldInputs ? `<div class="${fieldsWrapClass}">${fieldInputs}</div>` : ''}
                             </div>`;
                         }).join('') + '</div>';
                     } else {
@@ -9674,13 +9753,14 @@
                     <div style="display:none;">${notesHtml}</div>
                 </div>`;
             }).join('');
-            body.innerHTML = toggleBar + tcToggle + html;
+            body.innerHTML = toggleBar + gsAccountResultsBar + tcToggle + html;
             document.getElementById('checklist-progress').textContent = `${_activeClient}: ${filled} / ${visibleSections.length} sections`;
             updateChecklistBadge();
         }
 
         function _visibleSectionsFor(clientId) {
-            return SUMMARY_SECTIONS.filter(s => {
+            clientId = clientId || _activeClient || CLIENT_ID;
+            return _summarySectionsFor(clientId).filter(s => {
                 if (s.conditional && s.id === 'trade_count') return _tradeCountEnabledClients.has(clientId);
                 return true;
             });
@@ -9694,7 +9774,7 @@
                 const s = _allClientSummaries[c];
                 const filled = s ? vis.filter(sec => {
                     const d = s[sec.id];
-                    return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d)));
+                    return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d, sec.id)));
                 }).length : 0;
                 const cls = filled === vis.length ? 'done' : filled > 0 ? 'partial' : '';
                 return `<div class="client-dot ${cls}" title="${c}: ${filled}/${vis.length}"></div>`;
@@ -9702,7 +9782,7 @@
         }
 
         function setSectionStatus(sectionId, status) {
-            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections(_activeClient);
             _allClientSummaries[_activeClient][sectionId].status = status;
             if (status === 'ok') _allClientSummaries[_activeClient][sectionId].notes = {};
             renderChecklist();
@@ -9711,12 +9791,12 @@
 
         function setSectionNotes(sectionId, notes) {
             // Legacy fallback for when no prop firms exist
-            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections(_activeClient);
             _allClientSummaries[_activeClient][sectionId].notes = notes;
         }
 
         function setPropField(sectionId, propFirm, fieldKey, value) {
-            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections(_activeClient);
             const notes = _allClientSummaries[_activeClient][sectionId].notes;
             if (typeof notes === 'object' && notes !== null) {
                 if (!notes[propFirm]) notes[propFirm] = { status: '', fields: {} };
@@ -9728,7 +9808,7 @@
         }
 
         function setPropAllGood(sectionId, propFirm) {
-            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections();
+            if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections(_activeClient);
             const notes = _allClientSummaries[_activeClient][sectionId].notes;
             if (typeof notes === 'object' && notes !== null) {
                 if (!notes[propFirm]) notes[propFirm] = { status: '', fields: {} };
@@ -9750,7 +9830,7 @@
                 const vis = _visibleSectionsFor(c);
                 const filled = vis.filter(sec => {
                     const d = s[sec.id];
-                    return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d)));
+                    return d && (d.status === 'ok' || (d.status === 'warn' && _isSectionComplete(d, sec.id)));
                 }).length;
                 if (filled === vis.length) doneCount++;
             });
@@ -9802,7 +9882,7 @@
 
         function generateSummaryText(clientId) {
             clientId = clientId || _activeClient;
-            const summaryData = _allClientSummaries[clientId] || _getDefaultSections();
+            const summaryData = _allClientSummaries[clientId] || _getDefaultSections(clientId);
             const dateStr = _eatSummaryHeaderDateStr();
             let lines = [];
             if (CLIENT_TRADER_NAME) lines.push(`👤 Trader: ${CLIENT_TRADER_NAME}`);
@@ -9814,33 +9894,31 @@
             lines.push(`📋 **DAILY SUMMARY — ${clientId}**`);
             lines.push(`📅 ${dateStr}`);
             lines.push('');
-            const genSections = SUMMARY_SECTIONS.filter(s => {
-                if (s.conditional && s.id === 'trade_count') return _tradeCountEnabledClients.has(clientId);
-                return true;
-            });
+            const genSections = _visibleSectionsFor(clientId);
             genSections.forEach(s => {
-                const d = summaryData[s.id];
+                const d = summaryData[s.id] || { status: 'ok', notes: {} };
                 const icon = d.status === 'ok' ? '✅' : '⚠️';
                 lines.push(`**${s.num}. ${s.title}**`);
                 if (d.status === 'ok') {
                     lines.push(`${icon} ${s.okText}`);
                 } else if (typeof d.notes === 'object' && d.notes !== null) {
-                    const disabled = _disabledPropFirms[clientId] || new Set();
-                    const propFirms = Object.keys(d.notes).filter(pf => !disabled.has(pf));
+                    const propFirms = _getClientPropFirmsForClient(clientId);
                     if (propFirms.length > 0) {
                         propFirms.forEach(pf => {
                             const pn = d.notes[pf];
+                            const displayPf = _propFirmDisplayName(pf);
                             if (pn.status === 'ok') {
-                                lines.push(`  ✅ ${pf}: All Good`);
+                                lines.push(`  ✅ ${displayPf}: All Good`);
                             } else if (pn.fields && Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0')) {
-                                // trade_count: any trades (≥1) is a success, not a warning
-                                if (s.id === 'trade_count') {
-                                    lines.push(`  ✅ ${pf}: ${s.template(pn.fields)}`);
+                                if (s.id === 'account_results') {
+                                    lines.push(`  ${displayPf} - ${s.template(pn.fields)}`);
+                                } else if (s.id === 'trade_count') {
+                                    lines.push(`  ✅ ${displayPf}: ${s.template(pn.fields)}`);
                                 } else {
-                                    lines.push(`  ⚠️ ${pf}: ${s.template(pn.fields)}`);
+                                    lines.push(`  ⚠️ ${displayPf}: ${s.template(pn.fields)}`);
                                 }
                             } else {
-                                lines.push(`  ⏳ ${pf}: Pending`);
+                                lines.push(`  ⏳ ${displayPf}: Pending`);
                             }
                         });
                     } else {
@@ -9864,13 +9942,13 @@
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin" style="margin-right:6px;"></i> Saving...';
             try {
-                const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections();
-                const items = SUMMARY_SECTIONS.map(s => ({
+                const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections(_activeClient);
+                const items = _visibleSectionsFor(_activeClient).map(s => ({
                     id: s.id,
                     num: s.num,
                     title: s.title,
-                    status: summaryData[s.id].status,
-                    notes: summaryData[s.id].notes
+                    status: (summaryData[s.id] || { status: 'ok' }).status,
+                    notes: (summaryData[s.id] || { notes: {} }).notes
                 }));
                 const resp = await fetch('/api/checklist/submit', {
                     method: 'POST',
@@ -10009,7 +10087,7 @@
                     data.checklists.forEach(cl => {
                         const cid = cl.client_id || '';
                         if (!cid) return;
-                        if (!_allClientSummaries[cid]) _allClientSummaries[cid] = _getDefaultSections();
+                        if (!_allClientSummaries[cid]) _allClientSummaries[cid] = _getDefaultSections(cid);
                         if (cl.items && Array.isArray(cl.items)) {
                             cl.items.forEach(item => {
                                 if (_allClientSummaries[cid][item.id]) {
