@@ -113,6 +113,7 @@
                         <option value="">None</option>
                         <option value="BEF">BEF</option>
                         <option value="Private">Private</option>
+                        <option value="GS">Golden Spike</option>
                     </select>
                 </div>
                 {% else %}
@@ -143,6 +144,7 @@
                     <select id="editCategory">
                         <option value="BEF">BEF</option>
                         <option value="PRIVATE">Private</option>
+                        <option value="GS">Golden Spike</option>
                     </select>
                 </div>
                 {% else %}
@@ -310,7 +312,11 @@
             
             // Normalize category just in case
             let val = 'PRIVATE';
-            if (category && category.toUpperCase() === 'BEF') val = 'BEF';
+            if (category) {
+                const u = category.toUpperCase();
+                if (u === 'BEF') val = 'BEF';
+                else if (u === 'GS') val = 'GS';
+            }
             document.getElementById('editCategory').value = val;
             document.getElementById('editActiveStatus').value = activeStatus || 'active';
             

@@ -462,13 +462,13 @@
                 const profitColor = c.net_profit >= 0 ? '#34d399' : '#f87171';
                 
                 // Source Selector HTML
-                const isBEF = (c.source || '').toUpperCase() === 'BEF';
-                // Dark theme select with light text
+                const src = (c.source || 'Private').toUpperCase();
                 const sourceHtml = `
                     <select onchange="updateClientSource('${c.client_id}', this.value)" 
-                            style="padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); font-size: 0.85rem; background-color: ${isBEF ? 'rgba(59, 130, 246, 0.2)' : '#0f172a'}; color: #f8fafc; cursor: pointer;">
-                        <option value="Private" ${!isBEF ? 'selected' : ''} style="background-color: #0f172a; color: #f8fafc;">Private</option>
-                        <option value="BEF" ${isBEF ? 'selected' : ''} style="background-color: #0f172a; color: #f8fafc;">BEF</option>
+                            style="padding: 6px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); font-size: 0.85rem; background-color: #0f172a; color: #f8fafc; cursor: pointer;">
+                        <option value="Private" ${src === 'PRIVATE' ? 'selected' : ''} style="background-color: #0f172a; color: #f8fafc;">Private</option>
+                        <option value="BEF" ${src === 'BEF' ? 'selected' : ''} style="background-color: #0f172a; color: #f8fafc;">BEF</option>
+                        <option value="GS" ${src === 'GS' ? 'selected' : ''} style="background-color: #0f172a; color: #f8fafc;">Golden Spike</option>
                     </select>
                 `;
                 

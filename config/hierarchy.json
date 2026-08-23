@@ -1,1493 +1,1594 @@
 {
-    "super_admin": {
-        "name": "baller",
-        "email": "ballerquotesvpf@gmail.com"
+  "super_admin": {
+    "name": "baller",
+    "email": "ballerquotesvpf@gmail.com"
+  },
+  "traders": {
+    "Albert Andati": {
+      "email": "albertandati2@gmail.com",
+      "active_status": "active"
     },
-    "traders": {
-        "Albert Andati": {
-            "email": "albertandati2@gmail.com",
-            "active_status": "active"
-        },
-        "Caroline Misoy": {
-            "email": "carolmisoy@gmail.com",
-            "active_status": "active"
-        },
-        "Fabian Omondi": {
-            "email": "fabianlouis99@gmail.com",
-            "active_status": "active"
-        },
-        "Felix Ondiek": {
-            "email": "leexfredleex@gmail.com",
-            "active_status": "inactive"
-        },
-        "Gideon Oruma": {
-            "email": "orumagideon535@gmail.com",
-            "active_status": "active"
-        },
-        "Hesbon Okumu": {
-            "email": "hezimstingofficial@gmail.com",
-            "active_status": "active"
-        },
-        "Hezill Hill": {
-            "email": "hezilhill@gmail.com",
-            "active_status": "active"
-        },
-        "Hillary Litali": {
-            "email": "litalihillary@gmail.com",
-            "active_status": "active"
-        },
-        "Julieth Munialo": {
-            "email": "sharonjulieth002@gmail.com",
-            "active_status": "active"
-        },
-        "Paul Ayieko": {
-            "email": "paulayieko123@gmail.com",
-            "active_status": "active"
-        },
-        "Samuel Tangara": {
-            "email": "tangarasamuel18@gmail.com",
-            "active_status": "active"
-        },
-        "Steve Okok": {
-            "email": "otienookok19@gmail.com",
-            "active_status": "active"
-        },
-        "Tangara": {
-            "email": "tangsphilip@gmail.com",
-            "active_status": "active"
-        },
-        "Vincent Odhiambo": {
-            "email": "odhiambovincentmax@gmail.com",
-            "active_status": "active"
-        },
-        "Wayne Ogolla": {
-            "email": "ogollawayne@gmail.com",
-            "active_status": "active"
-        },
-        "John Mburu": {
-            "email": "njihiamburu.3@gmail.com"
-        },
-        "Kevin Ocharo": {
-            "email": "ocharokevinraul17@gmail.com",
-            "active_status": "active"
-        },
-        "Sylvia Achieng": {
-            "email": "achiengsylvia20@gmail.com",
-            "active_status": "active"
-        },
-        "Alphonce Owino": {
-            "email": "alibailyo96@gmail.com",
-            "active_status": "active"
-        },
-        "Rex Agingu": {
-            "email": "xanderrex87@gmail.com",
-            "active_status": "active"
-        },
-        "Alfayo Onchoka": {
-            "email": "alfynyaberi@gmail.com",
-            "active_status": "active"
-        }
+    "Caroline Misoy": {
+      "email": "carolmisoy@gmail.com",
+      "active_status": "active"
     },
-    "admins": {
-        "Marion Nyika": {
-            "email": "marionnyika00@gmail.com",
-            "slack_user_id": "U0A09PM2155",
-            "assigned_traders": [
-                "Fabian Omondi",
-                "Paul Ayieko"
-            ],
-            "clients": [
-                {
-                    "name": "Adrian Vazquez",
-                    "email": "adrianvasquezprofit@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Soklay Tuy",
-                    "email": "soklaytuy92762@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Isaac Woolsey",
-                    "email": "isaacwoolseyfutures@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Changlim Eang",
-                    "email": "changlimeang@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Samuel Pew",
-                    "email": "samuelpew33@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Joe Hicken",
-                    "email": "joehickenfpf@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Poyi Woolsey",
-                    "email": "poyiwoolsey@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Kyle Johnson",
-                    "email": "kylejohnsontrading@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Sreypich Vorn",
-                    "email": "sreypichvorn06@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Fabiola Gomez",
-                    "email": "fabiolafutures@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Hector Blass",
-                    "email": "hectordavidfutures@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Linet Lom 2.0",
-                    "email": "linettrading12@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Jessica Colvin",
-                    "email": "jessicatradesticks@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Pilar Cortez",
-                    "email": "pilarcm159@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Vicky Monroe",
-                    "email": "virginia10784@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Violeta Jimenez",
-                    "email": "violetadominguezjimenez@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Mirzam Suhail",
-                    "email": "",
-                    "category": "BEF",
-                    "assigned_trader": "Fabian Omondi"
-                },
-                {
-                    "name": "Sariah Martinez",
-                    "email": "sariahmartinez1111@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Davy Hicken",
-                    "email": "davyhickenfpf@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Emilio Martinez",
-                    "email": "apoyovma@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Abish Del Toro",
-                    "email": "buildhealthpreventdisease@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Silin Sorn",
-                    "email": "silinsorn8@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Skyler Colvin",
-                    "email": "skylercolvin02@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Varith Eng",
-                    "email": "engvarith@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Justin Reed",
-                    "email": "justintradesfutures@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Leanghour",
-                    "email": "sornldsjojo@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Ryan Colvin",
-                    "email": "ryancolvin747@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Makara Sorn 2.0",
-                    "email": "meakmilli942@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Kimlong Lom 2.0",
-                    "email": "bnolmik272@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Beatriz Leon",
-                    "email": "beatrizgarcialeon2003@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Suhail Cortes",
-                    "email": "suhailcortes1999@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Benjamin Lighten",
-                    "email": "benjaminlighten03@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Paul Ayieko"
-                },
-                {
-                    "name": "Jos\u00e9 Luis",
-                    "email": "joseluismoobalam4@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Paul Ayieko"
-                }
-            ]
-        },
-        "Dennis Muthee": {
-            "email": "dennismuthee.dm@gmail.com",
-            "slack_user_id": "U09QFKLPT3R",
-            "assigned_traders": [
-                "Hezill Hill",
-                "Steve Okok"
-            ],
-            "clients": [
-                {
-                    "name": "Sagen",
-                    "email": "SagenFundrickson@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Jono",
-                    "email": "jondawg013@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Kevin Williams",
-                    "email": "kevinjwill0418@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Watkins",
-                    "email": "jpw.northstar77@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Rob Madsen",
-                    "email": "berobsfundsok@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Conner",
-                    "email": "connerjorgenseninvests@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Aaron",
-                    "email": "milleraaron1231@icloud.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Spencer McDonald",
-                    "email": "freedomferret76@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Jian Sheng Zhou",
-                    "email": "futuretrading168@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Mohit",
-                    "email": "mohitalka777@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Nitin",
-                    "email": "Nitinmalhotra20@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Jason Tracy",
-                    "email": "jrt19405@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Joe Mittlestaedt",
-                    "email": "Mittelstaedt4343@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Bec Tracy",
-                    "email": "love2babies@hotmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Brian Shore",
-                    "email": "bshore192@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Amy Burbidge",
-                    "email": "amyburb999@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                },
-                {
-                    "name": "Sameer",
-                    "email": "samtradingjourney@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hezill Hill"
-                }
-            ]
-        },
-        "Kellen Njeri": {
-            "email": "njerikellen01@gmail.com",
-            "slack_user_id": "U0ACANGNF6H",
-            "assigned_traders": [
-                "Alfayo Onchoka",
-                "Gideon Oruma",
-                "Rex Agingu"
-            ],
-            "clients": [
-                {
-                    "name": "Andrew Mackay",
-                    "email": "mackayfutures@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Kaden Johnson",
-                    "email": "kadenreedjohnson@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Halli Hicken",
-                    "email": "Hallisgold@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Rod Halford",
-                    "email": "rodhalford67@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Nikki Mackay",
-                    "email": "craftfutures92@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "April Williams",
-                    "email": "apriljwill0417@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Cong ding",
-                    "email": "dingcong876@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Cong MFFU KYC (Hanyue Zhang)",
-                    "email": "hannyyyzhang@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Garrett Burbidge",
-                    "email": "gburb999@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "James Carnevale",
-                    "email": "backtothefutures1885@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Justin Rodgers",
-                    "email": "justin.rogerstrading@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Thomas De Jager",
-                    "email": "thomasandvpf@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Thomas De Jager MFFU KYC (Rasch Sebastian)",
-                    "email": "raschsebastian1999@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Sue Carnevale (James KYC)",
-                    "email": "scarnevale280@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Anaa Cederwall",
-                    "email": "cederwall.ae@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Garret KYC (Drew Vejnar)",
-                    "email": "drewvejnar999@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Rex Agingu"
-                },
-                {
-                    "name": "Chris Ream",
-                    "email": "chrixsreambeqf@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "Kelly Ream",
-                    "email": "kellyrveambecf@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "Sean Ream",
-                    "email": "seanrmeambefy@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                }
-            ]
-        },
-        "Philip Tangara": {
-            "email": "tangsphilip@gmail.com",
-            "slack_user_id": "U09N4J4NNGL",
-            "assigned_traders": [
-                "Tangara"
-            ],
-            "clients": [
-                {
-                    "name": "Harry",
-                    "email": "harryodhiambo16@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Tangara"
-                },
-                {
-                    "name": "Tsubasa",
-                    "email": "temppookerrr22@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Tangara"
-                },
-                {
-                    "name": "Marcus Turner",
-                    "email": "marcusturner910@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Tangara"
-                },
-                {
-                    "name": "Ed Schreiner",
-                    "email": "302shmed@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Tangara"
-                },
-                {
-                    "name": "Merrinson",
-                    "email": "merinsontrading@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Tangara"
-                },
-                {
-                    "name": "Jon Rylat",
-                    "email": "soccermabuyu@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Tangara"
-                },
-                {
-                    "name": "Josh Blackman",
-                    "email": "josh.blackman.investing@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Tangara"
-                },
-                {
-                    "name": "Akoko",
-                    "email": "akokovalery17@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Tangara"
-                }
-            ]
-        },
-        "Joy Ndua": {
-            "email": "nduajoy43@gmail.com",
-            "slack_user_id": "U0A7H70GW1W",
-            "assigned_traders": [
-                "Hillary Litali",
-                "Julieth Munialo"
-            ],
-            "clients": [
-                {
-                    "name": "Tyler Turner",
-                    "email": "tyler.arthur.turner@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Stephen Ngatuvai",
-                    "email": "stephenbepippin@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Justin Wood",
-                    "email": "metaenterprisesinc@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Ashlee Williams",
-                    "email": "cmeticks12@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Linet Lom",
-                    "email": "linettrading1@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Makara Sorn",
-                    "email": "meakmilli94@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Chad Gines",
-                    "email": "coinexxforex@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Yuri Wong",
-                    "email": "smartmoneytrader6@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Alexander Estrada",
-                    "email": "vivirmasabundantementemexico@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Ivan Ochoa",
-                    "email": "ivanochoatrading@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Julio Dzib",
-                    "email": "summitpeakgroup5@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Andre Cruz",
-                    "email": "andrecapital08@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Gerson Ramos",
-                    "email": "gernyram@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Adan Galan",
-                    "email": "adan6norte@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Julieth Munialo"
-                },
-                {
-                    "name": "Alexis Williams",
-                    "email": "timetotrade6767@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Dennick",
-                    "email": "peaddennick@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Francisco Morales",
-                    "email": "pipcandletrader@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Hailee Wood",
-                    "email": "hailtotrade33@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Josue Leon",
-                    "email": "ironfxspanish@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Kimlong Lom",
-                    "email": "bnolmik27@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Jose Hernandez",
-                    "email": "812superadan@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Kresha Turner",
-                    "email": "kreshawood99@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Lea Galan",
-                    "email": "teamlhdesign@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Maria Mendoza",
-                    "email": "mendinghearts06@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Nadja Vermont",
-                    "email": "nadjavermont@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Rosa Chan",
-                    "email": "rosesyrosas@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Victor Leon",
-                    "email": "lionstigersosos@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Zak Wood",
-                    "email": "theultimaterecruitingmachine@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Hillary Litali"
-                }
-            ]
-        },
-        "Vivian Miano": {
-            "email": "mianowakini@gmail.com",
-            "slack_user_id": "U0ANM5DE807",
-            "assigned_traders": [
-                "Steve Okok",
-                "Vincent Odhiambo"
-            ],
-            "clients": [
-                {
-                    "name": "Manuel Aguilar",
-                    "email": "manuelaguilarmadrigal6@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Jesus Alexis",
-                    "email": "alexis1996usuario@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Javier Morales",
-                    "email": "jmoralesbermudez66@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "April Williams 2",
-                    "email": "Apriljwill04172@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Kevin Williams 2",
-                    "email": "Kevinjwill04182@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Joe Mittelstaedt 2",
-                    "email": "Mittelstaedt43432@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Roberto Orozco",
-                    "email": "r86340614@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Leonado Suriano",
-                    "email": "leonardoaguilarusuario@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Emilio V\u00e1zquez",
-                    "email": "emilio.inversions@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Vincent Odhiambo"
-                },
-                {
-                    "name": "Enrique Sanchez",
-                    "email": "Jenriquegs22@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Porfirio Manuel",
-                    "email": "pdelvallemorales76@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Rogelio Aquino",
-                    "email": "rogelioaquicar@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Jon Watkins 2",
-                    "email": "Jpw.northstar772@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Peyton Williams 2",
-                    "email": "Peytonmwill09042@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Cristian Edduar",
-                    "email": "edduarmc.27@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Willians Carrillo",
-                    "email": "jm5273157@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Luis Gerardo",
-                    "email": "luisgerardonanguseramos200@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Erick Estrada",
-                    "email": "estradajesus191022usuario@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Steve Okok"
-                },
-                {
-                    "name": "Derrick Martinez",
-                    "email": "derrickmartinez654@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Steve Okok"
-                }
-            ]
-        },
-        "Shalline Mukholi": {
-            "email": "shallinemukholi4@gmail.com",
-            "slack_user_id": "U0AP0GE9H9C",
-            "assigned_traders": [
-                "Albert Andati",
-                "Hillary Litali",
-                "Wayne Ogolla"
-            ],
-            "clients": [
-                {
-                    "name": "Ian",
-                    "email": "vpfianh@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Oliver Den",
-                    "email": "oli.dauw@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Eduardo Cruz",
-                    "email": "eduardocruzgarcia55@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Ellie Loyd",
-                    "email": "ellielloyd0606@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Ferdinand Stolk",
-                    "email": "Fer.stolk@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Daniel P",
-                    "email": "dpedtrading@yahoo.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Patrick Chung",
-                    "email": "futuresglow33@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Oliver MFFU KYC (Cyril)",
-                    "email": "sterkemedia@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Oliver MFFU KYC (Lau)",
-                    "email": "lau.gaaij@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Eduardo MFFU KYC (Garcia)",
-                    "email": "shahilygarcia18@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Albert Andati"
-                },
-                {
-                    "name": "Seong Jing Park",
-                    "email": "seongjiniblue@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Hillary Litali"
-                },
-                {
-                    "name": "Anthony Arnold",
-                    "email": "anthonymeek1970@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Wayne Ogolla"
-                },
-                {
-                    "name": "Cassey Lloyd",
-                    "email": "Tbirdsutah12@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Wayne Ogolla"
-                },
-                {
-                    "name": "Gregoz Krepa",
-                    "email": "grzegorzkrepa3@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Wayne Ogolla"
-                },
-                {
-                    "name": "Nikita",
-                    "email": "nikitavpf14@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Wayne Ogolla"
-                },
-                {
-                    "name": "Peyton Williams",
-                    "email": "peytonmwill0904@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Wayne Ogolla"
-                },
-                {
-                    "name": "Riaz",
-                    "email": "rzvfutures@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Wayne Ogolla"
-                },
-                {
-                    "name": "Steven",
-                    "email": "torchlakeproptrading@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Wayne Ogolla"
-                }
-            ]
-        },
-        "Shila Orori": {
-            "email": "ororilauryn@gmail.com",
-            "slack_user_id": "U0ANM5FRRGX",
-            "assigned_traders": [
-                "Gideon Oruma",
-                "Samuel Tangara"
-            ],
-            "clients": [
-                {
-                    "name": "Jesus Camara",
-                    "email": "gravelloosetrading22@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Juan Uch Hau",
-                    "email": "i82orangestoo@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Charli Nahuat",
-                    "email": "vinylskiesnow@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Spencer McDonald 2",
-                    "email": "freedomferret762@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Kynna jorgensen",
-                    "email": "kynnatrades9@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Spencer Payne",
-                    "email": "spencerpayne1993@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Miguel Chan",
-                    "email": "driftywood91@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Westyn DeMille",
-                    "email": "westyn435@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Nathan Prokopiw",
-                    "email": "nate23trades@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "Ashlyn",
-                    "email": "ashlynbar12@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Samuel Tangara"
-                },
-                {
-                    "name": "David Cupul",
-                    "email": "thegoldenhour952@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Dorian Aquino",
-                    "email": "fogsalt77@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Roger Espinosa",
-                    "email": "lunar5tidesurf@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Rob Madsen 2",
-                    "email": "berobsfundsok2@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Nikki Mackay 2",
-                    "email": "Craftfutures92@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Conner Jorgensen",
-                    "email": "connerjorgenseninvests2@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Kailen Kier",
-                    "email": "kailennas45@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Angel Islas",
-                    "email": "isladeangeles5@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Oscar Chacon",
-                    "email": "tumbleweed4jazz@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Gideon Oruma"
-                },
-                {
-                    "name": "Abby",
-                    "email": "nvekto774@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Gideon Oruma"
-                }
-            ]
-        },
-        "Harriet Bange": {
-            "email": "harrietbange@gmail.com",
-            "slack_user_id": "U0A6LS66YDU",
-            "assigned_traders": [
-                "Kevin Ocharo"
-            ],
-            "clients": [
-                {
-                    "name": "Sergio Camacho",
-                    "email": "sergiotradesfutures@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Leydiana Martin",
-                    "email": "tradingleydi@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Kyle Wenig",
-                    "email": "kylewenig2026@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Mike Stanzyk",
-                    "email": "bigcheddartrading@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Denny Thurston",
-                    "email": "dennythurst6969@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Andrew Long",
-                    "email": "andrewmichaellong2266@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Adam Wenig",
-                    "email": "adamdwenig@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Joshua Constancio",
-                    "email": "jconstanciotrades18@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Yovany Martin",
-                    "email": "yovanymartintrading116@gmail.com",
-                    "category": "",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Pooya Tehranpoor",
-                    "email": "pooyafutures@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Qazal Khataie",
-                    "email": "qakhtrading@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Joe Viscuglia",
-                    "email": "jjfutures2626@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Kelvin Cerra",
-                    "email": "kelvintrading3349@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Luiger Orozco",
-                    "email": "luigerfutures1226@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Kevin Ocharo"
-                },
-                {
-                    "name": "Juan Uribe",
-                    "email": "juanpablofuturos21@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Kevin Ocharo"
-                }
-            ]
-        },
-        "Lydia Bari": {
-            "email": "barilydia@gmail.com",
-            "slack_user_id": "U0B9FJ2URT8",
-            "assigned_traders": [
-                "Alfayo Onchoka",
-                "Sylvia Achieng"
-            ],
-            "clients": [
-                {
-                    "name": "Denny Kohli",
-                    "email": "signalarc10@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Erik Johnson",
-                    "email": "esjfutures@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Guarav Kumar",
-                    "email": "gkumar092026@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Jeffrey Hinds",
-                    "email": "hindsjeff49@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Pierre Alexandre",
-                    "email": "padelisle11@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "William Lockridge",
-                    "email": "willstreetf86@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Nicholas Arentz",
-                    "email": "nicka80x@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Cole Goodwin",
-                    "email": "goodwin.icon@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Alexander Pierre MFFU KYC (Jean-Fran\u00e7ois Buist)",
-                    "email": "jfbuist1@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "PA (IL) KYC",
-                    "email": "isaiaslezama721@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "PA (AS) KYC",
-                    "email": "cajitasdleche@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Sylvia Achieng"
-                },
-                {
-                    "name": "Amber Wood",
-                    "email": "ambrwkood23p@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "David S",
-                    "email": "dszacbo0m92@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "David Szabo MFFU KYC (Betina)",
-                    "email": "betinratuori5@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "David Szabo MFFU KYC (Istvan)",
-                    "email": "istavntuori2k7@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "Jmark",
-                    "email": "tradzerjmaqrk@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "Mark Sullivan",
-                    "email": "sullivgizardn@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "Nate",
-                    "email": "natetrkade12m3456@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "Reece",
-                    "email": "reecxewebbfuht@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                },
-                {
-                    "name": "Taras",
-                    "email": "tskfutwuresn@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alfayo Onchoka"
-                }
-            ]
-        },
-        "Annah Musembi": {
-            "email": "annahkmusembi@gmail.com",
-            "slack_user_id": "U0B9MEX2GSW",
-            "assigned_traders": [
-                "Alphonce Owino",
-                "Caroline Misoy"
-            ],
-            "clients": [
-                {
-                    "name": "Ariel",
-                    "email": "ferrariari55@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Aymeric KYC 2 (Anne Sophie)",
-                    "email": "annesophie.futures@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Aymeric",
-                    "email": "aymeric.futures@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Alex MFFU KYC (Rick)",
-                    "email": "rickottenisthebest@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Ivan MFFU KYC (Gloria)",
-                    "email": "gloria.kluth@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Thak Mano",
-                    "email": "thakmanofutures@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Alex MFFU KYC Litz",
-                    "email": "reichardtlauritz@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Armin Mansory",
-                    "email": "amansory.vpf@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Ivan Kolyabin",
-                    "email": "ivantradingticks@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Alex Mosart",
-                    "email": "alex126@hotmail.nl",
-                    "category": "BEF",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Jake Lloyd",
-                    "email": "jacoblloyd1214@gmail.com",
-                    "category": "Private",
-                    "assigned_trader": "Caroline Misoy"
-                },
-                {
-                    "name": "Glen Quebec",
-                    "email": "glenqb@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alphonce Owino"
-                },
-                {
-                    "name": "Gregory Falk",
-                    "email": "chaz.b.falk@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alphonce Owino"
-                },
-                {
-                    "name": "Jiangquan Zhang",
-                    "email": "riverflow2ocean@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alphonce Owino"
-                },
-                {
-                    "name": "Matt Runge",
-                    "email": "mrungefish1@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alphonce Owino"
-                },
-                {
-                    "name": "Ryan Burbidge",
-                    "email": "ryanburbidge999@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alphonce Owino"
-                },
-                {
-                    "name": "Tamara Smith",
-                    "email": "frustratedfairy14@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alphonce Owino"
-                },
-                {
-                    "name": "Tyler Dubroc",
-                    "email": "dacajuntrader@gmail.com",
-                    "category": "BEF",
-                    "assigned_trader": "Alphonce Owino"
-                }
-            ]
-        }
+    "Fabian Omondi": {
+      "email": "fabianlouis99@gmail.com",
+      "active_status": "active"
+    },
+    "Felix Ondiek": {
+      "email": "leexfredleex@gmail.com",
+      "active_status": "inactive"
+    },
+    "Gideon Oruma": {
+      "email": "orumagideon535@gmail.com",
+      "active_status": "active"
+    },
+    "Hesbon Okumu": {
+      "email": "hezimstingofficial@gmail.com",
+      "active_status": "active"
+    },
+    "Hezill Hill": {
+      "email": "hezilhill@gmail.com",
+      "active_status": "active"
+    },
+    "Hillary Litali": {
+      "email": "litalihillary@gmail.com",
+      "active_status": "active"
+    },
+    "Julieth Munialo": {
+      "email": "sharonjulieth002@gmail.com",
+      "active_status": "active"
+    },
+    "Paul Ayieko": {
+      "email": "paulayieko123@gmail.com",
+      "active_status": "active"
+    },
+    "Samuel Tangara": {
+      "email": "tangarasamuel18@gmail.com",
+      "active_status": "active"
+    },
+    "Steve Okok": {
+      "email": "otienookok19@gmail.com",
+      "active_status": "active"
+    },
+    "Tangara": {
+      "email": "tangsphilip@gmail.com",
+      "active_status": "active"
+    },
+    "Vincent Odhiambo": {
+      "email": "odhiambovincentmax@gmail.com",
+      "active_status": "active"
+    },
+    "Wayne Ogolla": {
+      "email": "ogollawayne@gmail.com",
+      "active_status": "active"
+    },
+    "John Mburu": {
+      "email": "njihiamburu.3@gmail.com"
+    },
+    "Kevin Ocharo": {
+      "email": "ocharokevinraul17@gmail.com",
+      "active_status": "active"
+    },
+    "Sylvia Achieng": {
+      "email": "achiengsylvia20@gmail.com",
+      "active_status": "active"
+    },
+    "Alphonce Owino": {
+      "email": "alibailyo96@gmail.com",
+      "active_status": "active"
+    },
+    "Rex Agingu": {
+      "email": "xanderrex87@gmail.com",
+      "active_status": "active"
+    },
+    "Alfayo Onchoka": {
+      "email": "alfynyaberi@gmail.com",
+      "active_status": "active"
+    },
+    "Dennis Mwangi": {
+      "email": "dennismuthee@gmail.com",
+      "active_status": "active"
     }
+  },
+  "admins": {
+    "Marion Nyika": {
+      "email": "marionnyika00@gmail.com",
+      "slack_user_id": "U0A09PM2155",
+      "assigned_traders": [
+        "Fabian Omondi",
+        "Paul Ayieko"
+      ],
+      "clients": [
+        {
+          "name": "Adrian Vazquez",
+          "email": "adrianvasquezprofit@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Soklay Tuy",
+          "email": "soklaytuy92762@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Isaac Woolsey",
+          "email": "isaacwoolseyfutures@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Changlim Eang",
+          "email": "changlimeang@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Samuel Pew",
+          "email": "samuelpew33@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Joe Hicken",
+          "email": "joehickenfpf@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Poyi Woolsey",
+          "email": "poyiwoolsey@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Kyle Johnson",
+          "email": "kylejohnsontrading@gmail.com",
+          "category": "",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Sreypich Vorn",
+          "email": "sreypichvorn06@gmail.com",
+          "category": "",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Fabiola Gomez",
+          "email": "fabiolafutures@gmail.com",
+          "category": "",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Hector Blass",
+          "email": "hectordavidfutures@gmail.com",
+          "category": "",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Linet Lom 2.0",
+          "email": "linettrading12@gmail.com",
+          "category": "",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Jessica Colvin",
+          "email": "jessicatradesticks@gmail.com",
+          "category": "",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Pilar Cortez",
+          "email": "pilarcm159@gmail.com",
+          "category": "",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Vicky Monroe",
+          "email": "virginia10784@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Violeta Jimenez",
+          "email": "violetadominguezjimenez@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Mirzam Suhail",
+          "email": "",
+          "category": "BEF",
+          "assigned_trader": "Fabian Omondi"
+        },
+        {
+          "name": "Sariah Martinez",
+          "email": "sariahmartinez1111@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Davy Hicken",
+          "email": "davyhickenfpf@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Emilio Martinez",
+          "email": "apoyovma@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Abish Del Toro",
+          "email": "buildhealthpreventdisease@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Silin Sorn",
+          "email": "silinsorn8@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Skyler Colvin",
+          "email": "skylercolvin02@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Varith Eng",
+          "email": "engvarith@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Justin Reed",
+          "email": "justintradesfutures@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Leanghour",
+          "email": "sornldsjojo@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Ryan Colvin",
+          "email": "ryancolvin747@gmail.com",
+          "category": "",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Makara Sorn 2.0",
+          "email": "meakmilli942@gmail.com",
+          "category": "",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Kimlong Lom 2.0",
+          "email": "bnolmik272@gmail.com",
+          "category": "",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Beatriz Leon",
+          "email": "beatrizgarcialeon2003@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Suhail Cortes",
+          "email": "suhailcortes1999@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "Benjamin Lighten",
+          "email": "benjaminlighten03@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Paul Ayieko"
+        },
+        {
+          "name": "José Luis",
+          "email": "joseluismoobalam4@gmail.com",
+          "category": "",
+          "assigned_trader": "Paul Ayieko"
+        }
+      ]
+    },
+    "Dennis Muthee": {
+      "email": "dennismuthee.dm@gmail.com",
+      "slack_user_id": "U09QFKLPT3R",
+      "assigned_traders": [
+        "Hezill Hill",
+        "Steve Okok"
+      ],
+      "clients": [
+        {
+          "name": "Sagen",
+          "email": "SagenFundricksonDM3@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Jono",
+          "email": "jondawg013@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Kevin Williams",
+          "email": "kevinjwill0418@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Watkins",
+          "email": "jpw.northstar77@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Rob Madsen",
+          "email": "berobsfundsok@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Conner",
+          "email": "connerjorgenseninvests@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Aaron",
+          "email": "milleraaron1231@icloud.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Spencer McDonald",
+          "email": "freedomferret76@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Jian Sheng Zhou",
+          "email": "futuretrading168@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Mohit",
+          "email": "mohitalka777@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Nitin",
+          "email": "Nitinmalhotra20@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Jason Tracy",
+          "email": "jrt19405@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Joe Mittlestaedt",
+          "email": "Mittelstaedt4343@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Bec Tracy",
+          "email": "love2babies@hotmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Brian Shore",
+          "email": "bshore192@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Amy Burbidge",
+          "email": "amyburb999@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        },
+        {
+          "name": "Sameer",
+          "email": "samtradingjourney@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hezill Hill"
+        }
+      ]
+    },
+    "Kellen Njeri": {
+      "email": "njerikellen01@gmail.com",
+      "slack_user_id": "U0ACANGNF6H",
+      "assigned_traders": [
+        "Alfayo Onchoka",
+        "Gideon Oruma",
+        "Rex Agingu"
+      ],
+      "clients": [
+        {
+          "name": "Andrew Mackay",
+          "email": "mackayfutures@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Kaden Johnson",
+          "email": "kadenreedjohnson@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Halli Hicken",
+          "email": "Hallisgold@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Rod Halford",
+          "email": "rodhalford67@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Nikki Mackay",
+          "email": "craftfutures92@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "April Williams",
+          "email": "apriljwill0417@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Cong ding",
+          "email": "dingcong876@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Cong MFFU KYC (Hanyue Zhang)",
+          "email": "hannyyyzhang@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Garrett Burbidge",
+          "email": "gburb999@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "James Carnevale",
+          "email": "backtothefutures1885@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Justin Rodgers",
+          "email": "justin.rogerstrading@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Thomas De Jager",
+          "email": "thomasandvpf@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Thomas De Jager MFFU KYC (Rasch Sebastian)",
+          "email": "raschsebastian1999@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Sue Carnevale (James KYC)",
+          "email": "scarnevale280@gmail.com",
+          "category": "",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Anaa Cederwall",
+          "email": "cederwall.ae@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Garret KYC (Drew Vejnar)",
+          "email": "drewvejnar999@gmail.com",
+          "category": "",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Carlos Penaranda",
+          "email": "cdpa31432@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Golden Spike",
+          "email": "goldenspike@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Julian Borda",
+          "email": "julianfelipeborda01@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Rex Agingu"
+        },
+        {
+          "name": "Chris Ream",
+          "email": "chrixsreambeqf@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Kelly Ream",
+          "email": "kellyrveambecf@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Sean Ream",
+          "email": "seanrmeambefy@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Juan Riveros",
+          "email": "juanriveros.goldenspike@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Juan Camacho",
+          "email": "juancamachopineda49@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Alfayo Onchoka"
+        }
+      ]
+    },
+    "Philip Tangara": {
+      "email": "tangsphilip@gmail.com",
+      "slack_user_id": "U09N4J4NNGL",
+      "assigned_traders": [
+        "Tangara"
+      ],
+      "clients": [
+        {
+          "name": "Harry",
+          "email": "harryodhiambo16@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Tangara"
+        },
+        {
+          "name": "Tsubasa",
+          "email": "temppookerrr22@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Tangara"
+        },
+        {
+          "name": "Marcus Turner",
+          "email": "marcusturner910@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Tangara"
+        },
+        {
+          "name": "Ed Schreiner",
+          "email": "302shmed@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Tangara"
+        },
+        {
+          "name": "Merrinson",
+          "email": "merinsontrading@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Tangara"
+        },
+        {
+          "name": "Jon Rylat",
+          "email": "soccermabuyu@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Tangara"
+        },
+        {
+          "name": "Josh Blackman",
+          "email": "josh.blackman.investing@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Tangara"
+        },
+        {
+          "name": "Akoko",
+          "email": "akokovalery17@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Tangara"
+        }
+      ]
+    },
+    "Joy Ndua": {
+      "email": "nduajoy43@gmail.com",
+      "slack_user_id": "U0A7H70GW1W",
+      "assigned_traders": [
+        "Hillary Litali",
+        "Julieth Munialo"
+      ],
+      "clients": [
+        {
+          "name": "Tyler Turner",
+          "email": "tyler.arthur.turner@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Stephen Ngatuvai",
+          "email": "stephenbepippin@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Justin Wood",
+          "email": "metaenterprisesinc@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Ashlee Williams",
+          "email": "cmeticks12@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Linet Lom",
+          "email": "linettrading1@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Makara Sorn",
+          "email": "meakmilli94@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Chad Gines",
+          "email": "coinexxforex@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Yuri Wong",
+          "email": "smartmoneytrader6@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Alexander Estrada",
+          "email": "vivirmasabundantementemexico@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Ivan Ochoa",
+          "email": "ivanochoatrading@gmail.com",
+          "category": "",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Julio Dzib",
+          "email": "summitpeakgroup5@gmail.com",
+          "category": "",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Andre Cruz",
+          "email": "andrecapital08@gmail.com",
+          "category": "",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Gerson Ramos",
+          "email": "gernyram@gmail.com",
+          "category": "",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Adan Galan",
+          "email": "adan6norte@gmail.com",
+          "category": "",
+          "assigned_trader": "Julieth Munialo"
+        },
+        {
+          "name": "Alexis Williams",
+          "email": "timetotrade6767@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Dennick",
+          "email": "peaddennick@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Francisco Morales",
+          "email": "pipcandletrader@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Hailee Wood",
+          "email": "hailtotrade33@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Josue Leon",
+          "email": "ironfxspanish@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Kimlong Lom",
+          "email": "bnolmik27@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Jose Hernandez",
+          "email": "812superadan@gmail.com",
+          "category": "",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Kresha Turner",
+          "email": "kreshawood99@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Lea Galan",
+          "email": "teamlhdesign@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Maria Mendoza",
+          "email": "mendinghearts06@gmail.com",
+          "category": "",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Nadja Vermont",
+          "email": "nadjavermont@gmail.com",
+          "category": "",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Rosa Chan",
+          "email": "rosesyrosas@gmail.com",
+          "category": "",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Victor Leon",
+          "email": "lionstigersosos@gmail.com",
+          "category": "",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Zak Wood",
+          "email": "theultimaterecruitingmachine@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Hillary Litali"
+        }
+      ]
+    },
+    "Vivian Miano": {
+      "email": "mianowakini@gmail.com",
+      "slack_user_id": "U0ANM5DE807",
+      "assigned_traders": [
+        "Steve Okok",
+        "Vincent Odhiambo"
+      ],
+      "clients": [
+        {
+          "name": "Manuel Aguilar",
+          "email": "manuelaguilarmadrigal6@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Jesus Alexis",
+          "email": "alexis1996usuario@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Javier Morales",
+          "email": "jmoralesbermudez66@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "April Williams 2",
+          "email": "Apriljwill04172@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Kevin Williams 2",
+          "email": "Kevinjwill04182@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Joe Mittelstaedt 2",
+          "email": "Mittelstaedt43432@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Roberto Orozco",
+          "email": "r86340614@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Leonado Suriano",
+          "email": "leonardoaguilarusuario@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Emilio Vázquez",
+          "email": "emilio.inversions@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Fabian Garcia",
+          "email": "erickfabianhernandezgarciahern@gmail.com",
+          "category": "",
+          "assigned_trader": "Vincent Odhiambo"
+        },
+        {
+          "name": "Enrique Sanchez",
+          "email": "Jenriquegs22@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Porfirio Manuel",
+          "email": "pdelvallemorales76@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Rogelio Aquino",
+          "email": "rogelioaquicar@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Jon Watkins 2",
+          "email": "Jpw.northstar772@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Peyton Williams 2",
+          "email": "Peytonmwill09042@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Cristian Edduar",
+          "email": "edduarmc.27@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Willians Carrillo",
+          "email": "jm5273157@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Luis Gerardo",
+          "email": "luisgerardonanguseramos200@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Erick Estrada",
+          "email": "estradajesus191022usuario@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Derrick Martinez",
+          "email": "derrickmartinez654@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Leiver Barrientos",
+          "email": "leiverdejesusb842@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        },
+        {
+          "name": "Sagen Fredrickson 2",
+          "email": "Sagenfundrickson@gmail.com",
+          "category": "",
+          "assigned_trader": "Steve Okok"
+        }
+      ]
+    },
+    "Shalline Mukholi": {
+      "email": "shallinemukholi4@gmail.com",
+      "slack_user_id": "U0AP0GE9H9C",
+      "assigned_traders": [
+        "Albert Andati",
+        "Hillary Litali",
+        "Wayne Ogolla"
+      ],
+      "clients": [
+        {
+          "name": "Ian",
+          "email": "vpfianh@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Oliver Den",
+          "email": "oli.dauw@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Eduardo Cruz",
+          "email": "eduardocruzgarcia55@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Ellie Loyd",
+          "email": "ellielloyd0606@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Ferdinand Stolk",
+          "email": "Fer.stolk@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Daniel P",
+          "email": "dpedtrading@yahoo.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Patrick Chung",
+          "email": "futuresglow33@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Oliver MFFU KYC (Cyril)",
+          "email": "sterkemedia@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Oliver MFFU KYC (Lau)",
+          "email": "lau.gaaij@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Eduardo MFFU KYC (Garcia)",
+          "email": "shahilygarcia18@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Alejandro Mendez",
+          "email": "alejandrotrades446@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Albert Andati"
+        },
+        {
+          "name": "Seong Jing Park",
+          "email": "seongjiniblue@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Hillary Litali"
+        },
+        {
+          "name": "Anthony Arnold",
+          "email": "anthonymeek1970@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Wayne Ogolla"
+        },
+        {
+          "name": "Cassey Lloyd",
+          "email": "Tbirdsutah12@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Wayne Ogolla"
+        },
+        {
+          "name": "Gregoz Krepa",
+          "email": "grzegorzkrepa3@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Wayne Ogolla"
+        },
+        {
+          "name": "Nikita",
+          "email": "nikitavpf14@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Wayne Ogolla"
+        },
+        {
+          "name": "Peyton Williams",
+          "email": "peytonmwill0904@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Wayne Ogolla"
+        },
+        {
+          "name": "Riaz",
+          "email": "rzvfutures@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Wayne Ogolla"
+        },
+        {
+          "name": "Steven",
+          "email": "torchlakeproptrading@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Wayne Ogolla"
+        },
+        {
+          "name": "Cristobal Medina",
+          "email": "christophergoldenllc@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Wayne Ogolla"
+        }
+      ]
+    },
+    "Shila Orori": {
+      "email": "ororilauryn@gmail.com",
+      "slack_user_id": "U0ANM5FRRGX",
+      "assigned_traders": [
+        "Gideon Oruma",
+        "Samuel Tangara"
+      ],
+      "clients": [
+        {
+          "name": "Jesus Camara",
+          "email": "gravelloosetrading22@gmail.com",
+          "category": "",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Juan Uch Hau",
+          "email": "i82orangestoo@gmail.com",
+          "category": "",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Charli Nahuat",
+          "email": "vinylskiesnow@gmail.com",
+          "category": "",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Spencer McDonald 2",
+          "email": "freedomferret762@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Kynna jorgensen",
+          "email": "kynnatrades9@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Spencer Payne",
+          "email": "spencerpayne1993@gmail.com",
+          "category": "",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Miguel Chan",
+          "email": "driftywood91@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Westyn DeMille",
+          "email": "westyn435@gmail.com",
+          "category": "",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Nathan Prokopiw",
+          "email": "nate23trades@gmail.com",
+          "category": "",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "Ashlyn",
+          "email": "ashlynbar12@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Samuel Tangara"
+        },
+        {
+          "name": "David Cupul",
+          "email": "thegoldenhour952@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Dorian Aquino",
+          "email": "fogsalt77@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Roger Espinosa",
+          "email": "lunar5tidesurf@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Rob Madsen 2",
+          "email": "berobsfundsok2@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Nikki Mackay 2",
+          "email": "Craftfutures92@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Conner Jorgensen",
+          "email": "connerjorgenseninvests2@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Kailen Kier",
+          "email": "kailennas45@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Angel Islas",
+          "email": "isladeangeles5@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Oscar Chacon",
+          "email": "tumbleweed4jazz@gmail.com",
+          "category": "",
+          "assigned_trader": "Gideon Oruma"
+        },
+        {
+          "name": "Abby",
+          "email": "nvekto774@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Gideon Oruma"
+        }
+      ]
+    },
+    "Harriet Bange": {
+      "email": "harrietbange@gmail.com",
+      "slack_user_id": "U0A6LS66YDU",
+      "assigned_traders": [
+        "Dennis Mwangi",
+        "Kevin Ocharo"
+      ],
+      "clients": [
+        {
+          "name": "Sergio Camacho",
+          "email": "sergiotradesfutures@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Leydiana Martin",
+          "email": "tradingleydi@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Kyle Wenig",
+          "email": "kylewenig2026@gmail.com",
+          "category": "",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Mike Stanzyk",
+          "email": "bigcheddartrading@gmail.com",
+          "category": "",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Denny Thurston",
+          "email": "dennythurst6969@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Andrew Long",
+          "email": "andrewmichaellong2266@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Adam Wenig",
+          "email": "adamdwenig@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Joshua Constancio",
+          "email": "jconstanciotrades18@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Yovany Martin",
+          "email": "yovanymartintrading116@gmail.com",
+          "category": "",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Pooya Tehranpoor",
+          "email": "pooyafutures@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Qazal Khataie",
+          "email": "qakhtrading@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Joe Viscuglia",
+          "email": "jjfutures2626@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Kelvin Cerra",
+          "email": "kelvintrading3349@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Luiger Orozco",
+          "email": "luigerfutures1226@gmail.com",
+          "category": "PRIVATE",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Juan Uribe",
+          "email": "juanpablofuturos21@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Kevin Ocharo"
+        },
+        {
+          "name": "Juan Camilo Pulgarin",
+          "email": "Juancamilofutures12@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Dennis Mwangi"
+        },
+        {
+          "name": "Beyker Orozco",
+          "email": "Beykerorozcofutures1@gmail.com",
+          "category": "PRIVATE",
+          "assigned_trader": "Dennis Mwangi"
+        }
+      ]
+    },
+    "Lydia Bari": {
+      "email": "barilydia@gmail.com",
+      "slack_user_id": "U0B9FJ2URT8",
+      "assigned_traders": [
+        "Alfayo Onchoka",
+        "Sylvia Achieng"
+      ],
+      "clients": [
+        {
+          "name": "Denny Kohli",
+          "email": "signalarc10@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Erik Johnson",
+          "email": "esjfutures@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Guarav Kumar",
+          "email": "gkumar092026@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Jeffrey Hinds",
+          "email": "hindsjeff49@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Pierre Alexandre",
+          "email": "padelisle11@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "William Lockridge",
+          "email": "willstreetf86@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Nicholas Arentz",
+          "email": "nicka80x@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Cole Goodwin",
+          "email": "goodwin.icon@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Alexander Pierre MFFU KYC (Jean-François Buist)",
+          "email": "jfbuist1@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "PA (IL) KYC",
+          "email": "isaiaslezama721@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "PA (AS) KYC",
+          "email": "cajitasdleche@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Luis Eduardo",
+          "email": "diagram14859@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Miguel Martinez",
+          "email": "martinez44hike@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Sylvia Achieng"
+        },
+        {
+          "name": "Amber Wood",
+          "email": "ambrwkood23p@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "David S",
+          "email": "dszacbo0m92@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "David Szabo MFFU KYC (Betina)",
+          "email": "betinratuori5@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "David Szabo MFFU KYC (Istvan)",
+          "email": "istavntuori2k7@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Jmark",
+          "email": "tradzerjmaqrk@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Mark Sullivan",
+          "email": "sullivgizardn@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Nate",
+          "email": "natetrkade12m3456@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Reece",
+          "email": "reecxewebbfuht@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Taras",
+          "email": "tskfutwuresn@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alfayo Onchoka"
+        },
+        {
+          "name": "Carlos Junior Peñaranda",
+          "email": "cpenaranda801@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Alfayo Onchoka"
+        }
+      ]
+    },
+    "Annah Musembi": {
+      "email": "annahkmusembi@gmail.com",
+      "slack_user_id": "U0B9MEX2GSW",
+      "assigned_traders": [
+        "Alphonce Owino",
+        "Caroline Misoy"
+      ],
+      "clients": [
+        {
+          "name": "Ariel",
+          "email": "ferrariari55@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Aymeric KYC 2 (Anne Sophie)",
+          "email": "annesophie.futures@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Aymeric",
+          "email": "aymeric.futures@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Alex MFFU KYC (Rick)",
+          "email": "rickottenisthebest@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Ivan MFFU KYC (Gloria)",
+          "email": "gloria.kluth@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Thak Mano",
+          "email": "thakmanofutures@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Alex MFFU KYC Litz",
+          "email": "reichardtlauritz@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Armin Mansory",
+          "email": "amansory.vpf@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Ivan Kolyabin",
+          "email": "ivantradingticks@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Alex Mosart",
+          "email": "alex126@hotmail.nl",
+          "category": "BEF",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Jake Lloyd",
+          "email": "jacoblloyd1214@gmail.com",
+          "category": "Private",
+          "assigned_trader": "Caroline Misoy"
+        },
+        {
+          "name": "Glen Quebec",
+          "email": "glenqb@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alphonce Owino"
+        },
+        {
+          "name": "Gregory Falk",
+          "email": "chaz.b.falk@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alphonce Owino"
+        },
+        {
+          "name": "Jiangquan Zhang",
+          "email": "riverflow2ocean@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alphonce Owino"
+        },
+        {
+          "name": "Matt Runge",
+          "email": "mrungefish1@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alphonce Owino"
+        },
+        {
+          "name": "Ryan Burbidge",
+          "email": "ryanburbidge999@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alphonce Owino"
+        },
+        {
+          "name": "Tamara Smith",
+          "email": "frustratedfairy14@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alphonce Owino"
+        },
+        {
+          "name": "Tyler Dubroc",
+          "email": "dacajuntrader@gmail.com",
+          "category": "BEF",
+          "assigned_trader": "Alphonce Owino"
+        },
+        {
+          "name": "Miguel Eslavas",
+          "email": "meslava858@gmail.com",
+          "category": "GS",
+          "assigned_trader": "Alphonce Owino"
+        }
+      ]
+    }
+  }
 }

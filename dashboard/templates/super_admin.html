@@ -458,7 +458,7 @@
             color: #fef3c7;
             box-shadow: 0 2px 8px rgba(1,3,10,0.6), inset 0 1px 0 rgba(251,191,36,0.2);
         }
-
+        
         .nav-links {
             display: flex;
             gap: 4px;
@@ -871,6 +871,7 @@
                     <select id="editUserCategory" style="width: 100%; padding: 11px 14px; background: #0f172a; border: 1px solid rgba(30,58,138,0.5); color: #f1f5f9; border-radius: 8px; font-size: 0.95rem; outline: none; cursor: pointer;">
                          <option value="Private">Private</option>
                          <option value="BEF">BEF</option>
+                         <option value="GS">Golden Spike</option>
                     </select>
                 </div>
                 <div style="margin-bottom: 18px; display:none;" id="editClientStatusGroup">
@@ -1256,7 +1257,8 @@
              const cleanName = (name || '').replace(/\\'/g, "'");
              const cleanEmail = (email && email !== 'undefined' && email !== 'null') ? email.replace(/\\'/g, "'") : '';
              const rawCategory = (extra && extra !== 'undefined' && extra !== 'null') ? extra : 'Private';
-             const cleanCategory = rawCategory.toUpperCase() === 'BEF' ? 'BEF' : 'Private';
+             const rawCatUpper = String(rawCategory).toUpperCase();
+             const cleanCategory = rawCatUpper === 'BEF' ? 'BEF' : rawCatUpper === 'GS' ? 'GS' : 'Private';
              const cleanActive = (activeStatus && activeStatus !== 'undefined' && activeStatus !== 'null') ? activeStatus : 'active';
              const cleanSlack = (slackUserId && slackUserId !== 'undefined' && slackUserId !== 'null') ? slackUserId : '';
              
