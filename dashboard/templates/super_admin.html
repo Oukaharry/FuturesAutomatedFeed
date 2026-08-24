@@ -1126,6 +1126,9 @@
                          const r = rows[i];
                          const safeName = r.name.replace(/'/g, "\\'");
                          const safeEmail = (r.email||'').replace(/'/g, "\\'");
+                         const safeAdmin = (r.admin||'').replace(/'/g, "\\'");
+                         const safeTrader = (r.trader||'').replace(/'/g, "\\'");
+                         const safeCategory = String(r.category||'').replace(/'/g, "\\'");
                          
                          let btns = '';
                          // Common button styles
@@ -1136,8 +1139,8 @@
                          if(type === 'client') {
                              btns += `<a href="${r.url}" style="color:#fbbf24; text-decoration:none; margin-right:10px; font-weight:bold;">Dash</a>`;
                              if (isSuperAdmin) {
-                                 btns += `<button onclick="deleteUser('client', '${safeName}', '${r.admin}', '${r.trader}')" style="${delStyle}">Del</button>`;
-                                 btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${r.admin}', '${r.trader}', '${r.category || ''}', '${r.active_status || 'active'}', '', '${r.split_pct != null ? r.split_pct : 50}')" style="${editStyle}">Edit</button>`;
+                                 btns += `<button onclick="deleteUser('client', '${safeName}', '${safeAdmin}', '${safeTrader}')" style="${delStyle}">Del</button>`;
+                                 btns += `<button onclick="openEditUserModal('client', '${safeName}', '${safeEmail}', '${safeAdmin}', '${safeTrader}', '${safeCategory}', '${r.active_status || 'active'}', '', '${r.split_pct != null ? r.split_pct : 50}')" style="${editStyle}">Edit</button>`;
                              }
                          } else if (type === 'trader') {
                              if (isSuperAdmin) {
@@ -1259,7 +1262,8 @@
              const rawCategory = (extra && extra !== 'undefined' && extra !== 'null') ? extra : 'Private';
              const rawCatUpper = String(rawCategory).toUpperCase();
              const cleanCategory = rawCatUpper === 'BEF' ? 'BEF' : rawCatUpper === 'GS' ? 'GS' : 'Private';
-             const cleanActive = (activeStatus && activeStatus !== 'undefined' && activeStatus !== 'null') ? activeStatus : 'active';
+             const cleanActiveRaw = (activeStatus && activeStatus !== 'undefined' && activeStatus !== 'null') ? String(activeStatus).toLowerCase() : 'active';
+             const cleanActive = (cleanActiveRaw === 'inactive') ? 'inactive' : 'active';
              const cleanSlack = (slackUserId && slackUserId !== 'undefined' && slackUserId !== 'null') ? slackUserId : '';
              
              // Populate modal fields
@@ -1267,8 +1271,8 @@
              document.getElementById('editUserName').value = cleanName;
              document.getElementById('editUserEmail').value = cleanEmail;
              document.getElementById('editUserType').value = type;
-             document.getElementById('editUserAdmin').value = parent1 || '';
-             document.getElementById('editUserTrader').value = parent2 || '';
+             document.getElementById('editUserAdmin').value = (parent1 || '').replace(/\\'/g, "'");
+             document.getElementById('editUserTrader').value = (parent2 || '').replace(/\\'/g, "'");
              document.getElementById('editUserOriginalName').value = cleanName; // Store original for rename detection
              
              // Show category and status dropdowns only for clients (category hidden for bef_admin)
@@ -2346,7 +2350,7 @@
                         editBtn.addEventListener('mouseleave', () => { editBtn.style.color = 'rgba(148,163,184,0.4)'; });
                         editBtn.addEventListener('click', (e) => {
                             e.stopPropagation();
-                            openEditUserModal('client', escJsAttr(cName), escJsAttr(cEmail), escJsAttr(adminName), escJsAttr(assignedTrader), cCat, cActiveStatus, '');
+                            openEditUserModal('client', cName, cEmail, adminName, assignedTrader, cCat, cActiveStatus, '', clientObj.split_pct);
                         });
                         nameRow.appendChild(editBtn);
 

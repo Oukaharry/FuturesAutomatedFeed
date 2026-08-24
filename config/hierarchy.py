@@ -230,31 +230,81 @@ def update_trader_details(admin_name, trader_name, email):
             return True
     return False
 
-def update_client_details(admin_name, trader_name, client_name, email):
+def _norm_person_name(value):
+    s = str(value or '').replace('\u00A0', ' ').replace('\u200B', '').replace('\u200C', '').replace('\u200D', '')
+    return ' '.join(s.split()).strip()
+
+
+def _iter_admin_keys(admins, preferred=None):
+    preferred_key = _norm_person_name(preferred)
+    if preferred_key:
+        for key in admins:
+            if _norm_person_name(key).lower() == preferred_key.lower():
+                yield key
+                break
+    for key in admins:
+        if not preferred_key or _norm_person_name(key).lower() != preferred_key.lower():
+            yield key
+
+
+def _iter_trader_keys(traders, preferred=None):
+    preferred_key = _norm_person_name(preferred)
+    if preferred_key:
+        for key in traders:
+            if _norm_person_name(key).lower() == preferred_key.lower():
+                yield key
+                break
+    for key in traders:
+        if not preferred_key or _norm_person_name(key).lower() != preferred_key.lower():
+            yield key
+
+
+def find_client_entry(client_name, admin_name=None, trader_name=None):
+    """Return (admin, trader, client_dict) using normalized names.
+
+    Prefers the given admin/trader path, then that admin's other traders, then all admins.
+    """
     reload_hierarchy()
-    if admin_name in SYSTEM_HIERARCHY["admins"]:
-        traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
-        if trader_name in traders:
-            clients = traders[trader_name]["clients"]
-            for client in clients:
-                if client["name"] == client_name:
-                    client["email"] = email
-                    save_hierarchy(SYSTEM_HIERARCHY)
-                    return True
-    return False
+    target = _norm_person_name(client_name).lower()
+    if not target:
+        return None
+
+    admins = SYSTEM_HIERARCHY.get('admins', {}) or {}
+
+    def _match_in_trader(a_name, t_name, t_data):
+        for client in (t_data or {}).get('clients', []) or []:
+            if not isinstance(client, dict):
+                continue
+            if _norm_person_name(client.get('name')).lower() == target:
+                return a_name, t_name, client
+        return None
+
+    for a_name in _iter_admin_keys(admins, admin_name):
+        traders = (admins.get(a_name) or {}).get('traders', {}) or {}
+        for t_name in _iter_trader_keys(traders, trader_name):
+            found = _match_in_trader(a_name, t_name, traders.get(t_name))
+            if found:
+                return found
+    return None
+
+
+def update_client_details(admin_name, trader_name, client_name, email):
+    found = find_client_entry(client_name, admin_name, trader_name)
+    if not found:
+        return False
+    _admin, _trader, client = found
+    client["email"] = email
+    save_hierarchy(SYSTEM_HIERARCHY)
+    return True
 
 def update_client_category(admin_name, trader_name, client_name, category):
-    reload_hierarchy()
-    if admin_name in SYSTEM_HIERARCHY["admins"]:
-        traders = SYSTEM_HIERARCHY["admins"][admin_name]["traders"]
-        if trader_name in traders:
-            clients = traders[trader_name]["clients"]
-            for client in clients:
-                if client["name"] == client_name:
-                    client["category"] = category
-                    save_hierarchy(SYSTEM_HIERARCHY)
-                    return True
-    return False
+    found = find_client_entry(client_name, admin_name, trader_name)
+    if not found:
+        return False
+    _admin, _trader, client = found
+    client["category"] = category
+    save_hierarchy(SYSTEM_HIERARCHY)
+    return True
 
 
 def find_trader_admin(trader_name):

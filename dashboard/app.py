@@ -33,7 +33,7 @@ from dashboard.push_policy import (
 from config.hierarchy import (
     SYSTEM_HIERARCHY, add_admin, add_trader, add_client,
     update_admin_details, update_trader_details, update_client_details, update_client_category,
-    get_client_by_email, get_user_by_email, get_client_profile,
+    get_client_by_email, get_user_by_email, get_client_profile, find_client_entry,
     find_trader_admin, set_trader_active_status, trader_is_active,
     remove_admin, remove_trader, remove_client,
     move_client, move_trader,
@@ -4579,7 +4579,10 @@ def _build_hierarchy_api_payload(user_type, user_identifier):
                 cname = client.get('name', '')
                 identity = all_identities.get(cname, {})
                 client['active_status'] = identity.get('active_status', 'active')
-                client['split_pct'] = 50
+                try:
+                    client['split_pct'] = int(identity.get('split_pct', 50))
+                except (TypeError, ValueError):
+                    client['split_pct'] = 50
                 if not client.get('email'):
                     client['email'] = identity.get('email', '')
 
@@ -8177,17 +8180,42 @@ def api_update_trader():
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Trader not found"}), 400
 
+def _patch_client_identity(client_id, **fields):
+    """Merge fields into clients_data.identity, creating the row if needed."""
+    if not client_id or not fields:
+        return False
+    client_data = get_client_data(client_id) or {}
+    identity = client_data.get('identity') if isinstance(client_data, dict) else {}
+    if not isinstance(identity, dict):
+        identity = {}
+    identity = dict(identity)
+    identity.update(fields)
+    return update_client_field(client_id, 'identity', identity)
+
+
 @app.route('/api/update_client', methods=['POST'])
 def api_update_client():
-    admin = request.json.get('admin')
-    trader = request.json.get('trader')
-    name = request.json.get('name')
-    email = request.json.get('email', '')
-    category = request.json.get('category', '')
-    new_name = request.json.get('new_name', '').strip()
-    
-    if not admin or not trader or not name: return jsonify({"status": "error", "message": "Missing fields"}), 400
-    
+    data = request.json or {}
+    admin = (data.get('admin') or '').strip()
+    trader = (data.get('trader') or '').strip()
+    name = (data.get('name') or '').strip()
+    email = data.get('email', '')
+    category = data.get('category', '')
+    new_name = (data.get('new_name') or '').strip()
+
+    if not name:
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    located = find_client_entry(name, admin or None, trader or None)
+    if located:
+        admin, trader, client_obj = located
+        name = (client_obj.get('name') or name).strip() or name
+        if email is None or email == '':
+            email = client_obj.get('email', '') or email
+
+    if not admin or not trader:
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+
     # Rename if new_name provided and different
     if new_name and new_name != name:
         if not rename_client(admin, trader, name, new_name, email, category or None):
@@ -8198,51 +8226,45 @@ def api_update_client():
             update_user_email(new_name, 'client', email)
         log_action('RENAME_CLIENT', 'client', f'{name} -> {new_name}', get_remote_address(), f"Trader: {trader}")
         return jsonify({"status": "success"})
-    
+
+    identity_updates = {}
     if category:
         update_client_category(admin, trader, name, category)
-        # Also sync category into the DB identity blob so financial overview reads it
-        try:
-            client_data = get_client_data(name)
-            if client_data:
-                identity = client_data.get('identity', {})
-                identity['profile'] = category
-                identity['category'] = category
-                update_client_field(name, 'identity', identity)
-        except Exception as e:
-            print(f"Error syncing category to DB identity: {e}")
+        identity_updates['profile'] = category
+        identity_updates['category'] = category
 
     # Save active_status if provided (dashboard toggle only)
-    active_status = request.json.get('active_status')
-    if active_status is not None:
+    active_status = data.get('active_status')
+    if active_status is not None and str(active_status).strip() != '':
         if not is_valid_active_status(active_status):
             return jsonify({"status": "error", "message": "active_status must be active or inactive"}), 400
-        try:
-            client_data = get_client_data(name)
-            if client_data:
-                identity = client_data.get('identity', {})
-                identity['active_status'] = str(active_status).strip().lower()
-                update_client_field(name, 'identity', identity)
-        except Exception as e:
-            print(f"Error updating active_status: {e}")
+        identity_updates['active_status'] = str(active_status).strip().lower()
 
     # Save split_pct (profit split percentage) if provided
-    split_pct = request.json.get('split_pct')
-    if split_pct is not None:
+    split_pct = data.get('split_pct')
+    if split_pct is not None and str(split_pct).strip() != '':
         try:
             split_pct_val = int(split_pct)
             if 0 <= split_pct_val <= 100:
-                cd = get_client_data(name)
-                if cd:
-                    identity = cd.get('identity', {})
-                    identity['split_pct'] = split_pct_val
-                    update_client_field(name, 'identity', identity)
+                identity_updates['split_pct'] = split_pct_val
         except (ValueError, TypeError) as e:
             print(f"Error updating split_pct: {e}")
-        
-    if update_client_details(admin, trader, name, email):
+
+    identity_ok = False
+    if identity_updates:
+        try:
+            identity_ok = bool(_patch_client_identity(name, **identity_updates))
+        except Exception as e:
+            identity_ok = False
+            print(f"Error updating client identity: {e}")
+
+    details_ok = update_client_details(admin, trader, name, email)
+    if details_ok:
         update_user_email(name, 'client', email)
-        log_action('UPDATE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}")
+
+    if details_ok or identity_ok:
+        status_note = f", Status: {identity_updates.get('active_status')}" if 'active_status' in identity_updates else ""
+        log_action('UPDATE_CLIENT', 'trader', name, get_remote_address(), f"Trader: {trader}{status_note}")
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Client not found"}), 400
 
@@ -8371,43 +8393,52 @@ def api_move_user():
 @require_session
 def api_update_client_profile():
     session_user = request.session_user
-    if session_user.get('user_type') not in ['admin', 'super_admin']:
+    if session_user.get('user_type') not in ['admin', 'super_admin', 'bef_admin']:
          return jsonify({"status": "error", "message": "Access denied"}), 403
 
-    data = request.json
-    admin = data.get('admin')
-    trader = data.get('trader')
-    name = data.get('name')
+    data = request.json or {}
+    admin = (data.get('admin') or '').strip()
+    trader = (data.get('trader') or '').strip()
+    name = (data.get('name') or '').strip()
     category = data.get('category')
     active_status = data.get('active_status')
-    
-    if not admin or not trader or not name or category is None:
+
+    if not name:
          return jsonify({"status": "error", "message": "Missing fields"}), 400
 
-    if active_status is not None and not is_valid_active_status(active_status):
-        return jsonify({"status": "error", "message": "active_status must be active or inactive"}), 400
-    
-    from config.hierarchy import update_client_category
-    
-    if update_client_category(admin, trader, name, category):
-        client_id = name
-        
-        try:
-             client_data = get_client_data(client_id)
-             if client_data:
-                 identity = client_data.get('identity', {})
-                 identity['profile'] = category 
-                 identity['category'] = category
-                 if active_status is not None:
-                     identity['active_status'] = str(active_status).strip().lower()
-                 update_client_field(client_id, 'identity', identity)
-        except Exception as e:
-             print(f"Error updating DB identity profile: {e}")
+    located = find_client_entry(name, admin or None, trader or None)
+    if located:
+        admin, trader, client_obj = located
+        name = (client_obj.get('name') or name).strip() or name
+        if category is None:
+            category = client_obj.get('category') or client_obj.get('profile') or ''
 
-        status_note = f", Status: {active_status}" if active_status is not None else ""
+    if not admin or not trader or category is None:
+         return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    if active_status is not None and str(active_status).strip() != '' and not is_valid_active_status(active_status):
+        return jsonify({"status": "error", "message": "active_status must be active or inactive"}), 400
+
+    category_ok = update_client_category(admin, trader, name, category)
+    identity_updates = {
+        'profile': category,
+        'category': category,
+    }
+    if active_status is not None and str(active_status).strip() != '':
+        identity_updates['active_status'] = str(active_status).strip().lower()
+
+    identity_ok = True
+    try:
+        identity_ok = bool(_patch_client_identity(name, **identity_updates))
+    except Exception as e:
+        identity_ok = False
+        print(f"Error updating DB identity profile: {e}")
+
+    if category_ok or identity_ok:
+        status_note = f", Status: {identity_updates.get('active_status')}" if 'active_status' in identity_updates else ""
         log_action('UPDATE_CLIENT_PROFILE', session_user.get('user_type'), name, get_remote_address(), f"To: {category}{status_note}")
         return jsonify({"status": "success"})
-    
+
     return jsonify({"status": "error", "message": "Client not found"}), 404
 
 

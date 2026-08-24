@@ -1558,23 +1558,22 @@ def update_client_field(client_id: str, field: str, value) -> bool:
                     'hedge_accounts', 'prop_accounts', 'vps_accounts', 'payment_info', 'payment_address']
     if field not in valid_fields:
         return False
-    
+
+    norm_id = _normalize_identifier(client_id)
     with get_connection() as conn:
         cursor = conn.cursor()
-        
-        # First ensure client exists
-        cursor.execute('SELECT client_id FROM clients_data WHERE client_id = ?', (client_id,))
-        if cursor.fetchone() is None:
-            # Create new client record
-            save_client_data(client_id, {field: value})
-            return True
-        
-        # Update specific field
+        row, _legacy = _lookup_client_data_row(client_id, norm_id, _conn=conn)
+        if row is None:
+            created = save_client_data(norm_id or client_id, {field: value}, _conn=conn)
+            conn.commit()
+            return bool(created)
+
+        target_id = row.get('client_id') or norm_id or client_id
         cursor.execute(f'''
             UPDATE clients_data 
             SET {field} = ?, last_updated = ?
             WHERE client_id = ?
-        ''', (json.dumps(value), datetime.now().isoformat(), client_id))
+        ''', (json.dumps(value), datetime.now().isoformat(), target_id))
         conn.commit()
         return True
 
