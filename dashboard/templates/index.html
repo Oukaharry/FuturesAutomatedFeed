@@ -9373,6 +9373,7 @@
         const ACCOUNT_RESULT_COUNT_FIELDS = [
             { key: 'hit_tp', label: 'Hit TP' },
             { key: 'hit_sl', label: 'Hit SL' },
+            { key: 'fail', label: 'Fail' },
             { key: 'payout', label: 'Payout' },
         ];
 
@@ -9382,8 +9383,15 @@
             const n = (k) => parseInt(f[k] || 0, 10) || 0;
             if (n('hit_tp')) parts.push(`${n('hit_tp')} hit TP`);
             if (n('hit_sl')) parts.push(`${n('hit_sl')} hit SL`);
+            if (n('fail')) parts.push(`${n('fail')} fail`);
             if (n('payout')) parts.push(`${n('payout')} payout`);
             return parts.join(', ') || 'Pending';
+        }
+
+        function _accountResultHasCounts(pn) {
+            return !!(pn && pn.fields && ACCOUNT_RESULT_COUNT_FIELDS.some(
+                f => (parseInt(pn.fields[f.key] || 0, 10) || 0) > 0
+            ));
         }
 
         const _SUMMARY_SECTION_DEFS = {
@@ -9464,42 +9472,29 @@
             return d;
         }
 
-        function _collectManagedPropFirms(evaluations, activeOnly) {
-            // Challenge / BEF / Private sections: every managed firm on the sheet.
-            // Account Results (Golden Spike): only firms with a row that passes the Active filter.
+        function _allPropFirmsFromEvaluations(evaluations) {
+            // All managed firms on the sheet (incl. failed / inactive) — used by every summary section.
             if (!evaluations || !evaluations.length) return [];
             const clientFirms = new Set();
             evaluations.forEach(ev => {
                 if (!ev || ev._deleted) return;
                 const pf = (ev['Prop Firm'] || '').trim();
                 if (!pf || isFirmHidden(pf)) return;
-                if (activeOnly && hidesFromActiveFilter(ev)) return;
                 clientFirms.add(pf);
             });
             return MANAGED_PROP_FIRMS.filter(pf => clientFirms.has(pf));
         }
 
-        function _activePropFirmsFromEvaluations(evaluations) {
-            return _collectManagedPropFirms(evaluations, true);
-        }
-
-        function _allPropFirmsFromEvaluations(evaluations) {
-            return _collectManagedPropFirms(evaluations, false);
-        }
-
-        function _getClientPropFirmsForClient(clientId, opts) {
+        function _getClientPropFirmsForClient(clientId) {
             if (!currentData || !currentData.evaluations) return [];
             const disabled = _disabledPropFirms[clientId] || new Set();
-            const firms = (opts && opts.activeOnly)
-                ? _activePropFirmsFromEvaluations(currentData.evaluations)
-                : _allPropFirmsFromEvaluations(currentData.evaluations);
-            return firms.filter(pf => !disabled.has(pf));
+            return _allPropFirmsFromEvaluations(currentData.evaluations)
+                .filter(pf => !disabled.has(pf));
         }
 
         function _propFirmsForSection(sectionId, clientId) {
-            return _getClientPropFirmsForClient(clientId || _activeClient, {
-                activeOnly: sectionId === 'account_results',
-            });
+            // sectionId kept for call-site clarity; every section uses the full firm list.
+            return _getClientPropFirmsForClient(clientId || _activeClient);
         }
 
         function _getClientPropFirms() {
@@ -9540,15 +9535,14 @@
             if (typeof d.notes !== 'object' || d.notes === null) return false;
             const propFirms = _propFirmsForSection(sectionId);
             if (propFirms.length === 0) return false;
+            // Account Results: partial fill is OK (unreported firms are omitted from preview).
+            if (sectionId === 'account_results') {
+                return propFirms.some(pf => _accountResultHasCounts(d.notes[pf]));
+            }
             return propFirms.every(pf => {
                 const pn = d.notes[pf];
                 if (!pn) return false;
                 if (pn.status === 'ok') return true;
-                if (sectionId === 'account_results') {
-                    return pn.fields && ACCOUNT_RESULT_COUNT_FIELDS.some(
-                        f => (parseInt(pn.fields[f.key] || 0, 10) || 0) > 0
-                    );
-                }
                 if (pn.fields) return Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0');
                 return false;
             });
@@ -9923,23 +9917,35 @@
                 } else if (typeof d.notes === 'object' && d.notes !== null) {
                     const propFirms = _propFirmsForSection(s.id, clientId);
                     if (propFirms.length > 0) {
+                        let wroteAny = false;
                         propFirms.forEach(pf => {
-                            const pn = d.notes[pf];
+                            const pn = d.notes[pf] || { status: '', fields: {} };
                             const displayPf = _propFirmDisplayName(pf);
+                            if (s.id === 'account_results') {
+                                // Omit firms with no counts filled — no Pending lines in preview.
+                                if (!_accountResultHasCounts(pn)) return;
+                                lines.push(`  ${displayPf} - ${s.template(pn.fields)}`);
+                                wroteAny = true;
+                                return;
+                            }
                             if (pn.status === 'ok') {
                                 lines.push(`  ✅ ${displayPf}: All Good`);
+                                wroteAny = true;
                             } else if (pn.fields && Object.values(pn.fields).some(v => v !== '' && v !== 0 && v !== '0')) {
-                                if (s.id === 'account_results') {
-                                    lines.push(`  ${displayPf} - ${s.template(pn.fields)}`);
-                                } else if (s.id === 'trade_count') {
+                                if (s.id === 'trade_count') {
                                     lines.push(`  ✅ ${displayPf}: ${s.template(pn.fields)}`);
                                 } else {
                                     lines.push(`  ⚠️ ${displayPf}: ${s.template(pn.fields)}`);
                                 }
+                                wroteAny = true;
                             } else {
                                 lines.push(`  ⏳ ${displayPf}: Pending`);
+                                wroteAny = true;
                             }
                         });
+                        if (!wroteAny) {
+                            lines.push(`${icon} Attention needed — details pending.`);
+                        }
                     } else {
                         lines.push(`${icon} Attention needed — details pending.`);
                     }
