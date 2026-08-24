@@ -9464,23 +9464,42 @@
             return d;
         }
 
-        function _activePropFirmsFromEvaluations(evaluations) {
-            // Prop firms with at least one row visible under the dashboard Active filter
+        function _collectManagedPropFirms(evaluations, activeOnly) {
+            // Challenge / BEF / Private sections: every managed firm on the sheet.
+            // Account Results (Golden Spike): only firms with a row that passes the Active filter.
             if (!evaluations || !evaluations.length) return [];
             const clientFirms = new Set();
             evaluations.forEach(ev => {
+                if (!ev || ev._deleted) return;
                 const pf = (ev['Prop Firm'] || '').trim();
-                if (!pf || isFirmHidden(pf) || hidesFromActiveFilter(ev)) return;
+                if (!pf || isFirmHidden(pf)) return;
+                if (activeOnly && hidesFromActiveFilter(ev)) return;
                 clientFirms.add(pf);
             });
             return MANAGED_PROP_FIRMS.filter(pf => clientFirms.has(pf));
         }
 
-        function _getClientPropFirmsForClient(clientId) {
+        function _activePropFirmsFromEvaluations(evaluations) {
+            return _collectManagedPropFirms(evaluations, true);
+        }
+
+        function _allPropFirmsFromEvaluations(evaluations) {
+            return _collectManagedPropFirms(evaluations, false);
+        }
+
+        function _getClientPropFirmsForClient(clientId, opts) {
             if (!currentData || !currentData.evaluations) return [];
             const disabled = _disabledPropFirms[clientId] || new Set();
-            return _activePropFirmsFromEvaluations(currentData.evaluations)
-                .filter(pf => !disabled.has(pf));
+            const firms = (opts && opts.activeOnly)
+                ? _activePropFirmsFromEvaluations(currentData.evaluations)
+                : _allPropFirmsFromEvaluations(currentData.evaluations);
+            return firms.filter(pf => !disabled.has(pf));
+        }
+
+        function _propFirmsForSection(sectionId, clientId) {
+            return _getClientPropFirmsForClient(clientId || _activeClient, {
+                activeOnly: sectionId === 'account_results',
+            });
         }
 
         function _getClientPropFirms() {
@@ -9488,8 +9507,8 @@
         }
 
         function _getAllClientPropFirms() {
-            // Active prop firms only (toggle bar); disabled state applied in _getClientPropFirms
-            return _activePropFirmsFromEvaluations(currentData?.evaluations);
+            // Toggle bar lists every firm on the sheet (same as Challenge Purchase / BEF / Private)
+            return _allPropFirmsFromEvaluations(currentData?.evaluations);
         }
 
         function togglePropFirmDisabled(propFirm) {
@@ -9503,7 +9522,7 @@
             // Ensure notes object has entries for all current prop firms
             if (!_allClientSummaries[_activeClient]) _allClientSummaries[_activeClient] = _getDefaultSections(_activeClient);
             const d = _allClientSummaries[_activeClient][sectionId];
-            const propFirms = _getClientPropFirms();
+            const propFirms = _propFirmsForSection(sectionId);
             if (typeof d.notes !== 'object' || d.notes === null) d.notes = {};
             propFirms.forEach(pf => {
                 if (!(pf in d.notes)) d.notes[pf] = { status: '', fields: {} };
@@ -9519,7 +9538,7 @@
         function _isSectionComplete(d, sectionId) {
             if (d.status === 'ok') return true;
             if (typeof d.notes !== 'object' || d.notes === null) return false;
-            const propFirms = _getClientPropFirms();
+            const propFirms = _propFirmsForSection(sectionId);
             if (propFirms.length === 0) return false;
             return propFirms.every(pf => {
                 const pn = d.notes[pf];
@@ -9648,7 +9667,6 @@
                 return;
             }
             const summaryData = _allClientSummaries[_activeClient] || _getDefaultSections(_activeClient);
-            const propFirms = _getClientPropFirms();
             const allFirms = _getAllClientPropFirms();
             const disabled = _disabledPropFirms[_activeClient] || new Set();
             let filled = 0;
@@ -9690,6 +9708,7 @@
 
                 let notesHtml = '';
                 if (isWarn) {
+                    const propFirms = _propFirmsForSection(s.id);
                     if (propFirms.length > 0) {
                         const notes = _initPropNotes(s.id);
                         notesHtml = '<div class="prop-notes-list">' + propFirms.map(pf => {
@@ -9902,7 +9921,7 @@
                 if (d.status === 'ok') {
                     lines.push(`${icon} ${s.okText}`);
                 } else if (typeof d.notes === 'object' && d.notes !== null) {
-                    const propFirms = _getClientPropFirmsForClient(clientId);
+                    const propFirms = _propFirmsForSection(s.id, clientId);
                     if (propFirms.length > 0) {
                         propFirms.forEach(pf => {
                             const pn = d.notes[pf];
