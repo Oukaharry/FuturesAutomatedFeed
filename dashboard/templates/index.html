@@ -1691,6 +1691,23 @@
             flex-wrap: nowrap;
             margin-left: auto;
         }
+        .kyc-filter-bar input[type="date"] {
+            color-scheme: dark;
+            background: rgba(1, 3, 10, 0.65);
+            border: 1px solid #1a2848;
+            color: #e8eeff;
+            border-radius: 6px;
+        }
+        .propfirm-filter-heading {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 12px;
+            margin: 30px 0 12px;
+        }
+        .propfirm-filter-heading h4 {
+            margin: 0;
+        }
 
         /* Daily Profit History — superadmin period filter (override global button width) */
         .waterlog-period-header {
@@ -3113,9 +3130,32 @@
                 </table>
 
                 <!-- By Prop Firm Breakdown -->
-                <h4 style="color: #94a3b8; margin: 30px 0 12px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
-                    <i class="fas fa-building" style="margin-right: 6px;"></i> By Prop Firm
-                </h4>
+                <div class="propfirm-filter-heading">
+                    <h4 style="color: #94a3b8; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em;">
+                        <i class="fas fa-building" style="margin-right: 6px;"></i> By Prop Firm
+                    </h4>
+                    <div class="kyc-filter-bar">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">From</label>
+                            <input type="date" id="kyc-pf-date-from" style="padding:6px 10px; font-size:0.85rem;">
+                        </div>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap;">To</label>
+                            <input type="date" id="kyc-pf-date-to" style="padding:6px 10px; font-size:0.85rem;">
+                        </div>
+                        <button type="button" class="kyc-apply-btn" onclick="applyKycPfFilter()">
+                            <i class="fas fa-filter"></i> Apply
+                        </button>
+                        <div class="kyc-quick-presets">
+                            <span style="font-size:0.65rem; color:#64748b; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; margin-right:4px; white-space:nowrap;">Quick:</span>
+                            <button type="button" onclick="setKycPfDatePreset('thisMonth')" class="kyc-date-preset-btn">This Month</button>
+                            <button type="button" onclick="setKycPfDatePreset('lastMonth')" class="kyc-date-preset-btn">Last Month</button>
+                            <button type="button" onclick="setKycPfDatePreset('last90')" class="kyc-date-preset-btn">Last 90d</button>
+                            <button type="button" onclick="setKycPfDatePreset('ytd')" class="kyc-date-preset-btn">YTD</button>
+                            <button type="button" onclick="setKycPfDatePreset('all')" class="kyc-date-preset-btn">All Time</button>
+                        </div>
+                    </div>
+                </div>
                 <table class="data-table" style="width:100%;">
                     <thead>
                         <tr>
@@ -3386,6 +3426,62 @@
                 .catch(() => {});
         }
         
+        function fillDatePreset(fromEl, toEl, preset) {
+            if (!fromEl || !toEl) return;
+            const now = new Date();
+            const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            switch (preset) {
+                case 'thisMonth':
+                    fromEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+                    toEl.value = fmt(now);
+                    break;
+                case 'lastMonth':
+                    fromEl.value = fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+                    toEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 0));
+                    break;
+                case 'last90': {
+                    const d90 = new Date(now);
+                    d90.setDate(d90.getDate() - 90);
+                    fromEl.value = fmt(d90);
+                    toEl.value = fmt(now);
+                    break;
+                }
+                case 'ytd':
+                    fromEl.value = fmt(new Date(now.getFullYear(), 0, 1));
+                    toEl.value = fmt(now);
+                    break;
+                case 'all':
+                default:
+                    fromEl.value = '';
+                    toEl.value = '';
+                    break;
+            }
+        }
+        function syncKycPfFilterInputs() {
+            const from = document.getElementById('kyc-date-from')?.value || '';
+            const to = document.getElementById('kyc-date-to')?.value || '';
+            const pfFrom = document.getElementById('kyc-pf-date-from');
+            const pfTo = document.getElementById('kyc-pf-date-to');
+            if (pfFrom) pfFrom.value = from;
+            if (pfTo) pfTo.value = to;
+        }
+        function applyKycPfFilter() {
+            const pfFrom = document.getElementById('kyc-pf-date-from')?.value || '';
+            const pfTo = document.getElementById('kyc-pf-date-to')?.value || '';
+            const fromEl = document.getElementById('kyc-date-from');
+            const toEl = document.getElementById('kyc-date-to');
+            if (fromEl) fromEl.value = pfFrom;
+            if (toEl) toEl.value = pfTo;
+            loadKycPortfolio();
+        }
+        function setKycPfDatePreset(preset) {
+            fillDatePreset(
+                document.getElementById('kyc-pf-date-from'),
+                document.getElementById('kyc-pf-date-to'),
+                preset
+            );
+            applyKycPfFilter();
+        }
         function loadKycPortfolio() {
             const fromDate = document.getElementById('kyc-date-from').value;
             const toDate = document.getElementById('kyc-date-to').value;
@@ -3481,6 +3577,7 @@
                     } else {
                         pfBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">No prop firm data.</td></tr>';
                     }
+                    syncKycPfFilterInputs();
                     
                     // All payouts table
                     const payoutsBody = document.getElementById('kyc-payouts-body');
@@ -3513,37 +3610,12 @@
             setKycDatePreset('all');
         }
         function setKycDatePreset(preset) {
-            const now = new Date();
-            const fromEl = document.getElementById('kyc-date-from');
-            const toEl = document.getElementById('kyc-date-to');
-            const fmt = d => d.toISOString().split('T')[0];
-
-            switch (preset) {
-                case 'thisMonth':
-                    fromEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
-                    toEl.value = fmt(now);
-                    break;
-                case 'lastMonth':
-                    fromEl.value = fmt(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-                    toEl.value = fmt(new Date(now.getFullYear(), now.getMonth(), 0));
-                    break;
-                case 'last90': {
-                    const d90 = new Date(now);
-                    d90.setDate(d90.getDate() - 90);
-                    fromEl.value = fmt(d90);
-                    toEl.value = fmt(now);
-                    break;
-                }
-                case 'ytd':
-                    fromEl.value = fmt(new Date(now.getFullYear(), 0, 1));
-                    toEl.value = fmt(now);
-                    break;
-                case 'all':
-                default:
-                    fromEl.value = '';
-                    toEl.value = '';
-                    break;
-            }
+            fillDatePreset(
+                document.getElementById('kyc-date-from'),
+                document.getElementById('kyc-date-to'),
+                preset
+            );
+            syncKycPfFilterInputs();
             loadKycPortfolio();
         }
         function exportKycChallengeFeesCsv() {
@@ -5385,6 +5457,46 @@
             return Math.round(total * 100) / 100;
         }
 
+        function sheetDateToIso(val) {
+            const iso = formatDateForInput(String(val || '').trim());
+            return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? iso : '';
+        }
+        function isoDateInRange(iso, fromIso, toIso) {
+            if (!fromIso && !toIso) return true;
+            if (!iso) return false;
+            if (fromIso && iso < fromIso) return false;
+            if (toIso && iso > toIso) return false;
+            return true;
+        }
+        function payoutDateInRange(dateVal, fromIso, toIso) {
+            if (!fromIso && !toIso) return true;
+            const iso = sheetDateToIso(dateVal);
+            if (!iso) return true;
+            return isoDateInRange(iso, fromIso, toIso);
+        }
+        function evalInDateRange(ev, fromIso, toIso) {
+            if (!fromIso && !toIso) return true;
+            const iso = sheetDateToIso(ev && (ev['Date Purchased'] || ev['Date Started']));
+            return isoDateInRange(iso, fromIso, toIso);
+        }
+
+        window._statsPfFrom = window._statsPfFrom || '';
+        window._statsPfTo = window._statsPfTo || '';
+        function applyStatsPfFilter() {
+            window._statsPfFrom = document.getElementById('stats-pf-date-from')?.value || '';
+            window._statsPfTo = document.getElementById('stats-pf-date-to')?.value || '';
+            const body = document.getElementById('stats-propfirm-body');
+            if (body && currentData) body.innerHTML = buildByPropFirmRows(currentData);
+        }
+        function setStatsPfDatePreset(preset) {
+            fillDatePreset(
+                document.getElementById('stats-pf-date-from'),
+                document.getElementById('stats-pf-date-to'),
+                preset
+            );
+            applyStatsPfFilter();
+        }
+
         function buildByPropFirmRows(data) {
             const evals = data.evaluations || [];
             const fb = {}; // Actual Fees / Actual Payouts columns hidden for now
@@ -5397,6 +5509,9 @@
                 if (key === 'fundednextflex') return 'FundedNext';
                 return raw;
             };
+            const fromIso = window._statsPfFrom || '';
+            const toIso = window._statsPfTo || '';
+            const hasDateFilter = !!(fromIso || toIso);
             evals.forEach(ev => {
                 // Do not include soft-deleted rows in the By Prop Firm breakdown.
                 // Deleted rows can linger in the DB for audit/history but should not
@@ -5406,57 +5521,76 @@
                 const rawFirmKey = rawFirmName.toLowerCase().replace(/[\s_]/g, '');
                 const name = statsFirmParent(rawFirmName);
                 if (isFirmHidden(name)) return;
-                if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0,flex_evals:0};
-                const f = firms[name];
-                if (rawFirmKey === 'fundednextflex') f.flex_evals++;
-                f.evals++;
-                const st = String(ev['Status P1']||'').toLowerCase();
-                const st2 = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
-                if (isTerminalEvalStatus(st) || isTerminalEvalStatus(st2)) f.failed++;
-                else if (['complete','funded','payout','live'].some(k=>st.includes(k)||st2.includes(k))) f.passed++;
-                else if (st) f.active++;
-                f.fees += pc(ev['Fee']) + pc(ev['Activation Fee']);
-                ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5',
-                 'Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1',
-                 'Hedge Result 6','Hedge Result 7'].forEach(c => { f.hedge += pc(ev[c]); });
-                for (let i=1;i<=50;i++) f.farming += pc(ev['Hedge Day '+i]);
-                for (let i=1;i<=9;i++) f.payouts += pc(ev['Payout '+i]);
-            });
-            // Per-firm billing remainders (inject_challenge_fee_adjustments.py)
-            const _pfAdjList = (data.statistics && data.statistics.manual_fee_adjustments) || [];
-            const _pfAdjEntry = _pfAdjList.length ? _pfAdjList[_pfAdjList.length - 1] : null;
-            const _pfAdjMap = (_pfAdjEntry && _pfAdjEntry.prop_firm_adjustments) || {};
-            Object.entries(_pfAdjMap).forEach(([firmName, blob]) => {
-                if (!blob || typeof blob !== 'object') return;
-                const matchKey = Object.keys(firms).find(k => k.toLowerCase().replace(/[\s_]/g, '') === String(firmName).toLowerCase().replace(/[\s_]/g, ''))
-                    || (firms[firmName] ? firmName : null);
-                if (!matchKey || !firms[matchKey]) return;
-                const target = blob.target_fees;
-                const add = blob.add_fees;
-                if (target !== undefined && target !== null && String(target).trim() !== '') {
-                    firms[matchKey].fees = pc(target);
-                } else if (add !== undefined && add !== null && String(add).trim() !== '') {
-                    firms[matchKey].fees = Math.round((firms[matchKey].fees + pc(add)) * 100) / 100;
+                const ensureFirm = () => {
+                    if (!firms[name]) firms[name] = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0,flex_evals:0};
+                    return firms[name];
+                };
+                if (evalInDateRange(ev, fromIso, toIso)) {
+                    const f = ensureFirm();
+                    if (rawFirmKey === 'fundednextflex') f.flex_evals++;
+                    f.evals++;
+                    const st = String(ev['Status P1']||'').toLowerCase();
+                    const st2 = String(ev['Status'] || ev['Status Funded'] || '').toLowerCase();
+                    if (isTerminalEvalStatus(st) || isTerminalEvalStatus(st2)) f.failed++;
+                    else if (['complete','funded','payout','live'].some(k=>st.includes(k)||st2.includes(k))) f.passed++;
+                    else if (st) f.active++;
+                    f.fees += pc(ev['Fee']) + pc(ev['Activation Fee']);
+                    ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5',
+                     'Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1',
+                     'Hedge Result 6','Hedge Result 7'].forEach(c => { f.hedge += pc(ev[c]); });
+                    for (let i=1;i<=50;i++) f.farming += pc(ev['Hedge Day '+i]);
+                }
+                for (let i=1;i<=9;i++) {
+                    const amt = pc(ev['Payout '+i]);
+                    if (!amt) continue;
+                    if (payoutDateInRange(ev['Date '+i], fromIso, toIso)) ensureFirm().payouts += amt;
                 }
             });
+            if (!hasDateFilter) {
+                // Per-firm billing remainders (inject_challenge_fee_adjustments.py)
+                const _pfAdjList = (data.statistics && data.statistics.manual_fee_adjustments) || [];
+                const _pfAdjEntry = _pfAdjList.length ? _pfAdjList[_pfAdjList.length - 1] : null;
+                const _pfAdjMap = (_pfAdjEntry && _pfAdjEntry.prop_firm_adjustments) || {};
+                Object.entries(_pfAdjMap).forEach(([firmName, blob]) => {
+                    if (!blob || typeof blob !== 'object') return;
+                    const matchKey = Object.keys(firms).find(k => k.toLowerCase().replace(/[\s_]/g, '') === String(firmName).toLowerCase().replace(/[\s_]/g, ''))
+                        || (firms[firmName] ? firmName : null);
+                    if (!matchKey || !firms[matchKey]) return;
+                    const target = blob.target_fees;
+                    const add = blob.add_fees;
+                    if (target !== undefined && target !== null && String(target).trim() !== '') {
+                        firms[matchKey].fees = pc(target);
+                    } else if (add !== undefined && add !== null && String(add).trim() !== '') {
+                        firms[matchKey].fees = Math.round((firms[matchKey].fees + pc(add)) * 100) / 100;
+                    }
+                });
+            }
             const fmt = v => formatMoney(v);
             const rows = Object.entries(firms).sort((a,b)=>b[1].payouts-a[1].payouts);
+            if (!rows.length) {
+                return `<tr><td colspan="${hasFB ? 9 : 7}" style="text-align:center; padding:20px; color:#64748b;">No prop firm data for this period.</td></tr>`;
+            }
             const tot = {evals:0,active:0,passed:0,failed:0,payouts:0,fees:0,hedge:0,farming:0};
             rows.forEach(([,f])=>{ for(const k in tot) tot[k]+=f[k]; });
             // Use authoritative backend stats for totals (Stats tab overrides raw eval sums)
-            const cf = (data.statistics && data.statistics.cashflow_inprogress) || {};
-            const _pfTargetIp = _pfAdjEntry && _pfAdjEntry.target_ip_fees;
-            if (_pfTargetIp !== undefined && _pfTargetIp !== null && String(_pfTargetIp).trim() !== '') {
-                tot.fees = pc(_pfTargetIp);
-            } else if (Object.keys(_pfAdjMap).length > 0) {
-                const _pfAddTotal = Object.values(_pfAdjMap).reduce((sum, blob) => {
-                    return sum + (blob && blob.add_fees != null ? pc(blob.add_fees) : 0);
-                }, 0);
-                if (_pfAddTotal) tot.fees = Math.round((tot.fees + _pfAddTotal) * 100) / 100;
-            }
-            if (cf.hedging_results !== undefined || cf.farming_results !== undefined) {
-                tot.hedge = cf.hedging_results || 0;
-                tot.farming = cf.farming_results || 0;
+            if (!hasDateFilter) {
+                const cf = (data.statistics && data.statistics.cashflow_inprogress) || {};
+                const _pfAdjList = (data.statistics && data.statistics.manual_fee_adjustments) || [];
+                const _pfAdjEntry = _pfAdjList.length ? _pfAdjList[_pfAdjList.length - 1] : null;
+                const _pfAdjMap = (_pfAdjEntry && _pfAdjEntry.prop_firm_adjustments) || {};
+                const _pfTargetIp = _pfAdjEntry && _pfAdjEntry.target_ip_fees;
+                if (_pfTargetIp !== undefined && _pfTargetIp !== null && String(_pfTargetIp).trim() !== '') {
+                    tot.fees = pc(_pfTargetIp);
+                } else if (Object.keys(_pfAdjMap).length > 0) {
+                    const _pfAddTotal = Object.values(_pfAdjMap).reduce((sum, blob) => {
+                        return sum + (blob && blob.add_fees != null ? pc(blob.add_fees) : 0);
+                    }, 0);
+                    if (_pfAddTotal) tot.fees = Math.round((tot.fees + _pfAddTotal) * 100) / 100;
+                }
+                if (cf.hedging_results !== undefined || cf.farming_results !== undefined) {
+                    tot.hedge = cf.hedging_results || 0;
+                    tot.farming = cf.farming_results || 0;
+                }
             }
             return rows.map(([name,f]) => {
                 const net = f.payouts - f.fees + f.hedge + f.farming;
@@ -5833,7 +5967,30 @@
                             
                             <!-- By Prop Firm -->
                             <div class="table-container" style="padding-bottom: 20px; margin-bottom: 40px;">
-                                <div class="card-header" style="background:linear-gradient(180deg,#0f172a,#060a14);border-bottom:1px solid #162040;color:#94a3b8;font-size:0.95rem;font-weight:700;letter-spacing:0.05em;gap:8px;justify-content:flex-start;"><i class="fas fa-building" style="opacity:0.6;"></i> BY PROP FIRM</div>
+                                <div class="card-header" style="background:linear-gradient(180deg,#0f172a,#060a14);border-bottom:1px solid #162040;color:#94a3b8;font-size:0.95rem;font-weight:700;letter-spacing:0.05em;flex-wrap:wrap;align-items:flex-start;gap:12px;justify-content:flex-start;flex-direction:column;">
+                                    <div style="display:flex;align-items:center;gap:8px;"><i class="fas fa-building" style="opacity:0.6;"></i> BY PROP FIRM</div>
+                                    <div class="kyc-filter-bar">
+                                        <div style="display:flex; align-items:center; gap:6px;">
+                                            <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap; font-weight:600;">From</label>
+                                            <input type="date" id="stats-pf-date-from" value="${window._statsPfFrom || ''}" style="padding:6px 10px; font-size:0.85rem;">
+                                        </div>
+                                        <div style="display:flex; align-items:center; gap:6px;">
+                                            <label style="color:#94a3b8; font-size:0.8rem; white-space:nowrap; font-weight:600;">To</label>
+                                            <input type="date" id="stats-pf-date-to" value="${window._statsPfTo || ''}" style="padding:6px 10px; font-size:0.85rem;">
+                                        </div>
+                                        <button type="button" class="kyc-apply-btn" onclick="applyStatsPfFilter()">
+                                            <i class="fas fa-filter"></i> Apply
+                                        </button>
+                                        <div class="kyc-quick-presets">
+                                            <span style="font-size:0.65rem; color:#64748b; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; margin-right:4px; white-space:nowrap;">Quick:</span>
+                                            <button type="button" onclick="setStatsPfDatePreset('thisMonth')" class="kyc-date-preset-btn">This Month</button>
+                                            <button type="button" onclick="setStatsPfDatePreset('lastMonth')" class="kyc-date-preset-btn">Last Month</button>
+                                            <button type="button" onclick="setStatsPfDatePreset('last90')" class="kyc-date-preset-btn">Last 90d</button>
+                                            <button type="button" onclick="setStatsPfDatePreset('ytd')" class="kyc-date-preset-btn">YTD</button>
+                                            <button type="button" onclick="setStatsPfDatePreset('all')" class="kyc-date-preset-btn">All Time</button>
+                                        </div>
+                                    </div>
+                                </div>
                                 <table>
                                     <thead>
                                         <tr>
@@ -5847,7 +6004,7 @@
                                             <th style="text-align:left;padding-right:16px;">Net Profit</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
+                                    <tbody id="stats-propfirm-body">
                                         ${buildByPropFirmRows(data)}
                                     </tbody>
                                 </table>

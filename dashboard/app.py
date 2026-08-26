@@ -7913,38 +7913,45 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                             "_sort_date": raw_date.isoformat() if raw_date else "0000-00-00"
                         })
 
-            if prop_firm not in by_prop_firm:
-                by_prop_firm[prop_firm] = {"evals": 0, "payouts": 0.0, "fees": 0.0, "hedge": 0.0, "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0}
-            pf = by_prop_firm[prop_firm]
-            pf["evals"] += 1
+            if ev.get('_deleted'):
+                continue
 
-            status = str(ev.get('Status') or '').lower()
-            status_p1_raw = str(ev.get('Status P1') or '').strip()
-            status_funded_raw = str(ev.get('Status') or '').strip()
-            fee = parse_currency(ev.get('Fee'))
-            act_fee = parse_currency(ev.get('Activation Fee'))
-            pf["fees"] += (fee + act_fee)
+            if eval_in_period(ev):
+                pf = by_prop_firm.setdefault(prop_firm, {
+                    "evals": 0, "payouts": 0.0, "fees": 0.0, "hedge": 0.0,
+                    "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0,
+                })
+                pf["evals"] += 1
 
-            # Only count hedge/farming for rows with a populated status
-            if status_p1_raw:
-                for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
-                    pf["hedge"] += parse_currency(ev.get(col))
-            if status_funded_raw:
-                for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
-                            'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
-                    pf["hedge"] += parse_currency(ev.get(col))
-                for di in range(1, 51):
-                    pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
+                status = str(ev.get('Status') or '').lower()
+                status_p1_raw = str(ev.get('Status P1') or '').strip()
+                status_funded_raw = str(ev.get('Status') or '').strip()
+                pf["fees"] += parse_currency(ev.get('Fee')) + parse_currency(ev.get('Activation Fee'))
+
+                if status_p1_raw:
+                    for col in ['Hedge Result 1', 'Hedge Result 2', 'Hedge Result 3', 'Hedge Result 4', 'Hedge Result 5']:
+                        pf["hedge"] += parse_currency(ev.get(col))
+                if status_funded_raw:
+                    for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
+                                'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
+                        pf["hedge"] += parse_currency(ev.get(col))
+                    for di in range(1, 51):
+                        pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
+
+                if any(s in status for s in ['passed', 'funded']):
+                    pf["passed"] += 1
+                elif any(s in status for s in ['failed', 'breached', 'blown', 'fail']):
+                    pf["failed"] += 1
+                elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
+                    pf["active"] += 1
 
             for j in range(1, 10):
-                pf["payouts"] += parse_currency(ev.get(f'Payout {j}'))
-
-            if any(s in status for s in ['passed', 'funded']):
-                pf["passed"] += 1
-            elif any(s in status for s in ['failed', 'breached', 'blown', 'fail']):
-                pf["failed"] += 1
-            elif any(s in status for s in ['active', 'phase', 'running', 'ongoing', 'trading', 'challenge']):
-                pf["active"] += 1
+                pval = parse_currency(ev.get(f'Payout {j}'))
+                if pval != 0 and date_in_period(str(ev.get(f'Date {j}') or '-').strip()):
+                    by_prop_firm.setdefault(prop_firm, {
+                        "evals": 0, "payouts": 0.0, "fees": 0.0, "hedge": 0.0,
+                        "farming": 0.0, "net": 0.0, "active": 0, "passed": 0, "failed": 0,
+                    })["payouts"] += pval
 
     # Round totals
     for k in ["total_payouts", "total_fees", "total_hedge", "total_farming", "total_net_profit"]:
