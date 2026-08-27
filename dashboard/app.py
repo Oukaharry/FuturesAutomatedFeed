@@ -1960,7 +1960,7 @@ def recalculate_hedge_nets(evaluations):
 
         if status == 'Completed':
             sum_payouts = sum(_num(ev.get(f'Payout {i}')) for i in range(1, 9))
-            sum_days = sum(_num(ev.get(f'Hedge Day {i}')) for i in range(1, 51))
+            sum_days = sum(_num(ev.get(f'Hedge Day {i}')) for i in range(1, 61))
             ev['Hedge Net.1'] = sum_payouts + sum_funded + sum_phase1 - fee - activation_fee + sum_days
         elif status == 'Fail':
             ev['Hedge Net.1'] = sum_funded + sum_phase1 - fee - activation_fee
@@ -2031,7 +2031,7 @@ def _dashboard_log_hedge_edit(client_id, user_changed, evaluations):
         'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
         'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
     })
-    hedge_cols.update(f'Hedge Day {i}' for i in range(1, 51))
+    hedge_cols.update(f'Hedge Day {i}' for i in range(1, 61))
     touched = False
     for idx_str, fields in user_changed.items():
         try:
@@ -2133,7 +2133,7 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
         logging.info(f"[FA SELECT] eval_idx={eval_idx} incoming_date={incoming_date}")
 
         # Reuse same slot if same date already exists
-        for day_num in range(1, 51):
+        for day_num in range(1, 61):
             date_key = f"_Hedge Day {day_num} Date"
             saved_date = str(ev.get(date_key, '')).strip()
             if saved_date and incoming_date and saved_date == incoming_date:
@@ -2141,7 +2141,7 @@ def get_field_name_for_phase(phase_code, trade_number, farming_date, evaluations
                 return f"Hedge Day {day_num}"
 
         # Otherwise use first empty slot
-        for day_num in range(1, 51):
+        for day_num in range(1, 61):
             value_key = f"Hedge Day {day_num}"
             date_key = f"_Hedge Day {day_num} Date"
 
@@ -2900,9 +2900,9 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                 last_profit = account_days[last_date]
                 slot = total_farming_days  # e.g. 5 dates → Hedge Day 5
 
-                if slot > 50:
-                    logging.warning(f"[FA WRITE] eval_idx={best_eval_idx} has {slot} farming days, capping at 50")
-                    slot = 50
+                if slot > 60:
+                    logging.warning(f"[FA WRITE] eval_idx={best_eval_idx} has {slot} farming days, capping at 60")
+                    slot = 60
 
                 field_name = f'Hedge Day {slot}'
 
@@ -2932,7 +2932,7 @@ def update_evaluations_from_aggregated_data(evaluations, aggregated_data=None, r
                         prop_days_written = 0
                         for day_idx, tv_day in enumerate(tv_mnq_days):
                             prop_slot = day_idx + 1
-                            if prop_slot > 50:
+                            if prop_slot > 60:
                                 break
                             prop_field = f'Prop Day {prop_slot}'
                             if _eval_push_field_blocked(best_eval, prop_field, phase_code='FA'):
@@ -4765,7 +4765,7 @@ def get_profit_splits():
         'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1', 'Hedge Result 5.1',
         'Hedge Result 6', 'Hedge Result 7',
     ]
-    _HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
+    _HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 61)]
 
     def _live_in_progress_net(evaluations):
         cf_pay = cf_fees = cf_hedge = cf_farm = 0.0
@@ -7847,7 +7847,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                     for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
                                 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
                         acc_stats["hedge"] += parse_currency(ev.get(col))
-                    for di in range(1, 51):
+                    for di in range(1, 61):
                         acc_stats["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
 
             # Payouts from ALL evals filtered by individual payout date
@@ -7935,7 +7935,7 @@ def _build_kyc_portfolio_payload(client_id, from_date, to_date, is_bef, admin_fi
                     for col in ['Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1', 'Hedge Result 4.1',
                                 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7']:
                         pf["hedge"] += parse_currency(ev.get(col))
-                    for di in range(1, 51):
+                    for di in range(1, 61):
                         pf["farming"] += parse_currency(ev.get(f'Hedge Day {di}'))
 
                 if any(s in status for s in ['passed', 'funded']):
@@ -9378,9 +9378,9 @@ def export_client_csv():
         'Payout 3', 'Date 3', 'Payout 4', 'Date 4',
         'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
         'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
-    ] + [f'Prop Day {i}' for i in range(1, 35)] \
-      + [f'Prop Progress {i}' for i in range(1, 35)] \
-      + [f'Hedge Day {i}' for i in range(1, 35)]
+    ] + [f'Prop Day {i}' for i in range(1, 61)] \
+      + [f'Prop Progress {i}' for i in range(1, 61)] \
+      + [f'Hedge Day {i}' for i in range(1, 61)]
 
     # Build column list: dashboard order first, then extras (skip Account Number)
     all_keys = set()
@@ -9989,7 +9989,7 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                 has_day_value_local = any(
                     abs(_parse_nonzero(ev.get(f'Hedge Day {i}', ''))) > 1e-9
                     or abs(_parse_nonzero(ev.get(f'Prop Day {i}', ''))) > 1e-9
-                    for i in range(1, 51)
+                    for i in range(1, 61)
                 )
                 has_hedge_text_marker = False
                 for c in _hedge_result_cols:
@@ -10157,7 +10157,7 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                             'Hedge Result 1.1', 'Hedge Result 2.1', 'Hedge Result 3.1',
                             'Hedge Result 4.1', 'Hedge Result 5.1', 'Hedge Result 6', 'Hedge Result 7',
                         )
-                        _farming_cols = tuple(f'Hedge Day {i}' for i in range(1, 51))
+                        _farming_cols = tuple(f'Hedge Day {i}' for i in range(1, 61))
                         for _c in (_funded_cols + _farming_cols):
                             _v = str(ev.get(_c, '') or '').strip().lower()
                             if _v and any(tok in _v for tok in _weekday_tokens):
@@ -10171,7 +10171,7 @@ def run_quality_scan(target_client=None, day_marker_strict=None):
                     _pass_propday_weekday_ok = False
                     if status_p1 == 'pass' and status_p2 == 'pass' and not has_hedge_value_local:
                         try:
-                            for _i in range(1, 51):
+                            for _i in range(1, 61):
                                 _v = str(ev.get(f'Prop Day {_i}', '') or '').strip().lower()
                                 if not _v:
                                     continue
@@ -13211,7 +13211,7 @@ def update_data():
                     'Hedge Result 6', 'Hedge Result 7',
                 }
                 # Include farming Hedge Day / Prop Day fields (push-sourced)
-                for _i in range(1, 51):
+                for _i in range(1, 61):
                     PUSH_SOURCED_KEYS.add(f'Hedge Day {_i}')
                     PUSH_SOURCED_KEYS.add(f'Prop Day {_i}')
                 # Payout/date fields that should only be overwritten by explicit user edits

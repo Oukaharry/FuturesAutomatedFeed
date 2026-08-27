@@ -2631,7 +2631,7 @@
                             <th colspan="4" class="group-header group-header-blue">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
                             <th colspan="29" class="group-header group-header-orange">FUNDED PHASE</th>
-                            <th colspan="35" class="group-header group-header-purple">FARMING PHASE</th>
+                            <th colspan="180" class="group-header group-header-purple">FARMING PHASE</th>
                         </tr>
                         <tr>
                             <!-- EVALUATION INFO (0-3) -->
@@ -2683,8 +2683,7 @@
                             <th class="sub-header-orange">Payout 8</th>
                             <th class="sub-header-orange">Date 8</th>
 
-                            <!-- FARMING PHASE (35-65 -> 35-125) -->
-                            <!-- Dynamic Day Columns Header Script? No, hardcoded to 30 days now -->
+                            <!-- FARMING PHASE: Prop Day / Prop Progress / Hedge Day 1-60 -->
                             <th class="sub-header-purple">Prop Day 1</th><th class="sub-header-purple">Prop Progress 1</th><th class="sub-header-purple">Hedge Day 1</th>
                             <th class="sub-header-purple">Prop Day 2</th><th class="sub-header-purple">Prop Progress 2</th><th class="sub-header-purple">Hedge Day 2</th>
                             <th class="sub-header-purple">Prop Day 3</th><th class="sub-header-purple">Prop Progress 3</th><th class="sub-header-purple">Hedge Day 3</th>
@@ -2735,10 +2734,20 @@
                             <th class="sub-header-purple">Prop Day 48</th><th class="sub-header-purple">Prop Progress 48</th><th class="sub-header-purple">Hedge Day 48</th>
                             <th class="sub-header-purple">Prop Day 49</th><th class="sub-header-purple">Prop Progress 49</th><th class="sub-header-purple">Hedge Day 49</th>
                             <th class="sub-header-purple">Prop Day 50</th><th class="sub-header-purple">Prop Progress 50</th><th class="sub-header-purple">Hedge Day 50</th>
+                            <th class="sub-header-purple">Prop Day 51</th><th class="sub-header-purple">Prop Progress 51</th><th class="sub-header-purple">Hedge Day 51</th>
+                            <th class="sub-header-purple">Prop Day 52</th><th class="sub-header-purple">Prop Progress 52</th><th class="sub-header-purple">Hedge Day 52</th>
+                            <th class="sub-header-purple">Prop Day 53</th><th class="sub-header-purple">Prop Progress 53</th><th class="sub-header-purple">Hedge Day 53</th>
+                            <th class="sub-header-purple">Prop Day 54</th><th class="sub-header-purple">Prop Progress 54</th><th class="sub-header-purple">Hedge Day 54</th>
+                            <th class="sub-header-purple">Prop Day 55</th><th class="sub-header-purple">Prop Progress 55</th><th class="sub-header-purple">Hedge Day 55</th>
+                            <th class="sub-header-purple">Prop Day 56</th><th class="sub-header-purple">Prop Progress 56</th><th class="sub-header-purple">Hedge Day 56</th>
+                            <th class="sub-header-purple">Prop Day 57</th><th class="sub-header-purple">Prop Progress 57</th><th class="sub-header-purple">Hedge Day 57</th>
+                            <th class="sub-header-purple">Prop Day 58</th><th class="sub-header-purple">Prop Progress 58</th><th class="sub-header-purple">Hedge Day 58</th>
+                            <th class="sub-header-purple">Prop Day 59</th><th class="sub-header-purple">Prop Progress 59</th><th class="sub-header-purple">Hedge Day 59</th>
+                            <th class="sub-header-purple">Prop Day 60</th><th class="sub-header-purple">Prop Progress 60</th><th class="sub-header-purple">Hedge Day 60</th>
                         </tr>
                     </thead>
                     <tbody id="evaluations-body">
-                        <tr class="eval-spinner-row"><td colspan="180"><div class="spinner-inner">
+                        <tr class="eval-spinner-row"><td colspan="225"><div class="spinner-inner">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                             Loading evaluations&hellip;
                         </div></td></tr>
@@ -4405,7 +4414,7 @@
             ].forEach(k => fd += _numVal(ev[k]));
             if (status === 'Completed') {
                 let pay = 0; for (let i = 1; i <= 8; i++) pay += _numVal(ev['Payout ' + i]);
-                let days = 0; for (let i = 1; i <= 50; i++) days += _numVal(ev['Hedge Day ' + i]);
+                let days = 0; for (let i = 1; i <= 60; i++) days += _numVal(ev['Hedge Day ' + i]);
                 return formatCurrencyValue(pay + fd + p1 - fee - actFee + days);
             }
             if (status === 'Fail') return formatCurrencyValue(fd + p1 - fee - actFee);
@@ -5242,7 +5251,7 @@
 
         function generateDayColumns(ev, cell, index, currentRowNum, readOnly=false){
             let html = '';
-            for (let i = 1; i <= 50; i++) {
+            for (let i = 1; i <= 60; i++) {
                 const propDayKey = `Prop Day ${i}`;
                 const hedgeDayKey = `Hedge Day ${i}`;
                 
@@ -5538,7 +5547,7 @@
                     ['Hedge Result 1','Hedge Result 2','Hedge Result 3','Hedge Result 4','Hedge Result 5',
                      'Hedge Result 1.1','Hedge Result 2.1','Hedge Result 3.1','Hedge Result 4.1','Hedge Result 5.1',
                      'Hedge Result 6','Hedge Result 7'].forEach(c => { f.hedge += pc(ev[c]); });
-                    for (let i=1;i<=50;i++) f.farming += pc(ev['Hedge Day '+i]);
+                    for (let i=1;i<=60;i++) f.farming += pc(ev['Hedge Day '+i]);
                 }
                 for (let i=1;i<=9;i++) {
                     const amt = pc(ev['Payout '+i]);
@@ -5748,7 +5757,7 @@
                             const p1Hedges = rnd2(P1_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
                             const fundedHedges = rnd2(FUNDED_COLS.reduce((s, c) => s + pcN(ev[c]), 0));
                             let hedgeDays = 0;
-                            for (let di = 1; di <= 50; di++) hedgeDays += pcN(ev['Hedge Day ' + di]);
+                            for (let di = 1; di <= 60; di++) hedgeDays += pcN(ev['Hedge Day ' + di]);
                             hedgeDays = rnd2(hedgeDays);
 
                             const fee = pcN(ev['Fee']);

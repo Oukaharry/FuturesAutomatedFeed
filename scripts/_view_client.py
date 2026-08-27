@@ -44,9 +44,9 @@ DASHBOARD_COLUMN_ORDER = [
     'Payout 5', 'Date 5', 'Payout 6', 'Date 6',
     'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
     # ── FARMING PHASE ──
-] + [f'Prop Day {i}' for i in range(1, 35)] \
-  + [f'Prop Progress {i}' for i in range(1, 35)] \
-  + [f'Hedge Day {i}' for i in range(1, 35)]
+] + [f'Prop Day {i}' for i in range(1, 61)] \
+  + [f'Prop Progress {i}' for i in range(1, 61)] \
+  + [f'Hedge Day {i}' for i in range(1, 61)]
 
 # Key columns for default terminal display (subset — skip farming bulk)
 KEY_COLUMNS = [

@@ -109,7 +109,7 @@ for ev in evals:
     if not match:
         continue
     prop_days = {}
-    for i in range(1, 51):
+    for i in range(1, 61):
         v = str(ev.get(f"Prop Day {i}", "") or "").strip()
         if v:
             prop_days[i] = v

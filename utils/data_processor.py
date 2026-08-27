@@ -581,7 +581,7 @@ def calculate_derived_metrics(df):
         fee = get_val(row, 'Fee')
         activation_fee = get_val(row, 'Activation Fee')
         
-        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 51)])
+        sum_hedge_days = sum([get_val(row, f'Hedge Day {i}') for i in range(1, 61)])
         
         if status == 'Completed':
             # SUM(AB,AD,AF,AH, T,U,V,W,X,Y,Z, I,J,K,L,M) - D - P + SUM(AL...BN)
@@ -980,7 +980,7 @@ def fetch_evaluations(sheet_url):
                     'Payout 7', 'Date 7', 'Payout 8', 'Date 8',
                     'Farming Net'
                 ]
-                for i in range(1, 51):
+                for i in range(1, 61):
                     allowed_columns.append(f'Prop Day {i}')
                     allowed_columns.append(f'Hedge Day {i}')
                 
@@ -1133,7 +1133,7 @@ def calculate_statistics(evaluations, mt5_deals=None, mt5_account=None, xlsx_not
     # This matches the Google Sheets formula the Evaluations tab uses for Farming
     # Results: =SUM(Evaluations!AM:AM, AO:AO, AQ:AQ, ... DA:DA) — i.e. every
     # "Hedge Day N" column only (no Hedge Result 6/7, no Farming Net override).
-    HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 51)]
+    HEDGE_DAY_COLS = [f'Hedge Day {i}' for i in range(1, 61)]
 
     for ev in evaluations:
         # Soft-deleted rows are kept for audit/history but must not contribute
