@@ -1439,7 +1439,7 @@ class MT5DataPusher:
                 if fa_type != 'funded':
                     continue
                 ev = evaluations[fa_idx]
-                for day_num in range(1, 51):
+                for day_num in range(1, 61):
                     note = ev.get(f'Hedge Day {day_num} Note', '')
                     if note and 'Close:' in str(note):
                         # Extract close time signature: "Open: ... | Close: 2026-01-21 16:00"
@@ -1655,7 +1655,7 @@ class MT5DataPusher:
         ev = evaluations[eval_idx] if eval_idx < len(evaluations) else {}
         
         # Find the first empty farming day slot
-        for day_num in range(1, 51):
+        for day_num in range(1, 61):
             field_name = f"Hedge Day {day_num}"
             existing_value = ev.get(field_name)
             
@@ -1664,7 +1664,7 @@ class MT5DataPusher:
                 return day_num
         
         # All slots full, return the last one
-        return 50
+        return 60
     
     def _process_deals_legacy(self, deals, evaluations):
         """Legacy deal processing for backward compatibility."""
@@ -5305,7 +5305,7 @@ class TradeOpssAIApp:
         has_farming_marker = bool(self._cell(ev.get("Prop Day 1")))
         has_hedge_day_data = False
         if has_farming_marker:
-            for i in range(1, 35):
+            for i in range(1, 61):
                 val = self._cell(ev.get(f"Hedge Day {i}"))
                 if val and val not in ("—", "-"):
                     has_hedge_day_data = True
@@ -5471,14 +5471,14 @@ class TradeOpssAIApp:
         elif current_phase == "Double Dip":
             return [f"Hedge Result {i}.1" for i in range(1, 8)]
         elif current_phase == "Farming":
-            return [f"Hedge Day {i}" for i in range(1, 35)]
+            return [f"Hedge Day {i}" for i in range(1, 61)]
         return []
 
     # All possible field sets for day placeholder scanning (phase → fields)
     _ALL_PHASE_FIELD_SETS = [
         ("Challenge",  [f"Hedge Result {i}" for i in range(1, 6)]),
         ("Funded",     [f"Hedge Result {i}.1" for i in range(1, 8)]),
-        ("Farming",    [f"Hedge Day {i}" for i in range(1, 35)]),
+        ("Farming",    [f"Hedge Day {i}" for i in range(1, 61)]),
     ]
 
     def _count_completed_trades(self, ev, current_phase):
@@ -6248,7 +6248,7 @@ class TradeOpssAIApp:
         elif current_phase in ("Funded", "Payout 1", "Payout 2", "Payout 3", "Payout 4"):
             fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
         elif current_phase == "Farming":
-            fields = [f"Hedge Day {i}" for i in range(1, 35)]
+            fields = [f"Hedge Day {i}" for i in range(1, 61)]
         elif current_phase == "Double Dip":
             fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
 

@@ -18,7 +18,7 @@ for idx, ev in enumerate(evals):
         continue
     prop_days = {}
     hedge_days = {}
-    for i in range(1, 51):
+    for i in range(1, 61):
         pv = str(ev.get(f"Prop Day {i}", "") or "").strip()
         hv = str(ev.get(f"Hedge Day {i}", "") or "").strip()
         if pv:

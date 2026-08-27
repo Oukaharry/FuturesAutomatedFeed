@@ -80,7 +80,7 @@ def has_day_placeholder_for_weekday(ev: dict, weekday: int) -> bool:
 
     fields = [f"Hedge Result {i}" for i in range(1, 6)]
     fields += [f"Hedge Result {i}.1" for i in range(1, 8)]
-    fields += [f"Hedge Day {i}" for i in range(1, 35)]
+    fields += [f"Hedge Day {i}" for i in range(1, 61)]
 
     found_any = False
     for field in fields:
