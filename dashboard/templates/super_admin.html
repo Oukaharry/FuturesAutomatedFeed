@@ -1669,60 +1669,58 @@
                     if(tree) tree.innerHTML = `<div class="alert alert-danger">Failed to load user hierarchy: ${err.message}</div>`;
                 }
 
-                try {
-                    const fData = await fetchJsonRetry(totalsUrl, applyTotalsToDom);
-                    if(fData.status === 'success' && fData.totals) {
-                        try {
+                const loadTotals = (async () => {
+                    try {
+                        const fData = await fetchJsonRetry(totalsUrl, applyTotalsToDom);
+                        if (fData.status === 'success' && fData.totals) {
                             applyTotalsToDom(fData);
                             debugLog("Totals Updated");
-                        } catch(e) {
-                            debugLog("Error updating DOM with totals: " + e.message, 'error');
                         }
+                        if (fData.clients && fData.clients.length) {
+                            debugLog("Clients breakdown data loaded: " + clientsBreakdownData.length + " clients");
+                        }
+                    } catch (err) {
+                        debugLog("Totals Load Error: " + err.message, 'error');
+                        const p = document.getElementById('grand-total-payouts');
+                        const v = document.getElementById('grand-ev');
+                        if (p) p.textContent = 'Error';
+                        if (v) v.textContent = 'Error';
                     }
-                    if(fData.clients && fData.clients.length) {
-                        debugLog("Clients breakdown data loaded: " + clientsBreakdownData.length + " clients");
-                    }
-                } catch (err) {
-                    debugLog("Totals Load Error: " + err.message, 'error');
-                    console.error("Totals Load Error:", err);
-                    document.getElementById('grand-total-payouts').textContent = 'Error';
-                    document.getElementById('grand-ev').textContent = 'Error';
-                }
-
-                try {
-                    const sData = await fetchJsonRetry(splitsUrl);
-                    if (sData.status === 'success') {
+                })();
+                const loadProfitSplits = (async () => {
+                    try {
+                        const sData = await fetchJsonRetry(splitsUrl);
+                        if (sData.status === 'success') {
+                            const el = document.getElementById('grand-profit-split');
+                            if (el) el.textContent = formatCurrency(sData.total);
+                            if (sData.clients) profitSplitsData = sData.clients;
+                            debugLog("Profit splits loaded: total=" + sData.total);
+                        }
+                    } catch (err) {
                         const el = document.getElementById('grand-profit-split');
-                        if (el) el.textContent = formatCurrency(sData.total);
-                        if (sData.clients) {
-                            profitSplitsData = sData.clients;
-                        }
-                        debugLog("Profit splits loaded: total=" + sData.total);
+                        if (el) el.textContent = 'Error';
+                        debugLog("Profit Splits Load Error: " + err.message, 'error');
                     }
-                } catch (err) {
-                    const el = document.getElementById('grand-profit-split');
-                    if (el) el.textContent = 'Error';
-                    debugLog("Profit Splits Load Error: " + err.message, 'error');
-                }
-
-                try {
-                    const aData = await fetchJsonRetry(avgSplitsUrl);
-                    if (aData.status === 'success') {
+                })();
+                const loadAvgSplits = (async () => {
+                    try {
+                        const aData = await fetchJsonRetry(avgSplitsUrl);
+                        if (aData.status === 'success') {
+                            const el = document.getElementById('grand-avg-profit-split');
+                            if (el) {
+                                const v = (aData.total !== null && aData.total !== undefined) ? aData.total : 0;
+                                el.textContent = (aData.paid_clients && aData.paid_clients > 0) ? formatCurrency(v) : '—';
+                            }
+                            if (aData.clients) avgProfitSplitsData = aData.clients;
+                            debugLog("Avg profit splits loaded: paid=" + (aData.paid_clients || 0));
+                        }
+                    } catch (err) {
                         const el = document.getElementById('grand-avg-profit-split');
-                        if (el) {
-                            const v = (aData.total !== null && aData.total !== undefined) ? aData.total : 0;
-                            el.textContent = (aData.paid_clients && aData.paid_clients > 0) ? formatCurrency(v) : '—';
-                        }
-                        if (aData.clients) {
-                            avgProfitSplitsData = aData.clients;
-                        }
-                        debugLog("Avg profit splits loaded: paid=" + (aData.paid_clients || 0));
+                        if (el) el.textContent = 'Error';
+                        debugLog("Avg Profit Splits Load Error: " + err.message, 'error');
                     }
-                } catch (err) {
-                    const el = document.getElementById('grand-avg-profit-split');
-                    if (el) el.textContent = 'Error';
-                    debugLog("Avg Profit Splits Load Error: " + err.message, 'error');
-                }
+                })();
+                await Promise.all([loadTotals, loadProfitSplits, loadAvgSplits]);
             })();
         }
 

@@ -55,6 +55,8 @@ def clear_financial_overview_cache():
         invalidate_prefix('super_admin_totals:')
         invalidate_prefix('super_admin_totals_summary:')
         invalidate_prefix('super_admin_totals_clients:')
+        invalidate_prefix('super_admin_totals_bundle:')
+        invalidate_prefix('super_admin_splits_bundle:')
         invalidate_prefix('super_admin_profit_splits:')
         invalidate_prefix('super_admin_avg_profit_splits:')
     except Exception:
@@ -1705,12 +1707,8 @@ def calculate_trader_stats(profile_filter=None):
     return list(traders_stats.values())
 
 
-def build_super_admin_totals_summary(profile_filter=None, excluded_clients=None):
-    """Aggregate Super Admin stat cards from the same per-client stats as the breakdown table."""
-    excluded = {str(x).strip() for x in (excluded_clients or []) if x is not None and str(x).strip()}
-    clients = get_client_performance_stats(profile_filter)
-    clients = [c for c in clients if str(c.get('client_id') or '').strip() not in excluded]
-
+def aggregate_super_admin_totals(clients):
+    """Sum per-client performance rows into Super Admin stat-card totals."""
     t_pay = sum(c.get('payouts', 0) for c in clients)
     t_dep = sum(c.get('deposits', 0) for c in clients)
     t_fees = sum(c.get('fees', 0) for c in clients)
@@ -1738,6 +1736,14 @@ def build_super_admin_totals_summary(profile_filter=None, excluded_clients=None)
         'expected_value': round(ev, 2),
         'ev_per_day': round(ev_day, 2),
     }
+
+
+def build_super_admin_totals_summary(profile_filter=None, excluded_clients=None):
+    """Aggregate Super Admin stat cards from the same per-client stats as the breakdown table."""
+    excluded = {str(x).strip() for x in (excluded_clients or []) if x is not None and str(x).strip()}
+    clients = get_client_performance_stats(profile_filter)
+    clients = [c for c in clients if str(c.get('client_id') or '').strip() not in excluded]
+    return aggregate_super_admin_totals(clients)
 
 
 @cache_result(ttl=300)

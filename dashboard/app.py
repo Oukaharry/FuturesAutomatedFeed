@@ -4650,7 +4650,40 @@ def get_hierarchy():
         )
     return jsonify(filtered)
 
-from dashboard.financial_overview import calculate_all_financials, build_super_admin_totals_summary
+from dashboard.financial_overview import (
+    calculate_all_financials,
+    build_super_admin_totals_summary,
+    aggregate_super_admin_totals,
+    get_client_performance_stats,
+)
+
+
+def _super_admin_cache_response(cache_key, ttl, compute_fn, payload_fn):
+    """Return cached JSON; 503 only on a true cold miss. Serves stale while refreshing."""
+    from dashboard.shared_cache import get_or_compute, cache_get_stale, CACHE_PENDING
+
+    result = get_or_compute(cache_key, ttl, compute_fn)
+    if result is CACHE_PENDING:
+        result = cache_get_stale(cache_key)
+        if result is None:
+            return jsonify({'status': 'computing'}), 503
+    return jsonify(payload_fn(result))
+
+
+def _build_super_admin_totals_bundle(profile_filter):
+    """One pass over client performance stats for both stat cards and breakdown."""
+    excluded_sa = _get_super_admin_stats_excluded_set()
+    clients = get_client_performance_stats(profile_filter)
+    clients = [c for c in clients if str(c.get('client_id') or '').strip() not in excluded_sa]
+    return {'totals': aggregate_super_admin_totals(clients), 'clients': clients}
+
+
+def _build_super_admin_splits_bundle(profile_filter):
+    """Profit split + avg profit split in one cache entry (one global heavy lock)."""
+    return {
+        'profit_splits': _build_profit_splits_payload(profile_filter),
+        'avg_profit_splits': _build_avg_profit_splits_payload(profile_filter),
+    }
 
 
 def _build_super_admin_summary(profile_filter):
@@ -4691,48 +4724,19 @@ def get_super_admin_totals():
     if user_type == 'kwok_admin':
         profile_filter = 'ALL'
 
-    from dashboard.shared_cache import (
-        get_or_compute, cache_get_stale, SUPER_ADMIN_TOTALS_CACHE_TTL, CACHE_PENDING,
+    from dashboard.shared_cache import SUPER_ADMIN_STATS_CACHE_TTL
+
+    cache_key = f"super_admin_totals_bundle:v3:{profile_filter}"
+    return _super_admin_cache_response(
+        cache_key,
+        SUPER_ADMIN_STATS_CACHE_TTL,
+        lambda: _build_super_admin_totals_bundle(profile_filter),
+        lambda bundle: {
+            'status': 'success',
+            'totals': bundle['totals'],
+            'clients': bundle.get('clients') or [],
+        },
     )
-
-    # v2: summary must use get_client_performance_stats (v1 cached all-zero fast-path totals).
-    summary_key = f"super_admin_totals_summary:v2:{profile_filter}"
-    clients_key = f"super_admin_totals_clients:v2:{profile_filter}"
-
-    summary = get_or_compute(
-        summary_key,
-        SUPER_ADMIN_TOTALS_CACHE_TTL,
-        lambda: _build_super_admin_summary(profile_filter),
-    )
-    clients_result = get_or_compute(
-        clients_key,
-        SUPER_ADMIN_TOTALS_CACHE_TTL,
-        lambda: _build_super_admin_clients(profile_filter),
-    )
-
-    if summary is CACHE_PENDING:
-        stale_summary = cache_get_stale(summary_key)
-        if stale_summary is not None:
-            summary = stale_summary
-        else:
-            return jsonify({
-                'status': 'computing',
-                'clients': [],
-            }), 503
-
-    clients = []
-    if clients_result is CACHE_PENDING:
-        stale_clients = cache_get_stale(clients_key)
-        if stale_clients is not None:
-            clients = stale_clients
-    else:
-        clients = clients_result or []
-
-    return jsonify({
-        'status': 'success',
-        'totals': summary,
-        'clients': clients,
-    })
 
 def _build_profit_splits_payload(profile_filter):
     """Per-client current profit split (in progress) for the super admin dashboard."""
@@ -4910,12 +4914,40 @@ def get_profit_splits():
     if session_user.get('user_type') == 'kwok_admin':
         profile_filter = 'ALL'
 
-    from dashboard.shared_cache import get_or_compute, PROFIT_SPLITS_CACHE_TTL
-    return _cached_json_response(get_or_compute(
-        f"super_admin_profit_splits:{profile_filter}",
-        PROFIT_SPLITS_CACHE_TTL,
-        lambda: _build_profit_splits_payload(profile_filter),
-    ))
+    from dashboard.shared_cache import SUPER_ADMIN_STATS_CACHE_TTL
+
+    cache_key = f"super_admin_splits_bundle:v1:{profile_filter}"
+    return _super_admin_cache_response(
+        cache_key,
+        SUPER_ADMIN_STATS_CACHE_TTL,
+        lambda: _build_super_admin_splits_bundle(profile_filter),
+        lambda bundle: bundle['profit_splits'],
+    )
+
+
+@app.route('/api/super_admin/avg_profit_splits')
+@require_session
+def get_avg_profit_splits():
+    """Return per-client average profit split for completed periods only."""
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
+
+    profile_filter = request.args.get('profile', 'ALL').upper()
+    if session_user.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
+    if session_user.get('user_type') == 'kwok_admin':
+        profile_filter = 'ALL'
+
+    from dashboard.shared_cache import SUPER_ADMIN_STATS_CACHE_TTL
+
+    cache_key = f"super_admin_splits_bundle:v1:{profile_filter}"
+    return _super_admin_cache_response(
+        cache_key,
+        SUPER_ADMIN_STATS_CACHE_TTL,
+        lambda: _build_super_admin_splits_bundle(profile_filter),
+        lambda bundle: bundle['avg_profit_splits'],
+    )
 
 
 def _build_avg_profit_splits_payload(profile_filter):
@@ -5022,28 +5054,6 @@ def _build_avg_profit_splits_payload(profile_filter):
     }
 
 
-@app.route('/api/super_admin/avg_profit_splits')
-@require_session
-def get_avg_profit_splits():
-    """Return per-client average profit split for completed periods only."""
-    session_user = request.session_user
-    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
-        return jsonify({"status": "error", "message": "Admin access required"}), 403
-
-    profile_filter = request.args.get('profile', 'ALL').upper()
-    if session_user.get('user_type') == 'bef_admin':
-        profile_filter = 'BEF'
-    if session_user.get('user_type') == 'kwok_admin':
-        profile_filter = 'ALL'
-
-    from dashboard.shared_cache import get_or_compute, AVG_PROFIT_SPLITS_CACHE_TTL
-    return _cached_json_response(get_or_compute(
-        f"super_admin_avg_profit_splits:{profile_filter}",
-        AVG_PROFIT_SPLITS_CACHE_TTL,
-        lambda: _build_avg_profit_splits_payload(profile_filter),
-    ))
-
-
 def _start_optional_admin_cache_warm():
     """One cross-worker leader pre-warms super-admin caches sequentially after boot."""
     def _run():
@@ -5051,8 +5061,7 @@ def _start_optional_admin_cache_warm():
         time.sleep(random.uniform(5, 20))
         from dashboard.shared_cache import (
             cache_get, run_heavy_cache_job, try_claim_compute, release_claim,
-            SUPER_ADMIN_TOTALS_CACHE_TTL, PROFIT_SPLITS_CACHE_TTL,
-            AVG_PROFIT_SPLITS_CACHE_TTL, HIERARCHY_CACHE_TTL,
+            SUPER_ADMIN_STATS_CACHE_TTL, HIERARCHY_CACHE_TTL,
         )
         leader_key = 'cache-warm::global-leader'
         if not try_claim_compute(leader_key, claim_ttl=7200):
@@ -5061,14 +5070,10 @@ def _start_optional_admin_cache_warm():
             with app.app_context():
                 jobs = (
                     (HIERARCHY_ENRICHED_CACHE_KEY, HIERARCHY_CACHE_TTL, _build_hierarchy_enriched_full),
-                    ('super_admin_totals_summary:v2:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
-                     lambda: _build_super_admin_summary('ALL')),
-                    ('super_admin_totals_clients:v2:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
-                     lambda: _build_super_admin_clients('ALL')),
-                    ('super_admin_profit_splits:ALL', PROFIT_SPLITS_CACHE_TTL,
-                     lambda: _build_profit_splits_payload('ALL')),
-                    ('super_admin_avg_profit_splits:ALL', AVG_PROFIT_SPLITS_CACHE_TTL,
-                     lambda: _build_avg_profit_splits_payload('ALL')),
+                    ('super_admin_totals_bundle:v3:ALL', SUPER_ADMIN_STATS_CACHE_TTL,
+                     lambda: _build_super_admin_totals_bundle('ALL')),
+                    ('super_admin_splits_bundle:v1:ALL', SUPER_ADMIN_STATS_CACHE_TTL,
+                     lambda: _build_super_admin_splits_bundle('ALL')),
                 )
                 for key, ttl, fn in jobs:
                     if cache_get(key) is not None:
