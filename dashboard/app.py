@@ -4631,7 +4631,12 @@ def get_hierarchy():
         _build_hierarchy_enriched_full,
     )
     if enriched_full is CACHE_PENDING:
-        return _cached_json_response(CACHE_PENDING)
+        from dashboard.shared_cache import cache_get_stale
+        stale = cache_get_stale(HIERARCHY_ENRICHED_CACHE_KEY)
+        if stale is not None:
+            enriched_full = stale
+        else:
+            return _cached_json_response(CACHE_PENDING)
 
     filtered = filter_hierarchy_tree(enriched_full, user_type, user_identifier)
     if not filtered.get('admins') or all(
@@ -4645,46 +4650,41 @@ def get_hierarchy():
         )
     return jsonify(filtered)
 
-from dashboard.financial_overview import calculate_all_financials
+from dashboard.financial_overview import calculate_all_financials, build_super_admin_totals_summary
+
+
+def _empty_super_admin_totals():
+    return {
+        'total_payouts': 0.0,
+        'total_deposits': 0.0,
+        'total_fees': 0.0,
+        'total_net_profit': 0.0,
+        'active_accounts': 0,
+        'completed_accounts': 0,
+        'failed_accounts': 0,
+        'total_hedge': 0.0,
+        'total_farming': 0.0,
+        'expected_value': 0.0,
+        'ev_per_day': 0.0,
+    }
+
+
+def _build_super_admin_summary(profile_filter):
+    excluded_sa = _get_super_admin_stats_excluded_set()
+    return build_super_admin_totals_summary(profile_filter, excluded_sa)
+
+
+def _build_super_admin_clients(profile_filter):
+    excluded_sa = _get_super_admin_stats_excluded_set()
+    clients = get_client_performance_stats(profile_filter)
+    return [c for c in clients if str(c.get('client_id') or '').strip() not in excluded_sa]
 
 
 def _build_super_admin_totals_payload(profile_filter, user_type):
-    clients = get_client_performance_stats(profile_filter)
-    excluded_sa = _get_super_admin_stats_excluded_set()
-    clients = [c for c in clients if str(c.get('client_id') or '').strip() not in excluded_sa]
-
-    t_pay = sum(c.get('payouts', 0) for c in clients)
-    t_dep = sum(c.get('deposits', 0) for c in clients)
-    t_fees = sum(c.get('fees', 0) for c in clients)
-    t_net = sum(c.get('net_profit', 0) for c in clients)
-    t_hedge = sum(c.get('hedge_profit', 0) for c in clients)
-    t_farming = sum(c.get('farming_profit', 0) for c in clients)
-    t_active = sum(c.get('active', 0) for c in clients)
-    t_passed = sum(c.get('passed', 0) for c in clients)
-    t_failed = sum(c.get('failed', 0) for c in clients)
-    t_ended = sum(c.get('ended', 0) for c in clients)
-    t_duration = sum(c.get('total_duration_days', 0) for c in clients)
-
-    ev = t_net / t_ended if t_ended > 0 else 0.0
-    ev_day = t_net / t_duration if t_duration > 0 else 0.0
-
-    return {
-        "status": "success",
-        "totals": {
-            "total_payouts": round(t_pay, 2),
-            "total_deposits": round(t_dep, 2),
-            "total_fees": round(t_fees, 2),
-            "total_net_profit": round(t_net, 2),
-            "active_accounts": t_active,
-            "completed_accounts": t_passed,
-            "failed_accounts": t_failed,
-            "total_hedge": round(t_hedge, 2),
-            "total_farming": round(t_farming, 2),
-            "expected_value": round(ev, 2),
-            "ev_per_day": round(ev_day, 2),
-        },
-        "clients": clients,
-    }
+    """Legacy combined payload — prefer summary + clients caches separately."""
+    totals = _build_super_admin_summary(profile_filter)
+    clients = _build_super_admin_clients(profile_filter)
+    return {'status': 'success', 'totals': totals, 'clients': clients}
 
 
 @app.route('/api/super_admin/totals')
@@ -4707,15 +4707,53 @@ def get_super_admin_totals():
     if user_type == 'kwok_admin':
         profile_filter = 'ALL'
 
-    from dashboard.shared_cache import get_or_compute, SUPER_ADMIN_TOTALS_CACHE_TTL
-
-    cache_key = f"super_admin_totals:{user_type}:{profile_filter}"
-    response_data = get_or_compute(
-        cache_key,
-        SUPER_ADMIN_TOTALS_CACHE_TTL,
-        lambda: _build_super_admin_totals_payload(profile_filter, user_type),
+    from dashboard.shared_cache import (
+        get_or_compute, cache_get_stale, SUPER_ADMIN_TOTALS_CACHE_TTL, CACHE_PENDING,
     )
-    return _cached_json_response(response_data)
+
+    summary_key = f"super_admin_totals_summary:{profile_filter}"
+    clients_key = f"super_admin_totals_clients:{profile_filter}"
+
+    summary = get_or_compute(
+        summary_key,
+        SUPER_ADMIN_TOTALS_CACHE_TTL,
+        lambda: _build_super_admin_summary(profile_filter),
+    )
+    clients_result = get_or_compute(
+        clients_key,
+        SUPER_ADMIN_TOTALS_CACHE_TTL,
+        lambda: _build_super_admin_clients(profile_filter),
+    )
+
+    refreshing = False
+    if summary is CACHE_PENDING:
+        stale_summary = cache_get_stale(summary_key)
+        if stale_summary is not None:
+            summary = stale_summary
+            refreshing = True
+        else:
+            return jsonify({
+                'status': 'computing',
+                'totals': _empty_super_admin_totals(),
+                'clients': [],
+                'refreshing': True,
+            })
+
+    clients = []
+    if clients_result is CACHE_PENDING:
+        stale_clients = cache_get_stale(clients_key)
+        if stale_clients is not None:
+            clients = stale_clients
+            refreshing = True
+    else:
+        clients = clients_result or []
+
+    return jsonify({
+        'status': 'success',
+        'totals': summary,
+        'clients': clients,
+        'refreshing': refreshing,
+    })
 
 def _build_profit_splits_payload(profile_filter):
     """Per-client current profit split (in progress) for the super admin dashboard."""
@@ -5044,8 +5082,10 @@ def _start_optional_admin_cache_warm():
             with app.app_context():
                 jobs = (
                     (HIERARCHY_ENRICHED_CACHE_KEY, HIERARCHY_CACHE_TTL, _build_hierarchy_enriched_full),
-                    ('super_admin_totals:super_admin:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
-                     lambda: _build_super_admin_totals_payload('ALL', 'super_admin')),
+                    ('super_admin_totals_summary:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
+                     lambda: _build_super_admin_summary('ALL')),
+                    ('super_admin_totals_clients:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
+                     lambda: _build_super_admin_clients('ALL')),
                     ('super_admin_profit_splits:ALL', PROFIT_SPLITS_CACHE_TTL,
                      lambda: _build_profit_splits_payload('ALL')),
                     ('super_admin_avg_profit_splits:ALL', AVG_PROFIT_SPLITS_CACHE_TTL,

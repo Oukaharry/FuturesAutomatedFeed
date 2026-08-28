@@ -1616,6 +1616,29 @@
             loadData();
         }
 
+        function applyTotalsToDom(fData) {
+            if(fData.status !== 'success' && fData.status !== 'computing') return false;
+            if(!fData.totals) return false;
+            const t = fData.totals;
+            document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
+            document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
+            document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
+            document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
+            document.getElementById('grand-hedge').textContent = formatCurrency(t.total_hedge);
+            document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
+            document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
+            const elActive = document.getElementById('grand-active-accounts');
+            const elCompleted = document.getElementById('grand-completed-accounts');
+            const elFailed = document.getElementById('grand-failed-accounts');
+            if (elActive) elActive.textContent = t.active_accounts;
+            if (elCompleted) elCompleted.textContent = t.completed_accounts;
+            if (elFailed) elFailed.textContent = t.failed_accounts;
+            if(fData.clients) {
+                clientsBreakdownData = fData.clients;
+            }
+            return true;
+        }
+
         function loadData() {
             debugLog("Loading Data...");
             const p = document.getElementById('grand-total-payouts');
@@ -1647,31 +1670,16 @@
                 }
 
                 try {
-                    const fData = await fetchJsonRetry(totalsUrl);
-                    if(fData.status === 'success' && fData.totals) {
-                        const t = fData.totals;
+                    const fData = await fetchJsonRetry(totalsUrl, applyTotalsToDom);
+                    if((fData.status === 'success' || fData.status === 'computing') && fData.totals) {
                         try {
-                            document.getElementById('grand-total-payouts').textContent = formatCurrency(t.total_payouts);
-                            document.getElementById('grand-total-deposits').textContent = formatCurrency(t.total_deposits);
-                            document.getElementById('grand-total-fees').textContent = formatCurrency(t.total_fees);
-                            document.getElementById('grand-total-net').textContent = formatCurrency(t.total_net_profit || (t.total_payouts - t.total_deposits));
-                            document.getElementById('grand-hedge').textContent = formatCurrency(t.total_hedge);
-                            document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
-                            document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
-
-                            const elActive = document.getElementById('grand-active-accounts');
-                            const elCompleted = document.getElementById('grand-completed-accounts');
-                            const elFailed = document.getElementById('grand-failed-accounts');
-                            if (elActive) elActive.textContent = t.active_accounts;
-                            if (elCompleted) elCompleted.textContent = t.completed_accounts;
-                            if (elFailed) elFailed.textContent = t.failed_accounts;
-                            debugLog("Totals Updated");
+                            applyTotalsToDom(fData);
+                            debugLog("Totals Updated" + (fData.refreshing ? ' (refreshing)' : ''));
                         } catch(e) {
                             debugLog("Error updating DOM with totals: " + e.message, 'error');
                         }
                     }
-                    if(fData.clients) {
-                        clientsBreakdownData = fData.clients;
+                    if(fData.clients && fData.clients.length) {
                         debugLog("Clients breakdown data loaded: " + clientsBreakdownData.length + " clients");
                     }
                 } catch (err) {
@@ -1718,7 +1726,7 @@
             })();
         }
 
-        async function fetchJsonRetry(url, retries = 180, delayMs = 2000) {
+        async function fetchJsonRetry(url, onPartial, retries = 180, delayMs = 2000) {
             for (let i = 0; i < retries; i++) {
                 const r = await fetch(url, {credentials: 'include'});
                 if (r.status === 503) {
@@ -1726,7 +1734,15 @@
                     continue;
                 }
                 if (!r.ok) throw new Error('Failed to load (' + r.status + ')');
-                return r.json();
+                const data = await r.json();
+                if (typeof onPartial === 'function' && data.totals && (data.status === 'success' || data.status === 'computing')) {
+                    try { onPartial(data); } catch (e) { /* ignore partial UI errors */ }
+                }
+                if (data.status === 'computing' || data.refreshing) {
+                    await new Promise(res => setTimeout(res, delayMs));
+                    continue;
+                }
+                return data;
             }
             throw new Error('Timed out waiting for ' + url);
         }

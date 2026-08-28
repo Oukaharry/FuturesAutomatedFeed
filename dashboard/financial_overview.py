@@ -53,6 +53,8 @@ def clear_financial_overview_cache():
     try:
         from dashboard.shared_cache import invalidate_prefix
         invalidate_prefix('super_admin_totals:')
+        invalidate_prefix('super_admin_totals_summary:')
+        invalidate_prefix('super_admin_totals_clients:')
         invalidate_prefix('super_admin_profit_splits:')
         invalidate_prefix('super_admin_avg_profit_splits:')
     except Exception:
@@ -1701,6 +1703,124 @@ def calculate_trader_stats(profile_filter=None):
                         })
 
     return list(traders_stats.values())
+
+
+def build_super_admin_totals_summary(profile_filter=None, excluded_clients=None):
+    """Fast aggregate for Super Admin stat cards (uses stored statistics, not full eval recompute)."""
+    excluded = {str(x).strip() for x in (excluded_clients or []) if x is not None and str(x).strip()}
+    is_bef = profile_filter and profile_filter.upper() == 'BEF'
+    bef_hidden = {'lucid', 'apex', 'tradeday', 'toponefutures', 'fundedfuturesfamily', 'fff', 'the5ers', 'the5%ers'}
+
+    def _firm_hidden(firm_name):
+        if not is_bef:
+            return False
+        return (firm_name or '').strip().lower().replace(' ', '') in bef_hidden
+
+    def _money(v):
+        try:
+            if v is None:
+                return 0.0
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
+    t_pay = t_dep = t_fees = t_net = t_hedge = t_farm = 0.0
+    t_active = t_passed = t_failed = t_ended = t_duration = 0
+
+    for client_id, data in (_get_cached_clients() or {}).items():
+        if not data:
+            continue
+        identity = data.get('identity') or {}
+        real_name = (identity.get('name') or client_id or '').strip()
+        if real_name in excluded or str(client_id).strip() in excluded:
+            continue
+
+        source = get_client_profile(client_id, identity)
+        if profile_filter and profile_filter.upper() != 'ALL' and source != profile_filter.upper():
+            continue
+
+        stats = data.get('statistics') if isinstance(data.get('statistics'), dict) else {}
+        cf = stats.get('cashflow_inprogress') if isinstance(stats.get('cashflow_inprogress'), dict) else {}
+        hr = stats.get('hedging_review') if isinstance(stats.get('hedging_review'), dict) else {}
+        acct = data.get('account') if isinstance(data.get('account'), dict) else {}
+
+        payouts = _money(cf.get('payouts'))
+        fees = _money(cf.get('challenge_fees')) + _money(cf.get('activation_fee'))
+        hedge = _money(cf.get('hedging_results'))
+        farm = _money(cf.get('farming_results'))
+        disc = _money(hr.get('discrepancy'))
+        if cf:
+            net = _money(cf.get('net_profit'))
+            if net == 0.0 and (payouts or hedge or farm or fees or disc):
+                net = payouts + hedge + farm + disc - fees
+        else:
+            net = payouts + hedge + farm + disc - fees
+
+        try:
+            current_dep = float(acct.get('total_deposits') or hr.get('total_deposits') or 0)
+        except (TypeError, ValueError):
+            current_dep = 0.0
+        hist_dep = 0.0
+        for hist_acc in (hr.get('historical_accounts') or []):
+            try:
+                hist_dep += float(hist_acc.get('deposits', 0))
+            except (TypeError, ValueError):
+                pass
+        deposits = abs(current_dep) + abs(hist_dep)
+
+        active = passed = failed = ended = duration = 0
+        for ev in data.get('evaluations') or []:
+            if not isinstance(ev, dict):
+                continue
+            if _firm_hidden(ev.get('Prop Firm')):
+                continue
+            status = str(ev.get('Status') or '').lower()
+            status_p1_raw = str(ev.get('Status P1') or '').strip()
+            status_funded_raw = str(ev.get('Status') or '').strip()
+            if 'passed' in status or 'funded' in status:
+                passed += 1
+            elif 'failed' in status or 'breached' in status or 'blown' in status or 'fail' in status:
+                failed += 1
+            elif 'active' in status or 'phase' in status or 'running' in status or 'ongoing' in status or 'trading' in status or 'challenge' in status:
+                active += 1
+            is_p1_fail = status_p1_raw == 'Fail'
+            is_funded_fail = status_funded_raw == 'Fail'
+            is_funded_completed = status_funded_raw == 'Completed'
+            if is_p1_fail or is_funded_fail or is_funded_completed:
+                ended += 1
+                s_d = parse_date(ev.get('Date Started'))
+                e_d = parse_date(ev.get('Date Ended.1') if (is_funded_fail or is_funded_completed) else ev.get('Date Ended'))
+                if s_d and e_d:
+                    duration += max(0, (e_d - s_d).days)
+
+        t_pay += payouts
+        t_dep += deposits
+        t_fees += fees
+        t_net += net
+        t_hedge += hedge
+        t_farm += farm
+        t_active += active
+        t_passed += passed
+        t_failed += failed
+        t_ended += ended
+        t_duration += duration
+
+    ev = t_net / t_ended if t_ended > 0 else 0.0
+    ev_day = t_net / t_duration if t_duration > 0 else 0.0
+    return {
+        'total_payouts': round(t_pay, 2),
+        'total_deposits': round(t_dep, 2),
+        'total_fees': round(t_fees, 2),
+        'total_net_profit': round(t_net, 2),
+        'active_accounts': t_active,
+        'completed_accounts': t_passed,
+        'failed_accounts': t_failed,
+        'total_hedge': round(t_hedge, 2),
+        'total_farming': round(t_farm, 2),
+        'expected_value': round(ev, 2),
+        'ev_per_day': round(ev_day, 2),
+    }
+
 
 @cache_result(ttl=300)
 def get_client_performance_stats(profile_filter=None, start_date=None, end_date=None):
