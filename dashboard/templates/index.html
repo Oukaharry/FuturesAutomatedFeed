@@ -809,6 +809,26 @@
             background-clip: padding-box !important;
         }
 
+        #evaluations-table tbody tr.eval-row-selected {
+            box-shadow: inset 0 0 0 2px rgba(239, 68, 68, 0.75);
+        }
+
+        #evaluations-table .eval-select-btn.selected {
+            background: rgba(239, 68, 68, 0.22) !important;
+            border-radius: 4px;
+            box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.55);
+        }
+
+        #eval-delete-selected-btn:not(:disabled) {
+            opacity: 1 !important;
+            cursor: pointer !important;
+        }
+
+        #eval-delete-selected-btn:disabled {
+            opacity: 0.35 !important;
+            cursor: default !important;
+        }
+
         /* --------------------------------------------------------- */
         /* STICKY COLUMN 3: PROP FIRM */
         /* --------------------------------------------------------- */
@@ -2626,7 +2646,7 @@
                     <thead>
                         <tr>
                             <th rowspan="2">#</th>
-                            <th rowspan="2" style="width: 30px;">{% if user_type not in ('client', 'kwok_admin') %}🗑️{% endif %}</th>
+                            <th rowspan="2" style="width: 30px;">{% if user_type == 'super_admin' %}<button type="button" id="eval-delete-selected-btn" onclick="deleteSelectedEvaluations()" disabled title="Select rows with the trash icons, then click here to delete" style="background:none;border:none;color:#ef4444;font-size:14px;padding:4px;opacity:0.35;">🗑️</button>{% elif user_type not in ('client', 'kwok_admin') %}🗑️{% endif %}</th>
                             <!-- Scrolling Group Headers -->
                             <th colspan="4" class="group-header group-header-blue">EVAL INFO</th>
                             <th colspan="10" class="group-header group-header-green">EVALUATION PHASE</th>
@@ -3322,8 +3342,11 @@
         const IS_CLIENT = USER_TYPE === 'client';
         const IS_BEF_ADMIN = USER_TYPE === 'bef_admin';
         const IS_KWOK_ADMIN = USER_TYPE === 'kwok_admin';
+        const IS_SUPER_ADMIN = USER_TYPE === 'super_admin';
         /** Treat like client sheet cells: no inline edits (Kwok admin is read-only on the server). */
         const SHEET_EDIT_LOCKED = IS_CLIENT || IS_KWOK_ADMIN;
+        /** Super admin: evaluation rows selected for bulk delete (indices in currentData.evaluations). */
+        let _selectedEvalIndices = new Set();
         /** Right-click notes: editable for admin / super_admin / bef_admin / trader; read-only for client & kwok_admin. */
         const CAN_EDIT_NOTES = !IS_CLIENT && !IS_KWOK_ADMIN;
         // Firms hidden from BEF admin view
@@ -4697,6 +4720,8 @@
 
             if (!evalBody) return; // DOM not ready yet
 
+            _pruneEvalSelection();
+
             // Check for deep link parameters
             const urlParams = new URLSearchParams(window.location.search);
             const hlRange = urlParams.get('range');
@@ -4775,6 +4800,7 @@
                         evalBody.innerHTML = '';
                         if (noEvalMsg) { noEvalMsg.textContent = showActiveOnly ? "No active accounts found." : "No evaluations found"; noEvalMsg.style.display = 'block'; }
                     }
+                    _updateDeleteSelectedButton();
                     return;
                 }
                 
@@ -4824,6 +4850,9 @@
                          row.classList.add('row-pass');
                     } else if (s1.includes('pass')) {
                          row.classList.add('row-pass');
+                    }
+                    if (_selectedEvalIndices.has(index)) {
+                        row.classList.add('eval-row-selected');
                     }
                     // --------------------------
 
@@ -4879,9 +4908,9 @@
                     row.innerHTML = `
                         <td class="sticky-col-1">${displayNum}</td>
                         <td class="sticky-col-2" style="text-align:center;padding:2px;">
-                             ${USER_TYPE === 'super_admin' ? `<button onclick="deleteEvaluation(${index})" 
+                             ${IS_SUPER_ADMIN ? `<button type="button" class="eval-select-btn${_selectedEvalIndices.has(index) ? ' selected' : ''}" onclick="toggleEvaluationSelection(${index}, event)"
                                      style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:4px;"
-                                     title="Permanently delete this row (super admin only)">🗑️</button>` : ''}
+                                     title="${_selectedEvalIndices.has(index) ? 'Deselect row' : 'Select row for deletion'}">🗑️</button>` : ''}
                         </td>
                         ${cell(getDropdownHtml(getVal('Prop Firm'), 'Prop Firm', index, 'Prop Firm', SHEET_EDIT_LOCKED), 'Prop Firm')}
                         ${cell(getDropdownHtml(getVal('Account Size'), 'Account Size', index, 'Account Size', SHEET_EDIT_LOCKED), 'Account Size')}
@@ -4980,6 +5009,8 @@
                 setTimeout(() => {
                     calculateSectionPositions();
                 }, 100);
+
+                _updateDeleteSelectedButton();
 
                 // Deep-link scroll: find and scroll to highlighted cell
                 if (hlRange || (hlAccount && hlPayout)) {
@@ -8121,24 +8152,92 @@
             window.location.href = `/api/client/export_csv?client_id=${encodeURIComponent(CLIENT_ID)}`;
         }
 
-        async function deleteEvaluation(index) {
+        function _evaluationRowLabel(index) {
             const ev = currentData.evaluations[index];
-            if (!ev) return;
-
+            if (!ev) return `Row ${index + 1}`;
             const propFirm = ev['Prop Firm'] || 'Unknown';
             const accountSize = ev['Account Size'] || 'Unknown';
             const accountNum = ev['Account #'] || ev['Account #.1'] || '';
+            return `Row ${index + 1}: ${propFirm} - ${accountSize}` +
+                (accountNum ? ` (Account: ${accountNum})` : '');
+        }
 
-            const confirmMsg = `Permanently delete this evaluation?\n\n` +
-                `Row ${index + 1}: ${propFirm} - ${accountSize}` +
-                (accountNum ? `\nAccount: ${accountNum}` : '') +
-                `\n\nThis removes the row from the database. Use version history to recover if needed.`;
+        function _pruneEvalSelection() {
+            const evals = currentData.evaluations || [];
+            for (const idx of Array.from(_selectedEvalIndices)) {
+                if (idx < 0 || idx >= evals.length || !evals[idx]) {
+                    _selectedEvalIndices.delete(idx);
+                }
+            }
+        }
+
+        function _updateDeleteSelectedButton() {
+            const btn = document.getElementById('eval-delete-selected-btn');
+            if (!btn) return;
+            const n = _selectedEvalIndices.size;
+            btn.disabled = n === 0;
+            btn.title = n
+                ? `Delete ${n} selected row${n === 1 ? '' : 's'} (Esc to clear selection)`
+                : 'Select rows with the trash icons, then click here to delete';
+        }
+
+        function clearEvaluationSelection() {
+            if (!_selectedEvalIndices.size) return false;
+            _selectedEvalIndices.clear();
+            document.querySelectorAll('#evaluations-body tr.eval-row-selected').forEach((row) => {
+                row.classList.remove('eval-row-selected');
+            });
+            document.querySelectorAll('#evaluations-body .eval-select-btn.selected').forEach((btn) => {
+                btn.classList.remove('selected');
+                btn.title = 'Select row for deletion';
+            });
+            _updateDeleteSelectedButton();
+            return true;
+        }
+
+        function toggleEvaluationSelection(index, evt) {
+            if (evt) {
+                evt.stopPropagation();
+                evt.preventDefault();
+            }
+            if (!_selectedEvalIndices.has(index)) {
+                _selectedEvalIndices.add(index);
+            } else {
+                _selectedEvalIndices.delete(index);
+            }
+            const row = document.getElementById('eval-row-' + index);
+            const btn = row ? row.querySelector('.eval-select-btn') : null;
+            const selected = _selectedEvalIndices.has(index);
+            if (row) row.classList.toggle('eval-row-selected', selected);
+            if (btn) {
+                btn.classList.toggle('selected', selected);
+                btn.title = selected ? 'Deselect row' : 'Select row for deletion';
+            }
+            _updateDeleteSelectedButton();
+        }
+
+        async function deleteSelectedEvaluations() {
+            const indices = Array.from(_selectedEvalIndices).sort((a, b) => b - a);
+            if (!indices.length) return;
+
+            const preview = indices
+                .slice()
+                .sort((a, b) => a - b)
+                .slice(0, 8)
+                .map((idx) => '• ' + _evaluationRowLabel(idx));
+            const more = indices.length > 8 ? `\n… and ${indices.length - 8} more` : '';
+            const confirmMsg = `Permanently delete ${indices.length} evaluation row${indices.length === 1 ? '' : 's'}?\n\n` +
+                preview.join('\n') + more +
+                `\n\nThis removes the rows from the database. Use version history to recover if needed.`;
 
             if (!confirm(confirmMsg)) return;
 
-            currentData.evaluations.splice(index, 1);
-            renderEvaluationsTable();
-            saveData('DELETE', `Deleted row ${index + 1} (${propFirm} ${accountSize})`);
+            indices.forEach((idx) => {
+                currentData.evaluations.splice(idx, 1);
+            });
+            _selectedEvalIndices.clear();
+            renderEvaluationsTable(false);
+            saveData('DELETE', `Deleted ${indices.length} evaluation row(s)`);
         }
 
         // Retry queue for failed saves
@@ -9457,14 +9556,25 @@
             }
         };
 
-        // Keyboard shortcut: Ctrl+H to open history
+        // Keyboard shortcut: Ctrl+H to open history; Esc closes history or clears eval selection
         document.addEventListener('keydown', function(e) {
             if (e.ctrlKey && e.key === 'h') {
                 e.preventDefault();
                 openHistoryPanel();
+                return;
             }
-            if (e.key === 'Escape' && document.getElementById('history-panel').classList.contains('open')) {
-                closeHistoryPanel();
+            if (e.key === 'Escape') {
+                if (document.getElementById('history-panel')?.classList.contains('open')) {
+                    closeHistoryPanel();
+                    return;
+                }
+                const ae = document.activeElement;
+                if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) {
+                    return;
+                }
+                if (IS_SUPER_ADMIN && clearEvaluationSelection()) {
+                    e.preventDefault();
+                }
             }
         });
 
