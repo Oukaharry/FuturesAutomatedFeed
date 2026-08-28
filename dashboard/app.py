@@ -4653,22 +4653,6 @@ def get_hierarchy():
 from dashboard.financial_overview import calculate_all_financials, build_super_admin_totals_summary
 
 
-def _empty_super_admin_totals():
-    return {
-        'total_payouts': 0.0,
-        'total_deposits': 0.0,
-        'total_fees': 0.0,
-        'total_net_profit': 0.0,
-        'active_accounts': 0,
-        'completed_accounts': 0,
-        'failed_accounts': 0,
-        'total_hedge': 0.0,
-        'total_farming': 0.0,
-        'expected_value': 0.0,
-        'ev_per_day': 0.0,
-    }
-
-
 def _build_super_admin_summary(profile_filter):
     excluded_sa = _get_super_admin_stats_excluded_set()
     return build_super_admin_totals_summary(profile_filter, excluded_sa)
@@ -4711,8 +4695,9 @@ def get_super_admin_totals():
         get_or_compute, cache_get_stale, SUPER_ADMIN_TOTALS_CACHE_TTL, CACHE_PENDING,
     )
 
-    summary_key = f"super_admin_totals_summary:{profile_filter}"
-    clients_key = f"super_admin_totals_clients:{profile_filter}"
+    # v2: summary must use get_client_performance_stats (v1 cached all-zero fast-path totals).
+    summary_key = f"super_admin_totals_summary:v2:{profile_filter}"
+    clients_key = f"super_admin_totals_clients:v2:{profile_filter}"
 
     summary = get_or_compute(
         summary_key,
@@ -4725,26 +4710,21 @@ def get_super_admin_totals():
         lambda: _build_super_admin_clients(profile_filter),
     )
 
-    refreshing = False
     if summary is CACHE_PENDING:
         stale_summary = cache_get_stale(summary_key)
         if stale_summary is not None:
             summary = stale_summary
-            refreshing = True
         else:
             return jsonify({
                 'status': 'computing',
-                'totals': _empty_super_admin_totals(),
                 'clients': [],
-                'refreshing': True,
-            })
+            }), 503
 
     clients = []
     if clients_result is CACHE_PENDING:
         stale_clients = cache_get_stale(clients_key)
         if stale_clients is not None:
             clients = stale_clients
-            refreshing = True
     else:
         clients = clients_result or []
 
@@ -4752,7 +4732,6 @@ def get_super_admin_totals():
         'status': 'success',
         'totals': summary,
         'clients': clients,
-        'refreshing': refreshing,
     })
 
 def _build_profit_splits_payload(profile_filter):
@@ -5082,9 +5061,9 @@ def _start_optional_admin_cache_warm():
             with app.app_context():
                 jobs = (
                     (HIERARCHY_ENRICHED_CACHE_KEY, HIERARCHY_CACHE_TTL, _build_hierarchy_enriched_full),
-                    ('super_admin_totals_summary:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
+                    ('super_admin_totals_summary:v2:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
                      lambda: _build_super_admin_summary('ALL')),
-                    ('super_admin_totals_clients:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
+                    ('super_admin_totals_clients:v2:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
                      lambda: _build_super_admin_clients('ALL')),
                     ('super_admin_profit_splits:ALL', PROFIT_SPLITS_CACHE_TTL,
                      lambda: _build_profit_splits_payload('ALL')),
