@@ -22,11 +22,13 @@ _local_guard = threading.Lock()
 _key_locks_guard = threading.Lock()
 _refreshing: set[str] = set()
 
-# Default TTLs (seconds). Keep long enough that super_admin reloads hit L2.
+# Default TTLs (seconds).
 HIERARCHY_CACHE_TTL = 300
-SUPER_ADMIN_TOTALS_CACHE_TTL = 300
-PROFIT_SPLITS_CACHE_TTL = 180
-AVG_PROFIT_SPLITS_CACHE_TTL = 180
+# Super Admin financial cards: recompute at most once per hour; serve stale while refreshing.
+SUPER_ADMIN_STATS_CACHE_TTL = 3600
+SUPER_ADMIN_TOTALS_CACHE_TTL = SUPER_ADMIN_STATS_CACHE_TTL
+PROFIT_SPLITS_CACHE_TTL = SUPER_ADMIN_STATS_CACHE_TTL
+AVG_PROFIT_SPLITS_CACHE_TTL = SUPER_ADMIN_STATS_CACHE_TTL
 
 # Marker returned when a value is not cached yet and a background compute is running.
 CACHE_PENDING = object()
