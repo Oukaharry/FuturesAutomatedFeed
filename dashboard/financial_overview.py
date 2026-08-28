@@ -53,6 +53,8 @@ def clear_financial_overview_cache():
     try:
         from dashboard.shared_cache import invalidate_prefix
         invalidate_prefix('super_admin_totals:')
+        invalidate_prefix('super_admin_profit_splits:')
+        invalidate_prefix('super_admin_avg_profit_splits:')
     except Exception:
         pass
 
