@@ -33,6 +33,8 @@ CACHE_PENDING = object()
 
 _CLAIM_TTL_SECONDS = 600
 _CLAIM_SUFFIX = "::computing"
+# Only one multi-minute scan at a time across all uWSGI workers.
+HEAVY_COMPUTE_GLOBAL_KEY = "heavy_compute::global"
 
 
 def _claim_key(key: str) -> str:
@@ -267,8 +269,7 @@ def try_claim_compute(key: str, claim_ttl: int = _CLAIM_TTL_SECONDS) -> bool:
             return row is not None
     except Exception as e:
         logger.debug("[shared_cache] try_claim unavailable %s: %s", key, e)
-        # Fail open for this worker only — _refreshing still prevents local stampede.
-        return True
+        return False
 
 
 def release_claim(key: str) -> None:
@@ -287,8 +288,59 @@ def release_claim(key: str) -> None:
         pass
 
 
+def _compute_and_store(key: str, ttl: int, compute_fn: Callable[[], Any]) -> None:
+    """Run one cache job (caller must hold per-key + global heavy claims)."""
+    cached = cache_get(key)
+    if cached is not None:
+        return
+    logger.info("[shared_cache] computing %s", key)
+    started = time.time()
+    value = compute_fn()
+    cache_set(key, value, ttl)
+    logger.info("[shared_cache] computed %s in %.1fs", key, time.time() - started)
+
+
+def run_heavy_cache_job(
+    key: str,
+    ttl: int,
+    compute_fn: Callable[[], Any],
+    *,
+    app=None,
+) -> None:
+    """Compute one cache entry with per-key + global heavy single-flight."""
+    key_claimed = False
+    heavy_claimed = False
+    try:
+        if not try_claim_compute(key):
+            return
+        key_claimed = True
+        if cache_get(key) is not None:
+            return
+        if not try_claim_compute(HEAVY_COMPUTE_GLOBAL_KEY, claim_ttl=900):
+            return
+        heavy_claimed = True
+        if cache_get(key) is not None:
+            return
+
+        def _do() -> None:
+            _compute_and_store(key, ttl, compute_fn)
+
+        if app is not None:
+            with app.app_context():
+                _do()
+        else:
+            _do()
+    except Exception:
+        logger.exception("[shared_cache] heavy cache job failed %s", key)
+    finally:
+        if heavy_claimed:
+            release_claim(HEAVY_COMPUTE_GLOBAL_KEY)
+        if key_claimed:
+            release_claim(key)
+
+
 def _schedule_refresh(key: str, ttl: int, compute_fn: Callable[[], Any]) -> None:
-    """Run compute_fn in a daemon thread. Cross-worker single-flight via DB claim."""
+    """Run compute_fn in a daemon thread. One job globally at a time."""
     with _key_locks_guard:
         if key in _refreshing:
             return
@@ -302,36 +354,9 @@ def _schedule_refresh(key: str, ttl: int, compute_fn: Callable[[], Any]) -> None
         pass
 
     def _run() -> None:
-        claimed = False
         try:
-            def _do() -> None:
-                nonlocal claimed
-                if not try_claim_compute(key):
-                    return
-                claimed = True
-                cached = cache_get(key)
-                if cached is not None:
-                    return
-                logger.info("[shared_cache] computing %s", key)
-                started = time.time()
-                value = compute_fn()
-                cache_set(key, value, ttl)
-                logger.info(
-                    "[shared_cache] computed %s in %.1fs",
-                    key,
-                    time.time() - started,
-                )
-
-            if app is not None:
-                with app.app_context():
-                    _do()
-            else:
-                _do()
-        except Exception:
-            logger.exception("[shared_cache] background refresh failed %s", key)
+            run_heavy_cache_job(key, ttl, compute_fn, app=app)
         finally:
-            if claimed:
-                release_claim(key)
             with _key_locks_guard:
                 _refreshing.discard(key)
 

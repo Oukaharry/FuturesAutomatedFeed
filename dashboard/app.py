@@ -4453,7 +4453,7 @@ def sync_kyc_links_into_hierarchy():
     return changed
 
 
-def get_filtered_hierarchy(user_type, user_identifier):
+def filter_hierarchy_tree(full_hierarchy, user_type, user_identifier):
     """
     Returns hierarchy filtered based on user role:
     - super_admin: sees everything
@@ -4461,17 +4461,13 @@ def get_filtered_hierarchy(user_type, user_identifier):
     - trader: sees only their clients
     - client: sees only themselves
     """
-    full_hierarchy = hierarchy
-    
     if user_type == 'super_admin':
         return full_hierarchy
 
     if user_type == 'kwok_admin':
-        # Full client list for demos, without exposing super-admin hierarchy editing UI
         return full_hierarchy
-    
+
     if user_type == 'bef_admin':
-        # BEF admin sees full hierarchy but filtered to only BEF-category clients
         filtered_admins = {}
         for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
             filtered_traders = {}
@@ -4483,49 +4479,37 @@ def get_filtered_hierarchy(user_type, user_identifier):
                 if bef_clients:
                     filtered_traders[trader_name] = {
                         'email': trader_data.get('email', ''),
-                        'clients': bef_clients
+                        'clients': bef_clients,
+                        'active_status': trader_data.get('active_status', 'active'),
                     }
             if filtered_traders:
                 filtered_admins[admin_name] = {
                     'email': admin_data.get('email', ''),
-                    'traders': filtered_traders
+                    'traders': filtered_traders,
                 }
         return {'admins': filtered_admins}
-    
+
     if user_type == 'admin':
-        # Admin sees only their own data (case-insensitive match)
-        admin_name = user_identifier
-        admin_name_lower = admin_name.strip().lower()
+        admin_name_lower = user_identifier.strip().lower()
         for key in full_hierarchy.get('admins', {}):
             if key.strip().lower() == admin_name_lower:
-                return {
-                    'admins': {
-                        key: full_hierarchy['admins'][key]
-                    }
-                }
+                return {'admins': {key: full_hierarchy['admins'][key]}}
         return {'admins': {}}
-    
+
     if user_type == 'trader':
-        # Trader sees only their clients — collect from ALL admins
-        trader_name = user_identifier.strip()
-        trader_name_lower = trader_name.lower()
+        trader_name_lower = user_identifier.strip().lower()
         merged_admins = {}
         for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
             traders = admin_data.get('traders', {})
             for t_key in traders:
                 if t_key.strip().lower() == trader_name_lower:
                     if admin_name not in merged_admins:
-                        merged_admins[admin_name] = {
-                            'email': '',
-                            'traders': {}
-                        }
+                        merged_admins[admin_name] = {'email': '', 'traders': {}}
                     merged_admins[admin_name]['traders'][t_key] = traders[t_key]
         return {'admins': merged_admins} if merged_admins else {'admins': {}}
-    
+
     if user_type == 'client':
-        # Client sees only themselves (case-insensitive match)
-        client_name = user_identifier
-        client_name_lower = client_name.strip().lower()
+        client_name_lower = user_identifier.strip().lower()
         for admin_name, admin_data in full_hierarchy.get('admins', {}).items():
             for trader_name, trader_data in admin_data.get('traders', {}).items():
                 for client in trader_data.get('clients', []):
@@ -4539,19 +4523,28 @@ def get_filtered_hierarchy(user_type, user_identifier):
                                     'traders': {
                                         trader_name: {
                                             'email': '',
-                                            'clients': [client]
+                                            'clients': [client],
+                                            'active_status': trader_data.get('active_status', 'active'),
                                         }
-                                    }
+                                    },
                                 }
                             }
                         }
         return {'admins': {}}
-    
+
     return {'admins': {}}
 
 
-def _build_hierarchy_api_payload(user_type, user_identifier):
-    """Build enriched hierarchy JSON (shared cache target for /api/hierarchy)."""
+def get_filtered_hierarchy(user_type, user_identifier):
+    """Filter the in-memory hierarchy JSON for a user role."""
+    return filter_hierarchy_tree(hierarchy, user_type, user_identifier)
+
+
+HIERARCHY_ENRICHED_CACHE_KEY = 'hierarchy:enriched:full'
+
+
+def _build_hierarchy_enriched_full():
+    """Build enriched hierarchy for the full tree (cached once, filtered per user on read)."""
     from config.hierarchy import reload_hierarchy
     reload_hierarchy()
     global _kyc_hierarchy_sync_at
@@ -4560,13 +4553,11 @@ def _build_hierarchy_api_payload(user_type, user_identifier):
             reload_hierarchy()
         _kyc_hierarchy_sync_at = time.time()
 
-    filtered = get_filtered_hierarchy(user_type, user_identifier)
-
     from dashboard.database import get_all_client_identities
     import copy
     all_identities = get_all_client_identities()
     trader_users = {u['username']: u for u in (list_users('trader') or [])}
-    enriched = copy.deepcopy(filtered)
+    enriched = copy.deepcopy(hierarchy)
     for admin_data in enriched.get('admins', {}).values():
         for trader_name, trader_data in (admin_data.get('traders') or {}).items():
             lane_status = (trader_data or {}).get('active_status', 'active')
@@ -4586,16 +4577,6 @@ def _build_hierarchy_api_payload(user_type, user_identifier):
                     client['split_pct'] = 50
                 if not client.get('email'):
                     client['email'] = identity.get('email', '')
-
-    if not enriched.get('admins') or all(
-        not admin_data.get('traders', {}) for admin_data in enriched.get('admins', {}).values()
-    ):
-        logging.warning(
-            "[HIERARCHY] Empty result for user_type=%s user_identifier='%s' — available trader keys: %s",
-            user_type,
-            user_identifier,
-            [t for a in hierarchy.get('admins', {}).values() for t in a.get('traders', {}).keys()],
-        )
 
     import random
     from datetime import date as _date_cls
@@ -4642,15 +4623,27 @@ def get_hierarchy():
         user_type = session_info.get('user_type')
         user_identifier = session_info.get('user_identifier')
 
-    from dashboard.shared_cache import get_or_compute, HIERARCHY_CACHE_TTL
+    from dashboard.shared_cache import get_or_compute, HIERARCHY_CACHE_TTL, CACHE_PENDING
 
-    cache_key = f"hierarchy:{user_type}:{user_identifier}"
-    enriched = get_or_compute(
-        cache_key,
+    enriched_full = get_or_compute(
+        HIERARCHY_ENRICHED_CACHE_KEY,
         HIERARCHY_CACHE_TTL,
-        lambda: _build_hierarchy_api_payload(user_type, user_identifier),
+        _build_hierarchy_enriched_full,
     )
-    return _cached_json_response(enriched)
+    if enriched_full is CACHE_PENDING:
+        return _cached_json_response(CACHE_PENDING)
+
+    filtered = filter_hierarchy_tree(enriched_full, user_type, user_identifier)
+    if not filtered.get('admins') or all(
+        not admin_data.get('traders', {}) for admin_data in filtered.get('admins', {}).values()
+    ):
+        logging.warning(
+            "[HIERARCHY] Empty result for user_type=%s user_identifier='%s' — available trader keys: %s",
+            user_type,
+            user_identifier,
+            [t for a in hierarchy.get('admins', {}).values() for t in a.get('traders', {}).keys()],
+        )
+    return jsonify(filtered)
 
 from dashboard.financial_overview import calculate_all_financials
 
@@ -5034,61 +5027,45 @@ def get_avg_profit_splits():
     ))
 
 
-_heavy_cache_warm_started = False
-_heavy_cache_warm_lock = threading.Lock()
-
-
-@app.before_request
-def _warm_heavy_admin_caches_once():
-    """Fill super-admin caches in one background thread after worker start.
-
-    These payloads take 1–4 minutes. Computing them on /super_admin used to
-    pin every gunicorn worker until PythonAnywhere returned 502-backend.
-    """
-    global _heavy_cache_warm_started
-    if _heavy_cache_warm_started:
-        return
-    with _heavy_cache_warm_lock:
-        if _heavy_cache_warm_started:
-            return
-        _heavy_cache_warm_started = True
-
+def _start_optional_admin_cache_warm():
+    """One cross-worker leader pre-warms super-admin caches sequentially after boot."""
     def _run():
+        import random
+        time.sleep(random.uniform(5, 20))
         from dashboard.shared_cache import (
-            cache_get, cache_set, try_claim_compute, release_claim,
-            HIERARCHY_CACHE_TTL, SUPER_ADMIN_TOTALS_CACHE_TTL,
-            PROFIT_SPLITS_CACHE_TTL, AVG_PROFIT_SPLITS_CACHE_TTL,
+            cache_get, run_heavy_cache_job, try_claim_compute, release_claim,
+            SUPER_ADMIN_TOTALS_CACHE_TTL, PROFIT_SPLITS_CACHE_TTL,
+            AVG_PROFIT_SPLITS_CACHE_TTL, HIERARCHY_CACHE_TTL,
         )
-        jobs = (
-            ('hierarchy:super_admin:baller', HIERARCHY_CACHE_TTL,
-             lambda: _build_hierarchy_api_payload('super_admin', 'baller')),
-            ('super_admin_totals:super_admin:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
-             lambda: _build_super_admin_totals_payload('ALL', 'super_admin')),
-            ('super_admin_profit_splits:ALL', PROFIT_SPLITS_CACHE_TTL,
-             lambda: _build_profit_splits_payload('ALL')),
-            ('super_admin_avg_profit_splits:ALL', AVG_PROFIT_SPLITS_CACHE_TTL,
-             lambda: _build_avg_profit_splits_payload('ALL')),
-        )
-        with app.app_context():
-            for key, ttl, fn in jobs:
-                try:
+        leader_key = 'cache-warm::global-leader'
+        if not try_claim_compute(leader_key, claim_ttl=7200):
+            return
+        try:
+            with app.app_context():
+                jobs = (
+                    (HIERARCHY_ENRICHED_CACHE_KEY, HIERARCHY_CACHE_TTL, _build_hierarchy_enriched_full),
+                    ('super_admin_totals:super_admin:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
+                     lambda: _build_super_admin_totals_payload('ALL', 'super_admin')),
+                    ('super_admin_profit_splits:ALL', PROFIT_SPLITS_CACHE_TTL,
+                     lambda: _build_profit_splits_payload('ALL')),
+                    ('super_admin_avg_profit_splits:ALL', AVG_PROFIT_SPLITS_CACHE_TTL,
+                     lambda: _build_avg_profit_splits_payload('ALL')),
+                )
+                for key, ttl, fn in jobs:
                     if cache_get(key) is not None:
                         continue
-                    if not try_claim_compute(key):
-                        continue
-                    try:
-                        if cache_get(key) is not None:
-                            continue
-                        logging.info("[cache-warm] computing %s", key)
-                        started = time.time()
-                        cache_set(key, fn(), ttl)
-                        logging.info("[cache-warm] %s done in %.1fs", key, time.time() - started)
-                    finally:
-                        release_claim(key)
-                except Exception:
-                    logging.exception("[cache-warm] failed %s", key)
+                    logging.info("[cache-warm] queued %s", key)
+                    run_heavy_cache_job(key, ttl, fn, app=app)
+                    logging.info("[cache-warm] finished %s", key)
+        except Exception:
+            logging.exception("[cache-warm] leader run failed")
+        finally:
+            release_claim(leader_key)
 
-    threading.Thread(target=_run, daemon=True, name='warm-admin-caches').start()
+    threading.Thread(target=_run, daemon=True, name='cache-warm-leader').start()
+
+
+_start_optional_admin_cache_warm()
 
 
 @app.route('/api/super_admin/stats_exclusions', methods=['GET'])
