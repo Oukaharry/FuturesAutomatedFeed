@@ -1617,46 +1617,37 @@
         }
 
         function loadData() {
-            // Add loading indicator to stat cards
             debugLog("Loading Data...");
             const p = document.getElementById('grand-total-payouts');
             if(p) p.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             const v = document.getElementById('grand-ev');
             if(v) v.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            
+
             const totalsUrl = currentProfile === 'ALL' ? '/api/super_admin/totals' : `/api/super_admin/totals?profile=${currentProfile}`;
-            
-            // 1. Load Hierarchy (Critical for UI)
-            fetch('/api/hierarchy')
-                .then(r => {
-                    if(!r.ok) throw new Error('Failed to load hierarchy');
-                    debugLog("Hierarchy Fetch Response OK");
-                    return r.json();
-                })
-                .then(hData => {
+            const splitsUrl = currentProfile === 'ALL' ? '/api/super_admin/profit_splits' : `/api/super_admin/profit_splits?profile=${currentProfile}`;
+            const avgSplitsUrl = currentProfile === 'ALL' ? '/api/super_admin/avg_profit_splits' : `/api/super_admin/avg_profit_splits?profile=${currentProfile}`;
+
+            // Sequential loads so one cold cache miss cannot pin every worker (502-backend).
+            (async () => {
+                try {
+                    const hData = await fetchJsonRetry('/api/hierarchy');
                     debugLog(`Hierarchy Loaded: ${Object.keys(hData.admins || {}).length} admins`);
                     hierarchyData = hData;
                     renderTree();
                     updateSelects();
-                    updateStats(); // Initial stats based on hierarchy counts
-                    populateSidebarClients(); // Fill client directory
-                    filterSidebarClients(); // Re-apply profile filter after rebuild
+                    updateStats();
+                    populateSidebarClients();
+                    filterSidebarClients();
                     debugLog("Hierarchy Render Complete");
-                })
-                .catch(err => {
+                } catch (err) {
                     debugLog("Hierarchy Load Error: " + err.message, 'error');
                     console.error("Hierarchy Load Error:", err);
                     const tree = document.getElementById('hierarchy-tree');
                     if(tree) tree.innerHTML = `<div class="alert alert-danger">Failed to load user hierarchy: ${err.message}</div>`;
-                });
+                }
 
-            // 2. Load Financial Totals (Independent)
-            fetch(totalsUrl)
-                .then(r => {
-                    if(!r.ok) throw new Error('Failed to load totals');
-                    return r.json();
-                })
-                .then(fData => {
+                try {
+                    const fData = await fetchJsonRetry(totalsUrl);
                     if(fData.status === 'success' && fData.totals) {
                         const t = fData.totals;
                         try {
@@ -1667,9 +1658,7 @@
                             document.getElementById('grand-hedge').textContent = formatCurrency(t.total_hedge);
                             document.getElementById('grand-ev').textContent = formatCurrency(t.expected_value);
                             document.getElementById('grand-ev-day').textContent = formatCurrency(t.ev_per_day);
-                            
 
-                            
                             const elActive = document.getElementById('grand-active-accounts');
                             const elCompleted = document.getElementById('grand-completed-accounts');
                             const elFailed = document.getElementById('grand-failed-accounts');
@@ -1678,48 +1667,38 @@
                             if (elFailed) elFailed.textContent = t.failed_accounts;
                             debugLog("Totals Updated");
                         } catch(e) {
-                             debugLog("Error updating DOM with totals: " + e.message, 'error');
+                            debugLog("Error updating DOM with totals: " + e.message, 'error');
                         }
                     }
                     if(fData.clients) {
                         clientsBreakdownData = fData.clients;
                         debugLog("Clients breakdown data loaded: " + clientsBreakdownData.length + " clients");
                     }
-                })
-                .catch(err => {
+                } catch (err) {
                     debugLog("Totals Load Error: " + err.message, 'error');
                     console.error("Totals Load Error:", err);
-                    // Show error state in cards
                     document.getElementById('grand-total-payouts').textContent = 'Error';
                     document.getElementById('grand-ev').textContent = 'Error';
-                });
+                }
 
-            // 3. Load Profit Splits (slow — lazy background load)
-            const splitsUrl = currentProfile === 'ALL' ? '/api/super_admin/profit_splits' : `/api/super_admin/profit_splits?profile=${currentProfile}`;
-            fetch(splitsUrl)
-                .then(r => r.json())
-                .then(sData => {
+                try {
+                    const sData = await fetchJsonRetry(splitsUrl);
                     if (sData.status === 'success') {
                         const el = document.getElementById('grand-profit-split');
                         if (el) el.textContent = formatCurrency(sData.total);
-                        // Store in dedicated splits data (always available for breakdown)
                         if (sData.clients) {
                             profitSplitsData = sData.clients;
                         }
                         debugLog("Profit splits loaded: total=" + sData.total);
                     }
-                })
-                .catch(err => {
+                } catch (err) {
                     const el = document.getElementById('grand-profit-split');
                     if (el) el.textContent = 'Error';
                     debugLog("Profit Splits Load Error: " + err.message, 'error');
-                });
+                }
 
-            // 4. Load Avg Profit Splits (completed — lazy background load)
-            const avgSplitsUrl = currentProfile === 'ALL' ? '/api/super_admin/avg_profit_splits' : `/api/super_admin/avg_profit_splits?profile=${currentProfile}`;
-            fetch(avgSplitsUrl)
-                .then(r => r.json())
-                .then(aData => {
+                try {
+                    const aData = await fetchJsonRetry(avgSplitsUrl);
                     if (aData.status === 'success') {
                         const el = document.getElementById('grand-avg-profit-split');
                         if (el) {
@@ -1731,12 +1710,25 @@
                         }
                         debugLog("Avg profit splits loaded: paid=" + (aData.paid_clients || 0));
                     }
-                })
-                .catch(err => {
+                } catch (err) {
                     const el = document.getElementById('grand-avg-profit-split');
                     if (el) el.textContent = 'Error';
                     debugLog("Avg Profit Splits Load Error: " + err.message, 'error');
-                });
+                }
+            })();
+        }
+
+        async function fetchJsonRetry(url, retries = 180, delayMs = 2000) {
+            for (let i = 0; i < retries; i++) {
+                const r = await fetch(url, {credentials: 'include'});
+                if (r.status === 503) {
+                    await new Promise(res => setTimeout(res, delayMs));
+                    continue;
+                }
+                if (!r.ok) throw new Error('Failed to load (' + r.status + ')');
+                return r.json();
+            }
+            throw new Error('Timed out waiting for ' + url);
         }
 
 

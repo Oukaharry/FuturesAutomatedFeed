@@ -4565,11 +4565,12 @@ def _build_hierarchy_api_payload(user_type, user_identifier):
     from dashboard.database import get_all_client_identities
     import copy
     all_identities = get_all_client_identities()
+    trader_users = {u['username']: u for u in (list_users('trader') or [])}
     enriched = copy.deepcopy(filtered)
     for admin_data in enriched.get('admins', {}).values():
         for trader_name, trader_data in (admin_data.get('traders') or {}).items():
             lane_status = (trader_data or {}).get('active_status', 'active')
-            db_row = get_user(trader_name, 'trader')
+            db_row = trader_users.get(trader_name)
             if str(lane_status).lower() == 'inactive' or (db_row and not db_row.get('is_active', 1)):
                 trader_data['active_status'] = 'inactive'
             else:
@@ -4609,6 +4610,17 @@ def _build_hierarchy_api_payload(user_type, user_identifier):
     return enriched
 
 
+def _cached_json_response(result):
+    """Return JSON, or 503 while a background cache refresh is still running."""
+    from dashboard.shared_cache import CACHE_PENDING
+    if result is CACHE_PENDING:
+        return jsonify({
+            "status": "computing",
+            "message": "Refreshing, retry shortly",
+        }), 503
+    return jsonify(result)
+
+
 @app.route('/api/hierarchy')
 def get_hierarchy():
     """Returns hierarchy filtered by user's role."""
@@ -4638,7 +4650,7 @@ def get_hierarchy():
         HIERARCHY_CACHE_TTL,
         lambda: _build_hierarchy_api_payload(user_type, user_identifier),
     )
-    return jsonify(enriched)
+    return _cached_json_response(enriched)
 
 from dashboard.financial_overview import calculate_all_financials
 
@@ -4710,22 +4722,10 @@ def get_super_admin_totals():
         SUPER_ADMIN_TOTALS_CACHE_TTL,
         lambda: _build_super_admin_totals_payload(profile_filter, user_type),
     )
-    return jsonify(response_data)
+    return _cached_json_response(response_data)
 
-@app.route('/api/super_admin/profit_splits')
-@require_session
-def get_profit_splits():
-    """Return per-client current profit split (in progress) for the super admin dashboard."""
-    session_user = request.session_user
-    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
-        return jsonify({"status": "error", "message": "Admin access required"}), 403
-
-    profile_filter = request.args.get('profile', 'ALL').upper()
-    if session_user.get('user_type') == 'bef_admin':
-        profile_filter = 'BEF'
-    if session_user.get('user_type') == 'kwok_admin':
-        profile_filter = 'ALL'
-
+def _build_profit_splits_payload(profile_filter):
+    """Per-client current profit split (in progress) for the super admin dashboard."""
     from dashboard.watermark_service import (
         compute_waterlog_from_db, compute_waterlog_daily_fallback, prefetch_waterlog_bulk,
     )
@@ -4883,21 +4883,13 @@ def get_profit_splits():
 
     total = round(sum(r['profit_split_inprogress'] for r in results), 2)
     results.sort(key=lambda x: x['profit_split_inprogress'], reverse=True)
-    return jsonify({'status': 'success', 'clients': results, 'total': total})
+    return {'status': 'success', 'clients': results, 'total': total}
 
 
-@app.route('/api/super_admin/avg_profit_splits')
+@app.route('/api/super_admin/profit_splits')
 @require_session
-def get_avg_profit_splits():
-    """
-    Return per-client average profit split for completed periods only.
-
-    Criteria (matches client dashboard Profit Split tab):
-    - Exclude the most recent (in-progress) period
-    - Find window from first completed period that paid profit_split > 0
-      through last completed period that paid profit_split > 0
-    - Include $0 months inside that window in the average denominator
-    """
+def get_profit_splits():
+    """Return per-client current profit split (in progress) for the super admin dashboard."""
     session_user = request.session_user
     if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
         return jsonify({"status": "error", "message": "Admin access required"}), 403
@@ -4908,6 +4900,24 @@ def get_avg_profit_splits():
     if session_user.get('user_type') == 'kwok_admin':
         profile_filter = 'ALL'
 
+    from dashboard.shared_cache import get_or_compute, PROFIT_SPLITS_CACHE_TTL
+    return _cached_json_response(get_or_compute(
+        f"super_admin_profit_splits:{profile_filter}",
+        PROFIT_SPLITS_CACHE_TTL,
+        lambda: _build_profit_splits_payload(profile_filter),
+    ))
+
+
+def _build_avg_profit_splits_payload(profile_filter):
+    """
+    Return per-client average profit split for completed periods only.
+
+    Criteria (matches client dashboard Profit Split tab):
+    - Exclude the most recent (in-progress) period
+    - Find window from first completed period that paid profit_split > 0
+      through last completed period that paid profit_split > 0
+    - Include $0 months inside that window in the average denominator
+    """
     from dashboard.watermark_service import (
         compute_waterlog_from_db, compute_waterlog_daily_fallback, prefetch_waterlog_bulk,
     )
@@ -4993,13 +5003,92 @@ def get_avg_profit_splits():
     total = round(sum(r.get('avg_profit_split', 0.0) for r in paid), 2)
 
     results.sort(key=lambda x: (x.get('avg_profit_split') or 0.0), reverse=True)
-    return jsonify({
+    return {
         'status': 'success',
         'clients': results,
         'total': total,
         'paid_clients': len(paid),
         'client_count': len(results),
-    })
+    }
+
+
+@app.route('/api/super_admin/avg_profit_splits')
+@require_session
+def get_avg_profit_splits():
+    """Return per-client average profit split for completed periods only."""
+    session_user = request.session_user
+    if session_user.get('user_type') not in ('super_admin', 'bef_admin', 'kwok_admin'):
+        return jsonify({"status": "error", "message": "Admin access required"}), 403
+
+    profile_filter = request.args.get('profile', 'ALL').upper()
+    if session_user.get('user_type') == 'bef_admin':
+        profile_filter = 'BEF'
+    if session_user.get('user_type') == 'kwok_admin':
+        profile_filter = 'ALL'
+
+    from dashboard.shared_cache import get_or_compute, AVG_PROFIT_SPLITS_CACHE_TTL
+    return _cached_json_response(get_or_compute(
+        f"super_admin_avg_profit_splits:{profile_filter}",
+        AVG_PROFIT_SPLITS_CACHE_TTL,
+        lambda: _build_avg_profit_splits_payload(profile_filter),
+    ))
+
+
+_heavy_cache_warm_started = False
+_heavy_cache_warm_lock = threading.Lock()
+
+
+@app.before_request
+def _warm_heavy_admin_caches_once():
+    """Fill super-admin caches in one background thread after worker start.
+
+    These payloads take 1–4 minutes. Computing them on /super_admin used to
+    pin every gunicorn worker until PythonAnywhere returned 502-backend.
+    """
+    global _heavy_cache_warm_started
+    if _heavy_cache_warm_started:
+        return
+    with _heavy_cache_warm_lock:
+        if _heavy_cache_warm_started:
+            return
+        _heavy_cache_warm_started = True
+
+    def _run():
+        from dashboard.shared_cache import (
+            cache_get, cache_set, try_claim_compute, release_claim,
+            HIERARCHY_CACHE_TTL, SUPER_ADMIN_TOTALS_CACHE_TTL,
+            PROFIT_SPLITS_CACHE_TTL, AVG_PROFIT_SPLITS_CACHE_TTL,
+        )
+        jobs = (
+            ('hierarchy:super_admin:baller', HIERARCHY_CACHE_TTL,
+             lambda: _build_hierarchy_api_payload('super_admin', 'baller')),
+            ('super_admin_totals:super_admin:ALL', SUPER_ADMIN_TOTALS_CACHE_TTL,
+             lambda: _build_super_admin_totals_payload('ALL', 'super_admin')),
+            ('super_admin_profit_splits:ALL', PROFIT_SPLITS_CACHE_TTL,
+             lambda: _build_profit_splits_payload('ALL')),
+            ('super_admin_avg_profit_splits:ALL', AVG_PROFIT_SPLITS_CACHE_TTL,
+             lambda: _build_avg_profit_splits_payload('ALL')),
+        )
+        with app.app_context():
+            for key, ttl, fn in jobs:
+                try:
+                    if cache_get(key) is not None:
+                        continue
+                    if not try_claim_compute(key):
+                        continue
+                    try:
+                        if cache_get(key) is not None:
+                            continue
+                        logging.info("[cache-warm] computing %s", key)
+                        started = time.time()
+                        cache_set(key, fn(), ttl)
+                        logging.info("[cache-warm] %s done in %.1fs", key, time.time() - started)
+                    finally:
+                        release_claim(key)
+                except Exception:
+                    logging.exception("[cache-warm] failed %s", key)
+
+    threading.Thread(target=_run, daemon=True, name='warm-admin-caches').start()
 
 
 @app.route('/api/super_admin/stats_exclusions', methods=['GET'])
