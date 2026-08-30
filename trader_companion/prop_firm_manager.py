@@ -65,6 +65,9 @@ class PropFirmManager:
         "FFF": "Funded Futures Family",
         "The5ers": "The5ers",
         "5ers": "The5ers",
+        "Goat Funded Futures": "GoatFunded",
+        "GoatFunded": "GoatFunded",
+        "GFF": "GoatFunded",
     }
 
     def __init__(self):
@@ -85,7 +88,7 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQU6",
                             "tradovate_qty": 3,
-                            "tradovate_tp_ticks": 50,
+                            "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
                             "mt5_volume": 4,
                             "mt5_tp_points": 15,
@@ -96,7 +99,7 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQU6",
                             "tradovate_qty": 3,
-                            "tradovate_tp_ticks": 50,
+                            "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
                             "mt5_volume": 7,
                             "mt5_tp_points": 15,
@@ -107,7 +110,7 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQU6",
                             "tradovate_qty": 3,
-                            "tradovate_tp_ticks": 50,
+                            "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
                             "mt5_volume": 10,
                             "mt5_tp_points": 15,
@@ -118,7 +121,7 @@ class PropFirmManager:
                         "50k": {
                             "tradovate_symbol": "NQU6",
                             "tradovate_qty": 3,
-                            "tradovate_tp_ticks": 50,
+                            "tradovate_tp_ticks": 52,
                             "tradovate_sl_ticks": 133,
                             "mt5_volume": 13,
                             "mt5_tp_points": 15,
@@ -1790,17 +1793,29 @@ class PropFirmManager:
                     "Farming (Consistency)",
                 ],
                 "strategy_configs": {
-                    # Challenge: single trade · $3,000 (2 NQ × 300 ticks × $5)
+                    # Challenge: 2 trades at 50% consistency · $1,510 each (2 NQ × 151 ticks × $5)
                     "challenge_trade1": {
                         "50k": {
                             "tradovate_symbol": "NQU6",
                             "tradovate_qty": 2,
-                            "tradovate_tp_ticks": 300,
+                            "tradovate_tp_ticks": 151,
                             "tradovate_sl_ticks": 200,
                             "mt5_volume": 10.4,
-                            "mt5_tp_points": 46,
+                            "mt5_tp_points": 23,
                             "mt5_sl_points": 30,
-                            "profit_target": 3000,
+                            "profit_target": 1510,
+                        }
+                    },
+                    "challenge_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty": 2,
+                            "tradovate_tp_ticks": 151,
+                            "tradovate_sl_ticks": 200,
+                            "mt5_volume": 10.4,
+                            "mt5_tp_points": 23,
+                            "mt5_sl_points": 30,
+                            "profit_target": 1510,
                         }
                     },
                     # Funded: each trade ~$1,680 (2 NQ × 168 ticks × $5; target $1,675)
@@ -1851,6 +1866,94 @@ class PropFirmManager:
                             "mt5_tp_points": 146,
                             "mt5_sl_points": 55,
                             "profit_target": 204,
+                        }
+                    },
+                },
+            },
+            # Goat Funded Futures — $50k EOD, 4% max drawdown ($2,000), 3 minis max, 50% consistency
+            # Phase 1 (Challenge) → Live Account; no daily drawdown
+            # Site: app.goatfundedfutures.com
+            "GoatFunded": {
+                "name": "Goat Funded Futures",
+                "account_sizes": ["$50,000"],
+                "trading_phases": ["Challenge Phase", "Funded Phase", "Farming Phase"],
+                "compliance_rules": {
+                    "consistency_pct": 0.50,
+                    "drawdown_type": "EOD",
+                    "no_daily_drawdown": True,
+                    "max_drawdown_dollars": 2000,
+                    "min_trading_days_challenge": 2,
+                    "min_trading_days_funded": 5,
+                },
+                "strategy_configs": {
+                    # Challenge: 3 NQ minis, 101t TP × $5 × 3 = $1,515/trade (49.97% of $3,030 → under 50% consistency)
+                    # SL=133t × 3 minis × $5 = $1,995 (within $2k max drawdown)
+                    "challenge_trade1": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty": 3,
+                            "tradovate_tp_ticks": 101,
+                            "tradovate_sl_ticks": 133,
+                            "mt5_volume": 7,
+                            "mt5_tp_points": 23,
+                            "mt5_sl_points": 18,
+                        }
+                    },
+                    "challenge_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty": 3,
+                            "tradovate_tp_ticks": 101,
+                            "tradovate_sl_ticks": 133,
+                            "mt5_volume": 12,
+                            "mt5_tp_points": 23,
+                            "mt5_sl_points": 18,
+                        }
+                    },
+                    # Funded (Live Account): SL fixed to protect $2k max drawdown
+                    "funded_trade1": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty": 3,
+                            "tradovate_tp_ticks": 500,
+                            "tradovate_sl_ticks": 133,
+                            "mt5_volume": 18,
+                            "mt5_tp_points": 15,
+                            "mt5_sl_points": 129,
+                        }
+                    },
+                    "funded_trade2": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty": 3,
+                            "tradovate_tp_ticks": 133,
+                            "tradovate_sl_ticks": 133,
+                            "mt5_volume": 22,
+                            "mt5_tp_points": 15,
+                            "mt5_sl_points": 40,
+                        }
+                    },
+                    "funded_trade3": {
+                        "50k": {
+                            "tradovate_symbol": "NQU6",
+                            "tradovate_qty": 3,
+                            "tradovate_tp_ticks": 133,
+                            "tradovate_sl_ticks": 133,
+                            "mt5_volume": 26,
+                            "mt5_tp_points": 15,
+                            "mt5_sl_points": 40,
+                        }
+                    },
+                    # Farming: micro contracts (30 micros max)
+                    "farming": {
+                        "50k": {
+                            "tradovate_symbol": "MNQU6",
+                            "tradovate_qty": 3,
+                            "tradovate_tp_ticks": 204,
+                            "tradovate_sl_ticks": 600,
+                            "mt5_volume": 3.2,
+                            "mt5_tp_points": 146,
+                            "mt5_sl_points": 55,
                         }
                     },
                 },
@@ -1955,6 +2058,8 @@ class PropFirmManager:
             return "AlphaFutures"
         elif any(prefix.startswith(var) for var in ["FFFF", "FFFU", "FDFM", "FFFA"]):
             return "Funded Futures Family"
+        elif any(prefix.startswith(var) for var in ["GFFU", "GFFF"]):
+            return "GoatFunded"
         
         self.logger.warning(f"Unknown prefix '{prefix}' from account '{username}' — prop firm not recognized")
         return None
@@ -1982,6 +2087,8 @@ class PropFirmManager:
             normalized_code = "Funded Futures Family"
         elif firm_code in ("5ers", "The5ers", "the5ers", "The 5ers"):
             normalized_code = "The5ers"
+        elif firm_code in ("Goat Funded Futures", "Goat Funded", "GFF"):
+            normalized_code = "GoatFunded"
         elif firm_code == "TopOneFutures":
             normalized_code = "Top One Futures"
         elif firm_code in ("MFFU", "My Funded Futures"):
@@ -2014,6 +2121,8 @@ class PropFirmManager:
                 return self.firm_blueprints["TopStep RTP"]
             if "fundedfuturesfamily" in compact or "fundedfutures" in compact:
                 return self.firm_blueprints["Funded Futures Family"]
+            if "goatfunded" in compact or "goatfund" in compact:
+                return self.firm_blueprints["GoatFunded"]
 
         self.logger.warning(
             f"get_firm_info: unrecognised firm_code '{firm_code}' — "
@@ -2123,6 +2232,9 @@ class PropFirmManager:
             "FFF": "Funded Futures Family",
             "The5ers": "The5ers",
             "5ers": "The5ers",
+            "Goat Funded Futures": "GoatFunded",
+            "GoatFunded": "GoatFunded",
+            "GFF": "GoatFunded",
             "Other": "MFFU_Flex"  # Default fallback
         }
 
@@ -2442,7 +2554,7 @@ class PropFirmManager:
             "Farming":   ["farming"],
         },
         "Funded Futures Family": {
-            "Challenge": ["challenge_trade1"],
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
             "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3"],
             "Farming":   ["farming"],
         },
@@ -2465,6 +2577,11 @@ class PropFirmManager:
             "Payout 2":  ["funded_trade2"],
             "Payout 3":  ["funded_trade3"],
             "Payout 4":  ["funded_trade4"],
+            "Farming":   ["farming"],
+        },
+        "GoatFunded": {
+            "Challenge": ["challenge_trade1", "challenge_trade2"],
+            "Funded":    ["funded_trade1", "funded_trade2", "funded_trade3"],
             "Farming":   ["farming"],
         },
         "Top One Futures": {
@@ -2714,6 +2831,7 @@ class PropFirmManager:
         "Lucid":            50000.0,
         "Top One Futures":  50000.0,
         "Funded Futures Family": 48000.0,  # $50k − $2k EOD max drawdown
+        "GoatFunded":       48000.0,  # $50k − $2k EOD max drawdown
     }
 
     # ── Profit targets for auto-status computation ────────────────────
@@ -2735,7 +2853,8 @@ class PropFirmManager:
         "Tradeify":         {"Challenge": 3060, "Funded": 5400},
         "Apex":             {"Challenge": 7200, "Funded": 2000},
         "Top One Futures":  {"Challenge": 3030, "Funded": 3000},
-        "Funded Futures Family": {"Challenge": 3000, "Funded": 5025},
+        "Funded Futures Family": {"Challenge": 3020, "Funded": 5025},
+        "GoatFunded":             {"Challenge": 3000, "Funded": 4050},
     }
 
     def compute_account_status(self, firm_code: str, phase: str,

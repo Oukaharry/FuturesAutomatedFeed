@@ -69,3 +69,7 @@ exports/
 Releases/
 build/
 dist/
+
+# Large release binaries
+*.zip
+TradeopssAI_v1.7.1/

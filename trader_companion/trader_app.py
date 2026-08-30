@@ -19,7 +19,7 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.11.6"  # Alpha Futures NQ-only blueprint cleanup + challenge consistency retune
+APP_VERSION = "1.11.14"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -27,6 +27,7 @@ RELEASE_DISABLE_PUSH_BILLING = True
 # M1 push feeds the dashboard's m1_bars table — the source of the dashboard
 # market bias shown in the AI monitor. Disabling it makes bias=none.
 RELEASE_DISABLE_M1_DASHBOARD_PUSH = False
+RELEASE_DISABLE_ML = False
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -1806,6 +1807,7 @@ class TradeOpssAIApp:
         "Top One Futures": "#0D9488",
         "Funded Futures Family": "#7C3AED",
         "LucidMaxx":        "#8B5CF6",
+        "Goat Funded Futures": "#22C55E",
     }
 
     PHASE_BADGE = {
@@ -5135,6 +5137,9 @@ class TradeOpssAIApp:
         "FFF": "Funded Futures Family",
         "Lucid": "Lucid",
         "LucidMaxx": "LucidMaxx",
+        "Goat Funded Futures": "GoatFunded",
+        "GoatFunded": "GoatFunded",
+        "GFF": "GoatFunded",
     }
 
     def _resolve_firm_code(self, prop_firm_name, default="MFFU_Flex"):
@@ -5188,6 +5193,8 @@ class TradeOpssAIApp:
             return "Funded Next"
         if "funded futures family" in norm or "fundedfuturesfamily" in compact or compact == "fff":
             return "Funded Futures Family"
+        if "goatfunded" in compact or "goat funded" in norm:
+            return "GoatFunded"
         if "lucidmaxx" in compact or "lucid maxx" in norm:
             return "LucidMaxx"
 
@@ -5206,6 +5213,7 @@ class TradeOpssAIApp:
         "Funded Futures Family": "Funded Futures Family",
         "Apex": "Apex",
         "Top One Futures": "Top One Futures",
+        "GoatFunded": "Goat Funded Futures",
     }
 
     def _sync_prop_firm_from_account(self, ev):
@@ -5260,6 +5268,7 @@ class TradeOpssAIApp:
         "LucidMaxx":        "ACCOUNT_SIZE",
         "Top One Futures":  "ACCOUNT_SIZE",
         "Funded Futures Family": "ACCOUNT_SIZE",
+        "GoatFunded":            "ACCOUNT_SIZE",
     }
 
     def _resolve_starting_balance(self, ev, current_phase, acct_size):
@@ -5300,18 +5309,30 @@ class TradeOpssAIApp:
         has_funded_acct = bool(self._cell(ev.get("Account #.1")))
         passed_funded = self._has_passed_to_funded(ev)
 
-        # Check if farming data exists — must have BOTH the farming marker
-        # AND actual Hedge Day cell data for THIS account (not just sheet columns)
+        # Check if farming data exists — look for Hedge Day cell data with or without
+        # the Prop Day marker (some dashboard views don't include Prop Day columns)
         has_farming_marker = bool(self._cell(ev.get("Prop Day 1")))
         has_hedge_day_data = False
-        if has_farming_marker:
-            for i in range(1, 61):
-                val = self._cell(ev.get(f"Hedge Day {i}"))
-                if val and val not in ("—", "-"):
-                    has_hedge_day_data = True
+        has_hedge_day_placeholder = False
+        for i in range(1, 35):
+            val = self._cell(ev.get(f"Hedge Day {i}"))
+            if val and val not in ("—", "-"):
+                has_hedge_day_data = True
+                if self._parse_day_token(val) is not None:
+                    has_hedge_day_placeholder = True
                     break
 
-        if has_farming_marker and has_hedge_day_data:
+        # Funded columns take priority: if a funded Hedge Result N.1 slot still holds an
+        # active day-name placeholder, the row is still in the Funded phase even if
+        # farming data (Hedge Day / Prop Day) has already been entered for the account.
+        if has_funded_acct and funded_status not in self._FAILED_STATUSES:
+            for i in range(1, 8):
+                val = self._cell(ev.get(f"Hedge Result {i}.1"))
+                if val and self._parse_day_token(val) is not None:
+                    return "Funded", "funded_trade1"
+
+        # Farming if: (1) explicit marker + data, OR (2) day placeholder exists
+        if (has_farming_marker and has_hedge_day_data) or has_hedge_day_placeholder:
             return "Farming", "farming"
         # Both Account # + Account #.1 → eval passed; never trade challenge leg.
         if passed_funded:
@@ -5580,7 +5601,16 @@ class TradeOpssAIApp:
         """Funded hedge track finished — dollar results, no day placeholders left."""
         if not self._cell(ev.get("Account #.1")):
             return False
-        fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
+        
+        # Detect current phase to check the right fields
+        phase_display, _ = self._detect_eval_phase(ev)
+        
+        # Farming accounts check Hedge Day fields, not Hedge Result fields
+        if phase_display == "Farming":
+            fields = [f"Hedge Day {i}" for i in range(1, 35)]
+        else:
+            fields = [f"Hedge Result {i}.1" for i in range(1, 8)]
+        
         placeholders = 0
         results = 0
         for f in fields:
@@ -7640,6 +7670,36 @@ class TradeOpssAIApp:
                 self.log(f"⚠ Funded SL failed for {acct_num}: {_fe}")
                 audit("trader.adjust.funded_sl", acct_num=str(acct_num or ""),
                       status="error", error=str(_fe))
+            # Funded Next Flex trades 2+: TP = remaining distance to $3,000 target.
+            # Requires live Tradovate balance — keeps blueprint TP if unavailable.
+            if firm_code == "Funded Next Flex" and self._phase_trade_index(phase_key) >= 1:
+                try:
+                    _trade_idx = self._phase_trade_index(phase_key)
+                    _live_bal = scoped_net_liq if (scoped_net_liq is not None and scoped_net_liq > 0) else None
+                    if _live_bal is None and broker_account and hasattr(broker_account, 'get_min_equity'):
+                        _me2 = broker_account.get_min_equity(account_id=target_account_id)
+                        if isinstance(_me2, dict) and (_me2.get('net_liq') or 0) > 0:
+                            _live_bal = float(_me2['net_liq'])
+                    if _live_bal is None or _live_bal <= 0:
+                        self.log(f"⚠ FNFT Flex TP-to-target {acct_num}: no live balance — keeping blueprint TP")
+                    else:
+                        _start_bal = self._resolve_starting_balance(row_eval, "Funded", acct_size)
+                        _stage_profit = _live_bal - _start_bal
+                        self.log(f"🎯 FNFT Flex TP-to-target {acct_num}: trade={_trade_idx} "
+                                 f"balance=${_live_bal:,.2f} start=${_start_bal:,.2f} "
+                                 f"profit=${_stage_profit:,.2f} target=$3,050.00")
+                        config = self.prop_firm_mgr.calculate_adjusted_tp(
+                            config, _stage_profit, tick_value,
+                            target_profit_dollars=3050.0)
+                        audit("trader.adjust.tp_by_stage", acct_num=str(acct_num or ""),
+                              status="applied", firm=firm_code, phase_key=phase_key,
+                              live_balance=_live_bal, stage_start=_start_bal,
+                              stage_profit_so_far=_stage_profit,
+                              target_profit_dollars=3050.0,
+                              tp_before=_before_tp,
+                              tp_after=config.get("tradovate_tp_ticks"))
+                except Exception as _tp_err:
+                    self.log(f"⚠ FNFT Flex TP-to-target failed for {acct_num}: {_tp_err}")
         else:
             # CHALLENGE / FARMING.
             # 1) TP by stage profit (skipped for farming symbols upstream)
@@ -7671,8 +7731,6 @@ class TradeOpssAIApp:
                         if stage_start is not None:
                             stage_profit_so_far = current_profit - stage_start
                             target_profit_dollars = None
-                            if firm_code == "Funded Next Flex" and phase_key == "funded_trade2":
-                                target_profit_dollars = self.prop_firm_mgr._PROFIT_TARGETS.get("Funded Next Flex", {}).get("Funded", 3050.0)
                             self.log(f"🧮 TP-by-stage {acct_num}: equity_scoped={'yes' if scoped_net_liq is not None else 'NO(fallback)'} "
                                      f"current_profit=${current_profit:,.2f} stage_start=${stage_start:,.2f} "
                                      f"stage_profit_so_far=${stage_profit_so_far:,.2f} size_key={size_key} tick_value={tick_value} "
@@ -10060,6 +10118,12 @@ class TradeOpssAIApp:
         "My Funded Futures": {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": "MFFUAccount",
                               "login_url": "https://myfundedfutures.com", "accounts_url": "https://myfundedfutures.com",
                               "cdp": True},
+        "Goat Funded Futures": {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": None,
+                               "login_url": "https://app.goatfundedfutures.com", "accounts_url": "https://app.goatfundedfutures.com/accounts",
+                               "cdp": False},
+        "GoatFunded":          {"class_available": "CDP_SCRAPERS_AVAILABLE", "account_class": None,
+                               "login_url": "https://app.goatfundedfutures.com", "accounts_url": "https://app.goatfundedfutures.com/accounts",
+                               "cdp": False},
     }
 
     def _auto_launch_propfirm_browsers(self, active_firms):

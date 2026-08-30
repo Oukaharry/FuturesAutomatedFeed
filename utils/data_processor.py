@@ -401,6 +401,8 @@ _FIRM_MAP = {
     "lucidmaxx": "LucidMaxx",
     "toponefutures": "Top One Futures", "topone": "Top One Futures",
     "fundedfuturesfamily": "Funded Futures Family", "fff": "Funded Futures Family",
+    "goatfunded": "Goat Funded Futures", "goatfundedfutures": "Goat Funded Futures",
+    "gff": "Goat Funded Futures",
 }
 
 # Child variants stored on their own row but rolled into the parent for stats / limits.

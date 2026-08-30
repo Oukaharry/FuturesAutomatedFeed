@@ -123,7 +123,8 @@ def build(trader_release: bool = False):
         if os.path.isdir(src_dir):
             data_args.append(f'--add-data={src_dir}{os.pathsep}trader_companion/{subdir}')
 
-    collect_all = ['MetaTrader5', 'numpy', 'pandas', 'selenium', 'certifi', 'playwright']
+    collect_all = ['MetaTrader5', 'numpy', 'pandas', 'selenium', 'certifi', 'playwright',
+                   'customtkinter', 'darkdetect']
     if not trader_release:
         collect_all.extend(['scipy', 'sklearn', 'joblib'])
 
