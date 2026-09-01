@@ -321,6 +321,31 @@
             font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
             padding: 1px 6px;
         }
+        .client-filter-btn {
+            background: rgba(59,99,196,0.14);
+            border: 1px solid rgba(59,99,196,0.35);
+            color: #93c5fd;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-weight: 700;
+            white-space: nowrap;
+            transition: all 0.15s;
+        }
+        .client-filter-btn:hover {
+            background: rgba(59,99,196,0.28);
+            border-color: rgba(59,99,196,0.55);
+        }
+        .client-filter-btn.is-all {
+            background: rgba(251,191,36,0.12);
+            border-color: rgba(251,191,36,0.35);
+            color: #fbbf24;
+        }
+        .client-filter-btn.is-all:hover {
+            background: rgba(251,191,36,0.22);
+        }
 
         /* ── EMPTY / ERROR STATES ── */
         .state-box {
@@ -523,6 +548,115 @@
     const traderEmail = {{ (trader_email or '')|tojson }};
     const traderAdmin = {{ (trader_admin or '')|tojson }};
     const isSuperAdminViewingTrader = {{ 'true' if is_super_admin else 'false' }};
+    let _traderAllClients = [];
+    let _showAllClients = false;
+
+    const _cardAccents = [
+        { border:'#1e3a8a', iconBg:'rgba(30,58,138,0.22)',  iconBd:'rgba(30,58,138,0.45)',  icon:'#7baef0', glow:'rgba(30,58,138,0.06)'   },
+        { border:'#065f46', iconBg:'rgba(6,95,70,0.22)',    iconBd:'rgba(6,95,70,0.45)',    icon:'#34d399', glow:'rgba(52,211,153,0.06)'  },
+        { border:'#7c3aed', iconBg:'rgba(124,58,237,0.22)', iconBd:'rgba(124,58,237,0.45)', icon:'#a78bfa', glow:'rgba(167,139,250,0.06)' },
+        { border:'#0f766e', iconBg:'rgba(15,118,110,0.22)', iconBd:'rgba(15,118,110,0.45)', icon:'#2dd4bf', glow:'rgba(45,212,191,0.06)'  },
+        { border:'#b45309', iconBg:'rgba(180,83,9,0.22)',   iconBd:'rgba(180,83,9,0.45)',   icon:'#fbbf24', glow:'rgba(251,191,36,0.06)'  },
+        { border:'#be123c', iconBg:'rgba(190,18,60,0.22)',  iconBd:'rgba(190,18,60,0.45)',  icon:'#fb7185', glow:'rgba(251,113,133,0.06)' },
+    ];
+
+    function _clientIsActive(c) {
+        return String(c.active_status || 'active').toLowerCase() !== 'inactive';
+    }
+
+    function toggleTraderClientFilter() {
+        _showAllClients = !_showAllClients;
+        renderTraderPortfolio();
+    }
+
+    function renderTraderPortfolio() {
+        const container = document.getElementById('content');
+        const uniqueClients = _traderAllClients;
+        const visibleClients = _showAllClients
+            ? uniqueClients
+            : uniqueClients.filter(_clientIsActive);
+
+        if (uniqueClients.length === 0) {
+            container.innerHTML = `
+                <div class="state-box">
+                    <div class="state-icon-wrap" style="background:rgba(255,255,255,0.04);border:1px dashed #162040;">
+                        <i class="fas fa-folder-open" style="font-size:1.8rem;color:#3b536a;"></i>
+                    </div>
+                    <h3 style="color:var(--text-primary);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;margin-bottom:8px;">No Clients Assigned</h3>
+                    <p style="color:var(--text-secondary);max-width:360px;margin:0 auto;font-size:0.9rem;">Contact your administrator to have clients assigned to your portfolio.</p>
+                </div>`;
+            return;
+        }
+
+        if (visibleClients.length === 0) {
+            container.innerHTML = `
+                <div class="trader-card">
+                    <div class="trader-card-header">
+                        <div class="trader-card-title">
+                            <i class="fas fa-user-tie" style="opacity:0.85;"></i>
+                            ${traderName}
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span class="badge badge-green">0 active</span>
+                            <button type="button" class="client-filter-btn is-all" onclick="toggleTraderClientFilter()">
+                                <i class="fas fa-users"></i> Show all clients
+                            </button>
+                        </div>
+                    </div>
+                    <div class="state-box" style="margin:0;border:none;box-shadow:none;background:transparent;">
+                        <p style="color:var(--text-secondary);margin:0;font-size:0.9rem;">No active clients in your portfolio.</p>
+                    </div>
+                </div>`;
+            return;
+        }
+
+        const cardsHTML = visibleClients.map((c, idx) => {
+            const isInactive = !_clientIsActive(c);
+            const acc = _cardAccents[idx % _cardAccents.length];
+            const emailHtml = c.email ? `
+                    <div class="client-card-email" onclick="copyClientEmail(event, this, '${c.email.replace(/'/g, "\\'")}')"
+                         title="Click to copy email">
+                        <i class="fas fa-envelope" style="font-size:0.7rem; margin-right:4px; opacity:0.6;"></i>${c.email}
+                    </div>` : '';
+            return `
+                <a href="/dashboard/${encodeURIComponent(c.name)}" class="client-card${isInactive ? ' is-inactive' : ''}" style="--c-accent:${acc.border};--c-icon-bg:${acc.iconBg};--c-icon-bd:${acc.iconBd};--c-icon:${acc.icon};--c-glow:${acc.glow};">
+                    <div class="client-card-icon"><i class="fas fa-user"></i></div>
+                    <div class="client-card-name">${c.name}</div>
+                    ${isInactive ? `<div class="client-card-badges"><span class="badge-inactive">Inactive</span></div>` : ''}
+                    <div class="client-card-meta"><i class="fas fa-shield-halved" style="color:#2dd4bf;"></i> Managed Account</div>
+                    ${emailHtml}
+                    <div class="client-card-footer">Open Dashboard <i class="fas fa-arrow-right"></i></div>
+                </a>`;
+        }).join('');
+
+        const totalActive = uniqueClients.filter(_clientIsActive).length;
+        const countLabel = _showAllClients
+            ? `${visibleClients.length} client${visibleClients.length !== 1 ? 's' : ''}`
+            : `${visibleClients.length} active`;
+        const filterBtnLabel = _showAllClients
+            ? '<i class="fas fa-filter"></i> Active only'
+            : '<i class="fas fa-users"></i> Show all';
+
+        container.innerHTML = `
+            <div class="trader-card">
+                <div class="trader-card-header">
+                    <div class="trader-card-title">
+                        <i class="fas fa-user-tie" style="opacity:0.85;"></i>
+                        ${traderName}
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <span class="badge badge-green">${countLabel}</span>
+                        ${!_showAllClients && totalActive < uniqueClients.length
+                            ? `<span class="badge" style="background:rgba(148,163,184,0.12);color:#94a3b8;border:1px solid rgba(148,163,184,0.25);">${uniqueClients.length - totalActive} hidden</span>`
+                            : ''}
+                        <button type="button" class="client-filter-btn${_showAllClients ? ' is-all' : ''}" onclick="toggleTraderClientFilter()">
+                            ${filterBtnLabel}
+                        </button>
+                    </div>
+                </div>
+                <div class="client-grid">${cardsHTML}</div>
+            </div>`;
+    }
 
     function openTraderAdminKeyModal() {
         if (!isSuperAdminViewingTrader) return;
@@ -639,8 +773,6 @@
     fetch('/api/hierarchy')
         .then(res => res.json())
         .then(data => {
-            const container = document.getElementById('content');
-
             if (data.status === 'error') throw new Error(data.message);
 
             let clients = [];
@@ -665,70 +797,20 @@
             );
 
             const seen = new Set();
-            const uniqueClients = allClients.filter(c => {
+            _traderAllClients = allClients.filter(c => {
                 if (seen.has(c.name)) return false;
                 seen.add(c.name);
                 return true;
             });
 
-            const totalActive   = uniqueClients.filter(c => c.active_status !== 'inactive').length;
-            const totalInactive = uniqueClients.length - totalActive;
+            const totalActive   = _traderAllClients.filter(_clientIsActive).length;
+            const totalInactive = _traderAllClients.length - totalActive;
 
-            document.getElementById('stat-total').textContent    = uniqueClients.length;
+            document.getElementById('stat-total').textContent    = _traderAllClients.length;
             document.getElementById('stat-active').textContent   = totalActive;
             document.getElementById('stat-inactive').textContent = totalInactive;
 
-            if (uniqueClients.length === 0) {
-                container.innerHTML = `
-                    <div class="state-box">
-                        <div class="state-icon-wrap" style="background:rgba(255,255,255,0.04);border:1px dashed #162040;">
-                            <i class="fas fa-folder-open" style="font-size:1.8rem;color:#3b536a;"></i>
-                        </div>
-                        <h3 style="color:var(--text-primary);font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;margin-bottom:8px;">No Clients Assigned</h3>
-                        <p style="color:var(--text-secondary);max-width:360px;margin:0 auto;font-size:0.9rem;">Contact your administrator to have clients assigned to your portfolio.</p>
-                    </div>`;
-                return;
-            }
-
-            const cardAccents = [
-                { border:'#1e3a8a', iconBg:'rgba(30,58,138,0.22)',  iconBd:'rgba(30,58,138,0.45)',  icon:'#7baef0', glow:'rgba(30,58,138,0.06)'   },
-                { border:'#065f46', iconBg:'rgba(6,95,70,0.22)',    iconBd:'rgba(6,95,70,0.45)',    icon:'#34d399', glow:'rgba(52,211,153,0.06)'  },
-                { border:'#7c3aed', iconBg:'rgba(124,58,237,0.22)', iconBd:'rgba(124,58,237,0.45)', icon:'#a78bfa', glow:'rgba(167,139,250,0.06)' },
-                { border:'#0f766e', iconBg:'rgba(15,118,110,0.22)', iconBd:'rgba(15,118,110,0.45)', icon:'#2dd4bf', glow:'rgba(45,212,191,0.06)'  },
-                { border:'#b45309', iconBg:'rgba(180,83,9,0.22)',   iconBd:'rgba(180,83,9,0.45)',   icon:'#fbbf24', glow:'rgba(251,191,36,0.06)'  },
-                { border:'#be123c', iconBg:'rgba(190,18,60,0.22)',  iconBd:'rgba(190,18,60,0.45)',  icon:'#fb7185', glow:'rgba(251,113,133,0.06)' },
-            ];
-            const cardsHTML = uniqueClients.map((c, idx) => {
-                const isBEF      = (c.category || '').toUpperCase() === 'BEF';
-                const isInactive = c.active_status === 'inactive';
-                const acc = cardAccents[idx % cardAccents.length];
-                const emailHtml = c.email ? `
-                        <div class="client-card-email" onclick="copyClientEmail(event, this, '${c.email.replace(/'/g, "\\'")}')"
-                             title="Click to copy email">
-                            <i class="fas fa-envelope" style="font-size:0.7rem; margin-right:4px; opacity:0.6;"></i>${c.email}
-                        </div>` : '';
-                return `
-                    <a href="/dashboard/${encodeURIComponent(c.name)}" class="client-card${isInactive ? ' is-inactive' : ''}" style="--c-accent:${acc.border};--c-icon-bg:${acc.iconBg};--c-icon-bd:${acc.iconBd};--c-icon:${acc.icon};--c-glow:${acc.glow};">
-                        <div class="client-card-icon"><i class="fas fa-user"></i></div>
-                        <div class="client-card-name">${c.name}</div>
-                        ${isInactive ? `<div class="client-card-badges"><span class="badge-inactive">Inactive</span></div>` : ''}
-                        <div class="client-card-meta"><i class="fas fa-shield-halved" style="color:#2dd4bf;"></i> Managed Account</div>
-                        ${emailHtml}
-                        <div class="client-card-footer">Open Dashboard <i class="fas fa-arrow-right"></i></div>
-                    </a>`;
-            }).join('');
-
-            container.innerHTML = `
-                <div class="trader-card">
-                    <div class="trader-card-header">
-                        <div class="trader-card-title">
-                            <i class="fas fa-user-tie" style="opacity:0.85;"></i>
-                            ${traderName}
-                        </div>
-                        <span class="badge badge-green">${uniqueClients.length} client${uniqueClients.length !== 1 ? 's' : ''}</span>
-                    </div>
-                    <div class="client-grid">${cardsHTML}</div>
-                </div>`;
+            renderTraderPortfolio();
         })
         .catch(err => {
             console.error(err);
