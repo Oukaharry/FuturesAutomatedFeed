@@ -24,10 +24,9 @@ RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
 RELEASE_DISABLE_PUSH_BILLING = True
-# M1 push feeds the dashboard's m1_bars table — the source of the dashboard
-# market bias shown in the AI monitor. Disabling it makes bias=none.
-RELEASE_DISABLE_M1_DASHBOARD_PUSH = False
-RELEASE_DISABLE_ML = False
+# M1 push to dashboard removed — local mt5_market_feed still powers indicators/ML.
+RELEASE_DISABLE_M1_DASHBOARD_PUSH = True
+RELEASE_DISABLE_ML = True
 """
 Tradeopss AI
 A desktop application for traders to push their MT5 data to the Trading Dashboard.
@@ -2219,12 +2218,13 @@ class TradeOpssAIApp:
                             fg_color=self.C_ACCENT, border_color=self.C_BORDER,
                             hover_color=self.C_ACCENT_HV, width=40,
                             checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
-            ctk.CTkCheckBox(toolbar, text="ML Signals", variable=self.ml_mode_var,
-                            command=self._toggle_ml_mode,
-                            font=("Segoe UI", 9), text_color="#f59e0b",
-                            fg_color=self.C_ACCENT, border_color=self.C_BORDER,
-                            hover_color=self.C_ACCENT_HV, width=90,
-                            checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
+            if not RELEASE_DISABLE_ML:
+                ctk.CTkCheckBox(toolbar, text="ML Signals", variable=self.ml_mode_var,
+                                command=self._toggle_ml_mode,
+                                font=("Segoe UI", 9), text_color="#f59e0b",
+                                fg_color=self.C_ACCENT, border_color=self.C_BORDER,
+                                hover_color=self.C_ACCENT_HV, width=90,
+                                checkbox_width=16, checkbox_height=16).pack(side="left", padx=(0, 6), pady=5)
             ctk.CTkCheckBox(toolbar, text="Split (Tradeify)", variable=self.funded_split_payout_var,
                             font=("Segoe UI", 9), text_color="#a78bfa",
                             fg_color=self.C_ACCENT, border_color=self.C_BORDER,
@@ -11487,6 +11487,8 @@ class TradeOpssAIApp:
 
     def _ml_mode_enabled(self):
         """True when the user unlocked ML signal mode (password-gated checkbox)."""
+        if RELEASE_DISABLE_ML:
+            return False
         var = getattr(self, "ml_mode_var", None)
         return bool(var and var.get())
 
@@ -14826,6 +14828,8 @@ class TradeOpssAIApp:
         Returns the insights dict or None on any failure — the AI works
         without it, just with one less layer of intelligence.
         """
+        if RELEASE_DISABLE_ML:
+            return None
         now = time.time()
         cached = self.__class__._ml_insights_cache
         if cached and now - cached["ts"] < self._ML_INSIGHTS_TTL:

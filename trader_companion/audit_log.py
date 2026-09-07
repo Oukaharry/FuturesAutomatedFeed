@@ -82,7 +82,6 @@ def _configure_module_loggers() -> None:
         "TradeOpssAI",
         "TradeOpssAI.m1",
         "trader_companion.mt5_market_feed",
-        "trader_companion.m1_bars_sync",
         "AUDIT",
     ):
         lg = logging.getLogger(name)
