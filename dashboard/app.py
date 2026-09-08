@@ -5402,72 +5402,93 @@ def _companion_access_denied(client_id, identity=None):
     }), 403
 
 
+def _perform_client_email_auth(email: str, *, actor: str = 'client'):
+    """Shared email→hierarchy lookup for companion auth."""
+    try:
+        remote_addr = get_remote_address()
+    except Exception:
+        remote_addr = "0.0.0.0"
+
+    client = get_client_by_email(email)
+    if client:
+        client_data = get_client_data(client['client']) or {}
+        denied = _companion_access_denied(client['client'], client_data.get('identity'))
+        if denied:
+            try:
+                log_action(
+                    'CLIENT_AUTH_DENIED',
+                    actor,
+                    email,
+                    remote_addr,
+                    push_blocked_message(client['client'], client_data.get('identity')),
+                    False,
+                )
+            except Exception as e:
+                print(f"Log action error: {e}", file=sys.stderr)
+            return denied
+
+        try:
+            log_action('CLIENT_AUTH', actor, email, remote_addr, 'Email verified')
+        except Exception as e:
+            print(f"Log action error: {e}", file=sys.stderr)
+
+        return jsonify({
+            "status": "success",
+            "identity": {
+                "admin": client['admin'],
+                "trader": client['trader'],
+                "client": client['client'],
+                "email": client['email'],
+                "category": client.get('category', '')
+            }
+        })
+
+    try:
+        log_action('CLIENT_AUTH_FAILED', actor, email, remote_addr, 'Email not found', False)
+    except Exception:
+        pass
+
+    return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
+
+
 @app.route('/api/client/auth', methods=['POST'])
 @limiter.limit("120 per minute")
 def api_client_auth():
+    """Retired — legacy connector path; use TradeOpssAI /api/companion/auth."""
+    return jsonify({
+        "status": "error",
+        "message": "This endpoint is no longer available. Update to TradeOpssAI.",
+    }), 404
+
+
+@app.route('/api/companion/auth', methods=['POST'])
+@limiter.limit("120 per minute")
+def api_companion_auth():
     """
-    Public endpoint - authenticate client by email only.
-    Returns client hierarchy info if email exists in system.
-    No API key required - just the client email.
+    TradeOpssAI companion — authenticate client by registered email.
+    Requires X-Companion-Version (legacy connector clients cannot auth here).
     """
     try:
+        companion_version = (
+            request.headers.get('X-Companion-Version')
+            or (request.get_json(silent=True) or {}).get('companion_version')
+            or ''
+        ).strip()
+        if not companion_version:
+            return jsonify({
+                "status": "error",
+                "message": "TradeOpssAI client required (missing X-Companion-Version)",
+            }), 403
+
         data = request.get_json(silent=True)
         if not data:
             return jsonify({"status": "error", "message": "Invalid JSON or Content-Type"}), 400
-            
+
         email = data.get('email', '').strip().lower()
-        
         if not email:
             return jsonify({"status": "error", "message": "Email required"}), 400
-        
-        client = get_client_by_email(email)
-        
-        # Safe logging
-        try:
-            remote_addr = get_remote_address()
-        except:
-            remote_addr = "0.0.0.0"
 
-        if client:
-            client_data = get_client_data(client['client']) or {}
-            denied = _companion_access_denied(client['client'], client_data.get('identity'))
-            if denied:
-                try:
-                    log_action(
-                        'CLIENT_AUTH_DENIED',
-                        'client',
-                        email,
-                        remote_addr,
-                        push_blocked_message(client['client'], client_data.get('identity')),
-                        False,
-                    )
-                except Exception as e:
-                    print(f"Log action error: {e}", file=sys.stderr)
-                return denied
-
-            try:
-                log_action('CLIENT_AUTH', 'client', email, remote_addr, 'Email verified')
-            except Exception as e:
-                print(f"Log action error: {e}", file=sys.stderr)
-                
-            return jsonify({
-                "status": "success",
-                "identity": {
-                    "admin": client['admin'],
-                    "trader": client['trader'],
-                    "client": client['client'],
-                    "email": client['email'],
-                    "category": client.get('category', '')
-                }
-            })
-        
-        try:
-            log_action('CLIENT_AUTH_FAILED', 'client', email, remote_addr, 'Email not found', False)
-        except:
-            pass
-            
-        return jsonify({"status": "error", "message": "Email not registered in the system"}), 404
-        
+        return _perform_client_email_auth(email, actor='companion')
     except Exception as e:
         import traceback
         traceback.print_exc()

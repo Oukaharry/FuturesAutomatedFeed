@@ -19,7 +19,8 @@ if hasattr(sys, '_MEIPASS'):
         os.add_dll_directory(sys._MEIPASS)
         os.add_dll_directory(_mt5_dir)
     os.environ['PATH'] = sys._MEIPASS + os.pathsep + os.environ.get('PATH', '')
-APP_VERSION = "1.11.14"
+APP_VERSION = "1.11.15"
+COMPANION_AUTH_PATH = "/api/companion/auth"
 RELEASE_DISABLE_STATUS_POLL = True
 RELEASE_DISABLE_AUTO_STATUS_UPDATES = True
 RELEASE_DISABLE_PROP_DASHBOARD_ACCESS = True
@@ -570,6 +571,14 @@ try:
     import pytz
 except ImportError:
     pytz = None
+
+
+def _companion_auth_headers():
+    """Headers for TradeOpssAI-only /api/companion/auth."""
+    return {
+        "Content-Type": "application/json",
+        "X-Companion-Version": APP_VERSION,
+    }
 
 
 def _gzip_post(url, payload, timeout=120, **kwargs):
@@ -1990,9 +1999,9 @@ class TradeOpssAIApp:
         def _check():
             try:
                 response = requests.post(
-                    "https://www.tradeopss.com/api/client/auth",
+                    f"https://www.tradeopss.com{COMPANION_AUTH_PATH}",
                     json={"email": email},
-                    headers={"Content-Type": "application/json"},
+                    headers=_companion_auth_headers(),
                     timeout=30
                 )
                 if response.status_code == 200:
@@ -2703,9 +2712,9 @@ class TradeOpssAIApp:
             try:
                 # Use public endpoint - no API key needed
                 response = requests.post(
-                    f"{dashboard_url}/api/client/auth",
+                    f"{dashboard_url}{COMPANION_AUTH_PATH}",
                     json={"email": email},
-                    headers={"Content-Type": "application/json"},
+                    headers=_companion_auth_headers(),
                     timeout=30
                 )
                 
